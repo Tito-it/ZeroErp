@@ -131,7 +131,7 @@
 - [fn_cleanup_fatture_by_ids](funzioni/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
 - [fn_close_commessa_push_run](funzioni/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
 - [fn_close_giornaliero_lotto](funzioni/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
-- [fn_commessa_viva_di_sorgente](funzioni/fn_commessa_viva_di_sorgente.md)
+- [fn_commessa_viva_di_sorgente](funzioni/fn_commessa_viva_di_sorgente.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-12 e D-14)
 - [fn_complete_lotto_task_run](funzioni/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 - [fn_componi_numero_documento](funzioni/fn_componi_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_conferma_reso](funzioni/fn_conferma_reso.md) — (rev 2026-07-13)

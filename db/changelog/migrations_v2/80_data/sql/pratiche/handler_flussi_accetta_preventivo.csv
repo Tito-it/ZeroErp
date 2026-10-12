@@ -1,2 +1,2 @@
 id,handler_key,codice,descrizione,attivo,meta,data_insert,user_insert,data_update,user_update
-9002,vendita.accetta_preventivo,VENDITA_ACCETTA_PREVENTIVO,Handler di completamento: accetta il preventivo collegato quando il flusso APPROVAZIONE_CLIENTE e' COMPLETATO con esito POSITIVO (riusa il service dell'endpoint approvazione-flusso M2),t,{},2026-06-15 00:00:00+02,SEED,2026-06-15 00:00:00+02,SEED
+9002,vendita.accetta_preventivo,VENDITA_ACCETTA_PREVENTIVO,RITIRATO (GUIDA D4: lo step APPROVAZIONE_CLIENTE avanza per proiezione dal preventivo). Era l'handler di completamento che accettava il preventivo collegato su COMPLETATO con esito POSITIVO,f,{},2026-06-15 00:00:00+02,SEED,2026-06-15 00:00:00+02,SEED

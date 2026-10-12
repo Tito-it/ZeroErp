@@ -201,7 +201,8 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
 - 📝 **Magazzino: tutte le scritture dal verbo**
   (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): bozza, cinque decisioni di Tid (§3).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
-  repository di righe, nessuna chiave i18n).
+  repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
+  d'acquisto è rinviato a `work-in-progress/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5).
 
 ⭐ **I domini nuovi nascono con il permesso applicato dal DB**
 (`work-done/brief-db-permesso-nel-verbo-di-scrittura.md`, D-1 → D-5 di Tid). Il modello è
@@ -321,6 +322,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
   BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),
   il collaudo a video (§D.5 + §G.4) e l'archivio.
+- 📝 **Quali articoli ammette un documento** (`work-in-progress/brief-db-articoli-ammessi-per-documento.md`):
+  una regola sola per il picker e per il guard. Analisi DB fatta (§8), decisioni di Tid prese il 2026-10-13 (§8.6); ⏳ consegna DB.
+- 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
+  (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 del brief sopra): aperto, non iniziato.
 - ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**
   (`work-done/brief-db-codici-non-trovato-email-e-permessi.md`, voci E-4/E-5/E-10 dell'analisi della doc API core):
   R-1…R-4 e R-5…R-9 applicati, pgTAP verdi (`20261010-08…-15`: regola unica di chi si vede nella ricerca su

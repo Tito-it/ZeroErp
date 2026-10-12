@@ -13,7 +13,7 @@ Approfondimento tabelle:
 La tabella `pratiche.template_flussi_handler_eventi` è il **legame data-driven** tra un template di flusso e gli **handler** da eseguire al verificarsi di un **evento** di flusso, **esito-aware**. Generalizza il dispatch handler oltre il solo avvio:
 
 * `evento = 'IN_CORSO'` → **esecuzione automatica** dello step (oggi su [`template_flussi.handler_id`](/dbzero/pratiche/tabelle/template_flussi); vi confluirà in Fase 2 — vedi sotto).
-* `evento = 'COMPLETATO'` → **azione di dominio al completamento**, condizionata all'esito (es. `vendita.accetta_preventivo` quando `APPROVAZIONE_CLIENTE` è COMPLETATO con esito `POSITIVO`).
+* `evento = 'COMPLETATO'` → **azione di dominio al completamento**, condizionata all'esito (es. `vendita.post_smistamento` quando `SMISTAMENTO` è COMPLETATO con esito `MERCE_PRESENTE`).
 
 L'esecutore resta un **handler Python** in `HANDLER_MAP` (riuso di [`handler_flussi`](/dbzero/pratiche/tabelle/handler_flussi)): nessun routing di dominio nel frontend, nessun catalogo parallelo.
 
@@ -60,12 +60,57 @@ L'esecutore resta un **handler Python** in `HANDLER_MAP` (riuso di [`handler_flu
 
 ### Seed corrente
 
-| template | evento | esito | handler |
-|---|---|---|---|
-| 9003 (APPROVAZIONE_CLIENTE, PREVENTIVI_IMMEDIATA) | COMPLETATO | POSITIVO | `vendita.accetta_preventivo` |
-| 9007 (APPROVAZIONE_CLIENTE, PREVENTIVI_DIFFERITA) | COMPLETATO | POSITIVO | `vendita.accetta_preventivo` |
+| template | evento | esito | handler | attivo |
+|---|---|---|---|---|
+| 9012 (SMISTAMENTO, PREVENTIVI) | COMPLETATO | MERCE_PRESENTE | `vendita.post_smistamento` | sì |
+| 9003 (APPROVAZIONE_CLIENTE, PREVENTIVI_IMMEDIATA) | COMPLETATO | POSITIVO | `vendita.accetta_preventivo` | no |
+| 9007 (APPROVAZIONE_CLIENTE, PREVENTIVI_DIFFERITA) | COMPLETATO | POSITIVO | `vendita.accetta_preventivo` | no |
+| 9011 (APPROVAZIONE_CLIENTE, PREVENTIVI) | COMPLETATO | POSITIVO | `vendita.accetta_preventivo` | no |
+
+`vendita.accetta_preventivo` è **ritirato** dal backend: l'accettazione del
+preventivo fa avanzare lo step per proiezione
+([`template_flussi_avanzamento_proiezione`](/dbzero/pratiche/tabelle/template_flussi_avanzamento_proiezione)),
+non più con un handler. L'handler e i suoi collegamenti restano nel seed
+**spenti**.
 
 Offerta/contratto/ordini/commesse entreranno come **nuove righe** quando nasceranno i loro flussi.
+
+---
+
+### ⛔ I due registri degli handler devono dire la stessa cosa
+
+Un collegamento attivo viene eseguito dal backend cercando la `handler_key` in
+`HANDLER_MAP`. Se la chiave non è registrata, il completamento dello step
+fallisce (`E_HANDLER_NON_REGISTRATO`) e il flusso non si chiude più.
+
+Il database presidia il **suo** lato: un collegamento attivo vuole un handler
+attivo (`trgfn_child_requires_active_parent`), e un handler con collegamenti
+attivi non si spegne (`trgfn_prevent_deactivate_if_children`). Non può vedere
+`HANDLER_MAP`. Per questo **ritirare un handler** si fa in quest'ordine:
+
+1. si spengono i collegamenti che lo usano, in **ogni** edizione di workflow
+   (vedi sotto);
+2. si spegne l'handler in [`handler_flussi`](/dbzero/pratiche/tabelle/handler_flussi);
+3. solo allora il backend lo toglie da `HANDLER_MAP`.
+
+---
+
+### ⛔ Un cambio scritto sul preset non raggiunge le edizioni già copiate
+
+I template, e quindi i collegamenti, appartengono a un'**edizione** di workflow
+(`template_flussi.definizione_id`). La copia di un'edizione
+(`fn_copia_definizione`, usata da fork e nuova versione) porta con sé anche i
+collegamenti. Una modifica fatta dopo sul preset **non** arriva alle copie
+già esistenti.
+
+E le copie di un emittente, una volta pubblicate o ritirate, **non si
+modificano** (`trgfn_template_flussi_figli_guard_immutabile`): un collegamento
+di un'edizione pubblicata non si spegne né si cancella. L'unica strada è una
+**nuova versione** dell'edizione, corretta in bozza e pubblicata.
+
+Un passaggio di comportamento (per esempio da handler a proiezione) va quindi
+scritto sul **modello** — tutte le edizioni del tipo che hanno quello step — e
+non sull'id del template del preset.
 
 ---
 

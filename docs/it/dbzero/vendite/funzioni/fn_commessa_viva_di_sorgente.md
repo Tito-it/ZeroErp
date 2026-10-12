@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/fn_commessa_viva_di_sorgente.md" %}
 # ⚙️ Funzione `fn_commessa_viva_di_sorgente`
 
 ```sql
