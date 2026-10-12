@@ -265,10 +265,11 @@ Push del singolo ordine `CONFERMATO` via `fn_list_ordini_da_pushare(…, p_ordin
 `attivita_fatturabili`. Guard: stato `CONFERMATO` + righe eleggibili.
 
 **Ponte emittibilità (2026-06-10)**: a push `COMPLETATO`, nella stessa
-transazione, ogni commessa toccata viene resa **emittibile** — attività
-`BOZZA → APPROVATA` (`fn_approva_commessa_attivita`) + testata
-`→ PRONTA_FATTURAZIONE` (`fn_cambia_stato_commessa`, skip idempotente se già
-pronta da una sorgente precedente). Regola di modello: il documento pushato è
+transazione, ogni commessa toccata viene resa **emittibile** — le attività
+dell'invio `BOZZA → APPROVATA` + testata `→ PRONTA_FATTURAZIONE` (skip
+idempotente se già pronta da una sorgente precedente). Dal 2026-10-12 lo fa una
+madre DB, `vendite.fn_rendi_commessa_emittibile` (D-10 di
+brief-db-annullo-a-valle-riapre-a-monte): prima erano due passi del backend. Regola di modello: il documento pushato è
 già autorizzato (ordine `CONFERMATO`), quindi il push è esso stesso
 l'autorizzazione delle attività generate. Il ponte vive in
 `pr_run_commesse_push_one` e vale per ogni percorso (preventivi standalone,
@@ -284,12 +285,20 @@ merce: completandolo (nessun altro flusso aperto, obbligatori fatti) la pratica
 su push `COMPLETATO` (PARZIALE/ERRORE non completano lo step). `user` JWT propagato.
 
 **Semantica transazionale (fix analisi-fix-transazioni #4, 2026-07-08)**: push +
-transizione CONFERMATO→EVASO + chiusura step `INVIO_COMMESSA` avvengono in un **unico**
-`transaction.atomic()`. Un fallimento della **chiusura-step pratica** rolla l'**intero
-push** (commesse + ponte emittibilità): la pratica non resta mai non-riconciliata con
-commesse committate (prima la chiusura-step era una scrittura separata post-push). Il
-push è idempotente/ri-eseguibile → retry sicuro. La sola **transizione EVASO** resta
-best-effort su un **savepoint dedicato** (fallimento loggato, non rollbacka push+step).
+chiusura step `INVIO_COMMESSA` avvengono in un **unico** `transaction.atomic()`. Un
+fallimento della **chiusura-step pratica** rolla l'**intero push** (commesse + ponte
+emittibilità): la pratica non resta mai non-riconciliata con commesse committate. Il
+push è idempotente/ri-eseguibile → retry sicuro.
+
+⛔ **L'invio in commessa NON cambia lo stato dell'ordine** (D-6 di
+brief-db-annullo-a-valle-riapre-a-monte, 2026-10-12): «Evaso» vuol dire «la merce è
+partita», e lo dicono solo le bolle (`vendite.fn_ordine_proietta_stato_evasione`).
+Fino a quel giorno il push portava l'ordine a `EVASO` (best-effort, su un savepoint),
+e un ordine `PARZIALMENTE_EVASO` mandato in commessa diventava `EVASO` con metà merce
+in magazzino. Che l'ordine sia già in commessa lo dicono la lista «da mandare» e le
+capability; un secondo invio senza righe libere risponde `E_ORD_NESSUNA_RIGA`.
+Annullando la commessa le righe dell'ordine tornano da mandare, e lo stato non cambia
+nemmeno allora.
 
 La response espone `commesse_ids` (commesse toccate dal push), oltre a
 `stato`/`push_log_id`/`handlers`/`righe_pushable`/`fatturazione_trigger`.

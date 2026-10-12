@@ -3154,12 +3154,20 @@
       "commessa": "una riga da emettere torna annullata",
       "provenienza": "torna trasformabile",
       "spiegazione": "Confermando, il documento si annulla e queste cose tornano disponibili: quantità da spedire, righe da ordinare, righe di commessa, l'offerta da trasformare.",
+      "commessa_da_mandare": "torna da mandare in commessa · righe: {n}",
+      "commessa_da_accreditare": "torna da accreditare · righe: {n}",
+      "si_annulla": "Che cosa si annulla",
+      "oneri_annullati": "oneri che si annullano con la commessa: {n}",
+      "spiegazione_commessa": "Confermando, la commessa si annulla: le righe non ancora emesse escono dalla commessa, i documenti da cui vengono tornano da mandare in commessa, il reso torna da accreditare, gli oneri si annullano.",
       "nessun_legame": "I legami con altri documenti non ci sono più: confermando, il documento si annulla senza ritirare niente.",
       "origine_ordine": "Ordine",
       "origine_reso": "Reso",
       "origine_preventivo": "Preventivo",
       "origine_offerta": "Offerta",
-      "origine_commessa": "Commessa"
+      "origine_commessa": "Commessa",
+      "origine_contratto": "Contratto",
+      "origine_ddt": "DDT",
+      "origine_consumi": "Consumi"
     },
     "listini": {
       "search_placeholder": "Cerca per codice o descrizione listino...",

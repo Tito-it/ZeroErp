@@ -1,5 +1,27 @@
 # Brief DB — Tornare indietro: annullare a valle riapre a monte, con la segnalazione
 
+## ⏭️ Chi riparte — aggiornato al 2026-10-12
+
+**Riparte: Tid con il team DB**, sul §10 (trovato nel collaudo: una commessa annullata non lascia
+libero il documento, che non si puo' piu' rimandare in commessa), a partire dalla domanda del §10.5.
+Il collaudo a video del giro di ritorno aspetta il §10.
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | ✅ team DB | changeSet `20261012-08 … -24`, `-27 … -29`, CSV, pgTAP | §8 | — |
+| 2 | ✅ BE/FE | ritiro delle copie del verso in avanti, annullo della commessa con la finestra, smoke | §9 | — |
+| 3a | **Tid + team DB** | la domanda: la commessa si annulla anche con righe vive da documento? | §10.5 | — |
+| 3 | **team DB** | il link documento → commessa (`vendite.commesse_sorgenti`) dopo l'annullo: R-13…R-15, nella forma che esce dal 3a | §10.3 | 3a |
+| 4 | sessione BE | ricaduta del §10 (lettore del link nel backend, smoke) | §10.4 | 3 |
+| 5 | Tid | lo smoke HTTP `smoke-test-ordini-giro-commessa.sh` (vuole la password degli smoke); il passo 14 fallisce finche' manca il §10 | §9.3 | 3 |
+| 6 | Tid | collaudo a video: preventivo, ordine, misto, PRV0000144 | §6.4 | 3 |
+| 7 | Tid | eseguire su dbdev l'SQL del §9.4 (deciso il 2026-10-12: si riportano a CONFERMATO) | §9.4 | — |
+| 8 | sessione BE | archiviare in `work-done/`, riga di PROJECT_CONTEXT | — | 6, 7 |
+
+**Decisioni aperte di Tid:** ❓ **§10.5**, da vedere con il team DB: la commessa si annulla anche con
+righe vive spinte da un documento, o solo senza? Da li' la forma di R-13 (§10.3).
+**Da committare:** il lavoro BE/FE del §9 (non committato).
+
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-11, dal collaudo a video di Tid; lettura critica e
 > seconda tornata di decisioni del team DB (`dev/db-tid`), 2026-10-12 (§7). **A chi:** team DB; poi BE/FE (§6).
 > **Stato:** 📝 **aperto.** Decisioni D-1…D-4 prese da Tid il 2026-10-11, **D-5…D-10 il 2026-10-12** (§4),
@@ -10,7 +32,9 @@
 > d'origine e' un onere o una rettifica, per vincolo (`20261012-27 … -29` + 36 pgTAP corretti, piu' 17 nel
 > secondo giro e `test-vw-dash-competenza-v1`): ✅ **applicato da Tid il 2026-10-12, corsa pgTAP tutta verde,
 > nessuna regressione.** ✅ **Lato DB chiuso**; l'SQL dell'appendice D-9 eseguito da Tid il 2026-10-12. Resta da
-> tenere d'occhio il costo del trigger (§8.4, non un lavoro); poi BE/FE (§6) e lo smoke BE di §8.5.
+> tenere d'occhio il costo del trigger (§8.4, non un lavoro). ✅ **BE/FE fatto il 2026-10-12** (§9):
+> restano il collaudo a video (§6.4) e lo smoke HTTP, di Tid. ⚠️ **Riaperto lato DB il 2026-10-12** dal
+> collaudo: una commessa annullata non lascia libero il documento, che non si rimanda in commessa (§10).
 > **Origine:** il caso 6 di [brief-db-annullo-documento-con-legami](../work-done/brief-db-annullo-documento-con-legami.md)
 > (§10), trovato nel collaudo e spostato qui per decisione di Tid: *«quando si torna indietro ci devono
 > essere le segnalazioni di quello che si sta facendo; in avanti le abbiamo bloccate. Un unico
@@ -511,3 +535,235 @@ UPDATE vendite.commesse_attivita ca
 Da lanciare **dopo** l'apply di `20261012-08 … -24`: allora i documenti da cui venivano le righe tornano
 spingibili (D-5), e i preventivi EVASO tornano ACCETTATO da soli, perche' l'UPDATE passa dal trigger delle
 righe di commessa (`20261012-15`). Lanciato prima, le righe si ritirano ma i preventivi restano EVASO.
+
+## 9. Consegna BE/FE (2026-10-12)
+
+### 9.1 Backend
+
+| Cosa | Dove |
+| --- | --- |
+| L'annullo della commessa dal verbo: verso `ANNULLATA` `cambia_stato_commessa` chiama `vendite.fn_annulla_commessa(id, legami_confermati)` (dopo la difesa applicativa delle capability, che resta); risposta nella forma del cambio di stato | `commesse_service.cambia_stato_commessa`, `CommesseRepository.annulla` |
+| `GET /vendite/commesse/<id>/legami/`: prima la testata (404 `E_COMMESSA_NOT_FOUND`), poi il BB | `commesse_service.get_legami`, `legami_views.ApiCommessaLegami` (factory con `model_permission=None`, come i passaggi della commessa), `urls_v1.py` |
+| Il BB dei legami conosce la commessa: `DOCUMENTO_COMMESSA`, `STATO_ANNULLATA`, lineage della commessa; origini `CONTRATTO` e `DDT` | `_annullo_con_legami.py` |
+| Il `POST …/stato/` trasporta `legami_confermati` | `views.ApiCommessaStato` |
+| R-9: il ponte di emittibilita' chiama la madre `vendite.fn_rendi_commessa_emittibile` al posto dei suoi due passi (stessa semantica di `righe_ids`: None, vuota, piena) | `commesse_service._rendi_commessa_emittibile`, `CommesseRepository.rendi_commessa_emittibile` |
+| R-8: ritirato il passaggio ACCETTATO → EVASO del push del preventivo; ritirato il modulo `_smistamento_gate_helpers.py` (senza consumatori) | `preventivi_service.push_a_commessa` |
+| D-6: ritirato il passaggio dell'ordine a EVASO dopo l'invio in commessa; la chiusura dello step pratica `INVIO_COMMESSA` resta | `ordini_service.push_a_commessa` |
+
+Controllato il §6.2 «da controllare»: lo smistamento del preventivo e l'esito `MERCE_PRESENTE` non
+dipendono dallo stato EVASO dell'ordine (l'esito guarda se un ordine e' nato dal preventivo); la chiusura
+dello step `INVIO_COMMESSA` resta nel blocco del push completato. Nessun messaggio del frontend promette
+«ordine EVASO a push completato».
+
+### 9.2 Frontend
+
+* `CommessaGestioneDrawer`: l'annullo passa da `useForzaturaConfermata` e apre
+  `DocumentoAnnulloLegamiDialog` (`base-path="/vendite/commesse"`); le altre azioni di stato restano
+  com'erano.
+* Store minimo `useCommesseStore` (`vendite/stores/commesse.js`): il cambio di stato, e dopo l'annullo
+  l'avviso ai tab (`avvisaDocumentiCollegati`). Esiste perche' lo standard vuole il produttore dell'avviso
+  nello store, mai nel drawer; la commessa non ne aveva uno.
+* `avvisaDocumentiCollegati` avvisa anche contratti e bolle (tornano da mandare in commessa).
+* `DocumentoAnnulloLegamiDialog`, forma della commessa (la decide `documento` della risposta): le righe che
+  si riaprono **contate per documento d'origine** («torna da mandare in commessa · righe: n», per il reso
+  «torna da accreditare»), gli oneri in un secondo elenco «Che cosa si annulla» (R-1 §6.1). Il numero
+  dichiarato resta `legami` del lettore, oneri compresi.
+* Chiavi i18n (it/en) sotto `vendite.annullo_legami.*`; costante `STATO_COMMESSA.ANNULLATA`.
+
+### 9.3 Le prove
+
+* Django: `apps.vendite.tests` 2359 verdi, `apps.core` 1624 verdi; mypy a cricchetto a zero; ruff pulito.
+  Nuovi: annullo dal verbo, dichiarazione non numerica, codice del DB con `confirm_and_retry`, legami dopo
+  la testata, lineage della commessa nel BB; riscritti i test del ponte (la madre DB), del push dell'ordine
+  (lo stato non cambia, anche da `PARZIALMENTE_EVASO`) e del push del preventivo (lo stato non lo tocca
+  il backend). Ritirati quelli che fissavano le copie (skip «gia' pronta», gate EVASO Python, transizione
+  soft): le regole sono del DB e le prova il pgTAP.
+* Frontend: vitest 839 verdi (nuovi: lo store, il caso commessa del dialog, provato per mutazione su
+  due punti), lint, guard, build.
+* **Binding vero sul DB di sviluppo** (prova in-process, transazione ritirata): `get_legami` col nome
+  dal lineage; senza conferma e con la conferma sbagliata `E_DOC_ANNULLO_CON_LEGAMI`; con la conferma
+  la commessa e' `ANNULLATA` senza righe `NON_EMESSA`; la madre dell'emittibilita' risponde con `[]` e con
+  `None`, e su una commessa annullata la matrice rifiuta.
+* **Smoke Python** (`scripts/smoke-baseline.sh`, dbdev): `ritorno-lotto-a-draft` (§8.5) e altri cinque
+  verdi. ⚠️ **Trovato nel giro**: il §8.5 nominava uno smoke, ma la stessa scrittura — una riga NORMALE
+  senza sorgente da `vendite.fn_upsert_commessa_attivita` — stava in altri cinque
+  (`fattura-indirizzi-snapshot`, `fattura-scadenze`, `fattura-aggregazione-termini`,
+  `fatturazione-aggregazione-righe`, `push-termine-documento-commessa`). Corretti tutti allo stesso modo
+  (sorgente COMMESSA, uid = id della commessa). ⭐ Regola del 2 (ok Tid, 2026-10-12): la chiamata,
+  copiata nei sei, e' diventata un BB degli smoke, `crea_riga_commessa` in
+  `scripts/tests/_smoke_commessa.py` (catalogo BB backend); i sei di nuovo verdi su dbdev.
+* **Smoke HTTP** `smoke-test-ordini-giro-commessa.sh`: riallineato a D-6 (il passo 7 si aspettava EVASO
+  dopo l'invio) e allungato col ritorno (passi 11-14: domanda 409, legami, annullo confermato, ordine
+  CONFERMATO e di nuovo da mandare). ⏳ **Non eseguito**: vuole la password degli smoke. Gunicorn
+  ricaricato il 2026-10-12.
+
+### 9.4 Per Tid: gli ordini EVASO senza bolle (dati di test)
+
+Fatto datato (dbdev, 2026-10-12, nel perimetro di un utente): **30 ordini `EVASO` senza nessuna riga
+evasa da una bolla**. Sono il residuo del vecchio invio in commessa, che portava l'ordine a EVASO (D-6):
+nessun vincolo del DB li ferma, e da questo giro non se ne creano piu'. Come per D-9, sono dati di test, e
+nessun lavoro di codice.
+
+✅ **Decisione di Tid (2026-10-12): si riportano a CONFERMATO**, a mano su dbdev. Lo fa il BB che
+proietta lo stato dalle bolle (`vendite.fn_ordine_proietta_stato_evasione`: nessuna bolla →
+`CONFERMATO`), e la matrice ammette l'arco `EVASO → CONFERMATO` (letto su dbdev il 2026-10-12). Non
+eseguito dalla sessione BE.
+
+```sql
+BEGIN;
+
+-- 1. Guarda prima cosa c'e': ordini EVASO senza nessuna riga evasa da una bolla
+SELECT o.id, o.numero
+  FROM vendite.ordini o
+  JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
+ WHERE s.codice_interno = 'EVASO'
+   AND NOT EXISTS (SELECT 1
+                     FROM vendite.ordini_righe r
+                     JOIN vendite.ordini_righe_fulfillment f ON f.ordine_riga_id = r.id
+                    WHERE r.ordine_id = o.id)
+ ORDER BY o.id;
+
+-- 2. Riproietta lo stato dalle bolle (senza bolle: CONFERMATO)
+SELECT o.id, vendite.fn_ordine_proietta_stato_evasione(o.id)
+  FROM vendite.ordini o
+  JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
+ WHERE s.codice_interno = 'EVASO'
+   AND NOT EXISTS (SELECT 1
+                     FROM vendite.ordini_righe r
+                     JOIN vendite.ordini_righe_fulfillment f ON f.ordine_riga_id = r.id
+                    WHERE r.ordine_id = o.id);
+
+-- 3. Rilancia la SELECT del passo 1: deve tornare zero righe. Poi COMMIT; altrimenti ROLLBACK;
+```
+
+### 9.5 Guide e documentazione
+
+* `gestione-commesse`: «Annullare una commessa» (verso in avanti e all'indietro, che cosa si riapre e
+  che cosa si annulla, l'eccezione del §1.1) e il passo 5 dell'invio (la madre DB).
+* `gestione-ordini`: stati riscritti su D-6 (EVASO = merce partita, cinque stati in uso), push che non
+  cambia lo stato, rimando all'annullo della commessa, glossario.
+* `gestione-preventivi`: ACCETTATO ↔ EVASO dal DB nei due versi, la commessa annullata, il preventivo
+  misto (§7.4) e la catena lunga.
+* ⚠️ `gestione-resi` **non esiste**: il reso e' raccontato in `gestione-ddt` §11-bis, e il «torna da
+  accreditare» sta li'.
+* `api_commessa_stato.md` (l'annullo con la conferma, `GET …/legami/`), `api_ordini.md`,
+  `api_preventivi.md`, api.md (inventario), i due cataloghi BB.
+
+## 10. Trovato nel collaudo (2026-10-12): la commessa annullata non lascia libero il documento
+
+> **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-12, dal collaudo a video di Tid. **A chi:** team
+> DB. Letto sulla doc auto-generata e sul codice, non sui dati: il caso di dbdev e' il controesempio, non
+> il motivo (§10.1).
+
+### 10.1 Il controesempio
+
+Tid, collaudo del §6.4: PRV0000398 (id 50012), di nuovo ACCETTATO dopo l'annullo della commessa 55666,
+si rimanda in commessa. `POST /api/v1/vendite/preventivi/50012/push-commessa/` risponde 422
+`E_COMMESSA_PUSH_PARZIALE_VIETATO` («nessuna riga inviata»); sotto, nel log di Gunicorn, il DB:
+
+```text
+vendite.fn_link_commessa_sorgente  E_COMMESSA_SORGENTE_ALTRA_COMMESSA
+La sorgente e' gia' collegata a un'altra commessa (id 55666): una sorgente puo' appartenere a una sola commessa.
+```
+
+Fatto datato (dbdev, 2026-10-12, letto nel perimetro dell'utente che vede la commessa): 55666 e'
+`ANNULLATA`, ha una riga sola, `ANNULLATA`; `vendite.fn_preventivo_ha_residuo_commessa(50012)` e' `true`;
+in `vendite.commesse_sorgenti` resta il link `PREVENTIVO 01a12b84-… → 55666`, ruolo `ROOT`.
+
+⚠️ 55666 e' stata annullata il 2026-10-11, **prima** del verbo, e sistemata a mano col D-9. Ma il difetto
+non e' del dato: il verbo nuovo lascerebbe lo stesso link (§10.2).
+
+⭐ **Lo stesso con l'ordine** (Tid, collaudo del 2026-10-12): ordine mandato in commessa, commessa annullata
+dal verbo nuovo con la finestra, secondo invio dell'ordine: stesso errore. E' il caso costruito, non un
+residuo: conferma che il difetto e' della forma, per ogni sorgente.
+
+### 10.2 Il difetto, sul modello
+
+* `vendite.commesse_sorgenti` ha `uq_commesse_sorgenti_src_uid (sorgente_tipo_id, sorgente_uid)`: un
+  documento sta in **una** commessa, **per sempre**. `fn_link_commessa_sorgente` lo fa valere con un
+  lookup globale, senza guardare lo stato della commessa del link che trova.
+* Nella doc auto-generata l'**unico** scrittore della tabella e' `fn_link_commessa_sorgente`, e solo in
+  inserimento (con l'`UPDATE` del `meta` nel ramo idempotente). Nessuna funzione la libera:
+  ne' `vendite.fn_annulla_commessa`, ne' `vendite.fn_documento_ritira_legami`, ne'
+  `vendite.fn_ritira_commessa_attivita_da_sorgente` (che ritira le righe di `commesse_attivita`, non il
+  link).
+* Il link lo scrive l'handler **base** del push (`BaseSourceHandler`, `commesse_source_handlers.py`),
+  quindi vale per **tutte** le sorgenti: preventivo, ordine, contratto, bolla, consumi.
+* **Da dove viene la rigidita'**: [brief-db-commesse-multi-sorgente](../work-done/brief-db-commesse-multi-sorgente.md)
+  §2.3 lasciava al team DB «una sorgente sta in una sola commessa», e il `20260609-10` l'ha fatta vincolo
+  (UNIQUE senza ruolo). Era scritta per impedire che un documento stesse in **due commesse vive**; l'annullo
+  della commessa (questo brief) non c'era ancora. La regola resta giusta per le commesse vive: e' il
+  vincolo che non distingue una commessa morta.
+* ⚠️ **Non e' l'eccezione del §1.1.** Il D-8 dice che il documento a **monte** si annulla con la conferma
+  anche se ha righe in una commessa viva, proprio perche' l'alternativa sarebbe annullare l'**intera**
+  commessa (righe di altri documenti comprese). Non dice che la commessa non si annulla: l'annullo della
+  commessa e' D-1/D-2, e il suo solo limite sono le righe EMESSE (D-3).
+
+**Effetto:** dopo l'annullo della commessa il documento risulta «da mandare» per tutti i lettori del
+residuo (D-5 ha liberato i segmenti: e' giusto), ma il push lo rifiuta, perche' il documento e' ancora
+agganciato alla commessa morta. Il D-1 («di nuovo smistabile») e il D-5 sono veri a meta'; per l'ordine
+il §7.4 («le righe dell'ordine tornano da mandare») anche.
+
+⛔ **Perche' i pgTAP del §8 erano verdi:** provano il residuo (`fn_preventivo_ha_residuo_commessa`, le
+`fn_list_*_da_pushare`) dopo l'annullo, non un **secondo invio vero**. E' il «verde per sottrazione»
+di AGENTS.md: la prova si ferma un passo prima del punto in cui il caso si distingue.
+
+### 10.3 Cosa si chiede al team DB
+
+| # | Cosa | Note |
+| --- | --- | --- |
+| **R-13** | Dopo l'annullo di una commessa, un documento che vi aveva spinto righe si deve poter rimandare in commessa (una commessa nuova, o un'altra viva). La forma la sceglie il team DB sul codice | due strade viste dalla sessione BE, nessuna decisa: (a) il verbo di annullo **libera** il link (lo cancella); (b) il link **resta** come storia, e l'unicita' e il lookup di `fn_link_commessa_sorgente` contano solo i link verso commesse non abortite. ⚠️ Con (b) l'indice unico com'e' non basta (non puo' leggere lo stato della commessa): serve uno stato sul link, o un'altra chiave. ⚠️ Con (a) si perde l'arco storico che leggono lineage e passaggi (`fn_documento_lineage_archi`, `vw_documento_lineage_archi`): va deciso se il lineage di un documento deve ancora mostrare la commessa annullata |
+| **R-14** | Censire i lettori di `commesse_sorgenti` e dire per ognuno se un link verso una commessa annullata deve contare | dalla doc auto-generata: `fn_build_gruppo_fatturabile_key`, `fn_get_sorgente_documento_ref`, `fn_genera_ddt_riconsegna`, `fn_emit_attivita_fatturabili_da_commessa`, `trgfn_commesse_sorgenti_guard_emittente`, `fn_documento_lineage_archi` / `vw_documento_lineage_archi`, `trgfn_guard_fatturazione_immediata_immutabile`, `script.trgfn_guard_sorgente_polimorfa_tipizzata` / `_testuale`, `script.fn_check_sorgente_chiudibile`, `script.fn_check_preventivo_annullabile`, `script.fn_check_ordine_annullabile` (gli ultimi due col COMMENT gia' stantio, R-12). Lato backend: §10.4 |
+| **R-15** | pgTAP fabbricati del **giro completo**: invio, annullo della commessa con la conferma, **secondo invio riuscito** (in una commessa nuova), per preventivo e ordine almeno; e il preventivo misto (§7.4) | la prova che il §8 non faceva. Anche: il secondo invio nella **stessa** commessa, se viva (un altro documento l'ha tenuta aperta?), dove il ramo idempotente di `fn_link_commessa_sorgente` oggi riaggancerebbe senza errore |
+
+**I dati di dbdev** (55666 e le altre commesse annullate col link ancora attaccato): li decide Tid, come
+D-9, a forma scelta. Con la strada (a) e' una `DELETE` dei link verso commesse `ANNULLATA`; con la (b)
+nessun intervento.
+
+### 10.4 Ricaduta BE (dopo la consegna DB)
+
+* `CommesseRepository.get_commessa_id_by_sorgente` legge `commesse_sorgenti` senza filtro di stato e con
+  `LIMIT 1`: lo usa `preventivi_service._aggancia_commessa_servizi_a_pratica` dopo l'invio. Con la strada
+  (b) potrebbe agganciare alla pratica la commessa **annullata** invece della nuova: va allineato alla
+  regola del DB (meglio, letto da una funzione DB, non da una `SELECT` del backend).
+* Lo smoke `smoke-test-ordini-giro-commessa.sh` ha gia' il passo 14 (secondo invio dopo l'annullo, atteso
+  `COMPLETATO`): oggi deve fallire, ed e' il presidio HTTP del §10.
+
+### 10.5 ❓ Domanda aperta, da vedere con il team DB (Tid, 2026-10-12)
+
+Nata dalla lettura del §10 nella sessione BE. **Non e' una decisione**: Tid la porta al team DB, e la
+forma di R-13 dipende dalla risposta.
+
+**La domanda:** la commessa si deve poter annullare quando ha righe **vive** (NON_EMESSA) spinte da un
+documento, o solo quando non ne ha (oneri, o nessuna riga viva)?
+
+**Gli elementi, distinti per natura:**
+
+* ✅ **Scritto nel modello, per la riga.** Il guard 4 di `vendite.fn_annulla_commessa_attivita` («per una
+  riga da push il rimedio e' SEMPRE a monte, sul documento, sia essa emessa o no») rifiuta l'annullo di
+  **una** riga che viene da un documento. Riguarda la riga singola, non la commessa intera.
+* ✅ **Scritto nel modello, per la commessa.** La commessa e' un contenitore trovato o creato dal push
+  (`fn_get_or_create_commessa`, per cliente, utility e competenza) che raccoglie righe di N documenti
+  diversi, piu' oneri e rettifiche (§7.3). Il suo annullo oggi e' D-1/D-2, con il solo limite delle righe
+  EMESSE (D-3).
+* ✅ **Scritto, per il documento.** Il D-8 (§1.1): il documento a monte si annulla con la conferma anche
+  con righe in una commessa viva, perche' l'alternativa sarebbe annullare l'intera commessa.
+* ✅ **Storia.** La decisione del 2026-06-28 di
+  [brief-db-push-commessa-gia-inviato](../work-done/brief-db-push-commessa-gia-inviato.md) §5: «instradata
+  = esclusa»; il flusso «annulla attivita' e ri-pusha» e' «da progettare a parte». Il D-5 di qui l'ha
+  sostituita in parte (le righe, non il link: §10.2).
+* ⚠️ **Deduzione della sessione BE, non scritta da nessuna parte:** annullare la commessa porta ad
+  ANNULLATA, in un colpo solo, proprio le righe da push che il guard 4 non lascia togliere una alla volta,
+  quindi cambia lo stato di N documenti con un gesto solo a valle. Se vale, la commessa si annulla solo
+  senza righe vive da documento, e il «rimandare in un'altra commessa» diventa un verbo sul **documento**
+  («ritira dalla commessa»: righe ANNULLATA, link libero, documento di nuovo da mandare).
+* ⚠️ Tid ricorda un'indicazione del team DB (10-12 ottobre) contraria all'annullo della commessa, per lo
+  stesso motivo (righe di piu' documenti). **Non trovata** nei brief, nei commit di `dev/db-tid` ne' nei
+  file non committati di questa copia: da ritrovare con il team DB.
+
+**Se la risposta e' «solo senza righe vive da documento»**, si rivedono (lato BE/FE niente e' committato):
+D-1, il ramo `COMMESSA` di `vendite.fn_documento_legami` e del verbo, la finestra del drawer della
+commessa, la parte rettifica e consumi di D-7. Il D-5 resta: serve anche al verbo sul documento. R-13 si
+restringe al verbo sul documento.
+
+**Se resta l'annullo della commessa com'e'**, R-13…R-15 restano come scritti.

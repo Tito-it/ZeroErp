@@ -3,8 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Factory della API view «legami» dei documenti vendita che si
-#        annullano con conferma (bolla, ordine, preventivo, contratto) + le
-#        quattro view di dominio. Il flusso e' lo stesso per tutti: cambiano
+#        annullano con conferma (bolla, ordine, preventivo, contratto,
+#        commessa) + le cinque view di dominio. Il flusso e' lo stesso per tutti: cambiano
 #        i nomi OpenAPI, il kwarg URL e il lettore del service (che legge
 #        prima la testata del suo documento: 404 col codice del dominio).
 #        Stessa architettura di lineage_views.
@@ -13,6 +13,8 @@
 # brief-db-annullo-documento-con-legami R-1 (2026-10-11): la finestra di
 # conferma dell'annullo legge da qui che cosa si riapre e dove. Il BB del
 # backend e' `services/_annullo_con_legami.legami_del_documento`.
+# La commessa (brief-db-annullo-a-valle-riapre-a-monte D-2, 2026-10-12) e' la
+# quinta: annullarla riapre a monte cio' che l'ha riempita.
 
 from __future__ import annotations
 
@@ -33,13 +35,15 @@ from apps.core.api.success_responses import success_response
 #         - url_kwarg: nome del kwarg URL del documento (es. "ordine_id")
 #         - lettore: `id -> dict`, risolto a OGNI chiamata (lambda sul modulo
 #                    del service), cosi' i patch dei test sul service valgono
-#         - model_permission: oggetto del catalogo permessi del documento
+#         - model_permission: oggetto del catalogo permessi del documento;
+#                    None = il solo livello d'area (la commessa non ha un
+#                    oggetto suo nel catalogo, come per i suoi passaggi)
 def build_legami_view(
     *,
     schema_prefix: str,
     url_kwarg: str,
     lettore: Callable[[int], dict[str, Any]],
-    model_permission: tuple[str, str],
+    model_permission: tuple[str, str] | None,
 ) -> type[DomainAPIView]:
     class _LegamiView(DomainAPIView):
         area_funzionale = "vendite"
@@ -62,7 +66,8 @@ def build_legami_view(
         def get(self, request: Request, **kwargs: int) -> JsonResponse:
             return success_response(lettore(int(kwargs[url_kwarg])))
 
-    _LegamiView.model_permission = model_permission
+    if model_permission is not None:
+        _LegamiView.model_permission = model_permission
     _LegamiView.__doc__ = f"""GET /api/v1/vendite/.../<id>/legami/
 
     Legami del documento ({schema_prefix}) che l'annullo riapre: una riga per
@@ -97,6 +102,11 @@ def _contratto(documento_id: int) -> dict[str, Any]:
     return ContrattiService().get_legami(documento_id)
 
 
+def _commessa(documento_id: int) -> dict[str, Any]:
+    from apps.vendite.services import commesse_service
+    return commesse_service.get_legami(documento_id)
+
+
 ApiDdtLegami = build_legami_view(
     schema_prefix="Ddt", url_kwarg="ddt_id", lettore=_ddt,
     model_permission=("vendite", "ddt"),
@@ -112,4 +122,8 @@ ApiPreventivoLegami = build_legami_view(
 ApiContrattoLegami = build_legami_view(
     schema_prefix="Contratto", url_kwarg="contratto_id", lettore=_contratto,
     model_permission=("vendite", "contratto"),
+)
+ApiCommessaLegami = build_legami_view(
+    schema_prefix="Commessa", url_kwarg="commessa_id", lettore=_commessa,
+    model_permission=None,
 )

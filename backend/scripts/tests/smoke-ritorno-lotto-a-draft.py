@@ -53,6 +53,7 @@ from apps.vendite.services.pipeline_runner import (
     LottoPipelineParams,
     LottoPipelineRunner,
 )
+from scripts.tests._smoke_commessa import crea_riga_commessa
 
 FAIL: list[str] = []
 
@@ -163,28 +164,16 @@ with transaction.atomic():
         )
         commessa_id = cur.fetchone()[0]
 
-        cur.execute(
-            """
-            SELECT attivita_id FROM vendite.fn_upsert_commessa_attivita(
-                p_commessa_id => %s, p_segment_key => %s, p_articolo_id => %s,
-                p_istanza_utility_id => %s, p_data_attivita => %s,
-                p_uom_id => %s, p_quantita => 1, p_competenza_mese => %s,
-                p_competenza_dal => %s, p_competenza_al => %s,
-                p_prezzo_snapshot => %s, p_prezzo_base_snapshot => NULL,
-                p_origine_prezzo => NULL, p_tipo_variazione_applicata => NULL,
-                p_valore_variazione_applicata => NULL, p_promo_id => NULL,
-                p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL,
-                p_classe_utenza_id_snapshot => NULL,
-                p_tipo_doc_fiscale_id => %s, p_valuta_id => %s,
-                p_prezzo_bloccato => true, p_stato_approvazione => 'APPROVATA',
-                p_stato_emissione => 'EMESSA', p_meta => '{}'::jsonb)
-            """,
-            [commessa_id, f"SMOKE:F6:{marker}", t["articolo_id"],
-             t["istanza_utility_id"], competenza, t["uom_id"], competenza,
-             competenza, competenza, Decimal("250.00"),
-             t["tipo_doc_fiscale_id"], t["valuta_id"]],
+        # Una riga gia' APPROVATA ed EMESSA.
+        ca_id = crea_riga_commessa(
+            cur, commessa_id=commessa_id, segment_key=f"SMOKE:F6:{marker}",
+            articolo_id=t["articolo_id"], istanza_utility_id=t["istanza_utility_id"],
+            uom_id=t["uom_id"], data_attivita=competenza,
+            competenza_mese=competenza, competenza_dal=competenza,
+            competenza_al=competenza, prezzo=Decimal("250.00"),
+            tipo_doc_fiscale_id=t["tipo_doc_fiscale_id"], valuta_id=t["valuta_id"],
+            stato_approvazione="APPROVATA", stato_emissione="EMESSA",
         )
-        ca_id = cur.fetchone()[0]
 
         cur.execute(
             """

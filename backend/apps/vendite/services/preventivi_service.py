@@ -10,7 +10,6 @@
 # con commesse e pratiche.
 
 import json
-import logging
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import date
@@ -19,7 +18,7 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
-from django.db import DatabaseError, IntegrityError, transaction
+from django.db import IntegrityError, transaction
 
 from apps.config.sorgenti import SORGENTE_COMMESSA, SORGENTE_PREVENTIVO
 from apps.core.services.fuso_aziendale import oggi_aziendale
@@ -53,9 +52,6 @@ from apps.core.services.testata_guard import (
     testata_o_not_found,
 )
 from apps.core.services.value_normalizer import empty_to_none
-from apps.vendite.services._smistamento_gate_helpers import (
-    transiziona_a_evaso_se_smistato,
-)
 from apps.vendite.services._componenti_service_helpers import (
     dati_patch_componente,
     normalize_componenti_attivazioni,
@@ -2002,14 +1998,21 @@ def push_a_commessa(
     # preventivi_repository in altri punti).
     from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 
-    # Fix analisi-fix-transazioni #5 (Classe B): push + transizione EVASO +
-    # aggancio commessa-servizi alla pratica in UN solo transaction.atomic().
-    # Prima erano scritture autocommit separate: se `_aggancia_commessa_servizi_a_pratica`
-    # falliva DOPO il push, le commesse (+ ponte emittibilita') restavano committate
-    # ma il ramo servizi non agganciato alla pratica (orfano). Ora un fallimento
-    # dell'aggancio rolla TUTTO il push, che e' idempotente/ri-eseguibile (advisory
-    # lock + dedup segment_key → retry sicuro). L'atomic interno di
+    # Fix analisi-fix-transazioni #5 (Classe B): push + aggancio commessa-servizi
+    # alla pratica in UN solo transaction.atomic(). Prima erano scritture
+    # autocommit separate: se `_aggancia_commessa_servizi_a_pratica` falliva
+    # DOPO il push, le commesse (+ ponte emittibilita') restavano committate ma
+    # il ramo servizi non agganciato alla pratica (orfano). Ora un fallimento
+    # dell'aggancio rolla TUTTO il push, che e' idempotente/ri-eseguibile
+    # (advisory lock + dedup segment_key → retry sicuro). L'atomic interno di
     # `pr_run_commesse_push_one` diventa un savepoint annidato.
+    # ⭐ Il passaggio ACCETTATO → EVASO lo fa il DB (D-10 / R-8 di
+    #    brief-db-annullo-a-valle-riapre-a-monte, 2026-10-12): il trigger delle
+    #    righe di commessa riproietta il preventivo dal residuo sulle due strade
+    #    (`vendite.fn_preventivo_proietta_stato_smistamento`), nella stessa
+    #    transazione dell'invio. E' la stessa sede che lo riporta ad ACCETTATO
+    #    quando la commessa si annulla. Fino a quel giorno lo faceva qui il
+    #    backend, «best-effort» (`transiziona_a_evaso_se_smistato`, ritirato).
     with transaction.atomic():
         report = pr_run_commesse_push_one(
             sorgente_codice=SORGENTE_PREVENTIVO,
@@ -2017,32 +2020,7 @@ def push_a_commessa(
             righe_ids=righe_ids,
         )
 
-        # Transizione automatica ACCETTATO → EVASO se push completato.
-        # La transizione e' seedata in `config.transizioni_stati_preventivi`
-        # con `meta.manuale=false`. Se PARZIALE/ERRORE/SKIPPED il preventivo resta
-        # ACCETTATO: serve un ri-push. Il gate EVASO bi-ramo (residuo commessa) non
-        # e' ridondante col report COMPLETATO — con `righe_ids` (push selettivo)
-        # COMPLETATO si riferisce al solo sottoinsieme scelto.
         if report["stato"] == "COMPLETATO":
-            # EVASO best-effort su SAVEPOINT dedicato: swalloware il DatabaseError
-            # direttamente nell'atomic esterno lo corromperebbe (needs_rollback →
-            # ogni query successiva TransactionManagementError). Chiamiamo l'helper
-            # con swallow_db_error=False cosi' l'errore PROPAGA al savepoint (che lo
-            # rolla) e viene catturato QUI: la transizione fallita non impedisce il
-            # commit di push+aggancio.
-            try:
-                with transaction.atomic():
-                    transiziona_a_evaso_se_smistato(
-                        repo, preventivo_id,
-                        user="django_api", swallow_db_error=False,
-                        log_label="preventivi.push",
-                    )
-            except DatabaseError as exc:
-                logging.getLogger(__name__).warning(
-                    "preventivi.push.transizione_evaso_skipped preventivo_id=%s reason=%s",
-                    preventivo_id, str(exc),
-                )
-
             # Aggancio del RAMO SERVIZI dello split (rev.3 bivio-per-esito): lo
             # split standalone e' il punto d'aggancio di ENTRAMBI i rami.
             # post_smistamento e' merce-only (retro-aggancio ordine), quindi la

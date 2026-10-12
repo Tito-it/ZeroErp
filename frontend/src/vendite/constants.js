@@ -160,6 +160,32 @@ export const STATO_CONTRATTO = Object.freeze({
   ANNULLATO: 'ANNULLATO',
 })
 
+// Stati della testata di commessa (`vendite.stati_commessa.codice_interno`)
+// che il frontend NOMINA: solo l'annullo, che passa dalla conferma dei legami
+// (brief-db-annullo-a-valle-riapre-a-monte). Le altre azioni di stato
+// arrivano data-driven dalle capability e non si nominano qui.
+// ⚠️ Femminile, a differenza dei documenti (ANNULLATO): e' il codice del DB.
+export const STATO_COMMESSA = Object.freeze({
+  ANNULLATA: 'ANNULLATA',
+})
+
+// I codici del lettore dei legami (`vendite.fn_documento_legami`) che la
+// finestra di conferma dell'annullo distingue: il documento che si annulla,
+// la natura del legame (CONSUMO e PROVENIENZA si riaprono, ANNULLO si annulla
+// con il documento: gli oneri della commessa) e le origini con una frase
+// propria (il reso torna da accreditare).
+export const DOCUMENTO_LEGAMI = Object.freeze({
+  COMMESSA: 'COMMESSA',
+})
+export const NATURA_LEGAME = Object.freeze({
+  CONSUMO: 'CONSUMO',
+  PROVENIENZA: 'PROVENIENZA',
+  ANNULLO: 'ANNULLO',
+})
+export const ORIGINE_LEGAME = Object.freeze({
+  RESO: 'RESO',
+})
+
 // Forma di un contratto, DERIVATA (non persistita) da `contratti.listino_id`:
 // con un listino di riferimento o interamente negoziato. La emette il backend
 // nel contesto pricing (`ContrattiRepository.resolve_contesto_pricing_contratto`,

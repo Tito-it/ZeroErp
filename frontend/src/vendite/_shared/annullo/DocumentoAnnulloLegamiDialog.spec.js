@@ -24,6 +24,8 @@
 //  4) finche' la lettura non arriva, la conferma e' spenta
 //  5) la lettura va al documento del chiamante (basePath + id)
 //  6) le tre forme: riga, provenienza, commessa
+//  7) commessa: righe contate per documento, oneri a parte, dichiara il numero del lettore
+//  8) commessa: documenti senza nome dal lineage restano distinti
 // ------------------------------------------------------------
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { defineComponent } from 'vue'
@@ -45,8 +47,8 @@ const CorniceFinta = defineComponent({
   template: '<div><slot /></div>',
 })
 
-function legami(righe) {
-  return Promise.resolve({ data: { data: { documento: 'ORDINE', id: 7, legami: righe.length, righe } } })
+function legami(righe, documento = 'ORDINE') {
+  return Promise.resolve({ data: { data: { documento, id: 7, legami: righe.length, righe } } })
 }
 
 function legame(extra) {
@@ -129,5 +131,55 @@ describe('DocumentoAnnulloLegamiDialog — la dichiarazione', () => {
     expect(testo).toContain('vendite.annullo_legami.riga')
     expect(testo).toContain('vendite.annullo_legami.provenienza')
     expect(testo).toContain('vendite.annullo_legami.commessa')
+  })
+
+  // ⭐ La commessa (brief-db-annullo-a-valle-riapre-a-monte D-2): un legame
+  //    per riga di commessa non emessa. A video le righe si contano per
+  //    documento d'origine, gli oneri si dicono a parte («si annulla»), ma la
+  //    dichiarazione resta il numero del LETTORE, oneri compresi.
+  it('commessa: righe contate per documento, oneri a parte, dichiara il numero del lettore', async () => {
+    rispostaLegami = legami([
+      legame({ riga_id: 1, origine: 'PREVENTIVO', origine_id: 3, origine_riga_id: null,
+        origine_tipo_codice_interno: 'PREVENTIVO', origine_codice: 'PRV3', qta: '1' }),
+      legame({ riga_id: 2, origine: 'PREVENTIVO', origine_id: 3, origine_riga_id: null,
+        origine_tipo_codice_interno: 'PREVENTIVO', origine_codice: 'PRV3', qta: '2' }),
+      legame({ riga_id: 3, origine: 'RESO', origine_id: 9, origine_riga_id: 4,
+        origine_tipo_codice_interno: 'RESO_VENDITA', origine_codice: null, qta: '1' }),
+      legame({ riga_id: 4, origine: 'ONERE', natura: 'ANNULLO', origine_id: null,
+        origine_riga_id: null, origine_tipo_codice_interno: null, origine_codice: null, qta: '1' }),
+      legame({ riga_id: 5, origine: 'ONERE', natura: 'ANNULLO', origine_id: null,
+        origine_riga_id: null, origine_tipo_codice_interno: null, origine_codice: null, qta: '1' }),
+    ], 'COMMESSA')
+    const wrapper = await montaDialog()
+    const voci = wrapper.findAll('li')
+    // Preventivo (due righe in una voce), reso, e la voce degli oneri.
+    expect(voci).toHaveLength(3)
+    const testo = wrapper.text()
+    expect(testo).toContain('vendite.annullo_legami.commessa_da_mandare')
+    expect(testo).toContain('vendite.annullo_legami.commessa_da_accreditare')
+    expect(testo).toContain('vendite.annullo_legami.si_annulla')
+    expect(testo).toContain('vendite.annullo_legami.oneri_annullati')
+    expect(testo).toContain('vendite.annullo_legami.spiegazione_commessa')
+    expect(testo).not.toContain('vendite.annullo_legami.commessa ')
+    wrapper.findComponent(CorniceFinta).vm.$emit('save')
+    expect(wrapper.emitted('conferma')).toEqual([[{ legami_confermati: 5 }]])
+  })
+
+  // ⚠️ La voce e' il DOCUMENTO (tipo + id), non il suo nome: due preventivi che
+  //    il lineage non nomina restano due voci, e i consumi (fuori dal lineage)
+  //    una sola.
+  it('commessa: documenti senza nome dal lineage restano distinti', async () => {
+    const senzaNome = { origine: 'PREVENTIVO', origine_riga_id: null,
+      origine_tipo_codice_interno: 'PREVENTIVO', origine_codice: null, qta: '1' }
+    rispostaLegami = legami([
+      legame({ ...senzaNome, riga_id: 1, origine_id: 3 }),
+      legame({ ...senzaNome, riga_id: 2, origine_id: 4 }),
+      legame({ riga_id: 3, origine: 'CONSUMI', origine_id: 41, origine_riga_id: null,
+        origine_tipo_codice_interno: null, origine_codice: null, qta: '1' }),
+      legame({ riga_id: 4, origine: 'CONSUMI', origine_id: 42, origine_riga_id: null,
+        origine_tipo_codice_interno: null, origine_codice: null, qta: '1' }),
+    ], 'COMMESSA')
+    const wrapper = await montaDialog()
+    expect(wrapper.findAll('li')).toHaveLength(3)
   })
 })

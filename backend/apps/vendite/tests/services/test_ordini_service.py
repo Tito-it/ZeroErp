@@ -683,17 +683,19 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
 
 
 class OrdiniPushCommessaTests(SimpleTestCase):
-    """push_a_commessa: transizione automatica CONFERMATO→EVASO (invio unico).
-    Fix analisi-fix-transazioni #4: push + EVASO + chiusura step pratica in un
-    transaction.atomic() (EVASO su savepoint dedicato). Qui l'atomic e' mockato
-    a no-op (SimpleTestCase senza DB): un DatabaseError sull'EVASO resta
-    catturato dal try/except attorno al savepoint, esattamente come a runtime."""
+    """push_a_commessa: l'invio in commessa NON cambia lo stato dell'ordine
+    (D-6 di brief-db-annullo-a-valle-riapre-a-monte, 2026-10-12: «Evaso» = la
+    merce e' partita, lo dicono solo le bolle). Fino a quel giorno qui c'era la
+    transizione CONFERMATO→EVASO «best-effort» su un savepoint: un ordine
+    PARZIALMENTE_EVASO mandato in commessa diventava EVASO con meta' merce in
+    magazzino. Push + chiusura step pratica restano in un transaction.atomic()
+    (fix analisi-fix-transazioni #4), qui mockato a no-op."""
 
     _PUSH_ONE = "apps.vendite.services.commesse_service.pr_run_commesse_push_one"
 
     def setUp(self) -> None:
-        # transaction.atomic() (esterno + savepoint EVASO) a no-op per i test
-        # mock-only. Lo stesso nullcontext e' riusabile su piu' `with` (stateless).
+        # transaction.atomic() a no-op per i test mock-only. Lo stesso
+        # nullcontext e' riusabile su piu' `with` (stateless).
         patcher = patch(_ATOMIC, return_value=nullcontext())
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -701,18 +703,32 @@ class OrdiniPushCommessaTests(SimpleTestCase):
     @patch(_COMPLETA_STEP)
     @patch(_PUSH_ONE)
     @patch(_REPO)
-    def test_push_completato_transita_a_evaso(self, ord_cls, mock_push_one, _mock_step) -> None:
+    def test_push_completato_non_cambia_stato(self, ord_cls, mock_push_one, _mock_step) -> None:
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
         repo.count_righe_pushable.return_value = 2
-        repo.get_stato_id_by_codice.return_value = 8  # id EVASO
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
         }
         out = ordini_service.push_a_commessa(55)
         self.assertEqual(out["stato"], "COMPLETATO")
-        repo.get_stato_id_by_codice.assert_called_once_with("EVASO")
-        repo.update_stato.assert_called_once_with(55, 8)
+        repo.get_stato_id_by_codice.assert_not_called()
+        repo.update_stato.assert_not_called()
+
+    @patch(_COMPLETA_STEP)
+    @patch(_PUSH_ONE)
+    @patch(_REPO)
+    def test_push_da_parzialmente_evaso_resta_tale(self, ord_cls, mock_push_one, _mock_step) -> None:
+        # ⭐ Il difetto che D-6 corregge: meta' merce spedita, l'invio in
+        #    commessa non la fa diventare tutta partita.
+        repo = ord_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "PARZIALMENTE_EVASO"}
+        repo.count_righe_pushable.return_value = 1
+        mock_push_one.return_value = {
+            "stato": "COMPLETATO", "push_log_id": 8, "durata_ms": 5, "handlers": [],
+        }
+        ordini_service.push_a_commessa(56)
+        repo.update_stato.assert_not_called()
 
     @patch(_COMPLETA_STEP)
     @patch(_PUSH_ONE)
@@ -725,7 +741,6 @@ class OrdiniPushCommessaTests(SimpleTestCase):
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "EVASO"}
         repo.count_righe_pushable.return_value = 1
-        repo.get_stato_id_by_codice.return_value = 8
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "push_log_id": 9, "durata_ms": 5, "handlers": [],
         }
@@ -746,7 +761,7 @@ class OrdiniPushCommessaTests(SimpleTestCase):
     @patch(_PUSH_ONE)
     @patch(_REPO)
     def test_push_parziale_non_transita(self, ord_cls, mock_push_one) -> None:
-        # PARZIALE → ordine resta CONFERMATO (ri-push per completare): no EVASO.
+        # PARZIALE → ordine resta com'era (ri-push per completare).
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
         repo.count_righe_pushable.return_value = 2
@@ -755,38 +770,6 @@ class OrdiniPushCommessaTests(SimpleTestCase):
         }
         ordini_service.push_a_commessa(55)
         repo.update_stato.assert_not_called()
-
-    @patch(_COMPLETA_STEP)
-    @patch(_PUSH_ONE)
-    @patch(_REPO)
-    def test_push_seed_evaso_assente_soft(self, ord_cls, mock_push_one, _mock_step) -> None:
-        # Robustezza deploy parziale: EVASO non seedato → niente raise, niente update.
-        repo = ord_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
-        repo.count_righe_pushable.return_value = 2
-        repo.get_stato_id_by_codice.return_value = None
-        mock_push_one.return_value = {
-            "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
-        }
-        out = ordini_service.push_a_commessa(55)  # non solleva
-        self.assertEqual(out["stato"], "COMPLETATO")
-        repo.update_stato.assert_not_called()
-
-    @patch(_COMPLETA_STEP)
-    @patch(_PUSH_ONE)
-    @patch(_REPO)
-    def test_push_transizione_db_error_soft(self, ord_cls, mock_push_one, _mock_step) -> None:
-        # Se il trigger DB rifiuta la transizione → warning, non fa fallire il push.
-        repo = ord_cls.return_value
-        repo.get_ordine.return_value = {"stato_codice_interno": "CONFERMATO"}
-        repo.count_righe_pushable.return_value = 2
-        repo.get_stato_id_by_codice.return_value = 8
-        repo.update_stato.side_effect = DatabaseError("transizione non ammessa")
-        mock_push_one.return_value = {
-            "stato": "COMPLETATO", "push_log_id": 7, "durata_ms": 5, "handlers": [],
-        }
-        out = ordini_service.push_a_commessa(55)  # non solleva
-        self.assertEqual(out["stato"], "COMPLETATO")
 
 
 class OrdiniStepPraticaTests(SimpleTestCase):

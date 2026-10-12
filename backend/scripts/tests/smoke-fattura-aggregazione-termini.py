@@ -64,6 +64,7 @@ from decimal import Decimal
 from django.db import connection, transaction
 
 from apps.vendite.services.fatture_righe_service import FattureRigheService
+from scripts.tests._smoke_commessa import crea_riga_commessa
 
 # Attivita' gia' esistente usata come TEMPLATE: da lei si ereditano billing
 # account, istanza utility, uom, valuta e tipo documento, cosi' il fixture
@@ -115,27 +116,14 @@ def crea_commessa(cur, t, *, termine_id, marker):
 # Scopo: Riga di commessa + attivita' fatturabile gia' lockata sul lotto: e'
 #        lo stato in cui il task `select_attivita` le consegna al generatore.
 def crea_attivita(cur, t, *, commessa_id, segment_key, lock_batch_id, prezzo):
-    cur.execute(
-        """
-        SELECT attivita_id FROM vendite.fn_upsert_commessa_attivita(
-            p_commessa_id => %s, p_segment_key => %s, p_articolo_id => %s,
-            p_istanza_utility_id => %s, p_data_attivita => %s, p_uom_id => %s,
-            p_quantita => 1, p_competenza_mese => %s, p_competenza_dal => %s,
-            p_competenza_al => %s, p_prezzo_snapshot => %s,
-            p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
-            p_tipo_variazione_applicata => NULL,
-            p_valore_variazione_applicata => NULL, p_promo_id => NULL,
-            p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL,
-            p_classe_utenza_id_snapshot => NULL,
-            p_tipo_doc_fiscale_id => %s, p_valuta_id => %s,
-            p_prezzo_bloccato => true, p_meta => '{}'::jsonb
-        )
-        """,
-        [commessa_id, segment_key, t["articolo_id"], t["istanza_utility_id"],
-         t["data"], t["uom_id"], t["competenza_mese"], t["data"], t["data"],
-         prezzo, t["tipo_doc_fiscale_id"], t["valuta_id"]],
+    ca_id = crea_riga_commessa(
+        cur, commessa_id=commessa_id, segment_key=segment_key,
+        articolo_id=t["articolo_id"], istanza_utility_id=t["istanza_utility_id"],
+        uom_id=t["uom_id"], data_attivita=t["data"],
+        competenza_mese=t["competenza_mese"], competenza_dal=t["data"],
+        competenza_al=t["data"], prezzo=prezzo,
+        tipo_doc_fiscale_id=t["tipo_doc_fiscale_id"], valuta_id=t["valuta_id"],
     )
-    ca_id = cur.fetchone()[0]
     cur.execute(
         """
         INSERT INTO vendite.attivita_fatturabili (

@@ -368,15 +368,17 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   visti; l'origine si riapre (ordine da evadere, reso da ri-consegnare, preventivo di nuovo ACCETTATO,
   offerta di nuovo trasformabile: unicita' sui soli vivi). DB `20261011-68 … -91` + caso 1 del giro D28;
   BE/FE §9; collaudo di Tid superato. Il verso dalla commessa e' D30 (sotto).
-- 📝 **Tornare indietro: annullare a valle riapre a monte**
+- ⏳ **Tornare indietro: annullare a valle riapre a monte**
   (`work-in-progress/brief-db-annullo-a-valle-riapre-a-monte.md`, D30, 2026-10-11): annullare una commessa
-  oggi non segnala niente e non riapre il preventivo (resta EVASO) ne' l'ordine. Principio di Tid: tornare
-  indietro riapre a monte con la segnalazione, in avanti e' bloccato, un unico meccanismo (la forma di D29).
-  Decisioni D-1…D-4 il 2026-10-11, D-5…D-10 il 2026-10-12 dopo la lettura critica del team DB (§7): una riga
-  di commessa ANNULLATA non occupa piu' il documento; «Evaso» dell'ordine = solo bolle; eccezione motivata per
-  la commessa a valle (conferma, non blocco); e tutto il verso in avanti verso la commessa passa al DB (il BE
-  ritira le sue tre copie). ✅ DB scritto e provato il 2026-10-12 (`20261012-08 … -24`, §8; pgTAP nuovi 31/31 e
-  6/6 sullo scratch, regressione su 145 file senza differenze): da applicare. Poi BE/FE (§6).
+  non segnalava niente e non riapriva il preventivo ne' l'ordine. Principio di Tid: tornare indietro riapre a
+  monte con la segnalazione, in avanti e' bloccato, un unico meccanismo (la forma di D29). Decisioni D-1…D-10
+  (2026-10-11/12): una riga di commessa ANNULLATA non occupa piu' il documento; «Evaso» dell'ordine = solo
+  bolle; eccezione motivata per la commessa a valle (conferma, non blocco); il verso in avanti verso la
+  commessa sta nel DB. ✅ DB applicato e verde il 2026-10-12 (`20261012-08 … -24`, `-27 … -29`: una riga senza
+  sorgente e' un onere o una rettifica, per vincolo). ✅ BE/FE fatti il 2026-10-12 (§9): annullo della commessa
+  dal verbo con la finestra comune, il BE ha ritirato le sue tre copie (EVASO del preventivo, EVASO
+  dell'ordine, ponte PRONTA_FATTURAZIONE → madre DB). ⏳ Tocca a Tid: collaudo a video (§6.4), smoke HTTP del
+  giro ordine → commessa, e l'SQL del §9.4 (ordini EVASO senza bolle lasciati dal vecchio invio: si riportano a CONFERMATO, deciso il 2026-10-12).
 - ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
   (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito

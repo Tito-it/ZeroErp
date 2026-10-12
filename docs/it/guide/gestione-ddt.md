@@ -1,6 +1,6 @@
 # Guida — Gestione DDT di vendita
 
-> **Ultimo aggiornamento**: 11 ottobre 2026
+> **Ultimo aggiornamento**: 12 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali/logistici,
 > sviluppatori backend/frontend, DBA.
@@ -527,7 +527,14 @@ Come funziona, dal punto di vista del DDT:
   `qta_resa_per_riconsegna`, §2.1): l'ordine torna evadibile e si genera un nuovo
   DDT di ri-consegna (`fn_genera_ddt_riconsegna`);
 * **reso a credito** → alimenta la coda "da accreditare" (vista
-  `vw_resi_da_accreditare`) per la futura nota di credito.
+  `vw_resi_da_accreditare`) per la futura nota di credito. L'accredito scrive una
+  **rettifica** nella commessa della riga fatturata che corregge;
+* **se si annulla quella commessa** (la rettifica è ancora da emettere, cioè dopo il
+  reset del lotto: finché la riga fatturata è emessa la commessa non si annulla),
+  l'accredito si annulla con lei e la quota **non risulta più accreditata**: la
+  finestra di conferma lo dice («torna da accreditare»), e la coda accrediti la
+  ripropone quando la merce torna in fattura. Dettaglio in
+  [Gestione Commesse](/guide/gestione-commesse) §«Annullare una commessa».
 
 > Il modello completo del reso (entità, guard, ri-consegna, note di credito) è
 > nei brief `work-done/brief-db-resi-vendita.md` e

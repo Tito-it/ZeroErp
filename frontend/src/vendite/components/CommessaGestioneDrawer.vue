@@ -30,9 +30,11 @@ import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import CommessaRegistroDialog from './CommessaRegistroDialog.vue'
 import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
+import DocumentoAnnulloLegamiDialog from '../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useActionPermission } from '../../core/composables/useActionPermission'
@@ -50,9 +52,11 @@ import { useDocumentoDrawer } from '../../core/composables/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
 import {
   STATO_APPROVAZIONE_ATTIVITA,
+  STATO_COMMESSA,
   STATO_EMISSIONE_ATTIVITA,
   TIPO_MOVIMENTO_ATTIVITA,
 } from '../constants'
+import { useCommesseStore } from '../stores/commesse'
 import { displayDate, toDateString } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { extractApiError } from '../../core/utils/apiError'
@@ -65,7 +69,6 @@ import {
   aggiungiOnereCommessa,
   annullaRigaCommessa,
   approvaCommessaAttivita,
-  cambiaStatoCommessa,
   exportCommessaAttivita,
   getCommessaStato,
   listCommessaAttivita,
@@ -505,16 +508,45 @@ const stateActions = computed(() => mapAvailableActionsToDrawerActions({
     confirmAction({
       header: t('vendite.commesse.stato_header'),
       message: t('vendite.commesse.stato_conferma', { stato: statoDestinazione(action) }),
-      onAccept: async () => {
-        const res = await execute(() => cambiaStatoCommessa(props.commessaId, action.target_state))
-        if (res !== null) {
-          await reloadAll()
-          emit('saved')
-        }
-      },
+      onAccept: () => eseguiCambioStato(action.target_state),
     })
   },
 }))
+
+// ⭐ L'annullo e' un gesto CONFERMABILE (brief-db-annullo-a-valle-riapre-a-
+//    monte D-2): con righe non ancora emesse il DB lo rifiuta
+//    (`confirm_and_retry`) finche' chi conferma non dichiara quanti legami ha
+//    visto — che cosa si riapre a monte (documenti, reso, consumi) e che cosa
+//    si annulla (oneri) lo porta a video `DocumentoAnnulloLegamiDialog`, la
+//    stessa finestra di bolla, ordine, preventivo e contratto. Le righe gia'
+//    emesse lo vietano prima della domanda (azione spenta col motivo, e il
+//    verbo rifiuta comunque). Le altre transizioni restano su `execute`.
+const cambioStato = useForzaturaConfermata()
+const { richiestaConferma: domandaAnnullo } = cambioStato
+const commesseStore = useCommesseStore()
+
+// Scopo: esegue l'azione di stato; l'annullo SEMPRE senza dichiarazione al
+//        primo tentativo.
+async function eseguiCambioStato(targetState) {
+  const res = targetState === STATO_COMMESSA.ANNULLATA
+    ? await cambioStato.esegui(
+      (dichiarazione) => commesseStore.cambiaStato(props.commessaId, targetState, dichiarazione),
+    )
+    : await execute(() => commesseStore.cambiaStato(props.commessaId, targetState))
+  if (res !== null) await dopoCambioStato()
+}
+
+// Scopo: l'operatore ha visto i legami e conferma l'annullo: si ripete la
+//        chiamata DICHIARANDO quanti erano.
+async function onConfermaAnnullo(dichiarazione) {
+  const res = await cambioStato.conferma(dichiarazione)
+  if (res !== null) await dopoCambioStato()
+}
+
+async function dopoCambioStato() {
+  await reloadAll()
+  emit('saved')
+}
 
 // ------------------------------------------------------------------ prezzi (N5/N7)
 const variazioneDialog = ref(false)
@@ -1215,6 +1247,20 @@ const fotoOnere = useFotografiaDialog(() => ({ ...onereForm.value }), { visibile
       :tipo-codice="docDrawerTipo"
       :doc-id="docDrawerId"
       @update:visible="onDocDrawerVisible" />
+
+    <!-- La conferma dell'annullo di una commessa con righe non ancora emesse:
+         aperta dalla domanda del DB, chiusa dalla conferma o dalla rinuncia. -->
+    <DocumentoAnnulloLegamiDialog
+      v-if="commessaId"
+      :visible="domandaAnnullo !== null"
+      base-path="/vendite/commesse"
+      :doc-id="commessaId"
+      :header="t('vendite.commesse.azione_annulla')"
+      :domanda="domandaAnnullo"
+      :loading="cambioStato.loading.value"
+      @conferma="onConfermaAnnullo"
+      @cancel="cambioStato.annulla()"
+    />
 
     <!-- Il REGISTRO della riga: sola lettura, quindi FUORI dai dialog di azione e
          senza `app-escape`. Si apre dal kebab, anche a commessa in readonly.
