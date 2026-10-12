@@ -98,10 +98,19 @@ SELECT
   (SELECT sd.id FROM config.stati_doc_preventivi sd WHERE sd.codice_interno = 'ACCETTATO' LIMIT 1) AS stato_accettato_id,
   (SELECT id FROM pratiche.template_flussi_handler_eventi WHERE evento = 'COMPLETATO' LIMIT 1) AS any_handler_evento_id;
 
--- Un handler_id valido per costruire un binding handler_eventi di fixture.
+-- Un handler ATTIVO di fixture per costruire un binding handler_eventi attivo
+-- (trgfn_child_requires_active_parent rifiuta un binding attivo verso un
+-- handler spento). Fabbricato qui e non pescato dai binding del seed: quale
+-- handler del seed sia acceso e' un dato che cambia (vendita.accetta_preventivo
+-- e' stato ritirato).
 CREATE TEMP TABLE tmp_g_hid AS
-SELECT (SELECT handler_id FROM pratiche.template_flussi_handler_eventi
-         WHERE evento = 'COMPLETATO' AND handler_id IS NOT NULL LIMIT 1) AS handler_id;
+WITH ins AS (
+  INSERT INTO pratiche.handler_flussi (handler_key, codice, descrizione, attivo)
+  VALUES ('pgtap.guida_fixture', 'PGTAP_GUIDA_FIXTURE',
+          'Handler di fixture del pgTAP GUIDA (mai dispatchato)', true)
+  RETURNING id
+)
+SELECT id AS handler_id FROM ins;
 
 -- ============================================================
 -- Tipo prestazione + step di fixture

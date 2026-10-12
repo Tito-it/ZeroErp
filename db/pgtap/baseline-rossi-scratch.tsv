@@ -90,7 +90,6 @@ db/pgtap/vendite/test-fn-genera-ddt-riconsegna-eredita-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-genera-pratica-da-preventivo-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-get-or-create-lotto-emittente.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-get-valuta-id-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-link-commessa-sorgente-multi-sorgente-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-commessa-attivita-provenienza-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-commessa-attivita-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-commesse-emittibili-fatturazione-immediata-v1.sql	ERRORE_FIXTURE
