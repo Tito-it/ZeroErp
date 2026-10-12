@@ -1036,8 +1036,12 @@ niente. PRV0000398, smistato per intero in commessa, resta EVASO dopo l'annullo 
 riga resta NON_EMESSA dentro una commessa ANNULLATA e non si puo' piu' smistare. Tid generalizza: tornare
 indietro (annullare a valle) riapre a monte con la segnalazione, in avanti e' bloccato, un unico
 meccanismo (la forma di D29). Decisioni D-1…D-4 di Tid il 2026-10-11 (il preventivo torna ACCETTATO,
-l'ordine CONFERMATO; forma comune; righe emesse gia' bloccanti; dati di test da non sistemare). Brief
-[brief-db-annullo-a-valle-riapre-a-monte.md](brief-db-annullo-a-valle-riapre-a-monte.md): tocca al team DB.
+l'ordine CONFERMATO; forma comune; righe emesse gia' bloccanti; dati di test da non sistemare). Il
+2026-10-12, dopo la lettura del team DB, D-5…D-10: una riga di commessa ANNULLATA non occupa piu' il
+documento; «Evaso» dell'ordine = solo bolle (l'ordine non cambia stato); eccezione motivata per la commessa a
+valle; tutto il verso in avanti verso la commessa nel DB. DB scritto e provato il 2026-10-12
+(`20261012-08 … -24`), da applicare. Brief
+[brief-db-annullo-a-valle-riapre-a-monte.md](brief-db-annullo-a-valle-riapre-a-monte.md).
 
 ---
 
@@ -1259,7 +1263,7 @@ D6 e il registro dei rossi in CI.
 * [x] **D29** — annullare un documento con legami: brief `work-done/brief-db-annullo-documento-con-legami` —
       chiuso e archiviato il 2026-10-11 (DB `20261011-68 … -91` e il caso 1 del giro D28; BE/FE §9; collaudo di Tid).
 * [ ] **D30** — tornare indietro, annullare la commessa: brief `brief-db-annullo-a-valle-riapre-a-monte` (aperto il
-      2026-10-11, decisioni chiuse lo stesso giorno, al team DB).
+      2026-10-11; D-5…D-10 il 2026-10-12; DB `20261012-08 … -24` scritto e provato, da applicare; poi BE/FE).
 
 ---
 

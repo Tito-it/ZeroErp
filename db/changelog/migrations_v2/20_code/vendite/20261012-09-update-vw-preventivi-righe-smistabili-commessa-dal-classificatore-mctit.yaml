@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DEL PREVENTIVO DA MANDARE IN COMMESSA: «GIA' MANDATA» DAL CLASSIFICATORE
+#   vendite.vw_preventivi_righe_smistabili_commessa
+#   Brief: brief-db-annullo-a-valle-riapre-a-monte (D-5 di Tid, R-7)
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────
+#   Il predicato di idempotenza della riga («esiste gia' un'attivita' sul
+#   segmento») non e' piu' scritto qui: la riga e' smistabile se
+#   script.fn_get_stato_push_segment('PREV:<uid>:R:<id>') = 'LIBERA', la
+#   stessa domanda con cui il lister dell'ordine, del contratto e la diagnosi
+#   della bolla decidono «gia' inviato».
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Regola del 2. Il predicato aveva TRE copie (il classificatore, questa
+#   vista, il lister dei consumi), gia' diverse fra loro: questa contava le
+#   righe ANNULLATA («qualsiasi stato_emissione») e non vedeva le rettifiche
+#   (#RET:). D-5 cambia la regola (una riga ritirata non occupa): cambiarla
+#   in una sede sola avrebbe dato tre risposte. Da qui la sede e' una.
+#   Effetto voluto: annullata la commessa (o ritirate le sue righe), la riga
+#   di preventivo torna smistabile e fn_preventivo_ha_residuo_commessa torna
+#   vero (il caso di PRV0000398 nel §2 del brief).
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   Colonne identiche, stesso ordine: CREATE OR REPLACE VIEW, grant e viste
+#   dipendenti restano. Corpo di partenza: 20260628-01 (pg_get_viewdef su
+#   zeroerp_ci, 2026-10-12, identico). Il COMMENT di
+#   vendite.fn_preventivo_ha_residuo_commessa si aggiorna nello stesso
+#   giro: descriveva il predicato vecchio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-09-update-vw-preventivi-righe-smistabili-commessa-dal-classificatore-mctit.yaml
+
+  - changeSet:
+      id: 20261012-09-update-vw-preventivi-righe-smistabili-commessa-dal-classificatore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_preventivi_righe_smistabili_commessa legge «gia' mandata» da
+        script.fn_get_stato_push_segment invece di un predicato proprio (D-5, regola del 2).
+        Brief: brief-db-annullo-a-valle-riapre-a-monte (R-7).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE proname = 'fn_get_stato_push_segment'
+                 AND pronamespace = 'script'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_commessa
+              WITH (security_invoker = on) AS
+              SELECT
+                  pr.preventivo_id,
+                  pr.id,
+                  p.uid                      AS preventivo_uid,
+                  pr.natura_vendita_id,
+                  pr.articolo_id,
+                  pr.descrizione,
+                  pr.prezzo_unitario,
+                  pr.sconto_percentuale,
+                  pr.iva_id,
+                  pr.quantita,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.factor_to_base,
+                  pr.ordine
+              FROM vendite.preventivi_righe pr
+              JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+              -- Natura di riga: LEFT JOIN per non perdere le righe a natura
+              -- NULL (pregresso pre-trigger, trattata COMMESSA).
+              LEFT JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+              WHERE pr.attivo IS TRUE
+                AND pr.quantita > 0
+                AND pr.prezzo_unitario >= 0
+                AND (pr.natura_vendita_id IS NULL
+                     OR nv.destinazione_tipo = 'COMMESSA')
+                -- Idempotenza di riga, simmetrica al ramo ordine: «gia' mandata»
+                -- lo dice il classificatore unico (rev 2026-10-12, D-5): vede i
+                -- componenti BoM (#CMP:) e le rettifiche (#RET:), e una riga
+                -- ANNULLATA non occupa.
+                AND script.fn_get_stato_push_segment(
+                      ('PREV:' || p.uid::text || ':R:' || pr.id::text)::varchar) = 'LIBERA';
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_smistabili_commessa IS
+                'Righe preventivo eleggibili al push commessa (servizi una tantum): attive, qta>0, prezzo>=0, natura NULL/COMMESSA, non gia'' mandate in commessa. Simmetrica a vw_preventivi_righe_smistabili_ordine (esclude su allocazione, non su fatturazione). Predicato di riga unico condiviso con fn_list_preventivi_da_pushare e fn_preventivo_ha_residuo_commessa; condizioni di testata a carico dei consumer. Fix gate EVASO (brief-db-gate-evaso-ramo-commessa-asimmetria.md). ⭐ rev 2026-10-12 (20261012-08/-09, brief-db-annullo-a-valle-riapre-a-monte D-5): «gia'' mandata» non e'' piu'' un predicato proprio: e'' script.fn_get_stato_push_segment(''PREV:<uid>:R:<id>'') = ''LIBERA'', la fonte unica del «gia'' inviato» (componenti #CMP e rettifiche #RET compresi). Una riga di commessa ANNULLATA non occupa: annullata la commessa, la riga torna smistabile. Prima la vista contava le righe ANNULLATA e non vedeva #RET: una terza copia della regola, gia'' diversa dalle altre due.';
+
+              COMMENT ON FUNCTION vendite.fn_preventivo_ha_residuo_commessa(vendite.preventivi.id%TYPE) IS
+                'TRUE se il preventivo ha righe natura COMMESSA (servizi; natura NULL = pregresso) non ancora mandate in commessa. Predicato condiviso (vista vw_preventivi_righe_smistabili_commessa, che dal 2026-10-12 lo legge da script.fn_get_stato_push_segment: una riga di commessa ANNULLATA non occupa). Lo leggono la capability can_push_commessa e la proiezione dello stato del preventivo (vendite.fn_preventivo_proietta_stato_smistamento: ACCETTATO <-> EVASO). Gemella di fn_preventivo_ha_residuo_ordine; non considera ORDINE (gestita da fn_push_preventivo_a_ordine). rev 2026-10-10 (20261010-51): via il requisito di testata completa (billing_account_id, utility_id NOT NULL), tautologico dal 2026-10-08. Brief: brief-db-istanza-nasce-col-ba-residui (R-2). rev 2026-10-12 (20261012-09): commento allineato al predicato del classificatore unico, brief-db-annullo-a-valle-riapre-a-monte (D-5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_commessa
+              WITH (security_invoker = on) AS
+              SELECT
+                  pr.preventivo_id, pr.id, p.uid AS preventivo_uid, pr.natura_vendita_id,
+                  pr.articolo_id, pr.descrizione, pr.prezzo_unitario, pr.sconto_percentuale,
+                  pr.iva_id, pr.quantita, pr.qta_operativa, pr.uom_operativa_id,
+                  pr.factor_to_base, pr.ordine
+              FROM vendite.preventivi_righe pr
+              JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+              LEFT JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+              WHERE pr.attivo IS TRUE
+                AND pr.quantita > 0
+                AND pr.prezzo_unitario >= 0
+                AND (pr.natura_vendita_id IS NULL OR nv.destinazione_tipo = 'COMMESSA')
+                AND NOT EXISTS (
+                  SELECT 1
+                    FROM vendite.commesse_attivita ca
+                   WHERE ca.segment_key = 'PREV:' || p.uid::text || ':R:' || pr.id::text
+                      OR ca.segment_key LIKE 'PREV:' || p.uid::text || ':R:' || pr.id::text || '#CMP:%'
+                );

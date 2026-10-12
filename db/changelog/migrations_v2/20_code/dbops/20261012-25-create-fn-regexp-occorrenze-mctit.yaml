@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE OCCORRENZE DI UNA REGEX IN UN TESTO, CON LA CARDINALITA' VERA DICHIARATA
+#   dbops.fn_regexp_occorrenze(p_testo, p_pattern) -> SETOF text[]
+#   Nasce dal rosso di db/pgtap/dbops/test-vw-funzioni-check-codici-sotto-jit-v1.sql
+#   su zeroerp_ci (2026-10-12).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   pg_catalog.regexp_matches(testo, pattern, 'g') ha ROWS 10 nel catalogo:
+#   il pianificatore conta dieci occorrenze per ogni testo. Nelle viste del
+#   presidio (dbops.vw_funzioni_check_codici e i suoi lettori) le occorrenze
+#   vere per corpo sono fra 0,03 e 0,94 (misurate su zeroerp_ci il
+#   2026-10-12, EXPLAIN ANALYZE), e due ricorsioni moltiplicano la stima per
+#   dieci un'altra volta. Il prodotto supera jit_above_cost e PostgreSQL
+#   compila la vista col JIT. Il prefiltro del 20261010-43 lo teneva sotto
+#   soglia solo finche' le statistiche di pg_proc stimavano pochi corpi con
+#   `fn_check_`: un autoanalyze le ha rinfrescate (32 stimati, 170 veri) e la
+#   stima di dbops.vw_punti_canale_campo e' salita a ~192.000.
+#
+# ── LA CURA (il precedente e' 20261008-21) ───────────────────────────────
+#   Dichiarare la cardinalita' vera: ROWS 1. Un wrapper LANGUAGE sql verrebbe
+#   inlineato e il ROWS ignorato; plpgsql non si inlinea mai, e il piano della
+#   RETURN QUERY resta in cache. Stesso risultato di regexp_matches con 'g'
+#   (le occorrenze, una riga per ognuna, i gruppi catturati nell'array).
+#   ⛔ Non e' un helper generico «per igiene»: si usa dove la stima di
+#   regexp_matches moltiplica un piano (ricorsioni, catene di LATERAL).
+#
+# ── IMMUTABLE, PARALLEL SAFE ─────────────────────────────────────────
+#   Come regexp_matches: dipende solo dagli argomenti. Non STRICT apposta:
+#   regexp_matches con un argomento NULL non da' righe, e la RETURN QUERY
+#   fa lo stesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261012-25-create-fn-regexp-occorrenze-mctit.yaml
+
+  - changeSet:
+      id: 20261012-25-create-fn-regexp-occorrenze
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_regexp_occorrenze: le occorrenze di una regex in un testo (regexp_matches con 'g')
+        con la cardinalita' vera dichiarata (ROWS 1, plpgsql: non si inlinea). Serve alle viste
+        del presidio dei codici, dove ROWS 10 moltiplicato dalle ricorsioni accende il JIT.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_regexp_occorrenze';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Tipi nudi: un testo e un pattern qualunque, e le occorrenze come
+              -- le restituisce regexp_matches. Nessuna colonna di cui siano il riflesso.
+              CREATE FUNCTION dbops.fn_regexp_occorrenze(p_testo text, p_pattern text)
+              RETURNS SETOF text[]
+              LANGUAGE plpgsql
+              IMMUTABLE
+              PARALLEL SAFE
+              ROWS 1
+              AS $function$
+              BEGIN
+                  -- Scopo: le occorrenze di p_pattern in p_testo, una riga per
+                  --   ognuna, i gruppi catturati nell'array: regexp_matches con
+                  --   'g'. Esiste per DICHIARARE la cardinalita' (ROWS 1):
+                  --   regexp_matches ne dichiara 10, e nelle viste del presidio
+                  --   dei codici quel 10, moltiplicato dalle ricorsioni, accende il
+                  --   JIT su ~300 ms di lavoro vero.
+                  RETURN QUERY SELECT pg_catalog.regexp_matches(p_testo, p_pattern, 'g');
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_regexp_occorrenze(text, text) IS
+                  'Le occorrenze di una regex in un testo, una riga per ognuna coi gruppi catturati nell''array: lo stesso risultato di regexp_matches(testo, pattern, ''g''). Esiste per DICHIARARE la cardinalita'' vera (ROWS 1): regexp_matches ne dichiara 10, e in dbops.vw_funzioni_check_codici quel 10, moltiplicato da due ricorsioni, portava la stima sopra jit_above_cost appena le statistiche di pg_proc contavano piu'' corpi (rosso di test-vw-funzioni-check-codici-sotto-jit-v1 su zeroerp_ci, 2026-10-12). plpgsql perche'' una LANGUAGE sql verrebbe inlineata e il ROWS ignorato. Precedente: 20261008-21 (ROWS 1 dichiarato). Non STRICT: con un argomento NULL non da'' righe, come regexp_matches. Da usare dove la stima moltiplica un piano, non al posto di ogni regexp_matches.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_regexp_occorrenze(text, text);

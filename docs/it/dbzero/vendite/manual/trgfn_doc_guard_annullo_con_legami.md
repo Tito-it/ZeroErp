@@ -23,7 +23,9 @@ cablato) con legami è rifiutato con **`E_DOC_ANNULLO_CON_LEGAMI`**, che dice
 quanti sono. Vale su ogni strada che cambia lo stato: l'`UPDATE` diretto del
 backend come il verbo di stato.
 
-Montato su bolla, ordine, preventivo e contratto (`trg_<tabella>_m10_guard_annullo_con_legami_upd`).
+Montato su bolla, ordine, preventivo, contratto e, dal 2026-10-12, commessa
+(`trg_<tabella>_m10_guard_annullo_con_legami_upd`;
+brief-db-annullo-a-valle-riapre-a-monte).
 
 ---
 
@@ -36,7 +38,8 @@ Montato su bolla, ordine, preventivo e contratto (`trg_<tabella>_m10_guard_annul
    ([`fn_documento_legami`](/dbzero/vendite/funzioni/fn_documento_legami)) e
    mostra la finestra: «riga 1, ordine 12, 10 pz».
 4. Alla conferma chiama il verbo del documento — `fn_annulla_ddt`,
-   `fn_annulla_ordine`, `fn_annulla_preventivo`, `fn_annulla_contratto` —
+   `fn_annulla_ordine`, `fn_annulla_preventivo`, `fn_annulla_contratto`,
+   [`fn_annulla_commessa`](/dbzero/vendite/funzioni/fn_annulla_commessa) —
    passando **quanti legami ha mostrato**.
 5. Il verbo conferma, ritira i consumi, apre la porta e cambia lo stato: qui
    arriva senza consumi, e passa.
@@ -49,7 +52,8 @@ la finestra si ripresenta aggiornata: chi conferma dichiara ciò che ha visto
 
 ### Le due regole
 
-* **Un consumo ancora presente rifiuta sempre**, porta aperta o no. Il verbo li
+* **Ciò che va ritirato rifiuta sempre**, porta aperta o no: ogni legame che
+  non è provenienza (consumo e, sulla commessa, l'onere di natura `ANNULLO`). Il verbo li
   ritira prima di cambiare stato: se ne resta uno, qualcosa si ritirerebbe in
   silenzio, o non si ritirerebbe affatto.
 * **La sola provenienza** (l'offerta di un contratto o di un ordine, che non si
@@ -93,7 +97,7 @@ ogni `_a10_`, prima dei `_z90_` `BEFORE` (snapshot dello stato, storico).
 
 | Argomento | Cosa |
 | --- | --- |
-| `TG_ARGV[0]` | documento: `DDT`, `ORDINE`, `PREVENTIVO`, `CONTRATTO` |
+| `TG_ARGV[0]` | documento: `DDT`, `ORDINE`, `PREVENTIVO`, `CONTRATTO`, `COMMESSA` |
 | `TG_ARGV[1]` | colonna di stato |
 | `TG_ARGV[2]` | vocabolario degli stati (`schema.tabella`) |
 
@@ -117,7 +121,8 @@ sbagliato è `E_VENDITE_CHIAMATA_NON_VALIDA`.
   e del codice `E_DDT_ANNULLO_CON_LEGAMI`, ritirato (`obsoleto_dal`).
 * Test: `db/pgtap/vendite/test-annullo-documento-con-legami-v1.sql`,
   `db/pgtap/vendite/test-ritiro-alla-chiusura-documento-v1.sql`,
-  `db/pgtap/vendite/test-ddt-righe-evase-dall-ordine-v1.sql` (scenario H).
+  `db/pgtap/vendite/test-ddt-righe-evase-dall-ordine-v1.sql` (scenario H),
+  `db/pgtap/vendite/test-annullo-commessa-v1.sql` (la commessa).
 
 ---
 

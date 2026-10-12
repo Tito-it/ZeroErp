@@ -103,13 +103,15 @@ BEGIN
   INSERT INTO vendite.commesse_attivita (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
     competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
-    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione)
+    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
+    sorgente_tipo_id, sorgente_uid)   -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
   VALUES (
     (SELECT commessa_id FROM tmp_com_sb), p_segment, r.articolo_id, r.istanza_utility_id,
     DATE '2026-08-15', r.uom_id, 1,
     DATE '2026-08-01', DATE '2026-08-01', DATE '2026-08-31',
     r.tipo_doc_fiscale_id, r.valuta_id, 10.0,
-    'FIXED', 'BOZZA', 'NON_EMESSA')
+    'FIXED', 'BOZZA', 'NON_EMESSA',
+    (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), (SELECT commessa_id FROM tmp_com_sb)::text)
   RETURNING id INTO v_id;
   RETURN v_id;
 END $$ LANGUAGE plpgsql;

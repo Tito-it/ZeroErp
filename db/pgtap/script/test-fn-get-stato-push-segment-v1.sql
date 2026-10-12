@@ -17,7 +17,10 @@
 --   6) solo componenti #CMP NON_EMESSA (nessuna riga esatta) -> ALLOCATA
 --   7) rettifica #RET:1 EMESSA (nessuna riga esatta) -> EMESSA
 --   8) rettifica per componente #RET:1#CMP:c1 NON_EMESSA -> ALLOCATA
---   9) ANNULLATA conta come ALLOCATA (instradata = esclusa dal push)
+--   9) ANNULLATA non occupa: il segmento con la sola riga ritirata e' LIBERA
+--      (rev 2026-10-12, 20261012-08, brief-db-annullo-a-valle-riapre-a-monte
+--      D-5 di Tid: prima «ANNULLATA conta come ALLOCATA»; annullata la
+--      commessa, il documento a monte deve tornare spingibile)
 --  10) ⭐ IL VICINO NUMERICO: :R:1 (EMESSA) non vede :R:12 (NON_EMESSA) ->
 --      EMESSA, e :R:12 da sola -> ALLOCATA
 --  11) suffisso ignoto #FOO -> LIBERA: la semantica e' quella di prima
@@ -109,13 +112,15 @@ BEGIN
   INSERT INTO vendite.commesse_attivita (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
     competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
-    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione)
+    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
+    sorgente_tipo_id, sorgente_uid)   -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
   VALUES (
     (SELECT commessa_id FROM tmp_com_cls), p_segment, r.articolo_id, r.istanza_utility_id,
     DATE '2026-08-15', r.uom_id, 1,
     DATE '2026-08-01', DATE '2026-08-01', DATE '2026-08-31',
     r.tipo_doc_fiscale_id, r.valuta_id, 10.0,
-    'FIXED', 'BOZZA', p_stato_emissione);
+    'FIXED', 'BOZZA', p_stato_emissione,
+    (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), (SELECT commessa_id FROM tmp_com_cls)::text);
 END $$ LANGUAGE plpgsql;
 
 -- Le chiavi del test.
@@ -145,8 +150,8 @@ SELECT is(script.fn_get_stato_push_segment((SELECT pre FROM tmp_seg_cls) || ':R:
   '7) solo la rettifica #RET:1 EMESSA -> EMESSA (il #RET entra dal range)');
 SELECT is(script.fn_get_stato_push_segment((SELECT pre FROM tmp_seg_cls) || ':R:8'), 'ALLOCATA',
   '8) rettifica per componente #RET:1#CMP:c1 NON_EMESSA -> ALLOCATA');
-SELECT is(script.fn_get_stato_push_segment((SELECT pre FROM tmp_seg_cls) || ':R:9'), 'ALLOCATA',
-  '9) ANNULLATA conta come ALLOCATA: instradata = esclusa dal push');
+SELECT is(script.fn_get_stato_push_segment((SELECT pre FROM tmp_seg_cls) || ':R:9'), 'LIBERA',
+  '9) ANNULLATA non occupa: la sola riga ritirata lascia il segmento LIBERO (D-5, 20261012-08)');
 
 -- ============================================================
 -- 10) ⭐ il vicino numerico: :R:1 non vede :R:12

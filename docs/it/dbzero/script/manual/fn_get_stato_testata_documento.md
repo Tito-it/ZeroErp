@@ -58,7 +58,10 @@ dell'offerta la usa anche il messaggio dell'aggiunta fuori listino, che nomina
 il documento. Dal 2026-10-08, per i componenti del preventivo, `PREVENTIVO`
 (`vendite.preventivi` → `config.stati_doc_preventivi`, etichetta «Preventivo
 <numero> rev. <rev>»: le revisioni hanno lo stesso numero, e senza la revisione
-la frase non dice quale documento è fermo). Qualunque altro valore non è un dato sbagliato,
+la frase non dice quale documento è fermo). Dal 2026-10-12, per l'annullo con
+legami della commessa (brief-db-annullo-a-valle-riapre-a-monte), `COMMESSA`
+(`vendite.commesse` → `vendite.stati_commessa`, etichetta «Commessa <codice>»):
+senza, l'avviso e la conferma dicevano «COMMESSA #id». Qualunque altro valore non è un dato sbagliato,
 è un **chiamante rotto**: `E_DOC_TIPO_NON_GESTITO`, classe `TECNICO`.
 
 ---

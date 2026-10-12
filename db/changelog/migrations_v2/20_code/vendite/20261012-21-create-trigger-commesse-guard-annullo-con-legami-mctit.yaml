@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AVVISO MONTATO SULLA COMMESSA
+#   trg_commesse_m10_guard_annullo_con_legami_upd
+#   Brief: brief-db-annullo-a-valle-riapre-a-monte (D-2, D-3 di Tid; R-2)
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Il BB vendite.trgfn_doc_guard_annullo_con_legami, come su bolla,
+#   ordine, preventivo e contratto (20261011-82): BEFORE UPDATE con WHEN sul
+#   cambio della colonna di stato. Fascia _m10_: dopo
+#   trg_commesse_a10_guard_transizione_upd (matrice e
+#   script.fn_check_commessa_annullabile), perche' prima parla cio' che
+#   vieta (righe EMESSA, D-3) e poi cio' che chiede conferma. Da qui una
+#   commessa con righe NON_EMESSA si annulla solo da vendite.fn_annulla_commessa
+#   (20261012-23), su ogni strada che ne cambia lo stato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-21-create-trigger-commesse-guard-annullo-con-legami-mctit.yaml
+
+  - changeSet:
+      id: 20261012-21-create-trigger-commesse-guard-annullo-con-legami
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta vendite.trgfn_doc_guard_annullo_con_legami su vendite.commesse (fascia _m10_, BEFORE
+        UPDATE sul cambio di stato): l'avviso E_DOC_ANNULLO_CON_LEGAMI anche per la commessa (D-2).
+        Brief: brief-db-annullo-a-valle-riapre-a-monte (R-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgname = 'trg_commesse_m10_guard_annullo_con_legami_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_commesse_m10_guard_annullo_con_legami_upd
+                  BEFORE UPDATE ON vendite.commesse
+                  FOR EACH ROW
+                  WHEN (OLD.stato_commessa_id IS DISTINCT FROM NEW.stato_commessa_id)
+                  EXECUTE FUNCTION vendite.trgfn_doc_guard_annullo_con_legami(
+                      'COMMESSA', 'stato_commessa_id', 'vendite.stati_commessa');
+
+              COMMENT ON TRIGGER trg_commesse_m10_guard_annullo_con_legami_upd ON vendite.commesse IS
+                  'Avviso dell''annullo con legami (BB vendite.trgfn_doc_guard_annullo_con_legami): una commessa con righe NON_EMESSA (documenti, consumi e resi che si riaprono, oneri che si annullano) si annulla solo da vendite.fn_annulla_commessa, con conferma. Dopo trg_commesse_a10_guard_transizione_upd: prima parlano le righe EMESSA. 2026-10-12, brief-db-annullo-a-valle-riapre-a-monte.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_m10_guard_annullo_con_legami_upd ON vendite.commesse;

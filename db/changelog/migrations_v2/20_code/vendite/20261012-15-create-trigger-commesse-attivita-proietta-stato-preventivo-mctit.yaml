@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MONTAGGIO: LE RIGHE DI COMMESSA RIPROIETTANO IL PREVENTIVO
+#   trg_commesse_attivita_z90_proietta_stato_preventivo_ins_dlt
+#   trg_commesse_attivita_z90_proietta_stato_preventivo_upd
+#   Brief: brief-db-annullo-a-valle-riapre-a-monte (D-10 di Tid, R-8)
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Due trigger AFTER ROW sulla stessa funzione (20261012-14):
+#     - INSERT e DELETE, senza WHEN: una riga che nasce o sparisce cambia
+#       sempre il residuo;
+#     - UPDATE con WHEN sul CAMBIO di stato_emissione (linee-guida-trigger:
+#       si reagisce a un cambio di valore, e la colonna la scrivono i verbi,
+#       non un altro trigger BEFORE): una riga che passa ad ANNULLATA libera
+#       il segmento (D-5), una che passa a EMESSA o torna NON_EMESSA no, ma il
+#       BB lo decide da se' rileggendo il residuo.
+#   Fascia _z90_: effetto finale, dopo tutti i trigger della tabella. Il
+#   ritiro di un documento e l'annullo della commessa scrivono
+#   stato_emissione: passano da qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-15-create-trigger-commesse-attivita-proietta-stato-preventivo-mctit.yaml
+
+  - changeSet:
+      id: 20261012-15-create-trigger-commesse-attivita-proietta-stato-preventivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta vendite.trgfn_commesse_attivita_proietta_stato_preventivo su vendite.commesse_attivita
+        (AFTER INSERT OR DELETE; AFTER UPDATE sul cambio di stato_emissione). D-10.
+        Brief: brief-db-annullo-a-valle-riapre-a-monte (R-8).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_commesse_attivita_proietta_stato_preventivo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_commesse_attivita_z90_proietta_stato_preventivo_ins_dlt
+                  AFTER INSERT OR DELETE ON vendite.commesse_attivita
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_commesse_attivita_proietta_stato_preventivo();
+
+              CREATE TRIGGER trg_commesse_attivita_z90_proietta_stato_preventivo_upd
+                  AFTER UPDATE ON vendite.commesse_attivita
+                  FOR EACH ROW
+                  WHEN (OLD.stato_emissione IS DISTINCT FROM NEW.stato_emissione)
+                  EXECUTE FUNCTION vendite.trgfn_commesse_attivita_proietta_stato_preventivo();
+
+              COMMENT ON TRIGGER trg_commesse_attivita_z90_proietta_stato_preventivo_ins_dlt ON vendite.commesse_attivita IS
+                  'Una riga di commessa di un preventivo nasce o sparisce: lo stato del preventivo si riproietta (ACCETTATO <-> EVASO, BB vendite.fn_preventivo_proietta_stato_smistamento). 2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-10.';
+              COMMENT ON TRIGGER trg_commesse_attivita_z90_proietta_stato_preventivo_upd ON vendite.commesse_attivita IS
+                  'Una riga di commessa di un preventivo cambia stato_emissione (il ritiro la porta ad ANNULLATA, che non occupa piu'' il segmento): lo stato del preventivo si riproietta (BB vendite.fn_preventivo_proietta_stato_smistamento). 2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-10.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_commesse_attivita_z90_proietta_stato_preventivo_ins_dlt ON vendite.commesse_attivita;
+              DROP TRIGGER IF EXISTS trg_commesse_attivita_z90_proietta_stato_preventivo_upd ON vendite.commesse_attivita;

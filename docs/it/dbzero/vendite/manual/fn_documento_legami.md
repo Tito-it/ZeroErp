@@ -39,6 +39,32 @@ Generalizza `vendite.fn_ddt_legami` (la sola bolla), che si è ritirata.
 | `OFFERTA` | **provenienza** | `contratti.offerta_id`, `ordini.documento_origine_*` | contratto, ordine |
 | `COMMESSA` | consumo | righe di commessa `NON_EMESSA` spinte dal documento | bolla, ordine, preventivo, contratto |
 
+#### La commessa (dal 2026-10-12, brief-db-annullo-a-valle-riapre-a-monte)
+
+La commessa è **a valle** di tutto ciò che la riempie: i suoi legami sono le sue
+righe `NON_EMESSA`, una riga per legame (`riga_id` = la riga di commessa).
+
+| `origine` | `natura` | La riga | All'annullo della commessa |
+| --- | --- | --- | --- |
+| `PREVENTIVO`, `ORDINE`, `CONTRATTO`, `DDT` | consumo | spinta dal documento | si ritira; il documento torna da mandare in commessa |
+| `CONSUMI` | consumo | spinta da un consumo | si ritira; il consumo torna da mandare |
+| `RESO` | consumo | la rettifica di un accredito (`origine_riga_id` = la riga di reso) | l'accredito si annulla |
+| `ONERE` | **annullo** | un onere, senza documento a monte | si annulla con la commessa |
+
+Una riga senza sorgente è sempre un onere o una rettifica: lo impone il vincolo
+`chk_commesse_attivita_senza_sorgente_onere_rettifica` (`20261012-27`). Fino al
+`20261012-28` il lettore aveva un ramo `MANUALE` per le altre, che rendeva la
+commessa non annullabile.
+
+⭐ **La natura `ANNULLO`** esiste perché la finestra possa dire «si annulla»
+invece di «si riapre»: dietro un onere non c'è niente da riaprire. Per l'avviso
+conta come un consumo: rifiuta finché la riga c'è.
+
+`origine_id` viene dal resolver unico della sorgente polimorfa
+([`fn_get_sorgente_documento_ref`](/dbzero/vendite/funzioni/fn_get_sorgente_documento_ref)).
+Le commesse già annullate non si filtrano: con l'avviso e il verbo una commessa
+annullata non ha più righe `NON_EMESSA` (D-9).
+
 ⭐ **Consumo e provenienza.** Il consumo è qualcosa che il documento ha
 *occupato* a monte (una quantità dell'ordine, una riga del preventivo, lavoro in
 commessa): annullando si **ritira**. La provenienza dice *da dove viene* il
@@ -59,7 +85,8 @@ lo stesso: chi annulla deve sapere che l'offerta si riapre.
 ### Le colonne
 
 * `riga_id`, `riga_nr`: la riga del documento; `NULL` per i legami di testata
-  (offerta) e per la commessa, che non porta la riga.
+  (offerta) e per la commessa vista dal documento, che non porta la riga. Per
+  la commessa come documento, `riga_id` è la riga di commessa (`riga_nr` NULL).
 * `origine_id`: la testata dall'altra parte (o la commessa); `origine_riga_id`:
   la sua riga (riga d'ordine, di reso, di preventivo, attività di commessa).
 * `qta`: la quantità che torna disponibile, dove ha senso.
@@ -98,7 +125,9 @@ a `PUBLIC`.
 * Il backend la legge alla risposta `E_DOC_ANNULLO_CON_LEGAMI` per disegnare la
   finestra, poi chiama il verbo del documento passando **quante righe ha
   mostrato**.
-* Test: `db/pgtap/vendite/test-annullo-documento-con-legami-v1.sql`.
+* Test: `db/pgtap/vendite/test-annullo-documento-con-legami-v1.sql`;
+  per la commessa `test-annullo-commessa-v1.sql` e
+  `test-annullo-commessa-rettifica-v1.sql`.
 
 ---
 

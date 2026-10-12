@@ -136,7 +136,8 @@ WITH ins AS (
          r.tipo_doc_fiscale_id, r.valuta_id, 1.000000, 'FIXED',
          -- BOZZA di proposito: la riga non deve entrare nelle corsie di
          -- emissione degli altri test che girano nella stessa giornata.
-         'BOZZA', 'NON_EMESSA', NULL, NULL
+         'BOZZA', 'NON_EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         ((SELECT id FROM tmp_commessa_apb))::text
     FROM tmp_refs_apb r
   RETURNING id)
 SELECT id FROM ins;

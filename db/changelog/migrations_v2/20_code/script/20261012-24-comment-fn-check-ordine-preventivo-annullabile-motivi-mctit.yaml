@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DELLE DUE CHECK DI ANNULLO, ALLINEATI AI CORPI
+#   script.fn_check_ordine_annullabile, script.fn_check_preventivo_annullabile
+#   Brief: brief-db-annullo-a-valle-riapre-a-monte (§3, R-12)
+#
+# Trovato nella verifica dell'«in avanti» (R-5, 2026-10-12): i due COMMENT
+# citano un motivo «riga in vendite.commesse_sorgenti» che i corpi non
+# leggono piu' dal 2026-08-26 (il secondo motivo viene da
+# script.fn_check_sorgente_chiudibile, sulle righe EMESSA). Solo testo:
+# nessun corpo cambia. Il commento sbagliato finiva nella doc auto-generata,
+# cioe' nella pagina che chi verifica l'«in avanti» legge per prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261012-24-comment-fn-check-ordine-preventivo-annullabile-motivi-mctit.yaml
+
+  - changeSet:
+      id: 20261012-24-comment-fn-check-ordine-preventivo-annullabile-motivi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di script.fn_check_ordine_annullabile e script.fn_check_preventivo_annullabile riallineati ai corpi: non citano piu' il motivo «riga in vendite.commesse_sorgenti» ritirato il 2026-08-26. Solo testo.
+        Brief: brief-db-annullo-a-valle-riapre-a-monte (R-12).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_check_ordine_annullabile', 'fn_check_preventivo_annullabile');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_check_ordine_annullabile(vendite.ordini.id%TYPE) IS
+                  'Pure check: motivi che impediscono l''annullamento di un ordine. [] = lecito. Motivi: 1) un DDT figlio vivo (vendite.ddt.sorgente_uid = ordini.uid, chiave uuid): E_ORD_ANNULLA_CON_DDT; 2) righe di commessa gia'' EMESSA spinte dall''ordine (script.fn_check_sorgente_chiudibile, chiave <ordine>.uid::text): E_SORGENTE_CON_RIGHE_EMESSE. Le righe di commessa NON_EMESSA non bloccano: si ritirano con la conferma all''annullo (vendite.fn_annulla_ordine). Sede unica condivisa dal guard di transizione e da script.fn_available_actions_ordine. Brief: brief-db-vie-uscita-operatore. rev 2026-08-15: il MOTIVO 1 conta solo i DDT figli VIVI — i DDT con config.stati_doc_ddt.is_abortito true sono esclusi. Lacuna speculare a quella corretta sul preventivo con 20260810-03, dove l''esclusione del figlio annullato e'' dichiarata voluta: un figlio morto non deve bloccare il padre per sempre e senza uscita, che e'' il difetto stesso che il cantiere vie-d''uscita ha chiuso. ⚠️ Era stata classificata «asimmetria latente, oggi non morde» perche'' nessun DDT bloccante risultava annullato: era una conta su dati di TEST, e in esercizio annullare un DDT e'' ordinario. Esclude SOLO l''annullato — il DDT in stato RESO ha is_abortito false e continua a bloccare, ed e'' giusto: la merce e'' tornata ma il documento e'' vissuto. brief-db-vie-uscita-operatore §12.6. rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, R-12): commento riallineato al corpo. Citava come secondo motivo «una riga in vendite.commesse_sorgenti (chiave id::text)», che il corpo non legge piu'': dal 2026-08-26 il secondo motivo viene da script.fn_check_sorgente_chiudibile sulle righe EMESSA. Corpo invariato.';
+
+              COMMENT ON FUNCTION script.fn_check_preventivo_annullabile(vendite.preventivi.id%TYPE) IS
+                  'Pure check: motivi che impediscono l''annullamento di un preventivo. [] = lecito. Sede UNICA della regola, condivisa da vendite.trgfn_preventivi_guard_annullamento, dalla porta vendite.fn_cambia_stato_preventivo e da script.fn_available_actions_preventivo. Motivi in ordine di gravita'' (chi consuma solleva il primo): 1) un ordine generato e non annullato (vendite.ordini.documento_origine_tipo = ''PREVENTIVO'' AND documento_origine_id = preventivo, con config.stati_doc_ordini.is_abortito NOT TRUE); 2) righe gia'' EMESSA in commessa (vendite.commesse_attivita, segment_key PREV:<uid>:R:) — a valle esiste una fattura (da script.fn_check_sorgente_chiudibile, codice E_PREV_ANNULLA_COMMESSA_EMESSA). Le righe di commessa NON_EMESSA non bloccano: si ritirano con la conferma all''annullo (vendite.fn_annulla_preventivo). rev 2026-08-04: assorbito il criterio della porta, che non ha piu'' regola propria (brief-db-vie-uscita-operatore §7.3). rev 2026-08-10: il MOTIVO 1 non era MAI scattato. Cercava l''ordine su vendite.ordini.sorgente_uid, che e'' l''origine IMPORT (commento della colonna) e non il legame al documento a monte: zero righe valorizzate su 90, mentre documento_origine_tipo/id lo e'' su 66. Era scritto per simmetria col gemello script.fn_check_ordine_annullabile, dove ddt.sorgente_uid E'' il legame al padre ed E'' popolata — la trappola §4a di docs/it/guide/sorgente-polimorfa.md: colonne omonime FUORI dal meccanismo polimorfo (vendite.ordini non ha il guard, quindi non ne e'' consumatrice). NESSUN backfill di sorgente_uid: sarebbe una seconda convenzione per lo stesso legame. + gli ordini figli annullati sono esclusi (is_abortito), unico punto in cui questa regola non copia il gemello: senza, un figlio morto bloccherebbe il padre per sempre e senza uscita. Decisione di dominio (Tid, 2026-08-10): qualunque altro stato del figlio blocca, bozza compresa — la via d''uscita e'' abbandonare prima la bozza dell''ordine. Effetto misurato: 13 preventivi ACCETTATO passano da annullabili a bloccati col motivo. rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, R-12): commento riallineato al corpo. Citava un terzo motivo, «una riga in vendite.commesse_sorgenti (chiave uid::text)», che il corpo non legge piu'' dal 2026-08-26 (20260826-38): i motivi sono due. Corpo invariato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_check_ordine_annullabile(vendite.ordini.id%TYPE) IS
+                  'Pure check: motivi che impediscono l''annullamento di un ordine. [] = lecito. Blocca quando esiste gia'' un figlio a valle: un DDT (vendite.ddt.sorgente_uid = ordini.uid, chiave uuid) o una riga in vendite.commesse_sorgenti (chiave id::text, per key_selector di config.sorgenti — diversa da quella del preventivo, che usa l''uid). Sede unica condivisa dal guard di transizione e da script.fn_available_actions_ordine. Brief: brief-db-vie-uscita-operatore. rev 2026-08-15: il MOTIVO 1 conta solo i DDT figli VIVI — i DDT con config.stati_doc_ddt.is_abortito true sono esclusi. Lacuna speculare a quella corretta sul preventivo con 20260810-03, dove l''esclusione del figlio annullato e'' dichiarata voluta: un figlio morto non deve bloccare il padre per sempre e senza uscita, che e'' il difetto stesso che il cantiere vie-d''uscita ha chiuso. ⚠️ Era stata classificata «asimmetria latente, oggi non morde» perche'' nessun DDT bloccante risultava annullato: era una conta su dati di TEST, e in esercizio annullare un DDT e'' ordinario. Esclude SOLO l''annullato — il DDT in stato RESO ha is_abortito false e continua a bloccare, ed e'' giusto: la merce e'' tornata ma il documento e'' vissuto. brief-db-vie-uscita-operatore §12.6.';
+
+              COMMENT ON FUNCTION script.fn_check_preventivo_annullabile(vendite.preventivi.id%TYPE) IS
+                  'Pure check: motivi che impediscono l''annullamento di un preventivo. [] = lecito. Sede UNICA della regola, condivisa da vendite.trgfn_preventivi_guard_annullamento, dalla porta vendite.fn_cambia_stato_preventivo e da script.fn_available_actions_preventivo. Motivi in ordine di gravita'' (chi consuma solleva il primo): 1) un ordine generato e non annullato (vendite.ordini.documento_origine_tipo = ''PREVENTIVO'' AND documento_origine_id = preventivo, con config.stati_doc_ordini.is_abortito NOT TRUE); 2) righe gia'' EMESSA in commessa (vendite.commesse_attivita, segment_key PREV:<uid>:R:) — a valle esiste una fattura; 3) una riga in vendite.commesse_sorgenti (chiave uid::text, per key_selector di config.sorgenti). Il 2 e il 3 NON sono ridondanti: il primo legge l''effetto scritto dalle funzioni di dominio, il secondo la registrazione scritta dal backend. rev 2026-08-04: assorbito il criterio della porta, che non ha piu'' regola propria (brief-db-vie-uscita-operatore §7.3). rev 2026-08-10: il MOTIVO 1 non era MAI scattato. Cercava l''ordine su vendite.ordini.sorgente_uid, che e'' l''origine IMPORT (commento della colonna) e non il legame al documento a monte: zero righe valorizzate su 90, mentre documento_origine_tipo/id lo e'' su 66. Era scritto per simmetria col gemello script.fn_check_ordine_annullabile, dove ddt.sorgente_uid E'' il legame al padre ed E'' popolata — la trappola §4a di docs/it/guide/sorgente-polimorfa.md: colonne omonime FUORI dal meccanismo polimorfo (vendite.ordini non ha il guard, quindi non ne e'' consumatrice). NESSUN backfill di sorgente_uid: sarebbe una seconda convenzione per lo stesso legame. + gli ordini figli annullati sono esclusi (is_abortito), unico punto in cui questa regola non copia il gemello: senza, un figlio morto bloccherebbe il padre per sempre e senza uscita. Decisione di dominio (Tid, 2026-08-10): qualunque altro stato del figlio blocca, bozza compresa — la via d''uscita e'' abbandonare prima la bozza dell''ordine. Effetto misurato: 13 preventivi ACCETTATO passano da annullabili a bloccati col motivo.';

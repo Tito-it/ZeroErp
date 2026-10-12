@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: schema base commesse_* (changeset 20260224-05..09)
 -- ------------------------------------------------------------
--- Indice test (1..16):
+-- Indice test (1..17):
 -- 1) Tabella vendite.commesse presente
 -- 2) Tabella vendite.commesse_sorgenti presente
 -- 3) Tabella vendite.commesse_attivita presente
@@ -14,6 +14,7 @@
 -- 8) Unicita` (commessa_id, segment_key) su commesse_attivita
 -- 9) Pair sorgente_tipo_id/sorgente_uid coerente su commesse_attivita
 -- 10) pricing_mode invalido bloccato su commesse_attivita
+-- 10-bis) riga NORMALE senza sorgente bloccata (vincolo 20261012-27, rev 2026-10-12)
 -- 11) Colonna attivita_fatturabili.commessa_id presente
 -- 12) Colonna attivita_fatturabili.commessa_attivita_id presente
 -- 13) attivita_fatturabili.commessa_id NOT NULL
@@ -38,7 +39,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(16);
+SELECT plan(17);
 
 SELECT ok(
   EXISTS (
@@ -231,12 +232,14 @@ WITH ins AS (
   INSERT INTO vendite.commesse_attivita (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
     competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
-    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione
+    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
+    sorgente_tipo_id, sorgente_uid   -- la riga NORMALE ha la sua sorgente (vincolo 20261012-27)
   )
   SELECT
     (SELECT id FROM tmp_commessa_cs), 'SEG-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
     date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
-    1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA'
+    1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA',
+    r.sorgente_tipo_id, (SELECT id FROM tmp_commessa_cs)::text
   FROM tmp_refs_cs r
   RETURNING id
 )
@@ -247,12 +250,14 @@ SELECT throws_ok(
   INSERT INTO vendite.commesse_attivita (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
     competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
-    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione
+    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
+    sorgente_tipo_id, sorgente_uid   -- la riga NORMALE ha la sua sorgente (vincolo 20261012-27)
   )
   SELECT
     (SELECT id FROM tmp_commessa_cs), 'SEG-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
     date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
-    1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA'
+    1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA',
+    r.sorgente_tipo_id, (SELECT id FROM tmp_commessa_cs)::text
   FROM tmp_refs_cs r;
   $$,
   '23505',
@@ -285,17 +290,39 @@ SELECT throws_ok(
   INSERT INTO vendite.commesse_attivita (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
     competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
-    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione
+    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione,
+    sorgente_tipo_id, sorgente_uid   -- la riga NORMALE ha la sua sorgente (vincolo 20261012-27)
   )
   SELECT
     (SELECT id FROM tmp_commessa_cs), 'SEG-MODE-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
     date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
-    1.2300000000, 'DYNAMIC', 'BOZZA', 'NON_EMESSA'
+    1.2300000000, 'DYNAMIC', 'BOZZA', 'NON_EMESSA',
+    r.sorgente_tipo_id, (SELECT id FROM tmp_commessa_cs)::text
   FROM tmp_refs_cs r;
   $$,
   '23514',
   NULL,
   'pricing_mode invalido bloccato su commesse_attivita'
+);
+
+-- Una riga senza documento d'origine e' un ONERE o una RETTIFICA: una NORMALE
+-- senza sorgente si rifiuta (vincolo 20261012-27,
+-- brief-db-annullo-a-valle-riapre-a-monte §8.5).
+SELECT throws_like(
+  $$
+  INSERT INTO vendite.commesse_attivita (
+    commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
+    competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id,
+    prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione
+  )
+  SELECT
+    (SELECT id FROM tmp_commessa_cs), 'SEG-SENZA-SORGENTE-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+    date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
+    1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA'
+  FROM tmp_refs_cs r;
+  $$,
+  '%chk_commesse_attivita_senza_sorgente_onere_rettifica%',
+  'riga NORMALE senza sorgente bloccata su commesse_attivita (solo ONERE e RETTIFICA nascono senza)'
 );
 
 SELECT ok(

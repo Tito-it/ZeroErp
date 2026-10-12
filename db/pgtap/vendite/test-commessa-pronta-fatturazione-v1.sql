@@ -109,11 +109,17 @@ SELECT (SELECT id FROM vendite.commesse WHERE codice = 'PGTAP-PRONTA-A') AS com_
 INSERT INTO vendite.commesse_attivita (
     commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
     uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-    prezzo_snapshot, tipo_doc_fiscale_id, stato_approvazione, stato_emissione)
+    prezzo_snapshot, tipo_doc_fiscale_id, stato_approvazione, stato_emissione,
+    sorgente_tipo_id, sorgente_uid)
+-- La copia e' una riga NORMALE e ha una sorgente (vincolo 20261012-27): quella
+-- della commessa di test, non la sorgente della riga reale (che puntando a un
+-- documento vero ne riproietterebbe lo stato).
 SELECT (SELECT com_a FROM _fx), ca.segment_key, ca.articolo_id, ca.istanza_utility_id,
        ca.data_attivita, ca.uom_id, ca.quantita, ca.competenza_mese,
        ca.competenza_dal, ca.competenza_al, ca.prezzo_snapshot,
-       ca.tipo_doc_fiscale_id, 'APPROVATA', 'NON_EMESSA'
+       ca.tipo_doc_fiscale_id, 'APPROVATA', 'NON_EMESSA',
+       (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+       (SELECT com_a FROM _fx)::text
   FROM vendite.commesse_attivita ca
  WHERE ca.id = (SELECT riga_id FROM _fx_src);
 

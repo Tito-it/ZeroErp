@@ -1,0 +1,128 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DOPO L'INVIO: LA COMMESSA DIVENTA EMITTIBILE, DAL DB
+#   vendite.fn_rendi_commessa_emittibile(p_commessa_id, p_righe_ids, p_user) -> integer
+#   Brief: brief-db-annullo-a-valle-riapre-a-monte (D-10 di Tid, R-9)
+#
+# ── COSA ERA, COSA DIVENTA ──────────────────────────────────────────
+#   Il «ponte di emittibilita'» stava nel backend
+#   (commesse_service._rendi_commessa_emittibile): dopo l'invio, per ogni
+#   commessa toccata, approvava le righe di QUESTO invio
+#   (vendite.fn_approva_commessa_attivita) e portava la testata a
+#   PRONTA_FATTURAZIONE (vendite.fn_cambia_stato_commessa), saltando il
+#   cambio se ci era gia' (una commessa multi-sorgente puo' esserlo da un
+#   invio precedente, e la matrice non ammette da = a). D-10: la regola sta
+#   nel DB, il backend la chiama al posto dei suoi due passi. Stessa
+#   semantica, riga per riga:
+#     - p_righe_ids NULL = nessun filtro (tutte le BOZZA NON_EMESSA della
+#       commessa, come il chiamante diretto di oggi); array vuoto = nessuna
+#       riga di questo invio atterrata: niente approvazione, ma la testata
+#       va comunque a PRONTA_FATTURAZIONE; array pieno = le sole righe
+#       dell'invio (trappola T1 di brief-db-immutabilita-quantita-e-porta-
+#       oneri §4b: non approvare le righe BOZZA di terzi);
+#     - gia' PRONTA_FATTURAZIONE: il cambio di stato non si tenta;
+#     - CHIUSA o ANNULLATA: il cambio si tenta e la matrice rifiuta forte
+#       (non si invia in una commessa chiusa), come prima.
+#   Perche' una madre e non un trigger: l'approvazione e' «delle righe di
+#   QUESTO invio», un'informazione che ha solo chi orchestra l'invio.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   SECURITY INVOKER, come i due verbi che compone. Una transazione: la
+#   sceglie il chiamante (all-or-nothing nell'invio singolo, una commessa
+#   alla volta nel batch). Ritorna le righe approvate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-16-create-fn-rendi-commessa-emittibile-mctit.yaml
+
+  - changeSet:
+      id: 20261012-16-create-fn-rendi-commessa-emittibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Madre vendite.fn_rendi_commessa_emittibile: dopo l'invio approva le righe dell'invio e porta
+        la commessa a PRONTA_FATTURAZIONE (prima nel backend). D-10.
+        Brief: brief-db-annullo-a-valle-riapre-a-monte (R-9).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_rendi_commessa_emittibile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_rendi_commessa_emittibile(
+                  p_commessa_id vendite.commesse.id%TYPE,
+                  p_righe_ids   bigint[] DEFAULT NULL,
+                  p_user        vendite.commesse.user_update%TYPE DEFAULT NULL)
+              RETURNS integer
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: dopo un invio in commessa, approvare le righe
+              --   dell'invio e portare la commessa a PRONTA_FATTURAZIONE.
+              --   p_righe_ids: array di id (%TYPE[] non esiste). Vedi
+              --   l'intestazione del changeSet.
+              -- Ritorna: le righe approvate (un CONTEGGIO).
+              -- =========================================================
+              DECLARE
+                  -- CONTEGGIO delle righe approvate.
+                  v_approvate integer := 0;
+                  v_stato     vendite.stati_commessa.codice_interno%TYPE;
+              BEGIN
+                  IF p_commessa_id IS NULL OR p_commessa_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_rendi_commessa_emittibile',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_commessa_id', p_commessa_id),
+                          NULL::uuid, 'vendite.fn_rendi_commessa_emittibile',
+                          'p_commessa_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 1. Le righe dell'invio. Array vuoto: nessuna riga di questo
+                  --    invio e' atterrata, niente da approvare.
+                  IF p_righe_ids IS NULL OR cardinality(p_righe_ids) > 0 THEN
+                      v_approvate := vendite.fn_approva_commessa_attivita(
+                                         p_commessa_id, p_righe_ids, p_user);
+                  END IF;
+
+                  -- 2. La testata. Gia' PRONTA_FATTURAZIONE: la matrice non ammette
+                  --    da = a, non si tenta. CHIUSA o ANNULLATA: si tenta, e la
+                  --    matrice rifiuta forte.
+                  SELECT sc.codice_interno
+                    INTO v_stato
+                    FROM vendite.commesse c
+                    JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
+                   WHERE c.id = p_commessa_id;
+
+                  IF v_stato IS DISTINCT FROM 'PRONTA_FATTURAZIONE' THEN
+                      PERFORM vendite.fn_cambia_stato_commessa(
+                          p_commessa_id, 'PRONTA_FATTURAZIONE', p_user);
+                  END IF;
+
+                  RETURN COALESCE(v_approvate, 0);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_rendi_commessa_emittibile(vendite.commesse.id%TYPE, bigint[], vendite.commesse.user_update%TYPE) IS
+                  'Madre (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-10 di Tid): dopo un invio in commessa approva le righe dell''invio (vendite.fn_approva_commessa_attivita) e porta la commessa a PRONTA_FATTURAZIONE (vendite.fn_cambia_stato_commessa). Prima lo faceva il backend (commesse_service._rendi_commessa_emittibile), che ora la chiama. p_righe_ids: NULL = nessun filtro; vuoto = nessuna riga di questo invio atterrata, niente approvazione ma la testata va comunque a PRONTA_FATTURAZIONE; pieno = le sole righe dell''invio (non si approvano le righe BOZZA di terzi). Gia'' PRONTA_FATTURAZIONE: il cambio non si tenta (la matrice non ammette da = a); CHIUSA o ANNULLATA: si tenta e la matrice rifiuta (non si invia in una commessa chiusa). Una madre e non un trigger: «le righe di questo invio» le conosce solo chi orchestra l''invio. SECURITY INVOKER. Ritorna le righe approvate.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_rendi_commessa_emittibile(vendite.commesse.id%TYPE, bigint[], vendite.commesse.user_update%TYPE);

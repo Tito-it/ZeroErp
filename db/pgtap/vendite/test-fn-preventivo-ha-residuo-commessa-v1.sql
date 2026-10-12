@@ -26,8 +26,11 @@
 --      esclusa appena instradata, non solo dopo fatturazione)
 --  11) Post-push componente BoM (segment_key #CMP, NON_EMESSA) -> residuo = false
 --      (match a prefisso §4: una riga composita viene esclusa)
---  12) Attivita ANNULLATA -> residuo = false (decisione: riga instradata, non
---      ri-pushabile; non riapre il preventivo)
+--  12) Attivita ANNULLATA -> residuo = true: una riga ritirata non occupa, la
+--      riga torna da mandare in commessa (rev 2026-10-12, 20261012-08/-09,
+--      brief-db-annullo-a-valle-riapre-a-monte D-5 di Tid). Fino a quel giorno
+--      il test fissava la decisione del 2026-06-28 «riga instradata, non
+--      ri-pushabile; non riapre il preventivo», che D-5 sostituisce.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -435,12 +438,12 @@ SELECT is(
 );
 
 -- ============================================================
--- 12) Attivita ANNULLATA -> residuo = false (riga instradata, non ri-pushabile)
+-- 12) Attivita ANNULLATA -> residuo = true (D-5: la riga ritirata non occupa)
 -- ============================================================
 SELECT is(
   vendite.fn_preventivo_ha_residuo_commessa((SELECT prev_id FROM tmp_rc_annull)),
-  false,
-  '12. Attivita ANNULLATA: residuo commessa = false (decisione: non riapre il preventivo)'
+  true,
+  '12. Attivita ANNULLATA: residuo commessa = true (D-5: una riga ritirata non occupa, la riga torna da mandare)'
 );
 
 SELECT * FROM finish();

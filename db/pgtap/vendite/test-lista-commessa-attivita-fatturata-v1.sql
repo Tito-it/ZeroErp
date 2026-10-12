@@ -121,6 +121,9 @@ RETURNS vendite.commesse_attivita.id%TYPE LANGUAGE sql AS $fx$
   SELECT r.attivita_id
     FROM vendite.fn_upsert_commessa_attivita(
       p_commessa_id                   => (SELECT commessa_id FROM tmp_commessa_lcf),
+      -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+      p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+      p_sorgente_uid => ((SELECT commessa_id FROM tmp_commessa_lcf))::text,
       p_segment_key                   => p_seg,
       p_articolo_id                   => (SELECT articolo_id FROM tmp_refs_lcf),
       p_istanza_utility_id            => (SELECT istanza_utility_id FROM tmp_refs_lcf),

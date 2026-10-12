@@ -103,20 +103,25 @@ BEGIN
     AND (p_billing_account_id IS NULL OR ac.billing_account_id = p_billing_account_id)
     -- Estensione 2026-05: NULL = lista globale; NOT NULL = singolo consumo.
     AND (p_consumo_id IS NULL OR ac.id = p_consumo_id)
-    -- Esclusione "gia' inviato": basta l'ALLOCAZIONE (qualunque
-    -- stato_emissione, ANNULLATA inclusa) — il match a prefisso
-    -- per-documento era gia' corretto (vede anche i #CMP).
-    AND NOT EXISTS (
-      SELECT 1 FROM vendite.commesse_attivita ca
-      WHERE ca.segment_key LIKE 'CONS:' || ac.uid::text || ':%'
-    )
+    -- Esclusione "gia' inviato" (rev 2026-10-12, 20261012-10): dal
+    -- classificatore unico, sul segmento che questa funzione scrive
+    -- ('CONS:<uid>', sopra). Il NOT EXISTS di prima cercava
+    -- 'CONS:<uid>:%', con i due punti finali che il segmento base non
+    -- ha: vedeva solo le righe del fan-out per componente
+    -- (':COMP:<x>', HandlerConsumi._expand_rows), che e' uno stub
+    -- RIMANDATO (Tid, 2026-06-16) e non ne scrive. ⚠️ Il giorno in cui
+    -- il fan-out si accende deve usare il suffisso '#CMP:' che il
+    -- classificatore vede (DEC-2), non ':COMP:'. Una riga ANNULLATA
+    -- non occupa (D-5).
+    AND script.fn_get_stato_push_segment(
+          ('CONS:' || ac.uid::text)::varchar) = 'LIBERA'
   ORDER BY ac.competenza_mese, ac.id
   LIMIT p_limit;
 END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_consumi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_consumo_id bigint)
-IS 'Lista consumi eligible al push su commessa (stato_calcolo OK, non fatturati). p_consumo_id (opzionale): NULL=lista globale batch, NOT NULL=singolo consumo. Tutti i filtri in AND. Esclude consumi gia` emessi via NOT EXISTS su commesse_attivita. rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE (non piu'' solo emessi): il NOT EXISTS non filtra piu'' stato_emissione — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: NESSUN cambio di comportamento — documentata come scelta di dominio (D-6) la costante FALSE su fatturazione_immediata: a differenza di ordini/contratti/DDT i consumi NON hanno il flag, perche'' un consumo e'' una misura e la corsia la decide il contratto che lo governa. Non sostituire con una colonna — brief-db-emissione-fattura-per-documento-sorgente PARTE B. Espone termine_pagamento_id e modalita_pagamento_id a NULL: i consumi non hanno un documento con condizioni di pagamento (rev 2026-08-03, T.1).';
+IS 'Lista consumi eligible al push su commessa (stato_calcolo OK, non fatturati). p_consumo_id (opzionale): NULL=lista globale batch, NOT NULL=singolo consumo. Tutti i filtri in AND. Esclude i consumi gia'' mandati in commessa (script.fn_get_stato_push_segment, dal 2026-10-12). rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE (non piu'' solo emessi): il NOT EXISTS non filtra piu'' stato_emissione — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: NESSUN cambio di comportamento — documentata come scelta di dominio (D-6) la costante FALSE su fatturazione_immediata: a differenza di ordini/contratti/DDT i consumi NON hanno il flag, perche'' un consumo e'' una misura e la corsia la decide il contratto che lo governa. Non sostituire con una colonna — brief-db-emissione-fattura-per-documento-sorgente PARTE B. Espone termine_pagamento_id e modalita_pagamento_id a NULL: i consumi non hanno un documento con condizioni di pagamento (rev 2026-08-03, T.1). rev 2026-10-12 (20261012-10, brief-db-annullo-a-valle-riapre-a-monte D-5): «gia'' mandato» dal classificatore unico script.fn_get_stato_push_segment(''CONS:<uid>'') invece del NOT EXISTS proprio, che cercava ''CONS:<uid>:%'' con due punti finali che il segmento scritto qui non ha, e quindi vedeva solo le righe del fan-out per componente '':COMP:<x>'' (stub rimandato, non ne scrive): il consumo gia'' mandato restava in lista, e all''idempotenza pensava solo l''ON CONFLICT dell''upsert nella stessa commessa. ⚠️ Quando il fan-out si accendera'' dovra'' usare il suffisso ''#CMP:'' che il classificatore vede. Una riga ANNULLATA non occupa: annullata la commessa, il consumo torna da mandare (D-7).';
 ```
 
 ---
