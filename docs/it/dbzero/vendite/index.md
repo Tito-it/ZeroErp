@@ -131,6 +131,7 @@
 - [fn_cleanup_fatture_by_ids](funzioni/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
 - [fn_close_commessa_push_run](funzioni/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
 - [fn_close_giornaliero_lotto](funzioni/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
+- [fn_commessa_viva_di_sorgente](funzioni/fn_commessa_viva_di_sorgente.md)
 - [fn_complete_lotto_task_run](funzioni/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 - [fn_componi_numero_documento](funzioni/fn_componi_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_conferma_reso](funzioni/fn_conferma_reso.md) — (rev 2026-07-13)
@@ -141,7 +142,7 @@
 - [fn_crea_famiglia_documento](funzioni/fn_crea_famiglia_documento.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_crea_revisione_offerta](funzioni/fn_crea_revisione_offerta.md) — (rev 2026-05-25)
 - [fn_crea_revisione_preventivo](funzioni/fn_crea_revisione_preventivo.md) — (latest review 14-09-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive, componenti BoM e indirizzi. L'attivazione della revisione non e' piu' gestita qui: il flag `is_revision_attiva` e' stato rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendite.vw_preventivi`.
-- [fn_create_contratto](funzioni/fn_create_contratto.md) — (latest review 08-07-2026)
+- [fn_create_contratto](funzioni/fn_create_contratto.md) — (latest review 12-10-2026)
 - [fn_create_fatturazione_lotto](funzioni/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
 - [fn_ddt_causale_magazzino](funzioni/fn_ddt_causale_magazzino.md)
 - [fn_ddt_merce_da_movimentare](funzioni/fn_ddt_merce_da_movimentare.md)
@@ -154,6 +155,8 @@
 - [fn_ddt_riga_ritira_legami](funzioni/fn_ddt_riga_ritira_legami.md)
 - [fn_ddt_vincoli_cliente](funzioni/fn_ddt_vincoli_cliente.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-1)
 - [fn_diagnostica_gruppi_fatturabili](funzioni/fn_diagnostica_gruppi_fatturabili.md) — (latest review 15-08-2026)
+- [fn_doc_fornitura_da_anagrafica](funzioni/fn_doc_fornitura_da_anagrafica.md)
+- [fn_doc_fornitura_sede](funzioni/fn_doc_fornitura_sede.md)
 - [fn_doc_indirizzo_default](funzioni/fn_doc_indirizzo_default.md)
 - [fn_doc_porta_ritiro_ammette](funzioni/fn_doc_porta_ritiro_ammette.md)
 - [fn_documento_legami](funzioni/fn_documento_legami.md) — (2026-10-11, brief-db-annullo-documento-con-legami, D-4)
@@ -186,6 +189,7 @@
 - [fn_get_commessa_stato](funzioni/fn_get_commessa_stato.md) — (latest review 26-02-2026)   Restituisce in una singola query lo stato operativo di una commessa:
 - [fn_get_contratto_attivo](funzioni/fn_get_contratto_attivo.md) — (latest review 30-08-2026)
 - [fn_get_data_minima_numerabile_lotto](funzioni/fn_get_data_minima_numerabile_lotto.md) — **Da quale data in poi TUTTE le fatture non ancora numerate di questo lotto possono prendere un numero.**
+- [fn_get_fornitura_da_anagrafica](funzioni/fn_get_fornitura_da_anagrafica.md)
 - [fn_get_limite_emissione_default](funzioni/fn_get_limite_emissione_default.md) — **Il valore di un limite di emissione dal catalogo dei parametri, come numero.**
 - [fn_get_lotto_segnalazioni_summary](funzioni/fn_get_lotto_segnalazioni_summary.md) — (latest review 19-09-2026)   La funzione **`vendite.fn_get_lotto_segnalazioni_summary()`** restituisce un riepilogo aggregato delle segnalazioni attive (`C`/`W`/`I`) di un lotto, unificando:
 - [fn_get_lotto_task_last_run](funzioni/fn_get_lotto_task_last_run.md) — Restituisce l'ultimo task run disponibile per lotto/step/task.
@@ -329,7 +333,7 @@
 - [trgfn_contratti_guard_transizione_stato](funzioni/trgfn_contratti_guard_transizione_stato.md) — (latest review 24-09-2026 — il prezzo non autorizzato dal building block; 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
 - [trgfn_contratti_normalize](funzioni/trgfn_contratti_normalize.md) — La trigger function `vendite.trgfn_contratti_normalize()` completa i dati minimi del contratto in insert quando il numero documento e` presente.
 - [trgfn_contratti_set_categoria_cliente_snapshot](funzioni/trgfn_contratti_set_categoria_cliente_snapshot.md) — (rev 2026-08-21)
-- [trgfn_contratti_snapshot_precontrattuali](funzioni/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 20/01/26) La funzione `vendite.trgfn_contratti_snapshot_precontrattuali()` crea lo **snapshot** dei dati precontrattuali **solo alla creazione del contratto**.   La scelta progettuale e` deliberata: il contratto diventa la **fonte stabile** per i dati tecnici/commerciali e le eventuali correzioni richiedono **un nuovo contratto**.
+- [trgfn_contratti_snapshot_precontrattuali](funzioni/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 12/10/26)
 - [trgfn_contratti_utilities_guard_tipo_classe](funzioni/trgfn_contratti_utilities_guard_tipo_classe.md) — (rev 2026-08-21 — pricing v5)
 - [trgfn_ddt_default_magazzino](funzioni/trgfn_ddt_default_magazzino.md)
 - [trgfn_ddt_gen_numero_emesso](funzioni/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-08-31, sera)
@@ -345,6 +349,8 @@
 - [trgfn_ddt_righe_guard_riga_evasa](funzioni/trgfn_ddt_righe_guard_riga_evasa.md)
 - [trgfn_ddt_righe_prelievi_guard](funzioni/trgfn_ddt_righe_prelievi_guard.md)
 - [trgfn_dlt_block_ordrig_ddtrig](funzioni/trgfn_dlt_block_ordrig_ddtrig.md) — **Traduce in una frase il rifiuto di togliere una riga di documento — di un DDT o di un ordine — che ha legami a valle.**
+- [trgfn_doc_fornitura_guard_coppia](funzioni/trgfn_doc_fornitura_guard_coppia.md)
+- [trgfn_doc_fornitura_segue_cliente](funzioni/trgfn_doc_fornitura_segue_cliente.md)
 - [trgfn_doc_guard_annullo_con_legami](funzioni/trgfn_doc_guard_annullo_con_legami.md) — (2026-10-11, brief-db-annullo-documento-con-legami, D-1/D-4/D-5)
 - [trgfn_doc_guard_chiusura_sorgente](funzioni/trgfn_doc_guard_chiusura_sorgente.md) — (latest review 26-08-2026)
 - [trgfn_doc_guard_delete_solo_bozza](funzioni/trgfn_doc_guard_delete_solo_bozza.md) — **Un documento si elimina solo finché è in bozza.**
@@ -381,7 +387,7 @@
 - [trgfn_fatture_righe_importo](funzioni/trgfn_fatture_righe_importo.md) — Garantire che **l'importo di una riga di fattura esista sempre e sia coerente** con quantità, prezzo e sconto della riga stessa.
 - [trgfn_fondi_source_guard_importo](funzioni/trgfn_fondi_source_guard_importo.md) — (latest review 15-08-2026)
 - [trgfn_fondi_source_guard_transizione](funzioni/trgfn_fondi_source_guard_transizione.md) — (latest review 22-08-2026)
-- [trgfn_guard_fatturazione_immediata_immutabile](funzioni/trgfn_guard_fatturazione_immediata_immutabile.md) — Impedire la modifica di `fatturazione_immediata` su un documento **già inviato in commessa**.
+- [trgfn_guard_fatturazione_immediata_immutabile](funzioni/trgfn_guard_fatturazione_immediata_immutabile.md) — Impedire la modifica di `fatturazione_immediata` su un documento che sta in una commessa **aperta**.
 - [trgfn_listini_guard_tipologia_utility](funzioni/trgfn_listini_guard_tipologia_utility.md) — Guard defense-in-depth: verifica che la coppia `(utility_id, tipologia_id)` su `vendite.listini` sia ammessa dalla matrice `config.listini_tipologie_utilities` con `attivo = true`.
 - [trgfn_listini_righe_comp_guard_immutabilita_v5](funzioni/trgfn_listini_righe_comp_guard_immutabilita_v5.md)
 - [trgfn_listini_righe_guard_no_composito](funzioni/trgfn_listini_righe_guard_no_composito.md)

@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGI: vendite.trgfn_doc_fornitura_segue_cliente su contratto e offerta
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-5)
+#
+#   AFTER UPDATE senza OF, col confronto nel WHEN (linee-guida-trigger: si
+#   reagisce a un CAMBIO di valore). Colonne: la coppia istanza_utility_id,
+#   utility_id, cioe' la chiave dei dati precontrattuali. Un cambio del solo
+#   billing account a coppia ferma non tocca la scheda: descrive la
+#   fornitura, non il conto.
+#   Fascia _m50_, come trg_<t>_m50_indirizzi_seguono_cliente_upd: un
+#   effetto, dopo i guard, prima dei terminali _z90_. L'ordine fra i due
+#   _m50_ non conta (tabelle diverse).
+#   Il preventivo resta fuori: non ha scheda di fornitura.
+#   ⛔ Nomi sotto i 63 caratteri (il piu' lungo: 58).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-41-create-trigger-fornitura-segue-cliente-mctit.yaml
+
+  - changeSet:
+      id: 20261012-41-create-trigger-fornitura-segue-cliente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta vendite.trgfn_doc_fornitura_segue_cliente su contratto e offerta, col WHEN sulla coppia
+        (istanza, utility). Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite'
+                 AND t.tgname LIKE 'trg_%_m50_fornitura_segue_cliente_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_contratti_m50_fornitura_segue_cliente_upd
+                  AFTER UPDATE ON vendite.contratti
+                  FOR EACH ROW
+                  WHEN (OLD.istanza_utility_id IS DISTINCT FROM NEW.istanza_utility_id
+                        OR OLD.utility_id IS DISTINCT FROM NEW.utility_id)
+                  EXECUTE FUNCTION vendite.trgfn_doc_fornitura_segue_cliente('CONTRATTO');
+
+              CREATE TRIGGER trg_offerte_commerciali_m50_fornitura_segue_cliente_upd
+                  AFTER UPDATE ON vendite.offerte_commerciali
+                  FOR EACH ROW
+                  WHEN (OLD.istanza_utility_id IS DISTINCT FROM NEW.istanza_utility_id
+                        OR OLD.utility_id IS DISTINCT FROM NEW.utility_id)
+                  EXECUTE FUNCTION vendite.trgfn_doc_fornitura_segue_cliente('OFFERTA');

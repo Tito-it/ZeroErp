@@ -129,7 +129,7 @@ Via `script.fn_log_and_raise_error` (`SQLSTATE 'P0001'`).
 ### Dipendenze DB
 
 * Tabelle: `vendite.commesse_attivita`, `vendite.commesse`, `vendite.stati_commessa`, `config.sorgenti` (lookup default `tipo_doc_fiscale_id`).
-* Funzioni: `script.fn_log_and_raise_error`.
+* Funzioni: `script.fn_log_and_raise_error`, `vendite.fn_link_commessa_sorgente` (dal 2026-10-12: il link documento → commessa).
 * Trigger/CHECK DB: `chk_commesse_attivita_origine_prezzo`, `chk_commesse_attivita_tipo_variazione_applicata` garantiscono i domini enum anche se il guard applicativo è bypassato; `trg_commesse_attivita_a10_guard_tipo_doc_emittibile` + `chk_commesse_attivita_tipo_doc_emittibile` impongono `tipo_doc_fiscale_id NOT NULL` sullo stato emittibile (APPROVATA+NON_EMESSA).
 
 ---
@@ -238,6 +238,34 @@ senza una seconda pipeline.
 (`EXCLUDED`), come già `tipo_movimento`. Non serve il `COALESCE` difensivo che
 protegge `tipo_doc_fiscale_id`: i `segment_key` non si incrociano — un push
 (`ORD:`/`DDT:`) non può atterrare sul segmento di una rettifica (`…#RET:<n>`).
+
+---
+
+### 🔄 rev 2026-10-12 — il link documento → commessa nasce con la riga
+
+(brief-db-annullo-a-valle-riapre-a-monte, D-13 di Tid, `20261012-46`)
+
+Una riga che viene da un **documento spinto in commessa** — sorgente con
+`config.sorgenti.scope = 'PUSH_COMMESSA'`: preventivo, ordine, contratto, bolla,
+consumi — chiama, prima di scriversi,
+[vendite.fn_link_commessa_sorgente](/dbzero/vendite/funzioni/fn_link_commessa_sorgente):
+
+* stesso documento, stessa commessa → il link c'è già, niente si riscrive;
+* il documento sta in un'**altra commessa aperta** →
+  `E_COMMESSA_SORGENTE_ALTRA_COMMESSA`, e la riga non si scrive;
+* la sua commessa di prima è **chiusa o annullata** → link nuovo; quello vecchio
+  resta come storia.
+
+Fuori dal blocco: le righe senza sorgente (`ONERE`, `RETTIFICA`) e la sorgente
+`COMMESSA` (`PIPELINE_MARKER`), che fixture e smoke usano per le righe «della
+commessa».
+
+⭐ **Perché qui e non nel backend.** Prima il link lo scriveva il backend, a parte,
+prima di questa funzione. La regola «un documento in una sola commessa aperta»
+valeva solo se chi scriveva la riga si ricordava del link, e i pgTAP che mandano in
+commessa da questa madre non la attraversavano mai: è così che il difetto del
+secondo invio dopo l'annullo della commessa è arrivato al collaudo con i test
+verdi. D-10: andata e ritorno di uno stesso arco in un posto solo, il DB.
 
 ---
 

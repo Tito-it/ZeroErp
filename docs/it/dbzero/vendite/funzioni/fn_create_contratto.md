@@ -94,7 +94,18 @@ BEGIN
       USING v_numero, v_stato_id, COALESCE(p_testata, '{}'::jsonb);
 
     -- ----------------------------------------------------
-    -- 4) INSERT utility opzionale.
+    -- 4) La scheda di fornitura dell'operatore (opzionale).
+    --    rev 2026-10-12 (brief-db-indirizzi-documento-seguono-il-cliente,
+    --    D-7 di Tid): il trigger alla nascita (step 3) ha gia' scritto
+    --    la scheda dall'anagrafica, se la coppia ha dati
+    --    precontrattuali. Prima l'INSERT dell'operatore collideva su
+    --    uq_contratti_utilities_contratto_id e il contratto non si
+    --    creava. Ora VINCE L'OPERATORE, come nel push dall'offerta:
+    --    l'anagrafica fa da base, le sue chiavi la correggono.
+    --    ⚠️ UPDATE e non INSERT ... ON CONFLICT: i trigger BEFORE
+    --    INSERT giudicano la riga PROPOSTA prima del conflitto, e il
+    --    guard tipo/classe la rifiuterebbe se l'operatore manda solo
+    --    una parte della scheda. L'UPDATE giudica la riga finale.
     -- ----------------------------------------------------
     IF p_utility IS NOT NULL AND p_utility <> '{}'::jsonb THEN
         SELECT array_agg(quote_ident(key) ORDER BY key)
@@ -108,12 +119,28 @@ BEGIN
                        FROM unnest(v_cols) WITH ORDINALITY AS u(c, n)),
             '');
 
-        v_sql := format(
-            'INSERT INTO vendite.contratti_utilities (contratto_id%s) '
-            'SELECT $1%s '
-            '  FROM jsonb_populate_record(NULL::vendite.contratti_utilities, $2) AS r',
-            v_insert_cols, v_select_cols);
-        EXECUTE v_sql USING v_contratto_id, p_utility;
+        IF EXISTS (SELECT 1
+                     FROM vendite.contratti_utilities cu
+                    WHERE cu.contratto_id = v_contratto_id) THEN
+            -- La scheda dall'anagrafica c'e': si correggono le sole chiavi
+            -- mandate. ROW(...) anche con una colonna sola.
+            IF v_cols IS NOT NULL THEN
+                v_sql := format(
+                    'UPDATE vendite.contratti_utilities u '
+                    '   SET (%s) = ROW(%s) '
+                    '  FROM jsonb_populate_record(NULL::vendite.contratti_utilities, $2) AS r '
+                    ' WHERE u.contratto_id = $1',
+                    array_to_string(v_cols, ', '), substr(v_select_cols, 3));
+                EXECUTE v_sql USING v_contratto_id, p_utility;
+            END IF;
+        ELSE
+            v_sql := format(
+                'INSERT INTO vendite.contratti_utilities (contratto_id%s) '
+                'SELECT $1%s '
+                '  FROM jsonb_populate_record(NULL::vendite.contratti_utilities, $2) AS r',
+                v_insert_cols, v_select_cols);
+            EXECUTE v_sql USING v_contratto_id, p_utility;
+        END IF;
     END IF;
 
     -- ----------------------------------------------------
@@ -132,7 +159,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_create_contratto(p_testata jsonb, p_utility jsonb)
-IS 'Funzione madre atomica: genera il numero, crea la testata contratto (stato DRAFT) e l''eventuale riga utility in un''unica statement (o tutto o rollback, contatore numero incluso). INSERT dinamico delle sole chiavi whitelisted presenti (rispetta i default DB). SECURITY INVOKER. Ritorna (contratto_id, numero). rev 2026-07-27: ''fatturazione_immediata'' aggiunta a v_testata_allowed — la corsia di instradamento si decide PRIMA del push in commessa e la create e'' il momento naturale; senza questa voce la chiave veniva scartata in silenzio. rev 2026-08-31: aggiunti ''codice_cig'', ''codice_cup'' e ''codice_commessa'' — i tre riferimenti dell''atto, colonne dal 20260829-13. ⛔ E'' LO STESSO DIFETTO della rev precedente sulla stessa funzione: in PATCH il backend li scriveva gia'', in CREATE la chiave veniva SCARTATA e il contratto nasceva senza il CIG, con un 200 e nessun errore a video. Un CIG nasce con la gara, cioe'' PRIMA del contratto: la creazione e'' il momento naturale per digitarlo. ⚠️ IL FILTRO E'' SULLA PRESENZA DELLA CHIAVE, e la semantica del null NON e'' la stessa su tutte le voci: ''fatturazione_immediata'' e'' NOT NULL con DEFAULT false, quindi chiave assente = DEFAULT e chiave = null = 23502 (il BE deve omettere o mandare un booleano, mai null); i tre codici dell''atto sono NULLABLE, quindi un null e'' un valore legittimo che significa «non c''e'' un CIG» e il BE puo'' mandarli sempre. ⛔ La whitelist resta NON fail-loud (chiave ignota scartata e non respinta): renderla tale cambierebbe il comportamento di TUTTE le chiavi di una madre gia'' in uso dal backend, e resta la proposta §6 di brief-db-fatturazione-immediata-create-contratto. Piano: analisi-fix-transazioni Classe A #2 + brief-db-fatturazione-immediata-create-contratto + brief-db-fn-create-contratto-codici-atto. rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-2): in coda, lo slot di default dall''anagrafica del cliente con vendite.fn_doc_indirizzo_default(''CONTRATTO'', id) — prima lo faceva il backend dopo questa funzione. RETURNS TABLE ancorato (vendite.contratti.id%TYPE, vendite.contratti.numero%TYPE: stessi tipi).';
+IS 'Funzione madre atomica: genera il numero, crea la testata contratto (stato DRAFT) e l''eventuale riga utility in un''unica statement (o tutto o rollback, contatore numero incluso). INSERT dinamico delle sole chiavi whitelisted presenti (rispetta i default DB). SECURITY INVOKER. Ritorna (contratto_id, numero). rev 2026-07-27: ''fatturazione_immediata'' aggiunta a v_testata_allowed — la corsia di instradamento si decide PRIMA del push in commessa e la create e'' il momento naturale; senza questa voce la chiave veniva scartata in silenzio. rev 2026-08-31: aggiunti ''codice_cig'', ''codice_cup'' e ''codice_commessa'' — i tre riferimenti dell''atto, colonne dal 20260829-13. ⛔ E'' LO STESSO DIFETTO della rev precedente sulla stessa funzione: in PATCH il backend li scriveva gia'', in CREATE la chiave veniva SCARTATA e il contratto nasceva senza il CIG, con un 200 e nessun errore a video. Un CIG nasce con la gara, cioe'' PRIMA del contratto: la creazione e'' il momento naturale per digitarlo. ⚠️ IL FILTRO E'' SULLA PRESENZA DELLA CHIAVE, e la semantica del null NON e'' la stessa su tutte le voci: ''fatturazione_immediata'' e'' NOT NULL con DEFAULT false, quindi chiave assente = DEFAULT e chiave = null = 23502 (il BE deve omettere o mandare un booleano, mai null); i tre codici dell''atto sono NULLABLE, quindi un null e'' un valore legittimo che significa «non c''e'' un CIG» e il BE puo'' mandarli sempre. ⛔ La whitelist resta NON fail-loud (chiave ignota scartata e non respinta): renderla tale cambierebbe il comportamento di TUTTE le chiavi di una madre gia'' in uso dal backend, e resta la proposta §6 di brief-db-fatturazione-immediata-create-contratto. Piano: analisi-fix-transazioni Classe A #2 + brief-db-fatturazione-immediata-create-contratto + brief-db-fn-create-contratto-codici-atto. rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-2): in coda, lo slot di default dall''anagrafica del cliente con vendite.fn_doc_indirizzo_default(''CONTRATTO'', id) — prima lo faceva il backend dopo questa funzione. RETURNS TABLE ancorato (vendite.contratti.id%TYPE, vendite.contratti.numero%TYPE: stessi tipi). rev 2026-10-12 (brief-db-indirizzi-documento-seguono-il-cliente, D-7 di Tid): la scheda di fornitura dell''operatore CORREGGE quella che il trigger alla nascita ha appena scritto dall''anagrafica (vendite.fn_doc_fornitura_da_anagrafica), con un UPDATE delle sole chiavi mandate; prima l''INSERT collideva su uq_contratti_utilities_contratto_id e un contratto su una fornitura con dati precontrattuali non si creava. Vince l''operatore, come nel push dall''offerta; perche'' veda i dati dell''anagrafica prima di creare, il drawer li legge da vendite.fn_get_fornitura_da_anagrafica. UPDATE e non ON CONFLICT: i trigger BEFORE INSERT giudicherebbero la riga proposta, parziale. Senza scheda dall''anagrafica resta l''INSERT di prima.';
 ```
 
 ---

@@ -2,25 +2,25 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-12
 
-**Riparte: Tid con il team DB**, sul §10 (trovato nel collaudo: una commessa annullata non lascia
-libero il documento, che non si puo' piu' rimandare in commessa), a partire dalla domanda del §10.5.
-Il collaudo a video del giro di ritorno aspetta il §10.
+**Riparte: la sessione BE** (le richieste del §10.7) **e Tid** (smoke HTTP, poi collaudo a video). Lato DB
+chiuso: applicato e pgTAP verdi su dbdev (Tid, 2026-10-12).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ team DB | changeSet `20261012-08 … -24`, `-27 … -29`, CSV, pgTAP | §8 | — |
 | 2 | ✅ BE/FE | ritiro delle copie del verso in avanti, annullo della commessa con la finestra, smoke | §9 | — |
-| 3a | **Tid + team DB** | la domanda: la commessa si annulla anche con righe vive da documento? | §10.5 | — |
-| 3 | **team DB** | il link documento → commessa (`vendite.commesse_sorgenti`) dopo l'annullo: R-13…R-15, nella forma che esce dal 3a | §10.3 | 3a |
-| 4 | sessione BE | ricaduta del §10 (lettore del link nel backend, smoke) | §10.4 | 3 |
-| 5 | Tid | lo smoke HTTP `smoke-test-ordini-giro-commessa.sh` (vuole la password degli smoke); il passo 14 fallisce finche' manca il §10 | §9.3 | 3 |
+| 3a | ✅ Tid + team DB | la commessa si annulla anche con righe vive da documento: **si'** (D-11); il link resta come storia, unico fra le commesse vive (D-12) | §10.5, §10.6 | — |
+| 3b | ✅ Tid | D-13: il link nasce nella madre DB `fn_upsert_commessa_attivita`; D-14: il flag di fatturazione immediata si blocca solo con una commessa viva | §10.6 | — |
+| 3 | ✅ team DB | R-13…R-16: `20261012-43 … -47` + CSV, pgTAP; applicati da Tid il 2026-10-12 | §10.7 | — |
+| 3b' | ✅ Tid | corsa pgTAP su dbdev: verde | §10.7 | — |
+| 4 | **sessione BE** | ritiro del link dal `BaseSourceHandler`, lettore della commessa aperta, testo di fallback, smoke | §10.7 | — |
+| 5 | Tid | lo smoke HTTP `smoke-test-ordini-giro-commessa.sh` (vuole la password degli smoke); con il §10 applicato il passo 14 (secondo invio) deve passare | §9.3 | 3b' |
 | 6 | Tid | collaudo a video: preventivo, ordine, misto, PRV0000144 | §6.4 | 3 |
 | 7 | Tid | eseguire su dbdev l'SQL del §9.4 (deciso il 2026-10-12: si riportano a CONFERMATO) | §9.4 | — |
 | 8 | sessione BE | archiviare in `work-done/`, riga di PROJECT_CONTEXT | — | 6, 7 |
 
-**Decisioni aperte di Tid:** ❓ **§10.5**, da vedere con il team DB: la commessa si annulla anche con
-righe vive spinte da un documento, o solo senza? Da li' la forma di R-13 (§10.3).
-**Da committare:** il lavoro BE/FE del §9 (non committato).
+**Decisioni aperte di Tid:** nessuna (D-11…D-14 prese il 2026-10-12, §10.6).
+**Da committare:** il lavoro BE/FE del §9 (non committato); il lato DB del §10 (`20261012-43 … -47`, CSV, tre pgTAP, manual).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-11, dal collaudo a video di Tid; lettura critica e
 > seconda tornata di decisioni del team DB (`dev/db-tid`), 2026-10-12 (§7). **A chi:** team DB; poi BE/FE (§6).
@@ -34,7 +34,8 @@ righe vive spinte da un documento, o solo senza? Da li' la forma di R-13 (§10.3
 > nessuna regressione.** ✅ **Lato DB chiuso**; l'SQL dell'appendice D-9 eseguito da Tid il 2026-10-12. Resta da
 > tenere d'occhio il costo del trigger (§8.4, non un lavoro). ✅ **BE/FE fatto il 2026-10-12** (§9):
 > restano il collaudo a video (§6.4) e lo smoke HTTP, di Tid. ⚠️ **Riaperto lato DB il 2026-10-12** dal
-> collaudo: una commessa annullata non lascia libero il documento, che non si rimanda in commessa (§10).
+> collaudo: una commessa annullata non lascia libero il documento, che non si rimanda in commessa (§10). ✅ **Richiuso lo stesso giorno** (§10.6-§10.7: `20261012-43 … -47`, applicati, pgTAP verdi); restano le
+> richieste al backend del §10.7.
 > **Origine:** il caso 6 di [brief-db-annullo-documento-con-legami](../work-done/brief-db-annullo-documento-con-legami.md)
 > (§10), trovato nel collaudo e spostato qui per decisione di Tid: *«quando si torna indietro ci devono
 > essere le segnalazioni di quello che si sta facendo; in avanti le abbiamo bloccate. Un unico
@@ -704,11 +705,15 @@ residuo (D-5 ha liberato i segmenti: e' giusto), ma il push lo rifiuta, perche' 
 agganciato alla commessa morta. Il D-1 («di nuovo smistabile») e il D-5 sono veri a meta'; per l'ordine
 il §7.4 («le righe dell'ordine tornano da mandare») anche.
 
+⚠️ *Superato dal §10.6 (punto 3): il secondo invio i pgTAP lo fanno, ma senza il link.*
 ⛔ **Perche' i pgTAP del §8 erano verdi:** provano il residuo (`fn_preventivo_ha_residuo_commessa`, le
 `fn_list_*_da_pushare`) dopo l'annullo, non un **secondo invio vero**. E' il «verde per sottrazione»
 di AGENTS.md: la prova si ferma un passo prima del punto in cui il caso si distingue.
 
 ### 10.3 Cosa si chiede al team DB
+
+> ⚠️ **Riscritto nel §10.6**: la forma e' scelta (D-12, strada b), la (a) non basta; R-13…R-15 qui
+> sotto restano come storia della domanda.
 
 | # | Cosa | Note |
 | --- | --- | --- |
@@ -729,7 +734,7 @@ nessun intervento.
 * Lo smoke `smoke-test-ordini-giro-commessa.sh` ha gia' il passo 14 (secondo invio dopo l'annullo, atteso
   `COMPLETATO`): oggi deve fallire, ed e' il presidio HTTP del §10.
 
-### 10.5 ❓ Domanda aperta, da vedere con il team DB (Tid, 2026-10-12)
+### 10.5 ✅ Domanda chiusa (Tid con il team DB, 2026-10-12): la commessa si annulla (D-11, §10.6)
 
 Nata dalla lettura del §10 nella sessione BE. **Non e' una decisione**: Tid la porta al team DB, e la
 forma di R-13 dipende dalla risposta.
@@ -767,3 +772,170 @@ commessa, la parte rettifica e consumi di D-7. Il D-5 resta: serve anche al verb
 restringe al verbo sul documento.
 
 **Se resta l'annullo della commessa com'e'**, R-13…R-15 restano come scritti.
+
+### 10.6 Lettura del team DB e decisioni (2026-10-12)
+
+> **Chi scrive:** team DB (`dev/db-tid`), 2026-10-12, sulla doc auto-generata e sul codice (handler del
+> push, pgTAP del §8). Solo analisi: nessun changeSet scritto.
+
+**1. La domanda del §10.5, sul modello.** Il guard 4 di `vendite.fn_annulla_commessa_attivita` vieta di
+togliere **una** riga da push stando sulla commessa, perche' il documento a monte resterebbe «inviato»
+senza saperlo. L'annullo della commessa fa il contrario: e' un gesto esplicito a valle, con la finestra, che
+**riapre** tutti i documenti a monte (D-1, D-5). E' il principio del §1 («all'indietro riapre, con la
+segnalazione»), come la bolla con l'ordine. La deduzione del §10.5 confonde le due cose: il guard 4
+protegge la coerenza riga-documento, e il verbo la mantiene.
+
+**2. Il difetto del link e' del modello, non dell'annullo.**
+
+* **Lo scrittore e' uno solo**: `BaseSourceHandler._process_rows` (backend), per **ogni riga** e per tutte
+  e cinque le sorgenti (preventivo, ordine, contratto, bolla, consumi). Oneri e rettifiche non hanno link.
+* **Due regole che si contraddicono.** `commesse_attivita` e `vendite.fn_get_or_create_commessa`
+  ammettono un documento con righe in **piu' commesse** nel tempo (il riuso cerca solo
+  `stati_commessa.chiude_commessa = false`); `uq_commesse_sorgenti_src_uid` dice «una commessa, per
+  sempre», a qualunque stato.
+* ⭐ **Il secondo caso, senza annullo** (dedotto dal codice, non provato: va costruito nel pgTAP). Un
+  documento mandato **in parte** (`p_righe_ids`, pannello di smistamento), la sua commessa poi **CHIUSA**
+  (`chiude_commessa = t`): l'invio delle righe rimaste crea una commessa nuova, e il link risponde
+  `E_COMMESSA_SORGENTE_ALTRA_COMMESSA`, lo stesso errore del collaudo.
+* Quindi la strada (a) del §10.3 (cancellare il link all'annullo) **non basta**: sul caso CHIUSA non si
+  cancella niente, perche' e' storia fatturata che il lineage deve mostrare.
+
+**3. Perche' i pgTAP del §8 erano verdi** (corregge il §10.2). Il secondo invio lo fanno (test 12), e il
+caso E mette perfino un preventivo **in due commesse**. Ma l'helper `pg_temp.ac_invia` chiama il lister e
+`vendite.fn_upsert_commessa_attivita`, **mai** `vendite.fn_link_commessa_sorgente`, perche' il link lo
+scrive il backend. Il caso E costruisce uno stato che dal percorso vero non si raggiunge: la prova salta
+proprio il passo dove il caso si distingue.
+
+**4. Decisioni**
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| **D-11** | La commessa si annulla anche con righe vive spinte da un documento (§10.5)? | ✅ **si'**, com'e' (Tid, 2026-10-12): D-1, D-2 e la finestra restano |
+| **D-12** | La forma del link dopo l'annullo (e dopo la chiusura)? | ✅ **strada (b)** (Tid, 2026-10-12): il link **resta come storia**; l'unicita' passa a `(sorgente_tipo_id, sorgente_uid, commessa_id)`; in `fn_link_commessa_sorgente` l'errore «altra commessa» scatta solo se l'altra e' **viva** (`chiude_commessa = false`), sotto lock |
+| **D-13** | Chi scrive il link? | ✅ **il DB**, dentro `vendite.fn_upsert_commessa_attivita` (Tid, 2026-10-12, sulla proposta del team DB qui sotto); il backend ritira la sua chiamata |
+| **D-14** | Il flag `fatturazione_immediata` del documento si blocca con qualunque link, o solo con un link a una commessa viva? | ✅ **solo commessa viva** (Tid, 2026-10-12): con i link soli verso commesse chiuse o annullate il flag torna modificabile |
+
+**D-13, il perche'** (proposta del team DB, confermata da Tid). Il link nasce nella madre DB delle righe, `vendite.fn_upsert_commessa_attivita`,
+per le righe con una sorgente documento (`config.sorgenti` di categoria `PUSH_COMMESSA`; esclusa la
+`COMMESSA`, che e' un `PIPELINE_MARKER` e la usano le fixture). Il backend ritira `link_sorgente` dal
+`BaseSourceHandler` nello stesso giro.
+
+* **Un livello solo** (D-10): la riga la scrive il DB, il link no. Oggi la regola «documento → commessa
+  viva unica» vale solo se chi scrive la riga si ricorda di chiamare il link.
+* **Una sede**: `vendite.fn_batch_upsert_commessa_attivita` e' un wrapper della singola, e le scritture
+  dirette di righe con sorgente (`fn_ritira_*`, `fn_riporta_*`, `fn_annulla_*`) non creano righe nuove
+  da documento. Onere e rettifica sono senza sorgente.
+* **La prova diventa vera**: i pgTAP che passano dalla madre (`ac_invia`) attraversano il link, e il caso
+  E del §8 diventa il controesempio che dice se D-12 funziona.
+* **Perche' non un trigger** su `commesse_attivita`: un effetto «alla nascita» in un trigger colpisce
+  ogni `INSERT` delle fixture (guard dell'emittente, «altra commessa»). La forma gia' scelta altrove e'
+  «chi crea chiama il BB, la madre DB dentro di se'».
+* **L'ordine di rilascio non rompe niente**: con il DB applicato prima, la chiamata del backend trova il
+  link gia' scritto sulla stessa commessa e passa dal ramo idempotente.
+* ⚠️ **Costo**: le fixture che chiamano la madre con una sorgente documento vera in due commesse vive,
+  o con un BA diverso da quello della commessa, diventano rosse. Vanno censite come nel §8.5: descrivono
+  stati che il percorso vero non produce.
+
+**5. Cosa si chiede al team DB** (sostituisce il §10.3)
+
+| # | Cosa | Note |
+| --- | --- | --- |
+| **R-13** | D-12: indice unico su `(sorgente_tipo_id, sorgente_uid, commessa_id)` al posto di `uq_commesse_sorgenti_src_uid`; `fn_link_commessa_sorgente` cerca il link verso una commessa **viva** diversa, e il ramo idempotente solo sulla stessa commessa | il lock sulla commessa c'e' gia'; per serializzare fra **due** commesse serve un advisory lock sulla sorgente (namespace a due argomenti) |
+| **R-14** | Lettori di `commesse_sorgenti` con piu' link per documento | `trgfn_guard_fatturazione_immediata_immutabile`: il flag si blocca solo con un link a una commessa **viva** (`chiude_commessa = false`), D-14; il COMMENT («legato a una sola commessa per sempre») va riscritto. Lineage: storia, va bene; va deciso se mostrare lo stato della commessa. `fn_emit_attivita_fatturabili_da_commessa` (ROOT per commessa) e il guard dell'emittente: non toccati. COMMENT del guard e manual di `commesse_sorgenti` («per sempre») da riallineare |
+| **R-15** | pgTAP del **giro completo** dalla madre: invio, annullo con la conferma, **secondo invio riuscito** in una commessa nuova, per **ogni** sorgente (preventivo, ordine, contratto, bolla, consumi); invio parziale, commessa CHIUSA, invio del resto; il caso E (due commesse vive: rifiutato); il preventivo misto | la prova che il §8 non faceva |
+| **R-16** | D-13: il link nella madre; censimento delle fixture che la chiamano con una sorgente documento | — |
+
+**Ricaduta BE** (aggiorna il §10.4): `CommesseRepository.get_commessa_id_by_sorgente` (`LIMIT 1`
+senza ordine) con piu' link puo' restituire la commessa morta: va letta la commessa **viva**, meglio da
+una funzione DB. Con D-13, ritiro di `link_sorgente` dal `BaseSourceHandler`.
+
+**I dati di dbdev**: con la (b) nessun intervento sui link; 55666 resta agganciata come storia.
+
+### 10.7 Consegna DB del §10 (2026-10-12): scritta, provata, applicata
+
+> **Chi scrive:** team DB (`dev/db-tid`), 2026-10-12. ✅ **Applicata da Tid** su dbdev e sullo scratch alle
+> 17:45 dello stesso giorno, mentre girava la regressione (sotto). ✅ **Corsa pgTAP di Tid su dbdev: verde**
+> (2026-10-12).
+
+| NN | Oggetto | Cosa | D / R |
+| --- | --- | --- | --- |
+| `-43` | `vendite.commesse_sorgenti` (00_schema) | `uq_commesse_sorgenti_src_uid` (tipo, uid) → `uq_commesse_sorgenti_src_uid_commessa` (tipo, uid, commessa): il link resta come storia | D-12, R-13 |
+| `-44` | ⭐ BB `vendite.fn_commessa_viva_di_sorgente` | la commessa APERTA di un documento (`chiude_commessa = false`, lo stesso predicato del riuso di `fn_get_or_create_commessa`), sulla chiave canonica | D-12, D-14 |
+| `-45` | `vendite.fn_link_commessa_sorgente` | idempotenza sulla stessa commessa; rifiuto solo con un'altra commessa aperta (dal BB); lock advisory sulla sorgente; via il blocco EXCEPTION (irraggiungibile, e una sottotransazione per riga); il meta si riscrive solo se cambia | D-12, R-13 |
+| `-46` | `vendite.fn_upsert_commessa_attivita` | una riga con sorgente di scope `PUSH_COMMESSA` chiama la porta prima di scriversi: il link nasce con la riga | D-13, R-16 |
+| `-47` | `vendite.trgfn_guard_fatturazione_immediata_immutabile` | il flag si blocca solo con una commessa aperta (dal BB) | D-14, R-14 |
+| CSV | `messaggi_errore` | `E_COMMESSA_SORGENTE_ALTRA_COMMESSA`: «un documento puo' stare in una sola commessa aperta alla volta» (un `%s`, invariato) | D-12 |
+
+**Scelte tecniche, con il perche'.**
+
+* **La regola «una sola commessa aperta» sta nella porta, non in un indice**: un indice non legge lo stato
+  della commessa. Una colonna derivata sul link con un indice parziale sarebbe un vincolo vero, ma vorrebbe
+  due trigger in piu' e una riscrittura del link a ogni cambio di stato della commessa. Non serve, perche'
+  CHIUSA e ANNULLATA sono **terminali** nella matrice: un link di storia non torna mai aperto. Se un giorno
+  la matrice ammettesse di uscire da uno stato che chiude, va rivisto (scritto nel COMMENT del BB).
+* **Sotto RLS il controllo vede quello che serve**: le policy di `commesse` e `commesse_sorgenti` filtrano per
+  emittente, e il guard dell'emittente vuole che la commessa abbia l'emittente del documento. Il BB e' INVOKER.
+* **Le corse fra due commesse** le ferma il lock advisory sulla sorgente (prima le fermava l'UNIQUE globale);
+  vale in READ COMMITTED, come lavora l'applicazione.
+* **D-13 nella madre e non in un trigger**: un trigger su `commesse_attivita` colpirebbe ogni `INSERT` delle
+  fixture; la madre e' gia' il passaggio di ogni riga del push (il batch la avvolge).
+
+**R-14, il censimento dei lettori di `commesse_sorgenti`** (dalla doc auto-generata):
+
+| Lettore | Con piu' link per documento |
+| --- | --- |
+| `fn_link_commessa_sorgente`, guard di fatturazione immediata | riscritti (`-45`, `-47`) |
+| `fn_documento_lineage_archi` / `vw_documento_lineage_archi` | mostrano tutte le commesse del documento, anche le annullate: e' la storia, va bene. Lo stato della commessa nel lineage: non chiesto, nessun lavoro |
+| `fn_emit_attivita_fatturabili_da_commessa` (ROOT per commessa), `trgfn_commesse_sorgenti_guard_emittente`, `trgfn_guard_sorgente_polimorfa_testuale` | lavorano per commessa o per riga: non toccati |
+| `fn_build_gruppo_fatturabile_key`, `fn_get_sorgente_documento_ref`, `fn_genera_ddt_riconsegna`, `script.fn_check_sorgente_chiudibile`, `fn_check_preventivo_annullabile`, `fn_check_ordine_annullabile` | nominano la tabella solo nei commenti (la loro chiave e' `commesse_attivita`): non toccati |
+| backend `CommesseRepository.get_commessa_id_by_sorgente` | ⚠️ `LIMIT 1` senza stato: con due link puo' dare la commessa morta. Richiesta BE qui sotto |
+
+**La prova** (scratch `zeroerp_ci`, da owner, SQL estratto in transazione ritirata, prima dell'apply):
+
+* SQL estratto dei cinque changeSet con le preCondition, poi i rollback all'indietro: passano.
+  `plpgsql_check` su porta, madre e guard: zero errori (i due avvisi su `fn_batch_upsert_commessa_attivita`
+  c'erano gia').
+* `vendite/test-annullo-commessa-v1`: **37/37** (era 31). Nuovi: 2b (la madre scrive il link, ROOT), 12b (la
+  storia: due link, aperta la nuova), 14b (l'ordine si rimanda: chiave `id::text`), 14c/14d (D-14 sul flag
+  dell'ordine: modificabile con la sola commessa annullata, bloccato con la nuova aperta); **il caso E
+  riscritto**: due commesse aperte → rifiuto, niente scritto nella seconda (17); annullata la prima, tutto
+  nella seconda (17b). ⚠️ Il caso E di prima metteva lo stesso preventivo in due commesse vive: uno stato che il
+  percorso vero non produce, possibile solo perche' l'helper `ac_invia` saltava il link (il «perche' verde» del
+  §10.2 era proprio questo, §10.6 punto 3).
+  **Mutazioni**: senza il `-45` il file si ferma al secondo invio con l'errore del collaudo; senza il `-47` e'
+  rosso il 14c; senza tutti e cinque e' rosso il 2b.
+* `vendite/test-fn-link-commessa-sorgente-multi-sorgente-v1`: **15/15** (era 8). Nuovi 9-13: annullata la
+  commessa1 la sorgente va sulla commessa2 (link nuovo, ROOT), due link e BB, re-link idempotente senza
+  riscrivere la riga (`xmin` invariato), merge del meta, rifiuto su una terza commessa che nomina la commessa
+  aperta. ⭐ Il file ora **costruisce** il suo cliente (`dbops.fn_pgtap_crea_cliente_ba`): prima prendeva il
+  primo billing account dei dati, e su un database da zero si fermava al test 1. Prima dei changeSet si ferma
+  al 9, sul difetto.
+* `vendite/test-fatturazione-immediata-simmetria-sorgenti-v1`: solo il commento del test 15 (il caso D-14 sta
+  nel file dell'annullo, che le fixture se le costruisce; questo prende ordini e BA dai dati e sullo scratch
+  si ferma alle fixture).
+* **Regressione** (105 pgTAP che nominano gli oggetti, piu' i presidi trasversali): interrotta dall'apply di
+  Tid alle 17:45, che ha tolto il vincolo vecchio sotto le corse «dopo». Le corse partite dopo l'apply
+  fotografano lo stato applicato: i due file sopra 37/37 e 15/15. Due rossi sospetti confrontati a mano,
+  prima (rollback in testa) e dopo: `test-commessa-sorgente-emittente-omogeneo-v1` stessi 5 rossi da dati
+  dello scratch (manca il BA dell'operatore), `test-riferimenti-morti-v1` 9/9 e 9/9 (il rosso era della corsa
+  caduta durante l'apply). ✅ **La corsa completa su dbdev (Tid, 2026-10-12): verde.**
+
+**Cosa non e' provato qui.** Il caso «invio parziale, commessa CHIUSA, invio del resto» non e' costruito:
+attraversa lo stesso ramo dell'annullo (`chiude_commessa = true` vale per tutte e due), e costruirlo vorrebbe
+la catena fino alla fattura. Contratto, bolla e consumi passano dalla stessa porta col ramo `key_selector =
+'id'` provato dall'ordine; non hanno un caso proprio. La prova e' da owner: l'esito come app l'ha dato la corsa di
+Tid, verde.
+
+**Richieste al backend** (sessione BE):
+
+1. **Ritirare la chiamata del link** da `BaseSourceHandler._process_rows` (`commesse_source_handlers.py`) e,
+   se resta senza consumatori, `CommesseRepository.link_sorgente` con i suoi test: il link lo scrive la madre
+   (D-13). Finche' c'e', non rompe niente (ramo idempotente, senza scrittura).
+2. **`CommesseRepository.get_commessa_id_by_sorgente`** (usato da `preventivi_service._aggancia_commessa_servizi_a_pratica`):
+   leggere `vendite.fn_commessa_viva_di_sorgente(sorgente_tipo_id, chiave)` invece della `SELECT … LIMIT 1`. Per il
+   preventivo la chiave canonica e' l'uid.
+3. `error_messages_fallback.py`: il testo di `E_COMMESSA_SORGENTE_ALTRA_COMMESSA` riallineato al CSV.
+4. Lo smoke `smoke-test-ordini-giro-commessa.sh`: il passo 14 (secondo invio dopo l'annullo) ora deve passare.
+
+**I dati di dbdev**: nessun intervento. 55666 resta agganciata a PRV0000398 come storia, e il preventivo si
+rimanda.

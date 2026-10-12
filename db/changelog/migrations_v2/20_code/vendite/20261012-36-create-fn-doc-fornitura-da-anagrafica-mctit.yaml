@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_doc_fornitura_da_anagrafica(p_documento, p_testata_id)
+#   Rifa' la scheda di fornitura di un documento dall'anagrafica della sua
+#   coppia (istanza, utility).
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-5, D-5-bis)
+#
+# -- IL CASO ------------------------------------------------------------
+#   La scheda di fornitura di contratto e offerta (*_utilities, 1:1) porta
+#   una copia della coppia della testata e i dati presi dai precontrattuali
+#   di quella coppia: classe, tipo d'uso, parametri, il riferimento al record.
+#   Quando il cliente cambia in bozza la scheda restava sulla fornitura di
+#   prima, e la leggono il prezzo (fn_resolve_prezzo_listino_v2_esito, la
+#   classe) e l'IVA (fn_get_tipo_utenza_fornitura, il tipo d'uso).
+#
+# -- LA REGOLA (D-5 e D-5-bis di Tid, 2026-10-12) ------------------------
+#   La scheda descrive la fornitura, non una scelta commerciale: se la
+#   fornitura cambia, si rifa' da capo dall'anagrafica della coppia nuova.
+#   Una correzione fatta a mano valeva per la fornitura di prima.
+#   Regola unica: contratto e offerta, che la scheda ci fosse o no. Se la
+#   coppia nuova non ha dati precontrattuali, il documento resta senza
+#   scheda (come alla nascita del contratto).
+#
+# -- CHI LA CHIAMA --------------------------------------------------------
+#   * la nascita del contratto: vendite.trgfn_contratti_snapshot_precontrattuali
+#     (20261012-37), al posto del corpo che aveva dentro di se';
+#   * il cambio di cliente in bozza: vendite.trgfn_doc_fornitura_segue_cliente
+#     (20261012-40/-41), su contratto e offerta.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   Via la scheda che c'e', poi la scheda di vendite.fn_get_fornitura_da_anagrafica
+#   (la sede unica della lettura, la stessa che il drawer mostra). Torna se ha
+#   scritto. La coppia si legge dalla testata, gia' cambiata (AFTER UPDATE).
+#   INVOKER: cancella e scrive sotto la RLS di chi ha cambiato il cliente; la
+#   riga nuova passa dal guard della coppia (20261012-38) e, sul contratto,
+#   dal guard tipo/classe, come alla nascita.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-36-create-fn-doc-fornitura-da-anagrafica-mctit.yaml
+
+  - changeSet:
+      id: 20261012-36-create-fn-doc-fornitura-da-anagrafica
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo BB vendite.fn_doc_fornitura_da_anagrafica: rifa' la scheda di fornitura di contratto e
+        offerta dai dati precontrattuali della coppia della testata. Brief:
+        brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_doc_fornitura_da_anagrafica(
+                  p_documento  text,
+                  p_testata_id bigint
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              -- ⚠️ Tipi nudi DICHIARATI: p_documento e' un selettore senza colonna
+              --   di vocabolario; p_testata_id e' POLIMORFO (l'id di due testate);
+              --   il boolean di ritorno e' un esito, non il riflesso di una colonna.
+              DECLARE
+                  v_schema   pg_catalog.pg_namespace.nspname%TYPE;
+                  v_testata  pg_catalog.pg_class.relname%TYPE;
+                  v_tabella  pg_catalog.pg_class.relname%TYPE;
+                  v_fk_col   pg_catalog.pg_attribute.attname%TYPE;
+                  v_istanza  anagrafiche.istanze_dati_precontrattuali.istanza_utility_id%TYPE;
+                  v_utility  anagrafiche.istanze_dati_precontrattuali.utility_id%TYPE;
+                  v_scritte  integer;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La scheda di fornitura del documento e' quella che
+                  --   l'anagrafica da' alla sua coppia (istanza, utility).
+                  --   Si toglie quella che c'e' e si riscrive.
+                  -- =========================================================
+                  IF p_testata_id IS NULL OR p_testata_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_doc_fornitura_da_anagrafica', 'E_DOC_FORNITURA_PARAMETRO_MANCANTE',
+                          jsonb_build_object('documento', p_documento, 'testata_id', p_testata_id),
+                          NULL::uuid,
+                          'vendite.fn_doc_fornitura_da_anagrafica',
+                          'l''id del documento');
+                  END IF;
+
+                  SELECT s.schema_tabella, s.testata, s.tabella, s.colonna_fk
+                    INTO v_schema, v_testata, v_tabella, v_fk_col
+                    FROM vendite.fn_doc_fornitura_sede(p_documento) AS s;
+
+                  IF v_tabella IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_doc_fornitura_da_anagrafica', 'E_DOC_TIPO_NON_GESTITO',
+                          jsonb_build_object('documento', p_documento, 'testata_id', p_testata_id),
+                          NULL::uuid,
+                          COALESCE(p_documento, '<null>'));
+                  END IF;
+
+                  -- La coppia della testata. Testata assente (o fuori dalla RLS di
+                  -- chi chiama): niente da rifare.
+                  EXECUTE format(
+                      'SELECT t.istanza_utility_id, t.utility_id FROM %I.%I t WHERE t.id = $1',
+                      v_schema, v_testata)
+                     INTO v_istanza, v_utility
+                    USING p_testata_id;
+
+                  IF v_istanza IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  -- 1. Via la scheda che c'e': descriveva un'altra fornitura, o
+                  --    e' la nascita e non c'e' niente.
+                  EXECUTE format('DELETE FROM %I.%I x WHERE x.%I = $1',
+                                 v_schema, v_tabella, v_fk_col)
+                    USING p_testata_id;
+
+                  -- 2. La scheda dell'anagrafica, se la coppia ne ha una.
+                  EXECUTE format(
+                      'INSERT INTO %I.%I (%I, istanza_utility_id, utility_id, '
+                      '                   istanza_dati_precontrattuali_id, classe_utenza_id, '
+                      '                   tipo_utenza_id, param_1_num, param_2_txt, meta) '
+                      'SELECT $1, $2, $3, '
+                      '       f.istanza_dati_precontrattuali_id, f.classe_utenza_id, '
+                      '       f.tipo_utenza_id, f.param_1_num, f.param_2_txt, f.meta '
+                      '  FROM vendite.fn_get_fornitura_da_anagrafica($2, $3) AS f',
+                      v_schema, v_tabella, v_fk_col)
+                    USING p_testata_id, v_istanza, v_utility;
+
+                  GET DIAGNOSTICS v_scritte = ROW_COUNT;
+                  RETURN v_scritte > 0;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_doc_fornitura_da_anagrafica(text, bigint)
+              IS 'Rifa'' la scheda di fornitura (1:1) di un documento (CONTRATTO | OFFERTA, vendite.fn_doc_fornitura_sede) dai dati precontrattuali della coppia (istanza, utility) della sua testata: toglie la scheda che c''e'' e scrive quella di vendite.fn_get_fornitura_da_anagrafica. Torna true se ha scritto; false se la testata non c''e'' (o non e'' visibile) o se la coppia non ha dati precontrattuali, e allora il documento resta senza scheda. La regola (D-5 e D-5-bis di Tid, 2026-10-12): la scheda descrive la fornitura, non una scelta commerciale; se la fornitura cambia si rifa'' da capo, e le correzioni fatte a mano sulla fornitura di prima non si portano. Regola unica per contratto e offerta, che la scheda ci fosse o no. Chi la chiama: la nascita del contratto (vendite.trgfn_contratti_snapshot_precontrattuali) e il cambio di cliente in bozza (vendite.trgfn_doc_fornitura_segue_cliente). Alla nascita le chiavi dell''operatore correggono poi la scheda (vendite.fn_create_contratto, D-7). Errori: id mancante E_DOC_FORNITURA_PARAMETRO_MANCANTE, selettore ignoto E_DOC_TIPO_NON_GESTITO (TECNICO entrambi). INVOKER: scrive sotto la RLS di chi chiama; la riga nuova passa dal guard della coppia e, sul contratto, dal guard tipo/classe. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4).';

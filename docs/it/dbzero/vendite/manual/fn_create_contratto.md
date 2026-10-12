@@ -15,7 +15,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 08-07-2026)
+(latest review 12-10-2026)
 
 La funzione **`vendite.fn_create_contratto`** è la **funzione madre atomica**
 per la creazione di un contratto: genera il numero, crea la testata (stato
@@ -46,7 +46,7 @@ vendite.fn_create_contratto(
 | Parametro | Tipo | Descrizione |
 | --- | --- | --- |
 | `p_testata` | `jsonb` | Campi della testata contratto. Vengono inseriti **solo i campi whitelisted presenti**; le colonne assenti ereditano default/trigger DB (`ambito`, `valido_dal`, `data`, `emittente_fiscale_id`, `valuta_id`, `meta`…). `numero` e `stato_doc_contratto_id` sono risolti dalla funzione (ignorati se passati). |
-| `p_utility` | `jsonb` | Opzionale. Se `NULL` o `'{}'` nessuna riga utility. Altrimenti INSERT su `contratti_utilities` con le sole chiavi whitelisted presenti; `contratto_id` impostato dalla funzione. |
+| `p_utility` | `jsonb` | Opzionale: la scheda di fornitura scritta dall'operatore. Se `NULL` o `'{}'` resta quella che il contratto riceve dall'anagrafica alla nascita (se il contatore ha dati precontrattuali). Altrimenti le sole chiavi whitelisted presenti **correggono** quella scheda; se il contatore non ha dati, la scheda nasce da queste chiavi. `contratto_id` impostato dalla funzione. |
 
 **Whitelist testata:** `billing_account_id`, `emittente_fiscale_id`,
 `istanza_utility_id`, `utility_id`, `ambito`, `valido_dal`, `valido_al`,
@@ -59,6 +59,32 @@ vendite.fn_create_contratto(
 
 Stato iniziale = `DRAFT` (`config.stati_doc_contratti`); se assente ⇒
 **`E_CONFIG_MANCANTE`**.
+
+### La scheda di fornitura: anagrafica e operatore
+
+Appena la testata nasce, il trigger
+[`trgfn_contratti_snapshot_precontrattuali`](/dbzero/vendite/funzioni/trgfn_contratti_snapshot_precontrattuali)
+le dà la scheda di fornitura dai dati precontrattuali del contatore. Poi la
+funzione applica `p_utility`:
+
+* **la scheda dall'anagrafica c'è** → un `UPDATE` delle sole chiavi mandate:
+  **vince l'operatore**, e le voci che non ha compilato restano quelle
+  dell'anagrafica. È la stessa regola del passaggio da offerta a contratto;
+* **non c'è** → l'`INSERT` delle chiavi mandate.
+
+Fino al 12-10-2026 il secondo `INSERT` collideva col primo
+(`uq_contratti_utilities_contratto_id`): un contratto su un contatore con dati
+precontrattuali e la scheda compilata non si creava.
+
+⚠️ Perché l'operatore sappia che cosa sta correggendo, il drawer gli mostra prima
+la scheda dell'anagrafica:
+[`vendite.fn_get_fornitura_da_anagrafica`](/dbzero/vendite/funzioni/fn_get_fornitura_da_anagrafica)
+è la stessa lettura che usa il trigger.
+
+⚠️ `UPDATE` e non `INSERT … ON CONFLICT DO UPDATE`: i trigger `BEFORE INSERT`
+giudicano la riga **proposta**, e il guard tipo/classe rifiuterebbe una scheda
+parziale (la sola classe, i soli parametri) anche quando la riga finale è
+coerente.
 
 ### Note tecniche
 

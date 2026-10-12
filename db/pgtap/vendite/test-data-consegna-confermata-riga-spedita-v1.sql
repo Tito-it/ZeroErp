@@ -8,7 +8,7 @@
 -- ChangeSet: 20261012-04 … -07
 -- Brief: brief-db-date-consegna-righe-in-blocco (D-7, P-1, §4)
 -- ------------------------------------------------------------
--- Indice test (plan 22):
+-- Indice test (plan 23):
 --   1) gli oggetti esistono, il trigger e' montato, il lettore e' SECURITY DEFINER con search_path
 --   2) il codice nuovo e' a catalogo, CONFLITTO_STATO
 --   3) ⭐ §12.5.2 sulla forma: il guard CHIAMA la check e non contiene il predicato
@@ -22,7 +22,7 @@
 --  10) la frase che l'operatore legge
 --  11) lo stesso valore non e' un cambio (WHEN): passa
 --  12) la riga 2, non spedita, nello stesso ordine PARZIALMENTE_EVASO: la data cambia
---  13) ⭐ la forma dell'utility in blocco: un UPDATE filtrato dalla check tocca la sola riga 2
+--  13) ⭐ la forma dell'utility in blocco (quella del BE, BF-1): salta la sola riga spedita, scrive la riga 2
 --  14) …e la riga 1 tiene la sua data
 --  15) annullato il DDT col verbo (legame ritirato): la riga 1 torna libera
 --  B — gli stati, che parlano prima
@@ -34,6 +34,10 @@
 --  20) la check su un id assente: NULL
 --  21) la check su un id non valido: E_VENDITE_CHIAMATA_NON_VALIDA
 --  22) la check e' la stessa per il guard e per la vista: nessun motivo scritto nel guard
+--  D — la forma dell'utility (2026-10-12, dopo il lato BE: brief §8 BF-1)
+--  23) ⭐ in uno stato che non ammette la data (ANNULLATO) l'utility NON salta le righe in
+--      silenzio: la riga va all'UPDATE e la rifiuta il lock col suo codice. Col filtro del
+--      §5 (`check = '[]'`) qui si leggerebbe «aggiornate 0»: e' la mutazione che morde.
 --
 -- ⚠️ LE FIXTURE SI COSTRUISCONO: cliente e articolo dai builder, ordini che
 --   nascono DRAFT e passano a CONFERMATO con dbops.fn_pgtap_porta_a_stato,
@@ -50,7 +54,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- RLS attiva), non come owner.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(22);
+SELECT plan(23);
 
 -- L'annullo di una bolla emessa e' un'azione (emetti_ddt) del verbo di stato (test 15).
 DO $az$ BEGIN
@@ -207,6 +211,39 @@ CREATE OR REPLACE FUNCTION pg_temp.dc_set_data(p_riga bigint, p_data date) RETUR
            'UPDATE vendite.ordini_righe SET data_consegna_confermata = %L WHERE id = %s', p_data, p_riga)) $$
   LANGUAGE sql;
 
+-- ⭐ L'utility «Aggiorna date di consegna» nella forma del BE
+--   (RigheDocumentoRepositoryMixin.scrivi_data_consegna, brief §8 BF-1): salta
+--   le sole righe col motivo RIGA_SPEDITA; un motivo di STATO non fa saltare
+--   niente, la riga va all'UPDATE e decide il lock. Esito «aggiornate N |
+--   saltate M», o il codice del rifiuto.
+CREATE OR REPLACE FUNCTION pg_temp.dc_utility(p_ordine bigint, p_data date) RETURNS text
+LANGUAGE plpgsql AS $f$
+DECLARE v_agg bigint; v_salt bigint; v_s text; v_c text;
+BEGIN
+    WITH candidate AS (
+        SELECT r.id,
+               COALESCE(script.fn_check_ordine_riga_data_consegna_confermata(r.id)
+                        @> '[{"reason":"RIGA_SPEDITA"}]'::jsonb, false) AS saltata
+          FROM vendite.ordini_righe r
+         WHERE r.ordine_id = p_ordine AND r.attivo IS TRUE
+    ), scritte AS (
+        UPDATE vendite.ordini_righe t
+           SET data_consegna_confermata = p_data
+          FROM candidate c
+         WHERE t.id = c.id
+           AND NOT c.saltata
+        RETURNING t.id
+    )
+    SELECT (SELECT count(*) FROM scritte), (SELECT count(*) FROM candidate WHERE saltata)
+      INTO v_agg, v_salt;
+    RETURN format('aggiornate %s | saltate %s', v_agg, v_salt);
+EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
+    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
+                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
+END
+$f$;
+
 -- ============================================================
 -- A — ordine CONFERMATO, riga 1 (10) e riga 2 (5)
 -- ============================================================
@@ -283,21 +320,11 @@ SELECT is(
   'PARZIALMENTE_EVASO | PASSA',
   '12) la riga 2, non spedita, nello stesso ordine PARZIALMENTE_EVASO: la data cambia');
 
--- ⭐ La forma dell'utility del backend: un UPDATE solo, filtrato dalla check.
+-- ⭐ La forma dell'utility del backend (BF-1): un UPDATE solo, che salta le spedite.
 SELECT is(
-  pg_temp.dc_esito(format($q$
-    DO $u$
-    DECLARE v_n int;
-    BEGIN
-      UPDATE vendite.ordini_righe r
-         SET data_consegna_confermata = DATE '2026-12-01'
-       WHERE r.ordine_id = %s AND r.attivo
-         AND script.fn_check_ordine_riga_data_consegna_confermata(r.id) = '[]'::jsonb;
-      GET DIAGNOSTICS v_n = ROW_COUNT;
-      IF v_n <> 1 THEN RAISE EXCEPTION 'aggiornate %% righe', v_n; END IF;
-    END $u$$q$, pg_temp.dc_fix('a_ord'))),
-  'PASSA',
-  '13) utility in blocco: l''UPDATE filtrato dalla check tocca la sola riga 2, senza rifiuti');
+  pg_temp.dc_utility(pg_temp.dc_fix('a_ord'), DATE '2026-12-01'),
+  'aggiornate 1 | saltate 1',
+  '13) utility in blocco (forma del BE): salta la riga 1 spedita e scrive la riga 2, senza rifiuti');
 
 SELECT results_eq(
   format($q$SELECT r.riga_nr, r.data_consegna_confermata FROM vendite.ordini_righe r
@@ -373,6 +400,19 @@ SELECT ok(
      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_ordini_righe_guard_data_consegna_spedita'),
   '22) il guard non scrive codici letterali: il codice arriva dal primo motivo della check');
+
+-- ============================================================
+-- D — la forma dell'utility in uno stato che non ammette la data
+-- ============================================================
+-- ⭐ BF-1: un ordine annullato, righe mai spedite. Il motivo e' di STATO: l'utility
+--   non salta niente, e il lock rifiuta col suo codice (non «0 aggiornate»).
+SELECT pg_temp.dc_mk_ordine('d', 'ANNULLATO');
+
+SELECT is(
+  (script.fn_check_ordine_riga_data_consegna_confermata(pg_temp.dc_fix('d_r1')) -> 0 ->> 'reason')
+  || ' | ' || pg_temp.dc_utility(pg_temp.dc_fix('d_ord'), DATE '2026-12-04'),
+  'STATO_NON_AMMETTE | E_RIGA_DOC_NON_BOZZA',
+  '23) BF-1: ordine ANNULLATO, il motivo e'' di stato: l''utility non salta, il lock rifiuta col suo codice');
 
 SELECT * FROM finish();
 ROLLBACK;

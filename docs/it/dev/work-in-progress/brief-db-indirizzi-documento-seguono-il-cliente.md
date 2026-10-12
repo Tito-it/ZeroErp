@@ -2,17 +2,18 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-12
 
-**Riparte: Tid (collaudo) e il team DB (§8.4), in parallelo. BE/FE fermo fino alla consegna DB.**
+**Riparte: Tid (collaudo) e BE/FE (§8.4.6, §8.3), in parallelo. Il lato DB e' chiuso: applicato e verde.**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | **Tid** | Collaudo in-app del giro BE/FE (slot di default alla creazione, cambio di cliente in bozza su DDT, preventivo e offerta). Il backend di sviluppo è già ricaricato | §8.5 | niente |
-| 2 | **Team DB** | La fornitura di offerta e contratto (`*_utilities`) non segue il cliente: richiesta e proposta | §8.4 | niente |
-| 3 | **BE/FE** | Cambio di cliente del contratto in bozza, con il BB della coppia BA/istanza e il ritiro della copia del preventivo | §8.3 | il punto 2 |
-| 4 | **Tid** | Archiviazione in `work-done/` | — | i punti 1 e 3 |
+| 2 | **BE/FE** | Ricaduta della scheda di fornitura (R-BE-4 … R-BE-7, R-FE-3, R-FE-4) e cambio di cliente del contratto in bozza, col BB della coppia BA/istanza e il ritiro della copia del preventivo. ⛔ R-BE-4 nello stesso giro dell'apply (CI) | §8.4.6, §8.3 | niente |
+| 3 | **Tid** | Archiviazione in `work-done/` | — | i punti 1 e 2 |
 
-1 e 2 vanno in parallelo. **Decisioni aperte di Tid: nessuna.** ⚠️ Il giro BE/FE del §8
-non è ancora committato (`dev/backend-tid`).
+1 e 2 vanno in parallelo. **Decisioni aperte di Tid: nessuna** (D-5 … D-7 decise il
+2026-10-12, §8.4.3-8.4.4). Il giro BE/FE del §8.2 e' committato e mergiato (`842c9b142`);
+⚠️ il giro DB del §8.4.5 (`20261012-34` … `-42`, CSV, pgTAP, manual) e' applicato e verde ma
+**non ancora committato** (`dev/db-tid`).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-10. **A chi:** team DB; poi BE/FE (§6).
 > **Origine:** §12.3 di [brief-db-esecutivi-ba-coppia](../work-done/brief-db-esecutivi-ba-coppia.md).
@@ -20,8 +21,10 @@ non è ancora committato (`dev/backend-tid`).
 > indirizzi del documento gia' scritti non lo seguono.
 > **Stato:** ✅ **lato DB applicato e verde il 2026-10-11** (§7): `20261011-43` … `-61` e i tre CSV, pgTAP
 > verdi nella corsa di Tid (§7.4). D-4 decisa e fatta nello stesso giro (§7.5). ✅ **BE/FE scritti e verdi**
-> (2026-10-12, §8): R-BE-1 … R-FE-2. ⏳ Restano il collaudo in-app di Tid (§8.5), il cambio di cliente del
-> **contratto** in bozza (deciso da Tid, §8.3) e una **richiesta al team DB** (§8.4).
+> (2026-10-12, §8): R-BE-1 … R-FE-2. ✅ **La scheda di fornitura segue il cliente** (§8.4): lato DB
+> applicato e verde il 2026-10-12 (`20261012-34` … `-42`, pgTAP verdi nella corsa di Tid). ⏳ Restano il
+> collaudo in-app di Tid (§8.5), la ricaduta BE/FE del §8.4.6 e il cambio di cliente del **contratto** in
+> bozza (§8.3).
 > **Nel registro dei difetti DB:** voce **D27** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -314,7 +317,7 @@ degli indirizzi e quindi dal guard d'origine, sono verdi prima e dopo. La confer
 | **R-BE-3** | `get_soggetto_ruolo_documento`, `get_ancora_indirizzi_documento` e `resolve_indirizzo_documento` non avevano altri utilizzatori: ritirati, con gli attributi `_indirizzi_documento_table`, `_indirizzi_doc_sr_column`, `_indirizzi_doc_istanza_column`. Il cliente del documento lo legge il DB (`script.fn_get_cliente_testata_documento`). Lo smoke `smoke-indirizzi-documento-catena.py` interroga la catena con l'SQL |
 | **R-FE-2** | `DocumentoIndirizziSection` osserva l'identita' del cliente che il drawer le passa dal `detail` salvato (`soggettoRuoloId`, `istanzaUtilityId`): se un cliente c'era e cambia, ricarica. Da vuota a valorizzata (apertura, cambio di documento) no: carica gia' il watch su `docId`. Vale per i cinque drawer senza toccarli |
 
-### 8.3 ⏳ Il cambio di cliente del contratto in bozza (B-1), fermo sul §8.4
+### 8.3 ⏳ Il cambio di cliente del contratto in bozza (B-1) — sbloccato (§8.4.5)
 
 * **Regola del 2 — ✅ ok di Tid (2026-10-12).** Il preventivo risolve il
   cliente per coppia BA/istanza in `preventivi_service._risolvi_cliente_preventivo`
@@ -324,10 +327,9 @@ degli indirizzi e quindi dal guard d'origine, sono verdi prima e dopo. La confer
   nello stesso giro. ⚠️ L'estrazione si fa **insieme** al contratto, non prima:
   un BB con il solo preventivo come consumatore sposterebbe il codice senza
   centralizzare niente (AGENTS.md, regola del 2).
-* **⛔ Bloccante: il difetto del §8.4.** Senza, il cambio di cliente sul
-  contratto lascia la fornitura (`contratti_utilities`) sull'istanza di prima.
-  Decisione di Tid (2026-10-12): **nessun brief nuovo**, la richiesta al team
-  DB vive qui, nel §8.4.
+* ✅ **Era bloccante il difetto del §8.4, consegnato il 2026-10-12** (§8.4.5): al
+  cambio di coppia la scheda di fornitura la rifa' il DB. Vedi R-BE-6: la scheda
+  del form non si riapplica sopra.
 * **Emittente — ✅ deciso da Tid (2026-10-12): come il preventivo.**
   `emittente_fiscale_id` resta fuori dall'aggiornamento del contratto (in
   `_FORBIDDEN_TESTATA_UPDATE`), come `utility_id`. Escono dal divieto ed entrano
@@ -342,23 +344,25 @@ preventivo) e FE nello stesso giro.
 
 Lato BE: `billing_account_id` e `istanza_utility_id` escono da
 `_FORBIDDEN_TESTATA_UPDATE` ed entrano in `UPDATE_KEYS_TESTATA`, risolti dal
-BB; `utility_id` resta immutabile come sul preventivo; `emittente_fiscale_id`
-va deciso con Tid (sull'offerta si cambia, sul preventivo no). Lato FE: il BA
+BB; `utility_id` ed `emittente_fiscale_id` restano immutabili come sul
+preventivo (B-4). Lato FE: il BA
 del `ContrattoDrawer` in modifica oggi e' un `InputText` disabilitato, e dopo il
 salvataggio in modifica il drawer **non** ricarica `detail`, che e' la fonte del
 R-FE-2: va ricaricato come fanno DDT, preventivo e offerta.
 
-### 8.4 ⛔ Richiesta al team DB — la fornitura del documento non segue il cliente
+### 8.4 ✅ Richiesta al team DB — la fornitura del documento non segue il cliente
 
-> Per decisione di Tid (2026-10-12) la richiesta sta **in questo brief**: il team
-> DB la prende da qui. Blocca il §8.3.
+> Per decisione di Tid (2026-10-12) la richiesta sta **in questo brief**. ✅ Consegnata
+> e applicata il 2026-10-12 (§8.4.5); ricaduta BE/FE nel §8.4.6.
+
+#### 8.4.1 Il difetto (sessione BE, 2026-10-12)
 
 Trovato scrivendo il §8.3, sul contratto (la struttura):
 `vendite.offerte_commerciali_utilities` e `vendite.contratti_utilities` hanno
 una loro **copia** di `istanza_utility_id` e `utility_id` (NOT NULL), e
-`contratti_utilities` anche `istanza_dati_precontrattuali_id`. Nessun vincolo e
-nessun trigger le lega alla testata: la FK composta `fk_<doc>_ba_coppia` e' sulla
-testata, i satelliti hanno FK semplici, e nessuna funzione le riallinea.
+`istanza_dati_precontrattuali_id`. Nessun vincolo e nessun trigger le lega alla
+testata: la FK composta `fk_<doc>_ba_coppia` e' sulla testata, i satelliti hanno
+FK semplici, e nessuna funzione le riallinea.
 
 * **Offerta, oggi**: il cliente si cambia in bozza
   (`UPDATE_KEYS_OFFERTA` ha BA e istanza) e il BE toglie `istanza_utility_id` /
@@ -369,11 +373,122 @@ testata, i satelliti hanno FK semplici, e nessuna funzione le riallinea.
 
 E' lo stesso difetto di questo brief, sulla fornitura invece che sugli
 indirizzi: un dato del documento preso dal cliente che non lo segue quando il
-cliente cambia. Proposta (la forma la sceglie il team DB): o la copia si toglie
-(la fornitura legge istanza e utility dalla testata), o un vincolo la lega alla
-testata (FK composta verso la testata, `ON UPDATE CASCADE`), o il trigger del
-cambio di cliente la riallinea; e un pgTAP che cambia l'istanza in bozza su
-offerta e contratto. Il §8.3 aspetta questa consegna.
+cliente cambia.
+
+#### 8.4.2 Il perimetro vero: e' la riga intera, non la coppia (team DB, 2026-10-12)
+
+Sul contratto la fornitura la scrive `vendite.trgfn_contratti_snapshot_precontrattuali`
+(`trg_contratti_z90_snapshot_precontrattuali_ins`, **solo** `AFTER INSERT`), e la
+prende **tutta** da `anagrafiche.istanze_dati_precontrattuali` di `(istanza, utility)`:
+`istanza_dati_precontrattuali_id`, `classe_utenza_id`, `tipo_utenza_id` (dalla classe),
+`param_1_num`, `param_2_txt`, `meta`. Quando l'istanza cambia, e' stantia l'intera
+riga, non solo la coppia `istanza_utility_id` / `utility_id`.
+
+Chi la legge rende il difetto un errore di prezzo e d'imposta, non solo di
+anagrafica:
+
+* `vendite.fn_resolve_prezzo_listino_v2_esito` prende da `contratti_utilities` la
+  `classe_utenza_id` della fornitura del contratto (stadio di contratto del pricing);
+* `vendite.fn_get_tipo_utenza_fornitura` (ripiego dello stadio A del risolutore IVA)
+  raggiunge il tipo d'uso solo da `contratti_utilities`.
+
+Sull'**offerta** la riga ha un'altra natura: la scrive il backend dal payload
+(`CREATE_KEYS_UTILITY`: coppia, `istanza_dati_precontrattuali_id`, tipo e classe,
+parametri, `meta`), e l'operatore ne cambia in bozza tutto tranne la coppia
+(`UPDATE_KEYS_UTILITY`). Il push al contratto la copia 1:1 sopra quella appena
+fotografata dal trigger (`INSERT … ON CONFLICT … DO UPDATE`): l'offerta vince.
+
+#### 8.4.3 Le forme scartate, e perche'
+
+| Forma proposta in §8.4.1 | Esito | Perche' |
+| --- | --- | --- |
+| Togliere la copia (la fornitura legge istanza e utility dalla testata) | ⛔ non basta | Riallinea la coppia e lascia classe, tipo, parametri e `istanza_dati_precontrattuali_id` della fornitura di prima |
+| FK composta verso la testata con `ON UPDATE CASCADE` | ⛔ non basta, ed e' peggio | Stesso risultato: la riga **sembra** coerente con la testata e descrive un'altra fornitura, e il pricing e l'IVA la leggono |
+| Il trigger del cambio di cliente la riallinea | ✅ la direzione | Sul contratto: la riga si **rifa'** dai dati precontrattuali del cliente nuovo, con lo stesso building block della nascita (la regola del 2: oggi il corpo vive nel trigger d'`INSERT`). Un vincolo sulla coppia testata/fornitura la rende non divergibile (un guard, D-6). Consegna nel §8.4.5 |
+
+✅ **D-5 di Tid (2026-10-12) — la fornitura dell'offerta al cambio di cliente: strada a.**
+Rifarla dall'anagrafica, come sul contratto, cancella quello che l'operatore ha
+scritto; tenerla com'e' lascia `istanza_dati_precontrattuali_id` e la coppia sul
+cliente di prima, e il push la porta sul contratto. Le strade:
+
+| # | Strada | Che cosa comporta |
+| --- | --- | --- |
+| **a** ✅ | **Si rifa'** dall'anagrafica del cliente nuovo, come sul contratto | Una sola regola per i due documenti; l'operatore riscrive classe e parametri se li aveva cambiati |
+| b | Si riallineano coppia e `istanza_dati_precontrattuali_id`, i dati dell'operatore restano | La riga mescola una fornitura nuova con classe e parametri pensati per la vecchia |
+| c | Il cambio d'istanza e' **rifiutato** su un'offerta che ha gia' la fornitura | Niente da riallineare; per cambiare cliente si toglie prima la fornitura |
+
+Il perche', sul modello: classe, tipo d'uso e parametri descrivono la **fornitura**, non
+una scelta commerciale; se la fornitura cambia, cambiano con lei. E' la stessa regola di
+B-3 sugli indirizzi: le copie dell'anagrafica seguono il cliente, in silenzio. Una
+correzione fatta a mano sulla fornitura di prima valeva per quella, e non si porta su
+un'altra. La b e' scartata: e' la sola strada che lascia una riga incoerente senza che
+nessuno lo veda.
+
+#### 8.4.4 Decisioni di Tid sul disegno (2026-10-12)
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| **D-5-bis** | Un'offerta **senza** scheda di fornitura, quando cambia il contatore, la riceve dall'anagrafica? | ✅ **Si'**: regola unica, la scheda si rifa' dall'anagrafica sia sul contratto sia sull'offerta, c'era o no |
+| **D-6** | Il presidio «la coppia della scheda e' quella della testata»: FK composta o guard? | ✅ **Guard** sulle due `*_utilities` col codice nuovo `E_DOC_FORNITURA_FUORI_TESTATA`; il BE interviene dopo (§8.4.6). ⛔ La FK `ON UPDATE CASCADE` delle linee qui sotto non regge: la cascata aggiorna la coppia della scheda **prima** del trigger che la rifa', e `trgfn_contratti_utilities_guard_tipo_classe` giudica la classe vecchia contro la utility nuova (utility con tipi d'uso ↔ senza: `E_CONTRATTO_UTILITY_*`). Una FK senza cascata scatta prima del trigger (i trigger RI precedono `trg_` in ordine di nome), una differita torna immediata nei pgTAP |
+| **D-7** | Alla **nascita** del contratto ci sono la scheda dall'anagrafica (trigger) e quella dell'operatore (`p_utility` di `fn_create_contratto`): oggi collidono su `uq_contratti_utilities_contratto_id` e il contratto non si crea | ✅ **Vince l'operatore**, come nel push dall'offerta: l'anagrafica fa da base, le chiavi dell'operatore la correggono. ⚠️ **A patto che l'operatore veda i dati dell'anagrafica e li possa modificare**: il DB espone la scheda che scriverebbe (`vendite.fn_get_fornitura_da_anagrafica`) e il drawer la precompila (§8.4.6) |
+
+#### 8.4.5 ✅ Consegna DB (team DB, 2026-10-12) — applicata e verde
+
+**La forma.** Una regola, tre punti d'ingresso:
+
+* **la lettura** `vendite.fn_get_fornitura_da_anagrafica(istanza, utility)`: la scheda
+  che l'anagrafica da' alla coppia (record precontrattuale + tipo d'uso dalla classe).
+  Sede unica: la scrive il building block, e il drawer la mostra (D-7);
+* **il building block** `vendite.fn_doc_fornitura_da_anagrafica(documento, id)`: toglie
+  la scheda e la riscrive da quella lettura. Lo chiamano la nascita del contratto
+  (`trgfn_contratti_snapshot_precontrattuali`, ora un guscio) e il cambio di coppia in
+  bozza (`trg_<t>_m50_fornitura_segue_cliente_upd` su contratto e offerta, `AFTER UPDATE`
+  col `WHEN` su `istanza_utility_id`/`utility_id`: un cambio del solo BA a coppia ferma
+  non la tocca);
+* **il guard** `vendite.trgfn_doc_fornitura_guard_coppia` (`_a10_`, `BEFORE INSERT OR
+  UPDATE OF` coppia e FK) sulle due schede: la coppia e' quella della testata (D-6).
+
+Alla nascita del contratto `fn_create_contratto` applica la scheda dell'operatore con un
+`UPDATE` sopra quella dell'anagrafica (D-7); `UPDATE` e non `ON CONFLICT`, perche' i
+`BEFORE INSERT` giudicherebbero la riga proposta, parziale. Il `LIMIT 1` del vecchio
+trigger e' sparito: un record precontrattuale per coppia
+(`uq_istanze_dati_precontrattuali_id_utility_id`).
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261012-34` | mappa `vendite.fn_doc_fornitura_sede` (testata e scheda di CONTRATTO, OFFERTA) |
+| `20_code/vendite/20261012-35` | lettore `vendite.fn_get_fornitura_da_anagrafica` |
+| `20_code/vendite/20261012-36` | BB `vendite.fn_doc_fornitura_da_anagrafica` |
+| `20_code/vendite/20261012-37` | `trgfn_contratti_snapshot_precontrattuali` chiama il BB (la copia della regola si ritira) |
+| `20_code/vendite/20261012-38` / `-39` | guard `trgfn_doc_fornitura_guard_coppia` e i due montaggi |
+| `20_code/vendite/20261012-40` / `-41` | `trgfn_doc_fornitura_segue_cliente` e i due montaggi `_m50_` |
+| `20_code/vendite/20261012-42` | `fn_create_contratto`: la scheda dell'operatore corregge quella dell'anagrafica |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | `E_DOC_FORNITURA_FUORI_TESTATA` (1291) e `E_DOC_FORNITURA_PARAMETRO_MANCANTE` (1292), entrambi `TECNICO` |
+| `db/pgtap/vendite/test-fornitura-documento-segue-cliente-v1.sql` | nuovo, 17 test |
+| `docs/it/dbzero/vendite/manual/` | `trgfn_contratti_snapshot_precontrattuali.md` (diceva «la scheda non si aggiorna mai») e `fn_create_contratto.md` |
+
+**Prove (2026-10-12).**
+
+| Prova | Esito |
+| --- | --- |
+| Pre-apply su `zeroerp_ci`, da owner, fuso ostile (Kiritimati): SQL **estratto** dagli YAML `-34` … `-42` + le righe dei due codici, poi il pgTAP | 17/17 |
+| Mutazioni | senza `-41`: rossi 9-12, 15-17; senza `-39`: 13, 14; senza `-37` (la regola ricopiata nel trigger): 2; senza `-42`: torna la collisione su `uq_contratti_utilities_contratto_id` |
+| Regressione: 59 pgTAP che toccano schede, contratti, offerte, revisione, push, precontrattuali, RLS dei satelliti, piu' i presidi trasversali (`riferimenti-morti`, `rubinetto-primo-motivo`, `catalogo-messaggi-errore-completo`, `vw-codici-errore-motivo-nominato`, `storico-scope-policy`, `stati-check-scrittori`), prima e dopo | **0 differenze** |
+| Corpo di partenza del `-42` | il `-60` coincide con la doc auto-generata, salvo l'ancoraggio `%TYPE` del `RETURNS TABLE` |
+| Apply (Tid) | `-34` … `-42` EXECUTED su dbdev il 2026-10-12 alle 17:29, codici caricati |
+| Schede gia' fuori coppia su dbdev (Tid, query da owner) | zero righe: niente da bonificare |
+| **Post-apply (Tid, 2026-10-12)** | migrazione applicata, **pgTAP verdi** nella corsa come app: la RLS, che la prova pre-apply da owner non copriva, e' provata qui |
+
+#### 8.4.6 Ricaduta BE/FE
+
+| # | Lato | Che cosa |
+| --- | --- | --- |
+| **R-BE-4** | BE | Codici nuovi `E_DOC_FORNITURA_FUORI_TESTATA` e `E_DOC_FORNITURA_PARAMETRO_MANCANTE` (`TECNICO`, 500, niente `campo`): policy rigenerata e frase di ripiego. ⛔ Nello stesso giro dell'apply, o la CI e' rossa sul lato BE (guardrail delle policy) |
+| **R-BE-5** | BE | Lettura della scheda dall'anagrafica per il drawer: un endpoint che, data la coppia (istanza, utility), chiama `vendite.fn_get_fornitura_da_anagrafica` (zero o una riga). Nessuna copia della derivazione in Python |
+| **R-FE-3** | FE | Condizione di Tid su D-7: in **creazione** di contratto e offerta, scelti BA/istanza, il drawer **precompila** la scheda di fornitura da R-BE-5 e l'operatore la vede e la corregge. Il contratto ora si crea anche su un contatore con dati precontrattuali e la scheda compilata (prima: «Questo contratto ha gia' una riga utility associata») |
+| **R-BE-6** | BE | ⚠️ `offerte_service.aggiorna_offerta` aggiorna la testata e **poi** fa l'upsert della scheda (`_upsert_utility_inline`) nella stessa richiesta. Se la richiesta cambia la coppia, il trigger ha appena rifatto la scheda dal contatore nuovo e l'upsert ci scriverebbe sopra i valori del form, cioe' quelli del contatore di prima: D-5 svanirebbe in silenzio. Con un cambio di coppia la scheda del payload non si applica (o il FE non la manda). Lo stesso vale per il contratto quando il §8.3 apre il cambio di cliente |
+| **R-FE-4** | FE | Dopo il salvataggio di un cambio di cliente in bozza (offerta; contratto col §8.3) la sezione della scheda di fornitura si **ricarica**, come gli indirizzi (R-FE-2) |
+| **R-BE-7** | BE | Il §8.3 non e' piu' bloccato: il cambio di cliente del contratto lascia al DB la scheda di fornitura (la rifa' il trigger) |
 
 ### 8.5 Prove
 

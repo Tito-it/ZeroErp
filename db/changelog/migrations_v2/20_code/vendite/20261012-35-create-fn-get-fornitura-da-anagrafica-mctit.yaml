@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_get_fornitura_da_anagrafica(p_istanza_utility_id, p_utility_id)
+#   La scheda di fornitura che l'anagrafica da' a una coppia (istanza, utility).
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-5, D-7)
+#
+# -- PERCHE' --------------------------------------------------------
+#   La scheda di fornitura di contratto e offerta si prende dai dati
+#   precontrattuali dell'istanza: oggi lo faceva solo il trigger alla nascita
+#   del contratto (vendite.trgfn_contratti_snapshot_precontrattuali), con la
+#   derivazione del tipo d'uso dalla classe scritta dentro di se'. Ora la
+#   stessa scheda serve in tre punti:
+#   * la nascita del contratto e il cambio di cliente in bozza (D-5), con
+#     vendite.fn_doc_fornitura_da_anagrafica;
+#   * il drawer, che la mostra all'operatore PRIMA di creare il documento,
+#     perche' possa vederla e correggerla (D-7, condizione di Tid).
+#   Una lettura sola: quello che il drawer mostra e' quello che il DB scrive.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   Zero o una riga: uq_istanze_dati_precontrattuali_id_utility_id ammette
+#   un solo record per coppia. Il vecchio trigger ordinava per data_update e
+#   prendeva il primo (LIMIT 1): una scommessa che nascondeva il vincolo.
+#   INVOKER, STABLE: legge sotto la RLS di chi chiama (i precontrattuali sono
+#   in RLS dal 20261008-76).
+#   Parametri mancanti: E_DOC_FORNITURA_PARAMETRO_MANCANTE (TECNICO): una
+#   coppia NULL e' un chiamante rotto, non un dato da correggere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-35-create-fn-get-fornitura-da-anagrafica-mctit.yaml
+
+  - changeSet:
+      id: 20261012-35-create-fn-get-fornitura-da-anagrafica
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo lettore vendite.fn_get_fornitura_da_anagrafica: la scheda di fornitura che i dati
+        precontrattuali danno a una coppia (istanza, utility). Brief:
+        brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-7).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_fornitura_da_anagrafica(
+                  p_istanza_utility_id anagrafiche.istanze_dati_precontrattuali.istanza_utility_id%TYPE,
+                  p_utility_id         anagrafiche.istanze_dati_precontrattuali.utility_id%TYPE
+              )
+              RETURNS TABLE (
+                  istanza_dati_precontrattuali_id anagrafiche.istanze_dati_precontrattuali.id%TYPE,
+                  classe_utenza_id                anagrafiche.istanze_dati_precontrattuali.classe_utenza_id%TYPE,
+                  tipo_utenza_id                  config.classi_utenze.tipo_utenza_id%TYPE,
+                  param_1_num                     anagrafiche.istanze_dati_precontrattuali.param_1_num%TYPE,
+                  param_2_txt                     anagrafiche.istanze_dati_precontrattuali.param_2_txt%TYPE,
+                  meta                            anagrafiche.istanze_dati_precontrattuali.meta%TYPE
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La scheda di fornitura che l'anagrafica da' alla coppia:
+                  --   il record precontrattuale, con il tipo d'uso derivato dalla
+                  --   classe. Zero righe = la coppia non ha dati precontrattuali.
+                  -- =========================================================
+                  IF p_istanza_utility_id IS NULL OR p_utility_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_fornitura_da_anagrafica', 'E_DOC_FORNITURA_PARAMETRO_MANCANTE',
+                          jsonb_build_object('istanza_utility_id', p_istanza_utility_id,
+                                             'utility_id',         p_utility_id),
+                          NULL::uuid,
+                          'vendite.fn_get_fornitura_da_anagrafica',
+                          'la coppia istanza/utility');
+                  END IF;
+
+                  -- Un record per coppia (uq_istanze_dati_precontrattuali_id_utility_id):
+                  -- nessun ORDER BY, nessun LIMIT. Senza classe (utility senza
+                  -- dimensione) il tipo d'uso resta NULL: lo giudica il guard
+                  -- della scheda del contratto.
+                  RETURN QUERY
+                  SELECT idp.id,
+                         idp.classe_utenza_id,
+                         cu.tipo_utenza_id,
+                         idp.param_1_num,
+                         idp.param_2_txt,
+                         COALESCE(idp.meta, '{}'::jsonb)
+                    FROM anagrafiche.istanze_dati_precontrattuali idp
+                    LEFT JOIN config.classi_utenze cu ON cu.id = idp.classe_utenza_id
+                   WHERE idp.istanza_utility_id = p_istanza_utility_id
+                     AND idp.utility_id         = p_utility_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_fornitura_da_anagrafica(
+                  anagrafiche.istanze_dati_precontrattuali.istanza_utility_id%TYPE,
+                  anagrafiche.istanze_dati_precontrattuali.utility_id%TYPE)
+              IS 'La scheda di fornitura che i dati precontrattuali danno a una coppia (istanza, utility): il record di anagrafiche.istanze_dati_precontrattuali con il tipo d''uso derivato dalla classe (config.classi_utenze), meta mai NULL. Zero righe = la coppia non ha dati precontrattuali; al piu'' una riga (uq_istanze_dati_precontrattuali_id_utility_id: il vecchio ORDER BY data_update ... LIMIT 1 del trigger di nascita nascondeva il vincolo). La sede unica della scheda «dall''anagrafica»: la scrive vendite.fn_doc_fornitura_da_anagrafica (nascita del contratto, cambio di cliente in bozza di contratto e offerta, D-5), e il drawer la mostra all''operatore prima della creazione perche'' la veda e la corregga (D-7). Coppia NULL: E_DOC_FORNITURA_PARAMETRO_MANCANTE (TECNICO). STABLE, INVOKER: legge sotto la RLS di chi chiama. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4).';

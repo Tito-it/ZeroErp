@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UPDATE: vendite.trgfn_contratti_snapshot_precontrattuali()
+#   La scheda di fornitura alla nascita del contratto la scrive il building
+#   block, non il corpo del trigger.
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-5)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il corpo (20260414-23, uguale alla doc auto-generata) leggeva i
+#   precontrattuali della coppia, derivava il tipo d'uso dalla classe e
+#   scriveva vendite.contratti_utilities. Ora la stessa scheda serve anche al
+#   cambio di cliente in bozza (D-5): la regola si sposta nel building block
+#   vendite.fn_doc_fornitura_da_anagrafica (20261012-36), che legge da
+#   vendite.fn_get_fornitura_da_anagrafica (20261012-35), e il trigger lo
+#   chiama. Regola del 2: la copia nel trigger si ritira nello stesso giro.
+#
+# -- DIFFERENZE COL CORPO DI PRIMA --------------------------------------
+#   * niente ORDER BY data_update ... LIMIT 1: la coppia ha un solo record
+#     precontrattuale (uq_istanze_dati_precontrattuali_id_utility_id);
+#   * niente «se la scheda c'e' gia', esci»: in AFTER INSERT della testata la
+#     scheda non puo' esistere (la sua FK vuole la testata), e il building
+#     block la toglie comunque prima di scriverla.
+#   Il montaggio (trg_contratti_z90_snapshot_precontrattuali_ins, AFTER
+#   INSERT) non cambia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-37-update-trgfn-contratti-snapshot-precontrattuali-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261012-37-update-trgfn-contratti-snapshot-precontrattuali-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_contratti_snapshot_precontrattuali chiama il BB
+        vendite.fn_doc_fornitura_da_anagrafica invece di ricopiarne la regola. Brief:
+        brief-db-indirizzi-documento-seguono-il-cliente (§8.4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_snapshot_precontrattuali()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Alla nascita del contratto, la scheda di fornitura
+                  --   dall'anagrafica della sua coppia (istanza, utility).
+                  --   La regola sta nel building block: e' la stessa del cambio
+                  --   di cliente in bozza.
+                  -- =========================================================
+                  PERFORM vendite.fn_doc_fornitura_da_anagrafica('CONTRATTO', NEW.id);
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_contratti_snapshot_precontrattuali()
+              IS 'AFTER INSERT su vendite.contratti: la scheda di fornitura (vendite.contratti_utilities) dai dati precontrattuali della coppia (istanza, utility) del contratto, con vendite.fn_doc_fornitura_da_anagrafica(''CONTRATTO'', id). Se la coppia non ne ha, il contratto nasce senza scheda. Le chiavi dell''operatore la correggono subito dopo dentro vendite.fn_create_contratto (D-7), e il push dall''offerta la sovrascrive con la scheda dell''offerta. rev 2026-10-12 (brief-db-indirizzi-documento-seguono-il-cliente, D-5): la regola, che prima era scritta qui (con la derivazione del tipo d''uso dalla classe, pricing v5), sta nel building block, che la applica anche al cambio di cliente in bozza.';
