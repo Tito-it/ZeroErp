@@ -131,6 +131,25 @@ con `PREPARE` e piano generico forzato. E in modo «tutte» le scansioni sono le
 
 ---
 
+### Quando la merce di un DDT è «partita»
+
+Una riga di DDT entra nella partita solo se il suo documento ha fatto partire
+la merce: uscito dalla bozza e non abortito. Dal 2026-10-12 (`20261012-32`)
+questa regola non è scritta qui: la funzione la legge dal building block
+[`script.vw_stati_doc_ddt_merce_partita`](/dbzero/script/views/vw_stati_doc_ddt_merce_partita),
+in due punti:
+
+* in `riga`, come filtro: le righe dei DDT in bozza o annullati non sono partite;
+* in `ponte_riga`, per distinguere una ri-consegna **già emessa**
+  (`riconsegnato`) da una **in corso** (`in_riconsegna`).
+
+Prima c'era una CTE `soglia` con l'ordine di `EMESSO`, e la stessa regola era
+ricopiata in `vendite.fn_ordine_riga_spedita` e in
+`dbops.vw_ddt_emessi_senza_scarico` (lì come elenco di codici). Uscita
+identica: provata su dbdev come app, nei tre modi (tutte, per DDT, per ordine).
+
+---
+
 ### Chi la chiama
 
 | Lettore | Come |

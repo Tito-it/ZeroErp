@@ -2,7 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-12
 
-**Riparte: Tid**, collaudo a video del lato BE/FE (§8), poi archiviazione.
+**Riparte: Tid**, collaudo a video del lato BE/FE (§8) e decisione sull'anteprima (§8.2), poi
+archiviazione. Lato DB chiuso: il secondo giro (§4.7) è applicato e verde.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -11,22 +12,24 @@
 | 3 | FE | dialog condiviso, azione nei drawer ordine e preventivo, kebab di riga spento dal motivo di riga, spec | §5, §8 | ✅ 2026-10-12 |
 | 4 | BE/FE | guide `gestione-ordini` §3.5 e `gestione-preventivi`, doc API, cataloghi BB | §5 | ✅ 2026-10-12 |
 | 5 | Tid | revisione: anteprima vera, scritture dallo store, esito intero | §8.1 | ✅ 2026-10-12 |
-| 6 | Tid | collaudo a video, poi archiviazione in `work-done/` | — | — |
+| 6 | DB | pgTAP: il test 13 sulla forma vera del BE (BF-1), e il 23 che la distingue da quella del §5 | §4.7 | ✅ 2026-10-12 |
+| 7 | DB | regola del 2, scelta (a): il BB `script.vw_stati_doc_ddt_merce_partita` e le tre sedi riallineate, pgTAP nuovo | §4.1, §4.7 | ✅ 2026-10-12 |
+| 8 | Tid | apply `20261012-30 … -33`; pgTAP della data di consegna, del BB (dopo la correzione dei test 6/8) e regressione | §4.7 | ✅ 2026-10-12, verdi, nessuna regressione |
+| 9 | BE | rigenerare `error_policies_generated.py` (`./manage-env.sh genera_error_policies`): la nota di `E_DOC_ANNULLO_CON_LEGAMI` del CSV ora è in git (02fae5709) | — | — |
+| 10 | Tid | collaudo a video, poi archiviazione in `work-done/` | — | — |
 
-**Decisioni aperte di Tid:** la regola del 2 lato DB (§4.1, ⚠️: (a) o (b)).
-**Da committare:** sì, tutto il lavoro BE/FE, compresa la revisione (§8.1).
-⚠️ **Prima del commit**: `test_error_policies_divergenza_db` è rosso sul DB di sviluppo per una
-nota di `E_DOC_ANNULLO_CON_LEGAMI` che un'altra sessione DB ha cambiato e non ha ancora pushato
-(brief-db-annullo-a-valle-riapre-a-monte). Non è di questo lavoro: `error_policies_generated.py`
-qui porta la sola voce `E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA`, e si rigenera quando quel CSV è in git.
+**Decisioni aperte di Tid:** l'anteprima lascia una riga nel diario degli errori a ogni rifiuto (§8.2).
+**Da committare:** sì, il secondo giro DB (§4.7: quattro changeSet, due pgTAP, manuali, questo brief).
+Il lavoro BE/FE è già in git (6fdd888cc).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-11, su decisione di Tid. **A chi:** team DB
 > (§4), poi BE/FE (§5).
 > **Stato:** ✅ **lato DB applicato, pgTAP verdi** (Tid, 2026-10-12; §4.6): quattro changeSet
 > `20261012-04 … -07`, il codice nuovo nei due CSV, un pgTAP nuovo e due adeguati.
 > ✅ **Lato BE/FE scritto e rivisto** (2026-10-12, §8 e §8.1): resta il collaudo a video.
-> Decisioni D-1 … D-7 e P-1 prese da Tid il 2026-10-11 (§3, §6). Resta una scelta per Tid sulla
-> regola del 2 (§4.1, ⚠️).
+> ✅ **Secondo giro DB** (2026-10-12, §4.7): regola del 2 chiusa con la scelta (a) di Tid, e il
+> pgTAP allineato alla forma vera del BE. **Applicato, pgTAP verdi, nessuna regressione** (Tid).
+> Decisioni D-1 … D-7 e P-1 prese da Tid il 2026-10-11 (§3, §6).
 > **Storia:** la prima versione (sessione BE, stesso giorno, col nome
 > `brief-db-data-consegna-proposta-in-testata`) proponeva due date sulla testata come **seme**
 > delle righe. Tid l'ha **superata** (D-1): con la data in testata, cambiare la data di un ordine
@@ -98,14 +101,17 @@ Per D-6 e per l'attivazione (D-3) il DB ha già tutto: il lock delle righe
 * ✅ **«Spedito» non si è definito da capo**: è l'espressione di `vendite.fn_partite_merce`
   (stato del DDT con `ordine` ≥ quello di `EMESSO` e non `is_abortito`), letta dal catalogo
   degli stati e non da un elenco di codici.
-* ⚠️ **Regola del 2 — scelta per Tid.** Quell'espressione ora vive in **due** sedi
-  (`fn_partite_merce` e il lettore nuovo). La regola vuole l'estrazione in un BB comune e il
-  ritiro della copia nello stesso giro; non l'ho fatto qui perché `fn_partite_merce` è dentro la
-  catena che il cantiere `brief-db-plancache-funzioni-con-query-incorporate` sta toccando adesso
-  (`fn_ddt_push_diagnosi` → `fn_partite_merce`, changeSet `20261012-*` di un'altra sessione), e
-  la sua forma è sensibile al piano. Due strade: **(a)** estrarre ora un BB (per esempio una
-  vista degli stati DDT «merce partita») e ritirare la copia in `fn_partite_merce` in accordo
-  con quel cantiere; **(b)** lasciarlo a quel cantiere, con una voce nel suo brief.
+* ✅ **Regola del 2 — scelta (a) di Tid, 2026-10-12.** Quell'espressione viveva in più sedi del
+  previsto: il censimento per **significato** ne ha trovate **quattro**, in due forme —
+  `fn_partite_merce` due volte (CTE `riga` e `ponte_riga`), il lettore nuovo, e il presidio
+  `dbops.vw_ddt_emessi_senza_scarico`, che la scriveva come elenco di codici (EMESSO, SPEDITO,
+  CONSEGNATO, RESO: oggi coincide, al primo stato nuovo diverge). Ora sta nel BB
+  `script.vw_stati_doc_ddt_merce_partita` e le quattro sedi la leggono (§4.7). Il motivo del
+  rinvio non c'era più: nel cantiere plancache la D-2 è chiusa (`20261012-03` applicato) e
+  l'unica voce aperta, D-3b, è sul verbo dei resi, non su `fn_partite_merce`.
+  Non sono copie, e restano dove sono: `fn_check_ordine_annullabile` («DDT figlio vivo» = non
+  abortito, bozza compresa), la soglia di fatturazione di `fn_ddt_push_diagnosi` (SPEDITO /
+  CONSEGNATO o lo stato-trigger), gli `IF stato = 'EMESSO'` dei guard di transizione.
 
 ### 4.2 Il guard
 
@@ -203,8 +209,76 @@ viene dalle statistiche del catalogo, che un autoanalyze rinfresca.
 al posto di `regexp_split_to_table`, l'estrazione delle deleghe materializzata). Righe identiche
 sulle tre viste; stima da 92.006 / 92.963 / 192.883 a 11.586 / 12.700 / 32.135, e sotto la soglia
 anche col prefiltro forzato a 594 corpi; ~320 ms senza JIT contro ~560. Il pgTAP del presidio ha la
-premessa corretta e due test nuovi (4, 5) sulle proprietà invisibili della cura. Da applicare. Gli avvisi `fn_log_error_only … fk_error_log_messaggio_errore_id` della prova sono
+premessa corretta e due test nuovi (4, 5) sulle proprietà invisibili della cura. ✅ Applicati (Tid,
+2026-10-12). Gli avvisi `fn_log_error_only … fk_error_log_messaggio_errore_id` della prova sono
 dell'estratto: il log via dblink non vede la riga di catalogo non committata.
+
+### 4.7 ✅ Secondo giro DB (2026-10-12, dopo il lato BE) — applicato, test verdi
+
+> ✅ **Applicato il 2026-10-12** (`20261012-30 … -33`) e **pgTAP verdi** nella corsa di Tid: la
+> data di consegna, il BB (dopo la correzione dei test 6/8, sotto), la regressione. Nessuna
+> regressione.
+
+Due lavori, chiesti da Tid dopo il push del BE: il pgTAP che diceva di provare «la forma
+dell'utility del backend» provava quella del §5, che il BE non usa (BF-1); e la regola del 2 del
+§4.1, scelta (a).
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/script/20261012-30-create-vw-stati-doc-ddt-merce-partita` | il BB: una riga per ogni stato del DDT, `merce_partita` = `ordine` ≥ quello di EMESSO e non `is_abortito`, letto dal catalogo; ⛔ mai NULL (`ordine` NULL o EMESSO assente = false); `security_invoker`, `GRANT SELECT` all'app |
+| `20_code/vendite/20261012-31-update-fn-ordine-riga-spedita-dal-bb-merce-partita` | il lettore legge il BB; firma, DEFINER, `search_path`, grant invariati |
+| `20_code/vendite/20261012-32-update-fn-partite-merce-dal-bb-merce-partita` | via la CTE `soglia`: `riga` filtra `sm.merce_partita`, `ponte_riga` proietta `sm_n.merce_partita AS emesso`. Il resto è il corpo del `20260922-16`, verificato identico al vivo prima di scrivere (zeroerp_ci; dbdev a `search_path` neutro). Commento: la rev nuova, e gli apostrofi raddoppiati due volte nella nota del 22-09 tornano singoli |
+| `20_code/dbops/20261012-33-update-vw-ddt-emessi-senza-scarico-dal-bb-merce-partita` | il presidio legge il BB invece dell'elenco; stesse colonne, `security_invoker` ripetuto |
+| `db/pgtap/script/test-vw-stati-doc-ddt-merce-partita-v1.sql` | nuovo, 8 test: oggetto e grant, una riga per stato, i casi DRAFT/EMESSO/RESO/ANNULLATO, il fail-closed su uno stato fabbricato senza `ordine`, e le tre sedi che leggono il BB senza più la regola |
+| `db/pgtap/vendite/test-data-consegna-confermata-riga-spedita-v1.sql` | da 22 a 23: il 13 esegue la forma del repository BE (CTE `candidate` + `UPDATE`, salta solo `RIGA_SPEDITA`, «aggiornate 1 \| saltate 1»); il **23** nuovo, ordine ANNULLATO senza spedite: l'utility non salta, il lock rifiuta con `E_RIGA_DOC_NON_BOZZA` |
+| `docs/it/dbzero/script/manual/vw_stati_doc_ddt_merce_partita.md` (nuovo), `vendite/manual/fn_partite_merce.md` | il BB e dove lo legge la partita |
+
+**Il significato cambia in un solo punto, e verso il modello.** In `ponte_riga` la regola
+guadagna `NOT is_abortito`: una ri-consegna in un DDT abortito conta «in riconsegna», non
+«riconsegnata». Per il modello il caso non si forma (l'annullo ritira i legami, ed è rifiutato
+finché ci sono); e un `emesso` NULL (stato con `ordine` NULL) non fa più sparire la quantità
+da tutte e due le colonne.
+
+**La prova** (2026-10-12, SQL **estratto** dai quattro YAML, in transazione annullata):
+
+* `zeroerp_ci` come `zeroerp`, fuso ostile: preConditions in ordine (tutte vere), apply, firma e
+  DEFINER del lettore, `security_invoker` delle due viste, ACL dell'app; rollback in ordine
+  inverso fino alla forma di partenza. ⚠️ Lì non ci sono DDT: l'equivalenza su quel database è
+  vuota, e non si conta;
+* **equivalenza su dbdev come app** (contesto operatore; i corpi nuovi montati come funzioni
+  `pg_temp`, il BB in linea): `fn_partite_merce` nei tre modi (tutte, per ognuno dei DDT, per
+  ognuno degli ordini), `fn_ordine_riga_spedita` su tutte le righe d'ordine, il presidio:
+  `EXCEPT ALL` a zero nei due versi. Fatto datato: 37 partite, 6 con ri-consegna, 129 righe
+  d'ordine di cui 21 spedite; il presidio è vuoto da tutte e due le parti, quindi su di lui
+  l'equivalenza non dice niente (lo dice il pgTAP 8, sulla forma);
+* tempi su dbdev come app, stessa sessione: «tutte» ~120-130 ms vecchia e nuova, per DDT
+  ~225 ms tutte e due. ⚠️ È la funzione montata in `pg_temp`, non quella applicata: la misura
+  che conta (20260922-16) è dopo l'apply;
+* pgTAP: il nuovo **8/8**, la data di consegna **23/23** (anche senza l'estratto: i test 13 e 23
+  non dipendono dal BB). Mutazioni che mordono: il filtro del §5 nel 13/23 fa cadere il **23**; il
+  BB senza `COALESCE` e coi consumatori non migrati fa cadere **5, 6, 7, 8**;
+* regressione con e senza l'estratto, **esiti identici**: viste `security_invoker` 7/7, chiusura
+  della partita 14/15, situazione merce chiusura 12/13, resi da accreditare chiusura 11/12 (i tre
+  rossi sono i test di scope, «rossi da owner, verdi come app»), ponte riconsegna 2/2, SRF una
+  riga 4/4, ritardo 11/11; `ERRORE` di fixture identici in `test-vw-partite-merce-v1`,
+  `-riconsegna-dopo-nc-v1`, `test-fn-list-ddt-da-pushare-contatore-v1`,
+  `test-vw-situazione-merce-ordine-v1` (già nel registro dei rossi), `test-fn-genera-ddt-riconsegna-eredita-v1`:
+  su `zeroerp_ci` vuoto i fixture non si costruiscono. Rilanciati da Tid come app dopo l'apply:
+  verdi;
+* presidi trasversali, identici con e senza: riferimenti morti 9/9, piano generico 7/7, costo
+  delle policy 4/4, catalogo presidi 11/11, conta presidio per variante 13/13, debiti dichiarati
+  8/8, check codici sotto JIT 5/5, rubinetto 7/7.
+
+⚠️ **Dopo l'apply, la corsa di Tid (2026-10-12): il pgTAP del BB 7/8, rosso il 6.** Difetto del
+**test**, non del changeSet. `pg_get_function_sqlbody` e `pg_get_viewdef` stampano i nomi senza
+schema quando lo schema è nel `search_path` della sessione, e quello dell'app è `django, public,
+config, dbops, script, anagrafiche`: il corpo applicato usciva `vw_stati_doc_ddt_merce_partita`,
+non `script.vw_…`. La mia prova girava da owner, con un path senza `script`, e non poteva vederlo.
+Peggio del rosso: sotto lo stesso path la negazione su `config.stati_doc_ddt` sarebbe stata verde
+per sottrazione. Corretto: i test 6 e 8 leggono il catalogo con due helper `pg_temp` a
+`search_path = pg_catalog` (nomi sempre qualificati), e l'8 ha anche la negazione su
+`config.stati_doc_ddt`. I tre predicati, rieseguiti come app su dbdev col path del runner: veri.
+✅ Rilanciato da Tid: 8/8.
 
 ## 5. Ricaduta BE/FE (dopo la consegna DB)
 
@@ -228,6 +302,9 @@ dell'estratto: il log via dblink non vede la riga di catalogo non committata.
   `AND script.fn_check_ordine_riga_data_consegna_confermata(id) = '[]'::jsonb` (la forma è
   provata nel test 13 del pgTAP). Le righe già spedite si **saltano**, non fanno fallire il
   gesto.
+  ⛔ **Superato da BF-1** (§8): quel filtro, in uno stato che non ammette la data, saltava ogni
+  riga in silenzio. Il BE salta le sole righe col motivo `RIGA_SPEDITA`; il test 13 prova ora
+  quella forma, e il 23 la distingue da questa (§4.7).
 * **Fuori bozza si scrive solo la colonna confermata**: il lock lascia passare quella sola.
 * **Ritorna** quante righe ha aggiornato e quante ha saltato perché già spedite: il FE lo dice.
 * **«Tutte» sovrascrive** le date scritte: dialog di conferma col numero di righe.
@@ -292,3 +369,16 @@ Tre correzioni dopo la prima scrittura. Le prime due toglievano difetti che non 
 
 Verifica dopo la revisione (2026-10-12): test BE del service, sul DB vero e del service ordini, 83 verdi; spec FE di
 dialog, composable, store e `bloccoMotivo`, 27 verdi.
+
+### 8.2 ⚠️ Decisione aperta di Tid: l'anteprima e il diario degli errori
+
+L'anteprima (R-1) esegue l'`UPDATE` vero in un savepoint e lo annulla. Quando il lock o il guard
+la rifiutano, il rifiuto passa da `script.fn_log_and_raise_error`, che scrive in `dbops.error_log`
+con `script.fn_log_error_only` **via dblink**: quella riga sta in un'altra transazione e
+**sopravvive** all'annullamento. Ogni anteprima rifiutata lascia quindi nel diario un errore
+che nessuno ha davvero tentato di scrivere; la scrittura vera, se l'operatore insiste, ne lascia
+un secondo.
+
+Due strade: **(a)** si accetta, e si dichiara (il diario racconta anche le prove); **(b)** il BE
+passa all'anteprima un segnale che il DB riconosce per non loggare. La (b) tocca il BB del
+diario, che oggi non conosce un «modo prova»: andrebbe disegnata a parte, non qui.

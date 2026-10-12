@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: IN QUESTO STATO DEL DDT LA MERCE E' PARTITA?
+#   script.vw_stati_doc_ddt_merce_partita (id, codice_interno, merce_partita)
+#   Brief: brief-db-date-consegna-righe-in-blocco (§4.1, regola del 2, scelta (a) di Tid)
+#
+# -- IL SIGNIFICATO -------------------------------------------------------
+#   Un DDT ha fatto partire la merce quando e' USCITO DALLA BOZZA e non e'
+#   abortito: stato con `ordine` >= quello di EMESSO e non is_abortito.
+#   Letto dal catalogo degli stati, non da un elenco di codici: uno stato
+#   nuovo fra EMESSO e CONSEGNATO entra da solo, un esito abortito resta fuori.
+#
+# -- PERCHE' UN BB (regola del 2) -----------------------------------------
+#   Fino a qui la stessa regola viveva in QUATTRO sedi, in due forme:
+#     - vendite.fn_partite_merce, due volte (CTE `riga` e `ponte_riga`), con
+#       la soglia di EMESSO;
+#     - vendite.fn_ordine_riga_spedita (20261012-04), la stessa espressione;
+#     - dbops.vw_ddt_emessi_senza_scarico, come ELENCO di codici
+#       (EMESSO, SPEDITO, CONSEGNATO, RESO): oggi coincide, e diverge al primo
+#       stato nuovo.
+#   Le tre sedi si riallineano nello stesso giro: 20261012-31 … -33.
+#
+# -- LA FORMA --------------------------------------------------------------
+#   Una riga per OGNI stato del catalogo, col booleano: chi filtra lo mette
+#   in WHERE, chi distingue (la ri-consegna emessa / in corso) lo proietta.
+#   ⛔ Mai NULL: uno stato con `ordine` NULL, o un catalogo senza EMESSO, dice
+#   «non partita» (COALESCE). Prima, nella CTE `ponte_riga`, un `emesso` NULL
+#   faceva sparire la quantita' sia da `riconsegnato` sia da `in_riconsegna`.
+#   Vista e non funzione: si incorpora nella query di chi la legge (le
+#   funzioni SQL grandi di fn_partite_merce restano un piano solo).
+#   security_invoker: il catalogo degli stati non ha RLS, ma una vista nuova
+#   nasce invoker (presidio delle viste).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261012-30-create-vw-stati-doc-ddt-merce-partita-mctit.yaml
+
+  - changeSet:
+      id: 20261012-30-create-vw-stati-doc-ddt-merce-partita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        BB script.vw_stati_doc_ddt_merce_partita: per ogni stato del DDT, se la merce e' partita
+        (uscito dalla bozza: ordine >= EMESSO, e non abortito). Sede unica della regola che viveva
+        in fn_partite_merce (due volte), fn_ordine_riga_spedita e dbops.vw_ddt_emessi_senza_scarico.
+        Brief: brief-db-date-consegna-righe-in-blocco (§4.1, scelta (a)).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'script' AND c.relname = 'vw_stati_doc_ddt_merce_partita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW script.vw_stati_doc_ddt_merce_partita
+              WITH (security_invoker = true) AS
+              SELECT s.id,
+                     s.codice_interno,
+                     -- ⛔ Mai NULL: ordine NULL o EMESSO assente = non partita.
+                     COALESCE(NOT s.is_abortito AND s.ordine >= e.ordine, false) AS merce_partita
+                FROM config.stati_doc_ddt s
+                -- uq_stati_doc_ddt_codice_interno: al piu' una riga.
+                LEFT JOIN config.stati_doc_ddt e ON e.codice_interno = 'EMESSO';
+
+              COMMENT ON VIEW script.vw_stati_doc_ddt_merce_partita IS
+                  'BB (2026-10-12, brief-db-date-consegna-righe-in-blocco §4.1, regola del 2, scelta (a) di Tid): in questo stato del DDT la merce e'' partita? Una riga per ogni stato di config.stati_doc_ddt; merce_partita = uscito dalla bozza (ordine >= quello di EMESSO) e non abortito (is_abortito false). Letta dal catalogo, non da un elenco di codici: uno stato nuovo fra EMESSO e CONSEGNATO entra da solo. ⛔ Mai NULL: uno stato con ordine NULL, o un catalogo senza EMESSO, risponde false. Sede unica della regola che viveva in quattro posti: vendite.fn_partite_merce (CTE riga e ponte_riga), vendite.fn_ordine_riga_spedita, dbops.vw_ddt_emessi_senza_scarico (che la scriveva come elenco EMESSO, SPEDITO, CONSEGNATO, RESO). Chi filtra mette merce_partita in WHERE, chi distingue la proietta. security_invoker.';
+
+              COMMENT ON COLUMN script.vw_stati_doc_ddt_merce_partita.merce_partita IS
+                  'Vero se un DDT in questo stato ha fatto partire la merce: ordine >= quello di EMESSO e non is_abortito. Mai NULL (false nel dubbio).';
+
+              GRANT SELECT ON script.vw_stati_doc_ddt_merce_partita TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Prima si ritirano i consumatori (20261012-31 … -33, rollback in ordine inverso).
+              DROP VIEW IF EXISTS script.vw_stati_doc_ddt_merce_partita;
