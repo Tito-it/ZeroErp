@@ -16,6 +16,8 @@ Funzioni esposte:
 - approva_attivita_competenza — approvazione massiva per mese (write, A-2)
 - aggiungi_onere_commessa   — porta oneri: riga di puro valore (write)
 - annulla_attivita_manuale  — annullamento di una riga manuale di commessa (write)
+- cambia_stato_commessa     — azione di stato utente; ANNULLATA dal verbo DB (write)
+- get_legami                — legami per la finestra di conferma dell'annullo (read)
 """
 
 from datetime import date, datetime, timezone
@@ -48,6 +50,12 @@ from apps.vendite.db.commesse_repository import (
     TIPO_MOVIMENTO_RETTIFICA,
     TIPO_MOVIMENTO_VALUES,
     CommesseRepository,
+)
+from apps.vendite.services._annullo_con_legami import (
+    DOCUMENTO_COMMESSA,
+    STATO_ANNULLATA,
+    legami_del_documento,
+    legami_confermati as dichiarazione_legami,
 )
 from apps.vendite.services.commesse_push_orchestrator import (
     CommessaPushOrchestrator,
@@ -88,8 +96,6 @@ _STATI_PUSH_FALLIMENTO = frozenset({"PARZIALE", "ERRORE"})
 
 _STATO_PUSH_COMPLETATO = "COMPLETATO"
 
-_STATO_COMMESSA_PRONTA = "PRONTA_FATTURAZIONE"
-
 # Codice del guard DB (497) che blocca l'approvazione di righe emittibili senza
 # tipo_doc_fiscale_id. fn_log_and_raise_error lo include nel messaggio RAISE → lo
 # riconosciamo nella stringa dell'eccezione per classificare i fallimenti del ponte.
@@ -114,8 +120,13 @@ def _attivita_ids_da_report(report: PushReport) -> dict[int, list[int]]:
     return {cid: sorted(set(ids)) for cid, ids in out.items()}
 
 
-# Scopo: Ponte di emittibilita` post-push — righe APPROVATA + testata
-#        PRONTA_FATTURAZIONE per una commessa toccata da un push riuscito.
+# Scopo: Ponte di emittibilita` post-push — righe dell'invio APPROVATA +
+#        testata PRONTA_FATTURAZIONE per una commessa toccata da un push
+#        riuscito. Lo fa il DB, in una madre (`vendite.fn_rendi_commessa_emittibile`,
+#        D-10 / R-9 di brief-db-annullo-a-valle-riapre-a-monte): il verso in
+#        avanti verso la commessa sta nello stesso posto del ritorno. Qui si
+#        passano le sole cose che sa chi orchestra: la commessa e le righe
+#        di QUESTO invio.
 def _rendi_commessa_emittibile(
     repo: CommesseRepository,
     *,
@@ -131,12 +142,11 @@ def _rendi_commessa_emittibile(
     il ramo commessa→fattura e` dormiente (fn_list_commesse_emittibili non
     la vede mai).
 
-    Idempotente sulle righe (fn_approva approva solo le NON_EMESSA in BOZZA)
-    e skip-idempotente sulla testata: una commessa multi-sorgente puo` essere
-    GIA` PRONTA_FATTURAZIONE da un push precedente e fn_cambia_stato_commessa
-    non ammette transizioni `da=a`. Stati anomali (CHIUSA/ANNULLATA) NON sono
-    silenziati di proposito: la transizione viene tentata e il guard DB
-    fallisce forte — non si pusha su una commessa chiusa/annullata.
+    ⭐ Fino al 2026-10-12 erano due passi Python (approvazione + cambio di
+    stato con lo skip «gia` pronta»): ora e` una madre DB, con la stessa
+    semantica. Idempotente sulle righe e sulla testata gia` pronta; CHIUSA o
+    ANNULLATA non sono silenziate di proposito: la matrice rifiuta forte —
+    non si pusha su una commessa chiusa/annullata.
 
     Granularita` singola deliberata: il batch deve poter isolare il fallimento
     di una commessa senza perdere il ponte sulle altre (best-effort), il push
@@ -147,20 +157,12 @@ def _rendi_commessa_emittibile(
     il filtro approverebbe tutte le BOZZA+NON_EMESSA della commessa, spazzando
     ad APPROVATA righe di terzi in attesa (brief-db-immutabilita-quantita-e-
     porta-oneri §4b, trappola T1). Lista vuota = nessuna riga nostra atterrata:
-    si salta l'approvazione (l'array vuoto a DB significherebbe comunque zero)
-    ma la testata va comunque portata PRONTA_FATTURAZIONE, come prima.
-    `None` = nessun filtro (retro-compatibile, usato dai chiamanti diretti).
+    niente approvazione, ma la testata va comunque portata PRONTA_FATTURAZIONE.
+    `None` = nessun filtro.
     """
-    if righe_ids is None or righe_ids:
-        repo.approva_commessa_attivita(
-            commessa_id=commessa_id, righe_ids=righe_ids, user=user,
-        )
-    if repo.get_commessa_stato_codice(commessa_id) != _STATO_COMMESSA_PRONTA:
-        repo.cambia_stato_commessa(
-            commessa_id=commessa_id,
-            nuovo_stato=_STATO_COMMESSA_PRONTA,
-            user=user,
-        )
+    repo.rendi_commessa_emittibile(
+        commessa_id=commessa_id, righe_ids=righe_ids, user=user,
+    )
 
 
 def _build_handlers(repo: CommesseRepository) -> list[BaseSourceHandler]:
@@ -620,7 +622,16 @@ def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict
 #        push/emittibilita', es. →PRONTA_FATTURAZIONE) che il guard DB
 #        accetterebbe (valida la coppia, non il flag `manuale`). L'UPDATE
 #        effettivo + le precondizioni di matrice restano a `fn_cambia_stato_commessa`.
-def cambia_stato_commessa(*, commessa_id: int, nuovo_stato: str, user: str | None = None) -> dict:
+#        ⭐ ANNULLATA passa SEMPRE dal verbo `vendite.fn_annulla_commessa`
+#        (brief-db-annullo-a-valle-riapre-a-monte D-2): con righe NON_EMESSA
+#        il DB rifiuta (E_DOC_ANNULLO_CON_LEGAMI, `confirm_and_retry`) finche'
+#        la richiesta non dichiara `legami_confermati`, il numero letto da
+#        `get_legami`; il verbo ritira i legami (riapre a monte) e cambia lo
+#        stato. Stessa forma di bolla, ordine, preventivo e contratto.
+def cambia_stato_commessa(
+    *, commessa_id: int, nuovo_stato: str, user: str | None = None,
+    legami_confermati: Any = None,
+) -> dict:
     _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.cambia_stato_commessa")
     nuovo_stato = (nuovo_stato or "").strip()
     ErrorManager.require(
@@ -667,9 +678,49 @@ def cambia_stato_commessa(*, commessa_id: int, nuovo_stato: str, user: str | Non
         log_to_db=True,
     )
 
+    if nuovo_stato == STATO_ANNULLATA:
+        confermati = dichiarazione_legami(
+            legami_confermati, validation_code="E_COMMESSA_VALIDATION",
+            function_name="vendite.commesse_service.cambia_stato_commessa",
+        )
+        with translate_db_errors(
+            context={"op": "annulla_commessa", "commessa_id": commessa_id},
+            fallback_code="E_COMMESSA_VALIDATION",
+            fallback_message="Commessa non annullata.",
+        ):
+            repo.annulla(commessa_id, confermati)
+        # Stessa forma della risposta del cambio di stato: chi chiama non sa
+        # (e non deve sapere) che l'annullo e' passato da un verbo.
+        return {
+            "commessa_id": commessa_id,
+            "stato_da": capabilities.get("stato_codice"),
+            "stato_a": STATO_ANNULLATA,
+        }
+
     return repo.cambia_stato_commessa(
         commessa_id=commessa_id, nuovo_stato=nuovo_stato, user=user,
     )
+
+
+# Scopo: I legami della commessa per la finestra di conferma dell'annullo (BB
+#        `legami_del_documento`): le righe NON_EMESSA, ciascuna col documento
+#        (o il consumo, il reso) da cui viene, o l'onere che si annulla. Prima
+#        la testata: il lettore del DB e' SECURITY DEFINER e non applica il
+#        perimetro (fuori perimetro = 404, come ogni dettaglio by-id).
+def get_legami(commessa_id: int) -> dict[str, Any]:
+    function_name = "vendite.commesse_service.get_legami"
+    _guard_commessa_id(commessa_id, function_name=function_name)
+    repo = CommesseRepository()
+    if repo.get_commessa_stato_codice(commessa_id) is None:
+        ErrorManager.raise_error(
+            code="E_COMMESSA_NOT_FOUND",
+            message="Commessa non trovata.",
+            detail=f"Nessuna commessa con id={commessa_id}",
+            context={"commessa_id": commessa_id},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    return legami_del_documento(DOCUMENTO_COMMESSA, commessa_id)
 
 
 # Scopo: Helper — valida una lista opzionale di id dal payload (righe_ids,

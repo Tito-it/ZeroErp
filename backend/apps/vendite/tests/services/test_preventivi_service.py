@@ -20,12 +20,12 @@ Indice test eseguiti:
 7) test_gestisci_riga_articolo_mancante — validazione articolo_id obbligatorio
 8) test_elimina_riga_ok — soft delete riga
 9) test_elimina_riga_not_found — riga inesistente
-10) test_push_a_commessa_ok — push preventivo ACCETTATO con righe eleggibili + transizione EVASO
+10) test_push_a_commessa_ok — push preventivo ACCETTATO con righe eleggibili; lo stato lo proietta il DB (D-10)
 10b) test_push_a_commessa_propaga_fatturazione_immediata — flag testata nel payload
 10c) test_push_a_commessa_parziale_propaga_e_non_evade — all-or-nothing: ServiceError, niente transizione
-10d) test_push_a_commessa_transizione_db_error_logged_no_raise — fallimento transizione e' soft (warning)
-10e) test_push_a_commessa_non_evade_con_residuo_merce — gate EVASO D6: residuo merce → resta ACCETTATO
-10f) test_push_a_commessa_selettivo_non_evade_con_residuo_commessa — push righe_ids parziale: resta ACCETTATO
+10d) (ritirato 2026-10-12: la transizione EVASO non e' piu' del backend)
+10e) (ritirato 2026-10-12: il gate EVASO bi-ramo e' del DB, pgTAP test-annullo-commessa-v1)
+10f) test_push_a_commessa_selettivo_propaga_righe_ids — push righe_ids parziale: il sottoinsieme arriva all'orchestratore
 10g) test_smistamento_ok — aggregato + righe dalle viste smistamento
 10h) test_smistamento_senza_righe_aggregato_none — aggregato None senza fallback
 10i) test_smistamento_not_found — 404 semantico
@@ -786,8 +786,6 @@ class TestPreventiviService(unittest.TestCase):
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
         }
         self.mock_repo.count_righe_pushable.return_value = 2
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
-        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
         # preventivo in una pratica → aggancio commessa attivo.
         self.mock_repo.get_pratica_id_by_preventivo_root.return_value = 290
         MockCommRepo.return_value.get_commessa_id_by_sorgente.return_value = 77
@@ -1622,10 +1620,6 @@ class TestPreventiviService(unittest.TestCase):
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
         }
         self.mock_repo.count_righe_pushable.return_value = 3
-        # Gate EVASO bi-ramo (D6 + §5b): nessun residuo su nessun ramo →
-        # la transizione scatta.
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
-        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
         mock_push_one.return_value = {
             "stato": "COMPLETATO",
             "dry_run": False,
@@ -1653,8 +1647,12 @@ class TestPreventiviService(unittest.TestCase):
         self.assertEqual(len(result["handlers"]), 1)
         # testata mock non ha "fatturazione_immediata" -> default False (no hint UX).
         self.assertFalse(result["fatturazione_immediata"])
-        # Stato="COMPLETATO" -> transizione automatica a EVASO via fn DB.
-        self.mock_repo.cambia_stato.assert_called_once_with(1, "EVASO", "django_api")
+        # ⭐ ACCETTATO → EVASO lo proietta il DB (trigger delle righe di
+        #    commessa, D-10 / R-8 di brief-db-annullo-a-valle-riapre-a-monte):
+        #    il backend non tocca lo stato, ne' legge i residui.
+        self.mock_repo.cambia_stato.assert_not_called()
+        self.mock_repo.preventivo_ha_residuo_ordine.assert_not_called()
+        self.mock_repo.preventivo_ha_residuo_commessa.assert_not_called()
 
     # Scopo: post all-or-nothing, pr_run_commesse_push_one solleva
     # E_COMMESSA_PUSH_PARZIALE_VIETATO su PARZIALE/ERRORE rollando ogni
@@ -1681,35 +1679,6 @@ class TestPreventiviService(unittest.TestCase):
         # All-or-nothing: nessuna transizione stato, nessuna chiamata DB.
         self.mock_repo.cambia_stato.assert_not_called()
 
-    # Scopo: se la fn DB cambia_stato rifiuta la transizione (es. seed
-    # EVASO non ancora atterrato in DB), il push e' gia' avvenuto e
-    # ritorna comunque con stato COMPLETATO. La transizione fallita
-    # viene loggata come warning, non fa fallire la richiesta utente.
-    @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
-    def test_push_a_commessa_transizione_db_error_logged_no_raise(self, mock_push_one):
-        from django.db import DatabaseError
-        from apps.vendite.services.preventivi_service import push_a_commessa
-
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
-        }
-        self.mock_repo.count_righe_pushable.return_value = 1
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
-        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
-        self.mock_repo.cambia_stato.side_effect = DatabaseError(
-            "transizione ACCETTATO->EVASO non ammessa"
-        )
-        mock_push_one.return_value = {
-            "stato": "COMPLETATO", "dry_run": False,
-            "push_log_id": 44, "durata_ms": 10, "handlers": [],
-        }
-
-        # Non deve sollevare: il push e' atterrato, lo stato e' un effetto
-        # collaterale che puo' restare disallineato finche' il deploy DB
-        # non e' completo.
-        result = push_a_commessa(1)
-        self.assertEqual(result["stato"], "COMPLETATO")
-
     # Scopo: payload include flag `fatturazione_immediata=True` se settato in
     # testata: serve al FE per mostrare hint warn "emit AF al prossimo lotto"
     # (placeholder per PR2 servizio emissione immediata).
@@ -1724,8 +1693,6 @@ class TestPreventiviService(unittest.TestCase):
             "fatturazione_immediata": True,
         }
         self.mock_repo.count_righe_pushable.return_value = 1
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
-        self.mock_repo.preventivo_ha_residuo_commessa.return_value = False
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "dry_run": False,
             "push_log_id": 7, "durata_ms": 5, "handlers": [],
@@ -1735,42 +1702,19 @@ class TestPreventiviService(unittest.TestCase):
 
         self.assertTrue(result["fatturazione_immediata"])
 
-    # Scopo: Gate EVASO (D6). Preventivo misto: il push commessa (natura-aware)
-    # invia i soli servizi, ma resta residuo MERCE da portare a ordine →
-    # NON evadere. Il preventivo resta ACCETTATO, push comunque COMPLETATO.
+    # Scopo: push SELETTIVO (righe_ids sottoinsieme, Pannello Smistamento): il
+    # sottoinsieme arriva all'orchestratore. Che il preventivo resti ACCETTATO
+    # finche' resta un residuo (sottoinsieme parziale, o merce da ordinare nel
+    # preventivo misto) lo decide il DB (`fn_preventivo_proietta_stato_smistamento`):
+    # il backend non tocca lo stato.
     @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
-    def test_push_a_commessa_non_evade_con_residuo_merce(self, mock_push_one):
-        from apps.vendite.services.preventivi_service import push_a_commessa
-
-        self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
-        }
-        self.mock_repo.count_righe_pushable.return_value = 2
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = True
-        mock_push_one.return_value = {
-            "stato": "COMPLETATO", "dry_run": False,
-            "push_log_id": 8, "durata_ms": 6, "handlers": [],
-        }
-
-        result = push_a_commessa(1)
-
-        self.assertEqual(result["stato"], "COMPLETATO")
-        # Residuo merce presente → niente transizione a EVASO.
-        self.mock_repo.cambia_stato.assert_not_called()
-
-    # Scopo: Gate EVASO bi-ramo (§5b brief smistamento). Push SELETTIVO
-    # (righe_ids sottoinsieme): COMPLETATO si riferisce al solo sottoinsieme,
-    # restano servizi non pushati → residuo commessa True → NON evadere.
-    @patch("apps.vendite.services.commesse_service.pr_run_commesse_push_one")
-    def test_push_a_commessa_selettivo_non_evade_con_residuo_commessa(self, mock_push_one):
+    def test_push_a_commessa_selettivo_propaga_righe_ids(self, mock_push_one):
         from apps.vendite.services.preventivi_service import push_a_commessa
 
         self.mock_repo.get_preventivo.return_value = {
             "id": 1, "stato_codice_interno": "ACCETTATO", "uid": "abc",
         }
         self.mock_repo.count_righe_pushable.return_value = 3
-        self.mock_repo.preventivo_ha_residuo_ordine.return_value = False
-        self.mock_repo.preventivo_ha_residuo_commessa.return_value = True
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "dry_run": False,
             "push_log_id": 9, "durata_ms": 4, "handlers": [],
@@ -1778,14 +1722,12 @@ class TestPreventiviService(unittest.TestCase):
 
         result = push_a_commessa(1, righe_ids=[10, 11])
 
-        # righe_ids propagato all'orchestrator.
         mock_push_one.assert_called_once_with(
             sorgente_codice="PREVENTIVO",
             sorgente_uid=1,
             righe_ids=[10, 11],
         )
         self.assertEqual(result["stato"], "COMPLETATO")
-        # Residuo commessa presente (sottoinsieme parziale) → resta ACCETTATO.
         self.mock_repo.cambia_stato.assert_not_called()
 
     # ── Smistamento (pannello) ──

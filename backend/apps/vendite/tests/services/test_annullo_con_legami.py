@@ -16,6 +16,8 @@ AnnulloConLegamiBBTests
  3) test_nessun_legame_non_legge_il_lineage     — zero legami: niente lineage
  4) test_dichiarazione_non_numerica             — 400 col campo legami_confermati
  5) test_dichiarazione_assente                  — None al primo tentativo
+ 5-bis) test_commessa_nomi_dal_lineage          — la commessa: origini «indietro» anche
+                                                   contratto e bolla; consumo e onere senza tipo
 
 PreventivoAnnulloTests
  6) test_annullo_passa_dal_verbo                — repo.annulla, forma di fn_cambia_stato_preventivo
@@ -90,6 +92,36 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
         out = bb.legami_del_documento("CONTRATTO", 5)
         self.assertEqual(out["legami"], 0)
         passaggi.assert_not_called()
+
+    # ⭐ La commessa (brief-db-annullo-a-valle-riapre-a-monte D-2): i suoi
+    #    legami vengono da preventivo, ordine, contratto, bolla (lineage
+    #    «indietro» della commessa), dal reso dell'accredito e dai consumi; gli
+    #    oneri non hanno niente a monte. CONSUMI e ONERE restano senza tipo:
+    #    la finestra li nomina senza link.
+    @patch(_PASSAGGI)
+    @patch(_REPO_V)
+    def test_commessa_nomi_dal_lineage(self, repo_cls, passaggi) -> None:
+        repo_cls.return_value.list_documento_legami.return_value = [
+            _legame(riga_id=1, origine="CONTRATTO", origine_id=21, origine_riga_id=None),
+            _legame(riga_id=2, origine="DDT", origine_id=31, origine_riga_id=None),
+            _legame(riga_id=3, origine="CONSUMI", origine_id=41, origine_riga_id=None),
+            _legame(riga_id=4, origine="ONERE", natura="ANNULLO", origine_id=None,
+                    origine_riga_id=None),
+        ]
+        passaggi.return_value = {
+            "indietro": [
+                {"from_tipo_codice_interno": "CONTRATTO", "from_doc_id": 21, "from_codice": "CT-21"},
+                {"from_tipo_codice_interno": "DDT_VENDITA", "from_doc_id": 31, "from_codice": "DDT-31"},
+            ],
+            "avanti": [],
+        }
+        out = bb.legami_del_documento("COMMESSA", 9)
+        passaggi.assert_called_once_with("COMMESSA", 9)
+        self.assertEqual(out["legami"], 4)
+        self.assertEqual(
+            [(r["origine_tipo_codice_interno"], r["origine_codice"]) for r in out["righe"]],
+            [("CONTRATTO", "CT-21"), ("DDT_VENDITA", "DDT-31"), (None, None), (None, None)],
+        )
 
     def test_dichiarazione_non_numerica(self) -> None:
         with self.assertRaises(ServiceError) as cm:

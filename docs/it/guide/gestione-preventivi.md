@@ -1,6 +1,6 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultimo aggiornamento**: 11 ottobre 2026
+> **Ultimo aggiornamento**: 12 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -256,9 +256,9 @@ ACCETTATO  → ANNULLATO  (annulla)
 > chiede una conferma (§3.2).
 
 `EMESSO → SCADUTO` è automatica (job notturno quando supera `validita_al`).
-`ACCETTATO → EVASO` è automatica: la scatena il backend dopo lo smistamento, quando
-non resta residuo su **nessun** ramo (vedi §8); non c'è un pulsante. `EVASO` è
-terminale.
+`ACCETTATO ↔ EVASO` è automatica, nei due versi, e la fa il database: il preventivo
+è `EVASO` quando non resta residuo su **nessun** ramo, e torna `ACCETTATO` appena uno
+dei due ne ha di nuovo (vedi §8); non c'è un pulsante.
 
 Le azioni disponibili in ogni momento sono esposte dal backend tramite
 [`fn_available_actions_preventivo`](/dbzero/script/funzioni/fn_available_actions_preventivo)
@@ -279,6 +279,35 @@ smistare) — vedi §8.
 * **L'ordine annullato.** Se si annulla un ordine nato dallo smistamento, le righe
   del preventivo che occupava si liberano e si possono ordinare di nuovo; un
   preventivo `EVASO` torna `ACCETTATO` (in automatico, non è un pulsante).
+* **La commessa annullata.** Se si annulla la commessa in cui sono finite le righe
+  di servizio (con la conferma, vedi
+  [Gestione Commesse](/guide/gestione-commesse) §«Annullare una commessa»), le righe
+  escono dalla commessa e tornano **da mandare in commessa**; un preventivo `EVASO`
+  torna `ACCETTATO` e di nuovo smistabile.
+
+⚠️ **Il preventivo con un ordine vivo non si annulla**: prima l'ordine
+(`ORDINE_GIA_GENERATO`). Con righe in una commessa viva **non ancora emesse**, invece,
+si annulla con la conferma: è un'eccezione voluta, perché la commessa raccoglie righe
+di più documenti, e il blocco costringerebbe ad annullarla tutta (dettaglio nella
+guida delle commesse).
+
+#### Il preventivo misto
+
+Ogni riga del preventivo va da una parte sola: la merce nell'ordine, i servizi in
+commessa. Il preventivo è `EVASO` quando **nessuna** delle due strade ha un residuo,
+e torna `ACCETTATO` appena **una** delle due ne ha di nuovo.
+
+| Cosa si annulla | Il preventivo |
+| --- | --- |
+| l'ordine | le righe di merce tornano da ordinare, torna `ACCETTATO`; le righe in commessa restano |
+| la commessa | le righe di servizio tornano da mandare, torna `ACCETTATO`; l'ordine resta vivo |
+| tutti e due, uno dopo l'altro | ognuno riapre la sua parte; `ACCETTATO` una volta sola |
+| il preventivo, con un ordine vivo | bloccato: prima l'ordine |
+| il preventivo, senza ordine, con righe in commessa non emesse | con la conferma; le righe escono dalla commessa |
+
+⭐ **Si torna indietro un passo alla volta.** Nella catena preventivo → ordine →
+commessa, annullare la commessa riapre solo l'ordine: il preventivo non si muove,
+perché le sue righe le usa ancora l'ordine.
 
 ### 3.3 Stati terminali e stato "abortito"
 
@@ -628,8 +657,16 @@ Il preventivo transita a **EVASO** **solo** quando non resta residuo da smistare
 ancora in commessa. Poiché il push commessa smista solo i servizi, un preventivo che
 contiene anche righe-merce non ancora ordinate **resta ACCETTATO** finché anche quel
 ramo è completato. In altre parole: *EVASO significa "tutte le righe smistate", non
-"push commessa eseguito"*. La verifica usa
-`fn_preventivo_ha_residuo_ordine` e `fn_preventivo_ha_residuo_commessa`.
+"push commessa eseguito"*.
+
+La regola ha **una sede sola**, nel database:
+[`vendite.fn_preventivo_proietta_stato_smistamento`](/dbzero/vendite/funzioni/fn_preventivo_proietta_stato_smistamento),
+che legge il residuo dei due rami (`fn_preventivo_ha_residuo_ordine`,
+`fn_preventivo_ha_residuo_commessa`). La chiamano la generazione dell'ordine
+(`fn_push_preventivo_a_ordine`) e il trigger delle righe di commessa, che a ogni
+riga del preventivo che nasce, cambia stato di emissione o esce dalla commessa
+riproietta il preventivo: per questo l'annullo di una commessa lo riporta da solo
+ad `ACCETTATO`. Una riga di commessa `ANNULLATA` non conta come «già mandata».
 
 > **Percorso pratica.** Quando lo smistamento avviene nel contesto di una pratica,
 > l'orchestratore `CONFERMA_VENDITA` (handler `vendita.push_preventivo`) esegue

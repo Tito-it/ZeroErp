@@ -54,10 +54,12 @@ export function approvaCompetenza(competenzaMese, { commessaIds = null } = {}) {
 
 // POST azione di stato utente (chiudi/riapri/annulla) — target dalla lista
 // available_actions delle capabilities (transizioni manuali data-driven).
-export function cambiaStatoCommessa(commessaId, nuovoStato) {
+// `dichiarazione`: la conferma dell'annullo con legami (`{ legami_confermati }`,
+// il numero letto da `GET …/legami/`); vuota al primo tentativo.
+export function cambiaStatoCommessa(commessaId, nuovoStato, dichiarazione = {}) {
   return api.post(
     `${BASE}/${commessaId}/stato/`,
-    { nuovo_stato: nuovoStato },
+    { nuovo_stato: nuovoStato, ...dichiarazione },
     { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }

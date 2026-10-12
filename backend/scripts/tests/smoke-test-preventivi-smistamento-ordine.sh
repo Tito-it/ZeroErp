@@ -362,8 +362,9 @@ if [[ "$MISTO_OK" == "1" ]]; then
 
     echo ""; echo "-- 13. EVASO a smistamento completo + re-push bloccato (stato terminale) --"
     # Smistati ENTRAMBI i rami (servizio→commessa step 11, merce→ordine step 12),
-    # il gate EVASO scatta: genera-ordine richiama lo stesso
-    # transiziona_a_evaso_se_smistato. Il preventivo e' gia' EVASO qui.
+    # il gate EVASO scatta. Dal 2026-10-12 lo fa il DB in tutti e due gli invii
+    # (`vendite.fn_preventivo_proietta_stato_smistamento`, D-10 di
+    # brief-db-annullo-a-valle-riapre-a-monte): il preventivo e' gia' EVASO qui.
     do_curl GET "/api/v1/vendite/preventivi/${PREV2_ID}/"
     ST2=$(json_get "$LAST_BODY" "data.stato_codice_interno")
     [[ "$ST2" == "EVASO" ]] && log_ok "stato = EVASO (smistamento completo, gate D6 soddisfatto)" \

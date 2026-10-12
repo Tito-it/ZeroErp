@@ -81,6 +81,7 @@ from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 from apps.vendite.services.fatture_righe_service import FattureRigheService
+from scripts.tests._smoke_commessa import crea_riga_commessa
 
 FAIL: list[str] = []
 SKIP: list[str] = []
@@ -405,30 +406,15 @@ with transaction.atomic():
             " WHERE id = %s", [af_a[0]],
         )
         istanza_ctrl, uom_ctrl = cur.fetchone()
-        cur.execute(
-            """
-            SELECT attivita_id FROM vendite.fn_upsert_commessa_attivita(
-                p_commessa_id => %s, p_segment_key => %s, p_articolo_id => %s,
-                p_istanza_utility_id => %s,
-                p_data_attivita => %s, p_uom_id => %s, p_quantita => 1,
-                p_competenza_mese => %s, p_competenza_dal => %s,
-                p_competenza_al => %s, p_prezzo_snapshot => 10,
-                p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
-                p_tipo_variazione_applicata => NULL,
-                p_valore_variazione_applicata => NULL, p_promo_id => NULL,
-                p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL,
-                p_classe_utenza_id_snapshot => NULL,
-                p_tipo_doc_fiscale_id => %s,
-                p_valuta_id => %s, p_prezzo_bloccato => true,
-                p_meta => '{}'::jsonb)
-            """,
-            [com_ctrl, f"SMOKE:{marker}:CTRL", riga_tpl["articolo_id"],
-             istanza_ctrl, competenza - timedelta(days=1),
-             uom_ctrl, (competenza - timedelta(days=1)).replace(day=1),
-             competenza - timedelta(days=1), competenza - timedelta(days=1),
-             tipo_doc_id, valuta_id],
+        giorno_ctrl = competenza - timedelta(days=1)
+        ca_ctrl = crea_riga_commessa(
+            cur, commessa_id=com_ctrl, segment_key=f"SMOKE:{marker}:CTRL",
+            articolo_id=riga_tpl["articolo_id"], istanza_utility_id=istanza_ctrl,
+            uom_id=uom_ctrl, data_attivita=giorno_ctrl,
+            competenza_mese=giorno_ctrl.replace(day=1),
+            competenza_dal=giorno_ctrl, competenza_al=giorno_ctrl, prezzo=10,
+            tipo_doc_fiscale_id=tipo_doc_id, valuta_id=valuta_id,
         )
-        ca_ctrl = cur.fetchone()[0]
         cur.execute(
             """
             INSERT INTO vendite.attivita_fatturabili (

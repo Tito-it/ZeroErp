@@ -4,7 +4,8 @@
 -->
 <script setup>
 // Scopo: LA CONFERMA DELL'ANNULLO DI UN DOCUMENTO CON LEGAMI — bolla, ordine,
-//        preventivo, contratto (brief-db-annullo-documento-con-legami R-1).
+//        preventivo, contratto (brief-db-annullo-documento-con-legami R-1) e
+//        commessa (brief-db-annullo-a-valle-riapre-a-monte D-2).
 //        Annullare un documento che ha consumato qualcosa di altri documenti
 //        (la merce di un ordine o di un reso, le righe di un preventivo, righe
 //        di commessa da emettere) o che nasce da un'offerta riapre quelle
@@ -29,6 +30,15 @@
 //    tornati, il DB chiede di nuovo e l'elenco si rilegge.
 // ⚠️ Il nome del documento dall'altra parte lo da' il lineage (decisione di
 //    Tid): se non lo vede, la riga mostra il solo tipo, senza link.
+// ⭐ LA COMMESSA e' a valle di tutto cio' che la riempie: un legame per riga
+//    NON_EMESSA, e i legami sono di due nature. CONSUMO si RIAPRE (il
+//    preventivo, l'ordine, il contratto, la bolla o il consumo tornano da
+//    mandare in commessa, il reso da accreditare); ANNULLO SI ANNULLA (gli
+//    oneri: niente a monte). La finestra li dice in due elenchi, come ha
+//    chiesto Tid (§6.1 del brief). Le righe di commessa non hanno un numero
+//    che l'operatore conosca, quindi si contano per documento d'origine
+//    invece di elencarle una a una; il NUMERO DICHIARATO resta quello del
+//    lettore (`legami`), non quello delle voci a video.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
@@ -40,6 +50,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useDocumentoDrawer } from '../../../core/composables/useDocumentoDrawer'
 import { formatNumber } from '../../../core/utils/format'
 import { labelOrCode } from '../../../core/utils/i18nLabel'
+import { DOCUMENTO_LEGAMI, NATURA_LEGAME, ORIGINE_LEGAME } from '../../constants'
 import { lineageDocumentoLabel } from '../lineage/lineageLabels'
 import { getLegami } from './legamiApi'
 
@@ -76,6 +87,36 @@ watch(() => props.domanda, async (domanda) => {
 
 const righe = computed(() => dati.value?.righe ?? [])
 
+// La forma della commessa: la decide il documento della risposta, non la
+// forma delle righe (riga_nr nullo vale anche per i legami di testata).
+const daCommessa = computed(() => dati.value?.documento === DOCUMENTO_LEGAMI.COMMESSA)
+
+// Scopo: le voci della finestra. Documento qualunque: una voce per legame,
+//        com'e' sempre stato. Commessa: le righe che si riaprono contate per
+//        documento d'origine (o per origine, quando non e' un documento del
+//        lineage: i consumi), gli oneri da parte.
+// ⚠️ La chiave e' l'IDENTITA' del documento (tipo + id), non `apribile`: quella
+//    chiede anche il nome, e due documenti che il lineage non nomina
+//    finirebbero in una voce sola, contando come uno.
+const voci = computed(() => {
+  if (!daCommessa.value) return righe.value.map((legame) => ({ legame, n: 1 }))
+  const gruppi = new Map()
+  for (const l of righe.value) {
+    if (l.natura === NATURA_LEGAME.ANNULLO) continue
+    const documento = l.origine_tipo_codice_interno != null && l.origine_id != null
+    const chiave = documento ? `${l.origine}:${l.origine_id}` : String(l.origine)
+    const voce = gruppi.get(chiave)
+    if (voce) voce.n += 1
+    else gruppi.set(chiave, { legame: l, n: 1 })
+  }
+  return [...gruppi.values()]
+})
+
+// Gli oneri della commessa: si annullano con lei, e la finestra li conta.
+const oneriAnnullati = computed(() => (
+  daCommessa.value ? righe.value.filter((l) => l.natura === NATURA_LEGAME.ANNULLO).length : 0
+))
+
 // I legami sono spariti dopo la domanda: si annulla senza dichiarare niente.
 const senzaLegami = computed(() => dati.value != null && !dati.value.legami)
 
@@ -91,9 +132,15 @@ function documentoLabel(l) {
 // Scopo: che cosa si riapre, dopo il nome del documento. Tre forme, dalla
 //        natura e dalla riga: la PROVENIENZA (l'offerta torna trasformabile),
 //        il consumo di una RIGA (quantita' da spedire, righe da ordinare), il
-//        consumo SENZA riga (righe di commessa da emettere).
-function cosaSiRiapre(l) {
-  if (l.natura === 'PROVENIENZA') return t('vendite.annullo_legami.provenienza')
+//        consumo SENZA riga (righe di commessa da emettere). Per la commessa,
+//        quante righe tornano da mandare (o da accreditare, per il reso).
+function cosaSiRiapre(l, n) {
+  if (daCommessa.value) {
+    return l.origine === ORIGINE_LEGAME.RESO
+      ? t('vendite.annullo_legami.commessa_da_accreditare', { n })
+      : t('vendite.annullo_legami.commessa_da_mandare', { n })
+  }
+  if (l.natura === NATURA_LEGAME.PROVENIENZA) return t('vendite.annullo_legami.provenienza')
   if (l.riga_nr == null) return t('vendite.annullo_legami.commessa')
   if (l.qta == null) return t('vendite.annullo_legami.riga_senza_qta', { riga: l.riga_nr })
   return t('vendite.annullo_legami.riga', {
@@ -140,21 +187,30 @@ function onConferma() {
         {{ t('vendite.annullo_legami.nessun_legame') }}
       </Message>
 
-      <div v-if="righe.length" class="form-field">
+      <div v-if="voci.length" class="form-field">
         <label>{{ t('vendite.annullo_legami.righe') }}</label>
         <ul class="app-annullo-legami-lista">
-          <li v-for="(l, i) in righe" :key="`${l.origine}-${l.origine_id}-${l.origine_riga_id}-${i}`">
+          <li v-for="({ legame: l, n }, i) in voci" :key="`${l.origine}-${l.origine_id}-${l.origine_riga_id}-${i}`">
             <Button v-if="apribile(l)" link class="app-annullo-legami-link"
               :label="documentoLabel(l)"
               v-tooltip.top="t('vendite.lineage.apri_documento')"
               @click="apriDocumento(l.origine_tipo_codice_interno, l.origine_id)" />
             <span v-else>{{ documentoLabel(l) }}</span>
-            · {{ cosaSiRiapre(l) }}
+            · {{ cosaSiRiapre(l, n) }}
           </li>
         </ul>
       </div>
 
-      <small v-if="!senzaLegami" class="app-field-hint">{{ t('vendite.annullo_legami.spiegazione') }}</small>
+      <div v-if="oneriAnnullati" class="form-field">
+        <label>{{ t('vendite.annullo_legami.si_annulla') }}</label>
+        <ul class="app-annullo-legami-lista">
+          <li>{{ t('vendite.annullo_legami.oneri_annullati', { n: oneriAnnullati }) }}</li>
+        </ul>
+      </div>
+
+      <small v-if="!senzaLegami" class="app-field-hint">
+        {{ t(daCommessa ? 'vendite.annullo_legami.spiegazione_commessa' : 'vendite.annullo_legami.spiegazione') }}
+      </small>
     </div>
   </AppDialog>
 

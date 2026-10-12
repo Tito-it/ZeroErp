@@ -1864,7 +1864,12 @@ class ApiCommessaStato(DomainAPIView):
         ],
         request=inline_serializer(
             name="VenditeCommessaStatoRequest",
-            fields={"nuovo_stato": serializers.CharField()},
+            fields={
+                "nuovo_stato": serializers.CharField(),
+                # Solo verso ANNULLATA, alla conferma: quanti legami
+                # l'operatore ha visto (`GET .../legami/`).
+                "legami_confermati": serializers.IntegerField(required=False),
+            },
         ),
         responses={
             200: inline_serializer(
@@ -1884,6 +1889,8 @@ class ApiCommessaStato(DomainAPIView):
         },
     )
     # Scopo: Azione di stato utente (chiudi/riapri/annulla) sulla commessa.
+    #        L'annullo con righe NON_EMESSA si conferma: la seconda richiesta
+    #        porta `legami_confermati` (brief-db-annullo-a-valle-riapre-a-monte).
     def post(self, request: Request, commessa_id: int) -> JsonResponse:
         # Scopo: applica la transizione richiesta con difesa applicativa nel service.
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1892,6 +1899,7 @@ class ApiCommessaStato(DomainAPIView):
                 commessa_id=commessa_id,
                 nuovo_stato=str(payload.get("nuovo_stato", "")),
                 user=user,
+                legami_confermati=payload.get("legami_confermati"),
             )
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)

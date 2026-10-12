@@ -3154,12 +3154,20 @@
       "commessa": "a line to be issued is cancelled",
       "provenienza": "can be converted again",
       "spiegazione": "If you confirm, the document is cancelled and these become available again: quantities to ship, lines to order, job lines, the offer to convert.",
+      "commessa_da_mandare": "can be sent to a job again · lines: {n}",
+      "commessa_da_accreditare": "is to be credited again · lines: {n}",
+      "si_annulla": "What is cancelled",
+      "oneri_annullati": "charges cancelled with the job: {n}",
+      "spiegazione_commessa": "If you confirm, the job is cancelled: the lines not yet issued leave the job, the documents they come from can be sent to a job again, the return is to be credited again, the charges are cancelled.",
       "nessun_legame": "The links with other documents are no longer there: if you confirm, the document is cancelled without withdrawing anything.",
       "origine_ordine": "Order",
       "origine_reso": "Return",
       "origine_preventivo": "Quote",
       "origine_offerta": "Offer",
-      "origine_commessa": "Job"
+      "origine_commessa": "Job",
+      "origine_contratto": "Contract",
+      "origine_ddt": "Delivery note",
+      "origine_consumi": "Consumption"
     },
     "listini": {
       "search_placeholder": "Search by price list code or description...",

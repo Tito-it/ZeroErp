@@ -318,9 +318,10 @@ Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
   `script.fn_available_actions_preventivo` (gate su **residuo merce**) resta
   esposta dal BE ma è filtrata dalla barra azioni del drawer.
 - **Gate EVASO bi-ramo** (§5b brief smistamento): dopo il push, se non resta
-  residuo su **nessun** ramo (`fn_preventivo_ha_residuo_ordine` +
-  `fn_preventivo_ha_residuo_commessa`), il service transita ACCETTATO→EVASO
-  (warning-tolerant al deploy parziale, come il gemello su push-commessa §13).
+  residuo su **nessun** ramo, il preventivo passa ACCETTATO→EVASO **dentro**
+  `vendite.fn_push_preventivo_a_ordine`, dal BB DB
+  `vendite.fn_preventivo_proietta_stato_smistamento` (lo stesso del ramo commessa,
+  §13).
 - **Percorso pratica (bivio-per-esito rev.3)**: lo smistamento merce si esegue da
   qui (Pannello Smistamento); quando il preventivo è in una pratica, **l'aggancio
   dell'ordine** come `pratiche_sorgenti` `COLLEGATO` avviene alla chiusura di
@@ -548,12 +549,16 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   handler → CommesseRepository.fetch_pushable_rows` (5° parametro, supportato
   dalla sola sorgente `PREVENTIVO` — whitelist `_SORGENTE_SUPPORTA_RIGHE_IDS`).
 - Regole: ammesso solo in stato ACCETTATO, verifica righe eleggibili via `fn_list_preventivi_da_pushare`
-- **Gate EVASO bi-ramo** (D6 + brief smistamento §5b): a push `COMPLETATO`
-  transita ACCETTATO→EVASO **solo** se non resta residuo su **nessun** ramo
-  (`fn_preventivo_ha_residuo_ordine` **e** `fn_preventivo_ha_residuo_commessa`
-  entrambe false). Il check commessa non è ridondante: con `righe_ids`
-  COMPLETATO si riferisce al solo sottoinsieme. Lo **stesso gate** vive anche
-  sul ramo ordine (`ordini_service.crea_ordine_da_preventivo`).
+- **Gate EVASO bi-ramo** (D6 + brief smistamento §5b): il preventivo passa
+  ACCETTATO→EVASO **solo** se non resta residuo su **nessun** ramo (merce da
+  ordinare, servizi da mandare in commessa). ⭐ Dal 2026-10-12 lo fa il **DB**
+  (D-10 / R-8 di brief-db-annullo-a-valle-riapre-a-monte): il trigger delle righe
+  di commessa riproietta il preventivo col BB
+  `vendite.fn_preventivo_proietta_stato_smistamento`, nella stessa transazione
+  dell'invio — lo stesso BB che lo riporta ad ACCETTATO quando la commessa si
+  annulla, e che usa il ramo ordine (`vendite.fn_push_preventivo_a_ordine`). Il
+  backend non tocca lo stato: `transiziona_a_evaso_se_smistato` (e il modulo
+  `_smistamento_gate_helpers.py`) è ritirato.
 - **Aggancio pratica (ramo servizi dello split, bivio rev.3)**: se il preventivo
   appartiene a una pratica, a push `COMPLETATO` la commessa-servizi viene legata
   alla pratica come `pratiche_sorgenti` **COLLEGATO** (idempotente). È il punto
@@ -561,13 +566,11 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   la commessa-servizi non passa da lì. No-op per i push standalone (preventivo non
   in pratica).
 - **Semantica transazionale (fix analisi-fix-transazioni #5, 2026-07-08)**: push +
-  transizione EVASO + aggancio commessa-servizi alla pratica avvengono in un **unico**
+  aggancio commessa-servizi alla pratica avvengono in un **unico**
   `transaction.atomic()`. Un fallimento dell'**aggancio-pratica** rolla l'**intero
-  push** (commesse + ponte emittibilità): non resta mai una commessa-servizi orfana
-  senza link pratica (prima l'aggancio era una scrittura separata post-push). Il push
-  è idempotente/ri-eseguibile (advisory lock + dedup `segment_key`) → retry sicuro. La
-  sola **transizione EVASO** resta best-effort, isolata su un **savepoint dedicato** (un
-  suo fallimento logga e prosegue, senza rollbackare push+aggancio).
+  push** (commesse + ponte emittibilità, e con loro lo stato proiettato dal DB): non
+  resta mai una commessa-servizi orfana senza link pratica. Il push è
+  idempotente/ri-eseguibile (advisory lock + dedup `segment_key`) → retry sicuro.
 - Output `200`: report orchestrator `{ stato, push_log_id, durata_ms, handlers,
   commesse_ids, righe_pushable, fatturazione_immediata }`
 - Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400)

@@ -4,7 +4,8 @@
 # Doc: Python
 # Scopo: L'annullo di un documento con legami, lato backend: la lettura dei
 #        legami per la finestra di conferma e la dichiarazione che la conferma
-#        porta al verbo. Per bolla, ordine, preventivo e contratto.
+#        porta al verbo. Per bolla, ordine, preventivo, contratto e
+#        commessa.
 # ------------------------------------------------------------
 
 # PERCHE' ESISTE (brief-db-annullo-documento-con-legami, D-4 di Tid, 2026-10-11).
@@ -20,6 +21,11 @@
 # ⭐ Regola del 2: era nato per la sola bolla (`ddt_service.get_legami`, D-8 di
 #    brief-db-ddt-righe-evase-dall-ordine); alla seconda finestra la prima e'
 #    diventata questo modulo, e la copia della bolla si e' ritirata.
+# ⭐ La commessa e' entrata nella forma con brief-db-annullo-a-valle-riapre-a-
+#    monte (D-2 di Tid, 2026-10-12): e' a valle di tutto cio' che la riempie,
+#    e annullarla riapre a monte (il documento o il consumo tornano da mandare,
+#    il reso da accreditare) o annulla (gli oneri). Stesso lettore, stesso
+#    avviso, stessa finestra: un meccanismo solo.
 # ⛔ La regola non sta qui: che cosa e' un legame, quanti sono, se la conferma
 #    corrisponde lo dice il DB (`vendite.fn_documento_legami`, lo stesso lettore
 #    di avviso e verbo). Qui si legge e si trasporta.
@@ -43,12 +49,15 @@ DOCUMENTO_DDT = "DDT"
 DOCUMENTO_ORDINE = "ORDINE"
 DOCUMENTO_PREVENTIVO = "PREVENTIVO"
 DOCUMENTO_CONTRATTO = "CONTRATTO"
+DOCUMENTO_COMMESSA = "COMMESSA"
 
-# Lo stato di destinazione dei quattro verbi di annullo. ⚠️ L'avviso del DB
-# scatta entrando in uno stato ABORTITO del vocabolario (`is_abortito`), e oggi
-# in tutti e quattro i documenti l'unico e' ANNULLATO, che e' anche dove portano
-# i verbi. Uno stato abortito nuovo vorrebbe il suo verbo, a DB.
+# Lo stato di destinazione dei verbi di annullo. ⚠️ L'avviso del DB scatta
+# entrando in uno stato ABORTITO del vocabolario (`is_abortito`): in bolla,
+# ordine, preventivo e contratto l'unico e' ANNULLATO, nella commessa e'
+# ANNULLATA (femminile, `vendite.stati_commessa`). Sono anche dove portano i
+# verbi. Uno stato abortito nuovo vorrebbe il suo verbo, a DB.
 STATO_ANNULLATO = "ANNULLATO"
+STATO_ANNULLATA = "ANNULLATA"
 
 # Il tipo del lineage (`config.sorgenti.codice_interno`) del documento che si
 # annulla: e' la chiave per leggere il nome dei documenti collegati.
@@ -57,16 +66,23 @@ _TIPO_LINEAGE_DEL_DOCUMENTO: dict[str, str] = {
     DOCUMENTO_ORDINE: SORGENTE_ORDINE_VENDITA,
     DOCUMENTO_PREVENTIVO: SORGENTE_PREVENTIVO,
     DOCUMENTO_CONTRATTO: SORGENTE_CONTRATTO,
+    DOCUMENTO_COMMESSA: SORGENTE_COMMESSA,
 }
 # Il tipo del lineage dell'ORIGINE di un legame (`origine` del lettore). Serve
 # al gesto «vai al documento»: il lettore porta l'id della testata dall'altra
 # parte ma, per decisione di Tid, non il nome, che lo da' il lineage.
+# CONTRATTO e DDT sono origini dei soli legami della commessa (i documenti che
+# le hanno spinto righe). ⚠️ CONSUMI e ONERE non ci sono, di proposito: il
+# consumo non e' un nodo del lineage e l'onere non ha niente a monte. Senza
+# tipo la finestra mostra la sola origine, senza link.
 _TIPO_LINEAGE_DELL_ORIGINE: dict[str, str] = {
     "ORDINE": SORGENTE_ORDINE_VENDITA,
     "RESO": SORGENTE_RESO_VENDITA,
     "PREVENTIVO": SORGENTE_PREVENTIVO,
     "OFFERTA": SORGENTE_OFFERTA_COMMERCIALE,
     "COMMESSA": SORGENTE_COMMESSA,
+    "CONTRATTO": SORGENTE_CONTRATTO,
+    "DDT": SORGENTE_DDT_VENDITA,
 }
 
 _CAMPO_DICHIARAZIONE = "legami_confermati"
@@ -113,7 +129,8 @@ def legami_del_documento(documento: str, documento_id: int) -> dict[str, Any]:
 
 # Scopo: (tipo, id) -> codice dei documenti collegati, dai passaggi del lineage
 #        nelle due direzioni: le origini stanno «indietro» (ordine, reso,
-#        preventivo, offerta), la commessa «avanti».
+#        preventivo, offerta; per la commessa anche contratto e bolla), la
+#        commessa «avanti».
 def _nomi_dal_lineage(documento: str, documento_id: int) -> dict[tuple[str | None, Any], Any]:
     from apps.vendite.services import vendite_service
 

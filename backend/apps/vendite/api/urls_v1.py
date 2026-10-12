@@ -53,6 +53,7 @@ from apps.vendite.api.views import (
     ApiRunLottoPipeline,
     ApiRunLottoPipelineUntilDone,
 )
+from apps.vendite.api.legami_views import ApiCommessaLegami
 from apps.vendite.api.lineage_views import ApiCommessaPassaggi
 from apps.vendite.api.views_approvazioni_prezzo import (
     ApprovaPrezzoContrattoView,
@@ -458,6 +459,14 @@ urlpatterns = [
         "commesse/<int:commessa_id>/passaggi/",
         ApiCommessaPassaggi.as_view(),
         name="vendite-commessa-passaggi",
+    ),
+    # Legami della commessa per la finestra di conferma dell'annullo
+    # (brief-db-annullo-a-valle-riapre-a-monte D-2): che cosa si riapre a
+    # monte e che cosa si annulla.
+    path(
+        "commesse/<int:commessa_id>/legami/",
+        ApiCommessaLegami.as_view(),
+        name="vendite-commessa-legami",
     ),
     path(
         "commesse/<int:commessa_id>/attivita/<int:att_id>/riallinea-prezzo/",

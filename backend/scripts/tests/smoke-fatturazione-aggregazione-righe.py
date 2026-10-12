@@ -53,6 +53,7 @@ from apps.core.db._helpers import coerce_jsonb_dict
 
 from apps.vendite.services import _kit_meta as kit_meta
 from apps.vendite.services.fatture_righe_service import FattureRigheService
+from scripts.tests._smoke_commessa import crea_riga_commessa
 
 # Attivita' gia' fatturata usata come TEMPLATE: da lei si ereditano
 # billing account, istanza utility, uom, valuta e tipo documento, cosi' il
@@ -87,29 +88,15 @@ def check(label, cond, detail=""):
 #        upsert e non da un INSERT diretto, cosi' i guard di dominio (coerenza
 #        BA, articolo attivo, unicita' del segment_key) restano esercitati.
 def crea_commessa_attivita(cur, t, *, segment_key, articolo_id, quantita, prezzo, meta):
-    cur.execute(
-        """
-        SELECT attivita_id FROM vendite.fn_upsert_commessa_attivita(
-            p_commessa_id => %s, p_segment_key => %s, p_articolo_id => %s,
-            p_istanza_utility_id => %s, p_data_attivita => %s, p_uom_id => %s,
-            p_quantita => %s, p_competenza_mese => %s, p_competenza_dal => %s,
-            p_competenza_al => %s, p_prezzo_snapshot => %s,
-            p_prezzo_base_snapshot => NULL, p_origine_prezzo => NULL,
-            p_tipo_variazione_applicata => NULL,
-            p_valore_variazione_applicata => NULL, p_promo_id => NULL,
-            p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL,
-            p_classe_utenza_id_snapshot => NULL,
-            p_tipo_doc_fiscale_id => %s, p_valuta_id => %s,
-            p_prezzo_bloccato => true, p_meta => %s::jsonb
-        )
-        """,
-        [
-            t["commessa_id"], segment_key, articolo_id, t["istanza_utility_id"],
-            t["data"], t["uom_id"], quantita, t["competenza_mese"], t["data"],
-            t["data"], prezzo, t["tipo_doc_fiscale_id"], t["valuta_id"], meta,
-        ],
+    return crea_riga_commessa(
+        cur, commessa_id=t["commessa_id"], segment_key=segment_key,
+        articolo_id=articolo_id, istanza_utility_id=t["istanza_utility_id"],
+        uom_id=t["uom_id"], data_attivita=t["data"],
+        competenza_mese=t["competenza_mese"], competenza_dal=t["data"],
+        competenza_al=t["data"], quantita=quantita, prezzo=prezzo,
+        tipo_doc_fiscale_id=t["tipo_doc_fiscale_id"], valuta_id=t["valuta_id"],
+        meta=meta,
     )
-    return cur.fetchone()[0]
 
 
 # Scopo: Crea l'attivita' fatturabile agganciata alla riga di commessa, gia'

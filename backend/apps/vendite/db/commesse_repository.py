@@ -810,6 +810,55 @@ class CommesseRepository(EventLogRepositoryMixin):
         assert row is not None
         return {"commessa_id": int(row[0]), "stato_da": row[1], "stato_a": row[2]}
 
+    # Scopo: Annulla la commessa via il verbo DB `vendite.fn_annulla_commessa`
+    #        (brief-db-annullo-a-valle-riapre-a-monte D-1/D-2): prima cio' che
+    #        vieta (righe EMESSA: E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE), poi la
+    #        conferma — con righe NON_EMESSA `legami_confermati` dichiara quanti
+    #        legami l'operatore ha visto; se non corrisponde,
+    #        E_DOC_ANNULLO_CON_LEGAMI — poi il ritiro (il documento o il consumo
+    #        tornano da mandare, il reso da accreditare, gli oneri si annullano)
+    #        e lo stato ANNULLATA. Una transazione, a DB.
+    # Ritorna: i legami confermati (0 se non ce n'erano).
+    def annulla(self, commessa_id: int, legami_confermati: int | None) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_annulla_commessa(%s, %s)",
+                [int(commessa_id), legami_confermati],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
+    # Scopo: Dopo un invio in commessa, approva le righe dell'invio e porta la
+    #        commessa a PRONTA_FATTURAZIONE: madre DB
+    #        `vendite.fn_rendi_commessa_emittibile` (D-10, R-9 di
+    #        brief-db-annullo-a-valle-riapre-a-monte). `righe_ids`: None =
+    #        nessun filtro; [] = nessuna riga di questo invio, niente
+    #        approvazione ma la testata va comunque pronta; pieno = le sole
+    #        righe dell'invio. Gia' pronta: la madre non ritenta; CHIUSA o
+    #        ANNULLATA: la matrice rifiuta forte.
+    # Ritorna: le righe approvate.
+    def rendi_commessa_emittibile(
+        self,
+        *,
+        commessa_id: int,
+        righe_ids: list[int] | None = None,
+        user: str | None = None,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT vendite.fn_rendi_commessa_emittibile(
+                    p_commessa_id => %s,
+                    p_righe_ids => %s::bigint[],
+                    p_user => %s
+                )
+                """,
+                [commessa_id, righe_ids, user],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0] or 0)
+
     def get_commessa_id_by_sorgente(
         self, *, sorgente_codice: str, sorgente_uid: str,
         ruolo_link: str | None = None,

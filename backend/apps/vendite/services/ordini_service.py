@@ -22,7 +22,7 @@ from datetime import date
 from collections.abc import Callable
 from typing import Any
 
-from django.db import DatabaseError, transaction
+from django.db import transaction
 
 from apps.config.sorgenti import SORGENTE_ORDINE_VENDITA, SORGENTE_PREVENTIVO
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
@@ -564,7 +564,9 @@ def crea_ordine_da_preventivo(
     # chiamata separata best-effort (swallow_db_error): su errore l'ordine restava
     # creato ma il preventivo ACCETTATO (stato parziale, merce gia' su ordine). Ora
     # e' tutto-o-niente: niente piu' transiziona_a_evaso_se_smistato qui (il gate
-    # bi-ramo vive dentro la fn). L'helper resta usato dal push a commessa (#5).
+    # bi-ramo vive dentro la fn). Dal 2026-10-12 la regola ha una sede sola, il
+    # BB DB `vendite.fn_preventivo_proietta_stato_smistamento`, letto anche
+    # dall'invio in commessa: l'helper Python e' ritirato.
     # Il verbo e il default nella stessa transazione: la cascata DB copia gli
     # indirizzi del preventivo, e il default riempie lo slot SOLO se e'
     # rimasto vuoto (la sorgente vince). `_db_errors` fuori dall'atomic, come
@@ -1221,51 +1223,28 @@ def push_a_commessa(ordine_id: int, *, user: str | None = None) -> dict[str, Any
     # Import locale per evitare cicli.
     from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 
-    # Fix analisi-fix-transazioni #4 (Classe B): push + transizione EVASO +
-    # chiusura step pratica in UN solo transaction.atomic(). Prima erano scritture
-    # autocommit separate: se `_completa_flusso_ordine_pratica` falliva DOPO il
-    # push, le commesse (+ ponte emittibilita') restavano committate ma la pratica
-    # non riconciliata (orfano). Ora un fallimento della chiusura-step rolla TUTTO
-    # il push, che e' idempotente/ri-eseguibile (advisory lock + dedup segment_key
-    # → retry sicuro). L'atomic interno di `pr_run_commesse_push_one` diventa un
+    # Fix analisi-fix-transazioni #4 (Classe B): push + chiusura step pratica in
+    # UN solo transaction.atomic(). Prima erano scritture autocommit separate: se
+    # `_completa_flusso_ordine_pratica` falliva DOPO il push, le commesse (+ ponte
+    # emittibilita') restavano committate ma la pratica non riconciliata
+    # (orfano). Ora un fallimento della chiusura-step rolla TUTTO il push, che e'
+    # idempotente/ri-eseguibile (advisory lock + dedup segment_key → retry
+    # sicuro). L'atomic interno di `pr_run_commesse_push_one` diventa un
     # savepoint annidato.
+    # ⛔ L'invio in commessa NON cambia lo stato dell'ordine (D-6 di
+    #    brief-db-annullo-a-valle-riapre-a-monte, 2026-10-12): «Evaso» vuol dire
+    #    «la merce e' partita», e lo dicono solo le bolle
+    #    (`vendite.fn_ordine_proietta_stato_evasione`). Fino a quel giorno qui
+    #    l'ordine passava a EVASO «best-effort», e un PARZIALMENTE_EVASO mandato
+    #    in commessa diventava EVASO con meta' merce in magazzino. Che l'ordine
+    #    sia gia' in commessa lo dicono la lista «da mandare» e le capability.
     with transaction.atomic():
         report = pr_run_commesse_push_one(
             sorgente_codice=SORGENTE_ORDINE_VENDITA,
             sorgente_uid=ordine_id,
         )
 
-        # Transizione automatica → EVASO se il push è COMPLETATO (specchio di
-        # preventivi_service.push_a_commessa). L'anti-doppione NON è più il
-        # guard di stato (fix orfano: EVASO resta pushabile) ma è data-driven:
-        # `fn_list_ordini_da_pushare` esclude le righe con attività già EMESSA
-        # (capability reason ORDINE_GIA_FATTURATO) e il dedup per segment_key
-        # dell'orchestratore rende comunque idempotente un re-push. Se l'ordine
-        # è già EVASO la transizione fallisce nel savepoint best-effort (no-op).
-        # Se PARZIALE/ERRORE/SKIPPED lo stato resta invariato: serve un ri-push.
         if report["stato"] == "COMPLETATO":
-            # Transizione EVASO best-effort su SAVEPOINT dedicato: swalloware un
-            # DatabaseError direttamente nell'atomic esterno lo corromperebbe
-            # (needs_rollback → ogni query successiva TransactionManagementError).
-            # Isolandola, un suo fallimento (o seed EVASO non ancora atterrato,
-            # robustezza al deploy parziale) rolla solo se stessa: push+chiusura
-            # proseguono e lo stato si allineerà al run successivo.
-            try:
-                with transaction.atomic():
-                    stato_evaso_id = repo.get_stato_id_by_codice("EVASO")
-                    if stato_evaso_id is not None:
-                        repo.update_stato(ordine_id, int(stato_evaso_id))
-                    else:
-                        logging.getLogger(__name__).warning(
-                            "ordini.push.transizione_evaso_skipped ordine_id=%s "
-                            "reason=stato_evaso_assente", ordine_id,
-                        )
-            except DatabaseError as exc:
-                logging.getLogger(__name__).warning(
-                    "ordini.push.transizione_evaso_skipped ordine_id=%s reason=%s",
-                    ordine_id, str(exc),
-                )
-
             # Percorso pratica: il push a commessa E' il successo dello step
             # INVIO_COMMESSA → lo completa POSITIVO. E' lo step TERMINALE del ramo
             # merce: completandolo (nessun altro flusso aperto, obbligatori fatti)

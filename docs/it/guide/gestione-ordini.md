@@ -1,6 +1,6 @@
 # Guida — Gestione Ordini di vendita
 
-> **Ultimo aggiornamento**: 11 ottobre 2026
+> **Ultimo aggiornamento**: 12 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori
 > backend/frontend, DBA.
@@ -68,7 +68,8 @@ Caratteristiche di base:
   commercio)
 - raccoglie **righe** (articolo, quantità, prezzo, IVA) ed eventuali **componenti
   BoM** per gli articoli compositi
-- ha un **ciclo di vita** semplice: bozza → confermato → evaso (oppure annullato)
+- ha un **ciclo di vita** semplice: bozza → confermato → evaso, in parte o del tutto,
+  man mano che la merce parte con le bolle (oppure annullato)
 - nasce quasi sempre per **conversione** da un preventivo accettato o da un'offerta
   accettata, ma può anche essere creato a mano
 - alla conferma può produrre il **PDF di conferma d'ordine**
@@ -322,17 +323,26 @@ il gesto per intero, e nessuna riga cambia.
 
 ### 4.1 Stati
 
-Il catalogo `config.stati_doc_ordini` prevede più stati, ma **oggi ne sono attivi
-solo tre**. Gli altri sono predisposti per il futuro (magazzino/DDT/finanza) e non
-vengono raggiunti da alcun processo sull'ordine.
+Il catalogo `config.stati_doc_ordini` prevede più stati; quelli raggiunti dai
+processi di oggi sono cinque. Gli altri sono predisposti per il futuro
+(magazzino/finanza).
 
-| Stato | Significato | Modificabile? | Terminale? | In uso oggi |
-|---|---|---|---|---|
-| `DRAFT` | Bozza in preparazione | Sì: testata e righe | No | ✅ |
-| `CONFERMATO` | Ordine confermato, pronto per il push a commessa | No | No | ✅ |
-| `EVASO` | Righe inviate a commessa (push completato): il giro è chiuso | No | Sì | ✅ |
-| `ANNULLATO` | Ordine annullato, in bozza o confermato | No | Sì | ✅ |
-| `ALLOCATO` / `SPEDITO` / `CONSEGNATO` / `FATTURATO` | Fasi logistiche/finanziarie future | — | — | ⏳ non ancora raggiunti |
+| Stato | Significato | Modificabile? | In uso oggi |
+|---|---|---|---|
+| `DRAFT` | Bozza in preparazione | Sì: testata e righe | ✅ |
+| `CONFERMATO` | Ordine confermato: nessuna merce ancora partita | No (solo la data di consegna promessa) | ✅ |
+| `PARZIALMENTE_EVASO` | Una parte della merce è partita con le bolle | No (solo la data di consegna promessa) | ✅ |
+| `EVASO` | Tutta la merce è partita con le bolle | No | ✅ |
+| `ANNULLATO` | Ordine annullato, in bozza o confermato | No | ✅ |
+| `ALLOCATO` / `SPEDITO` / `CONSEGNATO` / `FATTURATO` | Fasi logistiche/finanziarie future | — | ⏳ non ancora raggiunti |
+
+⭐ **«Evaso» vuol dire «la merce è partita», e lo dicono solo le bolle.** Lo stato
+lo proietta il database dalle bolle generate dall'ordine
+(`vendite.fn_ordine_proietta_stato_evasione`): nessuna bolla → `CONFERMATO`, in
+parte → `PARZIALMENTE_EVASO`, tutta → `EVASO`. Si riproietta a ogni bolla generata,
+corretta o ritirata e a ogni reso. ⛔ **L'invio in commessa non cambia lo stato
+dell'ordine**, e nemmeno l'annullo della commessa: che l'ordine sia già in
+commessa lo dicono la lista «da mandare» e le capability del push (§5, §10).
 
 ### 4.2 Transizioni ammesse
 
@@ -341,7 +351,7 @@ per gli ordini è anche la **fonte unica di verità**: la stessa tabella decide 
 cosa mostrare in interfaccia, sia cosa il database accetta davvero.
 
 ```text
-DRAFT ──(conferma)──▶ CONFERMATO ──(push commessa completato)──▶ EVASO (terminale)
+DRAFT ──(conferma)──▶ CONFERMATO ◀──(bolle)──▶ PARZIALMENTE_EVASO ◀──(bolle)──▶ EVASO
   │                       │
   └──(annulla)──▶ ANNULLATO ◀──(annulla)──┘   (terminale)
 ```
@@ -349,16 +359,16 @@ DRAFT ──(conferma)──▶ CONFERMATO ──(push commessa completato)─�
 - **DRAFT → CONFERMATO** (*conferma*): richiede **almeno una riga**.
 - **DRAFT → ANNULLATO** (*annulla*): sempre consentito — una bozza non ha nulla da
   evadere.
-- **CONFERMATO → EVASO** (*automatica*): scatta da sé quando il **push a commessa**
-  si conclude con esito **completato** (vedi §10). Non è un pulsante: è una
-  transizione automatica che chiude il giro. `EVASO` è **terminale**.
+- **CONFERMATO ↔ PARZIALMENTE_EVASO ↔ EVASO** (*automatiche*): le muove il database
+  dalle bolle. Non sono pulsanti: generare, correggere o ritirare una bolla, o un
+  reso, riproietta lo stato dell'ordine.
 - **CONFERMATO → ANNULLATO** (*annulla*): consentito. Se l'ordine ha legami con
   altri documenti, l'annullo chiede una conferma (§4.3).
 
-> **Il push a commessa non è una transizione "a pulsante".** Il push crea le entità
-> a valle (attività fatturabili); se va a buon fine **per intero**, porta poi
-> l'ordine a `EVASO` in automatico. Se il push è solo parziale o fallisce, l'ordine
-> **resta `CONFERMATO`** ed è possibile ripeterlo.
+> **Il push a commessa non è una transizione.** Il push crea le entità a valle
+> (righe di commessa, poi attività fatturabili) e **non tocca lo stato** dell'ordine.
+> Se il push è solo parziale o fallisce, si ripete: le righe già mandate non sono più
+> eleggibili.
 
 ### 4.3 Annullare un ordine nato da un altro documento
 
@@ -370,7 +380,8 @@ emettere che ha spinto. Annullandolo, queste cose tornano disponibili:
   preventivo era `EVASO`, torna `ACCETTATO`;
 * l'offerta torna trasformabile, in un ordine o in un contratto: conta solo
   l'ordine **vivo**, quello annullato conserva la provenienza;
-* le righe di commessa ancora da emettere si annullano.
+* le righe di commessa ancora da emettere si annullano (escono dalla commessa; le
+  righe degli altri documenti restano).
 
 Non succede in silenzio. Su un ordine con legami, «Annulla ordine» apre una
 **finestra di conferma** che elenca che cosa si riapre e dove; ogni documento
@@ -411,12 +422,13 @@ In sintesi:
 
 - **In `DRAFT`**: si può **modificare** testata e righe, **confermare** (azione
   *conferma*) o **annullare** (azione *annulla*).
-- **In `CONFERMATO`**: testata e righe sono **in sola lettura**; l'azione
-  disponibile è il **push a commessa** (quando le precondizioni sono soddisfatte).
-  A push completato l'ordine passa a `EVASO`.
-- **In `EVASO`** o **in `ANNULLATO`**: nessuna azione, sola lettura. Su un ordine
-  `EVASO` il push non è più proponibile (motivo `ORDINE_GIA_EVASO`): l'invio a
-  commessa è **unico**.
+- **In `CONFERMATO`, `PARZIALMENTE_EVASO` o `EVASO`**: testata e righe sono **in
+  sola lettura**; l'azione disponibile è il **push a commessa** finché resta una
+  riga da mandare. Quando le righe sono già in commessa il push è spento col
+  motivo (`ORDINE_GIA_INVIATO`, `ORDINE_GIA_FATTURATO`,
+  `ORDINE_NESSUNA_RIGA_PUSHABILE`): l'invio a commessa non si ripete per le stesse
+  righe.
+- **In `ANNULLATO`**: nessuna azione, sola lettura.
 
 ---
 
@@ -566,10 +578,17 @@ Sono eleggibili le righe attive, con quantità positiva, non ancora inviate a un
 commessa. Se non c'è alcuna riga eleggibile, l'azione non è disponibile e
 l'interfaccia ne spiega il motivo.
 
-**L'invio a commessa è unico.** Se il push si conclude **completato**, l'ordine
-passa automaticamente da `CONFERMATO` a **`EVASO`** (stato terminale): da lì non si
-ri-pusha più. Se invece il push è **parziale** o **fallisce**, l'ordine **resta
-`CONFERMATO`** e si può ripetere finché non è completo.
+**L'invio a commessa è unico per riga, e non cambia lo stato dell'ordine.** Una riga
+mandata in commessa non è più eleggibile; un push **parziale** o **fallito** si
+ripete finché non è completo. Lo stato dell'ordine resta quello che dicono le bolle
+(§4.1).
+
+**Annullare la commessa riapre l'ordine.** Se la commessa in cui sono finite le
+righe viene annullata (con la conferma, vedi
+[Gestione Commesse](/guide/gestione-commesse) §«Annullare una commessa»), le righe
+ancora da emettere escono dalla commessa e l'ordine torna **da mandare in commessa**,
+con lo stato che aveva. Le righe già emesse invece bloccano l'annullo della
+commessa.
 
 > **Il push autorizza anche la fatturazione.** Dato che un ordine `CONFERMATO` è già
 > autorizzato, al termine del push le commesse toccate vengono rese **emittibili**
@@ -698,11 +717,12 @@ database; anche bypassandolo, il database rifiuta comunque le operazioni scorret
 
 | Termine | Significato |
 |---|---|
-| **Ordine di vendita** | Documento operativo del ciclo attivo: righe da consegnare/fatturare. Stati: `DRAFT` → `CONFERMATO` → `EVASO` (oppure `ANNULLATO`) |
+| **Ordine di vendita** | Documento operativo del ciclo attivo: righe da consegnare/fatturare. Stati: `DRAFT` → `CONFERMATO` → `PARZIALMENTE_EVASO` / `EVASO` dalle bolle (oppure `ANNULLATO`) |
 | **Smistamento** | Conversione delle righe **merce** di un preventivo accettato in uno o più ordini (1:N, riga per riga) |
 | **Conversione 1:1** | Generazione di un singolo ordine da un'offerta accettata, in alternativa al contratto (XOR) |
 | **Emetti** | Conferma dell'ordine + generazione del PDF, in un'unica operazione atomica |
-| **Push a commessa** | Invio delle righe eleggibili a una commessa, che avvia la fatturazione; a push completato l'ordine passa a `EVASO` (invio unico) |
+| **Evaso** | La merce dell'ordine è partita con le bolle: tutta (`EVASO`) o in parte (`PARZIALMENTE_EVASO`). Non dipende dall'invio in commessa |
+| **Push a commessa** | Invio delle righe eleggibili a una commessa, che avvia la fatturazione; non cambia lo stato dell'ordine (una riga si manda una volta) |
 | **`fatturazione_trigger`** | Quando l'ordine pusha a commessa (oggi: `CONFERMATO`) |
 | **Cliente immutabile** | Il cliente non si cambia dopo la creazione: "cambiare cliente = nuovo ordine" |
 | **Matrice transizioni** | `config.transizioni_stati_ordini`: fonte unica di verità per UI ed enforcement |
