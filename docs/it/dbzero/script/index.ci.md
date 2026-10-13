@@ -24,7 +24,7 @@
 - [fn_check_accredito_annullabile](manual/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](manual/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
-- [fn_check_articolo_riga](manual/fn_check_articolo_riga.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto)
+- [fn_check_articolo_riga](manual/fn_check_articolo_riga.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta)
 - [fn_check_attivita_riportabile_da_emettere](manual/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_check_ba_cambio_emittente](manual/fn_check_ba_cambio_emittente.md) — (latest review 27-08-26)
@@ -76,9 +76,11 @@
 - [fn_credenziale_ha_vesti](manual/fn_credenziale_ha_vesti.md) — (scritta il 06-10-2026)
 - [fn_credenziali](manual/fn_credenziali.md)
 - [fn_current_identita_context](manual/fn_current_identita_context.md) — (latest review 19-04-2026)
+- [fn_data_consegna_ammessa](manual/fn_data_consegna_ammessa.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_data_operativa](manual/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](manual/fn_disdetta_cliente.md) — (rev 2026-08-21)
 - [fn_doc_colonna_modificabile](manual/fn_doc_colonna_modificabile.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_date_consegna_anteriori](manual/fn_doc_date_consegna_anteriori.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_doc_lock_colonna_bloccata](manual/fn_doc_lock_colonna_bloccata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_lock_montaggi](manual/fn_doc_lock_montaggi.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_lock_regola](manual/fn_doc_lock_regola.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
@@ -243,6 +245,8 @@
 - [trgfn_delete_block_by_guc](manual/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
 - [trgfn_doc_guard_emittente_ba](manual/trgfn_doc_guard_emittente_ba.md) — **Un documento di vendita è emesso dall'azienda del suo cliente.**
 - [trgfn_doc_guard_listino_con_righe](manual/trgfn_doc_guard_listino_con_righe.md) — (nato il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4)
+- [trgfn_doc_righe_guard_data_consegna](manual/trgfn_doc_righe_guard_data_consegna.md) — (nato il 2026-10-13, dal collaudo)
+- [trgfn_doc_testata_guard_data_consegna_righe](manual/trgfn_doc_testata_guard_data_consegna_righe.md) — (nato il 2026-10-13, dal collaudo)
 - [trgfn_guard_emittente_scope](manual/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
 - [trgfn_guard_sorgente_polimorfa_testuale](manual/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:
 - [trgfn_guard_sorgente_polimorfa_tipizzata](manual/trgfn_guard_sorgente_polimorfa_tipizzata.md) — Valida la **coerenza dei riferimenti di sorgente** per le tabelle che adottano il **modello A — colonne tipizzate alternative**:
@@ -254,7 +258,7 @@
 - [trgfn_prevent_modification_generic](manual/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
 - [trgfn_qta_from_operativa](manual/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
 - [trgfn_righe_default_fonte_qta](manual/trgfn_righe_default_fonte_qta.md) — (rev 2026-08-21)
-- [trgfn_righe_guard_articolo_ammesso](manual/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2, A-6; Lotto 3b, `20261013-56/-57`)
+- [trgfn_righe_guard_articolo_ammesso](manual/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2, A-6; Lotti 3b e 3c, `20261013-56/-57/-61`)
 - [trgfn_righe_guard_erogazione_obbligatoria](manual/trgfn_righe_guard_erogazione_obbligatoria.md) — (funzione nata il 2026-10-04, `20261004-31`; trigger `20261004-32`)
 - [trgfn_righe_guard_esclusione_immutabile](manual/trgfn_righe_guard_esclusione_immutabile.md) — (funzione nata il 2026-10-04, `20261004-46`; trigger `20261004-48` e `-49`)
 - [trgfn_righe_guard_esclusione_senza_dati](manual/trgfn_righe_guard_esclusione_senza_dati.md) — (funzione nata il 2026-10-04, `20261004-47`; trigger `20261004-48` e `-49`)

@@ -112,7 +112,7 @@ avrebbe due livelli. Un legame scaduto e' storia e non conta.
 
 Se trovato → raise `E_BOM_COMPONENTE_DIVENTA_COMPOSITO` (1294), campo `is_composito`, con il
 codice dell'articolo e quello del padre nel messaggio. Il lato legame e'
-[`trgfn_articoli_componenti_guard_un_livello`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_un_livello).
+[`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) (motivo `E_BOM_COMPONENTE_COMPOSITO` di `script.fn_check_articolo_riga`).
 Il gemello per il form e' la regola su `is_composito` in `dbops.lock_columns_conditional`
 (`20261013-04`), che spegne il campo solo su un articolo ancora semplice.
 

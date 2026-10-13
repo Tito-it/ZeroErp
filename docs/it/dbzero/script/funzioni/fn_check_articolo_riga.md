@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_check_articolo_riga`
 
 ```sql
-CREATE FUNCTION fn_check_articolo_riga(p_documento text, p_documento_id bigint, p_articolo_id uuid, p_natura_vendita_id bigint, p_tipo_eccezione vendite.tipo_eccezione_contratto)
+CREATE FUNCTION fn_check_articolo_riga(p_documento text, p_documento_id bigint, p_articolo_id uuid, p_natura_vendita_id bigint, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_articolo_padre_id uuid)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_check_articolo_riga(p_documento text, p_documento_id bigint, p_articolo_id uuid, p_natura_vendita_id bigint DEFAULT NULL::bigint, p_tipo_eccezione vendite.tipo_eccezione_contratto DEFAULT NULL::vendite.tipo_eccezione_contratto)
+CREATE OR REPLACE FUNCTION script.fn_check_articolo_riga(p_documento text, p_documento_id bigint, p_articolo_id uuid, p_natura_vendita_id bigint DEFAULT NULL::bigint, p_tipo_eccezione vendite.tipo_eccezione_contratto DEFAULT NULL::vendite.tipo_eccezione_contratto, p_articolo_padre_id uuid DEFAULT NULL::uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE
@@ -27,6 +27,12 @@ DECLARE
     v_versione_id  vendite.listini_versioni.id%TYPE;
     v_etichetta    text;
     v_in_listino   boolean;
+    v_composito    catalogo.articoli.is_composito%TYPE;
+    v_tipologia    catalogo.articoli.listino_tipologia_id%TYPE;
+    v_iva          catalogo.articoli.iva_id%TYPE;
+    v_tip_listino  vendite.listini.tipologia_id%TYPE;
+    v_padre_codice catalogo.articoli.codice%TYPE;
+    v_padre_iva    catalogo.articoli.iva_id%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -38,7 +44,8 @@ BEGIN
     -- =========================================================
     IF p_documento IS NULL
        OR p_documento NOT IN ('PREVENTIVO', 'ORDINE_VENDITA', 'DDT_VENDITA',
-                              'OFFERTA_COMMERCIALE', 'CONTRATTO') THEN
+                              'OFFERTA_COMMERCIALE', 'CONTRATTO',
+                              'LISTINO_VERSIONE', 'ARTICOLO') THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite',
             'script.fn_check_articolo_riga',
@@ -61,16 +68,154 @@ BEGIN
             'p_tipo_eccezione obbligatorio per ' || p_documento);
     END IF;
 
+    -- La distinta: la «testata» e' l'articolo padre (uuid), non un id di documento.
+    IF p_articolo_padre_id IS NULL AND p_documento = 'ARTICOLO' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'catalogo',
+            'script.fn_check_articolo_riga',
+            'E_PARAMETRO_INVALIDO',
+            jsonb_build_object('parametro', 'p_articolo_padre_id', 'documento', p_documento),
+            NULL::uuid,
+            'p_articolo_padre_id obbligatorio per ARTICOLO (la distinta)');
+    END IF;
+
     IF p_articolo_id IS NULL THEN
         RETURN v_motivi;
     END IF;
 
     SELECT a.codice, a.is_solo_componente,
-           COALESCE(p_natura_vendita_id, a.natura_vendita_id)
-      INTO v_codice, v_solo_comp, v_natura_id
+           COALESCE(p_natura_vendita_id, a.natura_vendita_id),
+           a.is_composito, a.listino_tipologia_id, a.iva_id
+      INTO v_codice, v_solo_comp, v_natura_id, v_composito, v_tipologia, v_iva
       FROM catalogo.articoli a
      WHERE a.id = p_articolo_id;
     IF NOT FOUND THEN
+        RETURN v_motivi;
+    END IF;
+
+    -- ===================== VERSIONE DI LISTINO =====================
+    -- La riga standalone (vendite.listini_righe). Il composito sta nella
+    -- versione per un'altra strada, coi suoi componenti: qui e' un motivo.
+    IF p_documento = 'LISTINO_VERSIONE' THEN
+        SELECT l.tipologia_id INTO v_tip_listino
+          FROM vendite.listini_versioni lv
+          JOIN vendite.listini l ON l.id = lv.listino_id
+         WHERE lv.id = p_documento_id;
+
+        -- 1. Solo componente (D-3).
+        IF v_solo_comp IS TRUE THEN
+            v_motivi := v_motivi || jsonb_build_object(
+                'codice',     'E_ARTICOLO_SOLO_COMPONENTE',
+                'reason',     'SOLO_COMPONENTE',
+                'reason_key', 'vendite.righe.articolo_reason.solo_componente',
+                'dettaglio',  jsonb_build_object(
+                                  'campo',       'articolo_id',
+                                  'documento',   p_documento,
+                                  'articolo_id', p_articolo_id),
+                'valori',     jsonb_build_array());
+        END IF;
+
+        -- 2. Composito: il suo prezzo e' la somma dei componenti.
+        IF v_composito IS TRUE THEN
+            v_motivi := v_motivi || jsonb_build_object(
+                'codice',     'E_LISTINO_RIGA_COMPOSITO_VIETATO',
+                'reason',     'COMPOSITO_COME_BUNDLE',
+                'reason_key', 'vendite.righe.articolo_reason.composito_come_bundle',
+                'dettaglio',  jsonb_build_object(
+                                  'campo',       'articolo_id',
+                                  'documento',   p_documento,
+                                  'articolo_id', p_articolo_id),
+                'valori',     jsonb_build_array(v_codice));
+        END IF;
+
+        -- 3. La tipologia: mancante, o diversa da quella del listino.
+        IF v_tipologia IS NULL THEN
+            v_motivi := v_motivi || jsonb_build_object(
+                'codice',     'E_ARTICOLO_TIPOLOGIA_MANCANTE',
+                'reason',     'TIPOLOGIA_MANCANTE',
+                'reason_key', 'vendite.righe.articolo_reason.tipologia_mancante',
+                'dettaglio',  jsonb_build_object(
+                                  'campo',               'articolo_id',
+                                  'documento',           p_documento,
+                                  'articolo_id',         p_articolo_id,
+                                  'listino_versione_id', p_documento_id,
+                                  'listino_tipologia_id', v_tip_listino),
+                'valori',     jsonb_build_array(v_codice, p_documento_id::text));
+        ELSIF v_tipologia IS DISTINCT FROM v_tip_listino THEN
+            v_motivi := v_motivi || jsonb_build_object(
+                'codice',     'E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE',
+                'reason',     'TIPOLOGIA_INCOMPATIBILE',
+                'reason_key', 'vendite.righe.articolo_reason.tipologia_incompatibile',
+                'dettaglio',  jsonb_build_object(
+                                  'campo',                 'articolo_id',
+                                  'documento',             p_documento,
+                                  'articolo_id',           p_articolo_id,
+                                  'articolo_tipologia_id', v_tipologia,
+                                  'listino_versione_id',   p_documento_id,
+                                  'listino_tipologia_id',  v_tip_listino),
+                'valori',     jsonb_build_array(v_codice, v_tipologia::text,
+                                                v_tip_listino::text, p_documento_id::text));
+        END IF;
+
+        RETURN v_motivi;
+    END IF;
+
+    -- ========================== DISTINTA ==========================
+    -- Il componente di p_articolo_padre_id (catalogo.articoli_componenti).
+    -- Il solo componente qui e' il caso normale: non e' un motivo.
+    IF p_documento = 'ARTICOLO' THEN
+        SELECT a.codice, a.iva_id INTO v_padre_codice, v_padre_iva
+          FROM catalogo.articoli a
+         WHERE a.id = p_articolo_padre_id;
+
+        -- 1. Un articolo non e' componente di se stesso.
+        IF p_articolo_id = p_articolo_padre_id THEN
+            v_motivi := v_motivi || jsonb_build_object(
+                'codice',     'E_BOM_COMPONENTE_PADRE',
+                'reason',     'COMPONENTE_PADRE',
+                'reason_key', 'catalogo.distinta.componente_reason.componente_padre',
+                'dettaglio',  jsonb_build_object(
+                                  'campo',         'componente_id',
+                                  'documento',     p_documento,
+                                  'prodotto_id',   p_articolo_padre_id,
+                                  'componente_id', p_articolo_id),
+                'valori',     jsonb_build_array(v_codice));
+        END IF;
+
+        -- 2. La distinta ha un livello solo (D-4).
+        IF v_composito IS TRUE THEN
+            v_motivi := v_motivi || jsonb_build_object(
+                'codice',     'E_BOM_COMPONENTE_COMPOSITO',
+                'reason',     'COMPONENTE_COMPOSITO',
+                'reason_key', 'catalogo.distinta.componente_reason.componente_composito',
+                'dettaglio',  jsonb_build_object(
+                                  'campo',         'componente_id',
+                                  'documento',     p_documento,
+                                  'prodotto_id',   p_articolo_padre_id,
+                                  'componente_id', p_articolo_id),
+                'valori',     jsonb_build_array(v_codice, COALESCE(v_padre_codice, p_articolo_padre_id::text)));
+        END IF;
+
+        -- 3. L'IVA del componente e' quella del padre.
+        IF v_iva IS DISTINCT FROM v_padre_iva THEN
+            v_motivi := v_motivi || jsonb_build_object(
+                'codice',     'E_BOM_IVA_DISCORDANTE',
+                'reason',     'IVA_DISCORDANTE',
+                'reason_key', 'catalogo.distinta.componente_reason.iva_discordante',
+                'dettaglio',  jsonb_build_object(
+                                  'campo',         'componente_id',
+                                  'documento',     p_documento,
+                                  'prodotto_id',   p_articolo_padre_id,
+                                  'componente_id', p_articolo_id,
+                                  'iva_padre_id',  v_padre_iva,
+                                  'iva_figlio_id', v_iva),
+                'valori',     jsonb_build_array(
+                                  COALESCE(v_padre_codice, p_articolo_padre_id::text),
+                                  COALESCE((SELECT i.aliquota_iva::text FROM config.iva i WHERE i.id = v_padre_iva), '—'),
+                                  v_codice,
+                                  COALESCE((SELECT i.aliquota_iva::text FROM config.iva i WHERE i.id = v_iva), '—')));
+        END IF;
+
         RETURN v_motivi;
     END IF;
 
@@ -238,8 +383,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_check_articolo_riga(p_documento text, p_documento_id bigint, p_articolo_id uuid, p_natura_vendita_id bigint, p_tipo_eccezione vendite.tipo_eccezione_contratto)
-IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui un articolo non puo'' stare in una riga del documento p_documento (codice di config.tipi_entita: PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO, altrimenti E_DOC_TIPO_NON_GESTITO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Preventivo, ordine, bolla: 1. SOLO_COMPONENTE (E_ARTICOLO_SOLO_COMPONENTE); 2. la natura secondo la destinazione (preventivo: la ricorrenza va in offerta, E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA; ordine e bolla: solo merce, E_RIGA_NATURA_NON_AMMESSA); la natura e'' quella della riga (p_natura_vendita_id, congelata) se c''e'', altrimenti quella dell''articolo. Offerta e contratto (rev 2026-10-13, 20261013-55, Lotto 3b): p_tipo_eccezione obbligatorio (E_PARAMETRO_INVALIDO). AGGIUNTA e OVERRIDE: 1. SOLO_COMPONENTE; 2. TIPOLOGIA_FUORI_UTILITY (composta da script.fn_check_riga_erogazione senza erogazione); 3. SENZA_EROGAZIONE (vendite.fn_articolo_erogazioni vuota, E_ARTICOLO_SENZA_EROGAZIONE); 4. il listino operativo (le righe di vendite.fn_espandi_listino_versione, standalone e bundle): AGGIUNTA gia'' in listino (E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO), OVERRIDE senza listino (E_RIGA_ECCEZIONE_SENZA_LISTINO) o fuori listino (E_RIGA_ECCEZIONE_FUORI_LISTINO, A-5). ESCLUSIONE: 1. FIGLIO_DI_BUNDLE (composta da script.fn_check_esclusione_articolo_documento); 2. senza listino o fuori listino (A-5). ⚠️ Ponte A-8: i lettori del listino parlano ancora OFFERTA | CONTRATTO; la traduzione da OFFERTA_COMMERCIALE sta qui e si ritira col giro BE/FE. Una sola check per tipo di riga (A-2): la chiama il guard di tabella script.trgfn_righe_guard_articolo_ammesso (solleva il primo motivo) e il picker degli articoli ammessi; l''ordine dell''array e'' il contratto. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2, A-5, D-1, D-2, D-3).';
+COMMENT ON FUNCTION script.fn_check_articolo_riga(p_documento text, p_documento_id bigint, p_articolo_id uuid, p_natura_vendita_id bigint, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_articolo_padre_id uuid)
+IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui un articolo non puo'' stare in una riga del documento p_documento (codice di config.tipi_entita: PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO | LISTINO_VERSIONE | ARTICOLO, altrimenti E_DOC_TIPO_NON_GESTITO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Preventivo, ordine, bolla: 1. SOLO_COMPONENTE (E_ARTICOLO_SOLO_COMPONENTE); 2. la natura secondo la destinazione (preventivo: la ricorrenza va in offerta, E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA; ordine e bolla: solo merce, E_RIGA_NATURA_NON_AMMESSA); la natura e'' quella della riga (p_natura_vendita_id, congelata) se c''e'', altrimenti quella dell''articolo. Offerta e contratto (rev 2026-10-13, 20261013-55, Lotto 3b): p_tipo_eccezione obbligatorio (E_PARAMETRO_INVALIDO). AGGIUNTA e OVERRIDE: 1. SOLO_COMPONENTE; 2. TIPOLOGIA_FUORI_UTILITY (composta da script.fn_check_riga_erogazione senza erogazione); 3. SENZA_EROGAZIONE (vendite.fn_articolo_erogazioni vuota, E_ARTICOLO_SENZA_EROGAZIONE); 4. il listino operativo (le righe di vendite.fn_espandi_listino_versione, standalone e bundle): AGGIUNTA gia'' in listino (E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO), OVERRIDE senza listino (E_RIGA_ECCEZIONE_SENZA_LISTINO) o fuori listino (E_RIGA_ECCEZIONE_FUORI_LISTINO, A-5). ESCLUSIONE: 1. FIGLIO_DI_BUNDLE (composta da script.fn_check_esclusione_articolo_documento); 2. senza listino o fuori listino (A-5). Versione di listino (rev 2026-10-13, 20261013-59, Lotto 3c; p_documento_id = la versione; la riga standalone di vendite.listini_righe): 1. SOLO_COMPONENTE; 2. composito (E_LISTINO_RIGA_COMPOSITO_VIETATO: nella versione sta coi componenti); 3. tipologia mancante (E_ARTICOLO_TIPOLOGIA_MANCANTE) o diversa da quella del listino (E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE). Distinta (ARTICOLO, p_articolo_padre_id obbligatorio, E_PARAMETRO_INVALIDO; la riga di catalogo.articoli_componenti): 1. componente uguale al padre (E_BOM_COMPONENTE_PADRE); 2. componente composito (E_BOM_COMPONENTE_COMPOSITO, D-4); 3. IVA diversa dal padre (E_BOM_IVA_DISCORDANTE); il solo componente qui e'' il caso normale. ⚠️ Ponte A-8: i lettori del listino parlano ancora OFFERTA | CONTRATTO; la traduzione da OFFERTA_COMMERCIALE sta qui e si ritira col giro BE/FE. Una sola check per tipo di riga (A-2): la chiama il guard di tabella script.trgfn_righe_guard_articolo_ammesso (solleva il primo motivo) e il picker degli articoli ammessi; l''ordine dell''array e'' il contratto. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2, A-5, D-1, D-2, D-3, D-4).';
 ```
 
 ---

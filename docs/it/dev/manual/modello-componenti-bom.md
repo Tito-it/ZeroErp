@@ -129,7 +129,7 @@ Razionale:
 Vincolo di dominio: il padre composito e tutti i suoi figli BoM
 condividono la **stessa aliquota IVA**.
 
-Trigger `catalogo.trgfn_articoli_componenti_guard_iva`:
+Regola `E_BOM_IVA_DISCORDANTE` di [`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga) (documento `ARTICOLO`), sollevata dal guard [`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) (dal 2026-10-13; prima `catalogo.trgfn_articoli_componenti_guard_iva`):
 
 - BEFORE INSERT OR UPDATE OF `attivo` su `catalogo.articoli_componenti`:
   per un legame attivo, NEW.componente deve avere `iva_id` uguale al
@@ -169,8 +169,8 @@ potevano aggirare l'invariante, entrambi chiusi:
 - **spegni → cambia IVA → riaccendi**: deattivando il legame, il guard
   su `articoli.iva_id` lo ignora (controlla solo `attivo = TRUE`), quindi
   si potrebbe cambiare l'IVA del figlio e riattivare. Chiuso il 2026-06-03
-  estendendo `trgfn_articoli_componenti_guard_iva` a `BEFORE INSERT OR
-  UPDATE OF attivo`: l'IVA e' ri-verificata a ogni riaccensione
+  estendendo il guard IVA del legame a `BEFORE INSERT OR
+  UPDATE OF attivo` (oggi il guard di tabella della distinta, che giudica anche la riattivazione): l'IVA e' ri-verificata a ogni riaccensione
   (`FALSE→TRUE`).
 
 Un ri-controllo a valle sarebbe quindi ridondante e — se presente solo su
@@ -328,8 +328,8 @@ livello solo, poi, un ciclo (A in B, B in A) non si costruisce.
 
 Due guard, dai due lati:
 
-- sul legame: [`catalogo.trgfn_articoli_componenti_guard_un_livello`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_un_livello)
-  (`E_BOM_COMPONENTE_COMPOSITO`);
+- sul legame: il motivo `E_BOM_COMPONENTE_COMPOSITO` di [`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga), sollevato dal guard di tabella
+  [`catalogo.trgfn_articoli_componenti_guard_componente`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) (dal 2026-10-13; prima `trgfn_articoli_componenti_guard_un_livello`);
 - sull'articolo: il check 3 di
   [`catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva`](/dbzero/catalogo/manual/trgfn_articoli_guard_flags_struttura_bom_attiva)
   (`E_BOM_COMPONENTE_DIVENTA_COMPOSITO`): un componente di una distinta in

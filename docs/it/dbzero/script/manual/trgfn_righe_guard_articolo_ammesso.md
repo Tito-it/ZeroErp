@@ -7,7 +7,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2, A-6; Lotto 3b, `20261013-56/-57`)
+(latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2, A-6; Lotti 3b e 3c, `20261013-56/-57/-61`)
 
 Rifiuta una riga il cui articolo il documento non ammette, sollevando il **primo motivo** di
 `script.fn_check_articolo_riga`. Il predicato sta nella check: qui si solleva soltanto
@@ -25,6 +25,12 @@ dell'array.
 | `vendite.ddt_righe` | `trg_ddt_righe_a10_regole_articolo_ins_upd` | `('DDT_VENDITA', 'ddt_id')` |
 | `vendite.offerte_commerciali_eccezioni` | `trg_offerte_eccezioni_a10_guard_articolo_ammesso_ins_upd` | `('OFFERTA_COMMERCIALE', 'offerta_id')` |
 | `vendite.contratti_righe` | `trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd` | `('CONTRATTO', 'contratto_id')` |
+| `vendite.listini_righe` | `trg_listini_righe_a10_guard_articolo_ammesso_ins_upd` (anche `UPDATE OF listino_versione_id`) | `('LISTINO_VERSIONE', 'listino_versione_id')` |
+
+La distinta ha un guard suo, [catalogo.trgfn_articoli_componenti_guard_componente](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente):
+lì l'articolo è `componente_id` e il padre un `uuid`. Sulla versione di listino questo guard ha
+preso il posto di `trgfn_listini_righe_guard_tipologia` e `trgfn_listini_righe_guard_no_composito`
+(ritirati dal `20261013-61`).
 
 La natura (preventivo, ordine, bolla) e il tipo d'eccezione (offerta, contratto) si leggono da
 `to_jsonb(NEW)`: ognuno sta solo sulle sue tabelle, e un `NEW.colonna` assente non compilerebbe.

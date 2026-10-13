@@ -260,8 +260,16 @@ colonne. Una data malformata è un errore di validazione sul campo, non un
 errore del database.
 
 ⛔ **Nessun vincolo fra le due date, ed è una scelta**: si può confermare
-*prima* di quanto chiesto, ed è una buona notizia. E nessun vincolo contro la
-data dell'ordine: la retrodatazione è un caso d'uso vivo.
+*prima* di quanto chiesto, ed è una buona notizia.
+
+⛔ **Una consegna non viene prima dell'ordine.** Nessuna delle due date può
+essere anteriore alla data dell'ordine: dal form di riga e da «Aggiorna date di
+consegna» una data così si rifiuta, e il messaggio dice la data dell'ordine. La
+stessa data dell'ordine va bene (consegna in giornata), e il campo vuoto pure.
+Vale anche al contrario: la data dell'ordine non si sposta *dopo* una consegna
+già scritta su una riga, e il messaggio dice qual è la prima. Le righe
+disattivate non contano. La retrodatazione resta possibile: si retrodata
+l'ordine, e le consegne vengono dopo.
 
 ⛔ **Nessuna colonna di testata.** La data «dell'ordine» è il minimo delle
 richieste sulle righe attive, e una colonna sarebbe una seconda verità che va
@@ -272,6 +280,12 @@ espone la vista (`data_consegna_richiesta_cliente_min`, §11).
 data richiesta dal cliente **viaggia con la riga** (`fn_push_preventivo_a_ordine`
 la porta avanti); la confermata nasce vuota, perché sul preventivo non c'era
 niente da confermare.
+
+> **Esempio.** Un preventivo chiede la consegna per il 5 ottobre, e diventa un
+> ordine il 10. Quella richiesta è già passata: la riga d'ordine nasce **senza
+> data richiesta**, e l'operatore la riscrive sull'ordine, che è in bozza. La
+> richiesta originale resta sulla riga del preventivo. Non si inventa una data
+> che il cliente non ha chiesto, e lo smistamento non si ferma.
 
 **Il ritardo.** Lo calcola il pannello *Situazione merce* dell'ordine
 (`vw_situazione_merce_ordine`, colonna `giorni_ritardo`), e sta lì e non altrove

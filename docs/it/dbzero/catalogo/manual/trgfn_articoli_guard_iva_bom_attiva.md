@@ -5,7 +5,7 @@
 > - [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — tabella su cui il trigger opera
 > - [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — lookup BoM attive
 > - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — gestione errori strutturata
-> - [catalogo.trgfn_articoli_componenti_guard_iva](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_iva) — guard simmetrico su INSERT in articoli_componenti
+> - [catalogo.trgfn_articoli_componenti_guard_componente](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente) — il lato legame: il guard di tabella della distinta (`E_BOM_IVA_DISCORDANTE`)
 
 ## Scopo
 

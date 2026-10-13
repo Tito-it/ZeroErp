@@ -2080,7 +2080,14 @@
     "section_uso": "Usage",
     "section_regole_input": "Input Rules",
     "section_extra": "Other",
-    "select_rounding_mode": "Select rounding mode"
+    "select_rounding_mode": "Select rounding mode",
+    "distinta": {
+      "componente_reason": {
+        "componente_padre": "It is the item itself: it cannot be a component of its own bill of materials.",
+        "componente_composito": "It is a kit itself: a bill of materials contains simple items only.",
+        "iva_discordante": "Its VAT rate differs from the kit's: components carry the parent's VAT."
+      }
+    }
   },
   "billing_account": {
     "search_placeholder": "Search BA by code, business name, tax ID or PDP...",
@@ -2116,7 +2123,10 @@
         "senza_erogazione": "Item with no allowed delivery mode: it cannot be in an offer or a contract.",
         "aggiunta_gia_in_listino": "Already in the document's price list: to change its price use «different price», not a new line.",
         "eccezione_senza_listino": "The document has no price list in force: a different price or an exclusion applies only to a price-list item.",
-        "eccezione_fuori_listino": "Not in the document's price list: add it as a new line."
+        "eccezione_fuori_listino": "Not in the document's price list: add it as a new line.",
+        "composito_come_bundle": "It is a kit: it enters a price list as a bundle, with its components' prices.",
+        "tipologia_mancante": "The item has no price-list type: it cannot enter a price list.",
+        "tipologia_incompatibile": "The item's type is not the price list's type."
       }
     },
     "date_consegna": {

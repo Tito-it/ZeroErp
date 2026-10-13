@@ -4,7 +4,7 @@
 >
 > - [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — tabella su cui il trigger opera
 > - [vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe) — tabella verificata per righe attive
-> - [vendite.trgfn_listini_righe_guard_no_composito](/dbzero/vendite/manual/trgfn_listini_righe_guard_no_composito) — guard simmetrico su INSERT in listini_righe
+> - [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — il lato riga: il motivo `E_LISTINO_RIGA_COMPOSITO_VIETATO` della versione di listino (dal 2026-10-13; prima `vendite.trgfn_listini_righe_guard_no_composito`)
 > - [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — gestione errori strutturata
 
 ## Scopo
@@ -83,7 +83,7 @@ Contesto JSON: `articolo_id`, `hint` con indicazione di disattivare le righe lis
 | Trigger | Evento | Cosa blocca |
 |---|---|---|
 | `trgfn_articoli_guard_listino_se_composito` | UPDATE OF `is_composito` su `articoli` | Promozione a composito di articolo con righe listino esistenti |
-| `trgfn_listini_righe_guard_no_composito` | INSERT su `listini_righe` | Inserimento diretto per articolo già composito |
+| `script.fn_check_articolo_riga` (guard di tabella su `listini_righe`) | INSERT/UPDATE su `listini_righe` | Inserimento diretto per articolo già composito |
 
 ---
 

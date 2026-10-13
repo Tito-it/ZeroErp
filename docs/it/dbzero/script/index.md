@@ -26,7 +26,7 @@
 - [fn_check_accredito_annullabile](funzioni/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](funzioni/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
-- [fn_check_articolo_riga](funzioni/fn_check_articolo_riga.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto)
+- [fn_check_articolo_riga](funzioni/fn_check_articolo_riga.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta)
 - [fn_check_attivita_riportabile_da_emettere](funzioni/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_check_ba_cambio_emittente](funzioni/fn_check_ba_cambio_emittente.md) — (latest review 27-08-26)
@@ -89,9 +89,11 @@
 - [fn_credenziale_ha_vesti](funzioni/fn_credenziale_ha_vesti.md) — (scritta il 06-10-2026)
 - [fn_credenziali](funzioni/fn_credenziali.md)
 - [fn_current_identita_context](funzioni/fn_current_identita_context.md) — (latest review 19-04-2026)
+- [fn_data_consegna_ammessa](funzioni/fn_data_consegna_ammessa.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_data_operativa](funzioni/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md) — (rev 2026-08-21)
 - [fn_doc_colonna_modificabile](funzioni/fn_doc_colonna_modificabile.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_date_consegna_anteriori](funzioni/fn_doc_date_consegna_anteriori.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_doc_indirizzi_sede](funzioni/fn_doc_indirizzi_sede.md)
 - [fn_doc_lock_colonna_bloccata](funzioni/fn_doc_lock_colonna_bloccata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_lock_montaggi](funzioni/fn_doc_lock_montaggi.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
@@ -301,6 +303,8 @@
 - [trgfn_doc_guard_emittente_ba](funzioni/trgfn_doc_guard_emittente_ba.md) — **Un documento di vendita è emesso dall'azienda del suo cliente.**
 - [trgfn_doc_guard_listino_con_righe](funzioni/trgfn_doc_guard_listino_con_righe.md) — (nato il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4)
 - [trgfn_doc_guard_listino_documento](funzioni/trgfn_doc_guard_listino_documento.md)
+- [trgfn_doc_righe_guard_data_consegna](funzioni/trgfn_doc_righe_guard_data_consegna.md) — (nato il 2026-10-13, dal collaudo)
+- [trgfn_doc_testata_guard_data_consegna_righe](funzioni/trgfn_doc_testata_guard_data_consegna_righe.md) — (nato il 2026-10-13, dal collaudo)
 - [trgfn_guard_date_validita](funzioni/trgfn_guard_date_validita.md)
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
 - [trgfn_guard_sorgente_polimorfa_testuale](funzioni/trgfn_guard_sorgente_polimorfa_testuale.md) — Valida la sorgente polimorfa delle **tabelle di collegamento a chiave unica TESTUALE** (modello B): la colonna `sorgente_uid` è **TEXT** e contiene la chiave nel **formato dettato da `config.sorgenti.key_selector`**:
@@ -314,7 +318,7 @@
 - [trgfn_qta_from_operativa](funzioni/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
 - [trgfn_righe_default_erogazione_da_articolo](funzioni/trgfn_righe_default_erogazione_da_articolo.md)
 - [trgfn_righe_default_fonte_qta](funzioni/trgfn_righe_default_fonte_qta.md) — (rev 2026-08-21)
-- [trgfn_righe_guard_articolo_ammesso](funzioni/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2, A-6; Lotto 3b, `20261013-56/-57`)
+- [trgfn_righe_guard_articolo_ammesso](funzioni/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2, A-6; Lotti 3b e 3c, `20261013-56/-57/-61`)
 - [trgfn_righe_guard_erogazione_obbligatoria](funzioni/trgfn_righe_guard_erogazione_obbligatoria.md) — (funzione nata il 2026-10-04, `20261004-31`; trigger `20261004-32`)
 - [trgfn_righe_guard_erogazione_perimetro](funzioni/trgfn_righe_guard_erogazione_perimetro.md)
 - [trgfn_righe_guard_esclusione_immutabile](funzioni/trgfn_righe_guard_esclusione_immutabile.md) — (funzione nata il 2026-10-04, `20261004-46`; trigger `20261004-48` e `-49`)

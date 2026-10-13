@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    39,
+    40,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -313,7 +313,12 @@ SELECT is(
     --   script.trgfn_righe_guard_articolo_ammesso — gia' nel conto — solleva anche
     --   sulle righe di offerta e contratto (Lotto 3b del
     --   brief-db-articoli-ammessi-per-documento).
-    'le trentanove funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-10-13 (sera, Lotto 3c): da 39 a 40. Un sito NUOVO nato sull'helper:
+    --   catalogo.trgfn_articoli_componenti_guard_componente (20261013-60), il guard
+    --   della distinta, solleva il primo motivo di script.fn_check_articolo_riga
+    --   (documento ARTICOLO). I guard per regola che sostituisce (un livello, IVA)
+    --   sollevavano codici letterali e non erano nel conto.
+    'le quaranta funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

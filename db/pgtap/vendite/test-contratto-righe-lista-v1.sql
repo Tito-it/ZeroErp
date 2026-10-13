@@ -257,7 +257,7 @@ SELECT ok(
     (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_documento\s*\('
         AND regexp_replace(prosrc, '--[^\n]*', '', 'g') !~ 'listini_righe_componenti'
        FROM pg_proc
-      WHERE oid = 'script.fn_check_articolo_riga(text,bigint,uuid,bigint,vendite.tipo_eccezione_contratto)'::regprocedure),
+      WHERE oid = 'script.fn_check_articolo_riga(text,bigint,uuid,bigint,vendite.tipo_eccezione_contratto,uuid)'::regprocedure),
     '12) la check di riga chiama la check dell''esclusione e non contiene il predicato');
 
 SELECT * FROM finish();

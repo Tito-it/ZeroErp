@@ -201,7 +201,7 @@ PREZZO_FISSO: prezzo_finale = valore
 
 ### 5.1 Tipologia articolo
 
-Ogni articolo ha `listino_tipologia_id` (FK a `config.listini_tipologie`). Un articolo può essere inserito solo in listini con la **stessa tipologia** (guard DB trigger `trgfn_listini_righe_guard_tipologia`).
+Ogni articolo ha `listino_tipologia_id` (FK a `config.listini_tipologie`). Un articolo può essere inserito solo in listini con la **stessa tipologia** (lo dice la check per tipo di riga `script.fn_check_articolo_riga`, che il guard `trg_listini_righe_a10_guard_articolo_ammesso_ins_upd` solleva; dal 2026-10-13 anche: niente articoli «solo componente», e un kit entra coi suoi componenti).
 
 Esempi:
 
@@ -511,7 +511,7 @@ Il database rafforza la determinismo con vincoli espliciti (non è "responsabili
 | `ex_promo_articoli_no_overlap`                | `promo_articoli`            | Una sola promo attiva per (articolo, uom) nel periodo                         |
 | `ex_listini_versioni_no_overlap`              | `listini_versioni`          | Una sola versione ATTIVA per listino nel periodo                              |
 | `uq_listini_righe_key_attiva`                 | `listini_righe`             | Una sola riga attiva per (versione, articolo, uom)                            |
-| `trgfn_listini_righe_guard_tipologia`         | trigger                     | Articolo e listino devono avere la stessa tipologia                           |
+| `script.fn_check_articolo_riga` (guard `script.trgfn_righe_guard_articolo_ammesso`) | check + trigger | Articolo e listino della stessa tipologia; niente solo componente; il kit coi componenti (dal 2026-10-13) |
 | `trgfn_contratti_modalita_c_righe_complete`   | trigger                     | Modalità C: attivazione blocca se righe incomplete                            |
 | `trgfn_contratti_utilities_guard_tipo_classe` | trigger                     | Tipo/classe utenza coerenti con ambito (NULL per COMMERCIO)                   |
 
