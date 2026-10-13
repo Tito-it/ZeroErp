@@ -135,7 +135,9 @@ risalire alla commessa per sapere che natura ha la riga.
 campo `meta` (jsonb), validato solo dalla funzione di upsert: un INSERT diretto lo aggirava, e
 un discriminatore su cui si fondano soldi e riconciliazioni non puo' dipendere dalla buona
 educazione del chiamante. Ora e' una colonna con un CHECK, e il campo `meta` non lo ospita
-piu'. Su `meta` resta `tipo_consumo` (`ACCONTO` | `CONGUAGLIO` | `STORNO`), non promosso.
+piu'. Nemmeno `tipo_consumo`, che ci stava accanto: è ritirato dal 2026-10-13 (`20261013-16`),
+perché nessuno lo leggeva e il suo vocabolario rifiutava il push di contratti e consumi. Le righe
+scritte prima lo portano ancora in `meta`, come fotografia.
 
 > ⚠️ **La riga `RETTIFICA` diceva «nessuno, oggi» fino al 20-08-2026**, ed era
 > vero quando fu scritta: il cantiere nota di credito l'ha resa il verbo di

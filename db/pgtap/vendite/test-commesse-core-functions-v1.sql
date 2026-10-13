@@ -347,7 +347,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_sorgente_tipo_id => (SELECT root_sorgente_tipo_id FROM tmp_refs_commesse_core),
   p_sorgente_uid => ('EXT-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'ACCONTO',
   p_meta => jsonb_build_object('case', 'UPSERT_INSERT')
 ) r;
 
@@ -449,7 +448,6 @@ FROM vendite.fn_upsert_commessa_attivita(
     WHERE ca.id = (SELECT commessa_attivita_id FROM tmp_upsert_core)
   ),
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'ACCONTO',
   p_meta => jsonb_build_object('case', 'UPSERT_UPDATE')
 ) r;
 
@@ -554,7 +552,6 @@ SELECT * FROM vendite.fn_upsert_commessa_attivita(
     WHERE ca.id = (SELECT commessa_attivita_id FROM tmp_upsert_core)
   ),
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'ACCONTO',
   p_meta => jsonb_build_object('case', 'UPSERT_PRICE_UPDATE')
 );
 

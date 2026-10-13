@@ -161,7 +161,6 @@ SELECT * FROM vendite.fn_upsert_commessa_attivita(
   p_sorgente_tipo_id => (SELECT src_preventivo_id FROM tmp_rif_refs),
   p_sorgente_uid => (SELECT uid::text FROM tmp_rif_prev0),
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('test_scope', 'pgtap_vgrif')
 );
 

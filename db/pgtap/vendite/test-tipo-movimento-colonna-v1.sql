@@ -14,7 +14,7 @@
 --   3) fn_upsert senza p_tipo_movimento -> colonna = NORMALE (default)
 --   4) fn_upsert con p_tipo_movimento => 'ONERE' -> colonna = ONERE (dominio esteso)
 --   5) una casa sola: meta NON contiene piu' tipo_movimento
---   6) tipo_consumo resta in meta (non promosso: fuori perimetro)
+--   6) tipo_consumo e' ritirato (20261013-16): la madre non lo scrive in meta
 --   7) fn_upsert rifiuta un tipo_movimento fuori dominio (fail-fast parlante)
 --   8) il CHECK DB e' la difesa finale: UPDATE diretto fuori dominio bloccato
 --   9) emit propaga NORMALE su attivita_fatturabili
@@ -153,7 +153,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_tm),
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'TIPO_MOV_NORMALE')
 ) r;
 
@@ -188,7 +187,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'ONERE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'TIPO_MOV_ONERE'),
   -- rev 2026-07-27 (bonifica): la causale e' obbligatoria se e solo se
   -- tipo_movimento='ONERE' (CHECK chk_commesse_attivita_causale_onere,
@@ -215,7 +213,7 @@ SELECT is(
 
 -- ============================================================
 -- TEST 5-6) Una casa sola: il jsonb non ospita piu' il registro,
---           ma tipo_consumo (non promosso) resta dov'era.
+--           e nemmeno tipo_consumo, ritirato il 2026-10-13 (20261013-16).
 -- ============================================================
 SELECT ok(
   NOT (SELECT ca.meta ? 'tipo_movimento' FROM vendite.commesse_attivita ca
@@ -223,11 +221,10 @@ SELECT ok(
   '5. una casa sola: meta non contiene piu'' tipo_movimento'
 );
 
-SELECT is(
-  (SELECT ca.meta ->> 'tipo_consumo' FROM vendite.commesse_attivita ca
-    WHERE ca.id = (SELECT commessa_attivita_id FROM tmp_ca_onere)),
-  'CONGUAGLIO',
-  '6. tipo_consumo resta in meta (promozione fuori perimetro)'
+SELECT ok(
+  NOT (SELECT ca.meta ? 'tipo_consumo' FROM vendite.commesse_attivita ca
+        WHERE ca.id = (SELECT commessa_attivita_id FROM tmp_ca_onere)),
+  '6. tipo_consumo ritirato: la madre non lo scrive in meta'
 );
 
 -- ============================================================

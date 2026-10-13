@@ -269,7 +269,7 @@ BEGIN
     p_categoria_cliente_id_snapshot => NULL, p_classe_utenza_id_snapshot => NULL,
     p_tipo_doc_fiscale_id => r.tipo_doc_fiscale_id,
     p_stato_approvazione => 'APPROVATA', p_stato_emissione => 'NON_EMESSA',
-    p_tipo_movimento => 'NORMALE', p_tipo_consumo => 'CONGUAGLIO', p_meta => '{}'::jsonb,
+    p_tipo_movimento => 'NORMALE', p_meta => '{}'::jsonb,
     p_causale_onere_id => NULL);
 END $$ LANGUAGE plpgsql;
 

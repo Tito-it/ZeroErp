@@ -266,7 +266,7 @@ BEGIN
     p_tipo_variazione_applicata => NULL, p_valore_variazione_applicata => NULL,
     p_promo_id => NULL, p_contratto_id => NULL, p_categoria_cliente_id_snapshot => NULL, p_classe_utenza_id_snapshot => NULL,
     p_tipo_doc_fiscale_id => r.tipo_doc_fiscale_id, p_stato_approvazione => 'APPROVATA', p_stato_emissione => 'NON_EMESSA',
-    p_tipo_movimento => 'NORMALE', p_tipo_consumo => 'CONGUAGLIO', p_meta => '{}'::jsonb);
+    p_tipo_movimento => 'NORMALE', p_meta => '{}'::jsonb);
 END $$ LANGUAGE plpgsql;
 
 -- ============================================================

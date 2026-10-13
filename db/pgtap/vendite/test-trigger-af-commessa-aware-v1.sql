@@ -157,7 +157,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   ),
   p_sorgente_uid => 'PGTAP-TCA-SRC-' || substr(md5(clock_timestamp()::text), 1, 12),
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'TCA_TRIGGER_TEST')
 ) r;
 

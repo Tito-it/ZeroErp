@@ -66,7 +66,7 @@ Passare `null` JSON quando la dimensione non è applicabile (es. `classe_utenza_
 
 #### Chiavi opzionali
 
-`qta_operativa`, `uom_operativa_id`, `factor_to_base`, `posticipa_al`, `tipo_doc_fiscale_id`, `valuta_id`, `area_geografica_id`, `listino_versione_id`, `prezzo_bloccato`, `pricing_mode`, `prezzo_da_riallineare`, `stato_approvazione`, `stato_emissione`, `sorgente_tipo_id`, `sorgente_uid`, `tipo_movimento`, `tipo_consumo`, `meta`.
+`qta_operativa`, `uom_operativa_id`, `factor_to_base`, `posticipa_al`, `tipo_doc_fiscale_id`, `valuta_id`, `area_geografica_id`, `listino_versione_id`, `prezzo_bloccato`, `pricing_mode`, `prezzo_da_riallineare`, `stato_approvazione`, `stato_emissione`, `sorgente_tipo_id`, `sorgente_uid`, `tipo_movimento`, `meta`. Una chiave `tipo_consumo` (ritirata il 2026-10-13) si ignora.
 
 Se la chiave manca o è `null` JSON, il wrapper propaga `NULL` al single-upsert che applica il proprio `DEFAULT` sul parametro (es. `pricing_mode` → `'FIXED'`, `prezzo_bloccato` → `false`).
 

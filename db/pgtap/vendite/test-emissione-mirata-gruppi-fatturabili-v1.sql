@@ -196,7 +196,6 @@ CROSS JOIN LATERAL (
                            THEN (SELECT uid::text FROM tmp_gr_prev)
                            ELSE 'c0000000-0000-4000-8000-000000000001' END,
     p_tipo_movimento => 'NORMALE',
-    p_tipo_consumo => 'CONGUAGLIO',
     p_meta => jsonb_build_object('test_scope', 'pgtap_gruppi', 'gruppo', x.g)
   )
 ) r;

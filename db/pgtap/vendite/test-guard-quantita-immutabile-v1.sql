@@ -148,7 +148,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
   p_sorgente_uid => ((SELECT commessa_id FROM tmp_commessa))::text,
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'ACCONTO',
   p_meta => jsonb_build_object('case', 'GUARD_Q')
 ) r;
 

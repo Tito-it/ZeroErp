@@ -225,7 +225,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_sorgente_tipo_id => (SELECT sorgente_preventivo_id FROM tmp_refs_sot),
   p_sorgente_uid => ('EXT-SOT-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'SORGENTE_ORIGINE_TEST')
 ) r;
 

@@ -122,7 +122,6 @@ CREATE FUNCTION pg_temp.mk_att(
     p_stato_approvazione            => p_appr,
     p_stato_emissione               => 'NON_EMESSA',
     p_tipo_movimento                => 'NORMALE',
-    p_tipo_consumo                  => 'CONGUAGLIO',
     p_meta                          => jsonb_build_object('lane_tag', p_tag)
   ) r;
 $$;
@@ -159,7 +158,6 @@ CREATE FUNCTION pg_temp.mk_att2(
     p_stato_approvazione            => p_appr,
     p_stato_emissione               => 'NON_EMESSA',
     p_tipo_movimento                => 'NORMALE',
-    p_tipo_consumo                  => 'CONGUAGLIO',
     p_meta                          => jsonb_build_object('lane_tag', p_tag)
   ) r;
 $$;
