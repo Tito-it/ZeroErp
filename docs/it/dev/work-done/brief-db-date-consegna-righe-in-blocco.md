@@ -1,8 +1,8 @@
 # Brief DB — Le date di consegna delle righe, aggiornate in blocco
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-12
+## ⏭️ Chi riparte — aggiornato al 2026-10-13
 
-**Riparte: Tid**, collaudo a video del lato BE/FE (§8), poi archiviazione. Lato DB chiuso: il secondo giro (§4.7) è applicato e verde.
+**Riparte: nessuno** — ✅ **chiuso e archiviato** in `work-done/` (2026-10-13). Lavoro chiuso: DB applicato e verde, BE/FE scritto, rivisto e **collaudato a video** (Tid, 2026-10-13, §8.3).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -15,17 +15,18 @@
 | 7 | DB | regola del 2, scelta (a): il BB `script.vw_stati_doc_ddt_merce_partita` e le tre sedi riallineate, pgTAP nuovo | §4.1, §4.7 | ✅ 2026-10-12 |
 | 8 | Tid | apply `20261012-30 … -33`; pgTAP della data di consegna, del BB (dopo la correzione dei test 6/8) e regressione | §4.7 | ✅ 2026-10-12, verdi, nessuna regressione |
 | 9 | BE | rigenerare `error_policies_generated.py`: la nota di `E_DOC_ANNULLO_CON_LEGAMI` era già allineata; il rigenero ha portato i due codici di brief-db-indirizzi-documento-seguono-il-cliente (`E_DOC_FORNITURA_FUORI_TESTATA`, `E_DOC_FORNITURA_PARAMETRO_MANCANTE`, nel CSV in git), coi loro ripieghi. `--check` pulito, guardrail e test della data di consegna sul DB vero verdi | — | ✅ 2026-10-12 |
-| 10 | Tid | collaudo a video, poi archiviazione in `work-done/` | — | — |
+| 10 | Tid | collaudo a video: dodici casi, ordini, preventivi e revisione | §8.3 | ✅ 2026-10-13, riuscito |
+| 11 | Tid | archiviazione in `work-done/` | — | ✅ 2026-10-13 |
 
 **Decisioni aperte di Tid:** nessuna (§8.2 decisa il 2026-10-12: (a), si accetta).
-**Da committare:** niente: il passo #9 e' in git dal 2026-10-13.
+**Da committare:** il collaudo (§8.3), lo spostamento in `work-done/` e i link riallineati (api_ordini, api_preventivi, i due cataloghi BB). Il passo #9 è in git dal 2026-10-13.
 Il secondo giro DB è in git (c395c2e1b), il lavoro BE/FE anche (6fdd888cc).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-11, su decisione di Tid. **A chi:** team DB
 > (§4), poi BE/FE (§5).
 > **Stato:** ✅ **lato DB applicato, pgTAP verdi** (Tid, 2026-10-12; §4.6): quattro changeSet
 > `20261012-04 … -07`, il codice nuovo nei due CSV, un pgTAP nuovo e due adeguati.
-> ✅ **Lato BE/FE scritto e rivisto** (2026-10-12, §8 e §8.1): resta il collaudo a video.
+> ✅ **Lato BE/FE scritto e rivisto** (2026-10-12, §8 e §8.1), **collaudato a video** (Tid, 2026-10-13, §8.3).
 > ✅ **Secondo giro DB** (2026-10-12, §4.7): regola del 2 chiusa con la scelta (a) di Tid, e il
 > pgTAP allineato alla forma vera del BE. **Applicato, pgTAP verdi, nessuna regressione** (Tid).
 > Decisioni D-1 … D-7 e P-1 prese da Tid il 2026-10-11 (§3, §6).
@@ -389,3 +390,17 @@ documento cambiato da un altro utente fra apertura e click). La (b) toccherebbe 
 usato da tutti i guard, e un segnale che spegne il log va disegnato perché non diventi il modo di
 nascondere errori veri. Nessuna ricaduta sul DB. Se il rumore nel diario diventerà un problema,
 la (b) si apre come brief a sé.
+
+### 8.3 ✅ Collaudo a video — riuscito (Tid, 2026-10-13)
+
+Dodici casi, tutti come atteso:
+
+* **ordine** — in `DRAFT` tutte e due le date, nelle due modalità, con la conferma col numero di
+  righe prima di sovrascrivere; in `CONFERMATO` la sola confermata; in `PARZIALMENTE_EVASO` le
+  righe spedite saltate e contate nella conferma e nell'esito, e il kebab della riga spedita
+  spento col motivo di riga; in `EVASO`/`ANNULLATO` l'azione visibile e spenta col motivo (BF-3);
+* **preventivo** — in bozza la sola data richiesta; fuori bozza l'azione non compare (BF-3); una
+  riga `PENDING` di approvazione prezzo fa fallire il gesto per intero (BF-2);
+* **revisione (§8.1)** — le liste aperte in un'altra scheda si aggiornano (R-2); con l'ordine
+  annullato da un'altra scheda il rifiuto arriva dall'anteprima, prima della domanda di
+  conferma (R-1).

@@ -896,6 +896,7 @@ const fotoOnere = useFotografiaDialog(() => ({ ...onereForm.value }), { visibile
     <DocumentoCollegamentiBar
       v-if="commessaId"
       base-path="/vendite/commesse"
+      :versione="stato"
       :doc-id="commessaId"
       @documento-chiuso="reloadAll"
       :readonly="isReadonly" />
@@ -1258,6 +1259,7 @@ const fotoOnere = useFotografiaDialog(() => ({ ...onereForm.value }), { visibile
       :header="t('vendite.commesse.azione_annulla')"
       :domanda="domandaAnnullo"
       :loading="cambioStato.loading.value"
+      :readonly="isReadonly"
       @conferma="onConfermaAnnullo"
       @cancel="cambioStato.annulla()"
     />

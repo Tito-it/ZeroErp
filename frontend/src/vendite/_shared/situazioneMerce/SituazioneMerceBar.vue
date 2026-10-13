@@ -43,6 +43,12 @@ const props = defineProps({
   basePath: { type: String, required: true },
   // Pk di dominio (null in CREATE: nessuna fetch, nessuna riga).
   docId: { type: Number, default: null },
+  // ⭐ Il dettaglio che il drawer ospite ha appena letto (l'oggetto intero):
+  // ogni sua rilettura rilegge anche qui (useLetturaDocumento). OBBLIGATORIA
+  // di proposito — dimenticarla e' il difetto che l'ha fatta nascere (barra
+  // stantia dopo l'annullo di una commessa, 2026-10-13): senza, Vue avvisa.
+  // `null` finche' il dettaglio non e' arrivato e' ammesso (niente `type`).
+  versione: { required: true },
   // Readonly PURO del chiamante (permessi area / split), NON il lock-di-stato
   // del documento: la dialog e' consultiva e deve aprirsi anche su un
   // documento post-DRAFT, che e' il caso normale qui — la merce si muove dopo
@@ -54,13 +60,14 @@ const { t } = useI18n()
 const router = useRouter()
 
 // Fetch unica condivisa con la dialog (che non fetcha: si apre istantanea).
-const { sezioni, loaded, loading, reload } = useSituazioneMerce(
+// Si rilegge da se' a ogni rilettura del drawer ospite (`versione`): evasione,
+// reso, annullo, emissione passano tutti da un `loadDetail`, e nessun drawer
+// deve piu' ricordarsi di chiamare `reload` (2026-10-13).
+const { sezioni, loaded, loading } = useSituazioneMerce(
   () => props.basePath,
   () => props.docId,
+  () => props.versione,
 )
-// I drawer ricaricano dopo un'azione che cambia la merce (evasione, push,
-// creazione reso, ri-spedizione): `reload` e' il loro aggancio.
-defineExpose({ reload })
 
 const s = computed(() => sintesiSituazioneMerce(sezioni.value))
 

@@ -349,7 +349,7 @@ si scrive modificando la riga). Risposta: `{ordine_id, riga_id, data_consegna_co
 `PATCH /<id>/righe/<riga_id>/` resta «solo in bozza» per tutte le colonne.
 ⛔ Dal 2026-10-12 una riga **già spedita** (un DDT uscito dalla bozza, anche per
 una parte) tiene la sua data: 409 `E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA` del guard
-di riga ([brief-db-date-consegna-righe-in-blocco](/dev/work-in-progress/brief-db-date-consegna-righe-in-blocco) D-7).
+di riga ([brief-db-date-consegna-righe-in-blocco](/dev/work-done/brief-db-date-consegna-righe-in-blocco) D-7).
 Lo si sa prima dalla lista righe: `data_consegna_confermata_blocco` (il `reason`
 del primo motivo, `NULL` = si cambia; chiave i18n
 `vendite.ordini.data_consegna_confermata_reason.<reason minuscolo>`).

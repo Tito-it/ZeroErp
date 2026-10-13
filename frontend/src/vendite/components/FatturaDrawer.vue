@@ -478,6 +478,7 @@ function onNoteSaved(total) {
              numerazione questa barra e' l'unica delle due che parla. -->
         <DocumentoCollegamentiBar
           base-path="/vendite/fatture"
+          :versione="dettaglio"
           :doc-id="fatturaId"
           @documento-chiuso="loadDettaglio"
           :readonly="isReadonly" />

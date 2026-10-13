@@ -31,6 +31,7 @@ const {
   data: passaggi,
   loaded,
   loading,
+  reload,
 } = useDocumentoPassaggi('/vendite/commesse', () => props.commessaId)
 
 const nodo = computed(() => passaggi.value?.nodo ?? null)
@@ -39,12 +40,17 @@ const pratica = computed(() => passaggi.value?.pratica ?? null)
 const praticaDrawerVisible = ref(false)
 
 // Host cross-dominio: apre il drawer di dettaglio del documento della tappa.
+// ⭐ Alla CHIUSURA si rilegge (`onClose`), come fa DocumentoCollegamentiBar:
+// nel drawer impilato l'operatore puo' aver agito (annullare il DDT, il
+// preventivo…), e qui gli stati della catena e la testata della commessa
+// vengono dalla stessa lettura — senza, restavano quelli di prima (2026-10-13).
 const {
   visible: docDrawerVisible,
   tipo: docDrawerTipo,
   id: docDrawerId,
   apri: apriDocumentoDrawer,
-} = useDocumentoDrawer()
+  onVisibleChange: onDocDrawerVisibleChange,
+} = useDocumentoDrawer(() => reload())
 
 function apriDocumento(row) {
   // Guardia "tappa apribile" nel composable (`apri` no-op su chiave ignota).
@@ -92,7 +98,8 @@ function apriDocumento(row) {
       :pratica-id="pratica.pratica_id" />
 
     <DocumentoDrawerHost
-      v-model:visible="docDrawerVisible"
+      :visible="docDrawerVisible"
+      @update:visible="onDocDrawerVisibleChange"
       :tipo-codice="docDrawerTipo"
       :doc-id="docDrawerId" />
   </AppDrawer>

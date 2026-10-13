@@ -53,6 +53,10 @@ const store = useProcessiAutomaticiStore()
 //    «visto e vuoto», e qui non si e' visto niente — lo dice il pannello sotto.
 const testataPresidi = computed(() => statoPallino(store.presidiTestata))
 
+// C'e' almeno una scheda da leggere (presidio acceso o non letto): la sezione
+// prende piu' spazio. Il predicato e' quello del pannello (`da_guardare`).
+const presidiDaGuardare = computed(() => (store.presidi ?? []).some((p) => p.da_guardare))
+
 // ⛔ Nessun `onNew` e nessun `exportFn`: lo scaffolding omette da sé le azioni
 //    che non gli si passano. Il registro è catalogo — non si crea un processo
 //    da qui — e l'export non ha endpoint.
@@ -215,7 +219,7 @@ function onIdentitaCreata() {
       </template>
     </ListaConfigurabile>
 
-    <section class="app-proc-presidi">
+    <section class="app-proc-presidi" :class="{ 'app-proc-presidi-accesi': presidiDaGuardare }">
       <h3 class="app-proc-presidi-titolo">
         {{ t('amministrazione.processi.presidi_titolo') }}
         <!-- ⛔ Un controllo NON LETTO non è uno zero: senza il suo segmento la
@@ -270,7 +274,15 @@ function onIdentitaCreata() {
   display: flex;
   flex-direction: column;
 }
-.app-proc-presidi-corpo { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* ⭐ Con qualcosa da leggere il tetto sale: l'errore e' la notizia della pagina,
+   e la lista ha comunque la sua meta' (scrolla dentro di se'). */
+.app-proc-presidi-accesi { max-height: 50vh; }
+/* Lo scroll NON sta qui ma nel pannello, sulle sole schede: la striscia dei
+   presidi a zero resta visibile sotto. `overflow: hidden` e' la rete. */
+.app-proc-presidi-corpo {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+}
 .app-proc-presidi-titolo {
   display: flex; align-items: center; gap: 0.5rem;
   font-size: 1rem; margin: 0 0 0.25rem;

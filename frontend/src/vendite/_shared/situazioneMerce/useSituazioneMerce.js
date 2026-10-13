@@ -13,40 +13,19 @@
 // ancora calcolato». Senza questo flag la barra mostrerebbe «nessuna pendenza»
 // su dati mai arrivati — un vuoto positivo su un fallimento, cioe' la bugia
 // piu' facile da raccontare in una schermata di riepilogo.
-import { computed, ref, toValue, watch } from 'vue'
+//
+// Il QUANDO leggere sta in `useLetturaDocumento` (2026-10-13, regola del 2 con
+// `useDocumentoPassaggi`): con `versione` (il dettaglio del drawer ospite) la
+// situazione si rilegge a ogni rilettura del drawer — evasione, reso, annullo,
+// emissione — senza che il drawer se lo debba ricordare.
+import { computed, toValue } from 'vue'
 import { getSituazioneMerce } from './situazioneMerceApi'
-import { useApiHandler } from '../../../core/composables/useApiHandler'
-import { useFetchVersion } from '../../../core/composables/useFetchVersion'
+import { useLetturaDocumento } from '../../../core/composables/useLetturaDocumento'
 
-export function useSituazioneMerce(basePath, docId) {
-  const data = ref(null)
-  const loaded = ref(false)
-  const { execute, loading } = useApiHandler()
-  const { tag, isCurrent, invalidate } = useFetchVersion()
-
-  // Scopo: carica la situazione del documento corrente. Il token di
-  //        useFetchVersion scarta le risposte stantie sui cambi rapidi di
-  //        documento (il drawer resta montato e l'id cambia sotto).
-  async function load() {
-    const id = toValue(docId)
-    if (!id) return
-    const token = tag()
-    const result = await execute(() => getSituazioneMerce(toValue(basePath), id))
-    if (!isCurrent(token) || result === null) return
-    data.value = result
-    loaded.value = true
-  }
-
-  // Cambio documento: azzera e ricarica. `immediate` copre il mount.
-  watch(
-    () => toValue(docId),
-    (id) => {
-      invalidate()
-      data.value = null
-      loaded.value = false
-      if (id) load()
-    },
-    { immediate: true },
+export function useSituazioneMerce(basePath, docId, versione) {
+  const { dati: data, caricati: loaded, loading, rileggi } = useLetturaDocumento(
+    (id) => getSituazioneMerce(toValue(basePath), id),
+    { docId, versione },
   )
 
   // Sezioni sempre presenti come array: il template itera senza guardie, e un
@@ -68,5 +47,5 @@ export function useSituazioneMerce(basePath, docId) {
     }
   })
 
-  return { data, sezioni, loaded, loading, reload: load }
+  return { data, sezioni, loaded, loading, reload: rileggi }
 }

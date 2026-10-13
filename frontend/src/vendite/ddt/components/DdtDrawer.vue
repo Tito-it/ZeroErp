@@ -113,25 +113,16 @@ const showRiepilogoIva = computed(
 )
 const noteDrawerVisible = ref(false)
 const resoDialogVisible = ref(false)
-// Ref alla barra collegamenti: la creazione di un reso aggiunge un arco
-// DDT->Reso, quindi i chip vanno ricaricati insieme al detail (senza questo,
-// il chip «Reso» comparirebbe solo alla riapertura del drawer).
-const collegamentiRef = ref(null)
-// Ref alla barra situazione merce: un reso cambia i CONTI (tenuti scende,
-// puo' comparire un accredito dovuto), non solo il grafo dei collegamenti.
-// Sono due letture diverse della stessa azione e vanno ricaricate entrambe.
-const merceRef = ref(null)
-
 // Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
 //        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
 //        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
-//        rileggono testata (stato, capability), righe e situazione merce. I chip li rilegge la
-//        barra da se'. Le liste in ascolto le ha gia' avvisate lo store del
+//        rileggono testata (stato, capability) e righe. Chip e situazione
+//        merce li rileggono le barre su quel dettaglio nuovo (`:versione`).
+//        Le liste in ascolto le ha gia' avvisate lo store del
 //        verbo, nel drawer impilato.
 async function onDocumentoCollegatoChiuso() {
   await loadDetail()
   righeTableRef.value?.loadRighe()
-  merceRef.value?.reload()
 }
 
 // ⭐ Il cambio di stato e' un gesto CONFERMABILE (D-8 di
@@ -146,8 +137,6 @@ const { richiestaConferma: domandaAnnullo } = cambioStato
 //        stato), i chip dei collegamenti e il conto della merce.
 function onResoCreato() {
   loadDetail()
-  collegamentiRef.value?.reload()
-  merceRef.value?.reload()
   // ⭐ La lista DDT dietro: il reso cambia il conto della merce e i transiti.
   // `changed`, non `saved`: dal DDT si continua a lavorare.
   emit('changed')
@@ -172,8 +161,6 @@ function onPrelieviChanged() {
 
 function onRigheChanged() {
   loadDetail()
-  collegamentiRef.value?.reload()
-  merceRef.value?.reload()
   emit('changed')
 }
 // Avviso emissione: true quando manca l'indirizzo obbligatorio (CON) —
@@ -559,11 +546,10 @@ async function handleEmissioneConferma({ files }) {
   emissioneLoading.value = false
   if (result !== null) {
     emissioneDialogVisible.value = false
-    await loadDetail()
     // L'emissione e' il momento in cui le partite di merce NASCONO (soglia
-    // EMESSO, decisione D1): senza il reload la barra resterebbe nascosta
-    // («nessuna merce») fino alla riapertura del drawer.
-    merceRef.value?.reload()
+    // EMESSO, decisione D1): la barra merce le rilegge su questo dettaglio
+    // nuovo (`:versione`), o resterebbe «nessuna merce» fino alla riapertura.
+    await loadDetail()
     emit('saved', result)
   }
 }
@@ -654,14 +640,11 @@ async function onConfermaAnnullo(dichiarazione) {
 
 async function dopoCambioStato(result) {
   if (result !== null) {
+    // Il cambio stato sposta i conti della merce (l'ANNULLO rende il documento
+    // abortito e le sue partite ESCONO dalla vista) e ritira i legami delle
+    // righe con ordini e resi (D-8). Entrambe le barre li rileggono su questo
+    // dettaglio nuovo (`:versione`), senza una chiamata qui.
     await loadDetail()
-    // Il cambio stato puo' spostare i conti della merce: l'ANNULLO rende il
-    // documento abortito e le sue partite ESCONO dalla vista. Ricaricare solo
-    // il detail lascerebbe la barra a raccontare partite che non esistono piu'.
-    merceRef.value?.reload()
-    // E ritira i legami delle righe con ordini e resi (D-8): i collegamenti
-    // vanno riletti, o la barra mostrerebbe un ordine che non e' piu' evaso.
-    collegamentiRef.value?.reload()
     emit('saved', result)
   }
 }
@@ -773,8 +756,8 @@ const drawerActions = computed(() => {
            Il dettaglio (grafo completo) si apre dai chip stessi in dialog.
            `ref` per ricaricare i chip dopo un'azione che li cambia (reso). -->
       <DocumentoCollegamentiBar
-        ref="collegamentiRef"
         base-path="/vendite/ddt"
+        :versione="detail"
         :doc-id="effectiveDdtId"
         @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="readonly || parentReadonly" />
@@ -784,8 +767,8 @@ const drawerActions = computed(() => {
            collegato, questa COM'E' ANDATA. Sparisce se non c'e' nulla da
            raccontare (un DDT in bozza non ha ancora partite). -->
       <SituazioneMerceBar
-        ref="merceRef"
         base-path="/vendite/ddt"
+        :versione="detail"
         :doc-id="effectiveDdtId"
         :readonly="readonly || parentReadonly" />
     </template>
@@ -883,6 +866,7 @@ const drawerActions = computed(() => {
     :header="t('vendite.ddt.azione_annulla')"
     :domanda="domandaAnnullo"
     :loading="cambioStato.loading.value"
+    :readonly="isReadonlyPuro"
     @conferma="onConfermaAnnullo"
     @cancel="cambioStato.annulla()"
   />

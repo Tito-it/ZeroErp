@@ -198,12 +198,6 @@ const showEvasione = computed(
 // pannello in coda al contenuto del drawer — le azioni di processo stanno in
 // alto, come per il «Genera reso» del DDT.
 const evasioneDialogVisible = ref(false)
-// Ref alla barra collegamenti (chip pratica/origine/destinazioni).
-const collegamentiRef = ref(null)
-// Ref alla barra situazione merce: l'evasione sposta merce, quindi cambia il
-// conto (consegnato sale, `da_spedire` scende) e non solo il grafo.
-const merceRef = ref(null)
-
 // ⭐ Il cambio di stato e' un gesto CONFERMABILE (brief-db-annullo-documento-
 //    con-legami): l'annullo di un ordine con legami (righe di preventivo,
 //    offerta d'origine, righe di commessa da emettere) il DB lo rifiuta
@@ -252,25 +246,22 @@ function onDateConsegnaAggiornate() {
 // Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
 //        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
 //        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
-//        rileggono testata (stato, capability), righe e situazione merce. I chip li rilegge la
-//        barra da se'. Le liste in ascolto le ha gia' avvisate lo store del
+//        rileggono testata (stato, capability) e righe. Chip e situazione
+//        merce li rileggono le barre su quel dettaglio nuovo (`:versione`).
+//        Le liste in ascolto le ha gia' avvisate lo store del
 //        verbo, nel drawer impilato.
 async function onDocumentoCollegatoChiuso() {
   await loadDetail()
   righeTableRef.value?.loadRighe()
-  merceRef.value?.reload()
 }
 
 // Scopo: callback @evaso della dialog — generato un DDT dall'ordine: ricarica il
 // detail (lo stato ordine viene proiettato dal BE: CONFERMATO/PARZIALMENTE_EVASO/
 // EVASO) e le capability. Il tab DDT lo ha gia' avvisato il verbo `generaDdt` dello store.
 async function onEvaso() {
+  // L'evasione crea un DDT (nuovo arco ordine->DDT) e sposta merce: chip e
+  // situazione merce li rileggono le barre, agganciate al dettaglio.
   await loadDetail()
-  // L'evasione crea un DDT: nuovo arco ordine->DDT, quindi i chip dei
-  // collegamenti vanno ricaricati (senza questo il chip «DDT» comparirebbe
-  // solo alla riapertura del drawer).
-  collegamentiRef.value?.reload()
-  merceRef.value?.reload()
   // ⭐ E la LISTA dietro: l'ordine e' passato a PARZIALMENTE_EVASO e mostra un
   // transito nuovo. `changed` e non `saved` perche' il lavoro continua — il DDT
   // nasce DRAFT e si rifinisce dal tab DDT, quindi il drawer deve restare
@@ -633,10 +624,9 @@ async function onConfermaAnnullo(dichiarazione) {
 
 async function dopoCambioStato(result) {
   if (result !== null) {
+    // L'annullo ritira i legami: collegamenti e merce li rileggono le barre,
+    // agganciate al dettaglio (`:versione`).
     await loadDetail()
-    // L'annullo ritira i legami: collegamenti e merce vanno riletti.
-    collegamentiRef.value?.reload()
-    merceRef.value?.reload()
     emit('saved', result)
   }
 }
@@ -754,8 +744,8 @@ const drawerActions = computed(() => {
            segnalazione a colpo d'occhio sotto i pulsanti — «Preventivo»,
            «2 DDT». Il grafo completo si apre dai chip stessi in dialog. -->
       <DocumentoCollegamentiBar
-        ref="collegamentiRef"
         base-path="/vendite/ordini"
+        :versione="detail"
         :doc-id="effectiveOrdineId"
         @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="isReadonlyPuro" />
@@ -767,8 +757,8 @@ const drawerActions = computed(() => {
            schermate per ricostruire una storia, e la riga che la riassume
            non esisteva. -->
       <SituazioneMerceBar
-        ref="merceRef"
         base-path="/vendite/ordini"
+        :versione="detail"
         :doc-id="effectiveOrdineId"
         :readonly="isReadonlyPuro" />
     </template>
@@ -809,6 +799,7 @@ const drawerActions = computed(() => {
         :is-modificabile="canEditRighe && !isReadonly"
         :capabilities="capabilities"
         :readonly="isReadonlyPuro"
+        :data-documento="detail?.data ?? null"
         @changed="loadDetail()"
         @form-aperto="onFormAperto" />
 
@@ -854,6 +845,7 @@ const drawerActions = computed(() => {
     :header="t('vendite.ordini.azione_annulla')"
     :domanda="domandaAnnullo"
     :loading="cambioStato.loading.value"
+    :readonly="isReadonlyPuro"
     @conferma="onConfermaAnnullo"
     @cancel="cambioStato.annulla()"
   />
@@ -863,6 +855,7 @@ const drawerActions = computed(() => {
     v-model:visible="dateConsegnaVisible"
     :invia="(payload) => store.aggiornaDateConsegna(effectiveOrdineId, payload)"
     :colonne="dateConsegnaColonne"
+    :data-documento="detail?.data ?? null"
     :readonly="isReadonlyPuro"
     @aggiornate="onDateConsegnaAggiornate"
   />

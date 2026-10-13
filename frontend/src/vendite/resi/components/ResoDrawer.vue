@@ -107,9 +107,6 @@ const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumen
   presente: () => hasDetail.value,
 })
 const modificatoDocumento = documento.modificato
-// Ref alla barra collegamenti (chip pratica/origine/destinazioni).
-const collegamentiRef = ref(null)
-
 // Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
 //        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
 //        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
@@ -273,7 +270,6 @@ const drawerActions = computed(() => {
 async function onCoperturaRiconsegnaCambiata() {
   await loadDetail()
   righeTableRef.value?.loadRighe()
-  collegamentiRef.value?.reload()
   // ⭐ Era `emit('saved', {})`, e la lista si aggiornava — ma il drawer si
   // CHIUDEVA: una ri-spedizione parziale lascia il resto in coda, quindi
   // l'operatore era ancora dentro a lavorare. `changed` ricarica e lascia
@@ -328,9 +324,9 @@ async function onCoperturaRiconsegnaCambiata() {
            l'ORIGINE (reso <- DDT <- ordine), qui riassunta nei chip; il
            grafo completo si apre dai chip in dialog. -->
       <DocumentoCollegamentiBar
-        ref="collegamentiRef"
         v-if="props.resoId"
         base-path="/vendite/resi"
+        :versione="detail"
         :doc-id="props.resoId"
         @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="readonly || parentReadonly" />
