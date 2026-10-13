@@ -1,0 +1,16 @@
+# Template systemd — timer del giro notturno degli smoke (solo sviluppo).
+# Placeholder per-host: __ONCALENDAR__ (sveglia, `*:00`, dichiarato in
+# `backend/deploy/sveglie.json`). Il timer si sveglia ogni ora e l'ExecCondition
+# del .service fa il lavoro alle 02:30 AZIENDALI, una volta al giorno (`dovuto`).
+#
+# ⚠️ `Persistent=true`: dopo un'interruzione il giro perso parte una volta al
+# riaggancio, così la mattina c'è comunque un esito da leggere.
+[Unit]
+Description=Timer ZeroERP giro notturno degli smoke
+
+[Timer]
+OnCalendar=__ONCALENDAR__
+Persistent=true
+
+[Install]
+WantedBy=timers.target

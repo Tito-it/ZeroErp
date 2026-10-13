@@ -471,6 +471,7 @@ class SveglieDichiarateTests(SimpleTestCase):
     #     ripartirebbe a ogni sveglia.
     def test_il_jobname_dichiarato_e_quello_che_il_comando_scrive(self) -> None:
         from apps.core.services.presidi_digest import jobname_corsia as corsia_digest
+        from apps.core.management.commands.smoke_notturno import JOB_NAME as jobname_smoke
         from apps.vendite.management.commands.run_fatturazione_batch import (
             jobname_corsia as corsia_fatturazione,
         )
@@ -483,6 +484,7 @@ class SveglieDichiarateTests(SimpleTestCase):
         corsia_per_processo = {
             processi.PROCESSO_DIGEST_PRESIDI: lambda c: corsia_digest(opzione(c, "--cadenza")),
             processi.PROCESSO_RUN_FATTURAZIONE_BATCH: lambda c: corsia_fatturazione(opzione(c, "--modalita")),
+            processi.PROCESSO_SMOKE_NOTTURNO: lambda c: jobname_smoke,   # una corsia sola
         }
         for s in sveglie.carica_sveglie():
             if s.dovuto is None:

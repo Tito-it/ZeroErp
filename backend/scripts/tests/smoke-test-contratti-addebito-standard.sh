@@ -28,6 +28,8 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_emetti
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
 # Override esplicito emittente (opzionale). Se vuoto, si deriva dal documento
 # sorgente del BA (vedi setup); ultimo fallback 32.
 EMITTENTE_OVERRIDE="${EMITTENTE_ID:-}"
@@ -91,26 +93,11 @@ log_ok "Autenticazione JWT"
 
 # --- 1. Setup: tripla BA+utility+istanza + articolo ---
 echo ""; echo "-- 1. Setup tripla BA+utility+istanza + articolo --"
-BA_RAW=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/anagrafiche/billing-account/lookup/" 2>/dev/null)
-TRIPLE=$(echo "$BA_RAW" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin).get('data', {})
-    rows = d.get('results', d) if isinstance(d, dict) else d
-    for r in (rows or []):
-        if r.get('utility_id') and r.get('istanza_utility_id'):
-            print(r['id'], r['utility_id'], r['istanza_utility_id']); break
-except Exception:
-    pass
-" 2>/dev/null)
-BA_ID=$(echo "$TRIPLE" | awk '{print $1}')
-UTILITY_ID=$(echo "$TRIPLE" | awk '{print $2}')
-ISTANZA_ID=$(echo "$TRIPLE" | awk '{print $3}')
+smoke_cliente_dal_lookup   # BB _smoke_cliente.sh: BA_ID, UTILITY_ID, ISTANZA_ID
 
-# Emittente: NON hardcodare (no-hardcoded-ids). Si deriva dallo stesso documento
-# sorgente del BA → coerente per costruzione col guard BA<->emittente del contratto.
-# Override esplicito via EMITTENTE_ID; fallback finale 32 solo se nulla risolto.
+# Emittente: mai un id scritto a mano. Col cliente dal lookup non si passa (vale
+# l'emittente attivo, lo stesso del cliente: _smoke_cliente.sh); col ripiego su un
+# documento esistente si prende il suo, coerente col suo BA. Override: EMITTENTE_ID.
 EF_SRC=""
 if [[ -z "$BA_ID" || -z "$ISTANZA_ID" ]]; then
     log_info "lookup BA vuoto/scope; provo a riusare un documento esistente (preventivi/ordini/contratti)"
@@ -121,7 +108,7 @@ import sys, json
 try:
     rows = json.load(sys.stdin).get('data',{}).get('results',[])
     # Preferisci una riga che espone anche l'emittente (coerente col BA → guard BA<->EF);
-    # se nessuna lo espone, ripiega sulla prima riga BA+istanza valida (emittente vuoto → 32).
+    # se nessuna lo espone, ripiega sulla prima riga BA+istanza valida (emittente vuoto: default del DB).
     cand = [r for r in rows if r.get('billing_account_id') and r.get('istanza_utility_id')]
     best = next((r for r in cand if r.get('emittente_fiscale_id')), cand[0] if cand else None)
     if best:
@@ -164,9 +151,51 @@ echo ""; echo "-- 2. Crea contratto DRAFT --"
 # (BA, istanza, utility, ambito) nel periodo di validità può far fallire la create
 # se esiste già un contratto sovrapposto — in quel caso l'errore è parlante.
 AMBITO="${SMOKE_AMBITO:-COMMODITY}"
-# Emittente coerente col BA: override esplicito → emittente del doc sorgente → 32.
-EMITTENTE_FISCALE_ID="${EMITTENTE_OVERRIDE:-${EF_SRC:-32}}"
-CREATE_PAYLOAD="{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID:-null}, \"istanza_utility_id\": ${ISTANZA_ID}, \"ambito\": \"${AMBITO}\", \"emittente_fiscale_id\": ${EMITTENTE_FISCALE_ID}, \"valido_dal\": \"${OGGI}\", \"data\": \"${OGGI}\"}"
+# ⭐ I contratti di questo smoke non restano vivi: il prezzo di OGNI documento
+# del cliente di prova passa dal contratto ATTIVO, e uno lasciato acceso (modalita'
+# C, senza listino) fa fallire gli altri smoke sullo stesso cliente. Si chiudono
+# i residui ora e i propri all'uscita, qualunque sia (BB _smoke_documenti.sh).
+smoke_chiudi_contratti "$BA_ID" "$AMBITO"   # residui sul cliente condiviso
+
+# ⭐ Un CLIENTE PROPRIO per ogni giro. Il contratto non puo' sovrapporsi a un
+# altro sulla chiave (cliente, istanza, utility, ambito) nel periodo, e il
+# vincolo non guarda lo stato: un contratto cessato OGGI occupa ancora oggi.
+# Sul cliente condiviso, due giri nello stesso giorno si scontravano
+# (E_VENDITE_CONTRATTO_OVERLAP) e il contratto attivo governava i prezzi degli
+# altri smoke. La creazione manuale di un cliente apre ogni volta istanza e BA
+# nuovi: il contratto vive li', isolato.
+do_curl GET "/api/v1/anagrafiche/clienti/?limit=1"
+SOGG_ID=$(json_get "$LAST_BODY" "data.results.0.soggetto_id")   # ha gli indirizzi del ruolo
+do_curl GET "/api/v1/anagrafiche/utilities/manual-lookup/"
+UTIL_MANUALE=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin).get('data')
+    rows = d.get('results', d) if isinstance(d, dict) else d
+    ids = [str(r.get('id') or r.get('utility_id')) for r in (rows or [])]
+    print(sys.argv[1] if sys.argv[1] in ids else (ids[0] if ids else ''))
+except Exception:
+    print('')
+" "${UTILITY_ID:-}" 2>/dev/null)
+do_curl GET "/api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti&limit=1"
+CAT_ID=$(json_get "$LAST_BODY" "data.results.0.id")
+do_curl POST "/api/v1/anagrafiche/clienti/" \
+    "{\"soggetto_id\": \"${SOGG_ID}\", \"utility_id\": ${UTIL_MANUALE:-null}, \"ba_categoria_cliente_id\": ${CAT_ID:-null}}"
+if ! check "POST cliente proprio del giro" 200 "data.billing_account_id"; then
+    echo -e "${RED}Setup fallito: impossibile creare il cliente del giro. Stop.${NC}"; exit 1
+fi
+BA_ID="$EXTRACTED"
+ISTANZA_ID=$(json_get "$LAST_BODY" "data.istanza_utility_id")
+UTILITY_ID="$UTIL_MANUALE"
+EF_SRC=""   # l'emittente e' quello attivo, lo stesso del nuovo cliente
+log_info "cliente del giro: BA=$BA_ID istanza=$ISTANZA_ID utility=$UTILITY_ID"
+trap 'smoke_chiudi_contratti "$BA_ID" "$AMBITO"; rm -f "$TMPFILE"' EXIT
+# Emittente coerente col BA: override esplicito → emittente del doc sorgente →
+# nessuno (default del DB: l'emittente attivo, lo stesso del cliente del lookup).
+EMITTENTE_FISCALE_ID="${EMITTENTE_OVERRIDE:-${EF_SRC:-}}"
+EMITTENTE_JSON=""
+[[ -n "$EMITTENTE_FISCALE_ID" ]] && EMITTENTE_JSON=", \"emittente_fiscale_id\": ${EMITTENTE_FISCALE_ID}"
+CREATE_PAYLOAD="{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID:-null}, \"istanza_utility_id\": ${ISTANZA_ID}, \"ambito\": \"${AMBITO}\"${EMITTENTE_JSON}, \"valido_dal\": \"${OGGI}\", \"data\": \"${OGGI}\"}"
 log_info "payload create = $CREATE_PAYLOAD"
 do_curl POST "/api/v1/vendite/contratti/" "$CREATE_PAYLOAD"
 if ! check "POST crea contratto" 200 "data.id"; then
@@ -201,9 +230,7 @@ log_info "riga_id = $RIGA_ID"
 
 # --- 4. Emetti → ATTIVO (prereq documentale gated) ---
 echo ""; echo "-- 4. /emetti/ → ATTIVO (skip se prereq documentale assente) --"
-curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
-    -F "x=" "${BASE_URL}/api/v1/vendite/contratti/${CONTRATTO_ID}/emetti/" > "$TMPFILE" 2>/dev/null
-LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+smoke_emetti contratti "$CONTRATTO_ID"   # BB _smoke_documenti.sh
 ATTIVO_OK=0
 if [[ "$LAST_STATUS" == "200" ]]; then
     log_ok "POST /emetti/ → ATTIVO"

@@ -392,6 +392,15 @@ in due posti prima o poi dissente.
 | `zeroerp-digest-presidi-giornaliero` | `digest_presidi --cadenza giornaliera` | timer | `*:00` + dovuto: ogni giorno dalle 07:00 aziendali | ✅ |
 | `zeroerp-digest-presidi-settimanale` | `digest_presidi --cadenza settimanale` | timer | `*:00` + dovuto: il lunedi' dalle 07:30 aziendali | ✅ |
 | `zeroerp-listen-permessi` | `listen_permessi` | **servizio** | — | ✅ |
+| `zeroerp-smoke-notturno` | `smoke_notturno` | timer | `*:00` + dovuto: ogni giorno dalle 02:30 aziendali | ⛔ scrive dati di prova; solo sviluppo |
+
+⭐ **Il giro notturno degli smoke** (`smoke_notturno`, dal 2026-10-13) si accende **solo sul
+server di sviluppo**, in due mosse: `abilita: true` per quella macchina (o `systemctl enable
+--now zeroerp-smoke-notturno.timer` dopo l'installer) e `SMOKE_NOTTURNO_CONSENTITO=1` in
+`.env.systemd`. Senza la seconda il comando rifiuta di partire, prima di aprire la corsa: è la
+difesa che tiene il giro fuori dalla produzione anche se qualcuno accende il timer. Con
+regressioni la corsa chiude `ok=false` (`SMOKE_REGRESSIONI`) e il digest delle 07:00 la riporta
+per 7 giorni; nel `meta` della corsa c'è la cartella con l'output dei rossi.
 
 La fonte è il JSON: questa tabella lo descrive, non lo sostituisce.
 

@@ -129,13 +129,22 @@ log_info "Utility per test: id=$MANUAL_UTIL_ID ($MANUAL_UTIL_DESC)"
 # --- Trova un soggetto esistente per i test ---
 echo ""
 echo "-- Prerequisito: trova soggetto --"
-do_curl GET "/api/v1/anagrafiche/soggetti/?limit=1"
-SOGG_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
+# Il soggetto di un cliente ESISTENTE: ha per costruzione gli indirizzi che il
+# ruolo cliente esige (matrice tipi_ruolo_tipi_indirizzo, FATT con fallback). Un
+# soggetto qualsiasi risponde E_INDIRIZZO_OBBLIGATORIO_MANCANTE, giustamente.
+# La lista soggetti resta il ripiego.
+do_curl GET "/api/v1/anagrafiche/clienti/?limit=1"
+SOGG_ID=$(json_get "$LAST_BODY" ".data.results.0.soggetto_id")
+SOGG_NOME=$(json_get "$LAST_BODY" ".data.results.0.ragione_sociale_completa")
+if [[ -z "$SOGG_ID" || "$SOGG_ID" == "None" ]]; then
+    do_curl GET "/api/v1/anagrafiche/soggetti/?limit=1"
+    SOGG_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
+    SOGG_NOME=$(json_get "$LAST_BODY" ".data.results.0.ragione_sociale_completa")
+fi
 if [[ -z "$SOGG_ID" || "$SOGG_ID" == "" ]]; then
     echo -e "${RED}ERRORE: nessun soggetto nel DB — eseguire prima smoke-test-soggetti.sh${NC}"
     exit 1
 fi
-SOGG_NOME=$(json_get "$LAST_BODY" ".data.results.0.ragione_sociale_completa")
 log_info "Soggetto per test: id=$SOGG_ID ($SOGG_NOME)"
 
 # --- 2. Lista clienti ---
@@ -160,13 +169,22 @@ do_curl GET "/api/v1/anagrafiche/clienti/?utility_id=${MANUAL_UTIL_ID}&limit=5"
 check "Filtro utility" "200" ".data.count"
 log_info "Clienti per utility $MANUAL_UTIL_ID: $EXTRACTED"
 
+# La creazione apre anche il BA, e il BA nasce con la sua categoria cliente
+# (pricing v5): `ba_categoria_cliente_id` e' obbligatorio. Una qualsiasi, dal
+# lookup generico.
+do_curl GET "/api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti&limit=1"
+CAT_CREA_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
+[[ -z "$CAT_CREA_ID" ]] && { echo -e "${RED}ERRORE: nessuna categoria cliente${NC}"; exit 1; }
+log_info "Categoria cliente per le creazioni: id=$CAT_CREA_ID"
+
 # --- 5. Crea cliente manuale ---
 echo ""
 echo "-- 5. Crea cliente manuale --"
 do_curl POST "/api/v1/anagrafiche/clienti/" \
     "{
         \"soggetto_id\": \"${SOGG_ID}\",
-        \"utility_id\": ${MANUAL_UTIL_ID}
+        \"utility_id\": ${MANUAL_UTIL_ID},
+        \"ba_categoria_cliente_id\": ${CAT_CREA_ID}
     }"
 NEW_CLI_ID=""
 if [[ "$LAST_STATUS" == "200" ]]; then
@@ -224,10 +242,15 @@ if [[ -n "$GAS_UTIL_ID" && "$GAS_UTIL_ID" != "" ]]; then
     do_curl POST "/api/v1/anagrafiche/clienti/" \
         "{
             \"soggetto_id\": \"${SOGG_ID}\",
-            \"utility_id\": ${GAS_UTIL_ID}
+            \"utility_id\": ${GAS_UTIL_ID},
+            \"ba_categoria_cliente_id\": ${CAT_CREA_ID}
         }"
     ERRCODE=$(json_get "$LAST_BODY" ".error.code")
-    if [[ "$LAST_STATUS" == "400" && "$ERRCODE" == "E_ANAG_VALIDAZIONE" ]]; then
+    ERRMSG=$(json_get "$LAST_BODY" ".error.message")
+    # ⚠️ Il 400 deve essere QUELLO del PDP: lo stesso codice esce anche per un
+    # payload incompleto (fino al 2026-10-12 il passo era verde per la categoria
+    # mancante, non per il PDP).
+    if [[ "$LAST_STATUS" == "400" && "$ERRCODE" == "E_ANAG_VALIDAZIONE" && "$ERRMSG" == *PDP* ]]; then
         log_ok "Utility GAS bloccata per creazione manuale (HTTP 400, $ERRCODE)"
     elif [[ "$LAST_STATUS" == "403" && "$ERRCODE" == "E_BA_ADMIN_GLOBALE_VIETATO" ]]; then
         # In ambienti con emittenti fiscali il guard operatore-emittenti (403)
@@ -241,13 +264,20 @@ else
 fi
 
 # --- 8. Crea cliente duplicato (stessa istanza) ---
+# ⚠️ DOMANDA APERTA (Tid, 2026-10-12: «da approfondire»). La creazione manuale
+# crea ogni volta un'istanza fittizia NUOVA (`create_istanza_fittizia`), quindi
+# con lo stesso soggetto e la stessa utility nasce un secondo cliente (200), non
+# un duplicato. Se debba essere rifiutato (un cliente manuale per soggetto e
+# utility) o sia voluto (piu' istanze fittizie) non e' deciso: il passo resta
+# rosso finche' non lo e', ed e' in baseline-smoke.tsv.
 echo ""
 echo "-- 8. Crea cliente duplicato --"
 if [[ -n "$NEW_CLI_ID" && "$NEW_CLI_ID" != "" ]]; then
     do_curl POST "/api/v1/anagrafiche/clienti/" \
         "{
             \"soggetto_id\": \"${SOGG_ID}\",
-            \"utility_id\": ${MANUAL_UTIL_ID}
+            \"utility_id\": ${MANUAL_UTIL_ID},
+            \"ba_categoria_cliente_id\": ${CAT_CREA_ID}
         }"
     if [[ "$LAST_STATUS" == "409" ]]; then
         log_ok "Duplicato rilevato (HTTP 409)"
@@ -284,22 +314,27 @@ else
     log_info "Categoria BA corrente: $CAT_ID"
 
     # --- 9. Update campi cliente (fn madre) + verifica persistenza ---
-    # NB dominio: trg_clienti_normalize_giorni_scadenza impone le combinazioni
-    # valide (tipo_gg_scadenza_ft, nr_giorni_scadenza): ('G'|'F', >0) oppure
-    # ('N'|'M', NULL). Per far persistere nr_giorni=30 il tipo DEVE essere 'G'/'F'.
+    # ⚠️ Contratto della PATCH (CLIENTE_UPDATE_ALLOWED + ba_categoria_cliente_id):
+    # pagamento, servizio_da_fatturare, garanzia, categoria del BA. Fino al
+    # 2026-10-12 lo smoke scriveva codice_commessa e i giorni di scadenza, usciti
+    # dal contratto (400 «Campi non supportati»). Il bersaglio puo' essere un
+    # cliente vero: ogni valore toccato torna com'era.
     echo ""
     echo "-- 9. Update campi cliente (fn madre atomica) --"
+    do_curl GET "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/"
+    ORIG_SERV=$(json_get "$LAST_BODY" ".data.servizio_da_fatturare")
+    ORIG_GAR=$(json_get "$LAST_BODY" ".data.garanzia_importo")
+    if [[ "$ORIG_SERV" == "True" || "$ORIG_SERV" == "true" ]]; then ORIG_SERV_JSON=true; NEW_SERV_JSON=false
+    else ORIG_SERV_JSON=false; NEW_SERV_JSON=true; fi
     do_curl PATCH "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/" \
-        '{"codice_commessa": "SMOKE-FIX1", "tipo_gg_scadenza_ft": "G", "nr_giorni_scadenza": 30}'
+        "{\"servizio_da_fatturare\": ${NEW_SERV_JSON}}"
     if check "PATCH update campi" "200"; then
         do_curl GET "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/"
-        GOT_COMM=$(json_get "$LAST_BODY" ".data.codice_commessa")
-        GOT_TIPO=$(json_get "$LAST_BODY" ".data.tipo_gg_scadenza_ft")
-        GOT_GG=$(json_get "$LAST_BODY" ".data.nr_giorni_scadenza")
-        if [[ "$GOT_COMM" == "SMOKE-FIX1" && "$GOT_TIPO" == "G" && "$GOT_GG" == "30" ]]; then
-            log_ok "Persistenza verificata (codice_commessa=$GOT_COMM, tipo=$GOT_TIPO, nr_giorni=$GOT_GG)"
+        GOT_SERV=$(json_get "$LAST_BODY" ".data.servizio_da_fatturare" | tr '[:upper:]' '[:lower:]')
+        if [[ "$GOT_SERV" == "$NEW_SERV_JSON" ]]; then
+            log_ok "Persistenza verificata (servizio_da_fatturare=$GOT_SERV)"
         else
-            log_fail "Persistenza KO (codice_commessa=$GOT_COMM, tipo=$GOT_TIPO, nr_giorni=$GOT_GG)"
+            log_fail "Persistenza KO (servizio_da_fatturare=$GOT_SERV, atteso $NEW_SERV_JSON)"
         fi
     fi
 
@@ -308,53 +343,57 @@ else
     echo "-- 10. Update atomico categoria BA + campo cliente --"
     if [[ -n "$CAT_ID" && "$CAT_ID" != "" && "$CAT_ID" != "None" ]]; then
         do_curl PATCH "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/" \
-            "{\"ba_categoria_cliente_id\": ${CAT_ID}, \"codice_commessa\": \"SMOKE-FIX1-COMBO\"}"
+            "{\"ba_categoria_cliente_id\": ${CAT_ID}, \"servizio_da_fatturare\": ${ORIG_SERV_JSON}}"
         if check "PATCH categoria+campo (una sola fn madre)" "200"; then
             do_curl GET "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/"
-            GOT_COMM=$(json_get "$LAST_BODY" ".data.codice_commessa")
+            GOT_SERV=$(json_get "$LAST_BODY" ".data.servizio_da_fatturare" | tr '[:upper:]' '[:lower:]')
             GOT_CAT=$(json_get "$LAST_BODY" ".data.ba_categoria_cliente_id")
-            if [[ "$GOT_COMM" == "SMOKE-FIX1-COMBO" && "$GOT_CAT" == "$CAT_ID" ]]; then
-                log_ok "Scrittura atomica verificata (categoria=$GOT_CAT, codice_commessa=$GOT_COMM)"
+            if [[ "$GOT_SERV" == "$ORIG_SERV_JSON" && "$GOT_CAT" == "$CAT_ID" ]]; then
+                log_ok "Scrittura atomica verificata (categoria=$GOT_CAT, servizio_da_fatturare=$GOT_SERV, ripristinato)"
             else
-                log_fail "Scrittura atomica KO (categoria=$GOT_CAT, codice_commessa=$GOT_COMM)"
+                log_fail "Scrittura atomica KO (categoria=$GOT_CAT, servizio_da_fatturare=$GOT_SERV)"
             fi
         fi
     else
         log_info "Skipped — categoria BA corrente non risolta"
+        do_curl PATCH "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/" \
+            "{\"servizio_da_fatturare\": ${ORIG_SERV_JSON}}"   # ripristino
     fi
 
     # --- 11. Regressione: campo numerico nullable "" -> NULL (no crash cast) ---
-    # Prima del fix, "" arrivava alla fn e faceva crashare (''::integer). Ora il
-    # BE lo normalizza a NULL. Passiamo anche tipo='N' per rispettare la coppia
-    # (con tipo 'N' nr_giorni DEVE essere NULL): cosi' l'unico esito possibile e'
-    # 200 con nr_giorni azzerato, e un eventuale crash del cast risalta.
+    # "" su un numerico nullable deve arrivare alla fn come NULL (normalizzazione
+    # BE), non far crashare il cast. Poi si rimette il valore di partenza.
     echo ""
-    echo "-- 11. Update nr_giorni_scadenza=\"\" -> NULL (normalizzazione BE) --"
+    echo "-- 11. Update garanzia_importo=\"\" -> NULL (normalizzazione BE) --"
     do_curl PATCH "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/" \
-        '{"tipo_gg_scadenza_ft": "N", "nr_giorni_scadenza": ""}'
+        '{"garanzia_importo": ""}'
     if check "PATCH stringa vuota su numerico nullable" "200"; then
         do_curl GET "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/"
-        GOT_GG=$(json_get "$LAST_BODY" ".data.nr_giorni_scadenza")
-        if [[ -z "$GOT_GG" || "$GOT_GG" == "None" ]]; then
-            log_ok "Campo azzerato a NULL (nr_giorni_scadenza vuoto)"
+        GOT_GAR=$(json_get "$LAST_BODY" ".data.garanzia_importo")
+        if [[ -z "$GOT_GAR" || "$GOT_GAR" == "None" ]]; then
+            log_ok "Campo azzerato a NULL (garanzia_importo vuoto)"
         else
-            log_fail "Atteso NULL, ricevuto nr_giorni_scadenza=$GOT_GG"
+            log_fail "Atteso NULL, ricevuto garanzia_importo=$GOT_GAR"
         fi
+    fi
+    if [[ -n "$ORIG_GAR" && "$ORIG_GAR" != "None" ]]; then
+        do_curl PATCH "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/" \
+            "{\"garanzia_importo\": ${ORIG_GAR}}"   # ripristino
     fi
 
     # --- 12. Update senza campi -> guard "nessun campo" ---
+    # Un PATCH vuoto su un cliente che esiste e' un payload sbagliato: 400
+    # E_ANAG_VALIDAZIONE «Nessun campo da aggiornare». Fino al 2026-10-12 lo
+    # smoke si aspettava 404 E_ANAG_NOT_FOUND, che diceva «non trovato» di un
+    # cliente presente.
     echo ""
-    echo "-- 12. Update senza campi (atteso 404 E_ANAG_NOT_FOUND) --"
+    echo "-- 12. Update senza campi (atteso 400 E_ANAG_VALIDAZIONE) --"
     do_curl PATCH "/api/v1/anagrafiche/clienti/${TARGET_CLI_ID}/" '{}'
-    if [[ "$LAST_STATUS" == "404" ]]; then
-        ERRCODE=$(json_get "$LAST_BODY" ".error.code")
-        if [[ "$ERRCODE" == "E_ANAG_NOT_FOUND" ]]; then
-            log_ok "Guard nessun campo (HTTP 404, $ERRCODE)"
-        else
-            log_fail "Codice inatteso: $ERRCODE"
-        fi
+    ERRCODE=$(json_get "$LAST_BODY" ".error.code")
+    if [[ "$LAST_STATUS" == "400" && "$ERRCODE" == "E_ANAG_VALIDAZIONE" ]]; then
+        log_ok "Guard nessun campo (HTTP 400, $ERRCODE)"
     else
-        log_fail "Update vuoto — atteso HTTP 404, ricevuto $LAST_STATUS"
+        log_fail "Update vuoto — atteso 400/E_ANAG_VALIDAZIONE, ricevuto $LAST_STATUS/$ERRCODE"
     fi
 fi
 

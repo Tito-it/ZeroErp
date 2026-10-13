@@ -717,7 +717,6 @@ class BaseSourceHandler(ABC):
             prezzo_bloccato=row.prezzo_bloccato,
             pricing_mode=row.pricing_mode,
             tipo_movimento=row.tipo_movimento,
-            tipo_consumo=row.tipo_consumo,
             istanza_utility_id=row.istanza_utility_id,
             data_attivita=row.data_attivita,
             competenza_dal=row.competenza_dal,

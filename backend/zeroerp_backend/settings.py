@@ -154,6 +154,13 @@ API_EXPOSE_TECHNICAL_DETAILS = env("DJANGO_API_EXPOSE_TECHNICAL_DETAILS", "0") =
 # `/` ci redirigeva. Presidio: `apps/core/tests/api/test_superficie_pubblica.py`.
 API_DOCS_ENABLED = env("DJANGO_API_DOCS_ENABLED", "1" if DEBUG else "0") == "1"
 API_SEARCH_THROTTLE_RATE = env("DJANGO_API_SEARCH_THROTTLE_RATE", "30/min")
+# Freno del login e del suo secondo passo, per IP (`apps/core/api/throttling.py`).
+# ⚠️ Il default E' il presidio di produzione contro i tentativi a raffica: si
+# alza SOLO in sviluppo, dove a martellare sono gli smoke da un IP solo (2026-10-13:
+# meta' del giro degli smoke era attesa su questi freni, e alcuni smoke si
+# fermavano comunque per 429). Formato: "N/Mm", "N/Hh" o quello di DRF.
+API_LOGIN_THROTTLE_RATE = env("DJANGO_API_LOGIN_THROTTLE_RATE", "5/5m")
+API_SECONDO_FATTORE_THROTTLE_RATE = env("DJANGO_API_SECONDO_FATTORE_THROTTLE_RATE", "5/5m")
 API_STRONG_IDEMPOTENCY_ENABLED = env("DJANGO_API_STRONG_IDEMPOTENCY_ENABLED", "0") == "1"
 REQUEST_LOG_ENABLED = env("DJANGO_REQUEST_LOG_ENABLED", "1") == "1"
 

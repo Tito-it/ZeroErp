@@ -45,6 +45,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 PASS=0; FAIL=0; SKIP=0
@@ -121,21 +122,7 @@ echo ""; echo "-- 1. Setup tripla BA+utility + articolo --"
 # Serve una coppia COERENTE billing_account+utility. Fonte 1: lookup BA
 # (espone utility_id). Fonte 2 (fallback): un ordine esistente (coppia già
 # coerente per costruzione).
-BA_RAW=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/anagrafiche/billing-account/lookup/" 2>/dev/null)
-BA_TRIPLE=$(echo "$BA_RAW" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin).get('data', {})
-    rows = d.get('results', d) if isinstance(d, dict) else d
-    for r in (rows or []):
-        if r.get('utility_id') and r.get('istanza_utility_id'):
-            print(r['id'], r['utility_id']); break
-except Exception:
-    pass
-" 2>/dev/null)
-BA_ID=$(echo "$BA_TRIPLE" | awk '{print $1}')
-UTILITY_ID=$(echo "$BA_TRIPLE" | awk '{print $2}')
+smoke_cliente_dal_lookup   # BB _smoke_cliente.sh: BA_ID, UTILITY_ID, ISTANZA_ID
 
 if [[ -z "$BA_ID" || -z "$UTILITY_ID" ]]; then
     log_info "lookup BA vuoto/scope; provo a riusare un ordine esistente"
@@ -176,12 +163,13 @@ log_info "articolo_id = $ARTICOLO_ID"
 echo ""; echo "-- 2. Crea ordine BOZZA (fatturazione_trigger=CONFERMATO) --"
 # trigger CONFERMATO esplicito: e' il ramo che pusha a commessa (gli altri
 # trigger SPEDITO/CONSEGNATO passano dal DDT, fuori scope — §7 analisi).
-# L'operatore smoke puo' non avere emittente assegnato
-# (E_CONTRATTO_EMITTENTE_NON_RISOLTO): inietta un emittente esplicito nel
-# payload (default 32, override EMITTENTE_ID).
-EMITTENTE_FISCALE_ID="${EMITTENTE_ID:-32}"
+# ⛔ Nessun emittente nel payload: e' quello del cliente. Fino al 2026-10-12
+# qui c'era un id cablato (32), che con un cliente di un'altra azienda
+# risponde E_DOC_EMITTENTE_BA_INCOERENTE. Override solo se serve: EMITTENTE_ID.
+EMITTENTE_JSON=""
+[[ -n "${EMITTENTE_ID:-}" ]] && EMITTENTE_JSON=", \"emittente_fiscale_id\": ${EMITTENTE_ID}"
 do_curl POST "/api/v1/vendite/ordini/" \
-    "{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID}, \"emittente_fiscale_id\": ${EMITTENTE_FISCALE_ID}, \"fatturazione_trigger\": \"CONFERMATO\"}"
+    "{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID}${EMITTENTE_JSON}, \"fatturazione_trigger\": \"CONFERMATO\"}"
 if ! check "POST crea ordine" 200 "data.id"; then
     echo -e "${RED}Setup fallito: impossibile creare ordine. Stop.${NC}"; exit 1
 fi
@@ -321,12 +309,23 @@ if [[ "$PUSH_OK" == "1" && -n "${COMMESSA_ID:-}" && "$COMMESSA_ID" != "None" ]];
     do_curl GET "/api/v1/vendite/commesse/${COMMESSA_ID}/legami/"
     if check "GET legami commessa" 200 "data.legami"; then
         LEGAMI="$EXTRACTED"
-        ORIGINE=$(json_get "$LAST_BODY" "data.righe.0.origine")
-        ORIGINE_ID=$(json_get "$LAST_BODY" "data.righe.0.origine_id")
-        if [[ -n "$LEGAMI" && "$LEGAMI" -ge 1 && "$ORIGINE" == "ORDINE" && "$ORIGINE_ID" == "$ORDINE_ID" ]] 2>/dev/null; then
-            log_ok "legami = $LEGAMI, origine ORDINE $ORIGINE_ID"
+        # ⚠️ Il NOSTRO ordine fra TUTTI i legami, non il primo: la commessa e'
+        # trovata o creata per cliente, e raccoglie righe di piu' documenti. Il
+        # passo 14 di un giro precedente lascia una commessa aperta (il secondo
+        # invio), e questo giro, stesso cliente, la riusa: i legami sono due, e il
+        # primo e' dell'ordine di ieri. E' il modello, non un difetto.
+        NOSTRI=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    righe = json.load(sys.stdin).get('data', {}).get('righe') or []
+    print(sum(1 for r in righe if r.get('origine') == 'ORDINE' and str(r.get('origine_id')) == '$ORDINE_ID'))
+except Exception:
+    print(0)
+" 2>/dev/null)
+        if [[ -n "$LEGAMI" && "$LEGAMI" -ge 1 && "${NOSTRI:-0}" -ge 1 ]] 2>/dev/null; then
+            log_ok "legami = $LEGAMI, di cui $NOSTRI verso l'ordine $ORDINE_ID"
         else
-            log_fail "legami attesi >= 1 verso l'ordine $ORDINE_ID, letti legami=$LEGAMI origine=$ORIGINE/$ORIGINE_ID"
+            log_fail "legami attesi >= 1 verso l'ordine $ORDINE_ID, letti legami=$LEGAMI (nostri: ${NOSTRI:-0})"
         fi
 
         echo ""; echo "-- 13. Annullo con la conferma (legami_confermati=$LEGAMI) --"

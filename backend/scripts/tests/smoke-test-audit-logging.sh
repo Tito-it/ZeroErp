@@ -49,7 +49,10 @@ except Exception:
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKEND_DIR="$(dirname "$SCRIPT_DIR")"
+# backend/scripts/tests -> backend: DUE livelli (come jwt-audit-guc e listini-v5).
+# Con uno solo cercava backend/scripts/manage-env.sh, la query tornava vuota e
+# `set -e` chiudeva lo smoke al passo 0 senza una parola.
+BACKEND_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 db_query() {
     local sql="$1"

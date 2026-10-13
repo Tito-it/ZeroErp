@@ -135,9 +135,11 @@ echo ""
 echo "-- 1. Recupera soggetto con ruolo --"
 
 # Cerca un cliente per avere soggetto_ruolo_id
+TIPO_RUOLO_CODICE=""
 do_curl GET "/api/v1/anagrafiche/clienti/?limit=1"
 if [[ "$LAST_STATUS" == "200" ]]; then
     RUOLO_ID=$(json_get "$LAST_BODY" ".data.results.0.soggetto_ruolo_id")
+    [[ -n "$RUOLO_ID" ]] && TIPO_RUOLO_CODICE="CL"   # il ruolo di un cliente
     SOGG_ID=$(json_get "$LAST_BODY" ".data.results.0.soggetto_id")
     ISTANZA_UTILITY_ID_FROM_CLIENT=$(json_get "$LAST_BODY" ".data.results.0.istanza_utility_id")
 fi
@@ -186,14 +188,37 @@ else
     IND_DET_ID=""
 fi
 
-# Recupera tipo_indirizzo disponibile dal lookup
-do_curl GET "/api/v1/core/lookup/codici/?rel=config.tipi_indirizzi&limit=2"
-if [[ "$LAST_STATUS" == "200" ]]; then
+# Recupera un tipo_indirizzo AMMESSO per il ruolo: la matrice del tipo ruolo
+# (config.tipi_ruolo_tipi_indirizzo), un tipo non obbligatorio per non toccare
+# l'indirizzo di fatturazione del cliente. ⚠️ Il primo tipo qualsiasi del lookup
+# generico (era «Consegna») risponde E_TIPO_INDIRIZZO_NON_PERMESSO. Il lookup
+# generico resta il ripiego quando il tipo del ruolo non e' noto.
+TIPO_IND_ID=""; TIPO_IND_CODICE=""
+if [[ -n "${TIPO_RUOLO_CODICE:-}" ]]; then
+    do_curl GET "/api/v1/core/lookup/tipi-ruolo/${TIPO_RUOLO_CODICE}/indirizzi/"
+    if [[ "$LAST_STATUS" == "200" ]]; then
+        read -r TIPO_IND_ID TIPO_IND_CODICE <<< "$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    rows = json.load(sys.stdin).get('data', {}).get('results') or []
+    r = next((x for x in rows if not x.get('obbligatorio')), rows[0] if rows else None)
+    print(r['tipo_indirizzo_id'], r['codice']) if r else print('')
+except Exception:
+    print('')
+" 2>/dev/null)"
+        log_info "Tipo indirizzo ammesso per ${TIPO_RUOLO_CODICE}: id=$TIPO_IND_ID codice=$TIPO_IND_CODICE"
+    fi
+fi
+[[ -z "$TIPO_IND_ID" ]] && do_curl GET "/api/v1/core/lookup/codici/?rel=config.tipi_indirizzi&limit=2"
+if [[ -z "$TIPO_IND_ID" && "$LAST_STATUS" == "200" ]]; then
     TIPO_IND_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
+    # La creazione vuole il CODICE del tipo (`tipo_indirizzo_codice`, risolto in
+    # id dalla view): l'id nel payload risponde E_ANAG_VALIDAZIONE. ⚠️ Il codice
+    # STABILE (`COALESCE(codice_interno, codice)`, quello che la view cerca), non
+    # `codice`, che e' l'etichetta modificabile: «CONS» non lo trova, «CON» si'.
+    TIPO_IND_CODICE=$(json_get "$LAST_BODY" ".data.results.0.codice_stabile")
     TIPO_IND_DESC=$(json_get "$LAST_BODY" ".data.results.0.descrizione")
-    log_info "Tipo indirizzo id=$TIPO_IND_ID ($TIPO_IND_DESC)"
-else
-    TIPO_IND_ID=""
+    log_info "Tipo indirizzo id=$TIPO_IND_ID codice=$TIPO_IND_CODICE ($TIPO_IND_DESC)"
 fi
 
 if [[ -z "$TIPO_IND_ID" || "$TIPO_IND_ID" == "" ]]; then
@@ -205,6 +230,11 @@ if [[ -z "$TIPO_IND_ID" || "$TIPO_IND_ID" == "" ]]; then
     exit 1
 fi
 
+# Gli id degli indirizzi creati: vuoti finche' una creazione non riesce (con
+# `set -u` un passo saltato non deve far cadere lo smoke sui successivi).
+IND_RUOLO_GEN_ID=""
+IND_RUOLO_IST_ID=""
+
 # --- 4. Crea indirizzo ruolo generico (utility NULL) ---
 echo ""
 echo "-- 4. Crea indirizzo ruolo generico (utility NULL) --"
@@ -213,14 +243,14 @@ if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
     # Modalita' normalizzata
     do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
         "{
-            \"tipo_indirizzo_id\": ${TIPO_IND_ID},
+            \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
             \"indirizzo_dettaglio_id\": ${IND_DET_ID}
         }"
 else
     # Modalita' libera
     do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
         "{
-            \"tipo_indirizzo_id\": ${TIPO_IND_ID},
+            \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
             \"indirizzo_libero\": \"Via Smoke Test 1, 00100 Roma\"
         }"
 fi
@@ -234,7 +264,7 @@ else
     log_info "Creazione fallita (possibile vincolo UNIQUE) — HTTP $LAST_STATUS"
     IND_RUOLO_GEN_ID=""
     ERRCODE=$(json_get "$LAST_BODY" ".error.code")
-    log_info "Codice errore: $ERRCODE"
+    log_info "Codice errore: $ERRCODE — $(json_get "$LAST_BODY" ".error.detail")"
 fi
 
 # --- 5. Lista indirizzi ruolo senza utility ---
@@ -279,14 +309,14 @@ if [[ -n "$ISTANZA_UTILITY_ID" && "$ISTANZA_UTILITY_ID" != "" ]]; then
     if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
         do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
             "{
-                \"tipo_indirizzo_id\": ${TIPO_IND_ID},
+                \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
                 \"istanza_utility_id\": ${ISTANZA_UTILITY_ID},
                 \"indirizzo_dettaglio_id\": ${IND_DET_ID}
             }"
     else
         do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
             "{
-                \"tipo_indirizzo_id\": ${TIPO_IND_ID},
+                \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
                 \"istanza_utility_id\": ${ISTANZA_UTILITY_ID},
                 \"indirizzo_libero\": \"Via Istanza Smoke 1, 62014 Corridonia\"
             }"
@@ -307,7 +337,7 @@ if [[ -n "$ISTANZA_UTILITY_ID" && "$ISTANZA_UTILITY_ID" != "" ]]; then
     else
         log_info "Creazione con istanza fallita — HTTP $LAST_STATUS"
         ERRCODE=$(json_get "$LAST_BODY" ".error.code")
-        log_info "Codice errore: $ERRCODE"
+        log_info "Codice errore: $ERRCODE — $(json_get "$LAST_BODY" ".error.detail")"
     fi
 else
     log_info "Nessuna istanza disponibile — skip test cascata istanza"
@@ -341,7 +371,7 @@ fi
 echo ""
 echo "-- 9. PATCH indirizzo ruolo --"
 
-PATCH_TARGET="${IND_RUOLO_UTIL_ID:-$IND_RUOLO_GEN_ID}"
+PATCH_TARGET="${IND_RUOLO_IST_ID:-$IND_RUOLO_GEN_ID}"
 if [[ -n "$PATCH_TARGET" && "$PATCH_TARGET" != "" ]]; then
     do_curl PATCH "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/${PATCH_TARGET}/" \
         "{\"indirizzo_libero\": \"Via Aggiornata 99, 00100 Roma\"}"
@@ -358,20 +388,20 @@ if [[ -n "$IND_RUOLO_GEN_ID" && "$IND_RUOLO_GEN_ID" != "" ]]; then
     if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
         do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
             "{
-                \"tipo_indirizzo_id\": ${TIPO_IND_ID},
+                \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
                 \"indirizzo_dettaglio_id\": ${IND_DET_ID}
             }"
     else
         do_curl POST "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/" \
             "{
-                \"tipo_indirizzo_id\": ${TIPO_IND_ID},
+                \"tipo_indirizzo_codice\": \"${TIPO_IND_CODICE}\",
                 \"indirizzo_libero\": \"Via Duplicato Test\"
             }"
     fi
     if [[ "$LAST_STATUS" != "200" ]]; then
         log_ok "Duplicato respinto (HTTP $LAST_STATUS)"
         ERRCODE=$(json_get "$LAST_BODY" ".error.code")
-        log_info "Codice errore: $ERRCODE"
+        log_info "Codice errore: $ERRCODE — $(json_get "$LAST_BODY" ".error.detail")"
     else
         log_fail "Duplicato accettato — doveva essere rifiutato"
     fi
@@ -379,15 +409,15 @@ else
     log_info "Skip — nessun indirizzo generico creato"
 fi
 
-# --- 11. DELETE indirizzo ruolo utility ---
+# --- 11. DELETE indirizzo ruolo per istanza ---
 echo ""
-echo "-- 11. DELETE indirizzo utility --"
+echo "-- 11. DELETE indirizzo per istanza --"
 
-if [[ -n "$IND_RUOLO_UTIL_ID" && "$IND_RUOLO_UTIL_ID" != "" ]]; then
-    do_curl DELETE "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/${IND_RUOLO_UTIL_ID}/"
-    check "DELETE indirizzo utility" "200"
+if [[ -n "$IND_RUOLO_IST_ID" && "$IND_RUOLO_IST_ID" != "" ]]; then
+    do_curl DELETE "/api/v1/anagrafiche/ruoli/${RUOLO_ID}/indirizzi/${IND_RUOLO_IST_ID}/"
+    check "DELETE indirizzo per istanza" "200"
 else
-    log_info "Skip — nessun indirizzo utility creato"
+    log_info "Skip — nessun indirizzo per istanza creato"
 fi
 
 # --- 12. DELETE indirizzo ruolo generico ---

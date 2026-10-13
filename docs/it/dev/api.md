@@ -2327,13 +2327,19 @@ accendere un cancello, non nella peggiore.
 
 #### Gli smoke
 
-`backend/scripts/tests/smoke-*.py` parlano col database di sviluppo, ognuno in
-`transaction.atomic()` + `set_rollback(True)`: si possono lanciare senza lasciare
-niente. ⛔ Non li raccoglie il runner Django e non li esegue la CI, quindi
-vanno lanciati a mano:
+Due famiglie in `backend/scripts/tests/`, un runner solo:
+
+| | `smoke-*.py` | `smoke-test-*.sh` |
+| --- | --- | --- |
+| Come parlano | in-process (`./manage-env.sh shell <`), col database di sviluppo | via **HTTP** col backend in esecuzione (`BASE_URL`), utente `smoke` di `backend/env.sh` |
+| Cosa lasciano | niente: `transaction.atomic()` + `set_rollback(True)` | ⚠️ **scrivono** sul database di sviluppo (documenti di prova sull'emittente attivo dell'utente `smoke`) |
+
+⛔ Non li raccoglie il runner Django e non li esegue la CI, quindi vanno lanciati
+a mano. Fino al 2026-10-12 il runner prendeva i soli `.py`: i bash non li
+lanciava nessuno, e al primo giro completo erano rossi piu' della meta'.
 
 ```bash
-scripts/smoke-baseline.sh                   # tutti, ~4 min
+scripts/smoke-baseline.sh                   # tutti (Python ~4 min, piu' i bash)
 scripts/smoke-baseline.sh fattura-scadenze  # solo quelli col nome dato
 scripts/smoke-baseline.sh --update          # rigenera il registro dei noti
 ```
@@ -2347,6 +2353,20 @@ Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, **nuovo** 
 * ⚠️ **Gli esiti sono tre**: oltre a verde e rosso c'è `SENZA_MATERIA` (una
   precondizione assente, dichiarata con `raise SystemExit`). La copertura di quel
   giro vale zero, non «parziale».
+* **I bash** fanno un login solo per il giro (`smoke-login.sh`), rinnovato quando
+  il token sta per scadere; su un `429` (freno dei login, o delle ricerche: 30 al
+  minuto per IP) aspettano e riprovano una volta (`LIMITE_RICHIESTE` se non
+  basta). Chi non si puo' lanciare
+  nell'ambiente (es. `smoke-test-ai-assistant.sh` senza `AI_PROVIDER=mock`) e'
+  **stampato** fra gli esclusi, mai saltato in silenzio. ⛔ Escluso anche
+  `smoke-c9-fatturazione-parte-alta.py`, salvo chiamarlo per nome
+  (`scripts/smoke-baseline.sh c9`): è l'unico che **non fa rollback** — approva,
+  emette fatture e consuma la numerazione fiscale — quindi non può stare nel giro
+  di ogni notte. Uno smoke che chiude con
+  dei `SKIP` nel riepilogo e' `PARZIALE`, non verde: i passi saltati valgono zero.
+* ⏱ A fine giro lo script stampa i **tempi**: durata del giro, quanto ha atteso
+  sul freno e gli smoke piu' lenti. Un giro che nessuno ha tempo di lanciare non
+  protegge niente: i rimedi alla lentezza si scelgono su questi numeri.
 
 ---
 

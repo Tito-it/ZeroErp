@@ -81,7 +81,7 @@ _ORDINI_COLS = [
     ("uom_id",), ("quantita",), ("qta_operativa",),
     ("uom_operativa_id",), ("factor_to_base",), ("competenza_mese",),
     ("prezzo_snapshot",), ("prezzo_bloccato",), ("pricing_mode",),
-    ("tipo_movimento",), ("tipo_consumo",), ("valuta_id",),
+    ("tipo_movimento",), ("valuta_id",),
     ("meta",), ("tipo_doc_fiscale_id",),
     ("termine_pagamento_id",), ("modalita_pagamento_id",),
 ]
@@ -90,7 +90,7 @@ _ORDINI_COLS = [
 _ORDINI_ROW = (
     # 3 source-specific
     100, "uid-ordine-001", 200,
-    # 28 shared
+    # 27 shared (tipo_consumo ritirato, DB 20261013-60…-67)
     1, 2, 3,
     date(2026, 6, 1), date(2026, 6, 30), False,
     6, "uid-ordine-001", "ORD:uid-ordine-001:R:200",
@@ -98,7 +98,7 @@ _ORDINI_ROW = (
     None, Decimal("10.0"), Decimal("10.0"),
     None, Decimal("1"), date(2026, 6, 1),
     Decimal("22.50"), True, "FIXED",
-    "NORMALE", "CONGUAGLIO", 1,
+    "NORMALE", 1,
     {"tipo_commessa": "AUTO", "policy_fatturazione": "DA_DOCUMENTO"},
     7,   # tipo_doc_fiscale_id
     3,   # termine_pagamento_id (le condizioni del DOCUMENTO)
@@ -258,7 +258,6 @@ class CommesseRepositoryUnitTests(TestCase):
             valuta_id=1,
             prezzo_bloccato=True,
             stato_approvazione="APPROVATA",
-            tipo_consumo="ACCONTO",
         )
         result = repo.upsert_attivita(inp)
         self.assertIsInstance(result, UpsertAttivitaResult)
@@ -288,7 +287,8 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(inp.stato_approvazione, "BOZZA")
         self.assertEqual(inp.stato_emissione, "NON_EMESSA")
         self.assertEqual(inp.tipo_movimento, "NORMALE")
-        self.assertEqual(inp.tipo_consumo, "CONGUAGLIO")
+        # `tipo_consumo` ritirato (DB 20261013-60…-67): l'input non lo porta piu'.
+        self.assertFalse(hasattr(inp, "tipo_consumo"))
         repo.upsert_attivita(inp)
 
     # Scopo: Verifica mapping CommessaEmitResult da fn_emit_attivita_fatturabili_da_commessa.
