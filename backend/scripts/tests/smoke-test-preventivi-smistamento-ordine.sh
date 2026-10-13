@@ -197,14 +197,7 @@ if ! check "POST crea preventivo" 200 "data.id"; then
 fi
 PREV_ID="$EXTRACTED"; log_info "preventivo_id = $PREV_ID"
 
-ARTICOLO_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?page_size=1" 2>/dev/null | python3 -c "
-import sys, json
-try:
-    r = json.load(sys.stdin).get('data',{}).get('results',[])
-    print(r[0]['id'] if r else '')
-except Exception: print('')
-" 2>/dev/null)
+smoke_articolo_merce   # BB _smoke_documenti.sh: una MERCE (va in un ordine/bolla)
 if [[ -z "$ARTICOLO_ID" ]]; then
     echo -e "${RED}Setup fallito: nessun articolo nel catalogo. Stop.${NC}"; exit 1
 fi

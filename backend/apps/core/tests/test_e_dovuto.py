@@ -17,6 +17,8 @@
 6. test_un_guasto_del_db_e_255_non_1                         exit 255  ⭐
 7. test_un_commanderror_di_django_e_255_non_1               exit 255  ⭐
 8. test_un_argomento_mancante_e_255_non_2                   exit 255
+9. test_basta_una_corsa_anche_fallita_chiude_il_periodo     exit 1
+10. test_basta_una_corsa_senza_corse_e_dovuto                exit 0
 """
 
 from __future__ import annotations
@@ -37,6 +39,13 @@ _DIGEST = Sveglia(
     oncalendar="*:00", abilita=True, avvio_manuale=True, nota="",
     dovuto=Dovuto("giorno", time(7, 0), None, "digest_presidi:giornaliera"),
 )
+# Il giro degli smoke: l'esito negativo e' un risultato, non un lavoro da ritentare.
+_SMOKE = Sveglia(
+    unit="zeroerp-smoke-notturno", processo_codice="smoke_notturno", forma="timer",
+    comando=("smoke_notturno",), oncalendar="*:00", abilita=False,
+    avvio_manuale=False, nota="",
+    dovuto=Dovuto("giorno", time(2, 30), None, "smoke_notturno:completo", basta_una_corsa=True),
+)
 _DRENATORE = Sveglia(
     unit="zeroerp-coda-lavori", processo_codice="draina_coda_lavori", forma="timer",
     comando=("draina_coda_lavori",), oncalendar="*:0/1", abilita=True,
@@ -50,7 +59,7 @@ class EDovutoTests(SimpleTestCase):
     # Scopo: dichiarato finto, fuso dell'azienda a Roma, repository finto.
     def setUp(self) -> None:
         self.enterContext(fuso_aziendale_forzato("Europe/Rome"))
-        self.enterContext(patch.object(e_dovuto, "carica_sveglie", return_value=(_DIGEST, _DRENATORE)))
+        self.enterContext(patch.object(e_dovuto, "carica_sveglie", return_value=(_DIGEST, _DRENATORE, _SMOKE)))
         self.repo = self.enterContext(patch.object(e_dovuto, "MaintenanceRepository")).return_value
         self.repo.corsa_riuscita_dal.return_value = False
 
@@ -109,3 +118,19 @@ class EDovutoTests(SimpleTestCase):
                 patch("sys.stderr"), self.assertRaises(SystemExit) as ctx:
             e_dovuto.Command().run_from_argv(["manage.py", "e_dovuto"])
         self.assertEqual(ctx.exception.code, 255)
+
+    # 9. `basta_una_corsa`: una corsa CHIUSA nel periodo, anche fallita, lo fa.
+    #    Si chiede `corsa_chiusa_dal`, mai `corsa_riuscita_dal` (che direbbe
+    #    «non fatto» e farebbe ripartire il giro ogni ora).
+    def test_basta_una_corsa_anche_fallita_chiude_il_periodo(self) -> None:
+        self.repo.corsa_chiusa_dal.return_value = True
+        self.assertEqual(self._esegui(_SMOKE.unit, datetime(2026, 10, 13, 10, 0, tzinfo=UTC)), 1)
+        jobname, dal = self.repo.corsa_chiusa_dal.call_args.args
+        self.assertEqual(jobname, "smoke_notturno:completo")
+        self.assertEqual(dal, datetime(2026, 10, 13, 0, 30, tzinfo=UTC))
+        self.repo.corsa_riuscita_dal.assert_not_called()
+
+    # 10. `basta_una_corsa` senza nessuna corsa chiusa nel periodo: lavora.
+    def test_basta_una_corsa_senza_corse_e_dovuto(self) -> None:
+        self.repo.corsa_chiusa_dal.return_value = False
+        self.assertEqual(self._esegui(_SMOKE.unit, datetime(2026, 10, 13, 1, 0, tzinfo=UTC)), 0)

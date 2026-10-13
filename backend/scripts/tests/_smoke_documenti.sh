@@ -26,6 +26,13 @@
 #       C, senza listino) e un altro smoke, sullo stesso cliente, trovava
 #       E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C; l'altro tentava un DELETE fisico
 #       che falliva in silenzio.
+#   smoke_articolo_merce                           # -> ARTICOLO_ID
+#       Un articolo che puo' stare in un ORDINE o in una BOLLA: attivo, non
+#       composito, con natura di vendita a destinazione ORDINE (la regola di
+#       script.fn_check_articolo_riga, E_RIGA_NATURA_NON_AMMESSA: un servizio
+#       non si spedisce). Fino al 2026-10-13 gli smoke prendevano «il primo
+#       articolo del catalogo», e il giorno che era un servizio l'ordine veniva
+#       rifiutato. Vuoto = nessuna merce nel catalogo (lo smoke si ferma).
 # Vuole: BASE_URL, TOKEN.
 # Note: ⚠️ Senza un modello di documento per quel documento e quell'emittente,
 #       /emetti/ risponde 404 E_DOCUMENTI_NOT_FOUND: e' CONFIGURAZIONE
@@ -98,5 +105,29 @@ except Exception:
     done <<< "$righe"
     rm -f "$out"
     echo "  [_smoke_documenti] contratti ${ambito} del cliente ${ba} chiusi: ${n}$( ((ko > 0)) && echo ", NON chiusi: ${ko}")" >&2
+    return 0
+}
+
+smoke_articolo_merce() {
+    local offset righe
+    ARTICOLO_ID=""
+    # `limit`/`offset`: la lista ignora `page`/`page_size`.
+    for offset in $(seq 0 100 3000); do
+        righe=$(curl -s -H "Authorization: Bearer ${TOKEN:-none}" \
+            "${BASE_URL}/api/v1/catalogo/articoli/?attivo=true&limit=100&offset=${offset}" 2>/dev/null)
+        ARTICOLO_ID=$(echo "$righe" | python3 -c "
+import sys, json
+try:
+    rows = json.load(sys.stdin).get('data', {}).get('results') or []
+    r = next((x for x in rows if x.get('natura_vendita_destinazione_tipo') == 'ORDINE'
+              and not x.get('is_composito') and x.get('attivo') is not False), None)
+    print(r['id'] if r else ('' if len(rows) == 100 else 'FINE'))
+except Exception:
+    print('FINE')
+" 2>/dev/null)
+        [[ "$ARTICOLO_ID" == "FINE" ]] && { ARTICOLO_ID=""; break; }
+        [[ -n "$ARTICOLO_ID" ]] && break
+    done
+    [[ -z "$ARTICOLO_ID" ]] && echo "  [_smoke_documenti] nessun articolo merce (natura a destinazione ORDINE) nel catalogo" >&2
     return 0
 }

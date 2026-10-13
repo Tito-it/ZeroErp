@@ -16,6 +16,7 @@
 2. test_una_corsa_saltata_non_chiude_il_periodo
 3. test_l_ultima_conclusa_e_la_corsa_vera_non_la_saltata
 4. test_una_corsa_saltata_non_si_chiude
+5. test_corsa_chiusa_conta_anche_la_fallita_non_la_saltata
 """
 
 from __future__ import annotations
@@ -154,3 +155,16 @@ class CorsaRiuscitaDalDbTests(TestCase):
                 [run_id],
             )
         self.assertIn("E_JOB_RUN_SALTATA_NON_CHIUDIBILE", str(ctx.exception))
+
+    # 5. `corsa_chiusa_dal` (il `dovuto` con `basta_una_corsa`): una corsa
+    #    FALLITA chiude il periodo, una saltata o ancora in corso no.
+    def test_corsa_chiusa_conta_anche_la_fallita_non_la_saltata(self) -> None:
+        repo = MaintenanceRepository()
+        prima = datetime.now(UTC) - timedelta(hours=1)
+        self._corsa(ok=None)
+        self._corsa_saltata()
+        self.assertFalse(repo.corsa_chiusa_dal(_JOB, prima), "in corso o saltata non e' una corsa chiusa")
+        self._corsa(ok=False)
+        self.assertTrue(repo.corsa_chiusa_dal(_JOB, prima), "una fallita e' una corsa chiusa")
+        self.assertFalse(repo.corsa_riuscita_dal(_JOB, prima), "ma non riuscita")
+

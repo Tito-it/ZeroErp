@@ -162,12 +162,20 @@ _JOBNAME_AMMESSO = re.compile(r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$")
 #        alle `dalle`. `jobname` e' la corsia su `maintenance.job_run_log` con
 #        cui si sa se il lavoro del periodo e' gia' fatto (lo scrive il comando;
 #        `test_sveglie` prova che i due coincidano).
+#        `basta_una_corsa` (facoltativo, default False): il periodo e' fatto con
+#        QUALUNQUE corsa chiusa, riuscita o no. ⚠️ Di default ci vuole una corsa
+#        RIUSCITA, e una fallita si ritenta alla sveglia dopo: giusto per un
+#        lavoro che va portato a termine (la fatturazione). Sbagliato per un
+#        giro il cui esito negativo E' il risultato — il giro degli smoke con
+#        regressioni: ritentato ogni ora, dal 2026-10-13 alle 12 e' ripartito
+#        sette volte di fila, con lo stesso rosso e nuovi dati di prova a ogni giro.
 @dataclass(frozen=True)
 class Dovuto:
     ogni: str
     dalle: time
     giorno: int | None
     jobname: str
+    basta_una_corsa: bool = False
 
 
 # Scopo: una sveglia dichiarata — l'unit systemd che fa partire un processo.
@@ -271,7 +279,13 @@ def _leggi_dovuto(unit: str, forma: str, grezzo: object) -> Dovuto | None:
     jobname = str(grezzo.get("jobname") or "")
     if not _JOBNAME_AMMESSO.match(jobname):
         raise ValueError(f"{errore}: 'jobname' e' la corsia '<processo>:<corsia>', non {jobname!r}")
-    return Dovuto(ogni=ogni, dalle=time(int(m.group(1)), int(m.group(2))), giorno=giorno, jobname=jobname)
+    basta_una_corsa = grezzo.get("basta_una_corsa", False)
+    if not isinstance(basta_una_corsa, bool):
+        raise ValueError(f"{errore}: 'basta_una_corsa' e' true o false, non {basta_una_corsa!r}")
+    return Dovuto(
+        ogni=ogni, dalle=time(int(m.group(1)), int(m.group(2))), giorno=giorno,
+        jobname=jobname, basta_una_corsa=basta_una_corsa,
+    )
 
 
 # Scopo: L'INIZIO del periodo aziendale in cui il lavoro e' dovuto ADESSO, o

@@ -98,7 +98,13 @@ class Command(ComandoAziendale):
         if inizio is None:
             self.stdout.write(f"{unit}: non ancora dovuto (fuso dell'azienda)")
             self._esci(USCITA_NON_DOVUTO)
-        if MaintenanceRepository().corsa_riuscita_dal(sveglia.dovuto.jobname, inizio):
+        repo = MaintenanceRepository()
+        # `basta_una_corsa`: una corsa chiusa, anche fallita, fa il periodo
+        # (l'esito negativo e' il risultato, non un lavoro da ritentare).
+        gia_fatto = (
+            repo.corsa_chiusa_dal if sveglia.dovuto.basta_una_corsa else repo.corsa_riuscita_dal
+        )
+        if gia_fatto(sveglia.dovuto.jobname, inizio):
             self.stdout.write(f"{unit}: gia' fatto dal {inizio.isoformat()}")
             self._esci(USCITA_NON_DOVUTO)
         self.stdout.write(f"{unit}: dovuto dal {inizio.isoformat()}")

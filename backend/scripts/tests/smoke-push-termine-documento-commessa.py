@@ -237,19 +237,26 @@ with transaction.atomic():
             raise SystemExit("Nessun ordine template nello scope RLS dell'operatore GUC.")
         template_id, ba_id = row
 
+        # L'articolo deve essere una MERCE: in un ordine (e in una bolla) vanno
+        # solo articoli la cui natura di vendita ha destinazione ORDINE
+        # (script.fn_check_articolo_riga, E_RIGA_NATURA_NON_AMMESSA). Fino al
+        # 2026-10-13 si prendeva la riga piu' recente di qualunque natura, e il
+        # giorno che era un servizio l'ordine nuovo veniva rifiutato.
         cur.execute(
             """
             SELECT r.articolo_id, r.descrizione, r.iva_id, a.uom_id
               FROM vendite.ordini_righe r
               JOIN catalogo.articoli a
                 ON a.id = r.articolo_id AND a.is_composito IS FALSE
+              JOIN config.nature_vendita nv
+                ON nv.id = a.natura_vendita_id AND nv.destinazione_tipo = 'ORDINE'
              WHERE r.attivo AND r.quantita > 0
              ORDER BY r.id DESC LIMIT 1
             """
         )
         row = cur.fetchone()
         if not row:
-            raise SystemExit("Nessuna riga template con articolo non composito.")
+            raise SystemExit("Nessuna riga template con un articolo merce non composito.")
         riga_tpl = {"articolo_id": row[0], "descrizione": row[1],
                     "iva_id": row[2], "uom_id": row[3]}
 

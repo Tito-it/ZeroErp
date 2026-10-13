@@ -46,6 +46,7 @@ BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_articolo_merce
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 PASS=0; FAIL=0; SKIP=0
@@ -146,14 +147,7 @@ if [[ -z "$BA_ID" || -z "$UTILITY_ID" ]]; then
 fi
 log_info "billing_account_id = $BA_ID, utility_id = $UTILITY_ID"
 
-ARTICOLO_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?page_size=1" 2>/dev/null | python3 -c "
-import sys, json
-try:
-    r = json.load(sys.stdin).get('data',{}).get('results',[])
-    print(r[0]['id'] if r else '')
-except Exception: print('')
-" 2>/dev/null)
+smoke_articolo_merce   # BB _smoke_documenti.sh: una MERCE (va in un ordine/bolla)
 if [[ -z "$ARTICOLO_ID" ]]; then
     echo -e "${RED}Setup fallito: nessun articolo nel catalogo. Stop.${NC}"; exit 1
 fi

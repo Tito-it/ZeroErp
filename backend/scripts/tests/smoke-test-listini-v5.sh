@@ -303,13 +303,25 @@ fi
 smoke_chiudi_contratti "$BA_ID" COMMERCIO
 trap 'smoke_chiudi_contratti "$BA_ID" COMMERCIO; rm -f "$TMPFILE"' EXIT
 
-# Se sul BA+istanza+utility+ambito COMMODITY c'e' gia' un contratto
-# reale con validita' aperta (upper = infinity), gli anni 2100+ sono
-# comunque coperti. In quel caso spostiamo automaticamente lo smoke su
-# un anno piu' alto calcolato da epoch (granularita' al secondo).
-# Offset = epoch % 900 -> range 2100..3000.
-EPOCH_OFFSET=$(( $(date +%s) % 900 ))
-YEAR_A=$(( 2100 + EPOCH_OFFSET ))
+# Gli anni dei contratti di questo giro: il primo DOPO il piu' alto gia' usato
+# dai contratti COMMERCIO del cliente (minimo 2100). Il vincolo di non
+# sovrapposizione non guarda lo stato, quindi anche i contratti cessati dei giri
+# precedenti occupano i loro anni: si va sempre avanti, mai si torna su un anno.
+# ⚠️ Fino al 2026-10-13 era `2100 + epoch % 900`, che si ripete ogni 15 minuti:
+# il giro notturno, partito ogni ora a hh:00:03, riprendeva gli stessi anni del
+# giro prima e l'attivazione rispondeva E_VENDITE_CONTRATTO_OVERLAP.
+ANNO_MAX=$(curl -s -H "Authorization: Bearer ${TOKEN:-none}" \
+    "${BASE_URL}/api/v1/vendite/contratti/?billing_account_id=${BA_ID}&limit=500" 2>/dev/null | python3 -c "
+import sys, json
+try:
+    rows = json.load(sys.stdin).get('data', {}).get('results') or []
+    anni = [int(str(d)[:4]) for r in rows if r.get('ambito') == 'COMMERCIO'
+            for d in (r.get('valido_dal'), r.get('valido_al')) if d]
+    print(max(anni) if anni else 0)
+except Exception:
+    print(0)
+" 2>/dev/null)
+YEAR_A=$(( ${ANNO_MAX:-0} >= 2100 ? ANNO_MAX + 1 : 2100 ))
 YEAR_B=$(( YEAR_A + 1 ))
 YEAR_C=$(( YEAR_A + 2 ))
 YEAR_SNAP=$(( YEAR_A + 3 ))
@@ -542,9 +554,22 @@ echo ""
 echo "-- 24. Snapshot categoria: attivo contratto, PATCH rifiutato --"
 smoke_emetti contratti "$CONTRATTO_SNAP_ID"
 if [[ "$LAST_STATUS" == "200" ]]; then
+    # ⚠️ Una categoria DIVERSA da quella del contratto: il blocco fuori bozza
+    # guarda se il valore cambia, e una PATCH con lo stesso valore (quello messo
+    # in bozza al passo 23) e' giusto che passi. Fino al 2026-10-13 il passo
+    # riprovava proprio quello, e il rifiuto arrivava prima, dal backend.
+    do_curl GET "/api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti&limit=50"
+    ALTRA_CATEGORIA=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    rows = json.load(sys.stdin).get('data', {}).get('results') or []
+    print(next((r['id'] for r in rows if str(r['id']) != sys.argv[1]), ''))
+except Exception:
+    print('')
+" "$CATEGORIA_ID" 2>/dev/null)
     do_curl PATCH "/api/v1/vendite/contratti/${CONTRATTO_SNAP_ID}/" \
-        "{\"categoria_cliente_id_snapshot\":${CATEGORIA_ID}}"
-    check "PATCH categoria in ATTIVO rifiutato" "400" ".error.code"
+        "{\"categoria_cliente_id_snapshot\":${ALTRA_CATEGORIA:-0}}"
+    check_any "PATCH categoria in ATTIVO rifiutato" "400" "409" ".error.code"
     log_info "Codice: ${EXTRACTED:-n/d}"
 else
     log_info "Contratto snap non attivabile (HTTP $LAST_STATUS) — salto test 24"

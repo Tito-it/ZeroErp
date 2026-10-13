@@ -400,6 +400,7 @@ class SveglieDichiarateTests(SimpleTestCase):
             ({**buono, "ogni": "mese", "giorno": 29}, "'giorno' del mese"),
             ({**buono, "ogni": "mese", "giorno": True}, "'giorno' del mese"),
             ({**buono, "jobname": "senza_corsia"}, "'jobname'"),
+            ({**buono, "basta_una_corsa": "si"}, "'basta_una_corsa'"),
             ("ogni giorno", "oggetto"),
         )
         for dovuto, atteso in casi:
