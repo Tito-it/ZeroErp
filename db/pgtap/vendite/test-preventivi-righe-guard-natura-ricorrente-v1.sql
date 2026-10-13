@@ -104,18 +104,19 @@ SELECT
     (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
       WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
       ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-      ORDER BY a.id LIMIT 1 OFFSET 0) AS articolo_a_id,
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-      ORDER BY a.id LIMIT 1 OFFSET 1) AS articolo_b_id,
+    -- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento A-9): i tre
+    --   articoli si COSTRUISCONO. Prima si pescavano i primi tre del catalogo
+    --   per id e la fixture ne cambiava la natura: i primi per id sono gli
+    --   articoli-onere del seed (00000000-…-e1), e un onere non puo' prendere
+    --   la natura MERCE (catalogo.trgfn_articoli_guard_onere_natura,
+    --   20261013-05). Riclassificare un articolo del seed era comunque un
+    --   difetto della fixture: il mondo si costruisce, non si cerca.
+    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-A', false) AS articolo_a_id,
+    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-B', false) AS articolo_b_id,
     -- Terzo articolo per il test 10: serve un bersaglio di cambio articolo che
     -- NON sia ricorrente, altrimenti a bloccare sarebbe il guard MODALITA' A e
     -- non si vedrebbe se il lock lascia passare.
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-      ORDER BY a.id LIMIT 1 OFFSET 2) AS articolo_c_id,
+    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-C', false) AS articolo_c_id,
     (SELECT s.id FROM config.stati_doc_preventivi s
       WHERE s.codice='DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_draft_id,
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,

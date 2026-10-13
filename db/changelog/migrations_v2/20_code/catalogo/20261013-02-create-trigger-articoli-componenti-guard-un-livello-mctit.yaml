@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGIO: catalogo.trgfn_articoli_componenti_guard_un_livello su
+#   catalogo.articoli_componenti
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.4 D-4, §9.1)
+#
+#   BEFORE INSERT OR UPDATE OF attivo, come trg_..._guard_iva_bom: nessun
+#   trigger BEFORE della tabella scrive attivo, quindi UPDATE OF e' la forma
+#   giusta (linee-guida-trigger); il corpo confronta OLD e NEW.
+#   ⭐ L'ordine del nome e' voluto. Fra i guard _a10_ parla il nome minore:
+#     guard_is_composito  (il PADRE non e' un composito: la distinta non c'e')
+#     guard_is_un_livello (il COMPONENTE e' un composito)        <- questo
+#     guard_iva_bom       (l'IVA del componente e' diversa)
+#   Prima si dice che la distinta non puo' esistere, poi che quel componente
+#   non ci sta, e solo per un componente ammesso si giudica l'IVA.
+#   ⛔ Nome sotto i 63 caratteri (56).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261013-02-create-trigger-articoli-componenti-guard-un-livello-mctit.yaml
+
+  - changeSet:
+      id: 20261013-02-create-trigger-articoli-componenti-guard-un-livello
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta catalogo.trgfn_articoli_componenti_guard_un_livello su catalogo.articoli_componenti
+        (BEFORE INSERT OR UPDATE OF attivo). Brief: brief-db-articoli-ammessi-per-documento (§8.4 D-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'catalogo'
+                 AND c.relname = 'articoli_componenti'
+                 AND t.tgname = 'trg_articoli_componenti_a10_guard_is_un_livello_ins_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_articoli_componenti_a10_guard_is_un_livello_ins_upd
+                  BEFORE INSERT OR UPDATE OF attivo
+                  ON catalogo.articoli_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_componenti_guard_un_livello();

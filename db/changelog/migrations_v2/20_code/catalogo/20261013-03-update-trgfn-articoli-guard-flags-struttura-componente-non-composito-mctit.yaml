@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# AGGIORNATO: catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva()
+#   + check 3: un articolo che e' componente di una distinta non diventa
+#   composito. E' il lato articolo di 20261013-01 (la distinta ha un livello).
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.4 D-4, A-3, §9.1)
+#
+# -- PERCHE' QUI ---------------------------------------------------------
+#   Il guard sul legame (20261013-01) giudica il componente quando il legame
+#   nasce. Senza questo check si arrivava allo stesso dato dall'altra parte:
+#   si mette un articolo semplice in una distinta, poi lo si marca composito.
+#   Questa funzione e' gia' la sede dei flag di struttura che una distinta
+#   congela (check 1: padre; check 2: figlio), montata BEFORE UPDATE OF
+#   is_composito, is_solo_componente, requires_serial (20260522-01): il
+#   montaggio copre gia' la colonna, non si tocca.
+#
+# -- QUALI LEGAMI ---------------------------------------------------------
+#   I check 1 e 2 guardano la distinta in vigore OGGI (validita @> oggi). Il
+#   check 3 guarda anche quella che entra in vigore DOPO: un legame che parte
+#   domani, con il componente diventato composito oggi, darebbe la distinta a
+#   due livelli da domani. Un legame scaduto e' storia e non si giudica.
+#   Solo il passaggio a composito (false -> true): il ritorno a semplice lo
+#   giudica il check 1.
+#   Corpo base: dalla doc auto-gen (catalogo/funzioni/trgfn_articoli_guard_flags_struttura_bom_attiva),
+#   l'ultima revisione e' 20261009-45 (giorno aziendale). Check 1 e 2 invariati.
+#   Il gemello per il form (dbops.lock_columns_conditional) e' 20261013-04.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261013-03-update-trgfn-articoli-guard-flags-struttura-componente-non-composito-mctit.yaml
+
+  - changeSet:
+      id: 20261013-03-update-trgfn-articoli-guard-flags-struttura-componente-non-composito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva: + check 3, un componente di una
+        distinta in vigore o futura non diventa composito (E_BOM_COMPONENTE_DIVENTA_COMPOSITO).
+        Brief: brief-db-articoli-ammessi-per-documento (§8.4 D-4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: blocca modifiche ai flag di struttura (is_composito,
+              -- is_solo_componente, requires_serial) quando esiste una BoM attiva
+              -- che renderebbe il cambio semanticamente incoerente.
+              --
+              -- Tre IF distinti per semantiche diverse:
+              --   - is_composito / requires_serial: cerca su prodotto_id (padre)
+              --   - is_solo_componente: cerca su componente_id (figlio)
+              --   - is_composito false -> true: cerca su componente_id (figlio),
+              --     distinta in vigore o futura: la distinta ha un livello solo
+              -- Se il valore non cambia (IS NOT DISTINCT FROM) la query EXISTS non viene eseguita.
+              DECLARE
+                  v_ha_figli_attivi  boolean;
+                  v_e_figlio_attivo  boolean;
+                  v_codice_padre     catalogo.articoli.codice%TYPE;
+              BEGIN
+                  -- Check 1: is_composito e/o requires_serial cambiano.
+                  -- Blocca se l'articolo e' padre di una BoM attiva.
+                  IF OLD.is_composito IS DISTINCT FROM NEW.is_composito
+                     OR OLD.requires_serial IS DISTINCT FROM NEW.requires_serial THEN
+
+                      SELECT EXISTS (
+                          SELECT 1 FROM catalogo.articoli_componenti
+                           WHERE prodotto_id = NEW.id
+                             AND attivo IS TRUE
+                             AND validita @> (SELECT script.fn_data_operativa())
+                      ) INTO v_ha_figli_attivi;
+
+                      IF v_ha_figli_attivi THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_BOM_MODIFICA_VIETATA',
+                              jsonb_build_object(
+                                  'articolo_id', NEW.id,
+                                  'hint', 'is_composito e requires_serial non modificabili: '
+                                       || 'articolo padre di una BoM attiva.'
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Check 2: is_solo_componente cambia.
+                  -- Blocca se l'articolo e' figlio in una BoM attiva.
+                  IF OLD.is_solo_componente IS DISTINCT FROM NEW.is_solo_componente THEN
+
+                      SELECT EXISTS (
+                          SELECT 1 FROM catalogo.articoli_componenti
+                           WHERE componente_id = NEW.id
+                             AND attivo IS TRUE
+                             AND validita @> (SELECT script.fn_data_operativa())
+                      ) INTO v_e_figlio_attivo;
+
+                      IF v_e_figlio_attivo THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_BOM_MODIFICA_VIETATA',
+                              jsonb_build_object(
+                                  'articolo_id', NEW.id,
+                                  'hint', 'is_solo_componente non modificabile: '
+                                       || 'articolo figlio in una BoM attiva.'
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Check 3: l'articolo diventa composito (false -> true).
+                  -- Blocca se e' componente di una distinta in vigore o futura: la
+                  -- distinta ha un livello solo (20261013-01 lo giudica sul legame).
+                  -- Il padre nel messaggio e' il primo per codice: uno basta a dire
+                  -- dove guardare.
+                  IF COALESCE(NEW.is_composito, FALSE)
+                     AND NOT COALESCE(OLD.is_composito, FALSE) THEN
+
+                      SELECT a_padre.codice
+                        INTO v_codice_padre
+                        FROM catalogo.articoli_componenti ac
+                        JOIN catalogo.articoli a_padre ON a_padre.id = ac.prodotto_id
+                       WHERE ac.componente_id = NEW.id
+                         AND ac.attivo IS TRUE
+                         AND ac.validita && daterange((SELECT script.fn_data_operativa()), NULL, '[)')
+                       ORDER BY a_padre.codice
+                       LIMIT 1;
+
+                      IF FOUND THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo',
+                              TG_NAME::text,
+                              'E_BOM_COMPONENTE_DIVENTA_COMPOSITO',
+                              jsonb_build_object(
+                                  'campo',        'is_composito',
+                                  'articolo_id',  NEW.id,
+                                  'codice_padre', v_codice_padre),
+                              NEW.tx_id,
+                              NEW.codice,
+                              v_codice_padre
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva()
+              IS 'Guard BEFORE UPDATE OF is_composito, is_solo_componente, requires_serial: blocca is_composito/requires_serial se articolo e'' padre di BoM attiva (prodotto_id); blocca is_solo_componente se articolo e'' figlio in BoM attiva (componente_id). Codice: E_BOM_MODIFICA_VIETATA (387). rev 2026-05-22. ⭐ rev 2026-10-13 (20261013-03, brief-db-articoli-ammessi-per-documento D-4): check 3, un articolo che e'' componente di una distinta in vigore o futura (legame attivo, validita && [oggi, inf)) non diventa composito, perche'' la distinta ha un livello solo: E_BOM_COMPONENTE_DIVENTA_COMPOSITO, campo is_composito, col primo padre per codice nel messaggio. E'' il lato articolo di catalogo.trgfn_articoli_componenti_guard_un_livello; il gemello per il form e'' la regola condizionale su is_composito in dbops.lock_columns_conditional.';

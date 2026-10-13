@@ -53,13 +53,20 @@
 --   7) ⛔ il trigger generato che tiene quella regola esiste — e' il costo
 --      dichiarato di 20260820-02, reso misurabile
 --
--- ⚠️ SCOSTAMENTO DAL PIANO, dichiarato. Il §8/5e chiedeva di esercitare il
---    test 6 «su un emittente di prova, non su 72 o 159». Si usa invece un
---    emittente reale, e per due ragioni: (a) il file gira in una transazione
---    che finisce SEMPRE in ROLLBACK, quindi la distinzione non protegge
---    niente; (b) costruire un emittente sintetico vorrebbe dire soddisfare
---    tre guard (ruolo emi_fis, normalize, default bootstrap) e finirebbe per
---    collaudare la fixture invece della configurazione vera.
+-- ⛔ rev 2026-10-13 — IL TEST 6 GIRA SU UN EMITTENTE COSTRUITO, come chiedeva
+--    il piano (§8/5e: «su un emittente di prova, non su 72 o 159»).
+--    Fino a oggi usava il secondo emittente REALE, e lo scostamento era
+--    dichiarato qui: il ROLLBACK lo rendeva innocuo, e un emittente sintetico
+--    sembrava costare tre guard. Il conto e' arrivato dai dati: dalla notte
+--    del 2026-10-12 il 159 ha template e documenti generati, e disattivandolo
+--    parla PRIMA il guard di documenti_generati (ordine dei nomi:
+--    «...documenti_generati...» < «...emittenti_fiscali_billing_acco...»),
+--    con un messaggio che non nomina la tabella attesa. Il test asseriva il
+--    messaggio di un guard, ma lo chiedeva a un emittente di cui non
+--    controllava i figli: verde finche' i dati non ne producevano altri.
+--    Oggi i builder ci sono (dbops.fn_pgtap_crea_emittente, e
+--    dbops.fn_pgtap_crea_cliente_ba col terzo parametro, da owner): un
+--    emittente nuovo ha come unico figlio il billing account che gli si lega.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -223,10 +230,21 @@ SELECT is(
 --    e nominerebbe la tabella SBAGLIATA. Asserire la tabella FIGLIA e' l'unico
 --    modo di accorgersene — un throws_ok sul solo SQLSTATE passerebbe.
 -- ============================================================
+-- L'emittente del test 6: costruito, con un solo figlio — il billing account
+-- che gli si lega qui (vedi la nota in testa, rev 2026-10-13).
+CREATE TEMP TABLE tmp_ef_t6 AS
+SELECT e.emittente_fiscale_id, e.soggetto_ruolo_id
+  FROM dbops.fn_pgtap_crea_emittente() e;
+
+DO $t6$ BEGIN
+  PERFORM dbops.fn_pgtap_crea_cliente_ba(
+    'pgTAP registri t6', NULL, (SELECT soggetto_ruolo_id FROM tmp_ef_t6));
+END $t6$;
+
 SELECT throws_like(
   format($$ UPDATE anagrafiche.emittenti_fiscali SET attivo = false
-             WHERE soggetto_ruolo_id = %s $$,
-         (SELECT ef_secondo FROM tmp_ref_reg)),
+             WHERE id = %s $$,
+         (SELECT emittente_fiscale_id FROM tmp_ef_t6)),
   '%righe collegate in anagrafiche.emittenti_fiscali_billing_account%',
   '6) il guard morde, e il messaggio NOMINA la tabella che sta bloccando'
 );

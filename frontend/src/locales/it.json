@@ -5721,7 +5721,12 @@
       "ordine_vendita": "Ordine",
       "preventivo": "Preventivo",
       "flusso": "Flusso",
-      "definizione_workflow": "Edizione workflow"
+      "definizione_workflow": "Edizione workflow",
+      "offerta_commerciale": "Offerta",
+      "ddt_vendita": "DDT",
+      "listino_versione": "Versione di listino",
+      "articolo": "Articolo",
+      "promo_articolo": "Promo articolo"
     },
     "registri_giornale": {
       "event_log": "Eventi di dominio",

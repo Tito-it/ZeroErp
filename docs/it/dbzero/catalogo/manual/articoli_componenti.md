@@ -71,6 +71,7 @@ Supporta:
 * **Parent attivi**: sia `prodotto_id` sia `componente_id` devono puntare ad articoli **attivi**.
 * **Solo componente**: un articolo con `is_solo_componente=true` non può essere usato come `prodotto_id`.
 * **Prodotto composito**: un articolo con `is_composito=false` non può essere usato come `prodotto_id`.
+* **Un livello solo** (dal 2026-10-13): il `componente_id` di un legame attivo non è un articolo composito, perché la distinta ha un livello (guard [`trgfn_articoli_componenti_guard_un_livello`](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_un_livello), `E_BOM_COMPONENTE_COMPOSITO`). Dal lato articolo, un componente di una distinta in vigore o futura non diventa composito (check 3 di [`trgfn_articoli_guard_flags_struttura_bom_attiva`](/dbzero/catalogo/manual/trgfn_articoli_guard_flags_struttura_bom_attiva)). Perché: [modello componenti BoM §9.2](/dev/manual/modello-componenti-bom).
 
 > **Nota tecnica (trigger manuali)**
 >
@@ -78,7 +79,8 @@ Questi vincoli sono **applicati tramite trigger dedicati** su `articoli_componen
 >
 REQUIRE su `prodotto_id` (padre attivo)
 > REQUIRE su `componente_id` (figlio attivo)
-> GUARD su `is_composito`
+> GUARD su `is_composito` (del padre)
+> GUARD «un livello» (il componente non è composito)
 >
 Non rientrano nella generazione automatica `automations` perché la tabella
 > usa **due FK verso la stessa entità** (`catalogo.articoli`) con ruoli diversi

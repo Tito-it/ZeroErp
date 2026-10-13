@@ -16,21 +16,13 @@ DECLARE
     v_destinazione    config.nature_vendita.destinazione_tipo%TYPE;
     v_articolo_codice catalogo.articoli.codice%TYPE;
 BEGIN
-    -- Natura ereditata e CONGELATA dall'articolo: la riga non puo'
-    -- discostarsi dalla classificazione dell'articolo. Qualunque
-    -- valore fornito dal chiamante in NEW.natura_vendita_id viene
-    -- sovrascritto (NO override operatore). Se l'articolo non e'
-    -- ancora classificato (natura_vendita_id NULL, transitorio
-    -- pre-backfill) la riga resta NULL e non e' smistabile finche'
-    -- non si classifica.
-    -- Stessa lettura recupera la destinazione_tipo della natura per
-    -- il guard MODALITA' A: un solo lookup articolo->natura.
-    SELECT a.natura_vendita_id, a.codice, nv.destinazione_tipo
-      INTO NEW.natura_vendita_id, v_articolo_codice, v_destinazione
-      FROM catalogo.articoli a
-      LEFT JOIN config.nature_vendita nv
-             ON nv.id = a.natura_vendita_id
-     WHERE a.id = NEW.articolo_id;
+    -- La natura della riga la scrive script.trgfn_righe_natura_vendita
+    -- (trigger _a10_natura_vendita_ins_upd, che viene PRIMA di questo):
+    -- qui si legge soltanto. Rev 20261013-10.
+    SELECT nv.destinazione_tipo
+      INTO v_destinazione
+      FROM config.nature_vendita nv
+     WHERE nv.id = NEW.natura_vendita_id;
 
     -- GUARD MODALITA' A (brief-preventivi-ordini.md D9): la
     -- ricorrenza (destinazione_tipo = 'CONTRATTO') non puo' stare
@@ -38,6 +30,10 @@ BEGIN
     -- Data-driven: qualunque natura mappata a CONTRATTO e' bloccata,
     -- senza hardcodare il codice della natura.
     IF v_destinazione = 'CONTRATTO' THEN
+        SELECT a.codice INTO v_articolo_codice
+          FROM catalogo.articoli a
+         WHERE a.id = NEW.articolo_id;
+
         PERFORM script.fn_log_and_raise_error(
             'database',
             TG_NAME::text,
@@ -56,6 +52,9 @@ BEGIN
     RETURN NEW;
 END;
 $function$
+
+COMMENT ON FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita()
+IS 'Guard BEFORE INSERT OR UPDATE OF articolo_id su vendite.preventivi_righe (MODALITA'' A, brief-preventivi-ordini D9): una riga con natura che va in contratto (destinazione_tipo CONTRATTO) non sta su un preventivo, E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA. ⚠️ Rev 20261013-10 (brief-db-articoli-ammessi-per-documento A-4): non scrive piu'' la natura, nonostante il nome; la scrive script.trgfn_righe_natura_vendita (_a10_natura_vendita_ins_upd), che viene prima nell''ordine dei nomi, e questo guard ne legge la destinazione. Il Lotto 3 lo ritira nella check delle righe di preventivo.';
 ```
 
 ---

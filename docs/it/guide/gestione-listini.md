@@ -212,6 +212,8 @@ Esempi:
 
 Un articolo composito (`is_composito = true`) ha una distinta base in `articoli_componenti`. Dal modello unificato del 2026-05-13 **ogni articolo composito è CASO A**: ogni componente attivo della distinta diventa una **riga negoziabile a se' stante** dentro il documento sorgente — vedi §5.2.1 sotto — e il prezzo del kit è la somma dei componenti. Al push, la pipeline espande l'articolo composito in N righe `commesse_attivita` separate. CASO B resta il nome dell'articolo **non** composito, con il suo prezzo unico.
 
+**Una distinta contiene solo articoli semplici.** Un kit non può contenere un altro kit: vendita, magazzino e fattura leggono i componenti diretti, e i componenti di un kit interno resterebbero invisibili. Se serve, si mettono nella distinta direttamente i componenti del kit interno. Per la stessa ragione un articolo che è componente di una distinta, in vigore o che entrerà in vigore, non si può marcare composito: nel form il campo è spento.
+
 **Come si vede il componente in fattura** è un'altra scelta della distinta, per singolo componente: l'**esposizione in fattura**. Non cambia né il prezzo né le righe del documento, solo cosa legge il cliente:
 
 | Esposizione | Cosa vede il cliente in fattura |

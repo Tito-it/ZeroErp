@@ -218,6 +218,12 @@ penale fuori campo art.15), mentre la causale ne è la classificazione business.
 riceve l'articolo-onere e ne deriva causale, `uom` e IVA. Riferimento:
 `brief-db-immutabilita-quantita-e-porta-oneri` §4c.8.
 
+**Un onere non è merce** (dal 2026-10-13): la natura di un articolo-onere non ha
+destinazione `ORDINE` (guard [`trgfn_articoli_guard_onere_natura`](/dbzero/catalogo/manual/trgfn_articoli_guard_onere_natura),
+`E_ARTICOLO_ONERE_NATURA_MERCE`). `natura_vendita_id` ha come default la merce: un onere creato
+senza dire la natura sarebbe stato un bene da evadere in ordine e in bolla, e una cessione di beni.
+Gli oneri del seed hanno la natura del servizio una tantum (destinazione commessa).
+
 ---
 
 ### Diagramma ER relazioni (focus articolo)

@@ -59,10 +59,14 @@ SELECT
   (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
       AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 0) AS art_merce_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 1) AS art_serv_id,
+  -- ⛔ rev 2026-10-13: i due articoli si COSTRUISCONO. Prima erano «i primi
+  --   due per id» del catalogo, e la natura gli veniva cambiata qui sotto:
+  --   se il primo e' un onere, dal 20261013-05 il guard
+  --   E_ARTICOLO_ONERE_NATURA_MERCE (giustamente) rifiuta la MERCE e il file
+  --   muore nella fixture. Un articolo costruito ha solo le proprieta' che il
+  --   test gli da'.
+  dbops.fn_pgtap_crea_articolo('PGT-VS-MERCE', true)  AS art_merce_id,
+  dbops.fn_pgtap_crea_articolo('PGT-VS-SERV', false)  AS art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s

@@ -4,7 +4,7 @@
 -- Test: vendite.fn_genera_ddt_riconsegna — eredita' di testata e di riga
 -- Brief: brief-db-ddt-riconsegna-eredita-testata, Fase B (+ Fase C, C-1)
 -- ------------------------------------------------------------
--- Indice test (plan 17):
+-- Indice test (plan 18):
 --  0) oggetti presenti (madre, gemello, check di emittibilita')
 --  1) ORDER-BACKED, testata: causale/aspetto/addebito/mittente/vettore/
 --     fatturazione_immediata uguali al DDT d'origine
@@ -28,6 +28,9 @@
 -- 15) C-1: fn_available_actions_ddt espone «Emetti» disabilitato COL MOTIVO
 -- 16) C-1: ⭐ causale NON fatturabile ma riga con prezzo senza aliquota ->
 --     rifiuta LO STESSO — il discrimine e' il prezzo, non la causale
+-- 17) STANDALONE, riga: la natura di vendita e' quella della riga di DDT
+--     d'origine, anche se l'articolo nel frattempo ha cambiato natura
+--     (brief-db-articoli-ammessi-per-documento A-4 e A-6, 20261013-13)
 --
 -- Scopo:
 --  - il documento generato dal database non nasce piu' nudo: eredita cio' che
@@ -53,7 +56,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- RLS attiva), non come owner.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(17);
+SELECT plan(18);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -328,6 +331,19 @@ SELECT (SELECT id FROM tmp_reso_std), 1, dr.id, NULL,
 
 SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_std));
 
+-- Per il test 17: dopo la bolla d'origine l'articolo cambia natura. La nuova
+-- si sceglie fra quelle che non vanno in ordine: un articolo-onere non puo'
+-- avere natura merce (catalogo.trgfn_articoli_guard_onere_natura).
+CREATE TEMP TABLE tmp_nat_orig AS
+SELECT dr.natura_vendita_id FROM vendite.ddt_righe dr
+ WHERE dr.id = (SELECT id FROM tmp_ddt_std_riga);
+UPDATE catalogo.articoli a
+   SET natura_vendita_id = (SELECT nv.id FROM config.nature_vendita nv
+                             WHERE nv.attivo AND nv.destinazione_tipo <> 'ORDINE'
+                               AND nv.id <> a.natura_vendita_id
+                             ORDER BY nv.id LIMIT 1)
+ WHERE a.id = (SELECT articolo_id FROM tmp_ddt_std_riga);
+
 CREATE TEMP TABLE tmp_ric_std AS
 SELECT vendite.fn_genera_ddt_riconsegna((SELECT id FROM tmp_reso_std)) AS ddt_id;
 
@@ -529,6 +545,16 @@ SELECT lives_ok(
   format($q$UPDATE vendite.ddt SET stato_doc_ddt_id = %s WHERE id = %s$q$,
          (SELECT stato_ddt_emesso_id FROM tmp_ref), (SELECT id FROM tmp_ddt_iva)),
   '14) C-1: causale non fatturabile e riga senza prezzo -> emette (solo trasporto)');
+
+-- ============================================================
+-- 17) STANDALONE, riga: la natura e' quella della riga d'origine (A-4, A-6)
+-- ============================================================
+SELECT ok(
+    (SELECT r.natura_vendita_id = o.natura_vendita_id
+            AND r.natura_vendita_id <> a.natura_vendita_id
+       FROM tmp_ric_std_riga r, tmp_nat_orig o, catalogo.articoli a
+      WHERE a.id = r.articolo_id),
+    '17) STANDALONE, riga: natura della riga d''origine, non quella che l''articolo ha oggi');
 
 SELECT * FROM finish();
 ROLLBACK;
