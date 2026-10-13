@@ -390,9 +390,7 @@
 - [trgfn_guard_fatturazione_immediata_immutabile](funzioni/trgfn_guard_fatturazione_immediata_immutabile.md) — Impedire la modifica di `fatturazione_immediata` su un documento che sta in una commessa **aperta**.
 - [trgfn_listini_guard_tipologia_utility](funzioni/trgfn_listini_guard_tipologia_utility.md) — Guard defense-in-depth: verifica che la coppia `(utility_id, tipologia_id)` su `vendite.listini` sia ammessa dalla matrice `config.listini_tipologie_utilities` con `attivo = true`.
 - [trgfn_listini_righe_comp_guard_immutabilita_v5](funzioni/trgfn_listini_righe_comp_guard_immutabilita_v5.md)
-- [trgfn_listini_righe_guard_no_composito](funzioni/trgfn_listini_righe_guard_no_composito.md)
 - [trgfn_listini_righe_guard_stato](funzioni/trgfn_listini_righe_guard_stato.md) — Guard N6 — terzo livello di protezione: impedisce la modifica o cancellazione di righe listino quando lo stato della versione padre non lo consente o quando la riga e` gia` stata propagata a valle (commesse, attivita` fatturabili).
-- [trgfn_listini_righe_guard_tipologia](funzioni/trgfn_listini_righe_guard_tipologia.md) — (rev 2026-08-21 — pricing v5)
 - [trgfn_listini_versioni_guard_date_chiusa](funzioni/trgfn_listini_versioni_guard_date_chiusa.md) — (funzione nata il 2026-09-28, `20260928-34`)
 - [trgfn_listini_versioni_guard_transizione_stato](funzioni/trgfn_listini_versioni_guard_transizione_stato.md) — (latest review 26-04-2026)
 - [trgfn_logs_guard_delete](funzioni/trgfn_logs_guard_delete.md) — (rev 2026-09-18 — Passo D di `analisi-osservabilita-log.md`)   La funzione trigger **`vendite.trgfn_logs_guard_delete()`** protegge i log funzionali (`fatture_log`, `fatturazione_lotti_log`) dalla cancellazione **accidentale**, distinguendo però fra **cancellare la storia** e **ritirare ciò che è scaduto**.

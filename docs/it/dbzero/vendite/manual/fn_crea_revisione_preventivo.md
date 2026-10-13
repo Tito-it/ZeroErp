@@ -54,6 +54,14 @@ rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendit
   rev N→N+1, e nessun pgTAP lo pinnava (segnalazione del BE). Presidio:
   `db/pgtap/vendite/test-date-consegna-ordine-v1.sql`, test 11-13 (fixture
   costruita: misura la stessa cosa su dbdev e in CI).
+  ⚠️ **Tranne una richiesta già passata** (rev 2026-10-13, `20261013-68`): la
+  rev N+1 nasce con la data di oggi, e una consegna non viene prima del
+  documento ([script.fn_data_consegna_ammessa](/dbzero/script/manual/fn_data_consegna_ammessa)).
+  Una richiesta anteriore alla data della rev N+1 (letta dal `RETURNING` della
+  testata nuova) si copia `NULL`; la rev N la conserva. La stessa decisione di Tid
+  del push a ordine: non si rifiuta (la rev N è fuori bozza) e non si porta alla
+  data della revisione (sarebbe una richiesta mai fatta). Presidio:
+  `test-data-consegna-vs-data-documento-v1`, test 20-22.
 * **L'ancora si copia** (rev 2026-09-15, `20260915-41`, D3 di Tid): la **testata** della
   rev N+1 porta `emittente_fiscale_id` della rev N. Fino a quel giorno non era nell'elenco
   esplicito delle colonne e lo riempiva il **trigger di default di sessione**: per un

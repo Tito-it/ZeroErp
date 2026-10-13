@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGIO: date di consegna contro la data del documento
+#   Righe:   trg_ordini_righe_a10_guard_data_consegna_vs_doc_ins_upd
+#            trg_preventivi_righe_a10_guard_data_consegna_vs_doc_ins_upd
+#            -> script.trgfn_doc_righe_guard_data_consegna (-64)
+#   Testate: trg_ordini_a10_guard_data_vs_consegne_righe_upd
+#            trg_preventivi_a10_guard_data_vs_consegne_righe_upd
+#            -> script.trgfn_doc_testata_guard_data_consegna_righe (-65)
+#   Collaudo date di consegna, 2026-10-13.
+#
+# -- L'ORDINE FRA I GUARD -----------------------------------------------------
+#   Fascia _a10_. Sulle righe parlano prima il lock fuori bozza (_a05_: «la
+#   riga non si tocca») e, sugli ordini, il guard della riga spedita
+#   (trg_ordini_righe_a10_guard_data_consegna_spedita_upd: «la data non si
+#   cambia piu'»): un rifiuto di immutabilita' viene prima di uno sul valore, e
+#   «guard_data_consegna_spedita» < «guard_data_consegna_vs_doc» in ordine
+#   alfabetico. Sulle testate parla prima il lock fuori bozza (_a05_), che
+#   fuori bozza ferma gia' la data.
+#
+# -- PERCHE' SENZA «UPDATE OF» SULLE RIGHE ------------------------------------
+#   Il guard di riga deve rigiudicare anche quando la riga torna attiva o
+#   cambia testata, e le colonne di consegna le elenca il lettore, non il
+#   montaggio: il confronto OLD/NEW lo fa il lettore. Sulle testate invece la
+#   domanda e' un cambio di valore di una colonna sola: WHEN.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261013-66-create-trigger-guard-data-consegna-vs-documento-mctit.yaml
+
+  - changeSet:
+      id: 20261013-66-create-trigger-guard-data-consegna-vs-documento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta i guard «date di consegna contro data del documento» su vendite.ordini_righe,
+        vendite.preventivi_righe (riga) e vendite.ordini, vendite.preventivi (testata). Collaudo date di
+        consegna, 2026-10-13.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname IN ('trgfn_doc_righe_guard_data_consegna',
+                                       'trgfn_doc_testata_guard_data_consegna_righe');
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgname IN ('trg_ordini_righe_a10_guard_data_consegna_vs_doc_ins_upd',
+                                      'trg_preventivi_righe_a10_guard_data_consegna_vs_doc_ins_upd',
+                                      'trg_ordini_a10_guard_data_vs_consegne_righe_upd',
+                                      'trg_preventivi_a10_guard_data_vs_consegne_righe_upd');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ordini_righe_a10_guard_data_consegna_vs_doc_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.ordini_righe
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_doc_righe_guard_data_consegna('ORDINE', 'ordine_id');
+
+              COMMENT ON TRIGGER trg_ordini_righe_a10_guard_data_consegna_vs_doc_ins_upd ON vendite.ordini_righe IS
+                  'Date di consegna (richiesta dal cliente, confermata) non anteriori alla data dell''ordine (E_DOC_RIGA_DATA_CONSEGNA_ANTERIORE). In UPDATE solo le date cambiate, tutte se la riga torna attiva o cambia ordine. Fascia _a10_, dopo il lock fuori bozza (_a05_) e la riga spedita. Collaudo date di consegna, 2026-10-13.';
+
+              CREATE TRIGGER trg_preventivi_righe_a10_guard_data_consegna_vs_doc_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.preventivi_righe
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_doc_righe_guard_data_consegna('PREVENTIVO', 'preventivo_id');
+
+              COMMENT ON TRIGGER trg_preventivi_righe_a10_guard_data_consegna_vs_doc_ins_upd ON vendite.preventivi_righe IS
+                  'Data di consegna richiesta dal cliente non anteriore alla data del preventivo (E_DOC_RIGA_DATA_CONSEGNA_ANTERIORE). In UPDATE solo se cambia, o se la riga torna attiva o cambia preventivo. Fascia _a10_, dopo il lock fuori bozza (_a05_). Collaudo date di consegna, 2026-10-13.';
+
+              CREATE TRIGGER trg_ordini_a10_guard_data_vs_consegne_righe_upd
+                BEFORE UPDATE ON vendite.ordini
+                FOR EACH ROW
+                WHEN (OLD.data IS DISTINCT FROM NEW.data)
+                EXECUTE FUNCTION script.trgfn_doc_testata_guard_data_consegna_righe('ORDINE');
+
+              COMMENT ON TRIGGER trg_ordini_a10_guard_data_vs_consegne_righe_upd ON vendite.ordini IS
+                  'La data dell''ordine non si sposta oltre le date di consegna delle righe attive (E_DOC_DATA_OLTRE_CONSEGNA_RIGHE). Scatta solo quando la data cambia (WHEN). Fascia _a10_, dopo il lock fuori bozza (_a05_). Collaudo date di consegna, 2026-10-13.';
+
+              CREATE TRIGGER trg_preventivi_a10_guard_data_vs_consegne_righe_upd
+                BEFORE UPDATE ON vendite.preventivi
+                FOR EACH ROW
+                WHEN (OLD.data IS DISTINCT FROM NEW.data)
+                EXECUTE FUNCTION script.trgfn_doc_testata_guard_data_consegna_righe('PREVENTIVO');
+
+              COMMENT ON TRIGGER trg_preventivi_a10_guard_data_vs_consegne_righe_upd ON vendite.preventivi IS
+                  'La data del preventivo non si sposta oltre le date di consegna delle righe attive (E_DOC_DATA_OLTRE_CONSEGNA_RIGHE). Scatta solo quando la data cambia (WHEN). Fascia _a10_, dopo il lock fuori bozza (_a05_). Collaudo date di consegna, 2026-10-13.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a10_guard_data_consegna_vs_doc_ins_upd ON vendite.ordini_righe;
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a10_guard_data_consegna_vs_doc_ins_upd ON vendite.preventivi_righe;
+              DROP TRIGGER IF EXISTS trg_ordini_a10_guard_data_vs_consegne_righe_upd ON vendite.ordini;
+              DROP TRIGGER IF EXISTS trg_preventivi_a10_guard_data_vs_consegne_righe_upd ON vendite.preventivi;

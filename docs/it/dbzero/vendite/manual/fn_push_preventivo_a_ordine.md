@@ -90,3 +90,22 @@ c'è ancora niente da confermare. Tolto dal commento del passo 4 il nome di una
 funzione che non esiste più: il numero dell'ordine lo assegna
 `trgfn_ordini_gen_numero`, dal motore dei registri. Brief:
 `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 2.4.
+
+### 🔄 rev 2026-10-13 — una richiesta già passata arriva vuota
+
+`20261013-67`, collaudo date di consegna. Una consegna non viene prima del
+documento ([script.fn_data_consegna_ammessa](/dbzero/script/manual/fn_data_consegna_ammessa)),
+e l'ordine nasce con la data di oggi: una richiesta del cliente **anteriore**
+alla data dell'ordine arriva `NULL` sulla riga d'ordine. Decisione di Tid fra tre
+strade:
+
+| Strada | Perché no / perché sì |
+| --- | --- |
+| rifiutare il push | ⛔ il preventivo è `ACCETTATO`, fuori bozza: la sua data non si correggerebbe più, e lo smistamento resterebbe fermo |
+| portarla alla data dell'ordine | ⛔ nella colonna della richiesta del cliente finirebbe una richiesta che il cliente non ha fatto |
+| **azzerarla** | ✅ la richiesta vera resta sulla riga di preventivo (`preventivo_riga_id`); l'ordine nasce `DRAFT` e l'operatore la riscrive |
+
+Senza questa scelta il guard di riga
+([script.trgfn_doc_righe_guard_data_consegna](/dbzero/script/manual/trgfn_doc_righe_guard_data_consegna))
+rifiuterebbe l'INSERT. Presidio:
+`db/pgtap/vendite/test-data-consegna-vs-data-documento-v1.sql`, test 17-19.

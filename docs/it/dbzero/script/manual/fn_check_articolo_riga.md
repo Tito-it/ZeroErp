@@ -8,7 +8,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto)
+(latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta)
 
 Dice **perché un articolo non può stare in una riga** di un documento. `[]` vuol dire ammesso;
 altrimenti un array **ordinato** di motivi `{codice, reason, reason_key, dettaglio, valori}`.
@@ -64,6 +64,26 @@ riga, `p_tipo_eccezione`, obbligatorio qui) decide le regole.
   togliere una riga sbagliata è un bene.
 * La **natura** non è una regola di offerta e contratto: il perimetro lo dicono tipologia ed
   erogazioni.
+### Le regole di versione di listino e distinta (Lotto 3c)
+
+| # | Versione di listino (`LISTINO_VERSIONE`, la riga di `vendite.listini_righe`) | Codice |
+| --- | --- | --- |
+| 1 | l'articolo vive solo dentro un kit (D-3) | `E_ARTICOLO_SOLO_COMPONENTE` |
+| 2 | composito: nella versione entra coi componenti, non come riga | `E_LISTINO_RIGA_COMPOSITO_VIETATO` |
+| 3 | tipologia mancante, o diversa da quella del listino | `E_ARTICOLO_TIPOLOGIA_MANCANTE` / `_INCOMPATIBILE` |
+
+| # | Distinta (`ARTICOLO`, la riga di `catalogo.articoli_componenti`; serve `p_articolo_padre_id`) | Codice |
+| --- | --- | --- |
+| 1 | il componente è il padre stesso | `E_BOM_COMPONENTE_PADRE` |
+| 2 | il componente è composito (D-4) | `E_BOM_COMPONENTE_COMPOSITO` |
+| 3 | IVA diversa dal padre | `E_BOM_IVA_DISCORDANTE` |
+
+Nella distinta il «solo componente» è il caso normale, non un motivo. Le regole sul **padre**
+(deve essere composito, non può essere solo componente) restano nei loro guard: sono della
+testata, non della riga.
+
+### Note
+
 * ⚠️ **Ponte A-8.** I lettori del listino (`fn_documento_listino_operativo`,
   `fn_check_esclusione_articolo_documento`, `fn_check_riga_erogazione`,
   `fn_get_stato_testata_documento`) parlano ancora `OFFERTA | CONTRATTO`, e il backend chiama il
@@ -80,15 +100,19 @@ script.fn_check_articolo_riga(
     p_documento_id      bigint,   -- l'id della testata (offerta e contratto: listino e utility)
     p_articolo_id       uuid,
     p_natura_vendita_id bigint DEFAULT NULL,
-    p_tipo_eccezione    vendite.tipo_eccezione_contratto DEFAULT NULL) RETURNS jsonb
+    p_tipo_eccezione    vendite.tipo_eccezione_contratto DEFAULT NULL,
+    p_articolo_padre_id uuid DEFAULT NULL) RETURNS jsonb
 ```
 
 * `p_documento`: `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE` o
-  `CONTRATTO`; altro solleva `E_DOC_TIPO_NON_GESTITO`. Listino e distinta entrano col 3c.
+  `CONTRATTO`, `LISTINO_VERSIONE` (`p_documento_id` = la versione) o `ARTICOLO` (la distinta);
+  altro solleva `E_DOC_TIPO_NON_GESTITO`.
 * `p_documento_id`: per offerta e contratto il listino e la utility si leggono dalla testata
   salvata (A-1), non dal form.
 * `p_tipo_eccezione`: obbligatorio per offerta e contratto (`E_PARAMETRO_INVALIDO`), ignorato
   per gli altri documenti.
+* `p_articolo_padre_id`: il padre della distinta, obbligatorio per `ARTICOLO`
+  (`E_PARAMETRO_INVALIDO`); la testata della distinta è un articolo, con un id `uuid`.
 * Articolo `NULL` o inesistente: nessun motivo, parla la FK.
 
 ---

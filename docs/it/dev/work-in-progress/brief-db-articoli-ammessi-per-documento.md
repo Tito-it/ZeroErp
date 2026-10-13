@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-13
 
-**Riparte: il team DB** con la **3c** (versione di listino e distinta, §9.3). Lotti 3a, 3u e 3b applicati, nessuna regressione (Tid, 2026-10-13). Lotti 3a e 3u applicati e verdi (Tid, 2026-10-13). Dal 2026-10-13 il brief lo porta avanti la sessione DB di questa conversazione (l'altra si è fermata). Lotti 1 e 2 sono applicati, verdi e committati. Il BE/FE parte **alla fine**, a lotti DB chiusi, con tutte le richieste insieme (Tid, 2026-10-13: non c'è produzione).
+**Riparte: il team DB** col **Lotto 4** (il picker degli articoli ammessi, §9). Lotti 3a, 3u, 3b e 3c applicati e verdi (Tid, 2026-10-13). Lotti 3a e 3u applicati e verdi (Tid, 2026-10-13). Dal 2026-10-13 il brief lo porta avanti la sessione DB di questa conversazione (l'altra si è fermata). Lotti 1 e 2 sono applicati, verdi e committati. Il BE/FE parte **alla fine**, a lotti DB chiusi, con tutte le richieste insieme (Tid, 2026-10-13: non c'è produzione).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -18,11 +18,13 @@
 | 4f | ✅ DB | Lotto **3b** (offerta e contratto) scritto e provato (2026-10-13) | §9.3.3 | — |
 | 4g | Tid | ✅ 3b applicata (`20261013-55 → -58` + CSV + locales), nessuna regressione (2026-10-13) | §9.3.3 | — |
 | 4h | Tid | ✅ A-8-bis (2026-10-13): i lettori del listino passano a `config.tipi_entita` col giro BE/FE | §9.3.3, §9.6 | — |
-| 4i | DB | Lotti 3c, 4, 5 | §9.3 | — |
+| 4i | ✅ DB | Lotto **3c** (versione di listino e distinta) scritto e provato (2026-10-13) | §9.3.4 | — |
+| 4j | Tid | ✅ 3c applicata (`20261013-59 → -61` + CSV + locales), pgTAP verdi (2026-10-13) | §9.3.4 | — |
+| 4k | DB | Lotti 4 (il picker) e 5 | §9 | — |
 | 5 | BE/FE | **tutto in un giro, alla fine**: policy dei codici nuovi di ogni lotto, lookup e `ArticoloLookup` sulla sede unica, ritiro dei filtri liberi | §7, §9.6 | Lotto 5 |
 | 6 | Tid | collaudo a video | — | 5 |
 
-Decisioni aperte di Tid: nessuna (A-8-bis presa il 2026-10-13; D-5 rinviato al cantiere acquisti). ✅ **Committati il 2026-10-13 (sessione DB)**: Lotti 1, 2 e `20261013-14` (prima); poi Lotti **3a, 3u, 3b** (`20261013-40 … -52`, `-55 … -58`), CSV dei codici, chiavi dei locales, baseline B-7, pgTAP nuovi e corretti, manual, guide e questo documento. ⚠️ **Restano fuori, col lavoro che ne porta la causa**: i cinque file pgTAP misti con un altro cantiere (`test-fn-list-ddt-da-pushare-contatore-v1`, `test-vw-dash-backlog-resi-v1`, `test-vw-partite-merce-v1`, `test-vw-resi-da-accreditare-contatore-v1`, `test-vw-situazione-merce-ordine-v1`); i quattro SORGENTE_POLIMORFA del §9.2.1 erano gia' fuori. Fuori anche, perche' di altri cantieri: `20261013-53` (lettori dell'emittente della bolla) col suo pgTAP e la sua doc, il D32, la pulizia di `baseline-rossi-scratch.tsv`.
+Decisioni aperte di Tid: nessuna (A-8-bis presa il 2026-10-13; D-5 rinviato al cantiere acquisti). **Da committare: il Lotto 3c** (§9.3.4: tre changeSet, CSV, locales, pgTAP nuovo e quattro presidi, manual). ✅ **Committati il 2026-10-13 (sessione DB)**: Lotti 1, 2 e `20261013-14` (prima); poi Lotti **3a, 3u, 3b** (`20261013-40 … -52`, `-55 … -58`), CSV dei codici, chiavi dei locales, baseline B-7, pgTAP nuovi e corretti, manual, guide e questo documento. ⚠️ **Restano fuori, col lavoro che ne porta la causa**: i cinque file pgTAP misti con un altro cantiere (`test-fn-list-ddt-da-pushare-contatore-v1`, `test-vw-dash-backlog-resi-v1`, `test-vw-partite-merce-v1`, `test-vw-resi-da-accreditare-contatore-v1`, `test-vw-situazione-merce-ordine-v1`); i quattro SORGENTE_POLIMORFA del §9.2.1 erano gia' fuori. Fuori anche, perche' di altri cantieri: `20261013-53` (lettori dell'emittente della bolla) col suo pgTAP e la sua doc, il D32, la pulizia di `baseline-rossi-scratch.tsv`.
 
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-11. **A chi:** team DB
 > (`dev/db-tid`); poi BE/FE (§7), che **attende** la consegna DB.
@@ -872,6 +874,68 @@ contratto, il ponte A-8), `script/manual/trgfn_righe_guard_articolo_ammesso` (i 
 guard ritirati. ⚠️ Nominano ancora i guard ritirati due documenti del backend
 (`docs/it/backend/vendite/manual/api_contratti.md`, `modello-contratti.md`): al giro BE/FE.
 
+#### 9.3.4 Lotto 3c — versione di listino e distinta (✅ applicato da Tid il 2026-10-13, pgTAP verdi)
+
+La stessa check per tipo di riga (A-2) giudica anche la riga standalone di una versione di listino
+e il componente di una distinta. Come nella 3b, i guard per regola si ritirano dentro la check.
+
+**ChangeSet**:
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20261013-59` | `script.fn_check_articolo_riga`: `LISTINO_VERSIONE` (1. solo componente, D-3, **nuovo** sulle righe di listino; 2. composito → `E_LISTINO_RIGA_COMPOSITO_VIETATO`; 3. tipologia mancante/incompatibile) e `ARTICOLO`, la distinta (1. componente uguale al padre → **nuovo** `E_BOM_COMPONENTE_PADRE`; 2. componente composito, D-4; 3. IVA diversa dal padre); `p_articolo_padre_id` in coda (DROP + CREATE): la testata della distinta è un articolo, con un id `uuid` |
+| `20261013-60` | `catalogo.trgfn_articoli_componenti_guard_componente`: il guard di tabella della distinta (il guard dei documenti legge `articolo_id` e un padre `bigint`; qui sono `componente_id` e `prodotto_id`). Giudica un legame attivo quando nasce, si attiva o cambia componente o padre |
+| `20261013-61` | montaggi su `listini_righe` (il guard dei documenti, `UPDATE OF articolo_id, listino_versione_id`) e su `articoli_componenti` (dopo i guard sul padre); **ritiro** di `trgfn_listini_righe_guard_tipologia`, `trgfn_listini_righe_guard_no_composito`, `trgfn_articoli_componenti_guard_un_livello` (Lotto 1), `trgfn_articoli_componenti_guard_iva` coi loro trigger (regola del 2) |
+
+**Codici**: `E_BOM_COMPONENTE_PADRE` (1303); gli altri motivi riusano i codici dei guard ritirati,
+con gli stessi segnaposto (i valori ora portano il codice dell'articolo, non il suo uuid). Sei
+`reason_key` nuove: `vendite.righe.articolo_reason.{composito_come_bundle, tipologia_mancante,
+tipologia_incompatibile}`, `catalogo.distinta.componente_reason.{componente_padre,
+componente_composito, iva_discordante}` (it, en). B-7: nessun allargamento.
+
+**Scelte del team DB**:
+
+* **Nella distinta il solo componente non è un motivo**: è il caso normale.
+* **Le regole sul padre della distinta** (dev'essere composito, non solo componente) restano nei
+  loro guard: sono della testata, non della riga, e il picker della distinta si apre solo su un padre
+  composito.
+* **Il composito nella versione di listino** resta un motivo della riga standalone
+  (`listini_righe`): nella versione entra per l'altra strada, coi componenti. Il picker del Lotto 4
+  dovrà dire «entra come bundle» e non «escluso» (§8.2): la `reason` è `COMPOSITO_COME_BUNDLE`.
+* Le condizioni di scatto sono quelle dei guard sostituiti, unite (listino: anche il cambio di
+  versione della riga; distinta: nascita, attivazione, cambio di componente o padre).
+
+**pgTAP**:
+
+* nuovo `catalogo/test-listino-distinta-articolo-ammesso-v1.sql` (20 test): la check e il guard per
+  la versione di listino e per la distinta, il legame spento che non si giudica, il padre come
+  componente che ora parla col codice prima del CHECK, il ritiro;
+* cambiano esito solo quattro **presidi di struttura**, aggiornati: `test-punti-canale-campo-v1`
+  (il guard della tipologia ritirato), `test-rubinetto-primo-motivo-v1` (da 39 a 40: il guard della
+  distinta è un sito nuovo sull'helper), `test-contratto-righe-lista-v1` e
+  `test-guard-esclusione-figlio-bundle-v1` (la firma della check ha sei argomenti).
+
+**Prova pre-apply** (2026-10-13, SQL estratto da `-59 … -61` + la riga del codice nuovo, in
+transazioni annullate, da owner, `PGTZ=Pacific/Kiritimati`, corpo dei pgTAP senza runner):
+
+* `plpgsql_check`: sulla check il solito avviso STABLE/VOLATILE; i due guard puliti;
+* test nuovo 20/20 su dbdev e `zeroerp_ci`;
+* censimento di 49 pgTAP (scrivono righe di listino o legami di distinta, o nominano gli oggetti
+  toccati), senza e con la 3c, su **entrambi** i database: cambiano esito solo il test nuovo e i
+  quattro presidi, ora verdi;
+* B-7 nella transazione: nessun allargamento; guardrail statici e `check_i18n_keys` verdi.
+
+**Doc**: nuovo `catalogo/manual/trgfn_articoli_componenti_guard_componente`; aggiornati
+`script/manual/fn_check_articolo_riga`, `script/manual/trgfn_righe_guard_articolo_ammesso`,
+`catalogo/manual/articoli`, `catalogo/manual/articoli_componenti`,
+`catalogo/manual/trgfn_articoli_guard_flags_struttura_bom_attiva`,
+`catalogo/manual/trgfn_articoli_guard_iva_bom_attiva`,
+`catalogo/manual/trgfn_articoli_guard_listino_se_composito`,
+`script/manual/trgfn_listini_righe_comp_guard_coerenza_bom`, `dev/manual/modello-componenti-bom`,
+guida `gestione-listini`; **cancellati** manual e pagine generate dei quattro guard ritirati.
+⚠️ `docs/it/dev/backend/catalogo-building-block-backend.md` nomina ancora il guard della tipologia:
+al giro BE/FE.
+
 ### 9.6 Il giro BE/FE finale (raccolta)
 
 Il BE/FE parte quando i lotti DB sono chiusi (Tid, 2026-10-13). Qui si raccolgono le richieste lotto per
@@ -883,5 +947,6 @@ lotto, così il giro finale ha un elenco solo:
 | 3a | policy e ripiego per `E_RIGA_NATURA_NON_AMMESSA`, ~~`E_ARTICOLO_SOLO_COMPONENTE_IN_USO`~~ (ritirato dalla 3u); `E_ARTICOLO_SOLO_COMPONENTE` ora ha il campo `articolo_id` (la nota «non è un campo del form» va rivista). **FE**: le `reason_key` sono nei locales; il form dell'articolo spegne `is_solo_componente` dai campi non modificabili |
 | 3u | **BE**: policy e ripiego per `E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE` (campo nel contesto); endpoint per il verbo `catalogo.fn_articolo_correggi_struttura`, solo SUPER_ADMIN; verifica dei quattro test Django che toccano i flag (§9.3.2). **FE**: nella scheda articolo le otto colonne arrivano spente da `non_editable_fields` quando l'articolo è usato (nessuna logica nuova); un'azione amministratore «correggi struttura» che chiama l'endpoint |
 | 3b | **BE**: policy e ripiego per `E_ARTICOLO_SENZA_EROGAZIONE`, `E_RIGA_ECCEZIONE_SENZA_LISTINO`, `E_RIGA_ECCEZIONE_FUORI_LISTINO`; **A-8-bis** (deciso da Tid il 2026-10-13): `fn_documento_listino_operativo`, `fn_check_esclusione_articolo_documento`, `fn_check_riga_erogazione` passano a `config.tipi_entita` (`OFFERTA_COMMERCIALE`, `CONTRATTO`) insieme ai chiamanti del BE, e si ritira il ponte in `fn_check_articolo_riga`; doc BE `api_contratti`, `modello-contratti` (nominano i guard ritirati). **FE**: le quattro chiavi `vendite.righe.articolo_reason.*` le ha già aggiunte la sessione DB |
+| 3c | **BE**: policy e ripiego per `E_BOM_COMPONENTE_PADRE` (campo `componente_id`); i codici del listino e della distinta ora arrivano dal guard di tabella col campo nel contesto (`articolo_id`, `componente_id`); doc BE `catalogo-building-block-backend` (nomina il guard della tipologia ritirato). **FE**: le sei chiavi `vendite.righe.articolo_reason.*` e `catalogo.distinta.componente_reason.*` le ha già aggiunte la sessione DB; nel picker della versione di listino il composito si propone come bundle (`COMPOSITO_COME_BUNDLE`), non come escluso |
 | 2 | **BE**: policy e ripiego per `E_RIGA_NATURA_VENDITA_IMMUTABILE`; via `E_PREV_RIGA_NATURA_IMMUTABILE` (ritirato). **FE**: ✅ le cinque chiavi `config.tipi_entita.*` le ha già aggiunte la sessione DB (§9.2) |
 

@@ -126,7 +126,7 @@ SELECT plan(5);
 SELECT ok(
     (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_documento\s*\('
        FROM pg_proc
-      WHERE oid = 'script.fn_check_articolo_riga(text,bigint,uuid,bigint,vendite.tipo_eccezione_contratto)'::regprocedure),
+      WHERE oid = 'script.fn_check_articolo_riga(text,bigint,uuid,bigint,vendite.tipo_eccezione_contratto,uuid)'::regprocedure),
     '1) script.fn_check_articolo_riga compone script.fn_check_esclusione_articolo_documento'
 );
 

@@ -146,9 +146,16 @@ selettore di data nel form) e compare nella tabella delle righe.
 del cliente, e lì la promessa (`data_consegna_confermata`) nasce vuota. Vedi
 [Gestione Ordini §3.5](/guide/gestione-ordini).
 
-⚠️ **Non viene copiata da `fn_crea_revisione_preventivo`**: una nuova revisione
-nasce con le righe senza data richiesta (§4.2). Sul preventivo la data sta sulla
-riga e la riga è **per documento**, quindi in una revisione va reinserita.
+⛔ **Non viene prima del preventivo.** Una data richiesta anteriore alla data del
+preventivo si rifiuta, dal form di riga e da «Aggiorna date di consegna»; la
+stessa data del preventivo e il campo vuoto vanno bene. Al contrario, la data del
+preventivo non si sposta *dopo* la richiesta di una riga attiva.
+
+**Nella revisione e nello smistamento.** Anche `fn_crea_revisione_preventivo`
+copia la data sulla riga della revisione nuova. La revisione e l'ordine nascono
+però con la data di oggi: una richiesta **già passata** arriva vuota sulla
+copia, e si riscrive lì (la copia è in bozza). La revisione precedente e il
+preventivo smistato conservano la loro.
 
 **In blocco.** Finché il preventivo è in `DRAFT`, l'azione **«Aggiorna date di
 consegna»** della barra del drawer scrive la stessa data richiesta su più righe:

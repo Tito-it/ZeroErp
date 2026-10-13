@@ -139,8 +139,13 @@ DECLARE v_ord bigint; v_orr bigint; v_stato text;
 BEGIN
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, utility_id, stato_doc_ordine_id,
                               valuta_id, data, fatturazione_trigger, emittente_fiscale_id, meta)
+  -- ⚠️ rev 2026-10-13 (collaudo date di consegna, 20261013-66): una data di
+  --   consegna non viene prima della data dell'ordine. L'ordine nasce a -40
+  --   (era -10), prima di ogni data di consegna del file (la piu' bassa e' la
+  --   richiesta a -30 del test 8): il ritardo si misura su oggi, non sulla
+  --   data dell'ordine, e nessuna asserzione cambia.
   SELECT c.soggetto_ruolo_id, c.billing_account_id, c.utility_id, r.stato_ord_draft_id,
-         r.valuta_id, script.fn_data_operativa() - 10, 'SPEDITO', m.emittente_fiscale_id,
+         r.valuta_id, script.fn_data_operativa() - 40, 'SPEDITO', m.emittente_fiscale_id,
          jsonb_build_object('test_scope', 'pgtap_situazione_merce_ritardo')
     FROM _cliente c, _mondo m, _refs r
   RETURNING id INTO v_ord;
