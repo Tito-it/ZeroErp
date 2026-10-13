@@ -141,7 +141,8 @@ IND_DET_ID=""
 # Prima cerca un indirizzo esistente
 do_curl GET "/api/v1/anagrafiche/indirizzi/?limit=1"
 if [[ "$LAST_STATUS" == "200" ]]; then
-    IND_DET_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
+    # La lista indirizzi espone `indirizzo_dettaglio_id`, non `id`.
+    IND_DET_ID=$(json_get "$LAST_BODY" ".data.results.0.indirizzo_dettaglio_id")
 fi
 
 # Se non c'e', cerca un comune, poi stradario per quel comune, e crea un indirizzo

@@ -15,6 +15,7 @@ import InputText from 'primevue/inputtext'
 
 import AppDialog from '../../core/components/AppDialog.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 import { formatQuantita } from '../../core/utils/format'
 import { liberaBlocco } from '../api/magazzino'
 
@@ -39,10 +40,14 @@ async function onSave() {
   emit('liberato', props.blocco.id)
   emit('update:visible', false)
 }
+
+// D-14: uscire con una nota scritta chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ nota: nota.value }), { visibile: () => props.visible })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="visible"
     :header="t('magazzino.blocchi.titolo_libera')"
     width="sm"

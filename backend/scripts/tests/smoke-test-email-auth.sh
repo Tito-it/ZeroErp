@@ -178,8 +178,11 @@ fi
 # --- 6. Prepara bozza outbox ---
 echo ""
 echo "-- 6. POST /core/email/prepare/ --"
+# `ambito` e' obbligatorio e senza default dal 2026-09-05 (SISTEMA e' trattato
+# come segreto di sistema dalla RLS): una notifica scritta da un utente e'
+# OPERATORE, e prende l'emittente attivo di chi la crea.
 auth_post "/api/v1/core/email/prepare/" \
-          '{"codice_template":"NOTIFICA_GENERICA","destinatario":"test@example.com","variabili":{"oggetto_custom":"Test","corpo_custom":"Corpo"}}'
+          '{"codice_template":"NOTIFICA_GENERICA","destinatario":"test@example.com","ambito":"OPERATORE","variabili":{"oggetto_custom":"Test","corpo_custom":"Corpo"}}'
 OUTBOX_ID=""
 if [[ "$LAST_STATUS" == "200" ]]; then
     OUTBOX_ID=$(json_get "$LAST_BODY" "data.id")

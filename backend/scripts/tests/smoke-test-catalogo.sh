@@ -191,7 +191,10 @@ fi
 # --- 7. Lookup UoM attive ---
 echo ""
 echo "-- 7. Lookup UoM --"
-do_curl GET "/api/v1/catalogo/unita-misura/lookup/?limit=20"
+# Il lookup dedicato `catalogo/unita-misura/lookup/` e' stato ritirato: le UoM
+# passano dal lookup generico whitelist (`rel=catalogo.unita_misura`), come il
+# frontend e smoke-test-catalogo-crud.
+do_curl GET "/api/v1/core/lookup/codici/?rel=catalogo.unita_misura&limit=20"
 check "Lookup UoM attive" "200" ".data.count"
 log_info "UoM trovate: $EXTRACTED"
 

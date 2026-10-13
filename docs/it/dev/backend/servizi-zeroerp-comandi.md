@@ -29,6 +29,7 @@ Ci sono due tipi di unit, e si comandano in modo diverso:
 | `zeroerp-digest-presidi-settimanale` | sveglia, il lunedì dalle 07:30 | la mail settimanale (registri, battito) | nessuna mail settimanale |
 | `zeroerp-fatturazione-immediata` | sveglia, **spenta di default** | giro di fatturazione immediata | — |
 | `zeroerp-fatturazione-differita` | sveglia, **spenta di default** | giro di fatturazione differita | — |
+| `zeroerp-smoke-notturno` | sveglia, **spenta di default**, si accende **solo su sviluppo** | il giro notturno di tutti gli smoke (alle 02:30); una regressione arriva nella mail delle 07:00 | gli smoke tornano a dipendere da chi si ricorda di lanciarli |
 
 ⛔ I due timer di **fatturazione emettono documenti**: si accendono solo su un
 host dichiarato pronto, mai «per prova».

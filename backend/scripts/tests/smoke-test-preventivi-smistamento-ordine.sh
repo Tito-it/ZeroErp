@@ -19,8 +19,10 @@
 #    COLLEGATO + skip PRONTA idempotente).
 #
 # NON coperto qui:
-#  - orchestratore CONFERMA_VENDITA → smoke dedicato
-#    smoke-test-pratica-preventivi-conferma.sh (giro pratica end-to-end).
+#  - il giro pratica end-to-end (tipo PREVENTIVI, bivio per esito) → smoke
+#    dedicato smoke-test-pratica-preventivi-bivio.sh. Il vecchio orchestratore
+#    CONFERMA_VENDITA (tipo PREVENTIVI_IMMEDIATA, obsoleto dal 2026-06-30) e il
+#    suo smoke sono ritirati (2026-10-12).
 #
 # Auto-diagnosi: se EMESSO/ACCETTATO falliscono per prerequisiti documentali
 # (template/emittente), i passi split vengono SALTATI con diagnosi, non crashano.
@@ -53,6 +55,8 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_emetti
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 PASS=0; FAIL=0; SKIP=0
@@ -138,21 +142,7 @@ echo ""; echo "-- 2. Crea preventivo BOZZA + riga merce --"
 # BA (espone utility_id + istanza_utility_id). Fonte 2 (fallback): un preventivo
 # esistente (tripla già coerente per costruzione). La create deriva l'istanza dal
 # BA e verifica la coerenza con utility.
-BA_RAW=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/anagrafiche/billing-account/lookup/" 2>/dev/null)
-BA_TRIPLE=$(echo "$BA_RAW" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin).get('data', {})
-    rows = d.get('results', d) if isinstance(d, dict) else d
-    for r in (rows or []):
-        if r.get('utility_id') and r.get('istanza_utility_id'):
-            print(r['id'], r['utility_id']); break
-except Exception:
-    pass
-" 2>/dev/null)
-BA_ID=$(echo "$BA_TRIPLE" | awk '{print $1}')
-UTILITY_ID=$(echo "$BA_TRIPLE" | awk '{print $2}')
+smoke_cliente_dal_lookup   # BB _smoke_cliente.sh: BA_ID, UTILITY_ID, ISTANZA_ID
 
 PREV_PAYLOAD=""
 if [[ -n "$BA_ID" && -n "$UTILITY_ID" ]]; then
@@ -183,22 +173,23 @@ fi
 if [[ -z "$PREV_PAYLOAD" ]]; then
     echo -e "${RED}Setup fallito: nessuna tripla BA+utility+istanza disponibile.${NC}"
     log_info "Risposta lookup BA (grezza, primi 500 char):"
-    echo "       $(echo "$BA_RAW" | head -c 500)"
+    echo "       $(echo "$BA_LOOKUP_RAW" | head -c 500)"
     log_info "Suggerimento: verifica che l'utente smoke abbia un emittente con almeno un BA valido (utility+istanza)."
     exit 1
 fi
-# L'operatore smoke puo' non avere emittente assegnato (E_EMITTENTE_NON_RISOLTO
-# dal trigger default script.trgfn_default_emittente_fiscale, BB unico dal
-# 2026-09-15 al posto della copia trgfn_preventivi_default_emittente): inietta un
-# emittente esplicito nel payload (default 32, override EMITTENTE_ID), come fa lo
-# smoke 1a.
-EMITTENTE_FISCALE_ID="${EMITTENTE_ID:-32}"
+# ⛔ Nessun emittente nel payload: il trigger script.trgfn_default_emittente_fiscale
+# mette l'emittente attivo dell'operatore, lo stesso del cliente del lookup
+# (_smoke_cliente.sh). Fino al 2026-10-12 qui c'era un id cablato (32), che con un
+# cliente di un'altra azienda risponde E_DOC_EMITTENTE_BA_INCOERENTE.
+# Override solo se serve: EMITTENTE_ID.
+if [[ -n "${EMITTENTE_ID:-}" ]]; then
 PREV_PAYLOAD=$(echo "$PREV_PAYLOAD" | python3 -c "
 import sys, json
 p = json.load(sys.stdin)
-p['emittente_fiscale_id'] = $EMITTENTE_FISCALE_ID
+p['emittente_fiscale_id'] = $EMITTENTE_ID
 print(json.dumps(p))
 " 2>/dev/null)
+fi
 log_info "payload create = $PREV_PAYLOAD"
 do_curl POST "/api/v1/vendite/preventivi/" "$PREV_PAYLOAD"
 if ! check "POST crea preventivo" 200 "data.id"; then
@@ -228,9 +219,7 @@ echo ""; echo "-- 3. BOZZA → EMESSO (/emetti/) → ACCETTATO --"
 SPLIT_OK=1
 # EMESSO via endpoint multipart /emetti/ (allegati opzionali). Richiede
 # template documento + emittente configurati: se manca, qui si diagnostica.
-curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
-    -F "x=" "${BASE_URL}/api/v1/vendite/preventivi/${PREV_ID}/emetti/" > "$TMPFILE" 2>/dev/null
-LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+smoke_emetti preventivi "${PREV_ID}"   # BB _smoke_documenti.sh
 if [[ "$LAST_STATUS" != "200" ]]; then
     log_skip "EMESSO (/emetti/) HTTP $LAST_STATUS — prereq documentale assente (template/emittente). Salto i passi split."
     log_info "Body: $(echo "$LAST_BODY" | head -c 200)"
@@ -318,9 +307,7 @@ if [[ -n "$SERV_ID" && "$SPLIT_OK" == "1" ]]; then
         do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/righe/" \
             "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"50.00\", \"iva_id\": 16}"
         check "POST riga servizio" 200 "data.id" || true
-        curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
-            -F "x=" "${BASE_URL}/api/v1/vendite/preventivi/${PREV2_ID}/emetti/" > "$TMPFILE" 2>/dev/null
-        LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+        smoke_emetti preventivi "${PREV2_ID}"   # BB _smoke_documenti.sh
         if [[ "$LAST_STATUS" == "200" ]]; then
             log_ok "POST /emetti/ → EMESSO"
             do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/stato/" \
@@ -394,9 +381,7 @@ if [[ "$MISTO_OK" == "1" && -n "${COMMESSE:-}" ]]; then
         do_curl POST "/api/v1/vendite/preventivi/${PREV3_ID}/righe/" \
             "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"30.00\", \"iva_id\": 16}"
         check "POST riga servizio" 200 || true
-        curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" \
-            -F "x=" "${BASE_URL}/api/v1/vendite/preventivi/${PREV3_ID}/emetti/" > "$TMPFILE" 2>/dev/null
-        LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+        smoke_emetti preventivi "${PREV3_ID}"   # BB _smoke_documenti.sh
         if [[ "$LAST_STATUS" == "200" ]]; then
             do_curl POST "/api/v1/vendite/preventivi/${PREV3_ID}/stato/" \
                 '{"nuovo_stato": "ACCETTATO", "fatturazione_immediata": true}'
@@ -425,8 +410,8 @@ fi
 
 # --- Nota copertura ---
 echo ""
-log_info "NON coperto qui: orchestratore CONFERMA_VENDITA → vedi smoke dedicato"
-log_info "smoke-test-pratica-preventivi-conferma.sh (giro pratica end-to-end)."
+log_info "NON coperto qui: il giro pratica end-to-end → vedi smoke dedicato"
+log_info "smoke-test-pratica-preventivi-bivio.sh (tipo PREVENTIVI, bivio per esito)."
 
 # --- Summary ---
 echo ""

@@ -24,6 +24,8 @@ Indice test eseguiti:
 14) ThrottleIdentTests.test_richiesta_ammessa_non_scrive
 15) ThrottleIdentTests.test_la_conferma_con_link_ha_il_suo_contatore
 16) ThrottleIdentTests.test_un_blocco_una_riga_sola
+17) ThrottleRitmiTests.test_login_e_secondo_passo_leggono_il_ritmo_dalle_impostazioni
+18) ThrottleRitmiTests.test_il_default_resta_cinque_ogni_cinque_minuti
 """
 
 from unittest.mock import patch
@@ -201,3 +203,33 @@ class ThrottleIdentTests(SimpleTestCase):
         self.assertEqual(len(log.output), 2)
         self.assertIn("provenienza=203.0.113.7", log.output[0])
         self.assertIn("provenienza=198.51.100.9", log.output[1])
+
+
+class ThrottleRitmiTests(SimpleTestCase):
+    """I ritmi del login e del secondo passo vengono dalle impostazioni (env
+    DJANGO_API_LOGIN_THROTTLE_RATE / _SECONDO_FATTORE_), e il default e' il
+    presidio di produzione: si alzano solo in sviluppo, per gli smoke."""
+
+    # 17. Le classi non hanno un ritmo proprio scritto a mano.
+    def test_login_e_secondo_passo_leggono_il_ritmo_dalle_impostazioni(self):
+        from django.conf import settings
+
+        from apps.core.api.throttling import SecondoFattoreRateThrottle
+
+        self.assertEqual(LoginRateThrottle.rate, settings.API_LOGIN_THROTTLE_RATE)
+        self.assertEqual(
+            SecondoFattoreRateThrottle.rate, settings.API_SECONDO_FATTORE_THROTTLE_RATE,
+        )
+
+    # 18. Senza variabile d'ambiente il ritmo e' quello di sempre: chi tocca il
+    #     default allenta il freno anche in produzione, e questo test lo dice.
+    #     (Si legge il sorgente: le impostazioni sono gia' caricate, e in un
+    #     ambiente con la variabile impostata il valore non direbbe il default.)
+    def test_il_default_resta_cinque_ogni_cinque_minuti(self):
+        from zeroerp_backend import settings as modulo
+
+        with open(modulo.__file__, encoding="utf-8") as f:
+            sorgente = f.read()
+        self.assertIn('env("DJANGO_API_LOGIN_THROTTLE_RATE", "5/5m")', sorgente)
+        self.assertIn('env("DJANGO_API_SECONDO_FATTORE_THROTTLE_RATE", "5/5m")', sorgente)
+

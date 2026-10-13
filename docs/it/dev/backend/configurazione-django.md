@@ -148,7 +148,7 @@ fanno, non i valori.
 | `DJANGO_ALLOWED_HOSTS` | | host ammessi, separati da virgola: IP **e** nome MagicDNS di Tailscale, perché Nginx passa a Django il nome che il browser ha usato |
 | `DJANGO_API_DOCS_ENABLED` | | Swagger/OpenAPI (`/api/docs/`, `/api/schema/`); segue `DEBUG` salvo scelta esplicita |
 | `DJANGO_API_EXPOSE_TECHNICAL_DETAILS` | | dettaglio tecnico nell'envelope di errore: vedi [error-handling-api](../../backend/core/manual/error-handling-api.md). Solo sviluppo |
-| `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED`, `DJANGO_API_RETRY_AFTER_SECONDS`, `DJANGO_API_SEARCH_THROTTLE_RATE`, `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED`, `DJANGO_REQUEST_LOG_ENABLED` | | comportamento dell'API: idempotenza forte, `Retry-After`, freno sulle ricerche, middleware delle eccezioni, giornale delle richieste |
+| `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED`, `DJANGO_API_RETRY_AFTER_SECONDS`, `DJANGO_API_SEARCH_THROTTLE_RATE`, `DJANGO_API_LOGIN_THROTTLE_RATE`, `DJANGO_API_SECONDO_FATTORE_THROTTLE_RATE`, `DJANGO_API_EXCEPTION_MIDDLEWARE_ENABLED`, `DJANGO_REQUEST_LOG_ENABLED` | | comportamento dell'API: idempotenza forte, `Retry-After`, freno sulle ricerche e sul login (default `5/5m`, il presidio di produzione: si alza solo in sviluppo, per gli smoke), middleware delle eccezioni, giornale delle richieste |
 | `CACHE_BACKEND`, `REDIS_URL`, `PERMISSIONS_CACHE_TTL` | | cache: Redis di default, `CACHE_BACKEND=locmem` in CI/test |
 | `DOCUMENTI_STORAGE_ROOT` | | cartella dei documenti generati (default `backend/var/documenti`) |
 | `LOG_DIR` | | cartella dei log applicativi (default `backend/logs/`, file `app.log`) |

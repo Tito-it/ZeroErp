@@ -90,6 +90,17 @@
       "abilita": true,
       "avvio_manuale": false,
       "nota": "avvio_manuale=false per natura (e' un servizio: non c'e' una corsa da lanciare; «Riavvia» e' un altro cantiere, analisi §4.3). NON e' un timer: e' un listener LISTEN/NOTIFY sempre acceso, sui canali cambio_reparto e permessi_catalogo (fino al 2026-10-05 si chiamava listen_cambio_reparto, unit zeroerp-listen-cambio-reparto). Non ha una cadenza da dichiarare. Scrive UN SOLO run — quello di avvio (decisione di Tid, 2026-09-05): «e' vivo adesso?» e' una domanda diversa e ha una sede sua, ed e' pg_stat_activity — a catalogo segno_di_vita = SESSIONE, e la connessione si presenta con application_name = processo_codice (notify_listener._get_conninfo). Se il processo muore la sessione sparisce; se sta riconnettendo non c'e'; ed e' vero."
+    },
+    {
+      "unit": "zeroerp-smoke-notturno",
+      "processo_codice": "smoke_notturno",
+      "forma": "timer",
+      "comando": ["smoke_notturno"],
+      "oncalendar": "*:00",
+      "dovuto": {"ogni": "giorno", "dalle": "02:30", "jobname": "smoke_notturno:completo"},
+      "abilita": false,
+      "avvio_manuale": false,
+      "nota": "Il giro NOTTURNO di tutti gli smoke (scripts/smoke-baseline.sh), dal 2026-10-13: un presidio che va lanciato a mano non lo lancia nessuno, e il 2026-10-12 meta' dei bash erano rossi da settimane. SOLO SVILUPPO: gli smoke scrivono documenti di prova. Per questo e' SPENTA di default (si accende a mano su dbdev), non ha «Esegui ora» (avvio_manuale false: un giro dura minuti e scrive dati), e il comando rifiuta di partire senza SMOKE_NOTTURNO_CONSENTITO=1 nell'ambiente. Alle 02:30 AZIENDALI: finito ben prima del digest delle 07:00, che riporta una corsa ok=false (maintenance.vw_job_run_da_guardare) per 7 giorni. Tolleranza NULL a catalogo (riga 47 di dbops.processi): spenta, non risulta mai «mai partita»; il costo, dichiarato dal team DB, e' che se su sviluppo il timer smette di girare nessuno se ne accorge."
     }
   ]
 }

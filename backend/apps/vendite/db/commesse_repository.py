@@ -146,7 +146,11 @@ _PUSHABLE_SHARED_COLS = (
     "prezzo_bloccato",
     "pricing_mode",
     "tipo_movimento",
-    "tipo_consumo",
+    # ⛔ `tipo_consumo` ritirato dal DB il 2026-10-13 (20261013-60…-67,
+    #    decisione A di Tid): due significati nella stessa colonna — il
+    #    contratto ci metteva l'EROGAZIONE (UNA_TANTUM…), la madre accettava solo
+    #    ACCONTO/CONGUAGLIO/STORNO, e nessuna riga di contratto entrava in
+    #    commessa. L'erogazione del contratto viaggia in `meta.tipo_erogazione`.
     "valuta_id",
     "meta",
     "tipo_doc_fiscale_id",
@@ -194,7 +198,6 @@ TIPO_MOVIMENTO_NORMALE = "NORMALE"
 # NORMALE | RETTIFICA | ONERE. La rettifica e' la riga della nota di credito —
 # quantita' NEGATIVA, prezzo copiato dalla riga di fattura rettificata.
 TIPO_MOVIMENTO_RETTIFICA = "RETTIFICA"
-TIPO_CONSUMO_CONGUAGLIO = "CONGUAGLIO"
 
 # Il vocabolario intero, per il filtro della lista attivita' (changeSet
 # 20260820-09). ⚠️ E' uno SPECCHIO, non l'autorita': a enforcare e' il CHECK, e
@@ -245,7 +248,6 @@ class CommessaAttivitaInput:
     stato_approvazione: str = STATO_APPROVAZIONE_BOZZA
     stato_emissione: str = STATO_EMISSIONE_NON_EMESSA
     tipo_movimento: str = TIPO_MOVIMENTO_NORMALE
-    tipo_consumo: str = TIPO_CONSUMO_CONGUAGLIO
 
     # === Campi opzionali ===
     istanza_utility_id: int | None = None
@@ -305,7 +307,6 @@ class PushableRow:
     prezzo_bloccato: bool
     pricing_mode: str
     tipo_movimento: str
-    tipo_consumo: str
     valuta_id: int | None
     meta: dict[str, Any]
     tipo_doc_fiscale_id: int | None
@@ -406,7 +407,6 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         prezzo_bloccato=bool(_col("prezzo_bloccato")),
         pricing_mode=str(_col("pricing_mode")),
         tipo_movimento=str(_col("tipo_movimento")),
-        tipo_consumo=str(_col("tipo_consumo")),
         valuta_id=_col("valuta_id"),
         meta=meta_raw,
         tipo_doc_fiscale_id=_col("tipo_doc_fiscale_id"),
@@ -1028,7 +1028,6 @@ class CommesseRepository(EventLogRepositoryMixin):
                     p_sorgente_tipo_id => %s,
                     p_sorgente_uid => %s,
                     p_tipo_movimento => %s,
-                    p_tipo_consumo => %s,
                     p_meta => %s::jsonb,
                     p_listino_riga_id => %s
                 )
@@ -1069,7 +1068,6 @@ class CommesseRepository(EventLogRepositoryMixin):
                     inp.sorgente_tipo_id,
                     inp.sorgente_uid,
                     inp.tipo_movimento,
-                    inp.tipo_consumo,
                     self._to_jsonb_param(inp.meta),
                     inp.listino_riga_id,
                 ],
@@ -1118,7 +1116,6 @@ class CommesseRepository(EventLogRepositoryMixin):
             "sorgente_tipo_id": inp.sorgente_tipo_id,
             "sorgente_uid": inp.sorgente_uid,
             "tipo_movimento": inp.tipo_movimento,
-            "tipo_consumo": inp.tipo_consumo,
             "meta": inp.meta or {},
             # Snapshot pricing v5 (F2-BE-11). Il wrapper batch DB deve
             # estrarre queste chiavi e passarle a fn_upsert_commessa_attivita

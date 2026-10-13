@@ -15,7 +15,7 @@
 #  5) PATCH codice immutabile (400 atteso)
 #  5b) PATCH uom_id immutabile (400 atteso — lock_columns DDL)
 #  6) POST duplicato stesso codice (400 atteso)
-#  7) Disattiva articolo
+#  7) Disattiva articolo: 7a con l'UoM operativa attiva (409), 7b l'UoM, 7c l'articolo
 #  8) Disattiva articolo gia' inattivo (idempotente)
 # ------------------------------------------------------------
 set -euo pipefail
@@ -179,6 +179,7 @@ echo "-- 2c. Verifica seed automatico UoM operativa base --"
 do_curl GET "/api/v1/catalogo/articoli/${ART_ID}/uom/"
 check "Lista UoM operative articolo (post-seed trigger)" "200" ".data.results.0.uom_id"
 SEED_UOM_OPERATIVA=$(json_get "$LAST_BODY" ".data.results.0.uom_id")
+SEED_UOM_OP_ROW_ID=$(json_get "$LAST_BODY" ".data.results.0.id")   # serve al passo 7
 SEED_IS_BASE=$(json_get "$LAST_BODY" ".data.results.0.is_base")
 SEED_COUNT=$(json_get "$LAST_BODY" ".data.count")
 if [[ "$SEED_UOM_OPERATIVA" == "$SEED_UOM_ID" ]]; then
@@ -207,7 +208,7 @@ fi
 # --- 4. PATCH campi editabili ---
 echo ""
 echo "-- 4. PATCH campi editabili --"
-do_curl PATCH "/api/v1/catalogo/articoli/${ART_ID}/" "{\"descrizione\":\"${ART_DESC_UPDATED}\",\"descrizione_breve\":\"Breve ${TEST_SUFFIX}\",\"voce_utility\":true}"
+do_curl PATCH "/api/v1/catalogo/articoli/${ART_ID}/" "{\"descrizione\":\"${ART_DESC_UPDATED}\",\"descrizione_breve\":\"Breve ${TEST_SUFFIX}\"}"
 check "PATCH articolo campi editabili" "200" ".data.descrizione"
 if [[ "$EXTRACTED" == "$ART_DESC_UPDATED" ]]; then
     log_ok "Descrizione aggiornata coerente"
@@ -236,9 +237,35 @@ do_curl POST "/api/v1/catalogo/articoli/" "{\"codice\":\"${ART_CODE}\",\"descriz
 check "Create duplicato stesso codice" "400" ".error.code"
 log_info "Codice errore: ${EXTRACTED:-n/d}"
 
-# --- 7. Disattiva articolo ---
+# --- 7. Disattiva articolo: prima i figli, poi il padre ---
+# ⭐ La disattivazione segue «figli prima del padre» (guard generico
+# dbops.trgfn_prevent_deactivate_if_children, E_ATTIVO_BLOCK_CHILDREN_ACTIVE), e
+# un articolo ha SEMPRE almeno un figlio: l'UoM operativa base seminata alla
+# nascita (passo 2c). Fino al 2026-10-12 lo smoke disattivava l'articolo
+# direttamente, che oggi e' giusto venga rifiutato: lo prova (7a), poi segue la
+# strada vera (7b, 7c).
 echo ""
-echo "-- 7. Disattiva articolo --"
+echo "-- 7a. Disattiva articolo con UoM operativa attiva (atteso 409) --"
+do_curl POST "/api/v1/catalogo/articoli/${ART_ID}/disattiva/" "{}"
+check "Disattiva con figlio attivo rifiutata" "409" ".error.code"
+if [[ "$EXTRACTED" == "E_ATTIVO_BLOCK_CHILDREN_ACTIVE" ]]; then
+    log_ok "Codice corretto: E_ATTIVO_BLOCK_CHILDREN_ACTIVE"
+else
+    log_fail "Codice atteso E_ATTIVO_BLOCK_CHILDREN_ACTIVE, ricevuto '${EXTRACTED:-<vuoto>}'"
+fi
+
+echo ""
+echo "-- 7b. Disattiva prima l'UoM operativa base (figlio) --"
+do_curl PATCH "/api/v1/catalogo/articoli/${ART_ID}/uom/${SEED_UOM_OP_ROW_ID}/" "{\"attivo\":false}"
+check "Disattiva UoM operativa base" "200" ".data.attivo"
+if [[ "$EXTRACTED" == "False" || "$EXTRACTED" == "false" ]]; then
+    log_ok "UoM operativa disattivata (attivo=false)"
+else
+    log_fail "UoM operativa: atteso attivo=false, ricevuto '${EXTRACTED:-<vuoto>}'"
+fi
+
+echo ""
+echo "-- 7c. Disattiva articolo --"
 do_curl POST "/api/v1/catalogo/articoli/${ART_ID}/disattiva/" "{}"
 check "Disattiva articolo" "200" ".data.attivo"
 if [[ "$EXTRACTED" == "False" || "$EXTRACTED" == "false" ]]; then

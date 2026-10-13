@@ -185,7 +185,6 @@ _FIXTURE: tuple[str, ...] = (
         p_sorgente_tipo_id              => (SELECT src_preventivo_id FROM _refs),
         p_sorgente_uid                  => (SELECT uid::text FROM _prev),
         p_tipo_movimento                => 'NORMALE',
-        p_tipo_consumo                  => 'CONGUAGLIO',
         p_meta                          => '{"test_scope": "be_ricerca_liste_vendite"}'::jsonb
     )
     """,

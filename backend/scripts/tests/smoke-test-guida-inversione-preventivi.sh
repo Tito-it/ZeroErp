@@ -99,17 +99,31 @@ with connection.cursor() as c:
     c.execute("SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno='COMPLETATO'"); completato=c.fetchone()[0]
     c.execute("SELECT id FROM config.stati_pratiche WHERE codice_interno='APERTA'"); aperta=c.fetchone()[0]
     c.execute("SELECT id FROM config.sorgenti WHERE codice_interno='PREVENTIVO' AND attivo LIMIT 1"); src=c.fetchone()[0]
-    c.execute("""SELECT priorita_id, emittente_fiscale_id, soggetto_id, definizione_id FROM pratiche.pratiche
-                 WHERE tipo_prestazione_id=9004 AND soggetto_id IS NOT NULL AND definizione_id=7 ORDER BY id DESC LIMIT 1""")
-    priorita, emitt, sogg, defin = c.fetchone()
-    c.execute("""SELECT istanza_utility_id, utility_id, valuta_id, emittente_fiscale_id FROM vendite.preventivi
+    # Dalla pratica-modello solo cio' che non lega a un cliente: priorita' e
+    # definizione del percorso.
+    c.execute("""SELECT priorita_id, definizione_id FROM pratiche.pratiche
+                 WHERE tipo_prestazione_id=9004 AND definizione_id=7 ORDER BY id DESC LIMIT 1""")
+    priorita, defin = c.fetchone()
+    # Il preventivo nasce SEMPRE col suo cliente (billing_account_id NOT NULL,
+    # brief-db-istanza-nasce-col-ba): la terna dallo stesso preventivo, coerente.
+    c.execute("""SELECT billing_account_id, istanza_utility_id, utility_id, valuta_id, emittente_fiscale_id FROM vendite.preventivi
                  WHERE utility_id IS NOT NULL AND istanza_utility_id IS NOT NULL ORDER BY id DESC LIMIT 1""")
-    istanza, utility, valuta, pemitt = c.fetchone()
-    c.execute("""INSERT INTO vendite.preventivi (numero, rev, istanza_utility_id, utility_id, validita_dal, validita_al,
+    ba, istanza, utility, valuta, pemitt = c.fetchone()
+    # ⛔ La pratica e' COERENTE col preventivo: stesso emittente, e il suo
+    # soggetto e' il cliente del preventivo. Fino al 2026-10-12 emittente e
+    # soggetto venivano dalla pratica-modello, indipendente dal preventivo:
+    # andavano d'accordo solo finche' il preventivo piu' recente era dello stesso
+    # emittente (verde per sottrazione), e l'API rispondeva
+    # E_VENDITA_PREVENTIVO_NON_COLLEGATO appena non lo era.
+    c.execute("""SELECT sr.soggetto_id FROM anagrafiche.billing_account b
+                 JOIN anagrafiche.soggetti_ruoli sr ON sr.id = b.soggetto_ruolo_id WHERE b.id = %s""", [ba])
+    sogg = c.fetchone()[0]
+    emitt = pemitt
+    c.execute("""INSERT INTO vendite.preventivi (numero, rev, billing_account_id, istanza_utility_id, utility_id, validita_dal, validita_al,
                    valuta_id, stato_doc_preventivo_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-                 VALUES (%s,0,%s,%s,DATE '2026-07-01',DATE '2026-07-31',%s,%s,DATE '2026-07-01',false,false,
+                 VALUES (%s,0,%s,%s,%s,DATE '2026-07-01',DATE '2026-07-31',%s,%s,DATE '2026-07-01',false,false,
                    '{"test_scope":"smoke_guida"}'::jsonb,%s) RETURNING id,(uid)::text""",
-              [f"SMOKE_GUIDA-{uuid.uuid4().hex[:10]}", istanza, utility, valuta, emesso, pemitt])
+              [f"SMOKE_GUIDA-{uuid.uuid4().hex[:10]}", ba, istanza, utility, valuta, emesso, pemitt])
     prev_id, prev_uid = c.fetchone()
     c.execute("""INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id,
                    priorita_id, definizione_id, descrizione) VALUES (%s,9004,%s,%s,%s,%s,'SMOKE_GUIDA E2E') RETURNING id""",

@@ -69,8 +69,8 @@ from apps.core.services.service_errors import ServiceError
 from apps.core.services.sveglie import RUN_COMMAND, Sveglia, sveglie_di_processo
 from apps.core.tests._sveglie import prima_sveglia_candidata
 
-_POPEN = f"{mod.__name__}.subprocess.Popen"
-_KILLPG = f"{mod.__name__}.os.killpg"
+_POPEN = "apps.core.services.sottoprocesso.subprocess.Popen"   # il lancio sta nel BB
+_KILLPG = "apps.core.services.sottoprocesso.os.killpg"
 _IS_FILE = f"{mod.__name__}._wrapper_presente"
 _SCOPE = {"auth_user_id": 9, "username": "op9", "identita_id": 5}
 _PID = 4242

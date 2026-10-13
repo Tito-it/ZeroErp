@@ -50,6 +50,11 @@ Il resto di questo documento riguarda `SearchBurstRateThrottle`.
 - Configurazione rate da settings:
   - env `DJANGO_API_SEARCH_THROTTLE_RATE`
   - default `30/min`.
+- Login e secondo passo hanno il loro ritmo, per IP: env
+  `DJANGO_API_LOGIN_THROTTLE_RATE` e `DJANGO_API_SECONDO_FATTORE_THROTTLE_RATE`,
+  default `5/5m`. ⚠️ Il default è il presidio di produzione contro i tentativi a
+  raffica: si alzano **solo in sviluppo**, dove gli smoke chiamano da un IP solo
+  (2026-10-13: metà del giro degli smoke era attesa sui freni).
 - In superamento limite, DRF risponde con `429`.
 - Ogni limite che scatta scrive nel log `security` (WARNING) `security.limite_frequenza scope=<scope> provenienza=<IP fidato> path=<path> attesa_s=<secondi>`, dalla base comune dei throttle (`_ClientIpIdentMixin.allow_request`), quindi per tutti gli scope. È l'unica traccia di un 429 sugli endpoint anonimi (login, secondo passo, reset): `dbops.request_log` registra le sole richieste autenticate (dal 2026-10-02). ⭐ **Una riga per episodio di blocco**, non una per richiesta respinta: la prima scrive e mette in cache un segnaposto (`throttle_log_<scope>_<ident>`, `cache.add`, atomico fra i worker) che dura quanto l'attesa; finito il blocco, il successivo ha di nuovo la sua riga. Sotto una raffica, chi martella l'endpoint non decide quanto log si scrive.
 

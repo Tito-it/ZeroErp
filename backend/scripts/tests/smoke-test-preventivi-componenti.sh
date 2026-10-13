@@ -152,7 +152,8 @@ check_http "POST nuovo articolo composito" "200" || {
     exit 3
 }
 NEW_COMPOSITO_ID=$(json_get "$LAST_BODY" "data.id")
-log_info "Creato articolo composito id=$NEW_COMPOSITO_ID"
+COMPOSITO_UOM_ID=$(json_get "$LAST_BODY" "data.uom_id")   # la sua UoM, per la riga (passo 5)
+log_info "Creato articolo composito id=$NEW_COMPOSITO_ID uom=$COMPOSITO_UOM_ID"
 
 # 1b) Aggiungi riga BoM esposta valida da oggi
 BOM_PAYLOAD=$(cat <<EOF
@@ -257,11 +258,15 @@ log_info "Creato preventivo id=$PREVENTIVO_ID numero=$PREVENTIVO_NUMERO"
 # 5) Aggiungi riga articolo composito qty=1
 # =====================================================
 log_step "5) Aggiungi riga articolo composito qty=1"
+# La quantita' si passa come `qta_operativa` nella UoM dell'articolo (modello
+# qta_operativa-sorgente, CREATE_KEYS_RIGA): `quantita` la calcola il trigger e
+# il service la scarta. Fino al 2026-10-12 lo smoke mandava `quantita` e una UoM
+# cablata (7): 400 E_QTA_MISSING.
 PAYLOAD=$(cat <<EOF
 {
   "articolo_id": "$NEW_COMPOSITO_ID",
-  "quantita": 1,
-  "uom_operativa_id": 7,
+  "qta_operativa": 1,
+  "uom_operativa_id": $COMPOSITO_UOM_ID,
   "prezzo_unitario": 0,
   "iva_id": 16
 }
@@ -272,31 +277,48 @@ do_curl POST "/api/v1/vendite/preventivi/${PREVENTIVO_ID}/righe/" "$PAYLOAD"
 #  - 200/201: init OK (componente con listino) -> prosegui smoke completo
 #  - 422 + E_DOC_COMPONENTE_LISTINO_MANCANTE: domain validation OK (componente
 #    senza listino mappato) -> skip resto smoke ma marca PASS specifico
-if [[ "$LAST_STATUS" == "422" ]]; then
-    ERR_CODE=$(echo "$LAST_BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('error',{}).get('code',''))")
-    if [[ "$ERR_CODE" == "E_DOC_COMPONENTE_LISTINO_MANCANTE" ]]; then
-        log_ok "POST riga composito -> 422 E_DOC_COMPONENTE_LISTINO_MANCANTE (domain validation OK, componente senza listino mappato)"
-        log_info "Smoke conferma: BE/FE error path OK. Path felice (init OK + componenti popolati) richiede componente con listino mappato."
-        log_info "Skip step 6-11. Cleanup."
-        # Cleanup parziale: BoM + articolo (no preventivo da pulire — riga rollback atomic)
-        if [[ -n "$NEW_BOM_ROW_ID" && -n "$NEW_COMPOSITO_ID" ]]; then
-            do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/componenti/${NEW_BOM_ROW_ID}/" \
-                "{\"valido_al\": \"$DATA_OGGI_UTC\"}"
-            check_http "Cleanup BoM (chiusura)" "200" || true
-        fi
-        if [[ -n "$NEW_COMPOSITO_ID" ]]; then
-            do_curl POST "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/disattiva/" '{}'
-            check_http "Cleanup articolo (disattiva)" "200|204" || true
-        fi
-        do_curl DELETE "/api/v1/vendite/preventivi/${PREVENTIVO_ID}/"
-        check_http "Cleanup preventivo orfano" "200|204" || true
-        echo ""
-        echo "================================================"
-        echo -e "  ${GREEN}DOMAIN VALIDATION PATH OK${NC}"
-        echo -e "  ${YELLOW}Per smoke completo path felice: serve componente con listino mappato${NC}"
-        echo "================================================"
-        exit 0
+# Scopo: ferma lo smoke quando il percorso felice non si puo' provare in questo
+#        ambiente, pulendo cio' che ha creato e DICHIARANDOLO (non conclusivo).
+#        Fino al 2026-10-12 questo ramo usciva con 0 e «DOMAIN VALIDATION PATH
+#        OK»: un verde che non aveva provato il percorso felice. E la pulizia
+#        disattivava l'articolo con i figli ancora attivi, che oggi e' rifiutato
+#        (figli prima del padre: righe BoM e UoM operativa base).
+fermo_non_conclusivo() {
+    local motivo="$1"
+    if [[ -n "$NEW_BOM_ROW_ID" && -n "$NEW_COMPOSITO_ID" ]]; then
+        do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/componenti/${NEW_BOM_ROW_ID}/" '{"attivo": false}'
+        check_http "Cleanup riga BoM (spenta)" "200" || true
     fi
+    if [[ -n "$NEW_COMPOSITO_ID" ]]; then
+        do_curl GET "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/uom/"
+        local uom_op; uom_op=$(json_get "$LAST_BODY" "data.results.0.id")
+        if [[ -n "$uom_op" ]]; then
+            do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/uom/${uom_op}/" '{"attivo": false}'
+            check_http "Cleanup UoM operativa base (spenta)" "200" || true
+        fi
+        do_curl POST "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/disattiva/" '{}'
+        check_http "Cleanup articolo (disattiva)" "200|204" || true
+    fi
+    do_curl DELETE "/api/v1/vendite/preventivi/${PREVENTIVO_ID}/"
+    check_http "Cleanup preventivo" "200|204" || true
+    echo ""
+    echo "Smoke non conclusivo: $motivo"
+    echo " Risultato: ${PASS} OK / ${FAIL} FAIL (percorso felice non eseguito)"
+    [[ "$FAIL" -eq 0 ]] && exit 0 || exit 1
+}
+
+ERR_CODE=$(echo "$LAST_BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('error',{}).get('code',''))" 2>/dev/null)
+if [[ "$LAST_STATUS" == "422" && "$ERR_CODE" == "E_DOC_COMPONENTE_LISTINO_MANCANTE" ]]; then
+    log_ok "POST riga composito -> 422 E_DOC_COMPONENTE_LISTINO_MANCANTE (validazione di dominio)"
+    fermo_non_conclusivo "il componente non ha un listino mappato: il percorso felice (componenti popolati) vuole un componente con listino."
+fi
+if [[ "$ERR_CODE" == "E_PREZZO_LISTINO_RIGA_NON_TROVATA" ]]; then
+    log_info "$(json_get "$LAST_BODY" "error.message")"
+    fermo_non_conclusivo "l'articolo composito creato dallo smoke non e' nel listino della categoria del cliente: il percorso felice vuole un composito con la sua riga di listino."
+fi
+if [[ "$ERR_CODE" == "E_CATEGORIA_LISTINO_NON_MAPPATA" ]]; then
+    log_info "$(json_get "$LAST_BODY" "error.message")"
+    fermo_non_conclusivo "manca la mappa categoria cliente -> listino per l'emittente attivo (configurazione: categorie_clienti_listini)."
 fi
 check_http "POST riga composito" "200|201" || {
     log_info "Categoria fallimento: gestisci_riga (init componenti BoM CASO A)"

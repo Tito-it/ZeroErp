@@ -41,6 +41,12 @@ PROCESSO_LISTEN_PERMESSI = "listen_permessi"
 #    `digest_presidi:<cadenza>`, e la chiave del battito resta il codice del
 #    processo. Brief: work-done/brief-db-un-destinatario-per-i-presidi.md.
 PROCESSO_DIGEST_PRESIDI = "digest_presidi"
+# ⭐ 2026-10-13: il giro NOTTURNO degli smoke (`scripts/smoke-baseline.sh`), riga
+#    47 di `dbops.processi`: classe `MANUTENZIONE`, canale `COMMAND`, tolleranza
+#    NULL (spento di default: non risulta mai «mai partito»). Solo sviluppo: gli
+#    smoke scrivono dati di prova. Una corsa con regressioni chiude `ok=false` e
+#    la vede `maintenance.vw_job_run_da_guardare`, quindi il digest delle 7.
+PROCESSO_SMOKE_NOTTURNO = "smoke_notturno"
 
 # ⛔ `sync_auth_user_active` NON sta piu' qui: la riga 23 di `dbops.processi` e'
 #    RITIRATA (`obsoleto_dal = 2026-09-07`) a favore del gemello pgAgent
