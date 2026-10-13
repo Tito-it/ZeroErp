@@ -97,10 +97,10 @@
       "forma": "timer",
       "comando": ["smoke_notturno"],
       "oncalendar": "*:00",
-      "dovuto": {"ogni": "giorno", "dalle": "02:30", "jobname": "smoke_notturno:completo"},
+      "dovuto": {"ogni": "giorno", "dalle": "02:30", "jobname": "smoke_notturno:completo", "basta_una_corsa": true},
       "abilita": false,
       "avvio_manuale": false,
-      "nota": "Il giro NOTTURNO di tutti gli smoke (scripts/smoke-baseline.sh), dal 2026-10-13: un presidio che va lanciato a mano non lo lancia nessuno, e il 2026-10-12 meta' dei bash erano rossi da settimane. SOLO SVILUPPO: gli smoke scrivono documenti di prova. Per questo e' SPENTA di default (si accende a mano su dbdev), non ha «Esegui ora» (avvio_manuale false: un giro dura minuti e scrive dati), e il comando rifiuta di partire senza SMOKE_NOTTURNO_CONSENTITO=1 nell'ambiente. Alle 02:30 AZIENDALI: finito ben prima del digest delle 07:00, che riporta una corsa ok=false (maintenance.vw_job_run_da_guardare) per 7 giorni. Tolleranza NULL a catalogo (riga 47 di dbops.processi): spenta, non risulta mai «mai partita»; il costo, dichiarato dal team DB, e' che se su sviluppo il timer smette di girare nessuno se ne accorge."
+      "nota": "Il giro NOTTURNO di tutti gli smoke (scripts/smoke-baseline.sh), dal 2026-10-13: un presidio che va lanciato a mano non lo lancia nessuno, e il 2026-10-12 meta' dei bash erano rossi da settimane. SOLO SVILUPPO: gli smoke scrivono documenti di prova. Per questo e' SPENTA di default (si accende a mano su dbdev), non ha «Esegui ora» (avvio_manuale false: un giro dura minuti e scrive dati), e il comando rifiuta di partire senza SMOKE_NOTTURNO_CONSENTITO=1 nell'ambiente. Alle 02:30 AZIENDALI: finito ben prima del digest delle 07:00, che riporta una corsa ok=false (maintenance.vw_job_run_da_guardare) per 7 giorni. ⚠️ basta_una_corsa: una corsa con regressioni E' l'esito del giorno, non un lavoro da ritentare (senza, il 2026-10-13 il giro e' ripartito ogni ora dalle 12, sette volte, con lo stesso rosso). Tolleranza NULL a catalogo (riga 47 di dbops.processi): spenta, non risulta mai «mai partita»; il costo, dichiarato dal team DB, e' che se su sviluppo il timer smette di girare nessuno se ne accorge."
     }
   ]
 }

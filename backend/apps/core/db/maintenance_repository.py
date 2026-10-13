@@ -103,6 +103,26 @@ class MaintenanceRepository:
         assert row is not None
         return bool(row[0])
 
+    # Scopo: c'e' una corsa CHIUSA della corsia da `dal`, riuscita o fallita?
+    #        Per il `dovuto` con `basta_una_corsa`: l'esito negativo e' un
+    #        risultato, non un lavoro da rifare. ⚠️ `ok IS NOT NULL` e non
+    #        `ended_at IS NOT NULL`: una corsa SALTATA (lock occupato) ha `ok`
+    #        NULL come una aperta, e non ha fatto il lavoro del periodo.
+    def corsa_chiusa_dal(self, jobname: str, dal: datetime) -> bool:
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM maintenance.job_run_log
+                     WHERE jobname = %s AND started_at >= %s AND ok IS NOT NULL
+                )
+                """,
+                [jobname, dal],
+            )
+            row = cur.fetchone()
+        assert row is not None
+        return bool(row[0])
+
     # Scopo: Restituisce la lista delle esecuzioni job con filtri opzionali su
     # jobname, esito (ok), intervallo temporale. Ordinamento cronologico decrescente.
     # Perimetro: sola lettura su maintenance.job_run_log.

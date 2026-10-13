@@ -167,13 +167,7 @@ except Exception: print('')
 [[ -z "$PREV_PAYLOAD" ]] && { echo -e "${RED}Setup fallito: nessun cliente (lookup) e nessun preventivo da cui derivare la tripla BA.${NC}"; exit 1; }
 log_info "payload preventivo base = $PREV_PAYLOAD"
 
-ARTICOLO_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?page_size=1" 2>/dev/null | python3 -c "
-import sys, json
-try:
-    r = json.load(sys.stdin).get('data',{}).get('results',[]); print(r[0]['id'] if r else '')
-except Exception: print('')
-" 2>/dev/null)
+smoke_articolo_merce   # BB _smoke_documenti.sh: una MERCE (va in un ordine/bolla)
 [[ -z "$ARTICOLO_ID" ]] && { echo -e "${RED}Setup fallito: catalogo vuoto.${NC}"; exit 1; }
 log_info "articolo merce = $ARTICOLO_ID"
 
