@@ -652,6 +652,36 @@ class MagazzinoRepository:
             return rows_to_list(cursor)  # type: ignore[return-value]
 
     # ══════════════════════════════════════════════════════════════
+    #  Blocchi manuali (Lotto 3 D-L3-j, R-5): due verbi DEFINER con
+    #  `fn_guard_azione(…, 'blocca_merce')` nella prima riga; l'app non
+    #  scrive `movimenti_attesi`.
+    # ══════════════════════════════════════════════════════════════
+
+    # Scopo: Apre un blocco (una promessa: pezzi riservati a qualcuno, che
+    #        fermano gli scarichi degli altri). Ritorna l'id del blocco.
+    def apri_blocco(
+        self, *, magazzino_id: int, articolo_id: str, qta: Any,
+        soggetto_ruolo_id: int | None, nota: str | None,
+        lotto_id: int | None, asset_id: int | None, ubicazione_id: int | None,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT magazzino.fn_apri_blocco(%s, %s::uuid, %s, %s, %s, %s, %s, %s)",
+                [magazzino_id, articolo_id, qta, soggetto_ruolo_id, nota,
+                 lotto_id, asset_id, ubicazione_id],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
+    # Scopo: Libera un blocco con un atto (autore, momento e nota: M-3).
+    def libera_blocco(self, blocco_id: int, nota: str | None) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT magazzino.fn_libera_blocco(%s, %s)", [int(blocco_id), nota],
+            )
+
+    # ══════════════════════════════════════════════════════════════
     #  Righe
     # ══════════════════════════════════════════════════════════════
 

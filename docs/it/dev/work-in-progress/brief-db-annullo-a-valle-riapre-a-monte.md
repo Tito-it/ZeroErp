@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-12
 
-**Riparte: la sessione BE** (le richieste del §10.7) **e Tid** (smoke HTTP, poi collaudo a video). Lato DB
-chiuso: applicato e pgTAP verdi su dbdev (Tid, 2026-10-12).
+**Riparte: Tid** (collaudo a video, e la domanda aperta del §10.8). Lato DB chiuso
+(applicato, pgTAP verdi su dbdev); lato BE del §10 fatto (§10.8), non committato.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -13,14 +13,14 @@ chiuso: applicato e pgTAP verdi su dbdev (Tid, 2026-10-12).
 | 3b | ✅ Tid | D-13: il link nasce nella madre DB `fn_upsert_commessa_attivita`; D-14: il flag di fatturazione immediata si blocca solo con una commessa viva | §10.6 | — |
 | 3 | ✅ team DB | R-13…R-16: `20261012-43 … -47` + CSV, pgTAP; applicati da Tid il 2026-10-12 | §10.7 | — |
 | 3b' | ✅ Tid | corsa pgTAP su dbdev: verde | §10.7 | — |
-| 4 | **sessione BE** | ritiro del link dal `BaseSourceHandler`, lettore della commessa aperta, testo di fallback, smoke | §10.7 | — |
-| 5 | Tid | lo smoke HTTP `smoke-test-ordini-giro-commessa.sh` (vuole la password degli smoke); con il §10 applicato il passo 14 (secondo invio) deve passare | §9.3 | 3b' |
+| 4 | ✅ sessione BE | ritiro del link dal `BaseSourceHandler`, lettore della commessa aperta, testo di ripiego, guida | §10.8 | — |
+| 5 | ✅ sessione BE | lo smoke HTTP `smoke-test-ordini-giro-commessa.sh`: 26 OK, 0 FAIL, passo 14 compreso (2026-10-12) | §10.8 | — |
 | 6 | Tid | collaudo a video: preventivo, ordine, misto, PRV0000144 | §6.4 | 3 |
 | 7 | Tid | eseguire su dbdev l'SQL del §9.4 (deciso il 2026-10-12: si riportano a CONFERMATO) | §9.4 | — |
 | 8 | sessione BE | archiviare in `work-done/`, riga di PROJECT_CONTEXT | — | 6, 7 |
 
-**Decisioni aperte di Tid:** nessuna (D-11…D-14 prese il 2026-10-12, §10.6).
-**Da committare:** il lavoro BE/FE del §9 (non committato); il lato DB del §10 (`20261012-43 … -47`, CSV, tre pgTAP, manual).
+**Decisioni aperte di Tid:** una, la commessa vuota lasciata dal push batch (§10.8, «Trovato nel giro»).
+**Da committare:** niente (il lavoro BE del §10.8 e' in git dal 2026-10-13).
 
 ⚠️ **Ricaduta trovata il 2026-10-13** (baseline di `vendite` su dbdev): il `20261012-46` (D-13, il link nasce nella madre) ha reso rossi quattro pgTAP che passavano alla madre sorgenti inventate (`test-emissione-mirata-gruppi-fatturabili-v1`, `test-vw-dash-competenza-gruppi-v1`, `test-sorgente-origine-tipo-doc-fiscale-v1`, `test-trigger-af-commessa-aware-v1`). La corsa del 2026-10-12 era sui soli file di questo brief. Fixture corrette con documenti veri: dettaglio e prova in [brief-db-articoli-ammessi-per-documento §9.2.1](brief-db-articoli-ammessi-per-documento.md).
 
@@ -941,3 +941,59 @@ Tid, verde.
 
 **I dati di dbdev**: nessun intervento. 55666 resta agganciata a PRV0000398 come storia, e il preventivo si
 rimanda.
+
+### 10.8 Consegna BE del §10 (2026-10-12)
+
+> **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-12, dopo il push del lato DB.
+
+| Richiesta del §10.7 | Fatto | Dove |
+| --- | --- | --- |
+| 1. ritiro del link | `BaseSourceHandler._lavora_riga` non chiama piu' il link (il perche' a commento nel punto); `CommesseRepository.link_sorgente` ritirato, senza altri consumatori, col suo test | `commesse_source_handlers.py`, `commesse_repository.py` |
+| 2. la commessa aperta | `get_commessa_id_by_sorgente` (`SELECT … LIMIT 1` su `commesse_sorgenti`) sostituito da `get_commessa_viva_by_sorgente(sorgente_codice, sorgente_chiave)`, wrapper di `vendite.fn_commessa_viva_di_sorgente`; il parametro `ruolo_link` (nessun chiamante lo passava) e' uscito. Unico consumatore: `preventivi_service._aggancia_commessa_servizi_a_pratica` (chiave = uid del preventivo). Un codice sorgente assente da `config.sorgenti` solleva `E_COMMESSA_SORGENTE_SCONOSCIUTA` (come `fetch_pushable_rows`) invece di tornare `None`: prima un codice sbagliato faceva saltare l'aggancio in silenzio | `commesse_repository.py`, `preventivi_service.py` |
+| 3. testo di ripiego | `E_COMMESSA_SORGENTE_ALTRA_COMMESSA` riallineato al CSV, senza `%s` | `error_messages_fallback.py` |
+| 4. smoke HTTP | ✅ **26 OK, 0 FAIL** su dbdev (utente `smoke`, emittente `EMITEST`): il secondo invio dell'ordine dopo l'annullo della commessa e' `COMPLETATO`. Per arrivarci, due correzioni allo smoke (sotto) | `smoke-test-ordini-giro-commessa.sh` |
+| guida | `gestione-commesse`: il legame resta come storia, una sola commessa aperta, nasce con la riga; il flusso tipo del push senza il passo del link; la funzione nuova nelle funzioni di supporto | `docs/it/guide/gestione-commesse.md` |
+
+**Le prove.**
+
+* Django: `apps.vendite` 2360 verdi, `apps.core` verdi; ruff pulito; mypy a cricchetto, nessun rilievo nuovo.
+  Test riscritti: l'handler non scrive il link (e il repository non ha piu' il metodo); la cache delle commesse
+  non si avvelena, con la riga che cade su un altro punto dopo la commessa (prima cadeva nel link); la lettura
+  della commessa aperta passa dalla funzione DB e non nomina `commesse_sorgenti`; il servizio la chiede con
+  l'uid del preventivo.
+* **Binding vero su dbdev** (in-process, transazione ritirata, nel perimetro di un operatore): il caso del
+  collaudo, PRV0000398. Prima: un link, verso 55666 `ANNULLATA`; commessa aperta `None`. Invio singolo dal
+  servizio: **`COMPLETATO`**, una riga, nessun errore. Dopo: due link `ROOT` (55666 `ANNULLATA`, la nuova
+  `PRONTA_FATTURAZIONE`), scritti dal DB; la commessa aperta e' la nuova.
+
+**Lo smoke non arrivava al passo 2** (difetti suoi, non del giro). (1) Il lookup dei clienti vuole `q` di
+almeno 2 caratteri (`E_ANAG_VALIDAZIONE`), e lo smoke lo chiamava senza: ora `?q=BA`, come
+`smoke-test-billing-account.sh`. Stessa chiamata, stessa correzione, in `smoke-test-contratti-addebito-standard.sh`
+e `smoke-test-preventivi-smistamento-ordine.sh` (non rieseguiti). (2) L'ordine nasceva con un emittente cablato
+(`32`): con un cliente di un'altra azienda `E_DOC_EMITTENTE_BA_INCOERENTE`. Ora nessun emittente nel payload,
+vale quello del cliente (`EMITTENTE_ID` resta come override). ⚠️ Lo stesso `32` cablato e' ancora in
+`smoke-test-preventivi-smistamento-ordine.sh` (non toccato: passa per il preventivo, va provato a parte).
+
+**Trovato nel giro (per Tid: una decisione).** Togliere il link dal fan-out sposta **dove** cade il rifiuto
+`E_COMMESSA_SORGENTE_ALTRA_COMMESSA`: prima dentro il savepoint della riga, insieme alla risoluzione della
+commessa; ora nel batch delle righe, **dopo** che il savepoint della riga e' stato rilasciato. Sul modello:
+
+* **invio singolo** (drawer): tutto o niente, la transazione esterna ritira anche la commessa. Nessun effetto;
+* **push batch** (`pr_run_commesse_push`, best-effort per riga): se la riga del documento va in una commessa
+  **nuova** (dimensioni diverse dalla commessa aperta in cui il documento sta gia') la commessa nasce, la riga
+  e' rifiutata dal batch, e la commessa **resta vuota** e aperta; il ponte di emittibilita' la prova e
+  scrive un errore nel report. Prima il rollback del savepoint la toglieva.
+
+Il rifiuto in se' c'era gia' prima (con l'UNIQUE di allora, piu' severo): cambia solo la commessa che resta.
+
+⚠️ **Riprodotto il 2026-10-13** (smoke `smoke-test-contratti-addebito-standard.sh`, dbdev), con un'altra causa
+di rifiuto: il push batch CONTRATTO ha creato la commessa 56627 e la riga e' stata rifiutata dal batch
+(«tipo_consumo non valido: UNA_TANTUM», difetto DB segnalato a parte: il lister dei contratti mette
+l'erogazione nel `tipo_consumo`, la madre accetta solo ACCONTO/CONGUAGLIO/STORNO). Esito: commessa vuota e
+aperta, giro `ERRORE` nel registro. Quindi la commessa vuota non dipende dal link: nasce da **qualunque**
+rifiuto del batch, e la domanda resta aperta come scritta.
+Non toccato, perche' le strade sono di modello: (a) il fan-out chiede al DB la commessa aperta del documento
+prima di crearne una (una seconda lettura della regola, che il D-13 voleva in un posto solo); (b) il push batch
+scrive le righe di un documento dentro il suo savepoint (un giro per riga invece del batch); (c) il DB non crea
+la commessa vuota (la madre `fn_get_or_create_commessa` non sa del documento). Da decidere con il team DB.
+

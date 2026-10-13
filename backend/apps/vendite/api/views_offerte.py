@@ -326,7 +326,8 @@ class ApiOffertaDetail(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Aggiorna testata offerta (solo in BOZZA, guard lato service).
+    # Scopo: Aggiorna testata offerta. Quali campi in quale stato lo decide il
+    #        lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`).
     def patch(self, request: Request, offerta_id: int) -> JsonResponse:
         return success_response(
             OfferteService().aggiorna_offerta(offerta_id, corpo_oggetto(request))

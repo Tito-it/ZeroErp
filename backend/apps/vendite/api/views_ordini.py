@@ -303,7 +303,8 @@ class ApiOrdineDetail(DomainAPIView):
         request=_ORDINE_UPDATE_REQUEST,
         responses={200: _ORDINE_RESPONSE},
     )
-    # Scopo: Aggiorna testata ordine (solo DRAFT). PATCH usa request.data
+    # Scopo: Aggiorna testata ordine (quali campi in quale stato lo decide il
+    #        lock di testata del DB). PATCH usa request.data
     #        (api.md §handle_post_json vs request.data): DRF ha gia' parsato il
     #        body; handle_post_json rileggerebbe il raw consumato.
     def patch(self, request: Request, ordine_id: int) -> JsonResponse:

@@ -538,6 +538,12 @@ export const MANAGE_ICONS = {
   // D20-b), e due lettori vogliono un nome (frontend-standards §«dove vive il
   // nome di un'icona»).
   REGISTRA: 'pi pi-lock',
+  // RISERVARE merce a qualcuno: il blocco manuale di magazzino (Lotto 3 R-5,
+  // «Blocca merce» sulla disponibilita'), che FERMA gli scarichi degli altri
+  // finche' non lo si libera — la pausa. ⛔ Non il lucchetto, che e' gia' CLOSE
+  // e REGISTRA (un blocco e' una promessa che si libera, non un atto chiuso),
+  // ne' il segnalibro, che e' IMPOSTA_CONTESTO.
+  BLOCCA_MERCE: 'pi pi-pause-circle',
   // ⛔ ANNULLA — si DISFA un atto che resta e viene dichiarato nullo: annulla
   //    il lotto, annulla la riga manuale, annulla la pratica.
   // 🔴 NON È UN ERRORE (`STATUS_ICONS.ERRORE`, il triangolo), ed è la

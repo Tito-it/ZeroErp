@@ -630,6 +630,45 @@ a {
   font-size: 0.85rem;
 }
 
+/* ===== Una voce di merce di un documento (prelievo, rientro) =====
+ * Il blocco di UNA voce che muove merce nella sezione di un documento: la
+ * testa (riga, articolo | quanto e' coperto + stato), la lista compatta dei
+ * dettagli fisici scritti (lotto, seriale, scaffale) e il form per
+ * aggiungerne uno. Due consumatori dal 2026-10-13 (piano-be-fe-magazzino-
+ * lotto-3, B1/B2): `DdtPrelievoVoce` (da dove esce la merce della bolla) e
+ * `ResoRientroVoce` (dove rientra quella del reso) — lo stesso blocco,
+ * scritto una volta invece di due `<style scoped>` uguali.
+ * Uso:
+ *   <div class="app-voce-merce">
+ *     <div class="app-voce-merce-testa"><span>…</span><span class="app-voce-merce-stato">… <Tag/></span></div>
+ *     <ul class="app-voce-merce-lista"><li>… <Button/></li></ul>
+ *     <div class="app-voce-merce-form">campi… <Button/></div>
+ *   </div> */
+.app-voce-merce {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--app-border-color);
+}
+.app-voce-merce-testa,
+.app-voce-merce-stato,
+.app-voce-merce-lista li,
+.app-voce-merce-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.app-voce-merce-testa {
+  justify-content: space-between;
+}
+.app-voce-merce-lista {
+  list-style: none;
+  margin: 0.25rem 0 0 0;
+  padding: 0;
+}
+.app-voce-merce-form {
+  margin-top: 0.5rem;
+}
+
 /* ===== Header informativo drawer (DrawerEntityHeader) =====
  * Riga flex con info entita' a sinistra (numero, badge contesto, data) e
  * Tag stato a destra. Mirror dei pattern duplicati su contratto/preventivo

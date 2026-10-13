@@ -49,6 +49,7 @@ import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegament
 import SituazioneMerceBar from '../../_shared/situazioneMerce/SituazioneMerceBar.vue'
 import DdtForm from './DdtForm.vue'
 import DdtRigheTable from './DdtRigheTable.vue'
+import DdtPrelieviSection from './DdtPrelieviSection.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
 import DdtResoDialog from './DdtResoDialog.vue'
 import DdtEmissioneDialog from './dialogs/DdtEmissioneDialog.vue'
@@ -158,6 +159,17 @@ function onResoCreato() {
 //    spedire e chi e' collegato. Ricaricare solo il detail lasciava la barra
 //    merce a mostrare il residuo di prima (rilievo in-app di Tid, 2026-10-11).
 //    Stesse due letture di `onResoCreato` e `dopoCambioStato`.
+// Prelievi: la sezione e' montata col dettaglio, e alla prima apertura legge da
+// se'; dopo, la rilegge `loadDetail` se era gia' montata (righe, causale e
+// magazzino cambiano le voci).
+const prelieviRef = ref(null)
+// Un prelievo cambiato: la testata si rilegge (la capability «Emetti» e il suo
+// motivo dipendono dai prelievi), e con lei la sezione.
+function onPrelieviChanged() {
+  loadDetail()
+  emit('changed')
+}
+
 function onRigheChanged() {
   loadDetail()
   collegamentiRef.value?.reload()
@@ -284,6 +296,10 @@ function defaultForm() {
     targa: null,
     autista: null,
     tracking_code: null,
+    // Magazzino (Lotto 3 D-L3-a): vuoto = lo propone il DB alla creazione (il
+    // predefinito dell'emittente); l'arrivo solo per la bolla di trasferimento.
+    magazzino_id: null,
+    magazzino_arrivo_id: null,
   }
 }
 
@@ -303,6 +319,9 @@ async function loadDetail(id = null) {
   const targetId = id ?? effectiveDdtId.value
   if (!targetId) return
   const applicaModifiche = preservaForm()
+  // La sezione prelievi si rilegge solo se c'era GIA': montata adesso (prima
+  // apertura) legge da se', e rileggerla qui sarebbe una seconda richiesta.
+  const prelieviGiaMontati = prelieviRef.value != null
   const data = await loadDetailOrClose(() => store.fetchDetail(targetId))
   if (!data) return
   detail.value = data
@@ -344,6 +363,8 @@ async function loadDetail(id = null) {
     targa: data.targa ?? null,
     autista: data.autista ?? null,
     tracking_code: data.tracking_code ?? null,
+    magazzino_id: data.magazzino_id ?? null,
+    magazzino_arrivo_id: data.magazzino_arrivo_id ?? null,
   }
   // Fissa la baseline e ripristina il non-salvato che la sostituzione
   // avrebbe cancellato.
@@ -362,6 +383,7 @@ async function loadDetail(id = null) {
   // Riepilogo IVA: la vista DB ricalcola dalle righe attive valorizzate a ogni
   // mutazione; qui leggiamo lo stato corrente (best-effort).
   await loadRiepilogoIva(targetId)
+  if (prelieviGiaMontati) prelieviRef.value?.carica()
 }
 
 // Scopo: Carica il riepilogo IVA aggregato (best-effort: in caso di errore il
@@ -429,6 +451,11 @@ function buildTestataPayload({ includeEmittente = false } = {}) {
     targa: f.targa || null,
     autista: f.autista || null,
     tracking_code: f.tracking_code || null,
+    // Vuoto in creazione = il default del DB (il magazzino predefinito
+    // dell'emittente); le regole (stesso emittente, arrivo solo per il
+    // trasferimento) le applica il DB.
+    magazzino_id: f.magazzino_id || null,
+    magazzino_arrivo_id: f.magazzino_arrivo_id || null,
   }
   if (payload.billing_account_id == null) {
     payload.destinatario_soggetto_ruolo_id = f.destinatario_soggetto_ruolo_id || null
@@ -801,6 +828,16 @@ const drawerActions = computed(() => {
         :causale-fatturabile="causaleFatturabile"
         @changed="onRigheChanged"
         @form-aperto="onFormAperto" />
+
+      <!-- Prelievi (Lotto 3 R-2b): da dove esce la merce. Compare solo se la
+           bolla muove merce. Aggiungere e togliere solo in bozza; l'ubicazione
+           di arrivo anche dopo l'emissione, fino alla consegna (decide il DB). -->
+      <DdtPrelieviSection
+        ref="prelieviRef"
+        :ddt-id="effectiveDdtId"
+        :modificabile="canEditRighe && !isReadonly"
+        :arrivo-modificabile="!isReadonlyPuro"
+        @changed="onPrelieviChanged" />
 
       <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
            Visibile con almeno una riga valorizzata (righe prezzo NULL escluse

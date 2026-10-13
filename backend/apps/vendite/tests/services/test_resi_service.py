@@ -109,6 +109,9 @@ ResiAnnulloAccreditoTests (B2-bis / D-NC-11)
 ResiSatellitiTestataTests (2026-09-21, «leggi prima la testata»)
 51) test_list_righe_reso_non_trovato_e_404       — E_RESO_NOT_FOUND, repo righe non chiamato
 52) test_list_righe_con_testata_delega_al_repo    — caso felice: delega invariata
+53) test_get_rientri_raggruppa_per_voce            — origini e rientri sotto riga o componente giusti (B2)
+54) test_crea_rientro_vuole_il_prelievo            — E_RESO_VALIDAZIONE senza prelievo, niente scrittura
+55) test_rientro_di_altra_riga_e_404               — E_RESO_NOT_FOUND, niente scrittura
 """
 
 from contextlib import nullcontext
@@ -1147,3 +1150,50 @@ class ResiSatellitiTestataTests(SimpleTestCase):
         repo.list_righe.return_value = [{"id": 31}]
         self.assertEqual(resi_service.list_righe(7), [{"id": 31}])
         repo.list_righe.assert_called_once_with(7)
+
+
+# B2 (3-bis R-1b, piano-be-fe-magazzino-lotto-3): il trasporto dei rientri.
+# ⚠️ Le regole (bozza, prelievo della riga di bolla, quadratura alla conferma)
+# sono del DB: lo prova `tests/db/test_ddt_cambia_stato_db` (test 7).
+class ResiRientriTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_get_rientri_raggruppa_per_voce(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_testata_rientri.return_value = {"reso_id": 4, "muove_merce": True}
+        repo.list_merce_da_rientrare.return_value = [
+            {"resi_riga_id": 1, "ddt_riga_componente_id": 10},
+            {"resi_riga_id": 1, "ddt_riga_componente_id": 11},
+        ]
+        repo.list_prelievi_origine.return_value = [
+            {"resi_riga_id": 1, "id": 500, "ddt_riga_componente_id": 11},
+            {"resi_riga_id": 1, "id": 501, "ddt_riga_componente_id": 10},
+        ]
+        repo.list_rientri.return_value = [
+            {"resi_riga_id": 1, "id": 900, "ddt_riga_componente_id": 11},
+        ]
+        out = resi_service.get_rientri(4)
+        self.assertEqual(
+            [([p["id"] for p in v["prelievi_origine"]], [r["id"] for r in v["rientri"]]) for v in out["voci"]],
+            [([501], []), ([500], [900])],
+        )
+
+    @patch(_REPO)
+    def test_crea_rientro_vuole_il_prelievo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 7, "reso_id": 4}
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.crea_rientro(4, 7, {"qta": "1"})
+        self.assertEqual(cm.exception.code, "E_RESO_VALIDAZIONE")
+        repo.create_rientro.assert_not_called()
+
+    @patch(_REPO)
+    def test_rientro_di_altra_riga_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 7, "reso_id": 4}
+        repo.get_rientro.return_value = {"id": 9, "resi_riga_id": 8}
+        with self.assertRaises(ServiceError) as cm:
+            resi_service.elimina_rientro(4, 7, 9)
+        self.assertEqual(cm.exception.code, "E_RESO_NOT_FOUND")
+        repo.delete_rientro.assert_not_called()

@@ -44,7 +44,7 @@ DdtEliminaTests
 13) test_elimina_ddt_bozza_orfana_ok        — hard-delete ammesso (0 righe)
 
 DdtCambiaStatoTests
-14) test_cambia_stato_ok                    — risolve id + update_stato
+14) test_cambia_stato_ok                    — valida il codice, poi il verbo col codice
 15) test_cambia_stato_codice_vuoto          — E_DDT_VALIDAZIONE
 16) test_cambia_stato_codice_inesistente    — E_DDT_VALIDAZIONE
 17) test_emetti_transita_a_emesso_light      — cambia_stato(EMESSO), ritorno light (no reload)
@@ -71,7 +71,7 @@ DdtSatellitiTestataTests (2026-09-21, «leggi prima la testata»)
 28) test_list_righe_con_testata_delega_al_repo    — caso felice: delega invariata
 
 DdtRigheEvaseTests (2026-10-11, brief-db-ddt-righe-evase-dall-ordine)
-29) test_annullo_passa_dal_verbo_senza_dichiarazione — ANNULLATO → repo.annulla(id, None), mai update_stato
+29) test_annullo_passa_dal_verbo_senza_dichiarazione — ANNULLATO → repo.annulla(id, None), mai cambia_stato
 30) test_annullo_con_dichiarazione                    — legami_confermati arriva al verbo come int
 31) test_annullo_dichiarazione_non_numerica           — E_DDT_VALIDAZIONE col campo (no 500)
 32) test_annullo_con_legami_codice_del_db             — E_DOC_ANNULLO_CON_LEGAMI tradotto, confirm_and_retry
@@ -80,6 +80,9 @@ DdtRigheEvaseTests (2026-10-11, brief-db-ddt-righe-evase-dall-ordine)
 35) test_correggi_qta_evasa_riga_di_altro_ddt_e_404   — E_DDT_NOT_FOUND, verbo non chiamato
 36) test_get_legami_delega_al_bb                       — testata, poi il BB comune col codice DDT
 37) test_get_legami_ddt_non_trovato_e_404             — E_DDT_NOT_FOUND, legami non letti
+38) test_get_prelievi_raggruppa_per_voce              — prelievi sotto riga o componente giusti (B1)
+39) test_crea_prelievo_porta_la_riga_e_coerce         — riga dall'URL, id interi, qta decimale
+40) test_prelievo_di_altra_riga_e_404                 — E_DDT_NOT_FOUND, niente scrittura
 """
 
 from contextlib import nullcontext
@@ -403,12 +406,15 @@ class DdtCambiaStatoTests(SimpleTestCase):
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
         repo.get_stato_id_by_codice.return_value = 6
+        repo.cambia_stato.return_value = []
         out = ddt_service.cambia_stato(7, "SPEDITO")
         self.assertEqual(out["stato"], "SPEDITO")
         self.assertEqual(out["stato_precedente"], "DRAFT")
+        self.assertEqual(out["movimenti_scritti"], 0)
         repo.get_ddt.assert_not_called()
         repo.get_stato_id_by_codice.assert_called_once_with("SPEDITO")
-        repo.update_stato.assert_called_once_with(7, 6)
+        # Il verbo prende il CODICE dello stato (Lotto 3 R-1), non l'id.
+        repo.cambia_stato.assert_called_once_with(7, "SPEDITO")
 
     # Un numero nel JSON al posto del codice e' un 400, non un 500 (2026-10-09).
     @patch(_REPO)
@@ -418,7 +424,7 @@ class DdtCambiaStatoTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, 5)  # type: ignore[arg-type]
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
 
     @patch(_REPO)
     def test_cambia_stato_codice_vuoto(self, repo_cls) -> None:
@@ -427,7 +433,7 @@ class DdtCambiaStatoTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, "   ")
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
 
     @patch(_REPO)
     def test_cambia_stato_codice_inesistente(self, repo_cls) -> None:
@@ -437,7 +443,7 @@ class DdtCambiaStatoTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, "INESISTENTE")
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
 
     @patch(_REPO)
     def test_emetti_transita_a_emesso_light(self, repo_cls) -> None:
@@ -449,11 +455,16 @@ class DdtCambiaStatoTests(SimpleTestCase):
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
         repo.get_stato_id_by_codice.return_value = 2
+        # Una bolla che muove merce: il verbo ritorna le uscite scritte.
+        repo.cambia_stato.return_value = [
+            {"movimento_id": 501, "prelievo_id": 11, "qta": 3},
+        ]
 
         out = ddt_service.emetti(7)
 
         repo.get_stato_id_by_codice.assert_called_once_with("EMESSO")
-        repo.update_stato.assert_called_once_with(7, 2)
+        repo.cambia_stato.assert_called_once_with(7, "EMESSO")
+        self.assertEqual(out["movimenti_scritti"], 1)
         repo.get_ddt.assert_not_called()
         repo.get_capabilities.assert_not_called()
         self.assertEqual(out["ddt_id"], 7)
@@ -919,7 +930,7 @@ class DdtRigheEvaseTests(SimpleTestCase):
         repo.get_stato_id_by_codice.return_value = 9
         out = ddt_service.cambia_stato(7, "ANNULLATO")
         repo.annulla.assert_called_once_with(7, None)
-        repo.update_stato.assert_not_called()
+        repo.cambia_stato.assert_not_called()
         self.assertEqual(out["stato"], "ANNULLATO")
         self.assertEqual(out["stato_precedente"], "EMESSO")
 
@@ -1008,3 +1019,57 @@ class DdtRigheEvaseTests(SimpleTestCase):
             ddt_service.get_legami(99)
         self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
         bb.assert_not_called()
+
+
+# B1 (Lotto 3 R-2b, piano-be-fe-magazzino-lotto-3): il trasporto dei prelievi.
+# ⚠️ Le regole (bozza, kit, ubicazioni, somma) sono dei trigger DB e qui sono
+# assenti: lo prova `tests/db/test_ddt_cambia_stato_db`.
+class DdtPrelieviTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_get_prelievi_raggruppa_per_voce(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_testata_prelievi.return_value = {"ddt_id": 7, "muove_merce": True}
+        # Un kit composto al momento: due componenti della stessa riga.
+        repo.list_merce_da_movimentare.return_value = [
+            {"ddt_riga_id": 1, "ddt_riga_componente_id": 10, "qta": 2},
+            {"ddt_riga_id": 1, "ddt_riga_componente_id": 11, "qta": 3},
+            {"ddt_riga_id": 2, "ddt_riga_componente_id": None, "qta": 1},
+        ]
+        repo.list_prelievi.return_value = [
+            {"id": 100, "ddt_riga_id": 1, "ddt_riga_componente_id": 11},
+            {"id": 101, "ddt_riga_id": 2, "ddt_riga_componente_id": None},
+            {"id": 102, "ddt_riga_id": 1, "ddt_riga_componente_id": 11},
+        ]
+        out = ddt_service.get_prelievi(7)
+        self.assertTrue(out["muove_merce"])
+        self.assertEqual(
+            [[p["id"] for p in v["prelievi"]] for v in out["voci"]],
+            [[], [100, 102], [101]],
+        )
+
+    @patch(_REPO)
+    def test_crea_prelievo_porta_la_riga_e_coerce(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 5, "ddt_id": 7}
+        repo.create_prelievo.return_value = {"id": 99}
+        out = ddt_service.crea_prelievo(
+            7, 5, {"qta": "2.5", "lotto_id": "3", "ubicazione_id": "", "estranea": 1},
+        )
+        self.assertEqual(out["prelievo_id"], 99)
+        valori = repo.create_prelievo.call_args[0][0]
+        self.assertEqual(
+            valori,
+            {"ddt_riga_id": 5, "qta": Decimal("2.5"), "lotto_id": 3, "ubicazione_id": None},
+        )
+
+    @patch(_REPO)
+    def test_prelievo_di_altra_riga_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 5, "ddt_id": 7}
+        repo.get_prelievo.return_value = {"id": 9, "ddt_riga_id": 6}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.aggiorna_prelievo(7, 5, 9, {"qta": "1"})
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.update_prelievo.assert_not_called()

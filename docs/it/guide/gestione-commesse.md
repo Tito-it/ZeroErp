@@ -152,6 +152,16 @@ conta come «già mandata» ([script.fn_get_stato_push_segment](/dbzero/script/f
 la sede unica letta dai lister e dal pannello di smistamento): è ciò che fa tornare il
 documento da mandare.
 
+⭐ **Il documento si rimanda in un'altra commessa.** Il legame documento → commessa
+([vendite.commesse_sorgenti](/dbzero/vendite/tabelle/commesse_sorgenti)) **resta come
+storia** anche dopo l'annullo o la chiusura: il lineage del documento mostra tutte le sue
+commesse. La regola è che un documento sta in **una sola commessa aperta alla volta**
+(`E_COMMESSA_SORGENTE_ALTRA_COMMESSA`); quale sia la dice
+[vendite.fn_commessa_viva_di_sorgente](/dbzero/vendite/funzioni/fn_commessa_viva_di_sorgente).
+Il legame nasce insieme alla riga, dentro
+[vendite.fn_upsert_commessa_attivita](/dbzero/vendite/funzioni/fn_upsert_commessa_attivita):
+nessun invio può dimenticarlo.
+
 #### L'eccezione: il documento con righe in una commessa viva
 
 L'inverso — annullare un **preventivo, un ordine o una bolla** che hanno righe in una
@@ -514,7 +524,8 @@ FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
 
 | Funzione                                                                            | Scopo                                                                                 |
 | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| [`fn_link_commessa_sorgente`](/dbzero/vendite/funzioni/fn_link_commessa_sorgente)   | Collega una sorgente alla commessa. **Ruolo auto-deciso a DB** `ROOT`/`COLLEGATO`     |
+| [`fn_link_commessa_sorgente`](/dbzero/vendite/funzioni/fn_link_commessa_sorgente)   | Collega una sorgente alla commessa. **Ruolo auto-deciso a DB** `ROOT`/`COLLEGATO`. La chiama la madre delle righe, non chi invia |
+| [`fn_commessa_viva_di_sorgente`](/dbzero/vendite/funzioni/fn_commessa_viva_di_sorgente) | La commessa **aperta** di un documento, o `NULL` (i legami verso commesse chiuse o annullate restano come storia) |
 | [`fn_start_commessa_push_run`](/dbzero/vendite/funzioni/fn_start_commessa_push_run) | **Apre** il giro di push: la riga nasce in testa alla corsa, in stato `IN_ESECUZIONE` |
 | [`fn_close_commessa_push_run`](/dbzero/vendite/funzioni/fn_close_commessa_push_run) | **Chiude** lo stesso giro con il suo esito, il risultato per handler e la durata      |
 
@@ -582,15 +593,9 @@ commessa_id = db.call_fn("vendite.fn_get_or_create_commessa",
     p_competenza_al=al
 )
 
-# 2. Collega sorgente (se primo push)
-db.call_fn("vendite.fn_link_commessa_sorgente",
-    p_commessa_id=commessa_id,
-    p_sorgente_tipo_id=sorgente_id,
-    p_sorgente_uid=doc_uid,
-    p_ruolo_link='ROOT'
-)
-
-# 3. Upsert righe
+# 2. Upsert righe: per una riga con sorgente documento la madre scrive anche
+#    il legame documento -> commessa (fn_link_commessa_sorgente), e rifiuta se
+#    il documento sta gia' in un'altra commessa aperta
 for riga in righe_documento:
     db.call_fn("vendite.fn_upsert_commessa_attivita",
         p_commessa_id=commessa_id,
@@ -599,7 +604,7 @@ for riga in righe_documento:
         ...
     )
 
-# 4. Chiusura del giro (aperto PRIMA del punto 1 con fn_start_commessa_push_run)
+# 3. Chiusura del giro (aperto PRIMA del punto 1 con fn_start_commessa_push_run)
 db.call_fn("vendite.fn_close_commessa_push_run",
     p_id=push_log_id,          # l'id restituito dall'apertura
     p_stato="COMPLETATO",      # oppure PARZIALE / ERRORE
@@ -607,7 +612,7 @@ db.call_fn("vendite.fn_close_commessa_push_run",
     p_durata_ms=durata,
 )
 
-# 5. Giro COMPLETATO: per ogni commessa toccata, le righe di QUESTO invio
+# 4. Giro COMPLETATO: per ogni commessa toccata, le righe di QUESTO invio
 #    approvate e la testata a PRONTA_FATTURAZIONE (gia' pronta: non si ritenta)
 db.call_fn("vendite.fn_rendi_commessa_emittibile",
     p_commessa_id=commessa_id,
@@ -616,7 +621,7 @@ db.call_fn("vendite.fn_rendi_commessa_emittibile",
 )
 ```
 
-> ⭐ **Il verso in avanti verso la commessa sta nel DB, come il ritorno.** Il passo 5 è
+> ⭐ **Il verso in avanti verso la commessa sta nel DB, come il ritorno.** Il passo 4 è
 > una madre DB: «le righe di questo invio» le conosce solo chi orchestra, quindi la
 > chiama il backend. Il preventivo passa da `ACCETTATO` a `EVASO` da solo: il trigger
 > delle righe di commessa lo riproietta dal residuo sulle due strade (merce da ordinare,

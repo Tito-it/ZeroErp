@@ -80,6 +80,13 @@ _DDT_RIGA_QTA_EVASA_REQUEST = schema_da_contratto(
     "VenditeDdtRigaQtaEvasaReq", ("qta_operativa",),
     obbligatorie=("qta_operativa",),
 )
+_DDT_PRELIEVO_CREATE_REQUEST = schema_da_contratto(
+    "VenditeDdtPrelievoCreateReq", ddt_service.CREATE_KEYS_PRELIEVO,
+    obbligatorie=("qta",),
+)
+_DDT_PRELIEVO_UPDATE_REQUEST = schema_da_contratto(
+    "VenditeDdtPrelievoUpdateReq", ddt_service.UPDATE_KEYS_PRELIEVO,
+)
 _DDT_RESPONSE = inline_serializer(
     name="VenditeDdtResp", fields={"data": serializers.DictField()},
 )
@@ -227,8 +234,10 @@ class ApiDdtDetail(DomainAPIView):
         request=_DDT_UPDATE_REQUEST,
         responses={200: _DDT_RESPONSE},
     )
-    # Scopo: Aggiorna testata DDT (solo DRAFT). PATCH usa request.data (DRF ha
-    #        gia' parsato il body; handle_post_json rileggerebbe il raw consumato).
+    # Scopo: Aggiorna testata DDT. Quali campi si cambiano in quale stato lo
+    #        decide il lock di testata del DB (`trg_ddt_a05_lock_fuori_bozza_upd`).
+    #        PATCH usa request.data (DRF ha gia' parsato il body;
+    #        handle_post_json rileggerebbe il raw consumato).
     def patch(self, request: Request, ddt_id: int) -> JsonResponse:
         return success_response(
             ddt_service.aggiorna_ddt(int(ddt_id), dict(corpo_oggetto(request))),
@@ -425,6 +434,67 @@ class ApiDdtRigaQtaEvasa(DomainAPIView):
             handler=lambda payload: ddt_service.correggi_qta_evasa(
                 int(ddt_id), int(riga_id), payload,
             ),
+        )
+
+
+class ApiDdtPrelievi(DomainAPIView):
+    """GET /api/v1/vendite/ddt/<ddt_id>/prelievi/ — i prelievi della bolla per
+    la griglia (Lotto 3 R-2b): se la bolla muove merce, i magazzini con
+    `usa_ubicazioni`, e le voci da movimentare (riga o componente del kit)
+    ognuna coi suoi prelievi. Sola lettura."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
+
+    @extend_schema(responses={200: dict})
+    # Scopo: La situazione dei prelievi della bolla.
+    def get(self, request: Request, ddt_id: int) -> JsonResponse:
+        return success_response(ddt_service.get_prelievi(int(ddt_id)))
+
+
+class ApiDdtRigaPrelievi(DomainAPIView):
+    """POST /api/v1/vendite/ddt/<ddt_id>/righe/<riga_id>/prelievi/ — un prelievo
+    sotto la riga (o un suo componente: `ddt_riga_componente_id`). Le regole
+    sono dei trigger DB (bozza, kit, ubicazioni, lotto/seriale)."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
+
+    @extend_schema(request=_DDT_PRELIEVO_CREATE_REQUEST, responses={200: _DDT_RESPONSE})
+    # Scopo: Crea il prelievo.
+    def post(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: ddt_service.crea_prelievo(
+                int(ddt_id), int(riga_id), payload,
+            ),
+        )
+
+
+class ApiDdtRigaPrelievoDetail(DomainAPIView):
+    """PATCH/DELETE /.../righe/<riga_id>/prelievi/<prelievo_id>/."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
+
+    @extend_schema(request=_DDT_PRELIEVO_UPDATE_REQUEST, responses={200: _DDT_RESPONSE})
+    # Scopo: Cambia quantita', lotto, seriale o ubicazioni del prelievo.
+    def patch(
+        self, request: Request, ddt_id: int, riga_id: int, prelievo_id: int,
+    ) -> JsonResponse:
+        return success_response(
+            ddt_service.aggiorna_prelievo(
+                int(ddt_id), int(riga_id), int(prelievo_id), dict(corpo_oggetto(request)),
+            ),
+        )
+
+    @extend_schema(responses={200: _DDT_RESPONSE})
+    # Scopo: Toglie il prelievo.
+    def delete(
+        self, request: Request, ddt_id: int, riga_id: int, prelievo_id: int,
+    ) -> JsonResponse:
+        return success_response(
+            ddt_service.elimina_prelievo(int(ddt_id), int(riga_id), int(prelievo_id)),
         )
 
 

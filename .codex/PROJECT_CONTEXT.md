@@ -63,7 +63,7 @@ ZeroErp/
 │   │   ├── ui/               # Liste configurabili: la configurazione è DATO, non DDL
 │   │   ├── vendite/          # App più attiva — pipeline fatturazione
 │   │   ├── acquisti/         # 🔵 PROSSIMO CANTIERE (Tid, 2026-09-11) — modello a DB, comportamento da scrivere
-│   │   ├── magazzino/        # 🔵 CANTIERE APERTO (idem) — Lotti 1-2 chiusi; Lotti 3 e 3-bis applicati a DB, BE/FE da fare
+│   │   ├── magazzino/        # 🔵 CANTIERE APERTO (idem) — Lotti 1-2 chiusi; Lotti 3 e 3-bis applicati a DB, BE/FE da collaudare
 │   │   ├── storico/          # ⚠️ scheletro (13 file, 23 righe, 0 test) — nessuna decisione presa
 │   │   └── contabilita/      # ⛔ scheletro vuoto — schema DB vuoto, fuori perimetro per decisione
 │   ├── requirements.in       # Dipendenze dirette (editare qui)
@@ -192,12 +192,11 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   API in `docs/it/backend/magazzino/manual/api_magazzino.md`). ⏳ Collaudo a video di Tid:
   `work-in-progress/collaudo-in-app-magazzino-inventario-e-rettifica.md`.
 - ⏳ **Magazzino, Lotto 3 — la merce esce con la bolla**
-  (`work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md`): DB applicato; restano le
-  richieste a BE/FE (§6 — senza R-1 il backend non emette una bolla che muove merce: il BE non
-  chiama ancora `vendite.fn_cambia_stato_ddt`) e la CI da zero.
+  (`work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md`): DB applicato; BE/FE fatto il
+  2026-10-13, da collaudare (`work-in-progress/piano-be-fe-magazzino-lotto-3.md`); resta la CI da zero.
 - ⏳ **Magazzino, Lotto 3-bis — carico da reso cliente**
-  (`work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`): DB applicato; restano
-  R-1…R-5 a BE/FE.
+  (`work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`): DB applicato; BE/FE fatto il
+  2026-10-13, da collaudare (stesso piano); un difetto DB aperto (`brief-db-reso-motivi-conferma-con-valori.md`).
 - 📝 **Magazzino: tutte le scritture dal verbo**
   (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): bozza, cinque decisioni di Tid (§3).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun

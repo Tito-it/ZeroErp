@@ -9,6 +9,10 @@
 > regola che lo mette **subito dopo**: *«un'asimmetria fra due versi si chiude
 > subito»*. Prerequisiti **chiusi**: Lotto 3 applicato e verde (28-09).
 >
+> ⏩ **Lato BE/FE al 2026-10-13: R-1…R-5 fatti, da collaudare** — dettaglio e collaudo in
+> [piano-be-fe-magazzino-lotto-3](piano-be-fe-magazzino-lotto-3.md) (giri A2, B2). R-1c (i motivi della
+> «Conferma» senza i numeri) e' un difetto DB: [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md).
+>
 > **Stato al 2026-09-29:** ✅ **LATO DB APPLICATO E VERDE.** I diciannove
 > changeSet (`20260928-84 → -98`, `20260929-01 → -04`) sono `EXECUTED` su dbdev;
 > la suite pgTAP col runner come app è senza regressioni (Tid). Otto decisioni

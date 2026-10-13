@@ -12,6 +12,9 @@
 > sono **chiusi**: Lotto 1 (forma), Lotto 2 (primitiva e porta), verbi con
 > permesso (24/25-09).
 >
+> ⏩ **Lato BE/FE al 2026-10-13: R-1…R-5 fatti, da collaudare** — il dettaglio e il collaudo stanno in
+> [piano-be-fe-magazzino-lotto-3](piano-be-fe-magazzino-lotto-3.md) (giri A1, A2, B1, C1). Resta la CI da zero.
+>
 > **Stato al 2026-09-28 (notte):** ✅ **LATO DB APPLICATO E VERDE.** I
 > ventiquattro changeSet `20260928-60 → -83` sono `EXECUTED` su dbdev, e il mirror
 > corretto delle causali di trasporto (`20260709-11`) e' `RERAN`. La corsa pgTAP col

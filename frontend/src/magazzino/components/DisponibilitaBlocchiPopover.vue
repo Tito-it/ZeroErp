@@ -20,8 +20,11 @@
 //    un'eccezione alla regola zero delle liste per un caso che non la chiede.
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Button from 'primevue/button'
 import Popover from 'primevue/popover'
 import Tag from 'primevue/tag'
+import { useAuthStore } from '../../stores/auth'
+import { AZIONE_BLOCCA_MERCE } from '../vocabolari'
 
 import { RISULTATI, useLetturaTreStati } from '../../core/composables/useLetturaTreStati'
 import { displayDate } from '../../core/utils/date'
@@ -31,7 +34,18 @@ import { useEtichetteMagazzino } from '../etichette'
 
 import { STATUS_ICONS } from '../../core/constants'
 const { t } = useI18n()
+const auth = useAuthStore()
 const { sorgenteMovimento } = useEtichetteMagazzino()
+// «Libera» (Lotto 3 R-5): il chiamante apre la finestra. Solo sui blocchi
+// MANUALI — senza sorgente: gli attesi di un documento si chiudono col loro
+// documento, e il verbo li rifiuterebbe — e solo a chi ha `blocca_merce`
+// (permesso => nascondi).
+const emit = defineEmits(['libera'])
+const puoLiberare = (b) => b.sorgente_codice_interno == null && auth.isActionAllowed(AZIONE_BLOCCA_MERCE)
+function libera(b) {
+  popover.value?.hide()
+  emit('libera', b)
+}
 const popover = ref(null)
 const riga = ref(null)
 
@@ -92,6 +106,8 @@ defineExpose({ apri })
             <span v-if="b.data_prevista" class="app-text-muted">
               {{ t('magazzino.disponibilita.blocchi_entro', { data: displayDate(b.data_prevista) }) }}
             </span>
+            <Button v-if="puoLiberare(b)" :label="t('magazzino.blocchi.libera')"
+                    link size="small" @click="libera(b)" />
           </div>
           <div v-if="b.soggetto_ragione_sociale || b.nota" class="app-blocchi-riga app-text-muted">
             <span v-if="b.soggetto_ragione_sociale">{{ b.soggetto_ragione_sociale }}</span>

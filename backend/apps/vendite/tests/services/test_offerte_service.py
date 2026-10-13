@@ -75,12 +75,14 @@ Scritture sul BB core (2026-09-26):
 61) crea_eccezione_meta_non_oggetto_e_400                [400, repo non chiamato]
 62) aggiorna_utility_meta_non_oggetto_e_400              [400, repo non chiamato]
 63) aggiorna_offerta_utility_inline_chiave_estranea_e_400 [niente scarto silenzioso]
+64) aggiorna_offerta_cambio_cliente_non_riscrive_la_scheda [R-BE-6: la rifa' il DB]
+65) aggiorna_offerta_stesso_cliente_applica_la_scheda    [id come testo: non e' un cambio]
 """
 
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 
 from apps.core.services.service_errors import ServiceError
 
@@ -361,12 +363,23 @@ class OfferteServiceTests(TestCase):
 
     # --- eccezioni ----------------------------------------------------
 
-    # Scopo: crea eccezione su offerta EMESSA -> 422.
+    # Scopo: crea eccezione su offerta EMESSA -> il rifiuto e' del DB
+    #        (`trgfn_doc_righe_lock_fuori_bozza`) e arriva col SUO codice,
+    #        `E_RIGA_DOC_NON_BOZZA` (409), come per le righe degli altri
+    #        documenti. Fino al 2026-10-13 il service lo anticipava con
+    #        `E_VENDITE_VALIDATION` (422) e una frase generica.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_crea_eccezione_su_emessa_fallisce(self, repo_cls):
+    def test_crea_eccezione_su_emessa_fallisce(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSA"
+        repo.create_eccezione.side_effect = DatabaseError(
+            "E_RIGA_DOC_NON_BOZZA: Offerta OFF-1 non e' piu' in bozza (stato EMESSA)",
+        )
         with self.assertRaises(ServiceError) as cm:
             OfferteService().crea_eccezione(1, {
                 "articolo_id": "00000000-0000-7000-8000-000000000abc",
@@ -374,7 +387,7 @@ class OfferteServiceTests(TestCase):
                 "fonte_quantita_attesa": "MANUALE",
                 "prezzo_unitario": "12.50",
             })
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
 
     # --- utility 1:1 --------------------------------------------------
 
@@ -896,6 +909,56 @@ class OfferteServiceTests(TestCase):
         self.assertEqual(utility_payload, {"tipo_utenza_id": 7, "param_1_num": "42"})
         # 3) Nessun create utility (esisteva gia').
         repo.create_utility.assert_not_called()
+
+    # Scopo: R-BE-6 (brief-db-indirizzi-documento-seguono-il-cliente): con un
+    #        CAMBIO DI CLIENTE la scheda del payload non si applica — il DB l'ha
+    #        appena rifatta dal contatore nuovo, e l'upsert ci scriverebbe sopra
+    #        quella del contatore di prima.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_cambio_cliente_non_riscrive_la_scheda(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.list_eccezioni.return_value = []
+        repo.get_coppia.return_value = {"billing_account_id": 10, "istanza_utility_id": 3, "utility_id": 1}
+        repo.get_utility.return_value = {"id": 99}
+
+        OfferteService().aggiorna_offerta(1, {
+            "billing_account_id": 11,
+            "utility": {"tipo_utenza_id": 7},
+        })
+
+        repo.update_offerta.assert_called_once()
+        repo.update_utility.assert_not_called()
+        repo.create_utility.assert_not_called()
+
+    # Scopo: stesso cliente (anche se arriva come testo dal JSON): non e' un
+    #        cambio di coppia, la scheda del payload si applica.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_stesso_cliente_applica_la_scheda(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        repo.get_offerta.return_value = _make_offerta_dict()
+        repo.list_eccezioni.return_value = []
+        repo.get_coppia.return_value = {"billing_account_id": 10, "istanza_utility_id": 3, "utility_id": 1}
+        repo.get_utility.return_value = {"id": 99}
+
+        OfferteService().aggiorna_offerta(1, {
+            "billing_account_id": "10",
+            "utility": {"tipo_utenza_id": 7},
+        })
+
+        repo.update_utility.assert_called_once()
 
     # Scopo: PATCH testata con `utility: {...}` inline su offerta SENZA
     #        record utility (es. creata senza utility, ora arricchita) ->

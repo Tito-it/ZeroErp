@@ -67,6 +67,13 @@ _RESO_CREATE_REQUEST = schema_da_contratto(
 _RESO_UPDATE_REQUEST = schema_da_contratto(
     "VenditeResoUpdateReq", resi_service.UPDATE_KEYS_RESO,
 )
+_RESO_RIENTRO_CREATE_REQUEST = schema_da_contratto(
+    "VenditeResoRientroCreateReq", resi_service.CREATE_KEYS_RIENTRO,
+    obbligatorie=("ddt_riga_prelievo_id", "qta"),
+)
+_RESO_RIENTRO_UPDATE_REQUEST = schema_da_contratto(
+    "VenditeResoRientroUpdateReq", resi_service.UPDATE_KEYS_RIENTRO,
+)
 
 
 # Una riga di ri-consegna, come la legge `_parse_righe_riconsegna` (unita'
@@ -545,7 +552,8 @@ class ApiResoDetail(DomainAPIView):
         request=_RESO_UPDATE_REQUEST,
         responses={200: _RESO_RESPONSE},
     )
-    # Scopo: Aggiorna testata reso (solo DRAFT; data/meta). PATCH usa
+    # Scopo: Aggiorna testata reso (data, note, magazzino di rientro; quali in
+    #        quale stato lo decide il lock di testata del DB). PATCH usa
     #        request.data (DRF ha gia' parsato il body).
     def patch(self, request: Request, reso_id: int) -> JsonResponse:
         return success_response(
@@ -795,6 +803,65 @@ class ApiResoRighe(DomainAPIView):
             handler=lambda payload: resi_service.gestisci_riga(
                 int(reso_id), payload,
             ),
+        )
+
+
+class ApiResoRientri(DomainAPIView):
+    """GET /api/v1/vendite/resi/<reso_id>/rientri/ — i rientri del reso per la
+    griglia (3-bis R-1b): se fa rientrare merce, il magazzino di rientro con
+    `usa_ubicazioni`, e le voci coi prelievi d'origine e i loro rientri."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
+
+    @extend_schema(responses={200: dict})
+    # Scopo: La situazione dei rientri del reso.
+    def get(self, request: Request, reso_id: int) -> JsonResponse:
+        return success_response(resi_service.get_rientri(int(reso_id)))
+
+
+class ApiResoRigaRientri(DomainAPIView):
+    """POST /api/v1/vendite/resi/<reso_id>/righe/<riga_id>/rientri/ — un rientro
+    sotto la riga: il prelievo d'origine, la quantita', l'ubicazione."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
+
+    @extend_schema(request=_RESO_RIENTRO_CREATE_REQUEST, responses={200: _RESO_RESPONSE})
+    # Scopo: Crea il rientro.
+    def post(self, request: Request, reso_id: int, riga_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: resi_service.crea_rientro(
+                int(reso_id), int(riga_id), payload,
+            ),
+        )
+
+
+class ApiResoRigaRientroDetail(DomainAPIView):
+    """PATCH/DELETE /.../righe/<riga_id>/rientri/<rientro_id>/."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "reso")
+
+    @extend_schema(request=_RESO_RIENTRO_UPDATE_REQUEST, responses={200: _RESO_RESPONSE})
+    # Scopo: Cambia quantita' o ubicazione del rientro.
+    def patch(
+        self, request: Request, reso_id: int, riga_id: int, rientro_id: int,
+    ) -> JsonResponse:
+        return success_response(
+            resi_service.aggiorna_rientro(
+                int(reso_id), int(riga_id), int(rientro_id), dict(corpo_oggetto(request)),
+            ),
+        )
+
+    @extend_schema(responses={200: _RESO_RESPONSE})
+    # Scopo: Toglie il rientro.
+    def delete(
+        self, request: Request, reso_id: int, riga_id: int, rientro_id: int,
+    ) -> JsonResponse:
+        return success_response(
+            resi_service.elimina_rientro(int(reso_id), int(riga_id), int(rientro_id)),
         )
 
 

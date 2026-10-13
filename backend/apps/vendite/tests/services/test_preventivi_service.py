@@ -788,7 +788,7 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.count_righe_pushable.return_value = 2
         # preventivo in una pratica → aggancio commessa attivo.
         self.mock_repo.get_pratica_id_by_preventivo_root.return_value = 290
-        MockCommRepo.return_value.get_commessa_id_by_sorgente.return_value = 77
+        MockCommRepo.return_value.get_commessa_viva_by_sorgente.return_value = 77
         mock_push_one.return_value = {
             "stato": "COMPLETATO", "dry_run": False, "push_log_id": 42,
             "durata_ms": 5, "handlers": [],
@@ -799,6 +799,10 @@ class TestPreventiviService(unittest.TestCase):
         MockPratRepo.return_value.upsert_pratica_sorgente.assert_called_once_with(
             pratica_id=290, sorgente_codice="COMMESSA",
             sorgente_uid="77", ruolo_link="COLLEGATO",
+        )
+        # La commessa si cerca APERTA, con l'uid del preventivo come chiave.
+        MockCommRepo.return_value.get_commessa_viva_by_sorgente.assert_called_once_with(
+            sorgente_codice="PREVENTIVO", sorgente_chiave="abc",
         )
 
     # ── Eliminazione bozza (abbandono drawer) ──

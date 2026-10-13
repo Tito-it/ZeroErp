@@ -1005,6 +1005,20 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             row = cursor.fetchone()
             return None if row is None else int(row[0])
 
+    # Scopo: La COPPIA della fornitura sulla testata (cliente, istanza,
+    #        utility): serve a sapere se un aggiornamento la cambia, perche'
+    #        allora la scheda di fornitura la rifa' il DB (D-5 di
+    #        brief-db-indirizzi-documento-seguono-il-cliente). None se
+    #        l'offerta non e' visibile.
+    def get_coppia(self, offerta_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT o.billing_account_id, o.istanza_utility_id, o.utility_id"
+                "  FROM vendite.offerte_commerciali o WHERE o.id = %s",
+                [offerta_id],
+            )
+            return row_to_dict(cursor)
+
     # Scopo: Legge il `codice_interno` dello stato corrente di un'offerta.
     #        Usato dal service per validare le pre-condizioni dei cambi stato
     #        (emetti SOLO da BOZZA, registra_esito SOLO da EMESSA, ecc.).

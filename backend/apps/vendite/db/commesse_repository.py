@@ -613,40 +613,6 @@ class CommesseRepository(EventLogRepositoryMixin):
         assert row is not None
         return int(row[0])
 
-    def link_sorgente(
-        self,
-        *,
-        commessa_id: int,
-        sorgente_tipo_id: int,
-        sorgente_uid: str,
-        sorgente_riga: int | None = None,
-        meta: dict | None = None,
-    ) -> int:
-        """Collega la sorgente ROOT alla commessa. Idempotente su stesso sorgente_uid.
-        Restituisce il link_id."""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT vendite.fn_link_commessa_sorgente(
-                    p_commessa_id => %s,
-                    p_sorgente_tipo_id => %s,
-                    p_sorgente_uid => %s,
-                    p_sorgente_riga => %s,
-                    p_meta => %s::jsonb
-                )
-                """,
-                [
-                    commessa_id,
-                    sorgente_tipo_id,
-                    sorgente_uid,
-                    sorgente_riga,
-                    self._to_jsonb_param(meta or {}),
-                ],
-            )
-            row = cursor.fetchone()
-        assert row is not None
-        return int(row[0])
-
     def approva_commessa_attivita(
         self,
         *,
@@ -859,32 +825,39 @@ class CommesseRepository(EventLogRepositoryMixin):
         assert row is not None
         return int(row[0] or 0)
 
-    def get_commessa_id_by_sorgente(
-        self, *, sorgente_codice: str, sorgente_uid: str,
-        ruolo_link: str | None = None,
+    def get_commessa_viva_by_sorgente(
+        self, *, sorgente_codice: str, sorgente_chiave: str,
     ) -> int | None:
-        """commessa_id collegata a una sorgente via vendite.commesse_sorgenti,
-        o None. Risolve sorgente_tipo_id da config.sorgenti per codice_interno.
-        Usato per l'idempotenza del push preventivo→commessa.
+        """La commessa APERTA in cui sta un documento sorgente, o None.
 
-        ruolo_link=None (default) = QUALUNQUE ruolo: col modello commessa
-        multi-sorgente (auto-ruolo DB) la prima sorgente e' ROOT ma le
-        successive che confluiscono nella stessa commessa sono COLLEGATO —
-        filtrare per ROOT nasconderebbe il link di un preventivo confluito
-        (bug trovato dallo smoke pratica CONFERMA, 2026-06-11)."""
+        Wrapper di `vendite.fn_commessa_viva_di_sorgente`: un documento puo'
+        avere piu' link (quelli verso commesse chiuse o annullate restano
+        come storia, D-12 di brief-db-annullo-a-valle-riapre-a-monte), e
+        quale conta lo dice il DB. `sorgente_chiave` e' la chiave CANONICA
+        del link (`config.sorgenti.key_selector`): l'uid per il preventivo,
+        `id::text` per ordine, contratto, bolla e consumi.
+
+        ⛔ Niente `SELECT` propria su `commesse_sorgenti`: quella di prima
+        (`LIMIT 1` senza stato) con due link poteva dare la commessa morta.
+
+        Codice sorgente sconosciuto → `E_COMMESSA_SORGENTE_SCONOSCIUTA`, non
+        None: «nessuna commessa aperta» e «sorgente sbagliata» non si
+        confondono (un codice errato farebbe saltare l'aggancio in silenzio)."""
         sql = """
-            SELECT cs.commessa_id
-            FROM vendite.commesse_sorgenti cs
-            JOIN config.sorgenti s ON s.id = cs.sorgente_tipo_id
+            SELECT vendite.fn_commessa_viva_di_sorgente(s.id, %s)
+            FROM config.sorgenti s
             WHERE s.codice_interno = %s
-              AND cs.sorgente_uid = %s
-              AND (%s::text IS NULL OR cs.ruolo_link = %s)
-            LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [sorgente_codice, sorgente_uid, ruolo_link, ruolo_link])
+            cursor.execute(sql, [sorgente_chiave, sorgente_codice])
             row = cursor.fetchone()
-        return int(row[0]) if row else None
+        ErrorManager.require(
+            row is not None,
+            code="E_COMMESSA_SORGENTE_SCONOSCIUTA",
+            message=f"Sorgente '{sorgente_codice}' non presente in config.sorgenti",
+        )
+        assert row is not None
+        return int(row[0]) if row[0] is not None else None
 
     def get_commessa_stato(self, commessa_id: int) -> CommessaStatoResult | None:
         """Stato testata + flag di governance + contatori della commessa in un

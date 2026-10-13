@@ -501,8 +501,15 @@ async function handleSave() {
   const payload = buildPayload()
   const utilityInline = buildUtilityInline()
   // I dati della fornitura viaggiano solo se si cambiano ancora
-  // (`can_edit_utility`, che il BE legge per lo stesso sotto-oggetto).
-  if (utilityInline && (!isEdit.value || caps.flag('can_edit_utility'))) {
+  // (`can_edit_utility` della capability: il lock dei satelliti del DB).
+  // ⛔ Non con un CAMBIO DI CLIENTE: la scheda la rifa' il DB dal contatore
+  //    nuovo, e quella del form e' del contatore di prima (R-BE-6 di
+  //    brief-db-indirizzi-documento-seguono-il-cliente; il BE la scarta
+  //    comunque). Dopo il salvataggio il dettaglio riletto porta la scheda
+  //    nuova nel form (R-FE-4).
+  const cambiaCliente = isEdit.value && detail.value !== null
+    && form.value.billing_account_id !== detail.value.billing_account_id
+  if (utilityInline && !cambiaCliente && (!isEdit.value || caps.flag('can_edit_utility'))) {
     payload.utility = utilityInline
   }
 
@@ -987,12 +994,17 @@ const footerDrawer = useFooterDocumento({
                      il BA, `onBaSelected` sovrascrive con la utility canonical
                      del BA (coerenza FK garantita); se l'operatore pulisce
                      il BA, ripristiniamo il default per mantenere il filtro
-                     lookup BA sull'utility tipica. -->
+                     lookup BA sull'utility tipica.
+                     ⭐ Col cliente scelto la utility E' la sua (FK composta
+                     `fk_offerte_commerciali_ba_coppia`): il campo si spegne e
+                     la mostra, come nella bolla. Senza cliente filtra solo la
+                     ricerca del cliente. Fino al 2026-10-13 restava aperta col
+                     cliente fermo, e ogni cambio era rifiutato dal DB. -->
                 <UtilityPerRuoloSelect
                   v-model="form.utility_id"
                   :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
                   :placeholder="t('vendite.offerte.field_utility')"
-                  :disabled="testata.bloccato('utility_id')"
+                  :disabled="testata.bloccato('billing_account_id') || form.billing_account_id != null"
                 />
               </div>
             </div>
@@ -1003,18 +1015,19 @@ const footerDrawer = useFooterDocumento({
               <!-- `utility-id` (da utilityDefaultId in CREATE) pre-filtra
                    il lookup BA sull'utility dell'operatore. Lookup ricco
                    (3 righe: ragione sociale + codice + PDP) — sta a tutta
-                   larghezza in una propria riga. -->
+                   larghezza in una propria riga.
+                   ⭐ Il cliente si cambia anche in modifica, finche' l'offerta
+                   e' in bozza (decisione di Tid del 2026-10-12, come nel
+                   preventivo): fuori bozza lo ferma il lock di testata del DB
+                   (`E_DOC_CLIENTE_FUORI_BOZZA`) e lo spegne la capability.
+                   Indirizzi e scheda di fornitura seguono il cliente nuovo:
+                   li rifa' il DB. -->
               <BillingAccountLookup
-                v-if="!isEdit"
                 :model-value="form.billing_account_obj"
                 :utility-id="form.utility_id"
                 :placeholder="t('vendite.offerte.select_billing_account')"
+                :disabled="testata.bloccato('billing_account_id')"
                 @update:model-value="onBaSelected"
-              />
-              <InputText
-                v-else
-                :model-value="detail?.billing_account_display"
-                disabled
               />
             </div>
 

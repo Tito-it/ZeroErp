@@ -20,6 +20,7 @@
 """
 Indice test eseguiti:
 1) CreateResoDbTests.test_la_testata_nasce_dal_ddt_consegnato_coi_default
+   (anche: il dettaglio porta il magazzino di rientro della bolla d'origine)
 """
 from __future__ import annotations
 
@@ -160,5 +161,20 @@ class CreateResoDbTests(unittest.TestCase):
                     self.assertEqual(riga["meta_tipo"], "object")
                     # ⚠️ Il cursore Django rende il jsonb come TESTO.
                     self.assertEqual(json.loads(riga["meta"]), _META)
+
+                    # Il dettaglio porta il magazzino di rientro con le sue
+                    # etichette (3-bis D-3b-a): senza indicarlo, quello della
+                    # bolla d'origine (`trgfn_resi_default_magazzino`).
+                    cur.execute(
+                        "SELECT d.magazzino_id, m.codice FROM vendite.ddt d"
+                        "  LEFT JOIN magazzino.magazzini m ON m.id = d.magazzino_id"
+                        " WHERE d.id = (SELECT ddt_id FROM _ddt)"
+                    )
+                    mag_bolla, codice_bolla = cur.fetchone()
+                    dettaglio = ResiRepository().get_reso(creato["id"])
+                    assert dettaglio is not None
+                    self.assertEqual(dettaglio["magazzino_id"], mag_bolla)
+                    self.assertEqual(dettaglio["magazzino_codice"], codice_bolla)
+                    self.assertIn("magazzino_descrizione", dettaglio)
             finally:
                 transaction.set_rollback(True)
