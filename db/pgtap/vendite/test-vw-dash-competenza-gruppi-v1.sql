@@ -86,7 +86,9 @@ SELECT
       AND EXISTS (SELECT 1 FROM vendite.tipi_doc_fiscale_registri m WHERE m.tipo_doc_fiscale_id = t.id)
     ORDER BY t.id LIMIT 1)                          AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO' LIMIT 1) AS src_preventivo_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'CONTRATTO' LIMIT 1)  AS src_contratto_id;
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'CONTRATTO' LIMIT 1)  AS src_contratto_id,
+  (SELECT s.id FROM config.stati_doc_contratti s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)                AS stato_contr_draft_id;
 
 CREATE TEMP TABLE tmp_vg_prev AS
 WITH ins AS (
@@ -100,6 +102,25 @@ WITH ins AS (
          jsonb_build_object('test_scope', 'pgtap_vgruppi'), r.emittente_fiscale_id
   FROM tmp_vg_refs r
   RETURNING id, uid, numero)
+SELECT * FROM ins;
+
+-- Contratto VERO per il gruppo C (rev 2026-10-13): basta la testata in bozza.
+--   La madre lo aggancia alla commessa (20261012-46) e il link ne verifica
+--   l'esistenza: un uuid inventato non passa piu'.
+CREATE TEMP TABLE tmp_vg_contr AS
+WITH ins AS (
+  INSERT INTO vendite.contratti (
+    numero, billing_account_id, istanza_utility_id, utility_id,
+    valido_dal, valido_al, stato_doc_contratto_id, data, meta, emittente_fiscale_id)
+  SELECT 'PGTAP-VGRUPPI-C', r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2081-01-01', DATE '2081-12-31', r.stato_contr_draft_id, DATE '2081-01-01',
+         jsonb_build_object('test_scope', 'pgtap_vgruppi'),
+         -- L'emittente del billing account: lo pretendono il guard emittente/BA
+         -- del contratto e l'omogeneita' del link alla commessa.
+         (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
+           WHERE ef.soggetto_ruolo_id = anagrafiche.fn_get_emittente_fiscale_id(r.billing_account_id))
+  FROM tmp_vg_refs r
+  RETURNING id, uid)
 SELECT * FROM ins;
 
 CREATE TEMP TABLE tmp_vg_comm AS
@@ -157,7 +178,7 @@ CROSS JOIN LATERAL (
                                ELSE (SELECT src_contratto_id FROM tmp_vg_refs) END,
     p_sorgente_uid => CASE WHEN x.g = 'P'
                            THEN (SELECT uid::text FROM tmp_vg_prev)
-                           ELSE 'c0000000-0000-4000-8000-000000000002' END,
+                           ELSE (SELECT uid::text FROM tmp_vg_contr) END,
     p_tipo_movimento => 'NORMALE',
     p_meta => jsonb_build_object('test_scope', 'pgtap_vgruppi')
   )

@@ -22,6 +22,8 @@ chiuso: applicato e pgTAP verdi su dbdev (Tid, 2026-10-12).
 **Decisioni aperte di Tid:** nessuna (D-11…D-14 prese il 2026-10-12, §10.6).
 **Da committare:** il lavoro BE/FE del §9 (non committato); il lato DB del §10 (`20261012-43 … -47`, CSV, tre pgTAP, manual).
 
+⚠️ **Ricaduta trovata il 2026-10-13** (baseline di `vendite` su dbdev): il `20261012-46` (D-13, il link nasce nella madre) ha reso rossi quattro pgTAP che passavano alla madre sorgenti inventate (`test-emissione-mirata-gruppi-fatturabili-v1`, `test-vw-dash-competenza-gruppi-v1`, `test-sorgente-origine-tipo-doc-fiscale-v1`, `test-trigger-af-commessa-aware-v1`). La corsa del 2026-10-12 era sui soli file di questo brief. Fixture corrette con documenti veri: dettaglio e prova in [brief-db-articoli-ammessi-per-documento §9.2.1](brief-db-articoli-ammessi-per-documento.md).
+
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-11, dal collaudo a video di Tid; lettura critica e
 > seconda tornata di decisioni del team DB (`dev/db-tid`), 2026-10-12 (§7). **A chi:** team DB; poi BE/FE (§6).
 > **Stato:** 📝 **aperto.** Decisioni D-1…D-4 prese da Tid il 2026-10-11, **D-5…D-10 il 2026-10-12** (§4),
