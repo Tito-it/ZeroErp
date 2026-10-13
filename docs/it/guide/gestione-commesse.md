@@ -336,8 +336,7 @@ SELECT vendite.fn_get_or_create_commessa(
 | `p_competenza_mese`    |      no      | Normalizzato al primo del mese                      |
 | `p_stato_approvazione` |      no      | Default `BOZZA`                                     |
 | `p_stato_emissione`    |      no      | Default `NON_EMESSA`                                |
-| `p_tipo_movimento`     |      no      | `NORMALE` o `RETTIFICA` (salvato in meta)           |
-| `p_tipo_consumo`       |      no      | `ACCONTO`, `CONGUAGLIO`, `STORNO` (salvato in meta) |
+| `p_tipo_movimento`     |      no      | `NORMALE`, `RETTIFICA` o `ONERE` (colonna)          |
 
 **Ritorna**: `commessa_attivita_id`.
 

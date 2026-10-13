@@ -189,7 +189,6 @@ RETURNS vendite.commesse_attivita.id%TYPE LANGUAGE sql AS $fx$
       p_stato_approvazione            => p_appr,
       p_stato_emissione               => p_emis,
       p_tipo_movimento                => 'NORMALE',
-      p_tipo_consumo                  => 'CONGUAGLIO',
       p_meta                          => jsonb_build_object('case', 'GUC')
     ) r;
 $fx$;

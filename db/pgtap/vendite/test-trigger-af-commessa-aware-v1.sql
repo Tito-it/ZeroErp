@@ -125,6 +125,31 @@ SELECT ok(
   'Commessa di test creata'
 );
 
+-- Preventivo VERO come sorgente della riga (rev 2026-10-13): basta la testata
+--   in bozza sullo stesso billing account. Prima la riga portava un token
+--   inventato ('PGTAP-TCA-SRC-...'), che commesse_attivita accettava; dal
+--   20261012-46 la madre aggancia il documento alla commessa con
+--   fn_link_commessa_sorgente, che ne pretende formato (uuid, key_selector
+--   'uid') ed esistenza. L'emittente e' quello del billing account: lo
+--   pretendono il guard emittente/BA e l'omogeneita' del link.
+CREATE TEMP TABLE tmp_prev_tca AS
+WITH ins AS (
+  INSERT INTO vendite.preventivi (
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id,
+    emittente_fiscale_id, meta)
+  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2026-09-01', DATE '2026-09-30',
+         (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
+         (SELECT s.id FROM config.stati_doc_preventivi s
+           WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1),
+         (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
+           WHERE ef.soggetto_ruolo_id = anagrafiche.fn_get_emittente_fiscale_id(r.billing_account_id)),
+         jsonb_build_object('test_scope', 'pgtap_trigger_commessa_aware')
+  FROM tmp_refs_tca r
+  RETURNING id, uid)
+SELECT * FROM ins;
+
 -- Inserisci attivita` con competenza_mese specifica (senza tipo_doc e valuta su CA)
 CREATE TEMP TABLE tmp_att_tca AS
 SELECT r.attivita_id AS commessa_attivita_id
@@ -155,9 +180,8 @@ FROM vendite.fn_upsert_commessa_attivita(
     WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE
     LIMIT 1
   ),
-  p_sorgente_uid => 'PGTAP-TCA-SRC-' || substr(md5(clock_timestamp()::text), 1, 12),
+  p_sorgente_uid => (SELECT uid::text FROM tmp_prev_tca),
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'TCA_TRIGGER_TEST')
 ) r;
 

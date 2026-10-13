@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# TIPO_CONSUMO SI RITIRA — 3/8: IL BUILDER PGTAP DELL'ATTIVITA'
+#   dbops.fn_pgtap_crea_commessa_attivita: non passa piu' p_tipo_consumo
+#   alla madre (ritirato dal 20261013-16).
+#
+#   Firma e RETURNS invariate (CREATE OR REPLACE), coi %TYPE del 20261009-59.
+#   Corpo: dal vivo su zeroerp_ci (pg_get_functiondef, 2026-10-13), tolta la
+#   riga del parametro. COMMENT invariato (non nomina tipo_consumo): un
+#   CREATE OR REPLACE lo conserva.
+#   Dipende da: 20261013-16.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261013-18-update-fn-pgtap-crea-commessa-attivita-senza-tipo-consumo-mctit.yaml
+
+  - changeSet:
+      id: 20261013-18-update-fn-pgtap-crea-commessa-attivita-senza-tipo-consumo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_commessa_attivita: non passa piu' p_tipo_consumo alla madre
+        (ritirato dal 20261013-16). Decisione A di Tid, 2026-10-13.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id vendite.commesse.id%TYPE, p_prezzo_snapshot vendite.commesse_attivita.prezzo_snapshot%TYPE DEFAULT 10)
+               RETURNS TABLE(attivita_id vendite.commesse_attivita.id%TYPE, articolo_id vendite.commesse_attivita.articolo_id%TYPE, uom_id vendite.commesse_attivita.uom_id%TYPE, competenza_dal vendite.commesse_attivita.competenza_dal%TYPE, competenza_al vendite.commesse_attivita.competenza_al%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un'ATTIVITA' approvata su una
+              --   commessa gia' costruita, scritta dalla madre del dominio.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_a AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+              --              (SELECT commessa_id FROM tmp_c));
+              -- ⛔ L'emissione NON la fa: e' il caso del test.
+              -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_ba_id    vendite.commesse.billing_account_id%TYPE;
+                  v_dal      vendite.commesse_attivita.competenza_dal%TYPE;
+                  v_al       vendite.commesse_attivita.competenza_al%TYPE;
+                  v_ist_id   anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_articolo vendite.commesse_attivita.articolo_id%TYPE;
+                  v_uom      vendite.commesse_attivita.uom_id%TYPE;
+                  v_attivita vendite.commesse_attivita.id%TYPE;
+              BEGIN
+                  SELECT c.billing_account_id,
+                         COALESCE(c.competenza_dal, date_trunc('month', (SELECT script.fn_data_operativa()))::date),
+                         COALESCE(c.competenza_al,
+                                  (date_trunc('month', (SELECT script.fn_data_operativa())) + interval '1 month - 1 day')::date)
+                    INTO v_ba_id, v_dal, v_al
+                    FROM vendite.commesse c
+                   WHERE c.id = p_commessa_id;
+
+                  -- ⚠️ Guard sul parametro: una commessa che non esiste
+                  --   farebbe morire la madre su un NULL che non la nomina.
+                  IF v_ba_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_commessa_attivita: nessuna commessa con id = %',
+                          p_commessa_id;
+                  END IF;
+
+                  SELECT ba.istanza_utility_id INTO v_ist_id
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.id = v_ba_id;
+
+                  -- L'articolo si costruisce: il catalogo, da zero, e' vuoto.
+                  v_articolo := dbops.fn_pgtap_crea_articolo(
+                      ('PGT-ATT-' || substr(md5(clock_timestamp()::text || p_commessa_id::text), 1, 12))::varchar,
+                      false);
+
+                  SELECT a.uom_id INTO v_uom
+                    FROM catalogo.articoli a
+                   WHERE a.id = v_articolo;
+
+                  SELECT r.attivita_id INTO v_attivita
+                    FROM vendite.fn_upsert_commessa_attivita(
+                      p_commessa_id                   => p_commessa_id,
+                      p_segment_key                   => ('PGT-SEG-' || substr(md5(clock_timestamp()::text || v_articolo::text), 1, 12))::varchar,
+                      p_articolo_id                   => v_articolo,
+                      p_istanza_utility_id            => v_ist_id,
+                      p_data_attivita                 => v_dal,
+                      p_uom_id                        => v_uom,
+                      p_quantita                      => 1.000000,
+                      p_competenza_mese               => date_trunc('month', v_dal)::date,
+                      p_competenza_dal                => v_dal,
+                      p_competenza_al                 => v_al,
+                      p_prezzo_snapshot               => p_prezzo_snapshot,
+                      p_prezzo_base_snapshot          => NULL,
+                      p_origine_prezzo                => NULL,
+                      p_tipo_variazione_applicata     => NULL,
+                      p_valore_variazione_applicata   => NULL,
+                      p_promo_id                      => NULL,
+                      p_contratto_id                  => NULL,
+                      p_categoria_cliente_id_snapshot => NULL,
+                      p_classe_utenza_id_snapshot     => NULL,
+                      p_stato_approvazione            => 'APPROVATA',
+                      p_stato_emissione               => 'NON_EMESSA',
+                      p_sorgente_tipo_id              => (SELECT s.id FROM config.sorgenti s
+                                                           WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
+                      p_sorgente_uid                  => p_commessa_id::text,
+                      p_tipo_movimento                => 'NORMALE',
+                      p_meta                          => jsonb_build_object('test_scope', 'pgtap_commessa_attivita')) r;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT v_attivita, v_articolo, v_uom, v_dal, v_al;
+              END;
+              $function$
+              ;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Il rollback NON ricrea la versione precedente: va ri-applicato il
+              --    20261009-59 insieme al rollback del 20261013-16.
+              SELECT 1;

@@ -320,7 +320,6 @@ BEGIN
         p_sorgente_tipo_id              => (v ->> 'sorgente_tipo_id')::bigint,
         p_sorgente_uid                  => v ->> 'sorgente_uid',
         p_tipo_movimento                => (v ->> 'tipo_movimento')::varchar,
-        p_tipo_consumo                  => (v ->> 'tipo_consumo')::varchar,
         p_meta                          => v -> 'meta') u;
     v_ids := v_ids || v_id;
   END LOOP;

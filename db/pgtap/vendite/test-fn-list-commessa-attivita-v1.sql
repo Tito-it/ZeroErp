@@ -165,7 +165,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'LCA_ATT1')
 ) r;
 
@@ -204,7 +203,6 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'BOZZA',
   p_stato_emissione => 'NON_EMESSA',
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'LCA_ATT2')
 ) r;
 

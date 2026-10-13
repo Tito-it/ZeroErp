@@ -39,10 +39,14 @@
 --      gruppo M  = onere         (1 riga)       -> 'MAN:<commessa_id>'
 --    Il preventivo e' un documento vero perche' serve come ROOT source
 --    (fn_emit la pretende) e il guard polimorfo ne verifica l'esistenza.
---    Il gruppo C non ha bisogno di un contratto reale: commesse_attivita non
---    ha guard polimorfo, e sorgente_tipo_id/sorgente_uid sono colonne libere.
+--    ⛔ rev 2026-10-13: anche il gruppo C e' un contratto VERO (testata in
+--    bozza, stesso billing account). Prima bastava un uuid inventato, perche'
+--    commesse_attivita non aveva guard polimorfo; dal 20261012-46 la madre
+--    fn_upsert_commessa_attivita aggancia il documento alla commessa con
+--    fn_link_commessa_sorgente, che ne pretende l'esistenza (E_SORG_*).
 --    ⚠️ sorgente_uid porta l'UID anche per CONTRATTO (key_selector='id'): e'
---    la convenzione del push, decisione D-9. Vedi guida sorgente-polimorfa §4a.
+--    la convenzione del push, decisione D-9 (il link lo traduce in id).
+--    Vedi guida sorgente-polimorfa §4a.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -98,7 +102,9 @@ SELECT
       AND EXISTS (SELECT 1 FROM vendite.tipi_doc_fiscale_registri m WHERE m.tipo_doc_fiscale_id = t.id)
     ORDER BY t.id LIMIT 1)                          AS tipo_doc_fiscale_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO' LIMIT 1)  AS src_preventivo_id,
-  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'CONTRATTO' LIMIT 1)   AS src_contratto_id;
+  (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'CONTRATTO' LIMIT 1)   AS src_contratto_id,
+  (SELECT s.id FROM config.stati_doc_contratti s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)                AS stato_contr_draft_id;
 
 -- Preventivo REALE: serve come ROOT source della commessa.
 CREATE TEMP TABLE tmp_gr_prev AS
@@ -111,6 +117,25 @@ WITH ins AS (
          DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_prev_accettato_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope', 'pgtap_gruppi'), r.emittente_fiscale_id
+  FROM tmp_gr_refs r
+  RETURNING id, uid)
+SELECT * FROM ins;
+
+-- Contratto VERO per il gruppo C (rev 2026-10-13): basta la testata in bozza.
+--   La madre lo aggancia alla commessa (20261012-46) e il link ne verifica
+--   l'esistenza: un uuid inventato non passa piu'.
+CREATE TEMP TABLE tmp_gr_contr AS
+WITH ins AS (
+  INSERT INTO vendite.contratti (
+    numero, billing_account_id, istanza_utility_id, utility_id,
+    valido_dal, valido_al, stato_doc_contratto_id, data, meta, emittente_fiscale_id)
+  SELECT 'PGTAP-GRUPPI-C', r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.stato_contr_draft_id, DATE '2080-01-01',
+         jsonb_build_object('test_scope', 'pgtap_gruppi'),
+         -- L'emittente del billing account: lo pretendono il guard emittente/BA
+         -- del contratto e l'omogeneita' del link alla commessa.
+         (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
+           WHERE ef.soggetto_ruolo_id = anagrafiche.fn_get_emittente_fiscale_id(r.billing_account_id))
   FROM tmp_gr_refs r
   RETURNING id, uid)
 SELECT * FROM ins;
@@ -149,7 +174,7 @@ SELECT
     (SELECT commessa_id FROM tmp_gr_comm))                       AS k_prev,
   vendite.fn_build_gruppo_fatturabile_key(
     (SELECT src_contratto_id FROM tmp_gr_refs),
-    'c0000000-0000-4000-8000-000000000001',
+    (SELECT uid::text FROM tmp_gr_contr),
     (SELECT commessa_id FROM tmp_gr_comm))                       AS k_contr,
   vendite.fn_build_gruppo_fatturabile_key(
     NULL, NULL, (SELECT commessa_id FROM tmp_gr_comm))           AS k_man;
@@ -194,9 +219,8 @@ CROSS JOIN LATERAL (
     -- push, cioe' cio' che commesse_attivita contiene davvero (D-9).
     p_sorgente_uid => CASE WHEN x.g = 'P'
                            THEN (SELECT uid::text FROM tmp_gr_prev)
-                           ELSE 'c0000000-0000-4000-8000-000000000001' END,
+                           ELSE (SELECT uid::text FROM tmp_gr_contr) END,
     p_tipo_movimento => 'NORMALE',
-    p_tipo_consumo => 'CONGUAGLIO',
     p_meta => jsonb_build_object('test_scope', 'pgtap_gruppi', 'gruppo', x.g)
   )
 ) r;

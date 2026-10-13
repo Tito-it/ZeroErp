@@ -186,6 +186,30 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_meta => '{}'::jsonb
 );
 
+-- Preventivo VERO come sorgente della riga (rev 2026-10-13): basta la testata
+--   in bozza sullo stesso billing account. Prima la riga portava un token
+--   inventato ('EXT-SOT-...'), che commesse_attivita accettava; dal
+--   20261012-46 la madre aggancia il documento alla commessa con
+--   fn_link_commessa_sorgente, che ne pretende formato (uuid, key_selector
+--   'uid') ed esistenza. L'emittente e' quello del billing account: lo
+--   pretendono il guard emittente/BA e l'omogeneita' del link.
+CREATE TEMP TABLE tmp_prev_sot AS
+WITH ins AS (
+  INSERT INTO vendite.preventivi (
+    billing_account_id, istanza_utility_id, utility_id,
+    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id,
+    emittente_fiscale_id, meta)
+  SELECT r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
+         (SELECT s.id FROM config.stati_doc_preventivi s
+           WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1),
+         (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
+           WHERE ef.soggetto_ruolo_id = r.emittente_soggetto_ruolo_id),
+         jsonb_build_object('test_scope', 'pgtap_sorgente_origine')
+  FROM tmp_refs_sot r
+  RETURNING id, uid)
+SELECT * FROM ins;
+
 -- Upsert attivita con sorgente_tipo_id = PREVENTIVO (sorgente originale)
 CREATE TEMP TABLE tmp_ca_sot AS
 SELECT r.attivita_id AS commessa_attivita_id
@@ -223,9 +247,8 @@ FROM vendite.fn_upsert_commessa_attivita(
   p_stato_approvazione => 'APPROVATA',
   p_stato_emissione => 'NON_EMESSA',
   p_sorgente_tipo_id => (SELECT sorgente_preventivo_id FROM tmp_refs_sot),
-  p_sorgente_uid => ('EXT-SOT-' || substr(md5(clock_timestamp()::text), 1, 10))::text,
+  p_sorgente_uid => (SELECT uid::text FROM tmp_prev_sot),
   p_tipo_movimento => 'NORMALE',
-  p_tipo_consumo => 'CONGUAGLIO',
   p_meta => jsonb_build_object('case', 'SORGENTE_ORIGINE_TEST')
 ) r;
 

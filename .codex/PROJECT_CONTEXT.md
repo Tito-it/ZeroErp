@@ -324,6 +324,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   il collaudo a video (§D.5 + §G.4) e l'archivio.
 - 📝 **Quali articoli ammette un documento** (`work-in-progress/brief-db-articoli-ammessi-per-documento.md`):
   una regola sola per il picker e per il guard. Analisi DB fatta (§8), decisioni di Tid prese il 2026-10-13 (§8.6); ⏳ consegna DB.
+- 📝 **Canone, orario e consumo del contratto in commessa**
+  (`work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md`, D31, 2026-10-13): il push dei
+  contratti manda solo le righe UNA_TANTUM, col giorno di attivazione (`20261013-24`, D-1/D-2 di Tid); la
+  generazione per periodo del canone e le quantità di orario e consumo dalle loro fonti: aperto, non
+  iniziato (G-1…G-4). Nello stesso giorno `tipo_consumo` ritirato dalla catena del push (`20261013-16…-23`).
 - 📝 **Dove si addebita il trasporto di un ordine fatturato alla conferma**
   (`work-in-progress/brief-db-addebito-trasporto-ordine.md`, da A-9 del brief sopra): aperto, non iniziato.
 - ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**

@@ -164,7 +164,6 @@ SELECT u.attivita_id
          p_stato_approvazione            => 'APPROVATA',
          p_stato_emissione               => 'EMESSA',
          p_tipo_movimento                => 'NORMALE',
-         p_tipo_consumo                  => 'CONGUAGLIO',
          p_meta                          => jsonb_build_object('case','RIN_SCEN')
        ) u;
 

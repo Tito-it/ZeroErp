@@ -85,7 +85,6 @@ BEGIN
                                              WHERE s.codice_interno = 'COMMESSA' AND s.attivo),
         p_sorgente_uid                  => p_commessa_id::text,
         p_tipo_movimento                => 'NORMALE',
-        p_tipo_consumo                  => 'CONGUAGLIO',
         p_meta                          => jsonb_build_object('test_scope', 'pgtap_commessa_attivita')) r;
 
     -- Contratto dichiarato, non fiducia nel chiamato.

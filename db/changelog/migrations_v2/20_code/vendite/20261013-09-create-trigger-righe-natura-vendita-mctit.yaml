@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGI: script.trgfn_righe_natura_vendita su preventivi_righe, ordini_righe,
+#   ddt_righe
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-4, §9.2)
+#
+#   BEFORE INSERT OR UPDATE OF articolo_id, natura_vendita_id: nessun trigger
+#   BEFORE delle tre tabelle scrive articolo_id; natura_vendita_id la scrive
+#   solo questo (dal 20261013-10 il preventivo non la scrive piu' altrove).
+#   ⭐ L'ordine dei nomi e' PORTANTE, fascia _a10_:
+#     ..._a10_lock_columns_upd   (generato: rifiuta la natura scritta a mano,
+#                                 giudicando il valore di chi scrive)
+#     ..._a10_natura_vendita_ins_upd                       <- questo
+#     ..._a10_set_natura_vendita_ins_upd (solo preventivo: dal -10 e' il guard
+#                                 della ricorrenza, legge la natura scritta qui)
+#   Invertire lock e natura bloccherebbe il cambio di articolo (il lock
+#   vedrebbe la natura nuova); invertire natura e guard farebbe giudicare al
+#   guard la natura vecchia. Le regole sulle righe del Lotto 3 si montano DOPO
+#   questo nome.
+#   Preventivo ARTICOLO (la natura viene sempre dall'articolo, «NO override»),
+#   ordine e bolla CHIAMANTE (la porta il verbo che copia la riga).
+#   ⛔ Nomi sotto i 63 caratteri (il piu' lungo: 47).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261013-09-create-trigger-righe-natura-vendita-mctit.yaml
+
+  - changeSet:
+      id: 20261013-09-create-trigger-righe-natura-vendita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta script.trgfn_righe_natura_vendita su vendite.preventivi_righe (ARTICOLO),
+        vendite.ordini_righe e vendite.ddt_righe (CHIAMANTE). Brief:
+        brief-db-articoli-ammessi-per-documento (§8.6 A-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite'
+                 AND t.tgname LIKE 'trg_%_a10_natura_vendita_ins_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_preventivi_righe_a10_natura_vendita_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id, natura_vendita_id
+                  ON vendite.preventivi_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_natura_vendita('ARTICOLO');
+
+              CREATE TRIGGER trg_ordini_righe_a10_natura_vendita_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id, natura_vendita_id
+                  ON vendite.ordini_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_natura_vendita('CHIAMANTE');
+
+              CREATE TRIGGER trg_ddt_righe_a10_natura_vendita_ins_upd
+                  BEFORE INSERT OR UPDATE OF articolo_id, natura_vendita_id
+                  ON vendite.ddt_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_righe_natura_vendita('CHIAMANTE');

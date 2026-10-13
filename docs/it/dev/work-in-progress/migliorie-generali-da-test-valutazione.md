@@ -517,7 +517,7 @@ errore.
 > di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
 > alla sua chiusura (2026-10-10), chiusa lo stesso giorno. **D26** (la testata dopo l'emissione) e
 > **D27** (gli indirizzi del documento seguono il cliente) da `brief-db-esecutivi-ba-coppia`
-> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11), chiusa lo stesso giorno. **D30** (tornare indietro: annullare a valle riapre a monte) dal collaudo di D29 (2026-10-11).
+> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11), chiusa lo stesso giorno. **D30** (tornare indietro: annullare a valle riapre a monte) dal collaudo di D29 (2026-10-11). **D31** (canone, orario e consumo del contratto in commessa) dalla segnalazione BE sul push dei contratti (2026-10-13).
 >
 > ⚠️ **Rinumerazione del 2026-10-10:** D23 e D25 erano stati dati due volte, a voci diverse. Il
 > numero è rimasto alla voce che l'aveva preso per prima (D23 alla ricerca universale, D25 ai
@@ -526,7 +526,7 @@ errore.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D30.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D30, D31.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -1043,6 +1043,16 @@ valle; tutto il verso in avanti verso la commessa nel DB. DB scritto e provato i
 (`20261012-08 … -24`), da applicare. Brief
 [brief-db-annullo-a-valle-riapre-a-monte.md](brief-db-annullo-a-valle-riapre-a-monte.md).
 
+### 🟠 D31 — Le righe di contratto CANONE, ORARIO e CONSUMO non hanno la loro generazione
+
+Trovato il 2026-10-13 dalla segnalazione BE del push batch CONTRATTO (un contratto senza scadenza
+cadeva sul NOT NULL di `competenza_al`). Il lister dei contratti mandava ogni riga una volta sola, con
+la competenza di tutto il contratto: un canone diventava un addebito unico. D-2 (a) di Tid: dal
+`20261013-24` il push manda solo le UNA_TANTUM; la generazione per periodo del canone e le quantità di
+orario e consumo dalle loro fonti si progettano nel brief
+[brief-db-contratto-righe-periodiche-in-commessa.md](brief-db-contratto-righe-periodiche-in-commessa.md).
+📝 Aperto, non iniziato: decisioni G-1…G-4 di Tid.
+
 ---
 
 ## 4. Cosa NON è un difetto
@@ -1264,6 +1274,8 @@ D6 e il registro dei rossi in CI.
       chiuso e archiviato il 2026-10-11 (DB `20261011-68 … -91` e il caso 1 del giro D28; BE/FE §9; collaudo di Tid).
 * [ ] **D30** — tornare indietro, annullare la commessa: brief `brief-db-annullo-a-valle-riapre-a-monte` (aperto il
       2026-10-11; D-5…D-10 il 2026-10-12; DB `20261012-08 … -24` scritto e provato, da applicare; poi BE/FE).
+* [ ] **D31** — canone, orario e consumo del contratto in commessa: brief
+      `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13, non iniziato; decisioni G-1…G-4).
 
 ---
 

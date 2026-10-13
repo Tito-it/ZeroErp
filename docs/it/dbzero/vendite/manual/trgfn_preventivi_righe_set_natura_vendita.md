@@ -14,17 +14,23 @@ Approfondimento funzioni:
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21 — MODALITÀ A, brief preventivi-ordini D9)
+(rev 2026-10-13 — `20261013-10`, brief-db-articoli-ammessi-per-documento A-4)
 
-Fa **due cose con una sola lettura** dell'articolo:
+⚠️ **Dal 2026-10-13 fa una cosa sola, nonostante il nome**: **blocca la ricorrenza sul
+preventivo**. Se la natura della riga ha `destinazione_tipo = 'CONTRATTO'`, la riga non può
+stare su un preventivo.
 
-1. **eredita e congela** la natura di vendita: `preventivi_righe.natura_vendita_id` viene
-   **sempre** presa da `catalogo.articoli.natura_vendita_id`, sovrascrivendo qualunque valore
-   fornito dal chiamante. Nessun override dell'operatore;
-2. **blocca la ricorrenza sul preventivo**: se la natura dell'articolo ha
-   `destinazione_tipo = 'CONTRATTO'`, la riga non può stare su un preventivo.
+La natura della riga non la scrive più: la scrive [`script.trgfn_righe_natura_vendita`](/dbzero/script/manual/trgfn_righe_natura_vendita), montato
+`trg_preventivi_righe_a10_natura_vendita_ins_upd`, lo stesso blocco che la scrive sulle righe
+d'ordine e di bolla. Viene **prima** di questo trigger nell'ordine dei nomi (`natura` < `set`),
+quindi qui la natura è già quella giusta e il guard ne legge la destinazione. Il nome
+«set_natura» resta finché il Lotto 3 del brief non ritira questo guard nella check delle righe
+di preventivo.
 
-La seconda è la regola di dominio vera. Un articolo a ricorrenza — un canone — non si vende
+Fino al 2026-10-13 faceva **due cose con una sola lettura** dell'articolo: ereditava la natura
+(sovrascrivendo quella del chiamante) e bloccava la ricorrenza.
+
+La regola di dominio vera è il blocco. Un articolo a ricorrenza — un canone — non si vende
 con un preventivo: si vende con un'**offerta commerciale**, che è il documento pensato per
 generare un contratto. Il blocco è fail-fast all'inserimento della riga, non un controllo
 all'emissione: l'errore arriva mentre si costruisce il documento, quando correggerlo costa
@@ -68,6 +74,11 @@ ricorrenza: una riga a canone restava su un preventivo invece di andare in offer
 
 ### ⭐ Il lock funziona grazie all'ordine alfabetico, ed è una dipendenza fragile
 
+⚠️ Dal 2026-10-13 i trigger in fila sono tre: `…_a10_lock_columns_upd` (il lock),
+`…_a10_natura_vendita_ins_upd` (la scrittura della natura), `…_a10_set_natura_vendita_ins_upd`
+(questo guard). Il ragionamento sotto vale identico fra il lock e la scrittura, che è il punto
+in cui la natura viene riallineata.
+
 `trg_preventivi_righe_a10_lock_columns_upd` viene **prima** di
 `trg_preventivi_righe_a10_set_natura_vendita_ins_upd` in ordine alfabetico, e i `BEFORE ROW`
 scattano in quell'ordine. È ciò che rende compatibili le due cose:
@@ -85,6 +96,10 @@ apposta: è l'unica cosa che se ne accorgerebbe.
 ---
 
 ### ⚠️ Articolo non classificato: la riga passa con natura `NULL`
+
+⚠️ **Sezione storica.** Dal 2026-10-13 la natura non la legge più questa funzione, e
+`catalogo.articoli.natura_vendita_id` è `NOT NULL` (default la merce): un articolo senza
+natura non esiste. Resta il caso dell'articolo non trovato, che la FK rende irraggiungibile.
 
 Se l'articolo non ha ancora una natura (`natura_vendita_id IS NULL`, situazione transitoria
 pre-backfill), la riga viene salvata con natura nulla e **non è smistabile** finché
@@ -107,7 +122,7 @@ classificato»* oppure *«articolo non trovato»*.
 | Codice | Sollevato da | Quando |
 |--------|--------------|--------|
 | `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA` | questa funzione | Articolo con natura a `destinazione_tipo = 'CONTRATTO'` inserito su un preventivo |
-| `E_PREV_RIGA_NATURA_IMMUTABILE` (938) | `script.trgfn_lock_columns` | `UPDATE` che cambia a mano `natura_vendita_id` |
+| `E_RIGA_NATURA_VENDITA_IMMUTABILE` (1296) | `script.trgfn_lock_columns` | `UPDATE` che cambia a mano `natura_vendita_id` (fino al 2026-10-13 `E_PREV_RIGA_NATURA_IMMUTABILE`, 938, ritirato: la regola vale anche per ordine e bolla) |
 
 Sollevato via `script.fn_log_and_raise_error` con `NEW.tx_id` propagato; il context riporta
 `articolo_id`, `articolo_codice`, `natura_vendita_id` e `destinazione_tipo`.
