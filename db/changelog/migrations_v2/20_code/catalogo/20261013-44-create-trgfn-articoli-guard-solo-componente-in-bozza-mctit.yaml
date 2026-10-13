@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: catalogo.trgfn_articoli_guard_solo_componente_in_bozza()
+#   Un articolo non diventa «solo componente» finche' sta in una riga
+#   autonoma di un documento ancora in bozza.
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-3 e D-3, §9.3.1)
+#
+# -- PERCHE' (A-3 di Tid: per «solo componente», il guard dal lato articolo) -
+#   La regola sulle righe (20261013-40/-42) giudica la riga quando nasce o
+#   cambia articolo. Il flag pero' e' dell'articolo, e cambia dopo: una riga
+#   in bozza, gia' scritta, diventerebbe una riga che il modello vieta, e
+#   nessuno se ne accorgerebbe fino al passo dopo.
+#
+# -- QUALI DOCUMENTI ------------------------------------------------------
+#   Quelli in BOZZA (stato codice_interno DRAFT): le righe che si possono
+#   ancora scrivere. Le righe dei documenti emessi sono fatti: quelle le
+#   intercetta il passo successivo che le usa (R-6, col §H del brief offerta).
+#   Righe AUTONOME: le righe di preventivo, ordine e bolla, non i componenti di
+#   riga (dentro un kit il solo componente e' ammesso). Il Lotto 3b aggiunge
+#   offerta e contratto.
+#   Solo il passaggio a solo componente (false -> true): il ritorno a
+#   vendibile da solo non rende nessuna riga sbagliata. Il primo documento
+#   per tipo e per id basta a dire dove guardare.
+#   Il gemello per il form e' la regola su is_solo_componente in
+#   dbops.lock_columns_conditional (20261013-46).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261013-44-create-trgfn-articoli-guard-solo-componente-in-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261013-44-create-trgfn-articoli-guard-solo-componente-in-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo guard catalogo.trgfn_articoli_guard_solo_componente_in_bozza: un articolo in una riga
+        autonoma di un preventivo, un ordine o una bolla in bozza non diventa solo componente
+        (E_ARTICOLO_SOLO_COMPONENTE_IN_USO). Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-3).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_solo_componente_in_bozza()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⚠️ v_documento nudo: la grammatica di
+                  --   script.fn_get_stato_testata_documento (PREVENTIVO | ORDINE | DDT).
+                  v_documento   text;
+                  v_testata_id  bigint;
+                  v_etichetta   text;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Un articolo che sta in una riga autonoma di un documento in
+                  --   bozza non diventa solo componente. BEFORE UPDATE OF
+                  --   is_solo_componente su catalogo.articoli; solo false -> true.
+                  -- =========================================================
+                  IF NOT COALESCE(NEW.is_solo_componente, FALSE)
+                     OR COALESCE(OLD.is_solo_componente, FALSE) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT d.documento, d.testata_id
+                    INTO v_documento, v_testata_id
+                    FROM (
+                          SELECT 1 AS ord, 'PREVENTIVO'::text AS documento, p.id AS testata_id
+                            FROM vendite.preventivi_righe pr
+                            JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+                            JOIN config.stati_doc_preventivi s ON s.id = p.stato_doc_preventivo_id
+                           WHERE pr.articolo_id = NEW.id
+                             AND pr.attivo IS TRUE
+                             AND s.codice_interno = 'DRAFT'
+                          UNION ALL
+                          SELECT 2, 'ORDINE', o.id
+                            FROM vendite.ordini_righe orr
+                            JOIN vendite.ordini o ON o.id = orr.ordine_id
+                            JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
+                           WHERE orr.articolo_id = NEW.id
+                             AND orr.attivo IS TRUE
+                             AND s.codice_interno = 'DRAFT'
+                          UNION ALL
+                          SELECT 3, 'DDT', d.id
+                            FROM vendite.ddt_righe dr
+                            JOIN vendite.ddt d ON d.id = dr.ddt_id
+                            JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+                           WHERE dr.articolo_id = NEW.id
+                             AND dr.attivo IS TRUE
+                             AND s.codice_interno = 'DRAFT'
+                         ) d
+                   ORDER BY d.ord, d.testata_id
+                   LIMIT 1;
+
+                  IF v_documento IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT t.etichetta INTO v_etichetta
+                    FROM script.fn_get_stato_testata_documento(v_documento, v_testata_id) t;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'catalogo', TG_NAME::text, 'E_ARTICOLO_SOLO_COMPONENTE_IN_USO',
+                      jsonb_build_object(
+                          'campo',       'is_solo_componente',
+                          'articolo_id', NEW.id,
+                          'documento',   v_documento,
+                          'testata_id',  v_testata_id),
+                      NEW.tx_id,
+                      NEW.codice,
+                      COALESCE(v_etichetta, initcap(v_documento) || ' #' || v_testata_id::text));
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_solo_componente_in_bozza()
+              IS 'Guard BEFORE UPDATE OF is_solo_componente su catalogo.articoli (A-3 del brief-db-articoli-ammessi-per-documento): un articolo che sta in una riga autonoma attiva di un preventivo, un ordine o una bolla in bozza (stato DRAFT) non diventa solo componente, perche'' quella riga diventerebbe una riga che il modello vieta (E_ARTICOLO_SOLO_COMPONENTE_IN_USO, campo is_solo_componente, col primo documento per tipo e id nel messaggio). Solo false -> true. Le righe dei documenti emessi le intercetta il passo successivo che le usa. I componenti di riga non contano: dentro un kit il solo componente e'' ammesso. Gemello per il form: la regola su is_solo_componente in dbops.lock_columns_conditional.';

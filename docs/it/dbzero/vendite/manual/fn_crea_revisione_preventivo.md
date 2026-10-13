@@ -89,7 +89,8 @@ rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendit
   copia o dichiarata esclusa lì con la ragione, altrimenti il test è rosso —
   la prossima colonna di riga non può più perdersi in silenzio.
   `natura_vendita_id` — la deriva e la **congela** dall'articolo il trigger
-  `BEFORE INSERT` (`trgfn_preventivi_righe_set_natura_vendita`): nominarla
+  `BEFORE INSERT` (`script.trgfn_righe_natura_vendita`; fino al 2026-10-13
+  `trgfn_preventivi_righe_set_natura_vendita`, ritirato): nominarla
   scriverebbe un valore che viene sovrascritto; `tx_id` — framework;
   `id`, `data_insert`, `data_update` — identity e audit.
 * **Componenti BoM copiati, TUTTI** (rev 2026-10-08, `20261008-35`, D-1 di Tid):

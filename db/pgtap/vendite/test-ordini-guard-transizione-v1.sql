@@ -91,9 +91,12 @@ SELECT
   ) AS emittente_fiscale_id,
   (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1
   ) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST, a.id LIMIT 1
-  ) AS articolo_id,
+-- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
+--   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
+--   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
+--   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
+--   le proprieta' che il test gli da' (merce, non gestito a magazzino).
+  dbops.fn_pgtap_crea_articolo('PGT-OGT-ART', false) AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   -- ⚠️ Aggiunta 2026-08-29: dal changeSet 20260829-07 il guard rifiuta
   --   l'ingresso in CONFERMATO se una riga attiva porta un prezzo senza

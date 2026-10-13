@@ -58,24 +58,34 @@ SELECT plan(9);
 -- ============================================================
 -- Riferimenti minimi
 -- ============================================================
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti): il BA «pushabile» nasce qui, legato all'azienda di chi
+--   agisce, e la proprieta' che il test pretende (fatturazione_ordini =
+--   CONFERMATO) la si IMPOSTA sul BA costruito, come fa la produzione, invece
+--   di cercare un BA che ce l'abbia. L'asserzione 1 resta la precondizione.
+CREATE TEMP TABLE tmp_mondo_aa2 AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP capability ordine v2 push');
+UPDATE anagrafiche.billing_account
+   SET fatturazione_ordini = 'CONFERMATO'
+ WHERE id = (SELECT billing_account_id FROM tmp_mondo_aa2)
+   AND fatturazione_ordini IS DISTINCT FROM 'CONFERMATO';
+
 CREATE TEMP TABLE tmp_refs_aa2 AS
 SELECT
   (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
+    WHERE ba.id = (SELECT m.billing_account_id FROM tmp_mondo_aa2 m)
+      AND ba.utility_id IS NOT NULL
       AND ba.istanza_utility_id IS NOT NULL
       AND ba.fatturazione_ordini = 'CONFERMATO'
-      AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                          AS push_ba_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
-    ORDER BY sr.id LIMIT 1)                          AS soggetto_ruolo_id,
+      AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) IS NOT NULL)  AS push_ba_id,
+  (SELECT m.cliente_soggetto_ruolo_id FROM tmp_mondo_aa2 m)           AS soggetto_ruolo_id,
   -- ⛔ L'emittente NON si pesca, si DERIVA (2026-09-23, guida pgTAP §5): con
   --   una sola azienda a catalogo «il primo attivo» e quello di chi agisce
   --   coincidevano per caso, su un database ricostruito no.
   script.fn_pgtap_emittente_operatore()  AS emittente_fiscale_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-      AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)  AS articolo_id,
+  -- ⛔ rev 2026-10-13 (Lotto 3a): l'articolo si COSTRUISCE (merce, semplice,
+  --   non gestito): da zero il catalogo ha solo servizi, che l'ordine non ammette.
+  dbops.fn_pgtap_crea_articolo('PGTAP-AAO-V2', false) AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT i.id FROM config.iva i
     WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)    AS iva_id,

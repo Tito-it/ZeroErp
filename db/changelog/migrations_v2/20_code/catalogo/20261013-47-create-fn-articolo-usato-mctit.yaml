@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: catalogo.fn_articolo_usato(articolo)
+#   L'articolo e' USATO: compare in un documento, in un listino, in una
+#   commessa o in magazzino, in qualunque stato.
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-10, §9.3 Lotto 3u)
+#
+# -- PERCHE' (A-10 di Tid, 2026-10-13) -----------------------------------
+#   Un articolo usato non cambia piu' i flag che decidono come si vende e
+#   come sta a magazzino: a valle ci sono listini, ordini, bolle, giacenze, e
+#   rincorrere le conseguenze di un cambio costa piu' che impedirlo. Questo e'
+#   il predicato UNICO: lo leggono il guard (20261013-48) e il form
+#   (dbops.lock_columns_conditional, 20261013-51).
+#
+# -- CHE COSA E' «USATO» -------------------------------------------------
+#   Una riga in una tabella che punta all'articolo con una FK, in qualunque
+#   stato (anche chiusa, annullata, attivo = false): i documenti chiusi si
+#   rileggono (fatture, resi, giacenze). Le tabelle si leggono da pg_constraint
+#   e NON si elencano: una tabella nuova che punta all'articolo conta da sola
+#   (fail-closed). Si escludono, dichiarate qui, le tabelle che sono
+#   anagrafica dell'articolo stesso e non un suo uso: la distinta
+#   (articoli_componenti, che ha i suoi guard), le UoM operative, le
+#   descrizioni aggiuntive, le note, le regole di fatturazione, gli ambiti
+#   del titolo IVA.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   ⚠️ SECURITY DEFINER: gli articoli sono UNICI per tutte le aziende
+#   (catalogo senza emittente ne' RLS), i documenti no (RLS per emittente).
+#   Letto con la RLS di chi modifica l'articolo, il predicato non vedrebbe i
+#   documenti delle altre aziende: fail-open. Ritorna solo un boolean, quindi
+#   non rivela niente di quei documenti.
+#   search_path bloccato, nomi qualificati, SQL dinamico solo con regclass e
+#   colonne lette dal catalogo (format %s / %I) e il valore in USING.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261013-47-create-fn-articolo-usato-mctit.yaml
+
+  - changeSet:
+      id: 20261013-47-create-fn-articolo-usato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo predicato catalogo.fn_articolo_usato: l'articolo compare in una tabella che lo punta con
+        una FK (documenti, listini, commesse, magazzino), escluse le tabelle di anagrafica dell'articolo.
+        SECURITY DEFINER: vede i documenti di tutte le aziende. Brief:
+        brief-db-articoli-ammessi-per-documento (§8.6 A-10).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_articolo_usato(
+                  p_articolo_id catalogo.articoli.id%TYPE)
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  -- Anagrafica dell'articolo, non un suo uso (vedi il COMMENT).
+                  c_escluse CONSTANT regclass[] := ARRAY[
+                      'catalogo.articoli_componenti'::regclass,
+                      'catalogo.articoli_uom_operativa'::regclass,
+                      'catalogo.note_articoli'::regclass,
+                      'vendite.articoli_descrizioni_aggiuntive'::regclass,
+                      'vendite.articolo_regole_fatturazione'::regclass,
+                      'anagrafiche.soggetti_titoli_iva_ambiti'::regclass];
+                  v_fk    record;
+                  v_usato boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   true se l'articolo compare in una tabella che lo punta con
+                  --   una FK (escluse le tabelle di anagrafica dell'articolo),
+                  --   in qualunque stato. NULL -> false.
+                  -- =========================================================
+                  IF p_articolo_id IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  FOR v_fk IN
+                      SELECT c.conrelid::regclass AS tabella, a.attname AS colonna
+                        FROM pg_catalog.pg_constraint c
+                        JOIN pg_catalog.pg_attribute a
+                          ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+                       WHERE c.contype = 'f'
+                         AND c.confrelid = 'catalogo.articoli'::regclass
+                         AND array_length(c.conkey, 1) = 1
+                         AND c.conrelid <> ALL (c_escluse)
+                       ORDER BY c.conrelid::regclass::text, a.attname
+                  LOOP
+                      EXECUTE format('SELECT EXISTS (SELECT 1 FROM %s WHERE %I = $1)',
+                                     v_fk.tabella, v_fk.colonna)
+                         INTO v_usato
+                        USING p_articolo_id;
+                      IF v_usato THEN
+                          RETURN true;
+                      END IF;
+                  END LOOP;
+
+                  RETURN false;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION catalogo.fn_articolo_usato(uuid)
+              IS 'Predicato (A-10 di brief-db-articoli-ammessi-per-documento, 2026-10-13): true se l''articolo e'' USATO, cioe'' compare in una tabella che lo punta con una FK, in qualunque stato (anche chiusa, annullata o attivo = false). Le tabelle si leggono da pg_constraint: una tabella nuova che punta all''articolo conta da sola (fail-closed). Escluse, perche'' anagrafica dell''articolo e non un suo uso: catalogo.articoli_componenti (la distinta ha i suoi guard), catalogo.articoli_uom_operativa, catalogo.note_articoli, vendite.articoli_descrizioni_aggiuntive, vendite.articolo_regole_fatturazione, anagrafiche.soggetti_titoli_iva_ambiti. SECURITY DEFINER: gli articoli sono unici per tutte le aziende, i documenti hanno la RLS per emittente; letto con la RLS di chi modifica l''articolo il predicato non vedrebbe i documenti delle altre aziende. Ritorna solo un boolean. Lo leggono catalogo.trgfn_articoli_guard_struttura_se_usato e dbops.lock_columns_conditional (il form). NULL -> false.';
+
+              REVOKE EXECUTE ON FUNCTION catalogo.fn_articolo_usato(uuid) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION catalogo.fn_articolo_usato(uuid) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS catalogo.fn_articolo_usato(uuid);

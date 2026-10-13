@@ -59,11 +59,20 @@ SELECT id AS stato_id FROM config.stati_doc_contratti WHERE codice_interno = 'AT
 --   contratto con un listino senza versione in vigore non si attiva piu'. Con un
 --   listino preso dai dati l'esito dipendeva da cosa c'era sulla macchina.
 CREATE TEMP TABLE tmp_ctx_listino AS
-SELECT listino_id FROM dbops.fn_pgtap_crea_listino(
+SELECT listino_id, listino_versione_id FROM dbops.fn_pgtap_crea_listino(
     (SELECT utility_id FROM tmp_ctx_ba), 'modalita pricing');
 
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5):
+--   l'articolo si COSTRUISCE e sta nel listino. Prima era il primo del catalogo,
+--   fuori dal listino del contratto: un'ESCLUSIONE di un articolo che il listino
+--   non ha non esclude niente, e dal Lotto 3b e' rifiutata.
+--   ⚠️ Due istruzioni: la riga che il builder scrive non e' visibile alla JOIN
+--   della stessa istruzione (lo snapshot e' preso prima), e la tabella
+--   nascerebbe vuota — col test 3 verde per sottrazione (zero righe inserite).
 CREATE TEMP TABLE tmp_ctx_articolo AS
-SELECT id AS articolo_id, uom_id FROM catalogo.articoli WHERE attivo IS TRUE ORDER BY id LIMIT 1;
+SELECT dbops.fn_pgtap_crea_articolo('PGT-MOD-PRICING', false) AS articolo_id;
+SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
+    (SELECT listino_versione_id FROM tmp_ctx_listino), ARRAY[(SELECT articolo_id FROM tmp_ctx_articolo)]);
 
 -- 1) listino + variazione globale in DRAFT -> ok
 SELECT lives_ok(

@@ -152,6 +152,11 @@ SELECT
   script.fn_pgtap_emittente_operatore()                                                   AS emittente_fiscale_id,
   script.fn_pgtap_emittente_sr_operatore()                                                AS emittente_sr_id,
   dbops.fn_pgtap_crea_articolo('PGT-AL-PIPPO', false)                                     AS articolo_id,
+  -- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5):
+  --   l'OVERRIDE dell'offerta modifica una riga del listino, quindi il suo
+  --   articolo ci sta. Un articolo suo, per non cambiare tipologia a quello delle
+  --   righe di preventivo e d'ordine; a listino subito sotto.
+  dbops.fn_pgtap_crea_articolo('PGT-AL-OFFERTA', false)                                   AS articolo_off_id,
   (SELECT l.listino_id FROM tmp_al_listino l)                                             AS listino_id,
   (SELECT l.listino_versione_id FROM tmp_al_listino l)                                    AS listino_versione_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
@@ -166,6 +171,9 @@ SELECT
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO')              AS sorg_preventivo_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo ORDER BY t.id LIMIT 1)       AS tipo_doc_fiscale_id
 FROM tmp_al_cli c;
+
+SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
+    (SELECT listino_versione_id FROM tmp_al_refs), ARRAY[(SELECT articolo_off_id FROM tmp_al_refs)]);
 
 CREATE TEMP TABLE tmp_al_fix(chiave text PRIMARY KEY, id bigint);
 CREATE TEMP TABLE tmp_al_esito(caso text PRIMARY KEY, sqlstate text, messaggio text, righe int);
@@ -242,10 +250,14 @@ BEGIN
   VALUES (r.emittente_fiscale_id, r.billing_account_id, r.istanza_utility_id, r.utility_id,
           r.listino_id, r.listino_versione_id, p_dal, p_dal + 364, r.off_bozza_id)
   RETURNING id INTO v_off;
+  -- rev 2026-10-13 (Lotto 3b): l'articolo a listino prende la tipologia del
+  --   listino, che dipende dalla utility: erogazione e fonte le eredita il DB.
   INSERT INTO vendite.offerte_commerciali_eccezioni (offerta_id, articolo_id, tipo_eccezione,
-      tipo_erogazione, fonte_quantita_attesa, prezzo_unitario, attivo)
-  VALUES (v_off, r.articolo_id, 'OVERRIDE'::vendite.tipo_eccezione_contratto,
-          'UNA_TANTUM', 'MANUALE', 200, true);
+      tipo_erogazione, fonte_quantita_attesa, prezzo_unitario, attivo, qta_operativa)
+  VALUES (v_off, r.articolo_off_id, 'OVERRIDE'::vendite.tipo_eccezione_contratto,
+          NULL, NULL, 200, true,
+          (SELECT 1.00 FROM vendite.fn_articolo_erogazioni(r.articolo_off_id) e
+            WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA' LIMIT 1));
   INSERT INTO vendite.offerte_commerciali_utilities (offerta_id, istanza_utility_id, utility_id)
   VALUES (v_off, r.istanza_utility_id, r.utility_id);
   UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = r.off_emessa_id WHERE id = v_off;

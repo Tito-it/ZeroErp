@@ -67,7 +67,7 @@ SELECT billing_account_id, istanza_utility_id, utility_id
       ORDER BY u.id LIMIT 1));
 
 CREATE TEMP TABLE tmp_v2_listino AS
-SELECT listino_id FROM dbops.fn_pgtap_crea_listino(
+SELECT listino_id, listino_versione_id FROM dbops.fn_pgtap_crea_listino(
     (SELECT utility_id FROM tmp_v2_cli), 'resolve v2 step24');
 
 CREATE TEMP TABLE tmp_v2_ctx AS
@@ -90,15 +90,28 @@ SELECT
 --   UNA_TANTUM/FISSA, chiesto alla sede unica; le righe ereditano l'erogazione (era
 --   CANONE scritto a mano). Prima: i primi tre per id, che su dbdev sono PRODOTTI e la
 --   utility del cliente costruito (ENE) non li prevede.
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5): i
+--   tre articoli si COSTRUISCONO e stanno nel listino del contratto. Prima si
+--   pescavano dal catalogo, fuori listino: un'OVERRIDE o un'ESCLUSIONE di un
+--   articolo che il listino non ha non modifica niente (la riga non si vedeva
+--   nemmeno), e dal Lotto 3b e' rifiutata. Erogazione e fonte le eredita il DB
+--   dalla tipologia del listino; la quantita' c'e' se la fonte e' FISSA.
+--   ⭐ Con l'articolo 3 a listino i test 6-7 (versione fissata) girano davvero:
+--   prima dipendevano dal trovare una riga di listino nei dati, e si saltavano.
 CREATE TEMP TABLE tmp_v2_arts AS
-SELECT id, row_number() OVER (ORDER BY id) AS rn
-  FROM catalogo.articoli a
- WHERE a.attivo = TRUE AND a.is_composito = FALSE
-   AND a.listino_tipologia_id IS NULL
-   AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
-                WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
- ORDER BY id
- LIMIT 3;
+SELECT dbops.fn_pgtap_crea_articolo('PGT-V2S24-' || g, false) AS id, g AS rn
+  FROM generate_series(1, 3) AS g;
+
+SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
+    (SELECT listino_versione_id FROM tmp_v2_listino),
+    ARRAY(SELECT id FROM tmp_v2_arts ORDER BY rn));
+
+-- Scopo: la quantita' di una riga che eredita: 1 se la fonte di default e' FISSA.
+CREATE OR REPLACE FUNCTION pg_temp.qta(p_articolo uuid)
+RETURNS numeric LANGUAGE sql STABLE AS $fx$
+  SELECT 1.00 FROM vendite.fn_articolo_erogazioni(p_articolo) e
+   WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA' LIMIT 1;
+$fx$;
 
 -- Versione attiva del listino + riga con art[3] (per test 6-7 condizionali)
 CREATE TEMP TABLE tmp_v2_lv AS
@@ -130,7 +143,7 @@ SELECT 'PGTAP_V2_OV',
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
        tipo_erogazione)
-SELECT ca.id, a.id, 'OVERRIDE', 111.00, 1.00, NULL
+SELECT ca.id, a.id, 'OVERRIDE', 111.00, pg_temp.qta(a.id), NULL
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_OV' AND a.rn = 1;
 
@@ -174,7 +187,7 @@ SELECT 'PGTAP_V2_AGG',
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
        tipo_erogazione)
-SELECT ca.id, a.id, 'AGGIUNTA', 222.00, 1.00, NULL
+SELECT ca.id, a.id, 'AGGIUNTA', 222.00, pg_temp.qta(a.id), NULL
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_AGG' AND a.rn = 1;
 

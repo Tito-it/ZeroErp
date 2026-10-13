@@ -176,6 +176,13 @@ SELECT pr.id AS riga_id, ac.componente_id
    AND NOT EXISTS (
        SELECT 1 FROM vendite.preventivi_righe_componenti c
         WHERE c.riga_preventivo_id = pr.id)
+   -- Preventivo in BOZZA (aggiunto il 2026-10-13): fuori bozza il lock
+   -- trg_preventivi_righe_componenti_a05_doc_bozza rifiuta l'INSERT dei
+   -- componenti fratelli (E_RIGA_DOC_NON_BOZZA) prima che il guard sul
+   -- prezzo parli. Stato letto con lo stesso lettore del lock; 'DRAFT' e'
+   -- lo stato bozza dichiarato nei suoi tgargs.
+   AND (SELECT s.stato
+          FROM script.fn_get_stato_testata_documento('PREVENTIVO', pr.preventivo_id) s) = 'DRAFT'
  -- Scelta ripetibile: senza, il soggetto cambia col piano di esecuzione.
  ORDER BY pr.id, ac.componente_id
  LIMIT 1;
@@ -197,7 +204,23 @@ SELECT CASE
             $inner$
             $$,
             (SELECT riga_id FROM _t_ovr),
-            (SELECT jsonb_build_object(componente_id::text, 0) FROM _t_ovr)
+            -- ⚠️ L'override copre TUTTA la BoM, non il solo soggetto (corretto
+            --   il 2026-10-13, dopo un rosso «Contratto … modalita' C: articolo
+            --   … non negoziato»). Il loop della funzione non ha ORDER BY: un
+            --   componente senza override passa dal resolver, e se il resolver
+            --   fallisce PRIMA di arrivare al soggetto l'errore e' quello del
+            --   prezzo, non il guard. Con tutti i componenti in override il
+            --   resolver non viene mai chiamato: i fratelli prendono 1 e
+            --   passano, il soggetto prende 0 e fa scattare il guard,
+            --   qualunque sia l'ordine.
+            (SELECT jsonb_object_agg(
+                        ac.componente_id::text,
+                        CASE WHEN ac.componente_id = t.componente_id THEN 0 ELSE 1 END)
+               FROM _t_ovr t
+               JOIN vendite.preventivi_righe pr ON pr.id = t.riga_id
+               JOIN catalogo.articoli_componenti ac ON ac.prodotto_id = pr.articolo_id
+              WHERE COALESCE(ac.attivo, TRUE) = TRUE
+                AND ac.validita @> script.fn_data_operativa())
         ),
         -- Il testo viene dai parametri VARIADIC di fn_log_and_raise_error
         -- (qui p_riga_id::text); l'hint 'prezzo override...' sta nel context

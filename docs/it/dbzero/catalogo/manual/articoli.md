@@ -207,6 +207,38 @@ WHERE a.uom_id IS NOT NULL
 
 ---
 
+### 🔒 Un articolo usato non cambia la sua struttura (A-10, 2026-10-13)
+
+Un articolo **usato** non cambia più i campi che decidono **come si vende** e **come sta a
+magazzino**. A valle ci sono listini, ordini, bolle, giacenze: costruiti su quelle
+caratteristiche, non le rincorrono se cambiano.
+
+| Bloccate se usato | Libere |
+| --- | --- |
+| `is_composito`, `is_solo_componente`, `natura_vendita_id`, `causale_onere_id`, `listino_tipologia_id`, `gestito_a_magazzino`, `requires_lotto`, `requires_serial` | `iva_id` (l'aliquota cambia per legge, e ogni riga ha la sua), descrizioni, gruppi, conti, tempi di consegna, modo di approvvigionamento |
+
+`codice` e `uom_id` sono immutabili sempre (sezione sotto).
+
+* **Usato** = compare in una tabella che lo punta con una FK — righe di documento di vendita e
+  d'acquisto, fatture, resi, offerte, listini e promo, commesse, magazzino — **in qualunque
+  stato**, anche chiusa o annullata: lo dice
+  [`catalogo.fn_articolo_usato`](/dbzero/catalogo/manual/fn_articolo_usato). Non contano le
+  tabelle di anagrafica dell'articolo stesso (distinta, UoM operative, descrizioni, note, regole
+  di fatturazione, ambiti IVA).
+* **Tutte le aziende**: gli articoli sono unici per tutte le aziende, i documenti no. L'uso conta
+  anche se sta in un documento che chi modifica non vede; il messaggio non dice dove.
+* **Chi lo fa rispettare**: il guard
+  [`trgfn_articoli_guard_struttura_se_usato`](/dbzero/catalogo/manual/trgfn_articoli_guard_struttura_se_usato)
+  (`E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE`) e, nel form, le regole gemelle in
+  `dbops.lock_columns_conditional`, che spengono il campo con lo stesso predicato.
+* **La via d'uscita** è un articolo nuovo (il vecchio non va per forza ritirato). Un errore di
+  caricamento lo corregge un amministratore col verbo
+  [`catalogo.fn_articolo_correggi_struttura`](/dbzero/catalogo/manual/fn_articolo_correggi_struttura)
+  (solo SUPER_ADMIN).
+
+Le regole della distinta sugli stessi campi (`trgfn_articoli_guard_flags_struttura_bom_attiva`)
+restano: valgono anche per un articolo non ancora usato.
+
 ### Articolo-onere (porta oneri)
 
 Un articolo **è un onere** quando ha `causale_onere_id` valorizzato (FK verso

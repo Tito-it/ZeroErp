@@ -517,7 +517,7 @@ errore.
 > di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
 > alla sua chiusura (2026-10-10), chiusa lo stesso giorno. **D26** (la testata dopo l'emissione) e
 > **D27** (gli indirizzi del documento seguono il cliente) da `brief-db-esecutivi-ba-coppia`
-> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11), chiusa lo stesso giorno. **D30** (tornare indietro: annullare a valle riapre a monte) dal collaudo di D29 (2026-10-11). **D31** (canone, orario e consumo del contratto in commessa) dalla segnalazione BE sul push dei contratti (2026-10-13).
+> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11), chiusa lo stesso giorno. **D30** (tornare indietro: annullare a valle riapre a monte) dal collaudo di D29 (2026-10-11). **D31** (canone, orario e consumo del contratto in commessa) dalla segnalazione BE sul push dei contratti (2026-10-13). **D32** (un documento nasce nel suo stato iniziale) dal giro del `20261013-53` (2026-10-13). **D33** (un cliente manuale per soggetto e utility) dallo smoke clienti del giro notturno (2026-10-13).
 >
 > ⚠️ **Rinumerazione del 2026-10-10:** D23 e D25 erano stati dati due volte, a voci diverse. Il
 > numero è rimasto alla voce che l'aveva preso per prima (D23 alla ricerca universale, D25 ai
@@ -526,7 +526,7 @@ errore.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D30, D31.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D30, D31, D32, D33.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -1053,6 +1053,25 @@ orario e consumo dalle loro fonti si progettano nel brief
 [brief-db-contratto-righe-periodiche-in-commessa.md](brief-db-contratto-righe-periodiche-in-commessa.md).
 📝 Aperto, non iniziato: decisioni G-1…G-4 di Tid.
 
+### 🟠 D32 — Un documento può nascere già fuori dalla bozza
+
+Trovato il 2026-10-13 nel giro del `20261013-53` (i trigger della bolla che leggono l'emittente
+girano dopo il normalize). Le regole dell'uscita dalla bozza stanno tutte sul passaggio di stato
+(`BEFORE UPDATE`), su ogni famiglia: un `INSERT` con lo stato già avanti le salta. Provato sulla
+bolla: nasce EMESSA e numerata con zero righe, e dopo le righe non si aggiungono più. Brief
+[brief-db-documento-nasce-nello-stato-iniziale.md](brief-db-documento-nasce-nello-stato-iniziale.md).
+📝 Aperto, non iniziato: decisioni N-1…N-3 di Tid.
+
+### 🟠 D33 — Due clienti manuali per lo stesso soggetto e la stessa utility
+
+Trovato il 2026-10-13 dallo smoke `smoke-test-clienti.sh` del giro notturno: la creazione manuale
+crea ogni volta un'istanza fittizia nuova, e con lo stesso soggetto e la stessa utility nasce un
+secondo cliente. Per il PDP c'è `ex_clienti_no_overlap_stesso_pdp`; per l'istanza fittizia nessuna
+regola. Tid: va impedito, non due attivi insieme; un chiuso non si riapre, si torna con istanza, BA e cliente nuovi. Sotto la regola, un
+cliente chiuso senza `data_chiusura` resta attivo per sempre (vale già per il PDP). Brief
+[brief-db-cliente-manuale-uno-per-soggetto-e-utility.md](brief-db-cliente-manuale-uno-per-soggetto-e-utility.md).
+📝 Decisioni prese (C-1…C-5, 2026-10-13); codice DB non iniziato.
+
 ---
 
 ## 4. Cosa NON è un difetto
@@ -1276,6 +1295,10 @@ D6 e il registro dei rossi in CI.
       2026-10-11; D-5…D-10 il 2026-10-12; DB `20261012-08 … -24` scritto e provato, da applicare; poi BE/FE).
 * [ ] **D31** — canone, orario e consumo del contratto in commessa: brief
       `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13, non iniziato; decisioni G-1…G-4).
+* [ ] **D32** — un documento nasce nel suo stato iniziale: brief
+      `brief-db-documento-nasce-nello-stato-iniziale` (aperto il 2026-10-13, non iniziato; decisioni N-1…N-3).
+* [ ] **D33** — un cliente manuale per soggetto e utility: brief
+      `brief-db-cliente-manuale-uno-per-soggetto-e-utility` (aperto il 2026-10-13, decisioni prese, codice DB non iniziato).
 
 ---
 

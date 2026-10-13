@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGIO: catalogo.trgfn_articoli_guard_struttura_se_usato su
+#   catalogo.articoli — e RITIRO del guard «solo componente in bozza»
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-10, §9.3 Lotto 3u)
+#
+# -- IL RITIRO -----------------------------------------------------------
+#   catalogo.trgfn_articoli_guard_solo_componente_in_bozza e il suo trigger
+#   (20261013-44/-45) se ne vanno: la regola generale li comprende (un
+#   articolo in una riga di bozza e' usato) e chiude il loro buco, perche'
+#   leggevano i documenti con la RLS di chi modifica l'articolo (le bozze
+#   delle altre aziende non le vedevano). La regola gemella del form
+#   (20261013-46) la toglie 20261013-51. Trigger scritto a mano, non da
+#   ci_apply: il DROP e' lecito (linee-guida-sql §11.5).
+#   ⛔ Nome sotto i 63 caratteri (46).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261013-49-create-trigger-articoli-guard-struttura-se-usato-mctit.yaml
+
+  - changeSet:
+      id: 20261013-49-create-trigger-articoli-guard-struttura-se-usato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta catalogo.trgfn_articoli_guard_struttura_se_usato su catalogo.articoli (BEFORE UPDATE OF le
+        otto colonne strutturali); ritira il guard «solo componente in bozza» di 20261013-44/-45. Brief:
+        brief-db-articoli-ammessi-per-documento (§8.6 A-10).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+               WHERE t.tgrelid = 'catalogo.articoli'::regclass
+                 AND t.tgname = 'trg_articoli_a10_guard_struttura_se_usato_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_a10_guard_solo_componente_in_bozza_upd
+                  ON catalogo.articoli;
+              DROP FUNCTION IF EXISTS catalogo.trgfn_articoli_guard_solo_componente_in_bozza();
+
+              CREATE TRIGGER trg_articoli_a10_guard_struttura_se_usato_upd
+                  BEFORE UPDATE OF is_composito, is_solo_componente, natura_vendita_id,
+                                   causale_onere_id, listino_tipologia_id,
+                                   gestito_a_magazzino, requires_lotto, requires_serial
+                  ON catalogo.articoli
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_articoli_guard_struttura_se_usato();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_a10_guard_struttura_se_usato_upd ON catalogo.articoli;
+              -- ⚠️ Il guard ritirato non torna da solo: va ri-applicato 20261013-44/-45.

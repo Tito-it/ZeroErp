@@ -75,7 +75,12 @@ SELECT (SELECT id FROM config.stati_doc_ddt WHERE codice_interno = 'DRAFT')     
        (SELECT id FROM config.causali_trasporto WHERE codice = 'CONTO_VISIONE')     AS cv,
        (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON')          AS ind_con,
        (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT')         AS ind_fatt,
-       (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1)                 AS articolo,
+-- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
+--   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
+--   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
+--   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
+--   le proprieta' che il test gli da' (merce, non gestito a magazzino).
+       dbops.fn_pgtap_crea_articolo('PGT-IDSC-ART', false)                 AS articolo,
        (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                     AS valuta,
        (SELECT emittente_fiscale_id FROM _m)                                        AS ef;
 

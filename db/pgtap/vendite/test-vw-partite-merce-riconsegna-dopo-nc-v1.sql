@@ -38,7 +38,8 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(8);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
+-- ⛔ rev 2026-10-13: niente app.current_user_id = '1' (in CI l'utente 1 non
+--   esiste): l'operatore e' quello del contesto aperto qui sopra.
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -51,17 +52,21 @@ END $az$;
 -- ============================================================
 -- Riferimenti (ogni scelta col suo ORDER BY; l'emittente si DERIVA)
 -- ============================================================
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti): cliente fatturabile legato all'azienda di chi agisce
+--   e articolo merce non gestito a magazzino; dal DB si legge solo il seed.
+CREATE TEMP TABLE tmp_mondo_ric AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP riconsegna dopo NC');
+
 CREATE TEMP TABLE tmp_refs_ric AS
 SELECT
-  ba.id                                    AS billing_account_id,
-  ba.utility_id                            AS utility_id,
-  ba.istanza_utility_id                    AS istanza_utility_id,
+  m.billing_account_id                    AS billing_account_id,
+  m.utility_id                            AS utility_id,
+  m.istanza_utility_id                    AS istanza_utility_id,
   script.fn_pgtap_emittente_operatore()    AS emittente_fiscale_id,
   script.fn_pgtap_emittente_sr_operatore() AS emittente_sr_id,
-  ba.soggetto_ruolo_id                            AS soggetto_ruolo_id,  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il ruolo del BA, non il primo del database
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST, a.id DESC LIMIT 1)                                        AS articolo_id,
+  m.cliente_soggetto_ruolo_id                    AS soggetto_ruolo_id,  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il ruolo del BA, non il primo del database
+  dbops.fn_pgtap_crea_articolo('PGT-RIC-NC-V1', false)                                              AS articolo_id,  -- rev 2026-10-13: costruito
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)             AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                            AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                        AS iva_id,
@@ -78,11 +83,7 @@ SELECT
   script.fn_pgtap_registro_fattura()                     AS registro_id,
   (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' ORDER BY c.id LIMIT 1)                        AS causale_vendita_id,
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                   AS tipo_ind_con_id
-FROM anagrafiche.billing_account ba
-WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-  AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-ORDER BY ba.id
-LIMIT 1;
+FROM tmp_mondo_ric m;
 
 -- ============================================================
 -- Helper (padre e figlio in due istruzioni: le CTE che scrivono condividono

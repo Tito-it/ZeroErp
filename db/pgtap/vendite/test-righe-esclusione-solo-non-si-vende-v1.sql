@@ -266,33 +266,36 @@ SELECT ok(
         = 'fonte_quantita_attesa,tipo_eccezione',
     '3) fonte nullable sulle due tabelle, obbligatoria per CHECK sulle righe che non sono esclusioni');
 
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b): i guard
+--   «aggiunta fuori listino» ed «esclusione figlio di bundle» sono ritirati
+--   (20261013-57); le loro regole sono motivi di script.fn_check_articolo_riga,
+--   che solleva il guard di tabella script.trgfn_righe_guard_articolo_ammesso.
 SELECT is(
     (SELECT string_agg(t.tgname || '>' || p.proname, ' ' ORDER BY t.tgname)
        FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
       WHERE t.tgrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
         AND t.tgname IN ('trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt',
                          'trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd',
-                         'trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd',
-                         'trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd',
+                         'trg_offerte_eccezioni_a10_guard_articolo_ammesso_ins_upd',
                          'trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins')),
     'trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt>trgfn_doc_righe_lock_fuori_bozza '
     'trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd>trgfn_righe_guard_esclusione_immutabile '
-    'trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd>trgfn_righe_guard_aggiunta_fuori_listino '
-    'trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd>trgfn_righe_guard_esclusione_figlio_bundle '
+    'trg_offerte_eccezioni_a10_guard_articolo_ammesso_ins_upd>trgfn_righe_guard_articolo_ammesso '
     'trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins>trgfn_righe_guard_esclusione_senza_dati',
-    '4) offerta: i cinque trigger nuovi, ciascuno sulla sua funzione');
+    '4) offerta: i quattro trigger, ciascuno sulla sua funzione (dal Lotto 3b il guard di articolo)');
 
 SELECT ok(
-    (SELECT count(*) = 4
+    (SELECT count(*) = 3
        FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
        JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE t.tgrelid = 'vendite.contratti_righe'::regclass
         AND n.nspname = 'script'
         AND (t.tgname, p.proname) IN (
             ('trg_contratti_righe_a05_guard_esclusione_immutabile_upd', 'trgfn_righe_guard_esclusione_immutabile'),
-            ('trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd', 'trgfn_righe_guard_aggiunta_fuori_listino'),
-            ('trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd', 'trgfn_righe_guard_esclusione_figlio_bundle'),
+            ('trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd', 'trgfn_righe_guard_articolo_ammesso'),
             ('trg_contratti_righe_a10_guard_esclusione_senza_dati_ins', 'trgfn_righe_guard_esclusione_senza_dati')))
+    AND to_regproc('script.trgfn_righe_guard_aggiunta_fuori_listino') IS NULL
+    AND to_regproc('script.trgfn_righe_guard_esclusione_figlio_bundle') IS NULL
     AND to_regproc('vendite.trgfn_contratti_righe_guard_esclusione_immutabile') IS NULL
     AND to_regproc('vendite.trgfn_contratti_righe_guard_aggiunta_fuori_listino') IS NULL
     AND to_regproc('vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle') IS NULL

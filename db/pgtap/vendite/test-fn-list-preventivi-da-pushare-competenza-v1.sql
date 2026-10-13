@@ -47,8 +47,11 @@ SELECT
   (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
       AND ba.soggetto_ruolo_id IS NOT NULL ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS art_serv_id,
+  -- ⛔ rev 2026-10-13: l'articolo si COSTRUISCE. Prima era il primo del catalogo
+  --   per id, e gli si cambiava la natura qui sotto: su dbdev e' ART_TEST_BASE,
+  --   gia' usato, e dal 20261013-48 un articolo usato non cambia natura (A-10 di
+  --   brief-db-articoli-ammessi-per-documento).
+  dbops.fn_pgtap_crea_articolo('PGT-LPPC-SERV', false) AS art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s

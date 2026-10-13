@@ -36,8 +36,15 @@ BEGIN
 
     IF TG_OP = 'UPDATE'
        AND NEW.articolo_id IS NOT DISTINCT FROM OLD.articolo_id THEN
-        -- Stesso articolo: la riga resta la vendita di prima.
-        NEW.natura_vendita_id := OLD.natura_vendita_id;
+        -- Stesso articolo: qui non si decide niente. Una natura
+        -- scritta a mano l'ha gia' giudicata il lock di colonna,
+        -- che parla prima (ordine dei nomi) ed e' la sede unica
+        -- della regola, porta di manutenzione compresa
+        -- (zeroerp.allow_lock_columns_override).
+        -- ⛔ rev 2026-10-13 (20261013-14): niente piu'
+        --    NEW := OLD «per difesa». Era una seconda copia del
+        --    lock, e gia' diversa: richiudeva in silenzio la
+        --    porta che il lock prevede apposta.
         RETURN NEW;
     END IF;
 
@@ -59,7 +66,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_righe_natura_vendita()
-IS 'BB trigger BEFORE INSERT OR UPDATE OF articolo_id, natura_vendita_id sulle righe di documento che portano la natura di vendita (vendite.preventivi_righe, vendite.ordini_righe, vendite.ddt_righe). La natura e'' quella con cui la riga e'' stata venduta: si scrive alla nascita (dall''articolo; in modo CHIAMANTE quella portata dal verbo che copia la riga dal documento d''origine, se la porta) e quando cambia l''articolo (dal nuovo articolo), poi resta, anche se l''articolo cambia natura in anagrafica. TG_ARGV[0]: ARTICOLO | CHIAMANTE (altrimenti E_TRIGGER_ARGOMENTI_INVALIDI). Scriverla a mano lo rifiuta il lock di colonna (dbops.automation_lock_columns, E_RIGA_NATURA_VENDITA_IMMUTABILE), che parla prima di questo trigger nell''ordine dei nomi; qui un UPDATE con lo stesso articolo la rimette a OLD solo come difesa. Estratto alla terza copia: prima la scriveva vendite.trgfn_preventivi_righe_set_natura_vendita, che da 20261013-10 e'' solo il guard della ricorrenza. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-4).';
+IS 'BB trigger BEFORE INSERT OR UPDATE OF articolo_id, natura_vendita_id sulle righe di documento che portano la natura di vendita (vendite.preventivi_righe, vendite.ordini_righe, vendite.ddt_righe). La natura e'' quella con cui la riga e'' stata venduta: si scrive alla nascita (dall''articolo; in modo CHIAMANTE quella portata dal verbo che copia la riga dal documento d''origine, se la porta) e quando cambia l''articolo (dal nuovo articolo), poi resta, anche se l''articolo cambia natura in anagrafica. TG_ARGV[0]: ARTICOLO | CHIAMANTE (altrimenti E_TRIGGER_ARGOMENTI_INVALIDI). Scriverla a mano lo rifiuta il lock di colonna (dbops.automation_lock_columns, E_RIGA_NATURA_VENDITA_IMMUTABILE), che parla prima di questo trigger nell''ordine dei nomi; a parita'' di articolo questo trigger non tocca la colonna: la regola e la sua porta di manutenzione (zeroerp.allow_lock_columns_override) stanno solo nel lock. rev 2026-10-13 (20261013-14): tolta la riassegnazione a OLD «per difesa», che richiudeva in silenzio quella porta. Estratto alla terza copia: prima la scriveva vendite.trgfn_preventivi_righe_set_natura_vendita, che da 20261013-10 e'' solo il guard della ricorrenza. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-4).';
 ```
 
 ---

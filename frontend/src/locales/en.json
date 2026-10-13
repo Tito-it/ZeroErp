@@ -2108,6 +2108,17 @@
     "indirizzo_label": "Address"
   },
   "vendite": {
+    "righe": {
+      "articolo_reason": {
+        "solo_componente": "Item usable only inside a kit: add the kit that contains it.",
+        "ricorrente_usa_offerta": "Recurring service: it is sold with a commercial offer, not with a quote.",
+        "natura_non_merce": "It is a service: orders and delivery notes carry goods only.",
+        "senza_erogazione": "Item with no allowed delivery mode: it cannot be in an offer or a contract.",
+        "aggiunta_gia_in_listino": "Already in the document's price list: to change its price use «different price», not a new line.",
+        "eccezione_senza_listino": "The document has no price list in force: a different price or an exclusion applies only to a price-list item.",
+        "eccezione_fuori_listino": "Not in the document's price list: add it as a new line."
+      }
+    },
     "date_consegna": {
       "azione": "Update delivery dates",
       "titolo": "Update delivery dates",

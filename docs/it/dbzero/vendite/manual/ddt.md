@@ -184,9 +184,19 @@ ordini/preventivi — come chiave di scope multi-emittente.
 
 * **Valorizzazione**: `trgfn_ddt_normalize` eredita l'emittente dall'ordine sorgente; per lo
   standalone lo risolve dal `billing_account` (`anagrafiche.fn_get_emittente_fiscale_pk`).
-* **Guard scrittura** (defense-in-depth): `trg_ddt_a10_guard_emittente_scope_ins_upd`
+* **Guard scrittura** (defense-in-depth): `trg_ddt_z10_guard_emittente_scope_ins_upd`
   (`script.trgfn_guard_emittente_scope('fiscale','emittente_fiscale_id')`) blocca INSERT/UPDATE
   se l'operatore non ha scope sull'emittente; skippa se `app.current_user_id` non e` settato (batch).
+* ⛔ **Chi legge l'emittente gira dopo chi lo risolve** (rev 2026-10-13, `20261013-53`). Su una
+  bolla nata da un ordine l'emittente arriva solo con `trg_ddt_normalize_ins_upd`, che non ha
+  fascia e viene dopo tutti gli `_a10_`: il default dell'emittente, con `SALTA_CON_SORGENTE`,
+  lascia a lui quelle righe. Per questo i quattro BEFORE che leggono l'emittente stanno in fascia
+  `_z10_`: `trg_ddt_z10_default_magazzino_ins`, `trg_ddt_z10_gen_numero_emesso_ins_upd`,
+  `trg_ddt_z10_guard_emittente_scope_ins_upd`, `trg_ddt_z10_guard_magazzino_ins_upd`. Prima
+  erano `_a10_`: la bolla generata da un ordine nasceva senza magazzino predefinito e non si
+  emetteva (`E_DDT_MAGAZZINO_OBBLIGATORIO`). È lo stesso ordine del reso. Un trigger nuovo che
+  legge l'emittente all'INSERT va in `_z10_`; lo presidia il test 1 di
+  `vendite/test-ddt-da-ordine-emittente-prima-dei-lettori-v1`.
 * **RLS**: policy `rls_ddt_ef_whitelist` (`FOR ALL`, `script.fn_scope_ef_whitelist`, gate
   `OPERATORE`). Stato a parita` con ordini/preventivi/fatture: **`ENABLE` senza `FORCE`** →
   l'owner-app la bypassa finche` non arriva il `FORCE` (ondata coordinata). Protezione **attiva**

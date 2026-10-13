@@ -172,11 +172,14 @@ catalogo, e l'operatore non può cambiarla sulla riga.
 > **Come funziona sotto il cofano.** Ogni articolo ha una *natura di vendita*
 > (`catalogo.articoli.natura_vendita_id` → `config.nature_vendita`) con una
 > *destinazione*: `MERCE → ordine`, `SERVIZIO_UNA_TANTUM → commessa`,
-> `SERVIZIO_RICORRENTE → contratto`. Quando aggiungi una riga, un trigger
-> (`trgfn_preventivi_righe_set_natura_vendita`) copia e **congela** la natura
-> dall'articolo sulla riga. Se la destinazione è `CONTRATTO`, il trigger blocca
-> subito l'inserimento con l'errore `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`: il
-> blocco è *data-driven* (vale per qualunque natura mappata a contratto) e scatta
+> `SERVIZIO_RICORRENTE → contratto`. Quando aggiungi una riga, il sistema copia e
+> **congela** la natura dall'articolo sulla riga
+> ([`script.trgfn_righe_natura_vendita`](/dbzero/script/manual/trgfn_righe_natura_vendita)).
+> Se la destinazione è `CONTRATTO`, l'inserimento è bloccato subito con l'errore
+> `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`; lo stesso vale per un articolo «solo
+> componente», che si vende solo dentro il suo kit. Le regole stanno in un controllo
+> unico ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)),
+> sono *data-driven* (valgono per qualunque natura mappata a contratto) e scattano
 > all'inserimento, non alla conferma. Le destinazioni operative del preventivo
 > sono quindi solo **ordine** e **commessa**.
 

@@ -49,41 +49,46 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(10);
 
 -- ============================================================
--- Riferimenti minimi (dati esistenti, no creazione da zero)
+-- Riferimenti minimi: il mondo COSTRUITO, dal DB solo il catalogo di seed
 -- ============================================================
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti). Prima il BA pushabile, il ruolo e l'articolo si
+--   pescavano col LIMIT 1: su zeroerp_ci erano NULL, la fixture restava vuota e
+--   la riga di ddt_indirizzi (ddt_id NULL) moriva sulla RLS. Ora un'azienda
+--   nuova col suo operatore (contesto aperto su di lui), il cliente legato a
+--   lei (dbops.fn_pgtap_crea_mondo_cliente) e un articolo merce non gestito.
+--   Il BA pushabile e' quello costruito, con fatturazione_ordini = 'CONFERMATO'
+--   dichiarato con un UPDATE (oggi e' anche il default della colonna).
+--   Modello: test-ddt-magazzino-testata-v1.
+CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
+CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP list ordini v3');
+UPDATE anagrafiche.billing_account SET fatturazione_ordini = 'CONFERMATO'
+ WHERE id = (SELECT billing_account_id FROM _m);
+
 CREATE TEMP TABLE tmp_refs_v3 AS
 SELECT
-  -- BA pushabile: utility/istanza valorizzate, fatturazione CONFERMATO,
-  -- emittente risolvibile (mirror fixture test-fn-available-actions-ordine-v1)
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND ba.fatturazione_ordini = 'CONFERMATO'
-      AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                          AS push_ba_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
-    ORDER BY sr.id LIMIT 1)                          AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-      AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)  AS articolo_id,
+  m.billing_account_id                               AS push_ba_id,
+  m.cliente_soggetto_ruolo_id                        AS soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-LIST-ORD-V3', false) AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT i.id FROM config.iva i
     WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)    AS iva_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
+    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)      AS stato_ord_draft_id,
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE LIMIT 1)  AS stato_ord_annullato_id,
+    WHERE s.codice_interno = 'ANNULLATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)  AS stato_ord_annullato_id,
   (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE LIMIT 1)     AS stato_ddt_emesso_id,
+    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s
-    WHERE s.codice_interno = 'SPEDITO' AND s.attivo IS TRUE LIMIT 1)    AS stato_ddt_spedito_id,
+    WHERE s.codice_interno = 'SPEDITO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)    AS stato_ddt_spedito_id,
   -- Dal 2026-07-18 (step 5b / DL-28) la causale di trasporto e' obbligatoria
   -- all'emissione del DDT: VENDITA e' l'unica causale fatturabile, quindi
   -- l'unica che tiene il DDT eleggibile al push.
-  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id;
+  (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' ORDER BY c.id LIMIT 1) AS causale_vendita_id
+FROM _m m;
 
 SELECT ok(
   (SELECT push_ba_id IS NOT NULL

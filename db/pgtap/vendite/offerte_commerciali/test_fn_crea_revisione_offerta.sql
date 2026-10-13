@@ -66,6 +66,13 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
 CREATE TEMP TABLE tmp_rev_fn_listino AS
 SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_rev_fn_cli), 'crea revisione offerta');
 
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5): le
+--   due OVERRIDE (a1, a3) modificano una riga del listino, quindi i loro articoli
+--   ci stanno. Prima si scrivevano fuori listino e non comparivano nel drawer.
+SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
+    (SELECT listino_versione_id FROM tmp_rev_fn_listino),
+    ARRAY[(SELECT a1 FROM tmp_rev_fn_art), (SELECT a3 FROM tmp_rev_fn_art)]);
+
 CREATE TEMP TABLE tmp_rev_fn_ctx AS
 SELECT
     (SELECT billing_account_id FROM tmp_rev_fn_cli) AS billing_account_id,
@@ -116,8 +123,13 @@ INSERT INTO vendite.offerte_commerciali_eccezioni (
     tipo_erogazione, fonte_quantita_attesa,
     prezzo_unitario, attivo, qta_operativa
 )
+-- ⛔ rev 2026-10-13 (Lotto 3b): l'articolo sta nel listino e ne prende la
+--   tipologia, che dipende dalla utility: erogazione e fonte le eredita il DB
+--   (NULL), la quantita' c'e' solo se la fonte ereditata e' FISSA.
 SELECT r1.id, ctx.articolo_id_1, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto",
-       'UNA_TANTUM', 'FISSA', 100.00, TRUE, 1.00
+       NULL, NULL, 100.00, TRUE,
+       (SELECT 1.00 FROM vendite.fn_articolo_erogazioni(ctx.articolo_id_1) e
+         WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA' LIMIT 1)
   FROM tmp_rev_fn_rev1 r1, tmp_rev_fn_ctx ctx
  WHERE ctx.articolo_id_1 IS NOT NULL;
 
@@ -137,8 +149,13 @@ INSERT INTO vendite.offerte_commerciali_eccezioni (
     tipo_erogazione, fonte_quantita_attesa,
     prezzo_unitario, attivo, qta_operativa
 )
+-- ⛔ rev 2026-10-13 (Lotto 3b): l'articolo sta nel listino e ne prende la
+--   tipologia, che dipende dalla utility: erogazione e fonte le eredita il DB
+--   (NULL), la quantita' c'e' solo se la fonte ereditata e' FISSA.
 SELECT r1.id, ctx.articolo_id_3, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto",
-       'UNA_TANTUM', 'FISSA', 75.00, FALSE, 1.00
+       NULL, NULL, 75.00, FALSE,
+       (SELECT 1.00 FROM vendite.fn_articolo_erogazioni(ctx.articolo_id_3) e
+         WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA' LIMIT 1)
   FROM tmp_rev_fn_rev1 r1, tmp_rev_fn_ctx ctx
  WHERE ctx.articolo_id_3 IS NOT NULL
    AND ctx.articolo_id_3 <> ctx.articolo_id_1

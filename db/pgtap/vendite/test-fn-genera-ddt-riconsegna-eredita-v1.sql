@@ -54,12 +54,14 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Contesto applicativo: il test gira come gira l'applicazione (OPERATORE +
 -- RLS attiva), non come owner.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (in CI l'utente 1 non esiste;
+--   anagrafiche e articoli sono vuoti). Prima il mondo — azienda, operatore,
+--   cliente legato a quell'azienda — poi il contesto, sul SUO operatore.
+CREATE TEMP TABLE _m AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP riconsegna eredita');
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
 
 SELECT plan(18);
-
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -89,24 +91,25 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_ref AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                                AS billing_account_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
+  -- ⛔ rev 2026-10-13: cliente dal mondo costruito, non il primo BA del database.
+  (SELECT billing_account_id FROM _m)                                      AS billing_account_id,
+  (SELECT cliente_soggetto_ruolo_id FROM _m)                               AS soggetto_ruolo_id,
   -- ⭐ Mittente e vettore DEVONO essere due soggetti DIVERSI fra loro e dal
   --   destinatario: se coincidessero, il test 1) e il 3) passerebbero anche
   --   con una funzione che copia la colonna sbagliata.
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id OFFSET 1 LIMIT 1) AS mittente_sr_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id OFFSET 2 LIMIT 1) AS vettore_sr_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                        AS articolo_id,
+  --   ⛔ rev 2026-10-13: costruiti, non «il secondo e il terzo ruolo del
+  --   database»: mittente = l'azienda del mondo, vettore = un soggetto nuovo
+  --   col ruolo VETTORE.
+  (SELECT emittente_soggetto_ruolo_id FROM _m)                             AS mittente_sr_id,
+  dbops.fn_pgtap_crea_soggetto_ruolo(
+      dbops.fn_pgtap_crea_soggetto_pg('Vettore pgTAP riconsegna'), 'VT')   AS vettore_sr_id,
+  -- ⛔ rev 2026-10-13: gli articoli si COSTRUISCONO (nascono merce, non solo
+  --   componente: ordine e bolla li ammettono — brief-db-articoli-ammessi-per-
+  --   documento, Lotto 3a). Due, non uno: il test 17 cambia la natura
+  --   dell'articolo della bolla STANDALONE, e la fixture C-1 che viene dopo
+  --   non puo' piu' metterlo in una bolla.
+  dbops.fn_pgtap_crea_articolo('PGTAP-RIC-EREDITA', false)                 AS articolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-RIC-EREDITA-STD', false)             AS articolo_std_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                 AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   script.fn_pgtap_emittente_operatore()                                    AS emittente_fiscale_id,
@@ -292,7 +295,7 @@ WITH ins AS (
   INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione,
     qta_operativa, factor_to_base, prezzo_unitario, sconto_percentuale, iva_id,
     attivo, storicizza, meta)
-  SELECT (SELECT id FROM tmp_ddt_std), 1, r.articolo_id, 'Riga eredita STD',
+  SELECT (SELECT id FROM tmp_ddt_std), 1, r.articolo_std_id, 'Riga eredita STD',
          6, 1, 42.50, 12.5, r.iva_id, true, false,
          jsonb_build_object('test_scope','pgtap_riconsegna_eredita')
     FROM tmp_ref r
@@ -337,11 +340,17 @@ SELECT vendite.fn_conferma_reso((SELECT id FROM tmp_reso_std));
 CREATE TEMP TABLE tmp_nat_orig AS
 SELECT dr.natura_vendita_id FROM vendite.ddt_righe dr
  WHERE dr.id = (SELECT id FROM tmp_ddt_std_riga);
-UPDATE catalogo.articoli a
-   SET natura_vendita_id = (SELECT nv.id FROM config.nature_vendita nv
-                             WHERE nv.attivo AND nv.destinazione_tipo <> 'ORDINE'
-                               AND nv.id <> a.natura_vendita_id
-                             ORDER BY nv.id LIMIT 1)
+-- ⛔ rev 2026-10-13 (A-10): l'articolo e' gia' usato, e un articolo usato non
+--   cambia natura (catalogo.trgfn_articoli_guard_struttura_se_usato). Il caso
+--   resta vero dalla porta amministratore: il builder passa dal verbo.
+SELECT dbops.fn_pgtap_articolo_correggi_struttura(
+    a.id,
+    jsonb_build_object('natura_vendita_id',
+        (SELECT nv.id FROM config.nature_vendita nv
+          WHERE nv.attivo AND nv.destinazione_tipo <> 'ORDINE'
+            AND nv.id <> a.natura_vendita_id
+          ORDER BY nv.id LIMIT 1)))
+  FROM catalogo.articoli a
  WHERE a.id = (SELECT articolo_id FROM tmp_ddt_std_riga);
 
 CREATE TEMP TABLE tmp_ric_std AS

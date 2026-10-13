@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO BUILDER pgTAP: dbops.fn_pgtap_listino_aggiungi_articoli(versione, articoli)
+#   Mette degli articoli in una versione di listino (righe a prezzo dato).
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-5, §9.3.3)
+#
+# -- PERCHE' -------------------------------------------------------------
+#   Dal Lotto 3b un'OVERRIDE o un'ESCLUSIONE pretende l'articolo nel listino
+#   del documento (A-5): prima si scriveva anche fuori, e la riga non si
+#   vedeva. Le fixture che le scrivevano su articoli costruiti e mai messi a
+#   listino (sei file) devono mettercelo: alla seconda copia si estrae (regola
+#   del 2).
+#
+# -- LA FORMA ------------------------------------------------------------
+#   Allinea la tipologia dell'articolo a quella del listino, se e' diversa (la
+#   riga di listino la pretende: trgfn_listini_righe_guard_tipologia), poi
+#   scrive una riga attiva per articolo con la sua UoM base e il prezzo dato.
+#   Su un articolo gia' USATO la tipologia non cambia (A-10): va chiamato
+#   prima di usarlo, ed e' quello che la fixture deve fare comunque.
+#   Le righe stanno anche su una versione ATTIVA (solo i componenti di bundle
+#   no). INVOKER: scrive come scriverebbe la fixture.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261013-58-create-fn-pgtap-listino-aggiungi-articoli-mctit.yaml
+
+  - changeSet:
+      id: 20261013-58-create-fn-pgtap-listino-aggiungi-articoli
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo builder pgTAP dbops.fn_pgtap_listino_aggiungi_articoli: mette degli articoli in una
+        versione di listino (tipologia allineata, una riga attiva a prezzo dato). Brief:
+        brief-db-articoli-ammessi-per-documento (§9.3.3).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_listino_aggiungi_articoli(
+                  p_listino_versione_id vendite.listini_versioni.id%TYPE,
+                  p_articoli            uuid[],
+                  p_prezzo              numeric DEFAULT 100)
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_tipologia vendite.listini.tipologia_id%TYPE;
+              BEGIN
+                  -- Scopo: mettere degli articoli in una versione di listino,
+                  --   per le fixture pgTAP che scrivono OVERRIDE o ESCLUSIONE (A-5).
+                  SELECT l.tipologia_id INTO v_tipologia
+                    FROM vendite.listini_versioni lv
+                    JOIN vendite.listini l ON l.id = lv.listino_id
+                   WHERE lv.id = p_listino_versione_id;
+                  IF v_tipologia IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_listino_aggiungi_articoli: versione di listino % assente o senza tipologia',
+                          p_listino_versione_id;
+                  END IF;
+
+                  UPDATE catalogo.articoli a
+                     SET listino_tipologia_id = v_tipologia
+                   WHERE a.id = ANY (p_articoli)
+                     AND a.listino_tipologia_id IS DISTINCT FROM v_tipologia;
+
+                  INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
+                  SELECT p_listino_versione_id, a.id, a.uom_id, p_prezzo
+                    FROM catalogo.articoli a
+                   WHERE a.id = ANY (p_articoli);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_listino_aggiungi_articoli(bigint, uuid[], numeric)
+              IS 'Builder pgTAP (Lotto 3b di brief-db-articoli-ammessi-per-documento, 2026-10-13): mette degli articoli in una versione di listino — tipologia dell''articolo allineata a quella del listino se diversa, poi una riga attiva per articolo con la UoM base e il prezzo dato (default 100). Per le fixture che scrivono OVERRIDE o ESCLUSIONE, che dal Lotto 3b pretendono l''articolo nel listino del documento (A-5). Va chiamato prima di usare l''articolo: su un articolo usato la tipologia non cambia (A-10). INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_listino_aggiungi_articoli(bigint, uuid[], numeric);

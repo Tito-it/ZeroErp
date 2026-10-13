@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA BOLLA: CHI LEGGE L'EMITTENTE GIRA DOPO CHI LO RISOLVE
+#   vendite.ddt, quattro trigger BEFORE rinominati in fascia _z10_:
+#     trg_ddt_a10_default_magazzino_ins          -> trg_ddt_z10_default_magazzino_ins
+#     trg_ddt_a10_gen_numero_emesso_upd          -> trg_ddt_z10_gen_numero_emesso_ins_upd
+#     trg_ddt_a10_guard_emittente_scope_ins_upd  -> trg_ddt_z10_guard_emittente_scope_ins_upd
+#     trg_ddt_a10_guard_magazzino_ins_upd        -> trg_ddt_z10_guard_magazzino_ins_upd
+#   Corpi, eventi e argomenti NON cambiano: cambia solo il posto nella fila.
+#
+# -- IL DIFETTO -------------------------------------------------------------
+#   L'emittente di una bolla si risolve in tre posti, in quest'ordine:
+#   esplicito, poi l'ordine sorgente, poi la sessione, poi il billing account.
+#   Il primo e il terzo sono di trg_ddt_a10_default_emittente_ins, che con
+#   SALTA_CON_SORGENTE lascia la riga con la sorgente al normalize; il secondo
+#   e il quarto sono di trg_ddt_normalize_ins_upd (punti 2 e 3). Il normalize
+#   non ha fascia, e in ordine alfabetico viene DOPO tutti gli _a10_.
+#   Quattro trigger _a10_ leggevano NEW.emittente_fiscale_id, e su una bolla
+#   nata da un ordine (o col solo ripiego del BA) lo trovavano NULL:
+#   * default_magazzino: nessun predefinito proposto -> la bolla restava senza
+#     magazzino e l'emissione rispondeva E_DDT_MAGAZZINO_OBBLIGATORIO
+#     (smoke smoke-test-resi-vendita.sh su dbdev, 2026-10-13);
+#   * guard_magazzino: un magazzino passato esplicitamente era confrontato con
+#     un emittente NULL -> falso E_DDT_MAGAZZINO_INCOERENTE;
+#   * guard_emittente_scope: emittente non risolvibile -> il guard saltava,
+#     il perimetro in scrittura era spento all'INSERT;
+#   * gen_numero_emesso: una bolla inserita gia' EMESSO numerava con emittente
+#     e utility NULL (anche la utility la scrive il normalize, punto 2-bis).
+#   Lo stesso valeva per la tx_id: trg_ddt_gen_tx_id_ins_upd viene dopo gli
+#   _a10_, e i loro rifiuti all'INSERT partivano senza.
+#
+# -- PERCHE' COSI' -----------------------------------------------------------
+#   E' l'ordine che il reso ha gia': trg_resi_z10_default_magazzino_ins e
+#   trg_resi_z10_guard_magazzino_ins_upd girano dopo trg_resi_normalize. Far
+#   passare l'emittente da vendite.fn_genera_ddt_da_ordine avrebbe scritto in
+#   un secondo posto la regola «l'emittente della bolla e' quello dell'ordine»
+#   e lasciato aperti gli altri tre lettori e il ripiego del BA. Anticipare il
+#   normalize no: il suo punto 2-bis, su UPDATE, parlerebbe prima del lock
+#   _a05_ («non si tocca» deve venire prima).
+#
+# -- LA FILA _z10_ SU INSERT (alfabetica) -------------------------------------
+#   default_magazzino < gen_numero_emesso < guard_cliente_sorgente
+#   < guard_emittente_ba < guard_emittente_scope < guard_magazzino.
+#   Il default del magazzino viene prima del suo guard. Il numero viene prima
+#   dei guard: se uno rifiuta, la transazione torna indietro e il contatore
+#   con lei (vendite.fn_assegna_numero_documento scrive in tabella, non su
+#   una sequenza). ⚠️ Fra perimetro e coerenza BA ora parla prima
+#   guard_emittente_ba, come sull'ordine (trg_ordini_a10_guard_emittente_ba
+#   < trg_ordini_a10_guard_emittente_scope).
+#   Su UPDATE il lock _a05_ resta primo. trg_ddt_z10_guard_magazzino_ins_upd
+#   resta UPDATE OF magazzino_id, magazzino_arrivo_id, causale_trasporto_id,
+#   emittente_fiscale_id: nessun BEFORE della tabella scrive quelle colonne
+#   su UPDATE (il normalize scrive l'emittente solo all'INSERT).
+#
+# -- CENSIMENTO DEI NOMI (2026-10-13) ----------------------------------------
+#   Nessuna funzione, vista o CSV di 80_data nomina i quattro trigger; nessun
+#   job li rigenera (non sono di ci_apply, §11.5). Li citano solo commenti: i
+#   changeSet che li hanno creati (20260709-14, 20260709-19, 20260928-69,
+#   20261009-71, immutabili), il pgTAP test-guard-emittente-ba-unico-v1 e le
+#   pagine manual ddt e trgfn_ddt_gen_numero_emesso (aggiornati nello stesso
+#   giro).
+#   pgTAP: vendite/test-ddt-da-ordine-emittente-prima-dei-lettori-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261013-53-rename-trigger-ddt-lettori-emittente-dopo-normalize-mctit.yaml
+
+  - changeSet:
+      id: 20261013-53-rename-trigger-ddt-lettori-emittente-dopo-normalize
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ddt: i quattro trigger BEFORE che leggono l'emittente (default e guard del magazzino,
+        guard di perimetro, numero a EMESSO) passano in fascia _z10_, dopo trg_ddt_normalize_ins_upd
+        che lo eredita dall'ordine sorgente o dal billing account. Una bolla generata da un ordine
+        nasceva senza magazzino predefinito.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "4"
+                sql: >
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'vendite.ddt'::regclass
+                     AND NOT tgisinternal
+                     AND tgname IN ('trg_ddt_a10_default_magazzino_ins',
+                                    'trg_ddt_a10_gen_numero_emesso_upd',
+                                    'trg_ddt_a10_guard_emittente_scope_ins_upd',
+                                    'trg_ddt_a10_guard_magazzino_ins_upd');
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'vendite.ddt'::regclass
+                     AND NOT tgisinternal
+                     AND tgname IN ('trg_ddt_z10_default_magazzino_ins',
+                                    'trg_ddt_z10_gen_numero_emesso_ins_upd',
+                                    'trg_ddt_z10_guard_emittente_scope_ins_upd',
+                                    'trg_ddt_z10_guard_magazzino_ins_upd');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TRIGGER trg_ddt_a10_default_magazzino_ins ON vendite.ddt
+                RENAME TO trg_ddt_z10_default_magazzino_ins;
+              ALTER TRIGGER trg_ddt_a10_gen_numero_emesso_upd ON vendite.ddt
+                RENAME TO trg_ddt_z10_gen_numero_emesso_ins_upd;
+              ALTER TRIGGER trg_ddt_a10_guard_emittente_scope_ins_upd ON vendite.ddt
+                RENAME TO trg_ddt_z10_guard_emittente_scope_ins_upd;
+              ALTER TRIGGER trg_ddt_a10_guard_magazzino_ins_upd ON vendite.ddt
+                RENAME TO trg_ddt_z10_guard_magazzino_ins_upd;
+
+              COMMENT ON TRIGGER trg_ddt_z10_default_magazzino_ins ON vendite.ddt
+              IS 'Il magazzino predefinito dell''emittente della bolla, se manca (vendite.trgfn_ddt_default_magazzino, D-L3-h). Fascia _z10_: gira dopo trg_ddt_normalize_ins_upd, che eredita l''emittente dall''ordine sorgente o dal billing account, e prima di trg_ddt_z10_guard_magazzino_ins_upd.';
+              COMMENT ON TRIGGER trg_ddt_z10_gen_numero_emesso_ins_upd ON vendite.ddt
+              IS 'Il numero alla transizione a EMESSO (vendite.trgfn_ddt_gen_numero_emesso). Fascia _z10_: il registro si sceglie con l''emittente e la utility della bolla, che su INSERT scrive trg_ddt_normalize_ins_upd.';
+              COMMENT ON TRIGGER trg_ddt_z10_guard_emittente_scope_ins_upd ON vendite.ddt
+              IS 'Il perimetro in scrittura dell''operatore sull''emittente della bolla (script.trgfn_guard_emittente_scope). Fascia _z10_: con un emittente ancora NULL il guard salta, e su una bolla nata da un ordine l''emittente lo scrive trg_ddt_normalize_ins_upd.';
+              COMMENT ON TRIGGER trg_ddt_z10_guard_magazzino_ins_upd ON vendite.ddt
+              IS 'Le regole del magazzino della bolla che un CHECK non vede (vendite.trgfn_ddt_guard_magazzino, D-L3-a). Fascia _z10_: il magazzino deve essere dell''emittente della bolla, che su INSERT scrive trg_ddt_normalize_ins_upd; dopo trg_ddt_z10_default_magazzino_ins.';
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_default_magazzino()
+              IS 'BEFORE INSERT su vendite.ddt: se magazzino_id manca, prende il magazzino predefinito e attivo dell''emittente della bolla (uno solo per emittente, uq_mag_magazzini_predefinito_emittente) — D-L3-h. Nessun predefinito: resta NULL, e se la bolla muove merce lo chiede la check dell''emissione. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt. rev 2026-10-13 (20261013-53): il trigger e'' trg_ddt_z10_default_magazzino_ins e gira dopo trg_ddt_normalize_ins_upd. Prima era _a10_ e girava dopo il solo default dell''emittente, che sulle bolle con la sorgente non fa niente: una bolla generata da un ordine nasceva senza magazzino.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TRIGGER trg_ddt_z10_default_magazzino_ins ON vendite.ddt
+                RENAME TO trg_ddt_a10_default_magazzino_ins;
+              ALTER TRIGGER trg_ddt_z10_gen_numero_emesso_ins_upd ON vendite.ddt
+                RENAME TO trg_ddt_a10_gen_numero_emesso_upd;
+              ALTER TRIGGER trg_ddt_z10_guard_emittente_scope_ins_upd ON vendite.ddt
+                RENAME TO trg_ddt_a10_guard_emittente_scope_ins_upd;
+              ALTER TRIGGER trg_ddt_z10_guard_magazzino_ins_upd ON vendite.ddt
+                RENAME TO trg_ddt_a10_guard_magazzino_ins_upd;

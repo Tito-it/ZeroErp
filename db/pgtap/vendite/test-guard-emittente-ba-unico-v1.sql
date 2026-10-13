@@ -15,10 +15,11 @@
 --   DB -> backend), non dalla frase.
 --
 -- ⚠️ DDT e reso NON sono provati sul comportamento, e non per svista: con
---   l'emittente di un'altra azienda sul DDT parla prima il guard di perimetro
---   (trg_ddt_a10_guard_emittente_scope, E_SCOPE_EMITTENTE), e il BA di un
---   cliente dell'altra azienda l'operatore non lo vede (lo ferma prima
---   script.fn_cliente_dal_billing_account). La funzione e' la stessa
+--   l'emittente di un'altra azienda sul DDT parlava prima il guard di
+--   perimetro (allora trg_ddt_a10_guard_emittente_scope, E_SCOPE_EMITTENTE;
+--   dal 20261013-53 e' _z10_ e viene dopo questo guard, come sull'ordine), e
+--   il BA di un cliente dell'altra azienda l'operatore non lo vede (lo ferma
+--   prima script.fn_cliente_dal_billing_account). La funzione e' la stessa
 --   dell'ordine (test 4, 5); il montaggio su DDT e reso lo prova il test 1.
 --
 -- Indice test (1..10):

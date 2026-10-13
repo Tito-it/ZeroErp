@@ -4,7 +4,7 @@
 >
 > [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe) · [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe) · [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe) — le tre tabelle su cui è montata
 > [config.nature_vendita](/dbzero/config/manual/nature_vendita) — il vocabolario delle nature
-> [vendite.trgfn_preventivi_righe_set_natura_vendita](/dbzero/vendite/manual/trgfn_preventivi_righe_set_natura_vendita) — il guard della ricorrenza, che legge la natura scritta qui
+> [script.trgfn_righe_guard_articolo_ammesso](/dbzero/script/manual/trgfn_righe_guard_articolo_ammesso) — il guard delle regole sulle righe, che legge la natura scritta qui
 
 ### 🎯 Scopo Principale
 
@@ -55,7 +55,7 @@ di questo trigger nell'ordine dei nomi, e l'ordine è portante:
 ```
 …_a10_lock_columns_upd          giudica il valore di chi scrive
 …_a10_natura_vendita_ins_upd    questo: scrive la natura (nascita, cambio di articolo)
-…_a10_set_natura_vendita_ins_upd (solo preventivo) il guard della ricorrenza, legge la natura
+…_a10_regole_articolo_ins_upd  il guard delle regole sulle righe, legge la natura
 ```
 
 Invertendo lock e scrittura, il lock vedrebbe la natura nuova di un cambio di articolo

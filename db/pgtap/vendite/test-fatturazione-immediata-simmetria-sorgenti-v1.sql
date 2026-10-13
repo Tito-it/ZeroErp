@@ -121,53 +121,40 @@ SELECT is(
 );
 
 -- ============================================================
--- Riferimenti minimi (dati esistenti, nessuna creazione da zero)
+-- Riferimenti minimi: il mondo COSTRUITO, dal DB solo il catalogo di seed
 -- ============================================================
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti). Prima BA, ruolo, emittente e articolo si pescavano col
+--   LIMIT 1: su zeroerp_ci erano NULL e l'ordine moriva sul NOT NULL di
+--   soggetto_ruolo_id. Ora un'azienda nuova col suo operatore (contesto aperto
+--   su di lui), il cliente legato a lei (dbops.fn_pgtap_crea_mondo_cliente) e un
+--   articolo merce non gestito. Modello: test-ddt-magazzino-testata-v1.
+CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
+CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP fi simmetria');
+
 CREATE TEMP TABLE tmp_refs_fi AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                        AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                        AS utility_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-      AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
+  m.billing_account_id,
+  m.utility_id,
+  m.cliente_soggetto_ruolo_id AS soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-FI-SIMM', false) AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT i.id FROM config.iva i
     WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)  AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
+  m.emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
+    WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ordini s
-    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)      AS stato_ord_draft_id,
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.sorgenti s
-    WHERE s.codice_interno = 'ORDINE_VENDITA' LIMIT 1) AS sorgente_ordine_id,
+    WHERE s.codice_interno = 'ORDINE_VENDITA' ORDER BY s.id LIMIT 1) AS sorgente_ordine_id,
   (SELECT s.id FROM config.sorgenti s
-    WHERE s.codice_interno = 'PREVENTIVO' LIMIT 1)     AS sorgente_preventivo_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                            AS istanza_utility_id,
+    WHERE s.codice_interno = 'PREVENTIVO' ORDER BY s.id LIMIT 1)     AS sorgente_preventivo_id,
+  m.istanza_utility_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_prev_accettato_id;
+    WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1) AS stato_prev_accettato_id
+FROM _m m;
 
 -- ============================================================
 -- FIXTURE: due ordini CONFERMATO nello stesso perimetro,
@@ -278,6 +265,92 @@ SELECT is(
 --   documento, su tutti i documenti eleggibili trovati nel DB.
 --   Nessun documento eleggibile -> skip (vedi NOTA COPERTURA in testa).
 -- ============================================================
+-- ⛔ rev 2026-10-13: i documenti eleggibili si COSTRUISCONO. Con l'azienda
+--   nuova del mondo, cercarli «fra quelli del DB» dava zero righe sotto la RLS
+--   e i test 9-10 andavano sempre in skip. Si costruiscono quindi, coi verbi
+--   del dominio, un contratto ATTIVO con una riga UNA_TANTUM (modello:
+--   test-push-contratto-dalla-madre-v1) e un DDT SPEDITO causale VENDITA nato
+--   da un ordine con trigger SPEDITO (modello: test-fn-list-ordini-da-pushare-v3,
+--   caso 9b). Lo skip resta come ripiego dichiarato: se il dominio smette di
+--   renderli eleggibili, il file lo dice.
+CREATE TEMP TABLE tmp_ctr_fi AS
+WITH ins AS (
+  INSERT INTO vendite.contratti (
+    numero, billing_account_id, istanza_utility_id, utility_id,
+    valido_dal, valido_al, stato_doc_contratto_id, data, meta)
+  SELECT 'PGT-FI-' || substr(md5(clock_timestamp()::text), 1, 8),
+         r.billing_account_id, r.istanza_utility_id, r.utility_id,
+         date_trunc('month', script.fn_data_operativa())::date,
+         (date_trunc('month', script.fn_data_operativa()) + interval '1 year - 1 day')::date,
+         (SELECT s.id FROM config.stati_doc_contratti s
+           WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE ORDER BY s.id LIMIT 1),
+         script.fn_data_operativa(),
+         jsonb_build_object('test_scope', 'pgtap_fi_simmetria_ctr')
+    FROM tmp_refs_fi r
+  RETURNING id)
+SELECT * FROM ins;
+
+INSERT INTO vendite.contratti_righe (
+  contratto_id, articolo_id, prezzo_unitario, tipo_erogazione,
+  qta_operativa, quantita, fonte_quantita_attesa, tipo_eccezione, attivo, meta)
+SELECT c.id, r.articolo_id, 50, 'UNA_TANTUM',
+       1, 1, 'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, true,
+       jsonb_build_object('test_scope', 'pgtap_fi_simmetria_ctr')
+  FROM tmp_ctr_fi c, tmp_refs_fi r;
+
+UPDATE vendite.contratti
+   SET stato_doc_contratto_id = (SELECT s.id FROM config.stati_doc_contratti s
+                                  WHERE s.codice_interno = 'ATTIVO' AND s.attivo IS TRUE
+                                  ORDER BY s.id LIMIT 1)
+ WHERE id = (SELECT id FROM tmp_ctr_fi);
+
+CREATE TEMP TABLE tmp_ord_sped_fi AS
+WITH ins AS (
+  INSERT INTO vendite.ordini (
+    soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
+    valuta_id, data, emittente_fiscale_id, storicizza, meta)
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
+         r.valuta_id, DATE '2026-07-01', r.emittente_fiscale_id, false,
+         jsonb_build_object('test_scope', 'pgtap_fi_simmetria_ddt')
+  FROM tmp_refs_fi r
+  RETURNING id)
+SELECT * FROM ins;
+
+-- normalize eredita il trigger dal BA all'INSERT: SPEDITO si scrive dopo.
+UPDATE vendite.ordini SET fatturazione_trigger = 'SPEDITO'
+ WHERE id = (SELECT id FROM tmp_ord_sped_fi);
+
+INSERT INTO vendite.ordini_righe (
+  ordine_id, riga_nr, articolo_id, descrizione,
+  qta_operativa, quantita, prezzo_unitario, sconto_percentuale, iva_id,
+  attivo, storicizza, meta)
+SELECT o.id, 1, r.articolo_id, 'Riga simmetria DDT',
+       1.000000, 1.000000, 10.000000, 0.000000, r.iva_id,
+       true, false, jsonb_build_object('test_scope', 'pgtap_fi_simmetria_ddt')
+FROM tmp_ord_sped_fi o, tmp_refs_fi r;
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_sped_fi), 'CONFERMATO');
+END $x$;
+
+CREATE TEMP TABLE tmp_ddt_fi AS
+SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_sped_fi)) AS ddt_id;
+
+INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+SELECT (SELECT ddt_id FROM tmp_ddt_fi),
+       (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON'),
+       '{"display":"CON test"}'::jsonb
+ON CONFLICT DO NOTHING;
+UPDATE vendite.ddt SET causale_trasporto_id =
+       (SELECT c.id FROM config.causali_trasporto c WHERE c.codice = 'VENDITA' ORDER BY c.id LIMIT 1)
+ WHERE id = (SELECT ddt_id FROM tmp_ddt_fi);
+UPDATE vendite.ddt SET stato_doc_ddt_id =
+       (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'EMESSO' AND s.attivo ORDER BY s.id LIMIT 1)
+ WHERE id = (SELECT ddt_id FROM tmp_ddt_fi);
+UPDATE vendite.ddt SET stato_doc_ddt_id =
+       (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'SPEDITO' AND s.attivo ORDER BY s.id LIMIT 1)
+ WHERE id = (SELECT ddt_id FROM tmp_ddt_fi);
+
 CREATE TEMP TABLE tmp_chk_contratti AS
 SELECT count(*)::int AS totali,
        count(*) FILTER (
