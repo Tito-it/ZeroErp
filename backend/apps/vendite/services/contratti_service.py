@@ -1877,8 +1877,9 @@ class ContrattiService:
             data["fatturazione_immediata"] = valore
 
     # Scopo: Compone il dict di update testata. Rivalida coerenza coppia
-    #        variazione globale con la foto attuale (listino_id puo' cambiare
-    #        liberamente in DRAFT; il trigger attivazione fissa
+    #        variazione globale con la foto attuale (listino_id in DRAFT si
+    #        cambia finche' non ci sono righe attive o eccezioni: lo ferma
+    #        `script.trgfn_doc_guard_listino_con_righe`; il trigger attivazione fissa
     #        `listino_versione_id` su transizione DRAFT -> ATTIVO).
     #        `existing` e' la riga corrente dal DB: serve per applicare il
     #        validator alla coppia effettiva quando il patch tocca solo una
@@ -1915,7 +1916,8 @@ class ContrattiService:
             or "valore_variazione_globale" in data
         ):
             self._validate_variazione_globale_coppia_coerente(data, existing=existing)
-        # Categoria snapshot: ammessa in PATCH solo in DRAFT (guard gia' sopra).
+        # Categoria snapshot: fuori bozza la ferma il lock di testata del DB
+        # (`E_DOC_CONDIZIONI_FUORI_BOZZA`).
         self._apply_optional_positive_int(
             payload, data, "categoria_cliente_id_snapshot", message=_MESSAGE,
         )

@@ -29,11 +29,14 @@ from apps.vendite.api.views_ddt import (
     ApiDdtIndirizzi,
     ApiDdtIndirizzoDetail,
     ApiDdtList,
+    ApiDdtPrelievi,
     ApiDdtPush,
     ApiDdtRiepilogoIva,
     ApiDdtRigaComponenteDetail,
     ApiDdtRigaComponentiList,
     ApiDdtRigaDetail,
+    ApiDdtRigaPrelievi,
+    ApiDdtRigaPrelievoDetail,
     ApiDdtRigaPreviewComponenti,
     ApiDdtRigaQtaEvasa,
     ApiDdtRighe,
@@ -133,6 +136,16 @@ urlpatterns = [
     path("<int:ddt_id>/righe/<int:riga_id>/componenti/<int:componente_id>/",
          ApiDdtRigaComponenteDetail.as_view(),
          name="vendite-ddt-riga-componente-detail"),
+
+    # Prelievi (Lotto 3 R-2b): la situazione della bolla, e il CRUD sotto la riga.
+    path("<int:ddt_id>/prelievi/", ApiDdtPrelievi.as_view(),
+         name="vendite-ddt-prelievi"),
+    path("<int:ddt_id>/righe/<int:riga_id>/prelievi/",
+         ApiDdtRigaPrelievi.as_view(),
+         name="vendite-ddt-riga-prelievi"),
+    path("<int:ddt_id>/righe/<int:riga_id>/prelievi/<int:prelievo_id>/",
+         ApiDdtRigaPrelievoDetail.as_view(),
+         name="vendite-ddt-riga-prelievo-detail"),
 
     # Note partizionate (target_tipo='DDT'). Building block
     # PartitionedNoteRepository: 3 righe di cablaggio + view generata.

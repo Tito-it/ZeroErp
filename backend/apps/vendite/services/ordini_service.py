@@ -127,9 +127,10 @@ _STATI_PUSHABILI: frozenset[str] = frozenset(
 # mirata): instradamento di CORSIA deciso PRIMA del push in commessa — dopo il
 # push il flag e' inerte (fa parte della chiave di dedup della commessa) e il
 # guard DB `trgfn_guard_fatturazione_immediata_immutabile` respinge l'UPDATE.
-# Qui non serve una difesa applicativa aggiuntiva: la testata dell'ordine e'
-# editabile solo in DRAFT (`can_edit_testata`), e il push avviene da CONFERMATO
-# in poi — le due finestre non si sovrappongono.
+# Qui non serve una difesa applicativa: dopo il push lo respinge quel guard,
+# che guarda la commessa viva e non lo stato (il lock di testata fuori bozza
+# non nomina il flag: resta modificabile da confermato finche' non c'e' una
+# commessa, D-14 di brief-db-annullo-a-valle-riapre-a-monte).
 # ⛔ `soggetto_ruolo_id` e `utility_id` NON ci sono (2026-10-10): sono copie
 # del BA, le scrive `trgfn_ordini_normalize` col BB
 # `script.fn_cliente_dal_billing_account` (brief-db-esecutivi-ba-coppia D-1,

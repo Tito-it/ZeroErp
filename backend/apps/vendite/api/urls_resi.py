@@ -23,6 +23,9 @@ from apps.vendite.api.views_resi import (
     ApiResoDetail,
     ApiResoGeneraDdtRiconsegna,
     ApiResoRiapriRiconsegna,
+    ApiResoRientri,
+    ApiResoRigaRientri,
+    ApiResoRigaRientroDetail,
     ApiResoRigaAnnullaAccredito,
     ApiResoRigaDetail,
     ApiResoRighe,
@@ -94,4 +97,12 @@ urlpatterns = [
     path("<int:reso_id>/righe/<int:riga_id>/annulla-accredito/",
          ApiResoRigaAnnullaAccredito.as_view(),
          name="vendite-resi-riga-annulla-accredito"),
+    # Rientri (3-bis R-1b): la situazione del reso, e il CRUD sotto la riga.
+    path("<int:reso_id>/rientri/", ApiResoRientri.as_view(),
+         name="vendite-resi-rientri"),
+    path("<int:reso_id>/righe/<int:riga_id>/rientri/", ApiResoRigaRientri.as_view(),
+         name="vendite-resi-riga-rientri"),
+    path("<int:reso_id>/righe/<int:riga_id>/rientri/<int:rientro_id>/",
+         ApiResoRigaRientroDetail.as_view(),
+         name="vendite-resi-riga-rientro-detail"),
 ]

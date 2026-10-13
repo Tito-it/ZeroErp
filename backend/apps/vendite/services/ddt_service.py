@@ -87,7 +87,14 @@ E_VENDITE_FK = "E_VENDITE_FK"
 # nome vincolo). Minime: i casi non mappati cadono su E_VENDITE_VALIDATION.
 # `vendite.ddt`/`vendite.ddt_righe` non hanno UNIQUE di dominio (numerazione
 # gestita dal trigger a EMESSO, fuori da sistema_codici) -> solo FK.
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {}
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+    # Lo stesso lotto / seriale / ubicazione due volte sotto la stessa voce: si
+    # aumenta la quantita' del prelievo che c'e' (Lotto 3 D-L3-b).
+    "uq_ddt_righe_prelievi_posizione": (
+        E_VENDITE_DUPLICATO,
+        "Questa voce ha gia' un prelievo da questa posizione: aumentane la quantita'.",
+    ),
+}
 _FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_ddt_vendita_r_articolo": (E_VENDITE_FK, "Articolo non valido."),
     "fk_ddt_v_billing_account": (E_VENDITE_FK, "Cliente (billing account) non valido."),
@@ -104,6 +111,17 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
         E_VENDITE_VALIDATION,
         "La utility della bolla e' quella del suo billing account: senza billing account non c'e'.",
         "billing_account_id",
+    ),
+    # I prelievi (Lotto 3 D-L3-b): la quantita' e' positiva (il verso lo mette
+    # il movimento), e un seriale e' un pezzo.
+    "chk_ddt_righe_prelievi_qta_positiva": (
+        E_VENDITE_VALIDATION, "La quantita' prelevata deve essere maggiore di zero.", "qta",
+    ),
+    "chk_ddt_righe_prelievi_qta_finito": (
+        E_VENDITE_VALIDATION, "La quantita' prelevata non e' un numero valido.", "qta",
+    ),
+    "chk_ddt_righe_prelievi_asset_qta_unitaria": (
+        E_VENDITE_VALIDATION, "Un seriale e' un pezzo solo: la quantita' deve essere 1.", "qta",
     ),
 }
 
@@ -129,11 +147,17 @@ CREATE_KEYS_DDT: frozenset[str] = frozenset({
     "causale_trasporto_id", "aspetto_bene_id", "modalita_addebito_trasporto_id",
     "num_colli", "peso_lordo", "peso_netto", "volume", "targa", "autista",
     "tracking_code", "data", "meta",
+    # Magazzino di partenza e, per la bolla di trasferimento, di arrivo (Lotto 3
+    # D-L3-a). Senza partenza la propone il DB (il predefinito dell'emittente,
+    # `trgfn_ddt_default_magazzino`); le regole — stesso emittente, arrivo solo
+    # per il trasferimento e diverso dalla partenza, fermi fuori bozza — sono
+    # dei guard DB, qui non si ricopiano.
+    "magazzino_id", "magazzino_arrivo_id",
     # Corsia di instradamento della fatturazione (simmetria del flag, Fase B
     # del brief emissione mirata): si decide PRIMA del push in commessa, dove
     # il flag entra nella chiave di dedup; dopo e' inerte e il guard DB
-    # `trgfn_guard_fatturazione_immediata_immutabile` respinge l'UPDATE. La
-    # testata DDT e' editabile solo in DRAFT: le due finestre non si toccano.
+    # `trgfn_guard_fatturazione_immediata_immutabile` respinge l'UPDATE. Il
+    # lock di testata fuori bozza non lo nomina: decide quel guard, non lo stato.
     "fatturazione_immediata",
 })
 # Cliente e destinatario si cambiano in BOZZA (D-2: la bolla puo' nascere senza
@@ -148,7 +172,7 @@ UPDATE_KEYS_DDT: frozenset[str] = frozenset({
     "vettore_soggetto_ruolo_id", "causale_trasporto_id", "aspetto_bene_id",
     "modalita_addebito_trasporto_id", "num_colli", "peso_lordo", "peso_netto",
     "volume", "targa", "autista", "tracking_code", "data", "meta",
-    "fatturazione_immediata",
+    "fatturazione_immediata", "magazzino_id", "magazzino_arrivo_id",
 })
     # ⛔ `iva_id` NON C'E' PIU' (`I6`, 2026-08-31): l'aliquota della riga la
     # decide il risolutore, e la casella a video e' spenta. Rimetterla qui
@@ -368,6 +392,8 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
             data=data.get("data"),
             meta=meta if isinstance(meta, dict) else None,
             fatturazione_immediata=data.get("fatturazione_immediata"),
+            magazzino_id=data.get("magazzino_id"),
+            magazzino_arrivo_id=data.get("magazzino_arrivo_id"),
         )
         # Slot di default dall'anagrafica del cliente: lo decide il DB
         # (`vendite.fn_doc_indirizzo_default`, slot e ripiego sono dati).
@@ -435,11 +461,14 @@ def elimina_ddt(ddt_id: int) -> dict[str, Any]:
 # Scopo: Esegue una transizione di stato data-driven del DDT (es. EMESSO,
 #        SPEDITO, CONSEGNATO, RESO, ANNULLATO). Generico: lo stato destinazione
 #        arriva dal codice interno (`available_actions[].target_state` della fn
-#        capabilities). L'ammissibilita' e' validata dal trigger DB
-#        `trgfn_ddt_guard_transizione` (matrice config.transizioni_stati_ddt):
-#        il service non duplica il grafo. Alla transizione a EMESSO il DB
-#        assegna il `numero` (trgfn_ddt_gen_numero_emesso) e scatta il guard
-#        approvazione componenti BoM.
+#        capabilities). Ogni passaggio va al DB per un verbo
+#        (`vendite.fn_cambia_stato_ddt`, Lotto 3 R-1): l'ammissibilita' la
+#        valida `trgfn_ddt_guard_transizione` (matrice
+#        config.transizioni_stati_ddt), il service non duplica il grafo. Alla
+#        transizione a EMESSO il DB assegna il `numero`, scatta il guard
+#        approvazione componenti BoM e, se la bolla muove merce, scarica il
+#        magazzino. Lo stato richiesto si valida qui solo per dare un 400 a un
+#        codice inesistente (il verbo lo tratterebbe da chiamante rotto).
 #        ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_ddt`
 #        (brief-db-annullo-documento-con-legami): una bolla con legami si
 #        annulla solo se chi conferma DICHIARA quanti legami ha visto
@@ -485,13 +514,16 @@ def cambia_stato(
         with _db_errors("cambia_stato"):
             repo.annulla(ddt_id, confermati)
         return {"ddt_id": ddt_id, "stato_precedente": stato_prec, "stato": target}
-    # La transizione (stato_prec -> target) e' validata dal trigger guard DB;
-    # eventuale errore tradotto da _db_errors (E_STATO_DDT_TRANSIZIONE_NON_VALIDA
-    # / E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO alla transizione a
-    # EMESSO, dal 2026-09-24 via script.fn_check_prezzi_autorizzati).
+    # Ogni altro passaggio dal verbo (Lotto 3 R-1): permesso, matrice, guard
+    # di sempre e, se la bolla muove merce, i movimenti di magazzino. I rifiuti
+    # li traduce _db_errors (E_STATO_DDT_TRANSIZIONE_NON_VALIDA, i motivi della
+    # merce all'emissione, E_PERMESSO_NEGATO, i prezzi da autorizzare).
     with _db_errors("cambia_stato"):
-        repo.update_stato(ddt_id, int(stato_id))
-    return {"ddt_id": ddt_id, "stato_precedente": stato_prec, "stato": target}
+        movimenti = repo.cambia_stato(ddt_id, target)
+    return {
+        "ddt_id": ddt_id, "stato_precedente": stato_prec, "stato": target,
+        "movimenti_scritti": len(movimenti),
+    }
 
 
 # Scopo: Emette il DDT (DRAFT -> EMESSO). Alla transizione il DB assegna il
@@ -733,6 +765,119 @@ def correggi_qta_evasa(
     with _db_errors("correggi_qta_evasa"):
         qta_evasa = repo.correggi_qta_evasa(riga_id, qta_operativa)
     return {"ddt_id": ddt_id, "riga_id": riga_id, "qta_evasa": qta_evasa}
+
+
+# ══════════════════════════════════════════════════════════
+#  PRELIEVI — da dove esce la merce (Lotto 3 R-2b, piano-be-fe-magazzino-
+#  lotto-3 B1). ⛔ Nessuna regola ricopiata: bozza (e l'ubicazione di arrivo
+#  fino al CONSEGNATO), regola del kit, `usa_ubicazioni`, lotto e seriale
+#  dell'articolo, somma rispetto alla riga li giudicano i trigger DB e, alla
+#  emissione, `script.fn_check_ddt_merce`. Il backend porta e traduce.
+# ══════════════════════════════════════════════════════════
+
+# La voce si sceglie alla creazione (riga, o componente del kit) e non cambia.
+CREATE_KEYS_PRELIEVO: frozenset[str] = frozenset({
+    "ddt_riga_componente_id", "qta", "lotto_id", "asset_id",
+    "ubicazione_id", "ubicazione_arrivo_id",
+})
+UPDATE_KEYS_PRELIEVO: frozenset[str] = frozenset({
+    "qta", "lotto_id", "asset_id", "ubicazione_id", "ubicazione_arrivo_id",
+})
+_ID_PRELIEVO: tuple[str, ...] = (
+    "ddt_riga_componente_id", "lotto_id", "asset_id", "ubicazione_id", "ubicazione_arrivo_id",
+)
+
+
+# Scopo: I prelievi della bolla per la griglia: la testata (muove merce?,
+#        i magazzini e se usano ubicazioni) e le VOCI da movimentare (riga o
+#        componente, quantita' e gia' prelevata in UoM base, automatico), ognuna
+#        coi suoi prelievi. Una voce automatica non chiede niente: il prelievo
+#        lo crea il DB all'emissione. Prima la testata: fuori perimetro e' 404.
+def get_prelievi(ddt_id: int) -> dict[str, Any]:
+    repo = DdtRepository()
+    testata = _get_testata_or_raise(
+        repo, ddt_id, op="get_prelievi", getter=repo.get_testata_prelievi,
+    )
+    per_voce: dict[tuple[int, int | None], list[dict[str, Any]]] = {}
+    for prelievo in repo.list_prelievi(ddt_id):
+        chiave = (prelievo["ddt_riga_id"], prelievo["ddt_riga_componente_id"])
+        per_voce.setdefault(chiave, []).append(prelievo)
+    voci = [
+        {**voce, "prelievi": per_voce.get((voce["ddt_riga_id"], voce["ddt_riga_componente_id"]), [])}
+        for voce in repo.list_merce_da_movimentare(ddt_id)
+    ]
+    return {**testata, "voci": voci}
+
+
+# Scopo: Normalizza il payload di un prelievo: chiavi del contratto, vuoti a
+#        None, id interi positivi, `qta` decimale (obbligatoria in creazione).
+def _payload_prelievo(
+    payload: dict[str, Any], chiavi: frozenset[str], *, op: str, qta_obbligatoria: bool,
+) -> dict[str, Any]:
+    data = {k: empty_to_none(v) for k, v in payload.items() if k in chiavi}
+    for chiave in _ID_PRELIEVO:
+        if chiave in data:
+            data[chiave] = _V.optional_positive_int(data, chiave, function_name=f"{_FN}.{op}")
+    if qta_obbligatoria or "qta" in data:
+        data["qta"] = _V.require_decimal(data, "qta", function_name=f"{_FN}.{op}")
+    return data
+
+
+# Scopo: Il prelievo, se e' di questa riga; altrimenti E_DDT_NOT_FOUND.
+def _get_prelievo_or_raise(
+    repo: DdtRepository, riga_id: int, prelievo_id: int, *, op: str,
+) -> dict[str, Any]:
+    return riga_del_padre_o_not_found(
+        repo.get_prelievo, prelievo_id, padre_id=riga_id, chiave_padre="ddt_riga_id",
+        code="E_DDT_NOT_FOUND", message="Prelievo non trovato per questa riga.",
+        function_name=f"{_FN}.{op}",
+    )
+
+
+# Scopo: Nuovo prelievo sotto una riga (o un suo componente del kit).
+def crea_prelievo(ddt_id: int, riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    repo = DdtRepository()
+    _get_testata_or_raise(repo, ddt_id, op="crea_prelievo", getter=repo.get_stato_codice)
+    _get_riga_or_raise(repo, ddt_id, riga_id, op="crea_prelievo")
+    data = _payload_prelievo(
+        payload, CREATE_KEYS_PRELIEVO, op="crea_prelievo", qta_obbligatoria=True,
+    )
+    with _db_errors("crea_prelievo"):
+        creato = repo.create_prelievo({**data, "ddt_riga_id": riga_id})
+    return {"ddt_id": ddt_id, "riga_id": riga_id, "prelievo_id": int(creato["id"])}
+
+
+# Scopo: Cambia quantita', lotto, seriale o ubicazioni di un prelievo.
+def aggiorna_prelievo(
+    ddt_id: int, riga_id: int, prelievo_id: int, payload: dict[str, Any],
+) -> dict[str, Any]:
+    repo = DdtRepository()
+    _get_testata_or_raise(repo, ddt_id, op="aggiorna_prelievo", getter=repo.get_stato_codice)
+    _get_riga_or_raise(repo, ddt_id, riga_id, op="aggiorna_prelievo")
+    _get_prelievo_or_raise(repo, riga_id, prelievo_id, op="aggiorna_prelievo")
+    data = _payload_prelievo(
+        payload, UPDATE_KEYS_PRELIEVO, op="aggiorna_prelievo", qta_obbligatoria=False,
+    )
+    ErrorManager.require(
+        len(data) > 0,
+        code="E_DDT_VALIDAZIONE",
+        message="Nessun campo aggiornabile nel payload.",
+        function_name=f"{_FN}.aggiorna_prelievo",
+    )
+    with _db_errors("aggiorna_prelievo"):
+        repo.update_prelievo(prelievo_id, **data)
+    return {"ddt_id": ddt_id, "riga_id": riga_id, "prelievo_id": prelievo_id, "updated": True}
+
+
+# Scopo: Toglie un prelievo.
+def elimina_prelievo(ddt_id: int, riga_id: int, prelievo_id: int) -> dict[str, Any]:
+    repo = DdtRepository()
+    _get_testata_or_raise(repo, ddt_id, op="elimina_prelievo", getter=repo.get_stato_codice)
+    _get_riga_or_raise(repo, ddt_id, riga_id, op="elimina_prelievo")
+    _get_prelievo_or_raise(repo, riga_id, prelievo_id, op="elimina_prelievo")
+    with _db_errors("elimina_prelievo"):
+        deleted = repo.delete_prelievo(prelievo_id)
+    return {"ddt_id": ddt_id, "riga_id": riga_id, "prelievo_id": prelievo_id, "deleted": deleted}
 
 
 # Scopo: I legami della bolla per la finestra di conferma dell'annullo (BB

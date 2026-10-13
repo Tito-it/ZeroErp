@@ -19,9 +19,19 @@
 // (trasferimento, conto lavoro, riparazione) il destinatario lo sceglie
 // l'operatore. Se la causale vuole un cliente lo dice l'emissione, con la
 // capability (reason CLIENTE_MANCANTE): nessuna regola ricopiata qui.
+//
+// Magazzino (Lotto 3 D-L3-a, piano-be-fe-magazzino-lotto-3 A2): la partenza
+// sulla testata, proposta dal DB alla creazione (il predefinito dell'emittente);
+// l'ARRIVO compare solo con una causale di trasferimento (la `causale_magazzino`
+// della causale di trasporto, letta dal lookup) o se la bolla ne ha gia' uno.
+// Obbligatori all'emissione di una bolla che muove merce: lo dice la capability
+// (motivi `magazzino_mancante` / `magazzino_arrivo_mancante`), non questo form.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DATE_FORMAT } from '../../../core/constants'
+import { useLookupCodici } from '../../../core/composables/useLookupCodici'
+import MagazzinoDocumentoSelect from '../../../magazzino/components/MagazzinoDocumentoSelect.vue'
+import { CAUSALE_MAGAZZINO_TRASFERIMENTO } from '../../../magazzino/vocabolari'
 import UtilityPerRuoloSelect from '../../../core/components/UtilityPerRuoloSelect.vue'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
@@ -86,6 +96,22 @@ function onBaSelected(item) {
 
 function onBaClear() {
   onBaSelected(null)
+}
+
+// La causale scelta, dal lookup che il form gia' legge (cache condivisa con la
+// tendina): `causale_magazzino` dice se la bolla e' un trasferimento.
+const causali = useLookupCodici('config.causali_trasporto', { immediate: true })
+const isTrasferimento = computed(() => {
+  const causale = causali.items.value.find(c => c.id === form.value.causale_trasporto_id)
+  return causale?.causale_magazzino === CAUSALE_MAGAZZINO_TRASFERIMENTO
+})
+const mostraArrivo = computed(() => isTrasferimento.value || form.value.magazzino_arrivo_id != null)
+
+// Scegliendo una causale che non e' un trasferimento, l'arrivo non ha piu'
+// senso e si toglie: il DB lo rifiuterebbe (E_DDT_MAGAZZINO_INCOERENTE). Solo
+// su scelta dell'operatore (`@change`), mai al caricamento del dettaglio.
+function onCausaleChange() {
+  if (!isTrasferimento.value) form.value.magazzino_arrivo_id = null
 }
 
 // Mittente / vettore: soggetti_ruolo (nullable). SoggettoRuoloLookup emette
@@ -215,7 +241,10 @@ function onDestinatarioClear() {
     <Divider />
     <h4 style="margin: 0; font-size: 1rem;">{{ t('vendite.ddt.section_trasporto') }}</h4>
 
-    <div class="form-grid-2col">
+    <!-- Causale e magazzino sulla stessa riga (richiesta di Tid, 2026-10-13):
+         la causale dice se la bolla muove merce, il magazzino da dove parte;
+         con un trasferimento la riga prende anche l'arrivo. -->
+    <div :class="mostraArrivo ? 'form-grid-3col' : 'form-grid-2col'">
       <div class="form-field">
         <!-- Obbligatoria all'EMISSIONE, non al create (gate DB
              trgfn_ddt_guard_causale_emissione, DL-28): in bozza il NULL e'
@@ -232,13 +261,41 @@ function onDestinatarioClear() {
         </label>
         <LookupSelect v-model="form.causale_trasporto_id" rel="config.causali_trasporto"
           :placeholder="t('vendite.ddt.field_causale_trasporto')"
-          :disabled="isLocked('causale_trasporto_id')" show-clear />
+          :disabled="isLocked('causale_trasporto_id')" show-clear
+          @change="onCausaleChange" />
       </div>
       <div class="form-field">
-        <label>{{ t('vendite.ddt.field_aspetto_bene') }}</label>
-        <LookupSelect v-model="form.aspetto_bene_id" rel="config.aspetti_beni"
-          :placeholder="t('vendite.ddt.field_aspetto_bene')"
-          :disabled="isLocked('aspetto_bene_id')" show-clear />
+        <label>
+          {{ t('vendite.ddt.field_magazzino') }}
+          <span
+            v-if="!isLocked('magazzino_id')"
+            v-tooltip.bottom="t('vendite.ddt.field_magazzino_richiesto_emissione')"
+          >*</span>
+        </label>
+        <MagazzinoDocumentoSelect
+          v-model="form.magazzino_id"
+          :emittente-id="form.emittente_fiscale_id"
+          :record="record"
+          campo="magazzino"
+          :exclude-value="form.magazzino_arrivo_id"
+          :invalid="campiErrati.includes('magazzino_id')"
+          :disabled="isLocked('magazzino_id')"
+          :placeholder="t('vendite.ddt.field_magazzino_placeholder')" />
+      </div>
+      <div v-if="mostraArrivo" class="form-field">
+        <label>
+          {{ t('vendite.ddt.field_magazzino_arrivo') }}
+          <span v-if="!isLocked('magazzino_arrivo_id')">*</span>
+        </label>
+        <MagazzinoDocumentoSelect
+          v-model="form.magazzino_arrivo_id"
+          :emittente-id="form.emittente_fiscale_id"
+          :record="record"
+          campo="magazzino_arrivo"
+          :exclude-value="form.magazzino_id"
+          :invalid="campiErrati.includes('magazzino_arrivo_id')"
+          :disabled="isLocked('magazzino_arrivo_id')"
+          :placeholder="t('vendite.ddt.field_magazzino_arrivo')" />
       </div>
     </div>
 
@@ -261,7 +318,13 @@ function onDestinatarioClear() {
       </div>
     </div>
 
-    <div class="form-grid-2col">
+    <div class="form-grid-3col">
+      <div class="form-field">
+        <label>{{ t('vendite.ddt.field_aspetto_bene') }}</label>
+        <LookupSelect v-model="form.aspetto_bene_id" rel="config.aspetti_beni"
+          :placeholder="t('vendite.ddt.field_aspetto_bene')"
+          :disabled="isLocked('aspetto_bene_id')" show-clear />
+      </div>
       <div class="form-field">
         <label>{{ t('vendite.ddt.field_mittente') }}</label>
         <SoggettoRuoloLookup

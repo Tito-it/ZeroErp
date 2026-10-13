@@ -34,6 +34,7 @@ from apps.magazzino.api.views import (
     ApiDisponibilitaArticoli,
     ApiDisponibilitaArticoliExport,
     ApiDisponibilitaBlocchi,
+    ApiDisponibilitaBloccoLibera,
     ApiDisponibilitaExport,
     ApiLottiLookup,
     ApiMagazzinoUbicazioniLookup,
@@ -116,6 +117,11 @@ urlpatterns = [
         name="magazzino-disponibilita-articoli-export",
     ),
     path("disponibilita/blocchi/", ApiDisponibilitaBlocchi.as_view(), name="magazzino-disponibilita-blocchi"),
+    path(
+        "disponibilita/blocchi/<int:blocco_id>/libera/",
+        ApiDisponibilitaBloccoLibera.as_view(),
+        name="magazzino-disponibilita-blocco-libera",
+    ),
     path("movimenti/", ApiMovimenti.as_view(), name="magazzino-movimenti-list"),
     path("movimenti/export/", ApiMovimentiExport.as_view(), name="magazzino-movimenti-export"),
 ]

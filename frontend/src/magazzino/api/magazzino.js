@@ -223,6 +223,19 @@ export function listBlocchi(articoloId, magazzinoId) {
   })
 }
 
+// APRE un blocco manuale (Lotto 3 R-5, verbo `magazzino.fn_apri_blocco`):
+// { magazzino_id, articolo_id, qta (positiva), soggetto_ruolo_id?, nota?,
+// lotto_id?, asset_id?, ubicazione_id? }. Per chi (soggetto) o perche' (nota):
+// lo pretende il DB. Azione `blocca_merce`.
+export function apriBlocco(payload) {
+  return api.post(`${BASE}/disponibilita/blocchi/`, payload, idem())
+}
+
+// LIBERA un blocco manuale (autore, momento e nota li scrive il verbo).
+export function liberaBlocco(bloccoId, nota = null) {
+  return api.post(`${BASE}/disponibilita/blocchi/${bloccoId}/libera/`, { nota }, idem())
+}
+
 // IL REGISTRO dei movimenti — lista `magazzino.movimenti`, sola lettura per
 // costruzione. Filtri: `magazzino_id`, `articolo_id`, `causale_id`, `data_da`/
 // `data_a` (su `data_mov`), `sorgente_tipo` (`config.sorgenti.codice_interno`),

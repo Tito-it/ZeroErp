@@ -63,7 +63,9 @@ export const STATI_OFFERTA_SEGNALA_SCADENZA = Object.freeze([
 // della fornitura (utenza) non ci sono: li governa `can_edit_utility`.
 export const CAMPI_FORM_TESTATA_OFFERTA = Object.freeze([
   'emittente_fiscale_id',
-  'utility_id',
+  // Il cliente si cambia in bozza (2026-10-13); la utility lo segue e si spegne
+  // con lui (`utility_id` non e' piu' un campo a se').
+  'billing_account_id',
   'listino_id',
   'tipo_variazione_globale',
   'valore_variazione_globale',

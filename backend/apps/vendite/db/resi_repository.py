@@ -293,9 +293,15 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
             SELECT
                 v.*,
                 r.meta,
-                r.storicizza
+                r.storicizza,
+                -- Dove rientra la merce (3-bis D-3b-a), con le etichette per
+                -- la tendina (anche di un magazzino non piu' proposto).
+                r.magazzino_id,
+                m.codice AS magazzino_codice,
+                m.descrizione AS magazzino_descrizione
               FROM vendite.vw_resi_lista v
               JOIN vendite.resi r ON r.id = v.id
+              LEFT JOIN magazzino.magazzini m ON m.id = r.magazzino_id
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:
@@ -628,6 +634,7 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
         stato_doc_reso_id: int,
         data: date | None = None,
         meta: dict[str, Any] | None = None,
+        magazzino_id: int | None = None,
     ) -> dict[str, Any]:
         # BB `execute_dynamic_insert`: `data` None si omette (`skip_none`) e
         # vale il DEFAULT `fn_data_operativa()`; chiavi letterali del metodo.
@@ -638,6 +645,8 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
                 "sorgente_uid": sorgente_uid,
                 "stato_doc_reso_id": stato_doc_reso_id,
                 "data": data,
+                # None = il default del DB (il magazzino della bolla d'origine).
+                "magazzino_id": magazzino_id,
                 "meta": meta or {},
             },
             allowed=None, skip_none=True,
@@ -649,14 +658,15 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
     #    colonne che QUESTO metodo scrive, non il contratto dell'operatore (che
     #    sta nel service, `resi_service.UPDATE_KEYS_RESO / UPDATE_KEYS_RIGA`): se il service ne aggiunge una, va aggiunta
     #    qui — e dimenticarlo e' un errore che si vede, non un campo perso.
-    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({"data", "meta"})
+    TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({"data", "meta", "magazzino_id"})
     RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
         "tipo_reso_id", "qta_operativa", "motivo", "meta",
     })
 
-    # Scopo: Aggiorna campi modificabili della testata reso (data/meta: il
-    #        resto e' ereditato dal DDT sorgente e immutabile — vedi
-    #        non_editable_fields della fn capabilities). Meta ::jsonb via BB.
+    # Scopo: Aggiorna campi modificabili della testata reso (data, meta,
+    #        magazzino di rientro: il resto e' ereditato dal DDT sorgente e
+    #        immutabile — vedi non_editable_fields della fn capabilities).
+    #        Meta ::jsonb via BB.
     def update_reso(self, reso_id: int, **kwargs: Any) -> bool:
         return execute_dynamic_update(
             "vendite.resi", reso_id, kwargs, allowed=self.TESTATA_UPDATE_COLUMNS,
@@ -734,12 +744,152 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
             "vendite.resi_righe", riga_id, kwargs, allowed=self.RIGA_UPDATE_COLUMNS,
         )
 
-    # Scopo: Elimina una riga reso (HARD DELETE, solo con testata DRAFT — guard
-    #        nel service; il ponte ri-consegna esiste solo post-conferma).
+    # Scopo: Elimina una riga reso (HARD DELETE, solo con testata DRAFT: lo
+    #        decide il lock delle righe del DB; il ponte ri-consegna esiste
+    #        solo post-conferma).
     def delete_riga(self, riga_id: int) -> bool:
         with connection.cursor() as cursor:
             cursor.execute(
                 "DELETE FROM vendite.resi_righe WHERE id = %s", [riga_id],
+            )
+            return cursor.rowcount > 0
+
+    # ══════════════════════════════════════════════════════════
+    #  Rientri — dove rientra la merce (3-bis D-3b-b, R-1b)
+    #  `vendite.resi_righe_rientri`: di questa riga di reso, questa quantita',
+    #  dal PRELIEVO d'origine della bolla (lotto e seriale vengono da lui), in
+    #  questa ubicazione. Le regole (solo in bozza, prelievo della riga di bolla
+    #  giusta; alla conferma quadratura, tetto per prelievo, ubicazione) sono
+    #  del DB: trigger e `script.fn_check_reso_merce`.
+    # ══════════════════════════════════════════════════════════
+
+    # Scopo: Le VOCI del reso che fanno rientrare merce, da
+    #        `vendite.fn_reso_merce_da_rientrare`: la riga (o il componente del
+    #        kit) com'era uscita, quanto deve rientrare (UoM base, in
+    #        proporzione per i componenti), se la proporzione e' esatta, quanto
+    #        e' gia' rientrato, se e' automatica. Con le etichette dell'articolo.
+    def list_merce_da_rientrare(self, reso_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT m.resi_riga_id, m.riga_nr, m.ddt_riga_id, m.ddt_riga_componente_id,
+                       m.articolo_id::text AS articolo_id,
+                       a.codice AS articolo_codice, a.descrizione AS articolo_descrizione,
+                       u.codice AS uom_codice,
+                       m.prelievo_unico_id, m.n_prelievi, m.qta, m.esatta,
+                       m.rientrata, m.riga_con_rientri, m.automatico
+                  FROM vendite.resi r
+                  CROSS JOIN LATERAL vendite.fn_reso_merce_da_rientrare(r) m
+                  JOIN catalogo.articoli a ON a.id = m.articolo_id
+                  LEFT JOIN catalogo.unita_misura u ON u.id = a.uom_id
+                 WHERE r.id = %s
+                 ORDER BY m.riga_nr, m.resi_riga_id, m.ddt_riga_componente_id NULLS FIRST
+                """,
+                [int(reso_id)],
+            )
+            return rows_to_list(cursor)
+
+    # Scopo: Il reso visto dai rientri: se fa rientrare merce
+    #        (`vendite.fn_reso_muove_merce`) e il magazzino di rientro con
+    #        `usa_ubicazioni`. None se il reso non e' visibile.
+    def get_testata_rientri(self, reso_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT r.id AS reso_id,
+                       vendite.fn_reso_muove_merce(r) AS muove_merce,
+                       r.magazzino_id, m.usa_ubicazioni AS magazzino_usa_ubicazioni
+                  FROM vendite.resi r
+                  LEFT JOIN magazzino.magazzini m ON m.id = r.magazzino_id
+                 WHERE r.id = %s
+                """,
+                [int(reso_id)],
+            )
+            return row_to_dict(cursor)
+
+    # Scopo: I prelievi d'ORIGINE fra cui scegliere, per ogni riga del reso: i
+    #        prelievi della riga di bolla da cui la riga di reso nasce, con
+    #        lotto, seriale e ubicazione di partenza (si mostrano, non si
+    #        scelgono: li ha decisi l'uscita).
+    def list_prelievi_origine(self, reso_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT rr.id AS resi_riga_id, p.id, p.ddt_riga_componente_id, p.qta,
+                       l.codice AS lotto_codice, s.seriale AS asset_seriale,
+                       ub.codice AS ubicazione_codice
+                  FROM vendite.resi_righe rr
+                  JOIN vendite.ddt_righe_prelievi p ON p.ddt_riga_id = rr.ddt_riga_id
+                  LEFT JOIN magazzino.lotti l       ON l.id = p.lotto_id
+                  LEFT JOIN magazzino.assets s      ON s.id = p.asset_id
+                  LEFT JOIN magazzino.ubicazioni ub ON ub.id = p.ubicazione_id
+                 WHERE rr.reso_id = %s
+                   AND rr.attivo
+                 ORDER BY rr.id, p.ddt_riga_componente_id NULLS FIRST, p.id
+                """,
+                [int(reso_id)],
+            )
+            return rows_to_list(cursor)
+
+    # Scopo: I rientri del reso, col componente del prelievo d'origine (la voce
+    #        a cui appartengono) e le etichette per la griglia.
+    def list_rientri(self, reso_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT x.id, x.resi_riga_id, x.ddt_riga_prelievo_id, x.qta,
+                       p.ddt_riga_componente_id,
+                       l.codice AS lotto_codice, s.seriale AS asset_seriale,
+                       x.ubicazione_id, ub.codice AS ubicazione_codice
+                  FROM vendite.resi_righe_rientri x
+                  JOIN vendite.resi_righe rr        ON rr.id = x.resi_riga_id
+                  JOIN vendite.ddt_righe_prelievi p ON p.id = x.ddt_riga_prelievo_id
+                  LEFT JOIN magazzino.lotti l       ON l.id = p.lotto_id
+                  LEFT JOIN magazzino.assets s      ON s.id = p.asset_id
+                  LEFT JOIN magazzino.ubicazioni ub ON ub.id = x.ubicazione_id
+                 WHERE rr.reso_id = %s
+                 ORDER BY x.resi_riga_id, p.ddt_riga_componente_id NULLS FIRST, x.id
+                """,
+                [int(reso_id)],
+            )
+            return rows_to_list(cursor)
+
+    # Scopo: Un rientro con la sua riga (per il guard «e' di questa riga»).
+    def get_rientro(self, rientro_id: int) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT x.id, x.resi_riga_id FROM vendite.resi_righe_rientri x WHERE x.id = %s",
+                [int(rientro_id)],
+            )
+            return row_to_dict(cursor)
+
+    # ⛔ Whitelist RIGIDA dei BB di scrittura; il contratto dell'operatore sta
+    #    nel service (`resi_service.CREATE_KEYS_RIENTRO / UPDATE_KEYS_RIENTRO`).
+    RIENTRO_INSERT_COLUMNS: frozenset[str] = frozenset({
+        "resi_riga_id", "ddt_riga_prelievo_id", "qta", "ubicazione_id",
+    })
+    RIENTRO_UPDATE_COLUMNS: frozenset[str] = frozenset({"qta", "ubicazione_id"})
+
+    # Scopo: Scrive un rientro. I None si omettono: la colonna resta NULL.
+    def create_rientro(self, valori: dict[str, Any]) -> dict[str, Any]:
+        return execute_dynamic_insert(
+            "vendite.resi_righe_rientri", valori,
+            allowed=self.RIENTRO_INSERT_COLUMNS, skip_none=True,
+        )
+
+    # Scopo: Aggiorna un rientro (None azzera l'ubicazione).
+    def update_rientro(self, rientro_id: int, **kwargs: Any) -> bool:
+        return execute_dynamic_update(
+            "vendite.resi_righe_rientri", rientro_id, kwargs,
+            allowed=self.RIENTRO_UPDATE_COLUMNS,
+        )
+
+    # Scopo: Cancella un rientro (fuori bozza lo rifiuta il lock del DB).
+    def delete_rientro(self, rientro_id: int) -> bool:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM vendite.resi_righe_rientri WHERE id = %s",
+                [int(rientro_id)],
             )
             return cursor.rowcount > 0
 

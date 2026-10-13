@@ -105,9 +105,9 @@ const isLocked = caps.isLocked
 const righeCount = computed(() => detail.value?.righe_count ?? detail.value?.righe?.length ?? 0)
 
 // isContractLocked = stato post-DRAFT. La regola di dominio e' "modifiche
-// libere via form solo in DRAFT". In ATTIVO la modifica di `valido_al/meta`
-// (whitelist BE) avviene comunque via dialog dedicato "Cessa contratto",
-// non via form drawer. CESSATO/ANNULLATO interamente immutabili.
+// libere via form solo in DRAFT". In ATTIVO quali colonne si cambiano lo dice
+// il lock di testata del DB (`valido_al` passa dal dialog «Cessa contratto»),
+// non il form drawer. CESSATO/ANNULLATO interamente immutabili.
 // Prima usava `!canEditTestata` (true in ATTIVO/ANNULLATO perche' la fn DB
 // considera ATTIVO parzialmente editabile) -> sub-drawer righe restava
 // erroneamente editabile in stati terminali. Allineato al footer

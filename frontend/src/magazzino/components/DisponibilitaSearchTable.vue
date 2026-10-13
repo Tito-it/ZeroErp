@@ -19,8 +19,12 @@
 //    popover — il drill-down «gratis» di D-L2-j. Niente `DataTable` nel
 //    popover: l'elenco e' corto per natura e si rende come lista.
 //
-// ⚠️ Sola lettura per costruzione: niente «Nuovo», niente azioni di riga,
-//    niente drawer. La disponibilita' cambia quando cambia il REGISTRO.
+// ⚠️ Sola lettura sulla disponibilita': niente «Nuovo», niente drawer — cambia
+//    quando cambia il REGISTRO. L'unico gesto e' il BLOCCO manuale (Lotto 3
+//    R-5, scheda per magazzino): «Blocca merce» sulla riga, «Libera» nel
+//    popover dei blocchi; azione `blocca_merce` (permesso => nascondi), il
+//    cancello vero e' il backend e il verbo DB. Dopo un gesto la lista si
+//    rilegge: blocchi e disponibile cambiano.
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
@@ -41,8 +45,12 @@ import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBin
 import { formatNumber } from '../../core/utils/format'
 import { exportDisponibilita, exportDisponibilitaArticoli } from '../api/magazzino'
 import { useDisponibilitaArticoliStore, useDisponibilitaStore } from '../stores/disponibilita'
-import { TAB_DISPONIBILITA } from '../vocabolari'
+import { AZIONE_BLOCCA_MERCE, TAB_DISPONIBILITA } from '../vocabolari'
 import DisponibilitaBlocchiPopover from './DisponibilitaBlocchiPopover.vue'
+import BloccoApriDialog from './BloccoApriDialog.vue'
+import BloccoLiberaDialog from './BloccoLiberaDialog.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
+import { MANAGE_ICONS } from '../../core/constants'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const props = defineProps({
@@ -90,6 +98,19 @@ const { value: soloConGiacenza, onChange: onSoloConGiacenzaChange } = bindToggle
 const blocchiRef = ref(null)
 function apriBlocchi(event, riga) {
   blocchiRef.value?.apri(event, riga)
+}
+
+// --- I blocchi manuali (solo per magazzino) ---
+const rigaDaBloccare = ref(null)
+const bloccoDaLiberare = ref(null)
+function buildRowActions(riga) {
+  return [{
+    key: 'blocca',
+    label: t('magazzino.blocchi.blocca'),
+    icon: MANAGE_ICONS.BLOCCA_MERCE,
+    action: AZIONE_BLOCCA_MERCE,
+    command: () => { rigaDaBloccare.value = riga },
+  }]
 }
 
 // La lista parte piena: nessun floor, e' la fotografia di oggi.
@@ -189,9 +210,26 @@ onMounted(() => store.fetchList())
           />
           <span v-else>{{ data.n_blocchi ?? 0 }}</span>
         </template>
+
+        <template v-if="perMagazzino" #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+        </template>
       </ListaConfigurabile>
 
-      <DisponibilitaBlocchiPopover v-if="perMagazzino" ref="blocchiRef" />
+      <DisponibilitaBlocchiPopover v-if="perMagazzino" ref="blocchiRef"
+                                   @libera="(b) => { bloccoDaLiberare = b }" />
+      <BloccoApriDialog
+        v-if="perMagazzino"
+        :visible="rigaDaBloccare !== null"
+        :riga="rigaDaBloccare"
+        @update:visible="(v) => { if (!v) rigaDaBloccare = null }"
+        @aperto="store.fetchList()" />
+      <BloccoLiberaDialog
+        v-if="perMagazzino"
+        :visible="bloccoDaLiberare !== null"
+        :blocco="bloccoDaLiberare"
+        @update:visible="(v) => { if (!v) bloccoDaLiberare = null }"
+        @liberato="store.fetchList()" />
     </template>
 
     <ExportDialog

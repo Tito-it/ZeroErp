@@ -105,8 +105,10 @@ class StatoOfferta:
     SUPERATA = "SUPERATA"
 
 
-# Set di stati editabili (testata, eccezioni, utility). Estraibile in futuro
-# se le regole differenziassero per oggetto (oggi e' "solo BOZZA").
+# Gli stati da cui si ELIMINA l'offerta e si passa alle transizioni manuali
+# che partono dalla bozza. ⛔ Non governa piu' testata, utility ne' eccezioni:
+# quali colonne e quali righe si cambiano in quale stato lo dicono i lock del DB
+# (`trgfn_doc_testata_lock_fuori_bozza`, `trgfn_doc_righe_lock_fuori_bozza`).
 _STATI_EDITABILI: frozenset[str] = frozenset({StatoOfferta.BOZZA})
 
 
@@ -253,6 +255,19 @@ CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
     # un'offerta orfana di utility su fallimento intermedio.
     "utility",
 })
+
+
+# La coppia della fornitura sulla testata: se un aggiornamento la cambia, la
+# scheda di fornitura la rifa' il DB (vedi `aggiorna_offerta`).
+_COPPIA_FORNITURA: tuple[str, ...] = ("billing_account_id", "istanza_utility_id", "utility_id")
+
+
+# Scopo: un id confrontabile a prescindere da come arriva (int dal DB, testo
+#        dal JSON); vuoto e None valgono None.
+def _come_testo(valore: Any) -> str | None:
+    if valore is None or valore == "":
+        return None
+    return str(valore)
 
 
 # Whitelist payload update offerta (testata). Sub-set di create (immutabili:
@@ -618,6 +633,13 @@ class OfferteService:
     #        capability `can_edit_utility`. Fino al 2026-10-11 qui si leggeva la
     #        capability prima di scrivere (brief-db-testata-dopo-emissione §11,
     #        R-BE-6): ora il 409 del lock passa com'e'.
+    #        ⛔ Con un CAMBIO DI COPPIA (cliente, istanza o utility diversi da
+    #        quelli della testata) la scheda del payload NON si applica: il
+    #        trigger `trg_*_m50_fornitura_segue_cliente_upd` l'ha appena rifatta
+    #        dal contatore nuovo, e l'upsert ci riscriverebbe sopra i dati del
+    #        contatore di prima (R-BE-6 di brief-db-indirizzi-documento-seguono-
+    #        il-cliente: D-5 svanirebbe in silenzio). Il dettaglio restituito
+    #        porta la scheda rifatta dal DB.
     def aggiorna_offerta(
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
@@ -648,9 +670,17 @@ class OfferteService:
 
         with self._db_errors({"offerta_id": offerta_id}):
             with transaction.atomic():
+                cambia_coppia = False
                 if testata_payload:
+                    coppia = self._repo.get_coppia(offerta_id) or {}
+                    # Confronto sul testo: dal JSON un id puo' arrivare "12".
+                    cambia_coppia = any(
+                        chiave in testata_payload
+                        and _come_testo(testata_payload[chiave]) != _come_testo(coppia.get(chiave))
+                        for chiave in _COPPIA_FORNITURA
+                    )
                     self._repo.update_offerta(offerta_id, testata_payload)
-                if utility_payload is not None:
+                if utility_payload is not None and not cambia_coppia:
                     self._upsert_utility_inline(offerta_id, utility_payload)
         return self.get_offerta(offerta_id)
 
@@ -925,7 +955,9 @@ class OfferteService:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_ECCEZIONE)
         payload = self._con_meta_normalizzato(payload)
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
+        # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
+        self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
         # ⚠️ La fonte non si pretende qui (2026-10-04, brief-db-righe-esclusione-
         # solo-non-si-vende): l'ESCLUSIONE nasce vuota, e su OVERRIDE/AGGIUNTA la
         # riempie il trigger DB dall'erogazione, che il guard DB rende obbligatoria.
@@ -1070,7 +1102,9 @@ class OfferteService:
         # campo di update di per se').
         richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
         self._guard_payload_non_vuoto(payload, op="aggiorna_eccezione")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
+        # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
+        self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
         existing = self._repo.get_eccezione(eccezione_id)
         ErrorManager.require(
             existing is not None and existing.get("offerta_id") == offerta_id,
@@ -1300,7 +1334,9 @@ class OfferteService:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
         self._v.guard_positive_int(componente_id, field="componente_id")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
+        # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
+        self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
         self._load_componente_for_modification(
             offerta_id=offerta_id, eccezione_id=eccezione_id,
             componente_id=componente_id,
@@ -1338,7 +1374,9 @@ class OfferteService:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
         self._v.guard_positive_int(componente_id, field="componente_id")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
+        # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
+        self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
         self._load_componente_for_modification(
             offerta_id=offerta_id, eccezione_id=eccezione_id,
             componente_id=componente_id,
@@ -1389,7 +1427,9 @@ class OfferteService:
     def elimina_eccezione(self, offerta_id: int, eccezione_id: int) -> None:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
+        # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
+        self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
         existing = self._repo.get_eccezione(eccezione_id)
         ErrorManager.require(
             existing is not None and existing.get("offerta_id") == offerta_id,

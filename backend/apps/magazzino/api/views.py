@@ -77,6 +77,13 @@ from apps.core.api.openapi_params import param_ricerca_full
 #    lo stesso e la matrice e' la stessa.
 PERMESSO_REGISTRA = "registra_magazzino"
 
+# Il blocco manuale (Lotto 3 D-L3-j): un'azione sua, perche' un blocco e' una
+# PROMESSA, non un fatto sulla merce — chi registra un inventario non e' per
+# forza chi riserva merce a un cliente. Il verbo DB la chiede comunque nella
+# prima riga (`fn_guard_azione`): qui il cancello e' il primo dei due, ed e'
+# quello che risponde prima di toccare il DB.
+PERMESSO_BLOCCA = "blocca_merce"
+
 
 # La ricerca libera delle liste di magazzino (dal 2026-09-23, brief-be-ricerca-
 # full-liste-residue §5.3). ⛔ Nessun 400 sotto soglia, testate e disponibilita'
@@ -755,9 +762,11 @@ class ApiDisponibilitaArticoliExport(DomainAPIView):
 
 
 class ApiDisponibilitaBlocchi(DomainAPIView):
-    """GET /api/v1/magazzino/disponibilita/blocchi/?articolo_id&magazzino_id — il drill-down di `n_blocchi`."""
+    """GET /api/v1/magazzino/disponibilita/blocchi/?articolo_id&magazzino_id — il drill-down di `n_blocchi`.
+    POST stesso path — APRE un blocco manuale (Lotto 3 R-5, verbo `magazzino.fn_apri_blocco`)."""
 
     area_funzionale = AREA
+    post_permission = PERMESSO_BLOCCA
 
     @extend_schema(
         operation_id="magazzino_disponibilita_blocchi",
@@ -774,6 +783,55 @@ class ApiDisponibilitaBlocchi(DomainAPIView):
             articolo_id=qp_str(qp.get("articolo_id")) or "",
             magazzino_id=qp_int_optional(qp.get("magazzino_id"), "magazzino_id") or 0,
         ))
+
+    @extend_schema(
+        operation_id="magazzino_disponibilita_blocco_apri",
+        request=inline_serializer(
+            name="MagazzinoBloccoApriReq",
+            fields={
+                "magazzino_id": serializers.IntegerField(),
+                "articolo_id": serializers.UUIDField(),
+                "qta": serializers.DecimalField(max_digits=18, decimal_places=6),
+                "soggetto_ruolo_id": serializers.IntegerField(required=False, allow_null=True),
+                "nota": serializers.CharField(required=False, allow_null=True),
+                "lotto_id": serializers.IntegerField(required=False, allow_null=True),
+                "asset_id": serializers.IntegerField(required=False, allow_null=True),
+                "ubicazione_id": serializers.IntegerField(required=False, allow_null=True),
+            },
+        ),
+        responses={200: RISPOSTA_GENERICA},
+    )
+    # Scopo: Apre il blocco (una sola `SELECT` sul verbo).
+    def post(self, request: Request) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: magazzino_service.apri_blocco(dict(payload)),
+            require_idempotency_key=True,
+        )
+
+
+class ApiDisponibilitaBloccoLibera(DomainAPIView):
+    """POST /api/v1/magazzino/disponibilita/blocchi/<blocco_id>/libera/ — libera
+    un blocco (verbo `magazzino.fn_libera_blocco`: autore, momento, nota)."""
+
+    area_funzionale = AREA
+    post_permission = PERMESSO_BLOCCA
+
+    @extend_schema(
+        operation_id="magazzino_disponibilita_blocco_libera",
+        request=inline_serializer(
+            name="MagazzinoBloccoLiberaReq",
+            fields={"nota": serializers.CharField(required=False, allow_null=True)},
+        ),
+        responses={200: RISPOSTA_GENERICA},
+    )
+    # Scopo: Libera il blocco.
+    def post(self, request: Request, blocco_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: magazzino_service.libera_blocco(int(blocco_id), dict(payload)),
+            require_idempotency_key=True,
+        )
 
 
 # Scopo: i filtri del registro dei movimenti.
