@@ -108,6 +108,55 @@ SELECT (SELECT commessa_id FROM g_com), s.id, k.uid, k.ruolo
                ('DDT_VENDITA',    (SELECT ddt_id::text         FROM g_ddt),  'COLLEGATO')) AS k(codice, uid, ruolo)
   JOIN config.sorgenti s ON s.codice_interno = k.codice;
 
+-- ⚠️ rev 2026-10-13 (20261013-69…-71, D-15 di Tid): ogni legame del grafo PORTA
+--   qualcosa. Dal 20261013-71 la sintesi non attraversa un arco il cui legame e'
+--   ritirato (vendite.fn_documento_lineage_legami), e un link senza righe e' un
+--   legame che non porta niente. Nel modello non nasce cosi': il link
+--   documento -> commessa lo scrive la madre delle righe insieme alla riga
+--   (vendite.fn_upsert_commessa_attivita -> fn_link_commessa_sorgente), l'ordine
+--   da preventivo nasce con le righe del preventivo, la bolla da ordine con le
+--   evasioni. Prima la fixture scriveva solo i link di testata: qui le righe.
+--   Chiave delle righe di commessa: <testata>.uid::text (vendite.fn_documento_legami).
+DO $leg$
+DECLARE
+  v_art uuid; v_iva bigint; v_pr bigint; v_or bigint; v_dr bigint; v_ca bigint; k record;
+BEGIN
+  v_art := dbops.fn_pgtap_crea_articolo('PGT-LINSEM-' || substr(md5(random()::text), 1, 8), false);
+  SELECT i.id INTO v_iva FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1;
+
+  -- A: la riga d'ordine viene da una riga del preventivo.
+  INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id)
+  VALUES ((SELECT preventivo_id FROM g_prev), v_art, 1, 10, v_iva)
+  RETURNING id INTO v_pr;
+  INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione, qta_operativa,
+                                    prezzo_unitario, iva_id, preventivo_riga_id)
+  VALUES ((SELECT ordine_id FROM g_ord), 1, v_art, 'Riga pgTAP lineage seminata', 1, 10, v_iva, v_pr)
+  RETURNING id INTO v_or;
+
+  -- H: la riga della bolla evade la riga d'ordine.
+  INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione, qta_operativa, storicizza)
+  VALUES ((SELECT ddt_id FROM g_ddt), 1, v_art, 'Riga pgTAP lineage seminata', 1, false)
+  RETURNING id INTO v_dr;
+  INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa, storicizza)
+  VALUES (v_or, v_dr, 1, false);
+
+  -- B, E, U: una riga di commessa NON_EMESSA per ciascuna sorgente.
+  FOR k IN
+    SELECT s.id AS tipo_id, x.uid
+      FROM (VALUES ('PREVENTIVO',     (SELECT preventivo_uid::text FROM g_prev)),
+                   ('ORDINE_VENDITA', (SELECT ordine_uid::text     FROM g_ord)),
+                   ('DDT_VENDITA',    (SELECT d.uid::text FROM vendite.ddt d
+                                        WHERE d.id = (SELECT ddt_id FROM g_ddt)))) AS x(codice, uid)
+      JOIN config.sorgenti s ON s.codice_interno = x.codice
+  LOOP
+    SELECT a.attivita_id INTO v_ca
+      FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM g_com)) a;
+    UPDATE vendite.commesse_attivita
+       SET sorgente_tipo_id = k.tipo_id, sorgente_uid = k.uid
+     WHERE id = v_ca;
+  END LOOP;
+END $leg$;
+
 -- I cinque nodi, con la chiave del modello (tipo_id, uid::text).
 CREATE TEMP TABLE g_nodi AS
 SELECT s.id AS tipo_id, k.uid

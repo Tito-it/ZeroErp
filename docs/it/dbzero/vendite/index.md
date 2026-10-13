@@ -162,6 +162,7 @@
 - [fn_documento_legami](funzioni/fn_documento_legami.md) — (2026-10-11, brief-db-annullo-documento-con-legami, D-4)
 - [fn_documento_lineage](funzioni/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
 - [fn_documento_lineage_archi](funzioni/fn_documento_lineage_archi.md) — (rev 2026-10-11)
+- [fn_documento_lineage_legami](funzioni/fn_documento_lineage_legami.md) — (nata il 2026-10-13, richiesta R-17/R-18 del backend, dal collaudo)
 - [fn_documento_lineage_nodi](funzioni/fn_documento_lineage_nodi.md) — (rev 2026-10-11)
 - [fn_documento_lineage_sintesi](funzioni/fn_documento_lineage_sintesi.md) — (rev 2026-10-11)
 - [fn_documento_listino_operativo](funzioni/fn_documento_listino_operativo.md) — (funzione nata il 2026-10-04, `20261004-42`)

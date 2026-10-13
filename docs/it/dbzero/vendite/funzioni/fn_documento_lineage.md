@@ -9,7 +9,7 @@ CREATE FUNCTION fn_documento_lineage(p_tipo_id bigint, p_uid text, p_direzione t
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage(p_tipo_id bigint, p_uid text, p_direzione text DEFAULT 'avanti'::text)
- RETURNS TABLE(livello integer, ordine integer, arco text, ruolo character varying, from_tipo_id bigint, from_uid text, from_codice text, to_tipo_id bigint, to_uid text, to_codice text, to_stato_codice_interno character varying, to_fase character varying, to_is_abortito boolean, is_ramo_inverso boolean, from_natura_doc_codice_interno character varying, to_natura_doc_codice_interno character varying)
+ RETURNS TABLE(livello integer, ordine integer, arco text, ruolo character varying, from_tipo_id bigint, from_uid text, from_codice text, to_tipo_id bigint, to_uid text, to_codice text, to_stato_codice_interno character varying, to_fase character varying, to_is_abortito boolean, is_ramo_inverso boolean, from_natura_doc_codice_interno character varying, to_natura_doc_codice_interno character varying, is_legame_ritirato boolean)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -135,6 +135,18 @@ BEGIN
         SELECT n.tipo_id, n.uid, n.codice, n.stato_codice_interno, n.fase,
                n.is_abortito, n.natura_doc_codice_interno
           FROM vendite.fn_documento_lineage_nodi(v_tipi, v_uids) n
+    ), ag AS (
+        -- Gli archi come array paralleli: UNA SELECT, quindi le cinque
+        -- aggregazioni vedono le righe nello stesso ordine.
+        SELECT array_agg(t.arco) AS a, array_agg(t.from_tipo_id) AS ft,
+               array_agg(t.from_uid) AS fu, array_agg(t.to_tipo_id) AS tt,
+               array_agg(t.to_uid) AS tu
+          FROM t
+    ), legami AS MATERIALIZED (
+        -- ⭐ rev 2026-10-13 (R-17): il legame, decorato una volta come i nodi.
+        SELECT g.arco, g.from_tipo_id, g.from_uid, g.to_tipo_id, g.to_uid,
+               g.is_legame_ritirato
+          FROM ag, vendite.fn_documento_lineage_legami(ag.a, ag.ft, ag.fu, ag.tt, ag.tu) g
     )
     SELECT t.livello::integer,
            (ROW_NUMBER() OVER (ORDER BY t.livello,
@@ -145,16 +157,20 @@ BEGIN
            t.to_tipo_id, t.to_uid::text, nt.codice::text,
            nt.stato_codice_interno::varchar, nt.fase::varchar, nt.is_abortito,
            t.is_ramo_inverso,
-           nf.natura_doc_codice_interno::varchar, nt.natura_doc_codice_interno::varchar
+           nf.natura_doc_codice_interno::varchar, nt.natura_doc_codice_interno::varchar,
+           lg.is_legame_ritirato
       FROM t
       LEFT JOIN nodi nf ON nf.tipo_id = t.from_tipo_id AND nf.uid = t.from_uid
       LEFT JOIN nodi nt ON nt.tipo_id = t.to_tipo_id   AND nt.uid = t.to_uid
+      LEFT JOIN legami lg ON lg.arco = t.arco
+                         AND lg.from_tipo_id = t.from_tipo_id AND lg.from_uid = t.from_uid
+                         AND lg.to_tipo_id   = t.to_tipo_id   AND lg.to_uid   = t.to_uid
      ORDER BY ordine;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_documento_lineage(p_tipo_id bigint, p_uid text, p_direzione text)
-IS '⭐ rev 2026-10-11 (20261011-93): la catena si risale UN LIVELLO ALLA VOLTA da vendite.fn_documento_lineage_archi (seme = i nodi correnti dei percorsi aperti) e si decora una volta, alla fine, da vendite.fn_documento_lineage_nodi per i soli nodi toccati: il costo segue la catena, non il grafo intero. Semantica identica (percorsi, guardia dei cicli sul percorso, 10 livelli, ordine). La «sorgente unica» qui sotto e'' ora la grammatica degli archi in fn_documento_lineage_archi, di cui la vista e'' la proiezione. Traversal ricorsivo del grafo di genealogia documenti (pannello «Passaggi»): ritorna la catena degli archi dal nodo di partenza, con livello/ordine per il rendering e lo stato di ogni tappa. Sorgente unica: vendite.vw_documento_lineage_archi. STABLE, SECURITY INVOKER: la RLS emittente delle viste security_invoker resta applicata. Cycle guard sul percorso (set dei visitati) e livello < 10. ⭐ rev 2026-08-20 — DUE COSE, entrambe per la nota di credito. (1) espone from_natura_doc_codice_interno/to_natura_doc_codice_interno: senza, due nodi FATTURA della stessa commessa — la fattura e la nota di credito che la rettifica — erano la stessa riga scritta due volte (stesso tipo, stesso stato, `codice` NULL finche'' non numerati). (2) is_ramo_inverso non e'' piu'' ricalcolato qui come `arco = ''R''` ma arriva dalla vista, che e'' l''unica sede dell''elenco dei rami di ritorno: con l''arco N quella lettera viveva in TRE posti e il terzo dimenticato non avrebbe dato errori, solo un ramo di ritorno reso come avanzamento. ⛔ La firma e'' cambiata (RETURNS TABLE), quindi questa revisione e'' un DROP + CREATE: il DROP porta via i GRANT, ri-concessi a zeroerp_app nello stesso changeSet. ⭐ rev 2026-10-10 (20261010-44): la vista degli archi si legge UNA volta, in una CTE MATERIALIZED, e la ricorsione attraversa la copia: prima la vista — che costruisce l''intero grafo decorato — si rivalutava nel passo iniziale e a ogni livello, ~0,6-0,8 s a chiamata come app; ora ~0,18 s, righe identiche. brief-db-plancache-funzioni-con-query-incorporate §5.';
+IS '⭐ rev 2026-10-13 (20261013-70, R-17 del BE): + is_legame_ritirato, in coda. Il NODO dice se la destinazione e'' viva; il LEGAME — quello che questo documento ha portato dall''altra parte e'' ancora li''? — lo dice vendite.fn_documento_lineage_legami, letto una volta alla fine come i nodi. Colonna dell''ARCO: vale nei due versi. true = ritirato (dal preventivo annullato la commessa resta viva ma le sue righe sono annullate); NULL = arco non censito. DROP + CREATE: GRANT e COMMENT ripristinati. ⭐ rev 2026-10-11 (20261011-93): la catena si risale UN LIVELLO ALLA VOLTA da vendite.fn_documento_lineage_archi (seme = i nodi correnti dei percorsi aperti) e si decora una volta, alla fine, da vendite.fn_documento_lineage_nodi per i soli nodi toccati: il costo segue la catena, non il grafo intero. Semantica identica (percorsi, guardia dei cicli sul percorso, 10 livelli, ordine). La «sorgente unica» qui sotto e'' ora la grammatica degli archi in fn_documento_lineage_archi, di cui la vista e'' la proiezione. Traversal ricorsivo del grafo di genealogia documenti (pannello «Passaggi»): ritorna la catena degli archi dal nodo di partenza, con livello/ordine per il rendering e lo stato di ogni tappa. Sorgente unica: vendite.vw_documento_lineage_archi. STABLE, SECURITY INVOKER: la RLS emittente delle viste security_invoker resta applicata. Cycle guard sul percorso (set dei visitati) e livello < 10. ⭐ rev 2026-08-20 — DUE COSE, entrambe per la nota di credito. (1) espone from_natura_doc_codice_interno/to_natura_doc_codice_interno: senza, due nodi FATTURA della stessa commessa — la fattura e la nota di credito che la rettifica — erano la stessa riga scritta due volte (stesso tipo, stesso stato, `codice` NULL finche'' non numerati). (2) is_ramo_inverso non e'' piu'' ricalcolato qui come `arco = ''R''` ma arriva dalla vista, che e'' l''unica sede dell''elenco dei rami di ritorno: con l''arco N quella lettera viveva in TRE posti e il terzo dimenticato non avrebbe dato errori, solo un ramo di ritorno reso come avanzamento. ⛔ La firma e'' cambiata (RETURNS TABLE), quindi questa revisione e'' un DROP + CREATE: il DROP porta via i GRANT, ri-concessi a zeroerp_app nello stesso changeSet. ⭐ rev 2026-10-10 (20261010-44): la vista degli archi si legge UNA volta, in una CTE MATERIALIZED, e la ricorsione attraversa la copia: prima la vista — che costruisce l''intero grafo decorato — si rivalutava nel passo iniziale e a ogni livello, ~0,6-0,8 s a chiamata come app; ora ~0,18 s, righe identiche. brief-db-plancache-funzioni-con-query-incorporate §5.';
 ```
 
 ---
