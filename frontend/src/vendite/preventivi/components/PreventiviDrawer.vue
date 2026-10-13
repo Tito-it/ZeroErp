@@ -730,10 +730,6 @@ const emissioneLoading = ref(false)
 // pannello in coda al contenuto del drawer — le azioni di processo stanno in
 // alto, come per il «Genera reso» del DDT.
 const smistamentoDialogVisible = ref(false)
-// Ref alla barra collegamenti: lo smistamento crea archi verso ordine/commessa,
-// quindi i chip vanno ricaricati insieme al detail (vedi `onSmistato`).
-const collegamentiRef = ref(null)
-
 // ⭐ L'annullo e' un gesto CONFERMABILE (brief-db-annullo-documento-con-
 //    legami): con righe di commessa da emettere il DB lo rifiuta
 //    (`confirm_and_retry`) finche' chi conferma non dichiara quanti legami ha
@@ -855,9 +851,9 @@ async function onConfermaAnnullo(dichiarazione) {
 
 async function dopoCambioStato(result) {
   if (result !== null) {
+    // L'annullo ritira i legami: i chip dei collegamenti li rilegge la barra,
+    // agganciata al dettaglio (`:versione`).
     await loadDetail()
-    // L'annullo ritira i legami: i collegamenti vanno riletti.
-    collegamentiRef.value?.reload()
     emit('saved', result)
   }
 }
@@ -886,7 +882,6 @@ function onNuovaRevisione() {
 // verbo `generaOrdine`, non questo drawer.
 async function onSmistato() {
   await loadDetail()
-  collegamentiRef.value?.reload()
   // `changed` resta il contratto del drawer verso CHI LO HA APERTO, che non e'
   // per forza una lista in ascolto dell'evento (es. l'host dei flussi pratica).
   emit('changed')
@@ -1080,8 +1075,8 @@ const drawerActions = computed(() => {
            segnalazione a colpo d'occhio sotto i pulsanti — «Ordine»,
            «Contratto». Il grafo completo si apre dai chip stessi in dialog. -->
       <DocumentoCollegamentiBar
-        ref="collegamentiRef"
         base-path="/vendite/preventivi"
+        :versione="detail"
         :doc-id="effectivePreventivoId"
         @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="isReadonlyPuro" />
@@ -1149,6 +1144,7 @@ const drawerActions = computed(() => {
               :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
               :billing-account-id="form.billing_account_id"
               :is-modificabile="canEditRighe && !isReadonly"
+              :data-documento="detail?.data ?? null"
               @changed="loadDetail()"
               @form-aperto="onFormAperto" />
 
@@ -1207,6 +1203,7 @@ const drawerActions = computed(() => {
     :header="t('vendite.preventivi.azione_annulla')"
     :domanda="domandaAnnullo"
     :loading="cambioStato.loading.value"
+    :readonly="isReadonlyPuro"
     @conferma="onConfermaAnnullo"
     @cancel="cambioStato.annulla()"
   />
@@ -1253,6 +1250,7 @@ const drawerActions = computed(() => {
     v-model:visible="dateConsegnaVisible"
     :invia="(payload) => store.aggiornaDateConsegna(effectivePreventivoId, payload)"
     :colonne="dateConsegnaColonne"
+    :data-documento="detail?.data ?? null"
     :readonly="isReadonlyPuro"
     @aggiornate="onDateConsegnaAggiornate"
   />

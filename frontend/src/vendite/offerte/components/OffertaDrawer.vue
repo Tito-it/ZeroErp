@@ -201,9 +201,6 @@ const { id: utilityDefaultId, load: loadUtilityDefault } = useUtilityDefaultId()
 // Sub-drawer + dialogs.
 const eccezioniDrawerVisible = ref(false)
 const noteDrawerVisible = ref(false)
-// Ref alla barra collegamenti: le azioni dell'offerta creano archi
-// (offerta→contratto, offerta→ordine) — i chip si ricaricano in refreshDetail.
-const collegamentiRef = ref(null)
 const emissioneDialogVisible = ref(false)
 const esitoDialogVisible = ref(false)
 const esitoDialogModalita = ref('ACCETTATA') // ACCETTATA | RIFIUTATA | ANNULLATA
@@ -550,10 +547,9 @@ async function refreshDetail() {
   detail.value = d
   populateFromDetail(d)
   applica()
-  // Chip collegamenti riallineati qui e non nei singoli handler: push contratto
-  // e genera ordine creano archi (offerta→contratto, offerta→ordine) e passano
-  // TUTTI da questo punto — agganciarlo qui vale anche per le azioni future.
-  collegamentiRef.value?.reload()
+  // I chip dei collegamenti si riallineano da soli su questo `detail` nuovo
+  // (`:versione` della barra): push contratto e genera ordine creano archi e
+  // passano TUTTI da qui — e cosi' anche le azioni future.
 }
 
 // Reload revisioni dopo un'azione che cambia lo stato di una riga della
@@ -907,8 +903,8 @@ const footerDrawer = useFooterDocumento({
            Solo in EDIT: in CREATE non c'e' ancora un documento. -->
       <DocumentoCollegamentiBar
         v-if="isEdit && offertaId"
-        ref="collegamentiRef"
         base-path="/vendite/offerte"
+        :versione="detail"
         :doc-id="offertaId"
         @documento-chiuso="refreshDetail"
         :readonly="parentReadonly" />

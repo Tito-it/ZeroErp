@@ -342,7 +342,7 @@ Trovato nel collaudo di Tid del 2026-10-11 (PRV0000398 smistato in commessa, com
 finestra, il preventivo resta EVASO). Per decisione di Tid lo stesso giorno diventa un brief suo, che
 generalizza il verso all'indietro («annullare a valle riapre a monte, con la segnalazione; in avanti
 bloccato; un unico meccanismo»):
-[brief-db-annullo-a-valle-riapre-a-monte](../work-in-progress/brief-db-annullo-a-valle-riapre-a-monte.md)
+[brief-db-annullo-a-valle-riapre-a-monte](brief-db-annullo-a-valle-riapre-a-monte.md)
 (D30). Le decisioni prese qui (D-7…D-10) sono passate la' come D-1…D-4. La forma di questo brief
 (lettore, avviso, verbo, finestra) si riusa.
 

@@ -34,6 +34,8 @@ defineProps({
   // cascata soglie L2 con livello categoria_cliente del BA.
   billingAccountId: { type: Number, default: null },
   isModificabile: { type: Boolean, default: true },
+  // La data del preventivo: minimo del calendario delle date di consegna.
+  dataDocumento: { type: String, default: null },
 })
 const emit = defineEmits(['changed', 'form-aperto'])
 
@@ -128,6 +130,7 @@ defineExpose({
         :preventivo-id="preventivoId"
         :billing-account-id="billingAccountId"
         :riga="riga"
+        :data-documento="dataDocumento"
         @saved="onSaved"
         @componenti-changed="onComponentiChanged"
         @cancel="onCancel"

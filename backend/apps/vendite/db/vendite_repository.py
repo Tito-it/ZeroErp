@@ -4675,7 +4675,12 @@ class VenditeRepository:
                 -- una fattura quando la tappa e' la seconda di fila sotto lo
                 -- stesso tipo documento (arco N).
                 p.from_natura_doc_codice_interno,
-                p.to_natura_doc_codice_interno
+                p.to_natura_doc_codice_interno,
+                -- Il LEGAME, non il nodo (brief-db-annullo-a-valle-riapre-a-monte
+                -- §11, 2026-10-13): la commessa puo' essere viva e il contributo
+                -- di QUESTO documento ritirato (preventivo annullato). A tre
+                -- stati: NULL = arco non censito dal DB.
+                p.is_legame_ritirato
             FROM vendite.fn_documento_lineage(%s, %s, %s) p
             LEFT JOIN config.sorgenti sf ON sf.id = p.from_tipo_id
             LEFT JOIN config.sorgenti st ON st.id = p.to_tipo_id
@@ -4727,6 +4732,9 @@ class VenditeRepository:
                     "is_ramo_inverso": bool(row[19]),
                     "from_natura_doc_codice_interno": row[20],
                     "to_natura_doc_codice_interno": row[21],
+                    # ⛔ Niente `bool()`: NULL e' «non censito», e diventerebbe
+                    #    «legame vivo» — un'affermazione che il DB non ha fatto.
+                    "is_legame_ritirato": row[22],
                 }
             )
         return result

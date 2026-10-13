@@ -32,7 +32,7 @@ import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useFotografiaDialog } from '../../../core/composables/useFotografiaDialog'
 import { useNotify } from '../../../core/composables/useNotify'
 import { DATE_FORMAT } from '../../../core/constants'
-import { toDateString } from '../../../core/utils/date'
+import { parseIsoDate, toDateString } from '../../../core/utils/date'
 import { MODALITA_DATE_CONSEGNA } from './dateConsegnaApi'
 
 const props = defineProps({
@@ -47,6 +47,10 @@ const props = defineProps({
   //    con lo stato: sull'ordine confermato il drawer e' in protect, e la data
   //    confermata si scrive lo stesso (come `OrdineRigaDataConsegnaDialog`).
   readonly: { type: Boolean, default: false },
+  // La data del documento (ISO, dal dettaglio): il minimo del calendario
+  // della data. Solo un aiuto: il rifiuto vero e' del DB, e in blocco
+  // rifiuta il gesto intero (`E_DOC_RIGA_DATA_CONSEGNA_ANTERIORE`).
+  dataDocumento: { type: String, default: null },
 })
 const emit = defineEmits(['update:visible', 'aggiornate'])
 
@@ -57,6 +61,7 @@ const notify = useNotify()
 
 const colonna = ref(null)
 const dataScelta = ref(null)
+const minDataConsegna = computed(() => parseIsoDate(props.dataDocumento))
 const modalita = ref(MODALITA_DATE_CONSEGNA.SOLO_VUOTE)
 
 const modalitaOpzioni = computed(() => [
@@ -163,6 +168,7 @@ async function salva() {
           v-model="dataScelta"
           input-id="date-consegna-data"
           :date-format="DATE_FORMAT"
+          :min-date="minDataConsegna"
           show-icon
         />
       </div>

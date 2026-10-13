@@ -10,51 +10,21 @@
 // dettaglio è peggio di nessun contatore. Qui la stessa risposta alimenta
 // entrambi per costruzione.
 //
-// Fetch EAGER (all'apertura del drawer, non all'expand del vecchio pannello):
-// i chip devono poter segnalare PRIMA che l'utente chieda i dettagli. Costo
-// misurato sul grafo dev: ~11 ms la direzione avanti, ~20 ms entrambe — rumore
-// rispetto a detail+righe+indirizzi che il drawer già carica.
+// Il QUANDO leggere sta in `useLetturaDocumento` (2026-10-13): con `versione`
+// (il dettaglio del drawer ospite) i passaggi si rileggono a ogni rilettura del
+// drawer — nessun drawer deve piu' ricordarsi di chiamare `reload`.
 //
-// Config: `basePath` (path lista del dominio, es. '/vendite/ordini') e `docId`
-// (ref/getter della pk di dominio; null in CREATE → nessuna fetch).
-import { ref, toValue, watch } from 'vue'
+// Config: `basePath` (path lista del dominio, es. '/vendite/ordini'), `docId`
+// (ref/getter della pk di dominio; null in CREATE → nessuna fetch) e
+// `versione` (facoltativa: senza, si legge al solo cambio di documento).
+import { toValue } from 'vue'
 import { getPassaggi } from './lineageApi'
-import { useApiHandler } from '../../../core/composables/useApiHandler'
-import { useFetchVersion } from '../../../core/composables/useFetchVersion'
+import { useLetturaDocumento } from '../../../core/composables/useLetturaDocumento'
 
-export function useDocumentoPassaggi(basePath, docId) {
-  const data = ref(null)
-  const loaded = ref(false)
-  const { execute, loading } = useApiHandler()
-  const { tag, isCurrent, invalidate } = useFetchVersion()
-
-  // Scopo: carica i passaggi del documento corrente. useApiHandler gestisce
-  //        errori/toast; il token useFetchVersion scarta le risposte stantie
-  //        sui cambi rapidi di documento. Su errore `loaded` resta false: i
-  //        chip non mostrano mai "nessun collegamento" su dati mai arrivati
-  //        (sarebbe un vuoto positivo su un fallimento).
-  async function load() {
-    const id = toValue(docId)
-    if (!id) return
-    const token = tag()
-    const result = await execute(() => getPassaggi(toValue(basePath), id))
-    if (!isCurrent(token) || result === null) return
-    data.value = result
-    loaded.value = true
-  }
-
-  // Cambio documento: azzera e ricarica. `immediate` copre il mount (il
-  // contenuto dei drawer si smonta alla chiusura → riapertura = dati freschi).
-  watch(
-    () => toValue(docId),
-    (id) => {
-      invalidate()
-      data.value = null
-      loaded.value = false
-      if (id) load()
-    },
-    { immediate: true },
+export function useDocumentoPassaggi(basePath, docId, versione) {
+  const { dati, caricati, loading, rileggi } = useLetturaDocumento(
+    (id) => getPassaggi(toValue(basePath), id),
+    { docId, versione },
   )
-
-  return { data, loaded, loading, reload: load }
+  return { data: dati, loaded: caricati, loading, reload: rileggi }
 }

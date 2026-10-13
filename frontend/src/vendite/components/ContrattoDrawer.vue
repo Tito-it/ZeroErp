@@ -868,6 +868,7 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
     <DocumentoCollegamentiBar
       v-if="isEdit && contrattoId"
       base-path="/vendite/contratti"
+      :versione="detail"
       :doc-id="contrattoId"
       @documento-chiuso="refreshDetail"
       :readonly="readonly || parentReadonly" />
@@ -1214,6 +1215,7 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       :header="t('vendite.contratti.azione_annulla')"
       :domanda="domandaAnnullo"
       :loading="cambioStato.loading.value"
+      :readonly="readonly || parentReadonly"
       @conferma="onConfermaAnnullo"
       @cancel="cambioStato.annulla()"
     />

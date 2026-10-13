@@ -1,32 +1,47 @@
 # Brief DB — Tornare indietro: annullare a valle riapre a monte, con la segnalazione
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-12
+## ✅ Chiuso il 2026-10-13
 
-**Riparte: Tid** (collaudo a video, e la domanda aperta del §10.8). Lato DB chiuso
-(applicato, pgTAP verdi su dbdev); lato BE del §10 fatto (§10.8), non committato.
+**Collaudo a video di Tid superato** (2026-10-13): preventivo, ordine, preventivo misto, catena lunga,
+PRV0000144 (l'eccezione del §1.1, con il «legame ritirato» del §11), casi negativi (righe EMESSE),
+flag di fatturazione immediata (D-14). Il secondo invio dopo l'annullo della commessa va a buon fine,
+per il preventivo e per l'ordine (§10). L'SQL del §9.4 (ordini EVASO senza bolle → CONFERMATO) e' stato
+eseguito da Tid su dbdev.
 
-| # | Chi | Che cosa | Dove | Aspetta |
-| --- | --- | --- | --- | --- |
-| 1 | ✅ team DB | changeSet `20261012-08 … -24`, `-27 … -29`, CSV, pgTAP | §8 | — |
-| 2 | ✅ BE/FE | ritiro delle copie del verso in avanti, annullo della commessa con la finestra, smoke | §9 | — |
-| 3a | ✅ Tid + team DB | la commessa si annulla anche con righe vive da documento: **si'** (D-11); il link resta come storia, unico fra le commesse vive (D-12) | §10.5, §10.6 | — |
-| 3b | ✅ Tid | D-13: il link nasce nella madre DB `fn_upsert_commessa_attivita`; D-14: il flag di fatturazione immediata si blocca solo con una commessa viva | §10.6 | — |
-| 3 | ✅ team DB | R-13…R-16: `20261012-43 … -47` + CSV, pgTAP; applicati da Tid il 2026-10-12 | §10.7 | — |
-| 3b' | ✅ Tid | corsa pgTAP su dbdev: verde | §10.7 | — |
-| 4 | ✅ sessione BE | ritiro del link dal `BaseSourceHandler`, lettore della commessa aperta, testo di ripiego, guida | §10.8 | — |
-| 5 | ✅ sessione BE | lo smoke HTTP `smoke-test-ordini-giro-commessa.sh`: 26 OK, 0 FAIL, passo 14 compreso (2026-10-12) | §10.8 | — |
-| 6 | Tid | collaudo a video: preventivo, ordine, misto, PRV0000144 | §6.4 | 3 |
-| 7 | Tid | eseguire su dbdev l'SQL del §9.4 (deciso il 2026-10-12: si riportano a CONFERMATO) | §9.4 | — |
-| 8 | sessione BE | archiviare in `work-done/`, riga di PROJECT_CONTEXT | — | 6, 7 |
+Fatto datato del collaudo (dbdev, 2026-10-13): PRV0000848 rev.0, misto, commessa annullata e poi
+rigenerata (`CMM-PGTAPEF202-2026-000000018`). Nei «Passaggi» il preventivo e' `ROOT` **due volte**: verso
+la commessa ANNULLATA (legame ritirato) e verso la nuova PRONTA_FATTURAZIONE. E' il modello: `ROOT` e' il
+ruolo del documento **dentro ciascuna commessa** (una ROOT per commessa, `uq_commesse_sorgenti_commessa_root`),
+e il link verso la commessa annullata resta come storia (D-12).
 
-**Decisioni aperte di Tid:** una, la commessa vuota lasciata dal push batch (§10.8, «Trovato nel giro»).
-**Da committare:** niente (il lavoro BE del §10.8 e' in git dal 2026-10-13).
+| # | Chi | Che cosa | Dove |
+| --- | --- | --- | --- |
+| 1 | ✅ team DB | changeSet `20261012-08 … -24`, `-27 … -29`, CSV, pgTAP | §8 |
+| 2 | ✅ BE/FE | ritiro delle copie del verso in avanti, annullo della commessa con la finestra, smoke | §9 |
+| 3 | ✅ Tid + team DB | D-11…D-14; R-13…R-16: `20261012-43 … -47` + CSV, pgTAP verdi su dbdev | §10.5-§10.7 |
+| 4 | ✅ sessione BE | ritiro del link dal `BaseSourceHandler`, lettore della commessa aperta, testo di ripiego, guida; smoke HTTP 26 OK, 0 FAIL | §10.8 |
+| 5 | ✅ team DB | R-17…R-19 (`20261013-69 … -72`), D-15 anche nella sintesi (`-71`) | §11.3 |
+| 6 | ✅ sessione BE/FE | `is_legame_ritirato` nel payload, «legame ritirato» nei Passaggi, chip spento (D-15) | §11.6 |
+| 7 | ✅ Tid | collaudo a video (§6.4 e §11.6) | §6.4, §11.6 |
+| 8 | ✅ Tid | SQL del §9.4 su dbdev | §9.4 |
+| 9 | ✅ sessione BE | archiviato in `work-done/`, riga di PROJECT_CONTEXT, D30 chiusa nel registro DB | — |
 
-⚠️ **Ricaduta trovata il 2026-10-13** (baseline di `vendite` su dbdev): il `20261012-46` (D-13, il link nasce nella madre) ha reso rossi quattro pgTAP che passavano alla madre sorgenti inventate (`test-emissione-mirata-gruppi-fatturabili-v1`, `test-vw-dash-competenza-gruppi-v1`, `test-sorgente-origine-tipo-doc-fiscale-v1`, `test-trigger-af-commessa-aware-v1`). La corsa del 2026-10-12 era sui soli file di questo brief. Fixture corrette con documenti veri: dettaglio e prova in [brief-db-articoli-ammessi-per-documento §9.2.1](brief-db-articoli-ammessi-per-documento.md).
+⚠️ **Ordine di merge** (§11.6): i changeSet `20261013-69 … -72` stanno su `dev/db-tid` (in git al
+2026-10-13) e non ancora in `Tito-dev`. `dev/db-tid` va mergiato **prima** del lavoro BE/FE del §11.6, o in
+CI la lettura dei passaggi fallisce (la colonna `is_legame_ritirato` non esiste).
+
+**Ereditato, non chiuso qui:**
+
+* **La commessa vuota lasciata dal push batch** (§10.8, «Trovato nel giro»): una riga rifiutata dal batch
+  lascia la commessa appena creata vuota e aperta, per qualunque causa di rifiuto. Le tre strade (a)/(b)/(c)
+  sono di modello, da decidere con il team DB. Passata a PROJECT_CONTEXT § «Aperto — Media priorità».
+* **Il costo del trigger** di proiezione dello stato del preventivo (§8.4): da tenere d'occhio, non un lavoro.
+
+⚠️ **Ricaduta trovata il 2026-10-13** (baseline di `vendite` su dbdev): il `20261012-46` (D-13, il link nasce nella madre) ha reso rossi quattro pgTAP che passavano alla madre sorgenti inventate (`test-emissione-mirata-gruppi-fatturabili-v1`, `test-vw-dash-competenza-gruppi-v1`, `test-sorgente-origine-tipo-doc-fiscale-v1`, `test-trigger-af-commessa-aware-v1`). La corsa del 2026-10-12 era sui soli file di questo brief. Fixture corrette con documenti veri: dettaglio e prova in [brief-db-articoli-ammessi-per-documento §9.2.1](../work-in-progress/brief-db-articoli-ammessi-per-documento.md).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-11, dal collaudo a video di Tid; lettura critica e
 > seconda tornata di decisioni del team DB (`dev/db-tid`), 2026-10-12 (§7). **A chi:** team DB; poi BE/FE (§6).
-> **Stato:** 📝 **aperto.** Decisioni D-1…D-4 prese da Tid il 2026-10-11, **D-5…D-10 il 2026-10-12** (§4),
+> **Stato:** ✅ **chiuso il 2026-10-13** (collaudo di Tid superato, vedi in testa). Decisioni D-1…D-4 prese da Tid il 2026-10-11, **D-5…D-10 il 2026-10-12** (§4),
 > dopo la lettura del team DB (§7). Il perimetro si e' allargato per decisione di Tid: anche il verso **in
 > avanti** verso la commessa passa al DB (D-10), qui e non in un brief nuovo. ✅ **Lato DB scritto e provato
 > il 2026-10-12** (§8: `20261012-08 … -24` + due righe di CSV, due pgTAP nuovi, tre aggiornati per
@@ -38,7 +53,7 @@
 > restano il collaudo a video (§6.4) e lo smoke HTTP, di Tid. ⚠️ **Riaperto lato DB il 2026-10-12** dal
 > collaudo: una commessa annullata non lascia libero il documento, che non si rimanda in commessa (§10). ✅ **Richiuso lo stesso giorno** (§10.6-§10.7: `20261012-43 … -47`, applicati, pgTAP verdi); restano le
 > richieste al backend del §10.7.
-> **Origine:** il caso 6 di [brief-db-annullo-documento-con-legami](../work-done/brief-db-annullo-documento-con-legami.md)
+> **Origine:** il caso 6 di [brief-db-annullo-documento-con-legami](brief-db-annullo-documento-con-legami.md)
 > (§10), trovato nel collaudo e spostato qui per decisione di Tid: *«quando si torna indietro ci devono
 > essere le segnalazioni di quello che si sta facendo; in avanti le abbiamo bloccate. Un unico
 > meccanismo.»*
@@ -692,7 +707,7 @@ residuo: conferma che il difetto e' della forma, per ogni sorgente.
   link).
 * Il link lo scrive l'handler **base** del push (`BaseSourceHandler`, `commesse_source_handlers.py`),
   quindi vale per **tutte** le sorgenti: preventivo, ordine, contratto, bolla, consumi.
-* **Da dove viene la rigidita'**: [brief-db-commesse-multi-sorgente](../work-done/brief-db-commesse-multi-sorgente.md)
+* **Da dove viene la rigidita'**: [brief-db-commesse-multi-sorgente](brief-db-commesse-multi-sorgente.md)
   §2.3 lasciava al team DB «una sorgente sta in una sola commessa», e il `20260609-10` l'ha fatta vincolo
   (UNIQUE senza ruolo). Era scritta per impedire che un documento stesse in **due commesse vive**; l'annullo
   della commessa (questo brief) non c'era ancora. La regola resta giusta per le commesse vive: e' il
@@ -756,7 +771,7 @@ documento, o solo quando non ne ha (oneri, o nessuna riga viva)?
 * ✅ **Scritto, per il documento.** Il D-8 (§1.1): il documento a monte si annulla con la conferma anche
   con righe in una commessa viva, perche' l'alternativa sarebbe annullare l'intera commessa.
 * ✅ **Storia.** La decisione del 2026-06-28 di
-  [brief-db-push-commessa-gia-inviato](../work-done/brief-db-push-commessa-gia-inviato.md) §5: «instradata
+  [brief-db-push-commessa-gia-inviato](brief-db-push-commessa-gia-inviato.md) §5: «instradata
   = esclusa»; il flusso «annulla attivita' e ri-pusha» e' «da progettare a parte». Il D-5 di qui l'ha
   sostituita in parte (le righe, non il link: §10.2).
 * ⚠️ **Deduzione della sessione BE, non scritta da nessuna parte:** annullare la commessa porta ad
@@ -996,4 +1011,91 @@ Non toccato, perche' le strade sono di modello: (a) il fan-out chiede al DB la c
 prima di crearne una (una seconda lettura della regola, che il D-13 voleva in un posto solo); (b) il push batch
 scrive le righe di un documento dentro il suo savepoint (un giro per riga invece del batch); (c) il DB non crea
 la commessa vuota (la madre `fn_get_or_create_commessa` non sa del documento). Da decidere con il team DB.
+
+
+## 11. Trovato nel collaudo (2026-10-13): dal documento annullato il lineage indica la commessa come se il legame fosse vivo
+
+> **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-13, dal collaudo a video di Tid (§6.4,
+> PRV0000144). **A chi:** team DB, poi BE/FE (§11.4). Letto sulla doc auto-generata e sulla funzione
+> chiamata dal vivo: il caso di dbdev e' il controesempio, non il motivo.
+
+### 11.1 Il controesempio
+
+Il collaudo funzionale del §6.4 sul preventivo e' passato: PRV0000144 rev.0 (id 302) si annulla con la
+finestra (un legame), la sua riga in commessa (attivita' 159) passa ad `ANNULLATA` nella stessa
+transazione, e la commessa 113 `CMM-20260610194705159-31740c` resta `PRONTA_FATTURAZIONE` — giusto, perche'
+porta righe vive di altri documenti (fatto datato, dbdev, 2026-10-13).
+
+Il difetto e' a video. Dal preventivo annullato:
+
+```text
+vendite.fn_documento_lineage(<PREVENTIVO>, <uid di 302>, 'avanti')
+livello 1 · arco B · ruolo COLLEGATO · PRV0000144 → CMM-…31740c · to_stato PRONTA_FATTURAZIONE · to_is_abortito false
+```
+
+La barra mostra il chip «Commessa», la finestra «Passaggi» la tappa con lo stato della commessa:
+l'operatore legge che **questo preventivo** sta in una commessa pronta da fatturare. Ne' l'uno ne'
+l'altra dicono che il suo contributo e' stato ritirato. Tid: *«il lineage porta fuori strada»*.
+
+### 11.2 Il difetto, sul modello
+
+D-12 tiene il link come storia, ed e' giusto: il preventivo **e'** passato da quella commessa. Ma l'arco
+porta solo lo stato del **nodo** d'arrivo (`to_stato_codice_interno`, `to_fase`, `to_is_abortito`), e
+nessun dato del **legame**. Sono due domande diverse:
+
+* «la commessa e' viva?» — la risponde il nodo;
+* «quello che **questo documento** ha portato nella commessa e' ancora li'?» — non la risponde nessuno.
+
+Quando la commessa e' annullata le due risposte coincidono (`to_is_abortito`), ed e' il solo caso
+che il payload sa raccontare. Quando si ritira il documento e la commessa resta viva (D-1/D-2:
+`fn_documento_ritira_legami` annulla le righe non emesse del documento), divergono.
+
+Gli archi interessati sono quelli costruiti su `vendite.commesse_sorgenti` (doc auto-gen di
+`vendite.fn_documento_lineage_archi`): **B** preventivo, **E** ordine, **F** contratto, **U** bolla →
+commessa, in entrambi i versi (sul nodo commessa la tappa d'origine porta lo stesso legame).
+
+### 11.3 Cosa si chiede al team DB
+
+| # | Richiesta | Nota |
+| --- | --- | --- |
+| **R-17** | Una colonna di **arco** nel risultato di `vendite.fn_documento_lineage` (nome proposto `is_legame_ritirato boolean`): sugli archi documento ↔ commessa vale `true` quando nella commessa **non resta nessuna riga** di quel documento con `stato_emissione <> 'ANNULLATA'` | una riga EMESSA conta come viva: il documento e' stato fatturato li', e quella e' storia viva, non ritirata. Una regola sola, dove si costruisce l'arco: non nel backend |
+| **R-18** | **Censimento** degli altri archi che possono restare con il legame ritirato e i due nodi vivi (per esempio A preventivo → ordine, se l'annullo del preventivo ritira righe consumate da un ordine che resta), e per quelli la stessa colonna | regola della simmetria: la colonna non e' «della commessa», e' del legame. Dove il modello non ammette un ritiro senza aborto di un nodo, `false` e' una risposta vera; dove lo ammette, va calcolata |
+| **R-19** | pgTAP che **costruisce** i casi: documento ritirato da una commessa che resta viva → `true`; due righe dello stesso documento, una annullata → `false`; riga EMESSA e le altre annullate → `false`; commessa annullata → `true` insieme a `to_is_abortito` | non un confronto con i dati di dbdev |
+
+### 11.4 Ricaduta BE/FE (dopo la consegna DB)
+
+* **Backend**: `vendite_repository.py` (la SELECT su `fn_documento_lineage` elenca le colonne, ~riga 4669,
+  e il dict ~riga 4725) e `types.py` (`to_is_abortito`, ~riga 1626): la colonna nuova passa nel payload
+  dei passaggi.
+* **Frontend**: in `LineagePassaggiContenuto` la tappa porta un'indicazione esplicita («legame ritirato»)
+  accanto allo stato del documento; in `DocumentoCollegamentiBar` l'arco ritirato non conta fra le
+  destinazioni, se Tid sceglie cosi' (D-15).
+
+### 11.5 Decisione aperta di Tid
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| **D-15** | Nei chip della barra un arco col legame ritirato conta? | ✅ **No** (Tid, 2026-10-13), come gli annullati: un chip «Commessa» su un preventivo annullato e' esattamente il segnale sbagliato. Nella finestra «Passaggi» resta visibile, come storia, con l'indicazione. Applicata dal team DB anche alla sintesi (`-71`: frontiera, discendenti, `is_transitato`, `n_sorgenti`, radice non attraversano un arco ritirato) |
+
+### 11.6 Consegna BE/FE (2026-10-13)
+
+`is_legame_ritirato` e' **a tre stati** (commento di `vendite.fn_documento_lineage`, rev `20261013-70`):
+`true` ritirato, `false` vivo, `NULL` arco non censito. Nessun livello lo riduce a booleano: un `NULL`
+diventato `false` direbbe «legame vivo», cosa che il DB non ha detto.
+
+| Livello | Cosa | Dove |
+| --- | --- | --- |
+| Backend | la colonna nella SELECT e nel payload dei passaggi, **senza `bool()`**; tipo `bool \| None` | `vendite_repository.list_lineage_passaggi`, `types.LineagePassaggioRow` |
+| Frontend | tappa: Tag «legame ritirato» (con tooltip) accanto allo stato del documento, solo con `=== true` | `LineagePassaggiContenuto.vue`, chiavi `vendite.lineage.legame_ritirato[_tooltip]` |
+| Frontend | chip: l'arco ritirato non conta fra i vivi, **nei due versi** (D-15: e' dell'arco, non di un nodo), ma fa un **chip spento** suo («Commessa · legame ritirato»; «· annullato» per la destinazione annullata, che vince se sono entrambe). ⭐ Rilievo di Tid: senza, il preventivo annullato — unico arco spento — perdeva la barra e l'accesso alla storia | `DocumentoCollegamentiBar.vue`, `chipsDaArchi` |
+
+**Prove.** Backend: `test_is_legame_ritirato_tre_stati` (il `None` arriva `None`), suite del lineage verde
+(20 test); il binding provato con una **chiamata reale** del repository su dbdev (i test sono a mock e
+non lo vedono): PRV0000144 → `CMM-…31740c`, `PRONTA_FATTURAZIONE`, `is_legame_ritirato = True`.
+Frontend: `LineagePassaggiContenuto.spec.js` e `DocumentoCollegamentiBar.spec.js` (tre stati, i due versi),
+provati anche guastando il codice (tre test rossi); suite intera e build verdi. Gunicorn ricaricato.
+
+⚠️ **Ordine di merge.** I changeSet `-69 … -72` sono applicati **solo su dbdev** e non sono in git su
+`dev/backend-tid`. In CI il database si ricostruisce dai changelog: senza di loro la colonna non esiste e
+la lettura dei passaggi fallisce. `dev/db-tid` va mergiato in `Tito-dev` **prima** di questo lavoro.
 

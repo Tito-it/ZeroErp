@@ -1631,6 +1631,10 @@ class LineagePassaggioRow(TypedDict):
     # per la seconda volta di fila.
     from_natura_doc_codice_interno: str | None
     to_natura_doc_codice_interno: str | None
+    # Il LEGAME dell'arco (vendite.fn_documento_lineage_legami, rev 20261013-70):
+    # True = ritirato (il documento non porta piu' niente dall'altra parte, che
+    # puo' restare viva); False = vivo; None = arco non censito. Vale nei due versi.
+    is_legame_ritirato: bool | None
 
 
 class FondoFatturaDaDecidereRow(TypedDict):

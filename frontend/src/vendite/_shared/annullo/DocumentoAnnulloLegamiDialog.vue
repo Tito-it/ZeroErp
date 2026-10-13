@@ -67,6 +67,14 @@ const props = defineProps({
   domanda: { type: [Object, null], default: null },
   // Il salvataggio in volo e' del chiamante (la conferma ripete la sua chiamata).
   loading: { type: Boolean, default: false },
+  // ⭐ Readonly PURO del chiamante (permessi area / split / forzato), MAI il
+  // lock-di-stato del documento. L'annullo con legami arriva per costruzione
+  // su un documento uscito dalla bozza, cioe' proprio quando il drawer fornisce
+  // READONLY_KEY=true: ereditandolo, FormFooter nascondeva la conferma e la
+  // finestra offriva solo «Annulla» — su preventivo, ordine, bolla e contratto
+  // l'annullo con legami non si poteva confermare (collaudo di Tid, 2026-10-13).
+  // OBBLIGATORIA di proposito: dimenticarla rifarebbe il difetto senza errori.
+  readonly: { type: Boolean, required: true },
 })
 const emit = defineEmits(['conferma', 'cancel'])
 
@@ -173,6 +181,7 @@ function onConferma() {
     :header="header"
     width="md"
     :loading="loading || caricamento"
+    :readonly="readonly"
     :save-disabled="!dati"
     :save-label="header"
     save-severity="danger"

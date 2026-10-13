@@ -26,13 +26,15 @@
 //  6) le tre forme: riga, provenienza, commessa
 //  7) commessa: righe contate per documento, oneri a parte, dichiara il numero del lettore
 //  8) commessa: documenti senza nome dal lineage restano distinti
+//  9) dentro un drawer bloccato per STATO la conferma c'e' (AppDialog vero)
 // ------------------------------------------------------------
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { defineComponent } from 'vue'
+import { defineComponent, ref } from 'vue'
 import { flushPromises } from '@vue/test-utils'
 
 import DocumentoAnnulloLegamiDialog from './DocumentoAnnulloLegamiDialog.vue'
 import { monta } from '../../../../test/montaggio'
+import { READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 
 let rispostaLegami = null
 const chiamate = []
@@ -63,7 +65,7 @@ async function montaDialog() {
   const wrapper = monta(
     DocumentoAnnulloLegamiDialog,
     {
-      visible: true, basePath: '/vendite/ordini', docId: 7, header: 'Annulla',
+      visible: true, basePath: '/vendite/ordini', docId: 7, header: 'Annulla', readonly: false,
       domanda: { messaggio: 'Annullando ORD 7 si riaprono 2 legami' },
     },
     { global: { stubs: { AppDialog: CorniceFinta, DocumentoDrawerHost: true } } },
@@ -181,5 +183,46 @@ describe('DocumentoAnnulloLegamiDialog — la dichiarazione', () => {
     ], 'COMMESSA')
     const wrapper = await montaDialog()
     expect(wrapper.findAll('li')).toHaveLength(3)
+  })
+})
+
+// 🔴 Il difetto del collaudo di Tid (2026-10-13): l'annullo con legami arriva
+//    per costruzione su un documento USCITO DALLA BOZZA, e il drawer di quel
+//    documento fornisce READONLY_KEY=true (lock di stato). Ereditandolo,
+//    FormFooter nascondeva la conferma: la finestra offriva solo «Annulla».
+//    Qui la cornice e' quella VERA — la cornice finta sopra non poteva vederlo.
+describe('DocumentoAnnulloLegamiDialog — readonly dal chiamante, non dalla catena', () => {
+  async function montaInDrawerBloccato(readonly) {
+    rispostaLegami = legami([legame({ riga_nr: 1 })])
+    const wrapper = monta(
+      DocumentoAnnulloLegamiDialog,
+      {
+        visible: true, basePath: '/vendite/preventivi', docId: 7, header: 'Annulla preventivo', readonly,
+        domanda: { messaggio: 'Annullando PRV 7 si riapre 1 legame' },
+      },
+      {
+        provide: { [READONLY_KEY]: ref(true) },
+        global: { stubs: { DocumentoDrawerHost: true } },
+        attachTo: document.body,
+      },
+    )
+    await flushPromises()
+    return wrapper
+  }
+
+  function pulsanti() {
+    return [...document.body.querySelectorAll('button')].map((b) => b.textContent.trim())
+  }
+
+  it('lock di stato nel drawer, readonly puro false: la conferma c\'e\'', async () => {
+    const wrapper = await montaInDrawerBloccato(false)
+    expect(pulsanti()).toContain('Annulla preventivo')
+    wrapper.unmount()
+  })
+
+  it('readonly puro (permessi): la conferma non c\'e\'', async () => {
+    const wrapper = await montaInDrawerBloccato(true)
+    expect(pulsanti()).not.toContain('Annulla preventivo')
+    wrapper.unmount()
   })
 })

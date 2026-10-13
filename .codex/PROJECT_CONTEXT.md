@@ -381,17 +381,18 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   visti; l'origine si riapre (ordine da evadere, reso da ri-consegnare, preventivo di nuovo ACCETTATO,
   offerta di nuovo trasformabile: unicita' sui soli vivi). DB `20261011-68 … -91` + caso 1 del giro D28;
   BE/FE §9; collaudo di Tid superato. Il verso dalla commessa e' D30 (sotto).
-- ⏳ **Tornare indietro: annullare a valle riapre a monte**
-  (`work-in-progress/brief-db-annullo-a-valle-riapre-a-monte.md`, D30, 2026-10-11): annullare una commessa
-  non segnalava niente e non riapriva il preventivo ne' l'ordine. Principio di Tid: tornare indietro riapre a
-  monte con la segnalazione, in avanti e' bloccato, un unico meccanismo (la forma di D29). Decisioni D-1…D-10
-  (2026-10-11/12): una riga di commessa ANNULLATA non occupa piu' il documento; «Evaso» dell'ordine = solo
-  bolle; eccezione motivata per la commessa a valle (conferma, non blocco); il verso in avanti verso la
-  commessa sta nel DB. ✅ DB applicato e verde il 2026-10-12 (`20261012-08 … -24`, `-27 … -29`: una riga senza
-  sorgente e' un onere o una rettifica, per vincolo). ✅ BE/FE fatti il 2026-10-12 (§9): annullo della commessa
-  dal verbo con la finestra comune, il BE ha ritirato le sue tre copie (EVASO del preventivo, EVASO
-  dell'ordine, ponte PRONTA_FATTURAZIONE → madre DB). ⏳ Tocca a Tid: collaudo a video (§6.4), smoke HTTP del
-  giro ordine → commessa, e l'SQL del §9.4 (ordini EVASO senza bolle lasciati dal vecchio invio: si riportano a CONFERMATO, deciso il 2026-10-12).
+- ✅ **Tornare indietro: annullare a valle riapre a monte — chiuso il 2026-10-13**
+  (`work-done/brief-db-annullo-a-valle-riapre-a-monte.md`, D30): la commessa si annulla dal verbo
+  (`vendite.fn_annulla_commessa`) con la finestra comune di D29; preventivo, ordine, contratto, bolla, reso e
+  consumi si riaprono, gli oneri si annullano. Una riga di commessa ANNULLATA non occupa piu' il documento
+  (D-5); «Evaso» dell'ordine = solo bolle (D-6); il documento con righe in una commessa viva non emesse si
+  annulla con conferma (D-8); il verso in avanti verso la commessa sta tutto nel DB (D-10). Il link
+  documento → commessa resta come storia, una sola commessa aperta per documento, lo scrive la madre
+  `fn_upsert_commessa_attivita` (D-12, D-13); il lineage dice quando il legame e' ritirato
+  (`is_legame_ritirato`, a tre stati, D-15). DB `20261012-08 … -24`, `-27 … -29`, `-43 … -47`,
+  `20261013-69 … -72`; BE/FE §9, §10.8, §11.6; collaudo di Tid superato. ⚠️ `dev/db-tid` (`-69 … -72`) va
+  mergiato prima del BE/FE del §11.6. Il residuo (la commessa vuota del push batch) e' in § «Aperto — Media
+  priorità».
 - ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
   (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito
@@ -429,6 +430,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **La commessa vuota lasciata dal push batch** (DB + BE, ereditata il 2026-10-13 dalla chiusura di
+  `work-done/brief-db-annullo-a-valle-riapre-a-monte.md` §10.8): nel push batch (`pr_run_commesse_push`,
+  best-effort per riga) la commessa nasce prima che il batch delle righe le accetti; se una riga e'
+  rifiutata, per qualunque causa, la commessa resta vuota e aperta e il ponte di emittibilita' scrive un
+  errore nel report. Strade di modello: (a) il fan-out chiede al DB la commessa aperta del documento prima di
+  crearne una; (b) le righe di un documento si scrivono dentro il suo savepoint; (c) il DB non crea la
+  commessa vuota. Da decidere, di Tid con il team DB.
 - **Residui di `work-done/brief-db-istanza-nasce-col-ba.md`** (ereditati il 2026-10-10 dalla chiusura):
   - ⏭️ **collaudo a video delle pratiche** (§7.4): la tendina della fornitura (una riga per fornitura, con la
     utility), nessun campo fornitura su chi non è cliente, offerta e contratto col cliente ereditato dalla

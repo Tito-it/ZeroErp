@@ -22,6 +22,7 @@ Indice test eseguiti:
 12) LineagePassaggiServiceTests.test_frontiera_valorizzata
 13) LineagePassaggiServiceTests.test_frontiera_nota_di_credito_porta_la_natura
 13) LineagePassaggiServiceTests.test_is_ramo_inverso_passthrough
+14) LineagePassaggiServiceTests.test_is_legame_ritirato_tre_stati
 """
 
 from unittest import TestCase
@@ -106,6 +107,7 @@ def _passaggio(**overrides):
         "is_ramo_inverso": False,
         "from_natura_doc_codice_interno": None,
         "to_natura_doc_codice_interno": None,
+        "is_legame_ritirato": False,
     }
     base.update(overrides)
     return base
@@ -338,3 +340,21 @@ class LineagePassaggiServiceTests(TestCase):
         data = get_documento_passaggi("ORDINE_VENDITA", 163)
         self.assertFalse(data["avanti"][0]["is_ramo_inverso"])
         self.assertTrue(data["avanti"][1]["is_ramo_inverso"])
+
+    # Scopo: il legame dell'arco (brief-db-annullo-a-valle-riapre-a-monte §11)
+    #        arriva al FE nei TRE stati del DB. ⛔ None resta None: e' «arco non
+    #        censito», e un `False` al suo posto direbbe «legame vivo».
+    @patch.object(vendite_service.VenditeRepository, "list_lineage_passaggi")
+    @patch.object(vendite_service.VenditeRepository, "get_lineage_nodo", return_value=_nodo())
+    @patch.object(vendite_service.SorgentiRepository, "get_sorgente_attiva", return_value=_SORGENTE_ORDINE)
+    def test_is_legame_ritirato_tre_stati(self, _mock_sorg, _mock_nodo, mock_passaggi):
+        mock_passaggi.return_value = [
+            _passaggio(is_legame_ritirato=True),
+            _passaggio(ordine=2, is_legame_ritirato=False),
+            _passaggio(ordine=3, is_legame_ritirato=None),
+        ]
+        data = get_documento_passaggi("ORDINE_VENDITA", 163)
+        self.assertEqual(
+            [p["is_legame_ritirato"] for p in data["avanti"]],
+            [True, False, None],
+        )

@@ -46,6 +46,8 @@ const props = defineProps({
   // Readonly PURO (permessi / split): nasconde l'azione. Lo stato non la
   // nasconde, la spegne col motivo.
   readonly: { type: Boolean, default: false },
+  // La data dell'ordine: minimo del calendario delle date di consegna.
+  dataDocumento: { type: String, default: null },
 })
 const emit = defineEmits(['changed', 'form-aperto'])
 
@@ -123,6 +125,7 @@ function azioniRiga(riga) {
         :ref="registra"
         :ordine-id="ordineId"
         :riga="riga"
+        :data-documento="dataDocumento"
         @saved="onSaved"
         @componenti-changed="onComponentiChanged"
         @cancel="onCancel"
@@ -134,6 +137,7 @@ function azioniRiga(riga) {
     v-model:visible="dataConsegnaVisible"
     :ordine-id="ordineId"
     :riga="dataConsegnaRiga"
+    :data-documento="dataDocumento"
     :readonly="readonly"
     @salvata="tabella?.loadRighe(); emit('changed')"
   />
