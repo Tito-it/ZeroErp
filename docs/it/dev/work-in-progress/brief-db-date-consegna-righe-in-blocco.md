@@ -14,12 +14,12 @@
 | 6 | DB | pgTAP: il test 13 sulla forma vera del BE (BF-1), e il 23 che la distingue da quella del §5 | §4.7 | ✅ 2026-10-12 |
 | 7 | DB | regola del 2, scelta (a): il BB `script.vw_stati_doc_ddt_merce_partita` e le tre sedi riallineate, pgTAP nuovo | §4.1, §4.7 | ✅ 2026-10-12 |
 | 8 | Tid | apply `20261012-30 … -33`; pgTAP della data di consegna, del BB (dopo la correzione dei test 6/8) e regressione | §4.7 | ✅ 2026-10-12, verdi, nessuna regressione |
-| 9 | BE | rigenerare `error_policies_generated.py` (`./manage-env.sh genera_error_policies`): la nota di `E_DOC_ANNULLO_CON_LEGAMI` del CSV ora è in git (02fae5709) | — | — |
+| 9 | BE | rigenerare `error_policies_generated.py`: la nota di `E_DOC_ANNULLO_CON_LEGAMI` era già allineata; il rigenero ha portato i due codici di brief-db-indirizzi-documento-seguono-il-cliente (`E_DOC_FORNITURA_FUORI_TESTATA`, `E_DOC_FORNITURA_PARAMETRO_MANCANTE`, nel CSV in git), coi loro ripieghi. `--check` pulito, guardrail e test della data di consegna sul DB vero verdi | — | ✅ 2026-10-12 |
 | 10 | Tid | collaudo a video, poi archiviazione in `work-done/` | — | — |
 
 **Decisioni aperte di Tid:** nessuna (§8.2 decisa il 2026-10-12: (a), si accetta).
-**Da committare:** sì, il secondo giro DB (§4.7: quattro changeSet, due pgTAP, manuali, questo brief).
-Il lavoro BE/FE è già in git (6fdd888cc).
+**Da committare:** niente: il passo #9 e' in git dal 2026-10-13.
+Il secondo giro DB è in git (c395c2e1b), il lavoro BE/FE anche (6fdd888cc).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-11, su decisione di Tid. **A chi:** team DB
 > (§4), poi BE/FE (§5).

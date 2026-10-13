@@ -195,7 +195,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_COMMESSA_PUSH_RUN_NON_APERTO": "Il giro di push non e' aperto: non esiste, oppure e' gia' stato chiuso.",
     "E_COMMESSA_PUSH_RUN_STATO_NON_FINALE": "Un giro di push si chiude con un esito: completato, parziale o errore.",
     "E_COMMESSA_ROOT_CONFLITTO": "Conflitto: commessa root gia' esistente per questa sorgente.",
-    "E_COMMESSA_SORGENTE_ALTRA_COMMESSA": "La sorgente e' gia' collegata a un'altra commessa.",
+    "E_COMMESSA_SORGENTE_ALTRA_COMMESSA": "Il documento e' gia' in un'altra commessa aperta: un documento puo' stare in una sola commessa aperta alla volta.",
     "E_COMMESSA_SORGENTE_EMITTENTE_MISTO": "Una commessa non puo' aggregare documenti di emittenti fiscali diversi: anomalia tecnica.",
     "E_COMMESSA_SORGENTE_SCONOSCIUTA": "Sorgente commessa sconosciuta.",
     "E_COMMESSA_STATO_TRANSIZIONE_INVALIDA": "Transizione di stato della commessa non ammessa dallo stato attuale.",
@@ -345,6 +345,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_CONDIZIONI_FUORI_BOZZA": "In questo stato le condizioni commerciali del documento non si cambiano piu': annulla il documento e rifallo, oppure creane una nuova revisione.",
     "E_DOC_CLIENTE_FUORI_BOZZA": "Il cliente del documento si sceglie solo in bozza: se e' sbagliato, annulla il documento e creane uno nuovo.",
     "E_DOC_SORGENTE_FUORI_BOZZA": "Il documento da cui nasce si sceglie solo in bozza.",
+    # brief-db-indirizzi-documento-seguono-il-cliente (2026-10-12): la scheda di
+    # fornitura segue la coppia della testata. Due codici TECNICI.
+    "E_DOC_FORNITURA_FUORI_TESTATA": "La scheda di fornitura indicata non e' della fornitura del documento: segnalalo all'assistenza.",
+    "E_DOC_FORNITURA_PARAMETRO_MANCANTE": "Una funzione della scheda di fornitura e' stata chiamata senza il dato che le serve: segnalalo all'assistenza.",
     "E_DOC_CHIUSO": "Il documento e' chiuso, e non si modifica piu'.",
     # brief-db-testata-dopo-emissione (giro R-DB, 2026-10-11): i satelliti del
     # documento (indirizzi, fornitura) solo in bozza; il listino sotto le righe.

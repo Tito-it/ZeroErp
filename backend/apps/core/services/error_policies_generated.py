@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1057, di cui 116 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1059, di cui 116 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -554,6 +554,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     # L'emittente fiscale di preventivo, ordine, DDT, reso, offerta e contratto non cambia fuori bozza: BB vendite.trgfn_doc_testata_lock_fuori_bozza (decisione di Tid del 2026-10-09, brief-db-esecutivi-ba-coppia §9.8). Fino a quel giorno l'emittente di questi documenti non era bloccato da nessuna parte, e un trigger (20260605-05, ritirato) ricalcolava i totali dell'ordine dopo il suo cambio. CONFLITTO_STATO come gli altri lock fuori bozza; VARIADIC lo stato. Non si e' riusato E_EMITTENTE_NON_MODIFICABILE: e' il codice dell'associazione operatore-emittente e la sua frase parla di quella.
     "E_DOC_EMITTENTE_FUORI_BOZZA": "CONFLITTO_STATO",
+    # La scheda di fornitura di un contratto o di un'offerta (vendite.contratti_utilities, vendite.offerte_commerciali_utilities) porta una coppia (istanza, utility) diversa da quella della sua testata (2026-10-12, brief-db-indirizzi-documento-seguono-il-cliente, D-6 di Tid). Lo solleva il guard vendite.trgfn_doc_fornitura_guard_coppia, BEFORE INSERT OR UPDATE OF della coppia. TECNICO e non DATO_ERRATO: la coppia della scheda non la sceglie una persona, la deriva dalla testata chi scrive (il backend, i verbi); se non coincide il chiamante e' rotto. Al cambio di cliente in bozza la scheda la rifa' il DB (vendite.trgfn_doc_fornitura_segue_cliente). VARIADIC: il documento leggibile (Contratto <numero>, Offerta <codice>). Nel contesto le due coppie.
+    "E_DOC_FORNITURA_FUORI_TESTATA": "TECNICO",
+    # vendite.fn_get_fornitura_da_anagrafica (coppia istanza/utility NULL) e vendite.fn_doc_fornitura_da_anagrafica (id del documento NULL o <= 0) chiamate senza il dato che le definisce (2026-10-12, brief-db-indirizzi-documento-seguono-il-cliente). Chiamante rotto: se ne accorge chi guarda dbops.error_log, mai l'operatore. Codice proprio e non E_PARAMETRO_INVALIDO, che e' uno split rimandato e non si riusa su punti nuovi. VARIADIC: la funzione, il dato mancante.
+    "E_DOC_FORNITURA_PARAMETRO_MANCANTE": "TECNICO",
     # Famiglia 1, l'identita' della testata (data, valuta, tasso di cambio, anno, serie, registro, revisione del preventivo): non cambia fuori bozza. BB vendite.trgfn_doc_testata_lock_fuori_bozza, montato su ddt, resi, ordini, preventivi, offerte_commerciali, contratti (D-1, D-2, D-7 di Tid, 2026-10-10, brief-db-testata-dopo-emissione). CONFLITTO_STATO come gli altri lock fuori bozza; VARIADIC lo stato. Il numero ha i suoi guard (protect_num, lock di colonna) e qui non e' nominato.
     "E_DOC_IDENTITA_FUORI_BOZZA": "CONFLITTO_STATO",
     # script.fn_check_listino_cambiabile, sollevato da script.trgfn_doc_guard_listino_con_righe su vendite.contratti e vendite.offerte_commerciali (2026-10-11, brief-db-testata-dopo-emissione §11, R-DB-4 e D-11 di Tid): un listino nuovo, messo dove non c'era o sostituito, su un documento con righe attive, che sono state caricate contro il listino di prima. Sostituisce E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE (solo contratto, solo backend) e vale anche per l'offerta, che ha le stesse righe. Fuori bozza parla prima il lock di testata (E_DOC_CONDIZIONI_FUORI_BOZZA). · VALORI: l'etichetta del documento e il numero di righe attive. Campo listino_id (canale COLUMN).

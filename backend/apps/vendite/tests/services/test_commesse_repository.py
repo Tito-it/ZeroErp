@@ -11,7 +11,9 @@ Indice test eseguiti:
 1b) CommesseRepositoryUnitTests.test_get_or_create_commessa_propaga_condizioni_pagamento
 1c) CommesseRepositoryUnitTests.test_get_or_create_commessa_condizioni_assenti_passano_null
 1d) CommesseRepositoryUnitTests.test_get_or_create_commessa_non_passa_emittente
-2) CommesseRepositoryUnitTests.test_link_sorgente_returns_int
+2) CommesseRepositoryUnitTests.test_get_commessa_viva_by_sorgente_legge_la_funzione_db
+2b) CommesseRepositoryUnitTests.test_get_commessa_viva_by_sorgente_none_senza_commessa_aperta
+2c) CommesseRepositoryUnitTests.test_get_commessa_viva_by_sorgente_codice_sconosciuto_raises
 3) CommesseRepositoryUnitTests.test_upsert_attivita_returns_result
 4) CommesseRepositoryUnitTests.test_upsert_attivita_uses_defaults
 5) CommesseRepositoryUnitTests.test_emit_attivita_fatturabili_maps_result
@@ -202,22 +204,42 @@ class CommesseRepositoryUnitTests(TestCase):
         )
         self.assertEqual(sql.count("%s"), len(args))
 
-    # Scopo: Verifica che link_sorgente chiami la funzione DB e restituisca int.
+    # Scopo: La commessa APERTA di un documento la dice il DB
+    #        (`fn_commessa_viva_di_sorgente`), non una SELECT propria su
+    #        `commesse_sorgenti`: con i link di storia (D-12) una `LIMIT 1`
+    #        senza stato poteva dare la commessa annullata.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
-    def test_link_sorgente_returns_int(self, mock_cursor_factory):
+    def test_get_commessa_viva_by_sorgente_legge_la_funzione_db(self, mock_cursor_factory):
         mock_cursor_factory.return_value = _mock_cursor(fetchone=(99,))
-        repo = CommesseRepository()
-        result = repo.link_sorgente(
-            commessa_id=10,
-            sorgente_tipo_id=5,
-            sorgente_uid="PREV-001",
+        result = CommesseRepository().get_commessa_viva_by_sorgente(
+            sorgente_codice="PREVENTIVO", sorgente_chiave="uuid-001",
         )
         self.assertEqual(result, 99)
         sql, args = mock_cursor_factory.return_value.execute.call_args[0]
-        self.assertIn("fn_link_commessa_sorgente", sql)
-        # Segnaposti e valori si corrispondono: un `p_… => %s` senza valore
-        # rende la chiamata irrisolvibile, e il mock da solo non lo vede.
+        self.assertIn("vendite.fn_commessa_viva_di_sorgente", sql)
+        self.assertNotIn("commesse_sorgenti", sql)
+        self.assertEqual(args, ["uuid-001", "PREVENTIVO"])
         self.assertEqual(sql.count("%s"), len(args))
+
+    # Scopo: Nessuna commessa aperta → la funzione torna NULL → None.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_get_commessa_viva_by_sorgente_none_senza_commessa_aperta(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=(None,))
+        self.assertIsNone(CommesseRepository().get_commessa_viva_by_sorgente(
+            sorgente_codice="PREVENTIVO", sorgente_chiave="uuid-001",
+        ))
+
+    # Scopo: Codice sorgente assente da config.sorgenti (nessuna riga) → errore
+    #        col suo codice, NON None: un codice sbagliato non deve sembrare
+    #        «nessuna commessa aperta» e far saltare l'aggancio in silenzio.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_get_commessa_viva_by_sorgente_codice_sconosciuto_raises(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(fetchone=None)
+        with self.assertRaises(ServiceError) as ctx:
+            CommesseRepository().get_commessa_viva_by_sorgente(
+                sorgente_codice="SCONOSCIUTO", sorgente_chiave="uuid-001",
+            )
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_SORGENTE_SCONOSCIUTA")
 
     # Scopo: Verifica che upsert_attivita chiami la fn DB e restituisca UpsertAttivitaResult.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")

@@ -2090,7 +2090,8 @@ def _resolve_pratica_id_da_preventivo(preventivo_id: int) -> int | None:
 #        (idempotente, ON CONFLICT DO NOTHING). Aggancio del RAMO SERVIZI dello
 #        split (rev.3): post_smistamento e' merce-only, quindi la commessa-servizi
 #        si aggancia dal push standalone. No-op se il preventivo non e' in una
-#        pratica o se nessuna commessa risulta agganciata alla sorgente.
+#        pratica o se non sta in nessuna commessa APERTA: una commessa chiusa o
+#        annullata resta nel link come storia, ma non e' quella dell'invio.
 def _aggancia_commessa_servizi_a_pratica(preventivo_id: int, preventivo_uid: str) -> None:
     from apps.pratiche.db.pratiche_repository import PraticheRepository
     from apps.vendite.db.commesse_repository import CommesseRepository
@@ -2098,8 +2099,8 @@ def _aggancia_commessa_servizi_a_pratica(preventivo_id: int, preventivo_uid: str
     pratica_id = _resolve_pratica_id_da_preventivo(preventivo_id)
     if pratica_id is None:
         return
-    commessa_id = CommesseRepository().get_commessa_id_by_sorgente(
-        sorgente_codice=SORGENTE_PREVENTIVO, sorgente_uid=preventivo_uid,
+    commessa_id = CommesseRepository().get_commessa_viva_by_sorgente(
+        sorgente_codice=SORGENTE_PREVENTIVO, sorgente_chiave=preventivo_uid,
     )
     if commessa_id is None:
         return

@@ -143,7 +143,6 @@ def _mock_repo(commessa_id: int = 10, inserted: int = 1, updated: int = 0) -> Ma
     repo = MagicMock(spec=CommesseRepository)
     repo.fetch_pushable_rows.return_value = []
     repo.get_or_create_commessa.return_value = commessa_id
-    repo.link_sorgente.return_value = 1
     repo.batch_upsert_attivita.return_value = BatchUpsertResult(
         total_rows=inserted + updated, inserted=inserted, updated=updated, errors=[],
     )
@@ -159,7 +158,9 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(handler.sorgente_codice, "ORDINE_VENDITA")
         self.assertEqual(handler.name, "HandlerOrdini")
 
-    # Scopo: Happy path — una riga → get_or_create_commessa + link + batch_upsert.
+    # Scopo: Happy path — una riga → get_or_create_commessa + batch_upsert. Il
+    #        link della sorgente NON lo scrive il backend: lo scrive la madre DB
+    #        delle righe (D-13), quindi il repository non ha piu' il metodo.
     def test_process_rows_crea_commessa_e_upsert(self):
         repo = _mock_repo()
         row = _make_row()
@@ -171,7 +172,7 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(result.created, 1)
         self.assertEqual(result.errors, [])
         repo.get_or_create_commessa.assert_called_once()
-        repo.link_sorgente.assert_called_once()
+        self.assertFalse(hasattr(CommesseRepository, "link_sorgente"))
         repo.batch_upsert_attivita.assert_called_once()
         inputs = repo.batch_upsert_attivita.call_args[0][0]
         self.assertEqual(len(inputs), 1)
@@ -302,7 +303,7 @@ class CommesseSourceHandlersTests(TestCase):
         kwargs = repo.fetch_pushable_rows.call_args.kwargs
         self.assertIsNone(kwargs["righe_ids"])
 
-    # Scopo: dry_run=True → nessuna chiamata batch_upsert, ma commessa creata e linked.
+    # Scopo: dry_run=True → nessuna chiamata batch_upsert, ma commessa risolta.
     def test_process_rows_dry_run_skippa_upsert(self):
         repo = _mock_repo()
         repo.fetch_pushable_rows.return_value = [_make_row()]
@@ -312,7 +313,6 @@ class CommesseSourceHandlersTests(TestCase):
 
         self.assertEqual(result.created, 1)
         repo.get_or_create_commessa.assert_called_once()
-        repo.link_sorgente.assert_called_once()
         repo.batch_upsert_attivita.assert_not_called()
 
     # Scopo: tipo_commessa estratto da meta (#6).
@@ -463,8 +463,6 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual(result.created, 2)
         # Cache: get_or_create_commessa chiamata 1 volta, non 2.
         repo.get_or_create_commessa.assert_called_once()
-        # link_sorgente comunque chiamata per ogni riga (sorgente diversa).
-        self.assertEqual(repo.link_sorgente.call_count, 2)
         # Batch upsert: 1 sola chiamata con 2 input.
         repo.batch_upsert_attivita.assert_called_once()
         self.assertEqual(len(repo.batch_upsert_attivita.call_args[0][0]), 2)
@@ -485,11 +483,21 @@ class CommesseSourceHandlersTests(TestCase):
         row2 = _make_row(segment_key="TEST:uid-002:R:1", sorgente_uid="uid-002")
         repo.fetch_pushable_rows.return_value = [row1, row2]
         # La 1a riga cade DOPO get_or_create_commessa (che ha gia' popolato la
-        # cache nella vecchia forma); la 2a passa.
-        repo.link_sorgente.side_effect = [RuntimeError("link ko"), 1]
+        # cache nella vecchia forma), nella costruzione del suo input; la 2a passa.
         handler = HandlerPreventivi(repo)
+        build_vero = handler._build_attivita_input
+        chiamate = {"n": 0}
 
-        result = handler.run()
+        def _build_che_cade_la_prima_volta(commessa_id, row):
+            chiamate["n"] += 1
+            if chiamate["n"] == 1:
+                raise RuntimeError("riga ko")
+            return build_vero(commessa_id, row)
+
+        with patch.object(
+            handler, "_build_attivita_input", side_effect=_build_che_cade_la_prima_volta,
+        ):
+            result = handler.run()
 
         # La 2a riga NON ha riusato la cache: e' tornata al database.
         self.assertEqual(repo.get_or_create_commessa.call_count, 2)
