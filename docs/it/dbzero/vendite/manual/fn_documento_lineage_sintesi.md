@@ -47,4 +47,18 @@ Un documento che chi legge non vede non compare.
 export e drawer leggono le colonne del grafo da qui. La pratica la legge da
 `pratiche.fn_pratica_del_documento`, la stessa delle liste.
 
+### 🔄 rev 2026-10-13 — un legame ritirato non è una destinazione
+
+`20261013-71`, D-15 di Tid. Un preventivo annullato, ritirato da una commessa
+che resta viva, aveva per frontiera la commessa «pronta da fatturare»: la lista
+diceva che il preventivo stava lì. Ora un arco il cui legame è ritirato
+([`fn_documento_lineage_legami`](fn_documento_lineage_legami.md)) si scarta alla
+lettura degli archi di ogni livello. Quindi non conta per niente di ciò che ne
+deriva: cammino, frontiera, discendenti, «transitato», sorgenti e radice. Un
+arco non censito resta, come prima. Il pannello «Passaggi» lo mostra ancora,
+come storia.
+
+Esempio: un preventivo evaso il cui ordine è stato annullato torna «non
+transitato». È giusto: si può smistare di nuovo.
+
 {% include-markdown "signature-core.md" %}
