@@ -89,12 +89,16 @@ BEGIN;
 SET CONSTRAINTS ALL IMMEDIATE;
 
 -- ⚠️ 3. CONTESTO APPLICATIVO. La vista legge ordini e ddt, che hanno RLS.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (in CI l'utente 1 non esiste;
+--   anagrafiche e articoli sono vuoti). fn_pgtap_crea_mondo_cliente fa azienda,
+--   operatore, cliente BA legato a quell'azienda e APRE il contesto da se'.
+CREATE TEMP TABLE _m AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP situazione merce');
+-- Il mondo ha gia' aperto il contesto sul suo operatore: la riga lo
+--   dichiara (e il guardrail del preambolo la cerca).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
 
 SELECT plan(17);
-
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -131,33 +135,19 @@ SELECT columns_are('vendite', 'vw_situazione_merce_ordine',
 -- ============================================================
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS istanza_utility_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
+  -- ⛔ rev 2026-10-13: BA, utility, istanza, ruolo del cliente ed emittente dal
+  --   mondo costruito; l'articolo si costruisce (merce, non gestito: il test non
+  --   misura il magazzino). La sua UoM base e' la prima attiva del seed, la
+  --   stessa che uom_id legge qui sotto.
+  (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
+  (SELECT utility_id FROM _m)                                            AS utility_id,
+  (SELECT istanza_utility_id FROM _m)                                    AS istanza_utility_id,
+  (SELECT cliente_soggetto_ruolo_id FROM _m)                             AS soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-SITUAZ-MERCE', false)              AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)               AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  (SELECT emittente_fiscale_id FROM _m)                                  AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
@@ -397,7 +387,8 @@ SELECT is(
 --    verdi per sottrazione — che e' esattamente il difetto che il file
 --    combatte in tre punti.
 -- ============================================================
-SELECT set_config('app.current_user_id', '1', true);
+-- ⛔ rev 2026-10-13: si torna all'operatore del mondo costruito, non all'utente 1.
+SELECT set_config('app.current_user_id', (SELECT auth_user_id FROM _m)::text, true);
 
 -- Helper: come mk_ordine, ma con lo stato scelto per codice_interno.
 -- ⚠️ Per codice_interno e non per id: la chiave stabile (§6d linee guida SQL).

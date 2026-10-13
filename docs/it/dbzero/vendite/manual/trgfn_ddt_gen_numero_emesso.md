@@ -18,7 +18,10 @@
 
 Assegna il **`numero` del DDT alla transizione a EMESSO** — non in bozza, per non
 lasciare buchi di numerazione da bozze scartate. È agganciata a `vendite.ddt` come
-`trg_ddt_a10_gen_numero_emesso_upd` (`BEFORE INSERT OR UPDATE OF stato_doc_ddt_id`).
+`trg_ddt_z10_gen_numero_emesso_ins_upd` (`BEFORE INSERT OR UPDATE OF stato_doc_ddt_id`).
+Fascia `_z10_` dal 2026-10-13 (`20261013-53`): il registro si sceglie con l'emittente e la
+utility della bolla, che all'INSERT scrive `trg_ddt_normalize_ins_upd`; prima si chiamava
+`trg_ddt_a10_gen_numero_emesso_upd` e girava prima di lui.
 
 ---
 

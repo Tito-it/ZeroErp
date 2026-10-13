@@ -41,7 +41,16 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(7);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
+-- ⛔ rev 2026-10-13: niente app.current_user_id = '1' (in CI l'utente 1 non
+--   esiste): l'operatore e' quello del contesto aperto qui sopra.
+
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti): cliente fatturabile legato all'azienda di chi agisce,
+--   articolo merce non gestito a magazzino (il test non misura il magazzino).
+CREATE TEMP TABLE tmp_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP backlog resi');
+CREATE TEMP TABLE tmp_art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-BLR-V1', false) AS id;
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -56,33 +65,17 @@ END $az$;
 -- ============================================================
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS istanza_utility_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
+  -- ⛔ rev 2026-10-13: BA, utility, istanza, ruolo del cliente e articolo dal
+  --   mondo costruito (prima: il primo BA del database e l'ultimo articolo).
+  (SELECT m.billing_account_id FROM tmp_mondo m)                         AS billing_account_id,
+  (SELECT m.utility_id FROM tmp_mondo m)                                 AS utility_id,
+  (SELECT m.istanza_utility_id FROM tmp_mondo m)                         AS istanza_utility_id,
+  (SELECT m.cliente_soggetto_ruolo_id FROM tmp_mondo m)                  AS soggetto_ruolo_id,
+  (SELECT t.id FROM tmp_art t)                                           AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  (SELECT m.emittente_fiscale_id FROM tmp_mondo m)                      AS emittente_fiscale_id,  -- rev 2026-10-13: l'azienda del mondo
   -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
   --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
   --   righe non si scrivono piu' (20261008-90).
