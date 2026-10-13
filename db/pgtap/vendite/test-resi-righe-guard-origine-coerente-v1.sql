@@ -40,12 +40,14 @@ BEGIN;
 SET CONSTRAINTS ALL IMMEDIATE;
 
 -- ⚠️ 3. CONTESTO APPLICATIVO. Il test gira come `zeroerp_app` con la RLS attiva.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (in CI l'utente 1 non esiste;
+--   anagrafiche e articoli sono vuoti). Prima il mondo — azienda, operatore,
+--   cliente legato a quell'azienda — poi il contesto, sul SUO operatore.
+CREATE TEMP TABLE _m AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP guard origine coerente');
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
 
 SELECT plan(6);
-
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
 
 -- ============================================================
 -- 1-2) Il guard esiste ed e' agganciato dove deve
@@ -69,24 +71,15 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
+  -- ⛔ rev 2026-10-13: cliente ed emittente dal mondo costruito, non il primo BA
+  --   del database; l'articolo si costruisce (nasce merce, non solo componente:
+  --   ordine e bolla lo ammettono — brief-db-articoli-ammessi-per-documento, Lotto 3a).
+  (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
+  (SELECT cliente_soggetto_ruolo_id FROM _m)                             AS soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-RESI-ORIGINE', false)             AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)               AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  (SELECT emittente_fiscale_id FROM _m)                                 AS emittente_fiscale_id,
   -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
   --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
   --   righe non si scrivono piu' (20261008-90).
@@ -100,7 +93,11 @@ SELECT
   (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' LIMIT 1) AS causale_vendita_id,
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')      AS tipo_ind_con_id;
 
-CREATE TEMP TABLE tmp_doc AS
+-- ⛔ rev 2026-10-13: testata e riga in DUE istruzioni, non in una CTE. Sotto la
+--   RLS il WITH CHECK della riga cerca la testata con la snapshot d'inizio
+--   istruzione, che la testata appena scritta non la contiene ancora: un
+--   operatore vero (non l'utente 1 di prima) viene rifiutato.
+CREATE TEMP TABLE tmp_ord AS
 WITH o AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
@@ -108,12 +105,16 @@ WITH o AS (
          DATE '2026-08-15', 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_guard_origine')
   FROM tmp_refs r RETURNING id
-), orr AS (
+)
+SELECT id FROM o;
+
+CREATE TEMP TABLE tmp_doc AS
+WITH orr AS (
   INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
     qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
   SELECT o.id, 1, r.articolo_id, 'Riga guard origine', 10, 10, 25, r.iva_id, true, false,
          jsonb_build_object('test_scope','pgtap_guard_origine')
-  FROM o, tmp_refs r RETURNING id, ordine_id
+  FROM tmp_ord o, tmp_refs r RETURNING id, ordine_id
 )
 SELECT orr.ordine_id, orr.id AS ordine_riga_id, NULL::bigint AS ddt_id
 FROM orr;

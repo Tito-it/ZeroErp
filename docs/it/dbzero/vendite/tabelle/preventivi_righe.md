@@ -79,8 +79,8 @@
 | trg_preventivi_righe_a10_preventivi_righe_componenti_blo_4c13d0 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe_componenti', 'riga_preventivo_id', 'id', 'attivo')` |
 | trg_preventivi_righe_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true')` |
 | trg_preventivi_righe_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true')` |
-| trg_preventivi_righe_a10_set_natura_vendita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita()` |
-| trg_preventivi_righe_a10_set_natura_vendita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_preventivi_righe_set_natura_vendita()` |
+| trg_preventivi_righe_a10_regole_articolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('PREVENTIVO', 'preventivo_id')` |
+| trg_preventivi_righe_a10_regole_articolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('PREVENTIVO', 'preventivo_id')` |
 | trg_preventivi_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_preventivi_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_preventivi_righe_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

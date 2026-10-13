@@ -248,12 +248,17 @@ SELECT lives_ok(
 
 -- ⭐ Il presidio della §12.5.2: non «gli esiti coincidono», ma «la madre non
 --    contiene piu' il predicato». Commenti tolti prima di cercare.
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b): il
+--   guard dedicato (script.trgfn_righe_guard_esclusione_figlio_bundle) e'
+--   ritirato; il figlio di bundle e' ora il primo motivo dell'ESCLUSIONE nella
+--   check per tipo di riga, script.fn_check_articolo_riga, che lo COMPONE dalla
+--   stessa check. Il presidio resta lo stesso, sulla nuova sede.
 SELECT ok(
     (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_documento\s*\('
         AND regexp_replace(prosrc, '--[^\n]*', '', 'g') !~ 'listini_righe_componenti'
        FROM pg_proc
-      WHERE oid = 'script.trgfn_righe_guard_esclusione_figlio_bundle()'::regprocedure),
-    '12) il guard chiama la check e non contiene piu'' il predicato');
+      WHERE oid = 'script.fn_check_articolo_riga(text,bigint,uuid,bigint,vendite.tipo_eccezione_contratto)'::regprocedure),
+    '12) la check di riga chiama la check dell''esclusione e non contiene il predicato');
 
 SELECT * FROM finish();
 ROLLBACK;

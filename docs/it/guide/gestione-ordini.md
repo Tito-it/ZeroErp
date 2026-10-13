@@ -213,6 +213,14 @@ Ogni riga è una voce da consegnare/fatturare:
 Vincoli per l'operatore: **quantità > 0** e **prezzo ≥ 0** (un omaggio è quantità
 positiva con prezzo zero).
 
+**Quali articoli ammette** (dal 2026-10-13): solo **merce**, e mai un articolo **«solo
+componente»**, che si vende soltanto dentro il kit che lo contiene. Un servizio una tantum va
+in commessa, un servizio ricorrente in contratto (tramite un'offerta). La merce è giudicata
+dalla **natura con cui la riga è stata venduta**: una riga nata da un preventivo porta la natura di lì, anche
+se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo per tutti i
+documenti ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)), e
+il messaggio dice perché e dove va invece l'articolo.
+
 ### 3.3 Componenti BoM `ordini_righe_componenti`
 
 Quando una riga punta a un **articolo composito** (distinta base), il sistema

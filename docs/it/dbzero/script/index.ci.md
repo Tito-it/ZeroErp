@@ -24,6 +24,7 @@
 - [fn_check_accredito_annullabile](manual/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](manual/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](manual/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
+- [fn_check_articolo_riga](manual/fn_check_articolo_riga.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto)
 - [fn_check_attivita_riportabile_da_emettere](manual/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](manual/fn_check_azione_processo.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_check_ba_cambio_emittente](manual/fn_check_ba_cambio_emittente.md) — (latest review 27-08-26)
@@ -253,13 +254,12 @@
 - [trgfn_prevent_modification_generic](manual/trgfn_prevent_modification_generic.md) — * **Proteggere dati di audit**   Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`). * **Centralizzare la gestione degli errori**   Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
 - [trgfn_qta_from_operativa](manual/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
 - [trgfn_righe_default_fonte_qta](manual/trgfn_righe_default_fonte_qta.md) — (rev 2026-08-21)
-- [trgfn_righe_guard_aggiunta_fuori_listino](manual/trgfn_righe_guard_aggiunta_fuori_listino.md) — (funzione nata il 2026-10-04, `20261004-45`; trigger `20261004-48` e `-49`)
+- [trgfn_righe_guard_articolo_ammesso](manual/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2, A-6; Lotto 3b, `20261013-56/-57`)
 - [trgfn_righe_guard_erogazione_obbligatoria](manual/trgfn_righe_guard_erogazione_obbligatoria.md) — (funzione nata il 2026-10-04, `20261004-31`; trigger `20261004-32`)
-- [trgfn_righe_guard_esclusione_figlio_bundle](manual/trgfn_righe_guard_esclusione_figlio_bundle.md) — (funzione nata il 2026-10-04, `20261004-44`; trigger `20261004-48` e `-49`)
 - [trgfn_righe_guard_esclusione_immutabile](manual/trgfn_righe_guard_esclusione_immutabile.md) — (funzione nata il 2026-10-04, `20261004-46`; trigger `20261004-48` e `-49`)
 - [trgfn_righe_guard_esclusione_senza_dati](manual/trgfn_righe_guard_esclusione_senza_dati.md) — (funzione nata il 2026-10-04, `20261004-47`; trigger `20261004-48` e `-49`)
 - [trgfn_righe_guard_pending](manual/trgfn_righe_guard_pending.md) — (rev 2026-06-01 — estrazione)
-- [trgfn_righe_natura_vendita](manual/trgfn_righe_natura_vendita.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-4)
+- [trgfn_righe_natura_vendita](manual/trgfn_righe_natura_vendita.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-4; `20261013-14`)
 - [trgfn_storico_generic](manual/trgfn_storico_generic.md) — (latest review 02-02-26) * **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [trgfn_sync_stato_iso2](manual/trgfn_sync_stato_iso2.md) — * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono. * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.
 - [uuid_nil](manual/uuid_nil.md) — * Fornire un valore UUID costante, composto interamente da zeri. * Usato come **fallback** o **default** quando non è possibile generare o recuperare un UUID valido.

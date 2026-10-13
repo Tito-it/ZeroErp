@@ -176,16 +176,16 @@ SELECT
   (SELECT v.id
      FROM config.valute v
     ORDER BY v.id LIMIT 1)           AS valuta_id,
-  (SELECT a.id
-     FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST, a.id
-    LIMIT 1)                         AS articolo_id,
-  (SELECT a.uom_id
-     FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST, a.id
-    LIMIT 1)                         AS uom_operativa_id,
+-- 🔴 rev 2026-10-13 (brief-db-articoli-ammessi-per-documento D-1/D-2): l'articolo si
+--   COSTRUISCE. Prima si pescava dal catalogo (il primo per id, o il piu' recente):
+--   il primo per id e' l'onere del seed ONERE_SENZA_CONTRATTO (natura servizio), e
+--   da 20261013-42 ordine e bolla portano solo merce. Un articolo costruito ha solo
+--   le proprieta' che il test gli da' (merce, non gestito a magazzino).
+  dbops.fn_pgtap_crea_articolo('PGT-ORIT-ART', false)                         AS articolo_id,
+  -- La UoM dell'articolo costruito: la prima attiva per id, come in
+  -- dbops.fn_pgtap_crea_articolo.
+  (SELECT u.id FROM catalogo.unita_misura u
+    WHERE u.attivo ORDER BY u.id LIMIT 1) AS uom_operativa_id,
   (SELECT id FROM iva1)              AS iva1_id,
   (SELECT aliquota_iva FROM iva1)    AS iva1_aliquota,
   (SELECT id FROM iva2)              AS iva2_id,

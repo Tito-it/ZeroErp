@@ -38,7 +38,7 @@
 --    8) erogazione fuori perimetro: E_RIGA_EROGAZIONE_FUORI_PERIMETRO / tipo_erogazione
 --    9) erogazione ammessa, fonte no: … / fonte_quantita_attesa
 --   10) tipologia fuori utility: E_RIGA_TIPOLOGIA_FUORI_UTILITY / articolo_id
---   11) l'ESCLUSIONE non si giudica
+--   11) l'ESCLUSIONE non si giudica sul perimetro (parla solo il listino, A-5)
 --   L'UPDATE
 --   12) cambia la sola erogazione: la fonte si riallinea a quella dell'articolo
 --   13) cambiano erogazione E fonte: la scelta non si tocca, la giudica il guard
@@ -203,8 +203,14 @@ SELECT is(pg_temp.canali(pg_temp.agg('P', NULL, NULL)),
     'E_RIGA_TIPOLOGIA_FUORI_UTILITY / articolo_id',
     '10) tipologia (PRODOTTI) che la utility (ENE) non prevede: rifiutata, campo articolo_id');
 
-SELECT is(pg_temp.canali(pg_temp.agg('P', NULL, NULL, 'ESCLUSIONE')), 'NESSUN ERRORE',
-    '11) l''ESCLUSIONE non si giudica: nasce vuota e non si fattura');
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5):
+--   l'ESCLUSIONE modifica una riga del listino, e questo contratto un listino
+--   non l'ha: parla E_RIGA_ECCEZIONE_SENZA_LISTINO. Il soggetto del test resta
+--   vero, e si vede dal PRIMO motivo: P ha una tipologia che la utility non
+--   prevede, e non e' quella a parlare — sul perimetro l'esclusione non si giudica.
+SELECT is(pg_temp.canali(pg_temp.agg('P', NULL, NULL, 'ESCLUSIONE')),
+    'E_RIGA_ECCEZIONE_SENZA_LISTINO / articolo_id',
+    '11) l''ESCLUSIONE non si giudica sul perimetro: parla solo il listino (A-5), qui assente');
 
 -- ============================================================
 -- 12-15) L'UPDATE
@@ -227,9 +233,13 @@ SELECT is(pg_temp.canali(format(
 -- B-D6: RP e' SERVIZIO_RICORRENTE e la sua riga nasce CANONE/FISSA; poi l'articolo
 -- diventa MERCE, e la riga resta fuori dal nuovo perimetro.
 DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('RP', NULL, NULL)); END $fx$;
-UPDATE catalogo.articoli
-   SET natura_vendita_id = (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE')
- WHERE id = pg_temp.art('RP');
+-- ⛔ rev 2026-10-13 (A-10): RP e' gia' usato (la riga del contratto), e un
+--   articolo usato non cambia natura: il caso resta vero dalla porta
+--   amministratore, e il builder passa dal verbo.
+SELECT dbops.fn_pgtap_articolo_correggi_struttura(
+    pg_temp.art('RP'),
+    jsonb_build_object('natura_vendita_id',
+        (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE')));
 
 SELECT is(pg_temp.canali(format(
     $$UPDATE vendite.contratti_righe SET prezzo_unitario = 11

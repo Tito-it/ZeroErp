@@ -23,7 +23,8 @@
 --   7) riga scritta a mano senza natura: quella dell'articolo
 --   8) riga scritta con una natura: resta quella portata
 --   9) un UPDATE con lo stesso articolo non la tocca
---  10) cambio di articolo: la natura del nuovo articolo
+--  10) cambio di articolo verso un servizio: la natura si ricalcola dal nuovo
+--      articolo, e la regola dell'ordine (solo merce, 20261013-42) la rifiuta
 --  11) scriverla a mano: E_RIGA_NATURA_VENDITA_IMMUTABILE (lock di colonna)
 --  Ordine -> bolla (fn_genera_ddt_da_ordine)
 --  12) la riga di bolla porta la natura della riga d'ordine, non quella di oggi
@@ -102,8 +103,11 @@ SELECT is((SELECT natura_vendita_id FROM _pr), (SELECT merce FROM _nat),
     '3) preventivo: la natura viene dall''articolo, non da chi scrive');
 
 -- Da qui M e' un servizio in anagrafica: le righe gia' scritte non lo sanno.
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT servizio FROM _nat)
- WHERE id = (SELECT m FROM _art);
+-- ⛔ rev 2026-10-13 (A-10): M e' gia' usato (la riga di preventivo), e un
+--   articolo usato non cambia natura; il caso resta vero dalla porta
+--   amministratore, e il builder passa dal verbo.
+SELECT dbops.fn_pgtap_articolo_correggi_struttura(
+    (SELECT m FROM _art), jsonb_build_object('natura_vendita_id', (SELECT servizio FROM _nat)));
 
 UPDATE vendite.preventivi_righe SET qta_operativa = 3 WHERE id = (SELECT id FROM _pr);
 
@@ -168,11 +172,17 @@ SELECT is((SELECT natura_vendita_id FROM vendite.ordini_righe WHERE id = (SELECT
           (SELECT merce FROM _nat),
     '9) ordine: un UPDATE con lo stesso articolo non la tocca');
 
-UPDATE vendite.ordini_righe SET articolo_id = (SELECT s FROM _art) WHERE id = (SELECT id FROM _or_man);
-
-SELECT is((SELECT natura_vendita_id FROM vendite.ordini_righe WHERE id = (SELECT id FROM _or_man)),
-          (SELECT servizio FROM _nat),
-    '10) ordine: cambio di articolo, la natura e'' quella del nuovo articolo');
+-- 🔴 rev 2026-10-13 (Lotto 3a): fino al -42 il test 10 cambiava l'articolo
+--   della riga d'ordine in un servizio e leggeva la natura nuova. Da quando
+--   l'ordine porta solo merce (D-1), su un ordine non c'e' un'altra natura
+--   ammessa: il ricalcolo si vede dal rifiuto, che giudica la natura del
+--   NUOVO articolo (se il BB non la ricalcolasse, la riga resterebbe merce e
+--   passerebbe).
+SELECT throws_like(
+    format($$UPDATE vendite.ordini_righe SET articolo_id = %L WHERE id = %s$$,
+           (SELECT s FROM _art), (SELECT id FROM _or_man)),
+    '%vanno solo merci%',
+    '10) ordine: cambio di articolo verso un servizio, la natura ricalcolata e'' rifiutata');
 
 SELECT throws_like(
     format($$UPDATE vendite.ordini_righe SET natura_vendita_id = %s WHERE id = %s$$,

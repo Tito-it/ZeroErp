@@ -40,12 +40,16 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: il test gira come gira l'applicazione (OPERATORE + RLS
 -- attiva), non come owner. L'owner salterebbe le policy e il test non le
 -- eserciterebbe mai.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (su un DB ricostruito anagrafiche e
+--   articoli sono vuoti): azienda + operatore + cliente BA, e il builder apre
+--   da se' il contesto su quell'operatore. Niente utente 1 inchiodato.
+CREATE TEMP TABLE tmp_mondo_acc AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP accredita reso');
+-- Il mondo ha gia' aperto il contesto sul suo operatore: la riga lo
+--   dichiara (e il guardrail del preambolo la cerca).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_mondo_acc)); END $ctx$;
 
 SELECT plan(14);
-
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -69,9 +73,9 @@ SELECT
   script.fn_pgtap_emittente_operatore()                                  AS emittente_fiscale_id,
   script.fn_pgtap_emittente_sr_operatore()                               AS emittente_sr_id,
   ba.soggetto_ruolo_id               AS soggetto_ruolo_id,  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il ruolo del BA, non il primo del database
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST, a.id DESC LIMIT 1)                           AS articolo_id,
+  -- ⛔ rev 2026-10-13: l'articolo si COSTRUISCE (merce non solo-componente, non
+  --   gestito: il test non misura il magazzino) — da zero il catalogo ha solo ONERE_*.
+  dbops.fn_pgtap_crea_articolo('PGTAP-ACC-RESO', false)                  AS articolo_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
@@ -93,11 +97,9 @@ SELECT
   -- del DDT, e VENDITA e' l'unica fatturabile.
   (SELECT c.id FROM config.causali_trasporto c WHERE c.codice='VENDITA' ORDER BY c.id LIMIT 1)                         AS causale_vendita_id,
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')                                                    AS tipo_ind_con_id
-FROM anagrafiche.billing_account ba
-WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-  AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-ORDER BY ba.id
-LIMIT 1;
+-- ⛔ rev 2026-10-13: il BA e' quello del mondo costruito, non il primo del database.
+FROM tmp_mondo_acc m
+JOIN anagrafiche.billing_account ba ON ba.id = m.billing_account_id;
 
 -- ============================================================
 -- Helper di fixture

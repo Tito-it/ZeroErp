@@ -7,7 +7,7 @@ Approfondimento tabelle:
 > • [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe)
 >
 Approfondimento funzioni:
-> • [vendite.trgfn_preventivi_righe_set_natura_vendita](/dbzero/vendite/funzioni/trgfn_preventivi_righe_set_natura_vendita)
+> • [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — le regole sulle righe, che leggono la destinazione
 
 ---
 ### 🎯 Scopo Principale
@@ -29,7 +29,7 @@ l'accettazione del preventivo. Tre voci, e ciascuna manda la riga da un'altra pa
 
 La natura vive su `catalogo.articoli.natura_vendita_id` ed è **ereditata e congelata** sulle
 righe di preventivo, ordine e bolla da [`script.trgfn_righe_natura_vendita`](/dbzero/script/manual/trgfn_righe_natura_vendita) (dal 2026-10-13; prima, sul solo preventivo,
-da `trgfn_preventivi_righe_set_natura_vendita`). La riga porta la natura **con cui è stata
+da `trgfn_preventivi_righe_set_natura_vendita`, ritirato lo stesso giorno). La riga porta la natura **con cui è stata
 venduta**: l'ordine quella del preventivo, la bolla quella dell'ordine, la riconsegna quella
 della bolla resa. Un cambio di natura dell'articolo in anagrafica non tocca le righe già
 scritte. L'operatore non la sceglie: la sceglie chi classifica l'articolo.
@@ -47,9 +47,11 @@ il codice è `E_RIGA_NATURA_VENDITA_IMMUTABILE`, lo stesso sulle tre tabelle (fi
 
 ### ⚠️ `destinazione_tipo` è la colonna portante — e il guard la legge
 
-`trgfn_preventivi_righe_set_natura_vendita` blocca le righe la cui natura ha
-`destinazione_tipo = 'CONTRATTO'`: la ricorrenza non può stare su un preventivo, va
-sull'**offerta commerciale**.
+[`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga) legge la
+destinazione della natura della riga: sul preventivo blocca `destinazione_tipo = 'CONTRATTO'`
+(la ricorrenza va sull'**offerta commerciale**), su ordine e bolla ammette solo `ORDINE` (la
+merce). Fino al 2026-10-13 il blocco del preventivo stava in
+`trgfn_preventivi_righe_set_natura_vendita`, ritirato nella check.
 
 ⭐ Il controllo è **data-driven**: guarda `destinazione_tipo`, non il codice della natura.
 Aggiungere una natura nuova mappata a `CONTRATTO` la fa bloccare da sé, senza toccare il

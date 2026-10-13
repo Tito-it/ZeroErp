@@ -78,22 +78,20 @@
 | trg_contratti_righe_a10_default_erogazione_articolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_erogazione_da_articolo()` |
 | trg_contratti_righe_a10_default_fonte_qta_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
 | trg_contratti_righe_a10_default_fonte_qta_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
-| trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_aggiunta_fuori_listino('CONTRATTO', 'contratto_id')` |
-| trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_aggiunta_fuori_listino('CONTRATTO', 'contratto_id')` |
+| trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('CONTRATTO', 'contratto_id')` |
+| trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('contratto_id')` |
 | trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('contratto_id')` |
 | trg_contratti_righe_a10_guard_erogazione_perimetro_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a10_guard_erogazione_perimetro_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('CONTRATTO', 'contratto_id')` |
-| trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_figlio_bundle('CONTRATTO', 'contratto_id')` |
-| trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_figlio_bundle('CONTRATTO', 'contratto_id')` |
 | trg_contratti_righe_a10_guard_esclusione_senza_dati_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_senza_dati('contratto_id')` |
 | trg_contratti_righe_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_pending('contratto_id')` |
 | trg_contratti_righe_a10_guard_quantita_per_fonte_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_quantita_per_fonte('contratto_id')` |
 | trg_contratti_righe_a10_guard_quantita_per_fonte_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_quantita_per_fonte('contratto_id')` |
 | trg_contratti_righe_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('tipo_eccezione', 'E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE')` |
 | trg_contratti_righe_a10_note_contratto_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'note_contratto', 'target_riga_id', 'id', 'attivo')` |
-| trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
 | trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
+| trg_contratti_righe_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
 | trg_contratti_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_contratti_righe_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_contratti_righe_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

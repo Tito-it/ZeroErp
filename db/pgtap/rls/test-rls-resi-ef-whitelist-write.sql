@@ -72,6 +72,13 @@ SELECT m.emittente_fiscale_id, c.*
  WHERE m.lato = 'A';
 
 -- Il DDT di A, portato fino a CONSEGNATO.
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3a): l'articolo
+--   si COSTRUISCE. Ordine e bolla ammettono solo merce non solo-componente, e
+--   su un database ricostruito il catalogo ha solo i cinque ONERE_* (servizi):
+--   cercarlo dava NULL e la riga moriva su E_UOM_MISSING.
+CREATE TEMP TABLE _art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGTAP-RLS-RESI-WR', false) AS id;
+
 CREATE TEMP TABLE _ddt AS
 WITH d AS (
     -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il BA del cliente, non la sola
@@ -94,7 +101,7 @@ INSERT INTO vendite.ddt_righe
     (ddt_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa,
      prezzo_unitario, iva_id)
 SELECT d.id, 1,
-       (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
+       (SELECT id FROM _art),
        'Riga DDT da rendere', 10, 10, 25.00,
        (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1)
   FROM _ddt d;

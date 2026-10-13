@@ -7,7 +7,7 @@
 > **Chi la chiede:** [vendite.fn_documento_righe_preview](/dbzero/vendite/funzioni/fn_documento_righe_preview) ·
 > [vendite.fn_offerta_righe_espanse](/dbzero/vendite/funzioni/fn_offerta_righe_espanse) ·
 > [script.fn_check_esclusione_articolo_documento](/dbzero/script/funzioni/fn_check_esclusione_articolo_documento) ·
-> [script.trgfn_righe_guard_aggiunta_fuori_listino](/dbzero/script/funzioni/trgfn_righe_guard_aggiunta_fuori_listino)
+> [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) (dal 2026-10-13, al posto del guard «aggiunta fuori listino»)
 >
 > **Verifica:** `db/pgtap/vendite/test-righe-esclusione-solo-non-si-vende-v1.sql` ·
 > `db/pgtap/vendite/test-listino-versione-in-vigore-v1.sql` (test 13)

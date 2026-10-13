@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-13
 
-**Riparte: team DB** col Lotto 3 (§9). Lotti 1 e 2, con la correzione `20261013-14`, sono applicati, verdi e committati. Il BE/FE parte **alla fine**, a lotti DB chiusi, con tutte le richieste insieme (Tid, 2026-10-13: non c'è produzione).
+**Riparte: il team DB** con la **3c** (versione di listino e distinta, §9.3). Lotti 3a, 3u e 3b applicati, nessuna regressione (Tid, 2026-10-13). Lotti 3a e 3u applicati e verdi (Tid, 2026-10-13). Dal 2026-10-13 il brief lo porta avanti la sessione DB di questa conversazione (l'altra si è fermata). Lotti 1 e 2 sono applicati, verdi e committati. Il BE/FE parte **alla fine**, a lotti DB chiusi, con tutte le richieste insieme (Tid, 2026-10-13: non c'è produzione).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -11,11 +11,18 @@
 | 3 | Tid | ✅ Lotto 1 applicato, pgTAP verdi (2026-10-13) | §9.1 | — |
 | 4 | Tid | ✅ Lotto 2 applicato (`20261013-07 → -13`, 2026-10-13); baseline di `vendite`: 8 regressioni, analizzate | §9.2, §9.2.1 | — |
 | 4a | Tid | ✅ `20261013-14` applicato, pgTAP verdi, nessuna regressione (2026-10-13) | §9.2.1 | — |
-| 4b | DB | Lotti 3-5 | §9 | — |
+| 4b | ✅ DB/Tid | Lotto 3a scritto, provato e applicato (2026-10-13) | §9.3.1 | — |
+| 4c | Tid | ✅ pgTAP della 3a su dbdev, verdi (2026-10-13) | §9.3.1 | — |
+| 4d | ✅ DB | Lotto **3u** (articolo usato, A-10) scritto e provato (2026-10-13) | §9.3.2 | — |
+| 4e | Tid | ✅ 3u applicata (`20261013-47 → -52` + CSV), pgTAP verdi (2026-10-13) | §9.3.2 | — |
+| 4f | ✅ DB | Lotto **3b** (offerta e contratto) scritto e provato (2026-10-13) | §9.3.3 | — |
+| 4g | Tid | ✅ 3b applicata (`20261013-55 → -58` + CSV + locales), nessuna regressione (2026-10-13) | §9.3.3 | — |
+| 4h | Tid | ✅ A-8-bis (2026-10-13): i lettori del listino passano a `config.tipi_entita` col giro BE/FE | §9.3.3, §9.6 | — |
+| 4i | DB | Lotti 3c, 4, 5 | §9.3 | — |
 | 5 | BE/FE | **tutto in un giro, alla fine**: policy dei codici nuovi di ogni lotto, lookup e `ArticoloLookup` sulla sede unica, ritiro dei filtri liberi | §7, §9.6 | Lotto 5 |
 | 6 | Tid | collaudo a video | — | 5 |
 
-Decisioni aperte di Tid: nessuna (D-5 rinviato al cantiere acquisti). Lavoro da committare: nessuno di questo brief. ✅ Committati il 2026-10-13 (team DB): Lotto 1, Lotto 2 con le cinque chiavi dei locales, `20261013-14`, i pgTAP del §9.2.1 **di questo brief** (smistamento, push dei preventivi v1/v2, registri per emittente) e questo documento. ⚠️ Restano fuori, col lavoro che ne porta la causa: i quattro file SORGENTE_POLIMORFA del §9.2.1 (`-46` di brief-db-annullo-a-valle-riapre-a-monte), che contengono anche le modifiche del ritiro di `tipo_consumo` (`-16 … -23`).
+Decisioni aperte di Tid: nessuna (A-8-bis presa il 2026-10-13; D-5 rinviato al cantiere acquisti). ✅ **Committati il 2026-10-13 (sessione DB)**: Lotti 1, 2 e `20261013-14` (prima); poi Lotti **3a, 3u, 3b** (`20261013-40 … -52`, `-55 … -58`), CSV dei codici, chiavi dei locales, baseline B-7, pgTAP nuovi e corretti, manual, guide e questo documento. ⚠️ **Restano fuori, col lavoro che ne porta la causa**: i cinque file pgTAP misti con un altro cantiere (`test-fn-list-ddt-da-pushare-contatore-v1`, `test-vw-dash-backlog-resi-v1`, `test-vw-partite-merce-v1`, `test-vw-resi-da-accreditare-contatore-v1`, `test-vw-situazione-merce-ordine-v1`); i quattro SORGENTE_POLIMORFA del §9.2.1 erano gia' fuori. Fuori anche, perche' di altri cantieri: `20261013-53` (lettori dell'emittente della bolla) col suo pgTAP e la sua doc, il D32, la pulizia di `baseline-rossi-scratch.tsv`.
 
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-11. **A chi:** team DB
 > (`dev/db-tid`); poi BE/FE (§7), che **attende** la consegna DB.
@@ -339,7 +346,7 @@ senza regole sull'articolo, listino (tipologia, composito in INSERT), promo (il 
 | **A-3** | Per ogni regola nuova: guard dal lato articolo, o controllo ai passi successivi | ✅ **Tid, 2026-10-12: misto.** «Solo componente» e «composito»: guard dal lato articolo (il flag non cambia se l'articolo è in righe di documenti aperti, come `trgfn_articoli_guard_flags_struttura_bom_attiva`). Natura: segue A-4. Tipologia (perimetro): ricontrollo ai passi, già deciso nel §H |
 | **A-4** | Ordine e bolla congelano la natura in riga, come il preventivo? | ✅ **Tid, 2026-10-12: sì.** `natura_vendita_id` su `ordini_righe` e `ddt_righe`, scritta dal DB come sul preventivo; i verbi di copia (preventivo → ordine, ordine → bolla, riconsegna) la portano avanti. Chiude anche la natura di A-3: il cambio in anagrafica non tocca le righe scritte |
 | **A-5** | OVERRIDE ed ESCLUSIONE pretendono l'articolo nel listino operativo | ✅ **Tid, 2026-10-12: sì**, guard nuovo (buco confermato, §8.2): rifiuto se l'articolo non è nel listino operativo o se il documento non ha listino; all'INSERT e al cambio articolo; le righe già scritte le intercetta l'emissione, come il §H |
-| **A-6** | La riconsegna (`fn_genera_ddt_riconsegna`) è esente dalle regole nuove | ✅ **Tid, 2026-10-12: sì**, restituisce ciò che è uscito. L'esenzione si aggancia al legame con la riga di reso d'origine, non a un flag; la natura viaggia dalla riga d'origine (A-4) |
+| **A-6** | La riconsegna (`fn_genera_ddt_riconsegna`) è esente dalle regole nuove | ✅ **Tid, 2026-10-12: sì**, restituisce ciò che è uscito. L'esenzione si aggancia al legame con la riga di reso d'origine, non a un flag; la natura viaggia dalla riga d'origine (A-4) ⚠️ **Forma (Tid, 2026-10-13): la porta del verbo**, non il legame. Il legame col reso (`resi_righe_riconsegne`) nasce *dopo* la riga di bolla (FK su `ddt_riga_id`), quindi al controllo non c'è ancora; scriverlo prima vorrebbe una colonna d'origine su `ddt_righe` (seconda sede del ponte) o una FK differibile. Scelta: `zeroerp.ddt_riconsegna` = id del reso, accesa da `fn_genera_ddt_riconsegna`, stretta sugli articoli di quel reso (`20261013-41/-43`); precedente `zeroerp.ddt_riga_correggi_qta` |
 | **A-7** | Una lettura sola con il motivo per riga (R-2 + R-4) | ✅ **Tid, 2026-10-12: sì** (§8.3, punto 7): ammessi e non ammessi con la colonna `motivo` (NULL = ammesso), ammessi prima; il motivo dalla stessa check del guard (A-2); la resa a video la sceglie il FE |
 | **A-8** | Vocabolario dei documenti su `config.tipi_entita` | ✅ **Tid, 2026-10-12: sì.** Oggi (seed `80_data/sql/config/tipi_entita.csv`) 9 voci; mancano OFFERTA, bolla, versione di listino, distinta, promo, da aggiungere dal CSV. Le funzioni con `p_documento text` nudo (`fn_check_riga_erogazione`, `fn_check_esclusione_articolo_documento`, `fn_documento_listino_operativo`) ci passano nello stesso giro. ⚠️ In consegna: verificare che la distinta regga come entità (destinazione = scheda articolo) |
 | **A-9** | Il trasporto su un ordine che si fattura alla conferma (nessuna commessa) | ✅ **Tid, 2026-10-12: brief a parte**, [brief-db-addebito-trasporto-ordine](brief-db-addebito-trasporto-ordine.md). D-1 e D-2 vanno avanti. In **questo** brief resta un vincolo nuovo: un articolo-onere (`causale_onere_id` valorizzato) non può avere natura `MERCE` (oggi nasce col default `MERCE`, `e_cessione_beni = true`) |
@@ -349,6 +356,7 @@ senza regole sull'articolo, listino (tipologia, composito in INSERT), promo (il 
 | **D-4** | Distinta annidata | ✅ **Tid, 2026-10-13: rifiuto**, guard su `articoli_componenti` (il componente non è composito) e dal lato articolo (un componente non diventa composito) (§8.4) |
 | **D-5** | Acquisti | rinviato alla ripartenza del cantiere, con i riferimenti del §8.4 |
 | **D-6** | Promo | ✅ **Tid, 2026-10-13: una promo si crea solo se il calcolo del prezzo la può applicare.** Solo componente: rifiutata (il resolver salta la promo in contesto bundle, «STADIO PROMO OVERLAY (non applicato in contesto bundle)» in `fn_resolve_prezzo_listino_v2_esito`, e con D-3 non c'è prezzo standalone). Composito: in consegna si verifica se il kit riceve la promo; se no, rifiutata, e la promo sul kit diventa una richiesta a parte |
+| **A-10** | I flag che decidono come si vende un articolo si possono cambiare dopo che l'articolo è stato usato? | ✅ **Tid, 2026-10-13: no.** Cambiano troppe cose a valle (listini, ordini, bolle): invece di rincorrere le conseguenze (natura congelata, ricontrolli nei verbi di copia, porte), un articolo **usato** non cambia più i flag strutturali. **Usato** = compare in una riga di documento (preventivo, offerta, contratto, ordine, bolla, fattura, reso), in un listino, in una commessa o in un movimento di magazzino, **in qualunque stato** (anche chiuso o annullato: i documenti chiusi si rileggono). **Bloccate se usato**: `is_composito`, `is_solo_componente`, `natura_vendita_id`, `causale_onere_id`, `listino_tipologia_id`, `gestito_a_magazzino`, `requires_lotto`, `requires_serial` (`codice` e `uom_id` lo sono già sempre). **Libere**: `iva_id` (l'aliquota cambia per legge, le righe hanno la loro), descrizioni, gruppi, conti, tempi, modo di approvvigionamento. **Via d'uscita**: un articolo nuovo (il ritiro del vecchio non è obbligatorio), più una **porta amministratore** per correggere un errore di caricamento. ⚠️ Gli articoli sono **unici per tutte le aziende** (nessun emittente né RLS nel catalogo, verificato il 2026-10-13): il predicato «usato» deve vedere i documenti di tutte, quindi SECURITY DEFINER, e il messaggio non nomina documenti che l'operatore non vede. ⚠️ La porta oggi esistente (`zeroerp.allow_lock_columns_override`) la accende qualunque sessione: quella amministratore vuole anche il controllo del ruolo. Un predicato solo, letto dal guard e dal form (`lock_columns_conditional`). Sostituisce il guard «solo componente in bozza» (`20261013-44/-45/-46`), chiude la decisione sui verbi di copia (un ordine confermato non trova un articolo cambiato) e il buco multi-azienda di quel guard. Lotto **3u** (§9.3), prima della 3b |
 
 **P-1 (al BE).** Esiste un flusso in cui una riga di documento si scrive prima che la testata
 esista (una creazione testata + righe in una chiamata sola)? Se no, il «creazione senza id»
@@ -378,7 +386,7 @@ documento (A-1); per la promo riceve solo il tipo di documento.
 | --- | --- | --- | --- |
 | **1** | **Catalogo**: la distinta a un livello (guard sul componente e dal lato articolo), l'articolo-onere non è merce | D-4, A-9 | ✅ applicato da Tid, pgTAP verdi, committato (2026-10-13) (§9.1) |
 | **2** | **Vocabolario e natura in riga**: le voci mancanti in `config.tipi_entita`; `natura_vendita_id` su `ordini_righe` e `ddt_righe`, scritta dal DB e portata dai verbi di copia | A-8, A-4 | ✅ applicato da Tid con la correzione `-14`, pgTAP verdi, committato (2026-10-13) (§9.2, §9.2.1) |
-| **3** | **Le regole sulle righe**: i predicati, la check per tipo di riga, un guard per tabella; natura su ordine e bolla, solo componente ovunque, OVERRIDE/ESCLUSIONE nel listino; i verbi di copia controllano prima di scrivere; «solo componente» dal lato articolo; la riconsegna esente. Le funzioni con `p_documento text` passano al vocabolario | A-2, A-3, A-5, A-6, D-1, D-2, D-3 | da scrivere; **insieme al §H** del brief offerta (§8.5) |
+| **3** | **Le regole sulle righe** (diviso in 3a, 3b, 3c: §9.3): i predicati, la check per tipo di riga, un guard per tabella; natura su ordine e bolla, solo componente ovunque, OVERRIDE/ESCLUSIONE nel listino; i verbi di copia controllano prima di scrivere; «solo componente» dal lato articolo; la riconsegna esente. Le funzioni con `p_documento text` passano al vocabolario | A-2, A-3, A-5, A-6, D-1, D-2, D-3 | da scrivere; **insieme al §H** del brief offerta (§8.5) |
 | **4** | **La sede unica di lettura**: candidati della ricerca con il motivo, ammessi prima; promo | A-1, A-7, D-6 | da scrivere |
 | **5** | **Doc e richieste**: guide, manual, richieste BE/FE del §7 aggiornate | — | da scrivere |
 
@@ -571,11 +579,298 @@ la RLS non è esercitata):
 
 **Doc**: aggiornato `script/manual/trgfn_righe_natura_vendita` (la regola sta solo nel lock).
 
+**CI GitHub, presidio B-7 (`scripts/codici-errore-baseline.sh`), 2026-10-13.** Rosso:
+`E_TRIGGER_ARGOMENTI_INVALIDI` acquista la famiglia `ENUM` (5 punti, prima 4). È il controllo del
+`-08` sul modo di montaggio, `v_modo NOT IN ('ARTICOLO', 'CHIAMANTE')`. **Uso legittimo, non un
+accumulo**: gli altri quattro punti (`trgfn_default_emittente_fiscale`, `trgfn_delete_block_by_guc`,
+`trgfn_guard_utility_tipo_ruolo_by_cols`) dicono la stessa cosa, «trigger montato con argomenti
+sbagliati», e cambia solo la forma sintattica del controllo. Baseline allineata
+(`ECCEZIONE,ENUM,VALORE_ATTESO`, 5) e descrizione del codice in `codici_errore.csv` estesa al «modo
+fuori da quelli dichiarati». Verificato sullo scratch: nessun accumulo. Il commit porta la ragione
+(lo chiede la baseline).
+
 **Esito** (Tid, 2026-10-13): `20261013-14` applicato, pgTAP verdi, nessuna regressione.
 
 **Commit** (team DB, 2026-10-13): i quattro file SORGENTE_POLIMORFA della tabella sopra **non** sono nel
 commit di questo brief: la causa è il `-46` di un altro brief, e gli stessi file portano anche il ritiro di
 `tipo_consumo` (`-16 … -23`), che è un altro cantiere. Vanno committati con quel lavoro.
+
+### 9.3 Lotto 3 — le regole sulle righe: il piano (team DB, 2026-10-13)
+
+Il Lotto 3 si divide, per restare applicabile e provabile:
+
+| Parte | Che cosa | Decisioni |
+| --- | --- | --- |
+| **3a** | preventivo, ordine, bolla: `script.fn_check_articolo_riga` (la check per tipo di riga, A-2) e un guard per tabella; solo componente rifiutato, ordine e bolla solo merce, la ricorrenza fuori dal preventivo (il guard di `20260609-02` si ritira nella check); la riconsegna esente; «solo componente» dal lato articolo, con la regola gemella per il form | A-2, A-3, A-6, D-1, D-2, D-3 |
+| **3u** | l'**articolo usato** (A-10): predicato unico SECURITY DEFINER «l'articolo è usato», guard su `catalogo.articoli` per le otto colonne strutturali e gemello per il form; porta amministratore col controllo del ruolo; ritiro di `20261013-44/-45` e della riga del `-46` (con il loro manual), che la regola generale sostituisce; da valutare il riassorbimento dei blocchi della distinta (`trgfn_articoli_guard_flags_struttura_bom_attiva` e le sue regole nel form) | A-10, A-3 |
+| **3b** | offerta e contratto: la check prende il perimetro (`fn_check_riga_erogazione`), l'AGGIUNTA fuori listino e OVERRIDE/ESCLUSIONE dentro il listino (A-5); le funzioni con `p_documento text` passano a `config.tipi_entita` (A-8) | A-2, A-5, A-8, D-3 |
+| **3c** | versione di listino e distinta: tipologia, solo componente, un livello, IVA nella check | A-2, D-3, D-4 |
+| — | i passi successivi (emissione, trasformazione: R-6) vanno col **§H del brief offerta**, che aspetta H-D1…H-D3 di Tid: usano la check di questo lotto | R-6 |
+
+Intervallo di changeSet: da `20261013-40` (un'altra sessione usa la sequenza bassa dello stesso giorno).
+
+#### 9.3.1 Lotto 3a — preventivo, ordine, bolla (✅ applicato il 2026-10-13, pgTAP verdi)
+
+**ChangeSet**:
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20261013-40` | nuova check `script.fn_check_articolo_riga(documento, documento_id, articolo, natura)`: i motivi in ordine dichiarato. 1. solo componente (ogni documento, `E_ARTICOLO_SOLO_COMPONENTE`); 2. la natura per destinazione: preventivo → la ricorrenza va in offerta (`E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA`), ordine e bolla → solo merce (`E_RIGA_NATURA_NON_AMMESSA`). La natura giudicata è quella della riga, se c'è |
+| `20261013-41` | nuovo BB `script.trgfn_righe_guard_articolo_ammesso`: solleva il primo motivo; la riconsegna è esente con una porta **stretta** (`zeroerp.ddt_riconsegna` = id del reso, e solo per un articolo che sta fra le righe di quel reso: il verbo è INVOKER, il controllo «proprietario» delle altre porte qui non c'è) |
+| `20261013-42` | montaggi `…_a10_regole_articolo_ins_upd` su preventivo, ordine, bolla (dopo `…_a10_natura_vendita`), e **ritiro** di `vendite.trgfn_preventivi_righe_set_natura_vendita` (trigger e funzione): la sua regola è il motivo 2 della check, stesso codice e stessa frase |
+| `20261013-43` | `fn_genera_ddt_riconsegna` accende e spegne la porta intorno al ciclo delle righe |
+| `20261013-44`, `-45` | lato articolo (A-3): `is_solo_componente` non si accende su un articolo in una riga autonoma di un preventivo, ordine o bolla in bozza (`E_ARTICOLO_SOLO_COMPONENTE_IN_USO`) |
+| `20261013-46` (`80_data`) | la regola gemella per il form in `dbops.lock_columns_conditional` |
+
+**Codici nuovi**: `E_RIGA_NATURA_NON_AMMESSA` (1297, DATO_ERRATO), `E_ARTICOLO_SOLO_COMPONENTE_IN_USO` (1298,
+CONFLITTO_STATO). **Locales**: le tre `reason_key` `vendite.righe.articolo_reason.{solo_componente,
+ricorrente_usa_offerta, natura_non_merce}` (it, en), aggiunte dalla sessione DB come le etichette del Lotto 2.
+
+⚠️ **L'apply è avvenuto mentre scrivevo**: `-40 … -43` su dbdev alle 11:41, prima che `-44 … -46` e le righe
+dei codici esistessero; il resto alle 11:52, su entrambi i database. Per circa dieci minuti dbdev ha avuto il
+guard senza il messaggio di `E_RIGA_NATURA_NON_AMMESSA`. Ora è tutto applicato; i file `-40 … -46` non si
+toccano più.
+
+**pgTAP**:
+
+* nuovo `vendite/test-righe-articolo-ammesso-v1.sql` (18 test): la check (ordine dei motivi, natura della
+  riga, documento non gestito), il guard sulle tre tabelle, la riconsegna (l'articolo diventato solo
+  componente si restituisce; una riga a mano no; la porta su un altro reso no), il lato articolo e il form.
+  Il reso è costruito dal nulla: bolla consegnata col verbo di stato (azioni `emetti_ddt`, `conferma_reso`
+  concesse all'operatore del test);
+* `script/test-rubinetto-primo-motivo-v1` test 5: da 39 a 40 (il guard nuovo nasce sull'helper);
+* `vendite/test-righe-natura-vendita-congelata-v1` test 10: sull'ordine non c'è un'altra natura ammessa,
+  il ricalcolo al cambio di articolo si vede dal rifiuto;
+* `vendite/test-preventivi-righe-guard-natura-ricorrente-v1`: solo commenti (il guard ritirato);
+* **fixture**: dieci file pescavano il primo articolo del catalogo per id (l'onere del seed
+  `ONERE_SENZA_CONTRATTO`, natura servizio) o il più recente, e lo mettevano in un ordine o in una bolla:
+  ora lo **costruiscono** (`test-rls-ddt-satelliti`, `test-fn-check-ddt-emittibile-v1`,
+  `test-seed-stati-doc-ordini-evaso-v1`, `test-ddt-causale-immutabile-v1`, `test-ddt-riepilogo-iva`,
+  `test-esecutivi-ba-coppia-v1`, `test-indirizzi-documento-seguono-cliente-v1`,
+  `test-ordini-guard-transizione-v1`, `test-ordini-riepilogo-iva-totali`,
+  `test-riepilogo-iva-equivalenza-cross-doc`). Altri **36 file** pescano un articolo per righe d'ordine o
+  di bolla: su dbdev, oggi, 30 di quelle pesche davano un articolo rifiutato (quasi sempre
+  `SMK-CAT3-C-…`, lasciato da uno smoke, solo componente). A loro ho **aggiunto la condizione**
+  «merce e non solo componente» alla pesca, tenendo il loro criterio; la pesca dell'onere per la commessa
+  resta com'è. Rimisurate su dbdev: 41 pesche su 41 danno un articolo ammesso.
+
+✅ **Chiuso il 2026-10-13**: quelle 36 fixture ora **costruiscono** l'articolo (`dbops.fn_pgtap_crea_articolo`), vedi la ricaduta qui sotto. Riverificate col Lotto 3u in testa (§9.3.2): 35 verdi su 36 su dbdev e su `zeroerp_ci`; l'unico rosso è lo scope di `test-vw-situazione-merce-ordine-v1` (test 11), rosso da owner e verde come app, uguale senza la 3u. ~~Trovato, aperto: le 36 fixture pescano invece di costruire.~~
+
+🔴 **Ricaduta trovata da Tid sulla CI di `zeroerp_ci` (2026-10-13)**: il filtro, su un database ricostruito,
+**svuota** la pesca. Là il catalogo ha solo i cinque `ONERE_*` (servizi): la sottoquery dava NULL e la riga
+moriva su `E_UOM_MISSING` («Unità misura mancante. (articolo_id NULL)»), `ERRORE_FIXTURE` in cinque file che
+prima erano verdi sullo scratch (o rossi solo in un'asserzione). Ora **costruiscono** l'articolo con
+`dbops.fn_pgtap_crea_articolo('<codice>', false)`, che nasce merce e non solo componente:
+`test-rls-ordini-satelliti`, `test-rls-resi-satelliti`, `test-rls-resi-ef-whitelist-write`,
+`test-fn-available-actions-ordine-v1`, `test-fn-available-actions-ordine-v2`. Provati su `zeroerp_ci`
+in una transazione annullata, col runner di ciascuno: 9/9, 10/10, 3/3, 10/10; ordine-v2 8/9, e il test 1 è
+il rosso `ASSERZIONE` già registrato (cerca un BA). La prova pre-apply sullo scratch non l'aveva visto
+perché confrontava gli esiti prima e dopo, non se la fixture **costruiva** qualcosa.
+
+⭐ **Debito chiuso lo stesso giorno**: anche gli altri file con il filtro (31, più
+`test-preventivi-righe-guard-natura-ricorrente-v1`), già `ERRORE_FIXTURE` in CI perché cercavano billing
+account, emittente o soggetto_ruolo, o impostavano a mano `app.current_user_id = '1'`, ora **costruiscono**
+il mondo: `dbops.fn_pgtap_crea_mondo_cliente` + `dbops.fn_pgtap_crea_articolo`, e la riga di contesto
+esplicita sull'operatore del mondo (il guardrail del preambolo la cerca). Asserzioni e `plan` invariati,
+salvo una: in `test-documenti-numerazione-trasloco-v1` i test 3 e 9 («la forma del registro») ignoravano
+`anno_nel_numero`, che dal 20260908 è il default per DDT e RESO. Erano verdi solo sul registro vecchio di
+dbdev; ora l'attesa compone `<anno>-` come `vendite.fn_assegna_numero_documento`. Difetti di fixture
+emersi e corretti lungo la strada: testata e righe del reso scritte nella stessa istruzione (la WITH CHECK
+di `resi_righe` non vede il reso: passava solo con l'utente 1); in `test-fn-genera-ddt-riconsegna-eredita-v1`
+un articolo riusato dopo avergli cambiato la natura (9 errori anche su dbdev).
+**Misura finale** (2026-10-13, file per file, in transazione annullata, col runner di ciascuno): i 49 pgTAP
+modificati in questo cantiere sono tutti verdi, senza errori, sia su `zeroerp_ci` sia su dbdev; guardrail
+del preambolo pulito. Le loro righe in `baseline-rossi-ci.tsv` le toglie
+`scripts/pgtap-baseline-ci-rientrati.sh` dopo la corsa di GitHub, non a mano.
+Builder che sono mancati (regola del 2, per un brief futuro): contratto pushabile, «DDT spedito da
+ordine» (ripetuto in cinque file), kit prodotto + componenti, soggetto con ruolo generico (vettore).
+
+**Prova pre-apply** (scratch, da owner, `PGTZ=Pacific/Kiritimati`):
+
+* test nuovo 18/18;
+* confronto sui pgTAP che toccano righe di preventivo, ordine, bolla o `is_solo_componente`, prima (la 3a
+  tolta in transazione: trigger delle regole e lato articolo via, guard del preventivo rimesso) e dopo:
+  le regressioni erano le dieci fixture sopra e il test della natura congelata, tutte rientrate. Ogni file
+  toccato, rispetto alla sua versione di HEAD sullo stato vivo: **nessuno peggiore**, 12 migliori;
+* `plpgsql_check`: nessuna segnalazione sulle tre funzioni nuove; presidi statici e `check_i18n_keys` verdi.
+
+⚠️ **Al commit**: cinque file pgTAP hanno modifiche anche dell'altro cantiere non committate
+(`test-fn-list-ddt-da-pushare-contatore-v1`, `test-vw-dash-backlog-resi-v1`, `test-vw-partite-merce-v1`,
+`test-vw-resi-da-accreditare-contatore-v1`, `test-vw-situazione-merce-ordine-v1`): vanno messi in stage solo
+i hunk di questo brief, o committati dopo quel lavoro.
+
+**Doc**: manual nuovi `script/manual/fn_check_articolo_riga`, `script/manual/trgfn_righe_guard_articolo_ammesso`,
+`catalogo/manual/trgfn_articoli_guard_solo_componente_in_bozza`; **cancellato**
+`vendite/manual/trgfn_preventivi_righe_set_natura_vendita` (oggetto ritirato); aggiornati
+`config/manual/nature_vendita`, `script/manual/trgfn_righe_natura_vendita`,
+`vendite/manual/fn_crea_revisione_preventivo`; guide `gestione-ordini` §3.2, `gestione-ddt` §3.2 (con la
+riconsegna), `gestione-preventivi` (il riquadro «sotto il cofano»).
+
+**Da fare (Tid)**: i pgTAP sopra su dbdev e la baseline di `vendite`, `script`, `rls`, `catalogo`.
+
+#### 9.3.2 Lotto 3u — l'articolo usato non cambia la sua struttura (A-10; ✅ applicato da Tid il 2026-10-13, pgTAP verdi)
+
+La decisione A-10 di Tid (§8.6) sostituisce la protezione a pezzi: invece di rincorrere le conseguenze
+di un flag cambiato (righe in bozza, verbi di copia, porte), un articolo **usato** non cambia più i flag
+strutturali. Chiude anche due punti emersi nella verifica della 3a: il guard `-44` e la sua regola del
+form (`-46`) leggevano i documenti con la RLS di chi modifica l'articolo (le bozze delle **altre aziende**
+non le vedevano: gli articoli sono unici per tutte le aziende), e un ordine confermato non trova più un
+articolo diventato «solo componente» dopo la conferma.
+
+**ChangeSet** (numerati dopo il `-46`: l'autogen ordina per numero, e in una build da zero il ritiro deve
+girare dopo ciò che ritira):
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20261013-47` | predicato `catalogo.fn_articolo_usato(articolo)`: l'articolo compare in una tabella che lo punta con una FK, in qualunque stato. Tabelle lette da `pg_constraint` (una nuova conta da sola), meno sei dichiarate di anagrafica dell'articolo (distinta, UoM operative, note, descrizioni, regole di fatturazione, ambiti IVA). **SECURITY DEFINER**: vede i documenti di tutte le aziende, ritorna solo un boolean |
+| `20261013-48` | guard `catalogo.trgfn_articoli_guard_struttura_se_usato`: le otto colonne (`is_composito`, `is_solo_componente`, `natura_vendita_id`, `causale_onere_id`, `listino_tipologia_id`, `gestito_a_magazzino`, `requires_lotto`, `requires_serial`) non cambiano su un articolo usato → `E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE`; il messaggio non dice dove l'articolo è usato. Porta: GUC `zeroerp.articolo_correggi_struttura` **e** proprietario della tabella |
+| `20261013-49` | montaggio `trg_articoli_a10_guard_struttura_se_usato_upd`; **ritiro** di `trgfn_articoli_guard_solo_componente_in_bozza` e del suo trigger (`-44/-45`) |
+| `20261013-50` | verbo `catalogo.fn_articolo_correggi_struttura(articolo, campi jsonb)`: la porta amministratore, solo SUPER_ADMIN (`script.fn_guard_super_admin`); SECURITY DEFINER, EXECUTE solo all'app |
+| `20261013-51` | `dbops.lock_columns_conditional`: le otto colonne spente nel form con lo **stesso** predicato (`catalogo.fn_articolo_usato($1::uuid)`); via la regola del `-46` |
+| `20261013-52` | builder pgTAP `dbops.fn_pgtap_articolo_correggi_struttura`: cambia un flag di un articolo usato dalla porta vera, come un SUPER_ADMIN costruito (INVOKER) — quattro file ripetevano il passaggio |
+
+**Codici**: nuovo `E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE` (1299, CONFLITTO_STATO; valori: codice
+dell'articolo, nome leggibile del campo). `E_ARTICOLO_SOLO_COMPONENTE_IN_USO` (1298) **ritirato**
+(`obsoleto_dal` 2026-10-13): nato e ritirato lo stesso giorno, la regola generale lo comprende. Riusati
+`E_ARTICOLO_NOT_FOUND` e `E_PARAMETRO_INVALIDO` nelle forme che il presidio B-7 conosce già (PARAMETRO):
+misurato nella transazione di prova, nessun codice allarga le famiglie.
+
+**pgTAP**:
+
+* nuovo `catalogo/test-articolo-usato-struttura-v1.sql` (17 test): il predicato (anche la riga spenta
+  conta), il guard sulle colonne bloccate e su quelle libere, il verbo (permesso, colonna estranea,
+  correzione), il form, **un articolo usato da un'altra azienda**, il ritiro del `-44/-45`, la GUC accesa a
+  mano (test 17: rosso da owner, verde come app, per costruzione);
+* passano dalla porta (il builder del `-52`) i quattro test che cambiano un flag **dopo** l'uso per
+  provare il valle: `test-righe-natura-vendita-congelata-v1`, `test-righe-articolo-ammesso-v1` (anche i
+  test 17-18 del lato articolo, riscritti sulla regola nuova), `test-fn-genera-ddt-riconsegna-eredita-v1`,
+  `test-righe-erogazione-da-articolo-v1`;
+* due fixture che cambiavano i flag di un articolo **pescato** e già usato su dbdev:
+  `test-fn-list-preventivi-da-pushare-competenza-v1` ora costruisce l'articolo;
+  `dbops/test-articoli-a-magazzino-prontezza-v1` (spegne `gestito_a_magazzino` su tutti) passa dal verbo
+  come SUPER_ADMIN.
+
+**Prova pre-apply** (2026-10-13, SQL estratto da `-47 … -52` in testa a transazioni annullate, da owner,
+`PGTZ=Pacific/Kiritimati`, corpo dei pgTAP senza runner; le due righe di registro del codice nuovo
+nella stessa transazione):
+
+* `plpgsql_check`: nessuna segnalazione sulle tre funzioni; il trigger vecchio sparisce, otto regole nel
+  form, la regola del `-46` tolta;
+* test nuovo 16/17 su `zeroerp_ci` e su dbdev (il 17 è quello rosso da owner);
+* i 47 pgTAP che cambiano uno degli otto flag, senza e con la 3u su `zeroerp_ci`: cambiano esito solo i
+  quattro sopra, verdi con la 3u; su dbdev, con la 3u: 45 verdi, i due rossi erano le fixture sopra, ora
+  verdi;
+* le 36 fixture del §9.3.1 con la 3u: 35/36 su entrambi (lo scope rosso da owner);
+* **misure datate (dbdev, 2026-10-13)**: 28 articoli usati su 305; il predicato su un articolo mai usato
+  (il caso peggiore: guarda tutte le tabelle) 5 ms, `fn_non_editable_fields` di un articolo ~21 ms;
+* presidio B-7 (codici di errore) nella transazione: nessun allargamento; guardrail statici e
+  `check_i18n_keys` verdi.
+
+**Ricadute fuori dal DB** (al giro BE/FE, §9.6): i test Django che toccano gli otto flag
+(`test_prezzo_riga_commessa_db`, `test_righe_erogazione_obbligatoria_db`, `test_listini_create_db`,
+`test_date_validita_guard_comune_db`) li cambiano su un articolo appena costruito, quindi non ancora usato:
+dovrebbero passare, ma girano in CI sul database e vanno verificati.
+
+⚠️ **La porta della riconsegna** (A-6, `zeroerp.ddt_riconsegna`, §9.3.1) resta, per decisione di Tid. Con
+la 3u il caso che la giustificava (un articolo spedito che diventa solo componente) arriva solo dalla porta
+amministratore.
+
+**Doc**: manual nuovi `catalogo/manual/fn_articolo_usato`, `catalogo/manual/trgfn_articoli_guard_struttura_se_usato`,
+`catalogo/manual/fn_articolo_correggi_struttura`, `dbops/manual/fn_pgtap_articolo_correggi_struttura`;
+`catalogo/manual/articoli`: sezione «Un articolo usato non cambia la sua struttura»; **cancellati** il manual
+e la pagina generata di `trgfn_articoli_guard_solo_componente_in_bozza` (oggetto ritirato). La doc generata
+(indici, `tabelle/articoli`) la rigenera la build di Tid.
+
+#### 9.3.3 Lotto 3b — offerta e contratto (✅ applicato da Tid il 2026-10-13, nessuna regressione)
+
+La stessa check per tipo di riga (A-2) giudica anche le righe d'eccezione di offerta e contratto.
+Qui il tipo d'eccezione (un valore della riga) decide le regole, e la A-5 aggiunge quella che
+mancava: un'OVERRIDE o un'ESCLUSIONE si fanno solo su un articolo del listino.
+
+**ChangeSet** (numerati dopo il `-46` e il `-53` di un altro cantiere):
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20261013-55` | `script.fn_check_articolo_riga`: offerta (`OFFERTA_COMMERCIALE`) e contratto; `p_tipo_eccezione` in coda (DROP + CREATE). **AGGIUNTA e OVERRIDE**: 1. solo componente (D-3); 2. tipologia fuori utility (composta da `fn_check_riga_erogazione` senza erogazione); 3. **nessuna erogazione ammessa** (§8.1, nuovo `E_ARTICOLO_SENZA_EROGAZIONE`); 4. listino: AGGIUNTA già in listino, OVERRIDE **senza listino** o **fuori listino** (A-5, nuovi `E_RIGA_ECCEZIONE_SENZA_LISTINO` / `_FUORI_LISTINO`). **ESCLUSIONE**: 1. figlio di bundle (composta da `fn_check_esclusione_articolo_documento`); 2. senza listino / fuori listino (A-5). «Nel listino» = una riga di `vendite.fn_espandi_listino_versione` (standalone **e** bundle), la base su cui il drawer applica le eccezioni |
+| `20261013-56` | `script.trgfn_righe_guard_articolo_ammesso`: natura e tipo d'eccezione da `to_jsonb(NEW)` (ognuno sta solo sulle sue tabelle); campo `articolo_id` se il motivo non lo porta |
+| `20261013-57` | montaggi `…_a10_guard_articolo_ammesso_ins_upd` su `offerte_commerciali_eccezioni` e `contratti_righe`, **prima** dei guard di riga (prima l'articolo, poi la riga); **ritiro** di `trgfn_righe_guard_aggiunta_fuori_listino` e `trgfn_righe_guard_esclusione_figlio_bundle` coi loro quattro trigger (regola del 2: ora sono motivi della check) |
+| `20261013-58` | builder pgTAP `dbops.fn_pgtap_listino_aggiungi_articoli`: mette articoli in una versione di listino (sei fixture lo ripetevano) |
+
+**Codici**: `E_ARTICOLO_SENZA_EROGAZIONE` (1300), `E_RIGA_ECCEZIONE_SENZA_LISTINO` (1301),
+`E_RIGA_ECCEZIONE_FUORI_LISTINO` (1302). Quattro `reason_key` nuove in `vendite.righe.articolo_reason`
+(it, en): `senza_erogazione`, `aggiunta_gia_in_listino`, `eccezione_senza_listino`, `eccezione_fuori_listino`.
+Presidio B-7: `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` acquista una famiglia leggibile (VALORE_ATTESO,
+una sola): nessun rosso.
+
+**Scelte del team DB** (dentro le decisioni prese, da guardare):
+
+* **Il disegno si è stretto in corsa.** La prima idea spostava la tipologia fuori da
+  `fn_check_riga_erogazione`; ma `vendite.fn_documento_riga_erogazioni` (il form delle erogazioni,
+  anche sulle OVERRIDE già scritte) la usa per una domanda di solo articolo, e non deve sentire i
+  motivi di listino. Quelle due funzioni restano intatte; la check nuova le **compone**.
+* **Un difetto trovato dalla prova su dbdev**: la prima stesura cercava l'articolo in
+  `listini_righe`, dove un composito è vietato. Il bundle sta nel listino coi componenti: la sua
+  ESCLUSIONE risultava «fuori listino». Corretto prima della consegna leggendo la versione espansa
+  (regola del 2: la stessa base del preview), e presidiato dai test 19-20 del pgTAP nuovo.
+* **L'ESCLUSIONE non giudica solo componente e tipologia**: escludere non vende.
+* **La natura non è una regola di offerta e contratto**: nessuna decisione la chiede; il perimetro
+  lo dicono tipologia ed erogazioni.
+* ⚠️ **Il guard è `UPDATE OF articolo_id`**; i due ritirati scattavano su ogni UPDATE. Una riga
+  AGGIUNTA riattivata dopo che l'articolo è entrato nel listino non si rigiudica più qui: la
+  intercetta l'emissione (§H del brief offerta), come le righe già scritte.
+
+**A-8-bis — ✅ decisa da Tid il 2026-10-13: col giro BE/FE.** La A-8 diceva che `fn_check_riga_erogazione`,
+`fn_check_esclusione_articolo_documento` e `fn_documento_listino_operativo` passano a
+`config.tipi_entita` «nello stesso giro». Il **backend** chiama `fn_documento_listino_operativo`
+con `OFFERTA | CONTRATTO` (`_documento_eccezioni_repo.py`, `offerte_service.py`,
+`contratti_service.py`): cambiarne la grammatica ora romperebbe il BE prima del suo giro.
+**Deciso**: la migrazione va col giro BE/FE (§9.6), insieme; fino ad allora la traduzione
+`OFFERTA_COMMERCIALE → OFFERTA` sta in un punto solo, `fn_check_articolo_riga`, dichiarata.
+
+**pgTAP**:
+
+* nuovo `vendite/test-righe-eccezioni-articolo-ammesso-v1.sql` (20 test): la check su contratto e
+  offerta per i tre tipi d'eccezione, una tipologia senza erogazioni **costruita** (oggi il
+  vocabolario non ne ha, ma è gestibile: il caso esiste nel modello), il guard sulle due tabelle,
+  il ritiro, il bundle;
+* **sedici file** cambiavano esito; tutti corretti e verdi su dbdev e `zeroerp_ci`:
+  * **presidi di struttura** che nominavano i guard ritirati: `test-punti-canale-campo-v1`,
+    `test-rubinetto-primo-motivo-v1` (da 40 a 39 siti), `test-listino-versione-in-vigore-v1`,
+    `test-contratto-righe-lista-v1`, `test-guard-esclusione-figlio-bundle-v1`,
+    `test-righe-esclusione-solo-non-si-vende-v1`;
+  * **fixture con OVERRIDE o ESCLUSIONE fuori listino** (le righe invisibili del §8.2):
+    `test_fn_crea_revisione_offerta`, `test_fn_push_offerta_a_contratto`,
+    `test_offerte_eccezioni_qta_from_operativa`, `test-annullo-documento-con-legami-v1`,
+    `test-contratti-modalita-pricing-v1`, `test-fn-resolve-prezzo-listino-v2-step24-v1` (che ora
+    esegue davvero i test 6-7 sulla versione fissata), `test-righe-erogazione-da-articolo-v1`
+    (test 11: l'esclusione non si giudica sul perimetro, parla solo il listino);
+  * **riscritti coi builder**, perché pescavano tutto dal database:
+    `test-contratti-schema-step22-v1` (17/17; prima rosso in CI, e i test 16-17 su dbdev si
+    saltavano) e `test_offerte_eccezioni_componenti` (27/27, **zero skip**: prima, in CI, 22
+    asserzioni su 27 si saltavano per mancanza di dati).
+  * ⚠️ Un errore mio trovato strada facendo e corretto: in `test-contratti-modalita-pricing-v1` la
+    riga scritta dal builder non era visibile alla `JOIN` della stessa istruzione, e il test 3
+    passava inserendo zero righe. Ora creazione e lettura stanno in due istruzioni.
+
+**Prova pre-apply** (2026-10-13, SQL estratto da `-55 … -58` + righe dei tre codici in testa a
+transazioni annullate, da owner, `PGTZ=Pacific/Kiritimati`, corpo dei pgTAP senza runner):
+
+* `plpgsql_check`: sulla check due avvisi «STABLE ma VOLATILE» (le due chiamate di errore: il
+  pattern delle 100 check in esercizio); il guard pulito;
+* censimento di 52 pgTAP (scrivono righe di offerta o contratto, o nominano gli oggetti toccati):
+  **su dbdev tutti verdi** tranne il test 30 di `test-annullo-documento-con-legami-v1` (rosso da
+  owner per costruzione, uguale a prima); su `zeroerp_ci` i rossi sono i quattro già in
+  `baseline-rossi-scratch.tsv` più lo stesso test 30;
+* presidio B-7 nella transazione: nessun allargamento; guardrail statici e `check_i18n_keys` verdi.
+
+**Doc**: manual aggiornati `script/manual/fn_check_articolo_riga` (le regole di offerta e
+contratto, il ponte A-8), `script/manual/trgfn_righe_guard_articolo_ammesso` (i montaggi nuovi),
+`script/manual/fn_check_esclusione_articolo_documento`, `vendite/manual/offerte_commerciali_eccezioni`,
+`vendite/manual/contratti_righe`, `vendite/manual/fn_contratto_righe_preview`,
+`vendite/manual/fn_documento_listino_operativo`; guida `gestione-contratti`; nuovo
+`dbops/manual/fn_pgtap_listino_aggiungi_articoli`; **cancellati** manual e pagine generate dei due
+guard ritirati. ⚠️ Nominano ancora i guard ritirati due documenti del backend
+(`docs/it/backend/vendite/manual/api_contratti.md`, `modello-contratti.md`): al giro BE/FE.
 
 ### 9.6 Il giro BE/FE finale (raccolta)
 
@@ -585,5 +880,8 @@ lotto, così il giro finale ha un elenco solo:
 | Lotto | Richiesta |
 | --- | --- |
 | 1 | policy e ripiego per `E_BOM_COMPONENTE_COMPOSITO`, `E_BOM_COMPONENTE_DIVENTA_COMPOSITO`, `E_ARTICOLO_ONERE_NATURA_MERCE` |
+| 3a | policy e ripiego per `E_RIGA_NATURA_NON_AMMESSA`, ~~`E_ARTICOLO_SOLO_COMPONENTE_IN_USO`~~ (ritirato dalla 3u); `E_ARTICOLO_SOLO_COMPONENTE` ora ha il campo `articolo_id` (la nota «non è un campo del form» va rivista). **FE**: le `reason_key` sono nei locales; il form dell'articolo spegne `is_solo_componente` dai campi non modificabili |
+| 3u | **BE**: policy e ripiego per `E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE` (campo nel contesto); endpoint per il verbo `catalogo.fn_articolo_correggi_struttura`, solo SUPER_ADMIN; verifica dei quattro test Django che toccano i flag (§9.3.2). **FE**: nella scheda articolo le otto colonne arrivano spente da `non_editable_fields` quando l'articolo è usato (nessuna logica nuova); un'azione amministratore «correggi struttura» che chiama l'endpoint |
+| 3b | **BE**: policy e ripiego per `E_ARTICOLO_SENZA_EROGAZIONE`, `E_RIGA_ECCEZIONE_SENZA_LISTINO`, `E_RIGA_ECCEZIONE_FUORI_LISTINO`; **A-8-bis** (deciso da Tid il 2026-10-13): `fn_documento_listino_operativo`, `fn_check_esclusione_articolo_documento`, `fn_check_riga_erogazione` passano a `config.tipi_entita` (`OFFERTA_COMMERCIALE`, `CONTRATTO`) insieme ai chiamanti del BE, e si ritira il ponte in `fn_check_articolo_riga`; doc BE `api_contratti`, `modello-contratti` (nominano i guard ritirati). **FE**: le quattro chiavi `vendite.righe.articolo_reason.*` le ha già aggiunte la sessione DB |
 | 2 | **BE**: policy e ripiego per `E_RIGA_NATURA_VENDITA_IMMUTABILE`; via `E_PREV_RIGA_NATURA_IMMUTABILE` (ritirato). **FE**: ✅ le cinque chiavi `config.tipi_entita.*` le ha già aggiunte la sessione DB (§9.2) |
 

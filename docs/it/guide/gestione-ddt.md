@@ -164,6 +164,17 @@ Ogni riga è una voce di merce consegnata:
 * **prezzo** (`prezzo_unitario`) e **IVA** (`iva_id`) — **opzionali**: un DDT può
   essere di **solo trasporto** (righe senza prezzo).
 
+**Quali articoli ammette** (dal 2026-10-13): solo **merce**, e mai un articolo **«solo
+componente»**, che si vende soltanto dentro il kit che lo contiene. Un servizio una tantum va
+in commessa, un servizio ricorrente in contratto (tramite un'offerta). La merce è giudicata
+dalla **natura con cui la riga è stata venduta**: una riga nata da un ordine porta la natura di lì, anche
+se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo per tutti i
+documenti ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)), e
+il messaggio dice perché e dove va invece l'articolo.
+
+La **riconsegna** di un reso è esente: restituisce ciò che è uscito, anche se l'articolo nel
+frattempo è diventato «solo componente».
+
 > **Prezzo opzionale = DDT di solo trasporto.** Se le righe non hanno prezzo, il
 > DDT documenta solo il movimento della merce e il *Riepilogo IVA* resta vuoto
 > (le righe senza prezzo sono escluse in vista). Con i prezzi valorizzati, il DDT

@@ -262,15 +262,21 @@ SELECT throws_ok(
     '11) FISSA qta_operativa NULL -> E_QTA_MISSING (specularita'' contratto)');
 
 -- ============================================================
--- 13) qta_operativa=0 -> check_violation 23514 (riusa art seq=3, eccezione OVERRIDE distinta)
+-- 13) qta_operativa=0 -> check_violation 23514
+-- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5):
+--   era un'OVERRIDE di un articolo fuori listino, scelta per non sbattere
+--   sull'unicita' dell'AGGIUNTA dello stesso articolo; dal Lotto 3b l'OVERRIDE
+--   pretende l'articolo nel listino e parlava prima del CHECK. Il soggetto e'
+--   il CHECK: un'AGGIUNTA di un articolo costruito apposta (MERCE senza
+--   tipologia: UNA_TANTUM/FISSA nel perimetro), che nessun listino contiene.
 -- ============================================================
 SELECT throws_ok(
     format(
         $$INSERT INTO vendite.offerte_commerciali_eccezioni
             (offerta_id, articolo_id, tipo_eccezione, tipo_erogazione, fonte_quantita_attesa, prezzo_unitario, qta_operativa)
-          VALUES (%s, %L::uuid, 'OVERRIDE', 'UNA_TANTUM', 'FISSA', 100, 0)$$,
+          VALUES (%s, %L::uuid, 'AGGIUNTA', 'UNA_TANTUM', 'FISSA', 100, 0)$$,
         (SELECT id FROM vendite.offerte_commerciali WHERE meta->>'pgtap_oe'='qta'),
-        (SELECT articolo_id FROM tmp_oe_arts WHERE seq=1)
+        dbops.fn_pgtap_crea_articolo('PGT-OE-QZERO', false)
     ),
     '23514', NULL,
     '13) qta_operativa=0 -> chk_offerte_eccezioni_qta_operativa_nonzero (23514)');

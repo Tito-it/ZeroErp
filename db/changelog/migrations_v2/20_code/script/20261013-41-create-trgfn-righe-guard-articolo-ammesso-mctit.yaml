@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO BB: script.trgfn_righe_guard_articolo_ammesso()
+#   Il guard di tabella delle regole sull'articolo: solleva il primo motivo di
+#   script.fn_check_articolo_riga (20261013-40).
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2 e A-6, §9.3.1)
+#
+# -- LA FORMA ------------------------------------------------------------
+#   Il predicato sta nella check, qui si solleva soltanto (linee-guida-sql
+#   §12.5.2): un guard per tabella, cosi' il motivo che l'operatore legge e'
+#   il primo dell'array, non quello del trigger col nome minore.
+#   TG_ARGV[0]: documento (codice di config.tipi_entita); TG_ARGV[1]: colonna
+#   del padre (per il contesto dell'errore e per la check).
+#   La natura passata alla check e' quella della RIGA (NEW.natura_vendita_id,
+#   scritta prima da script.trgfn_righe_natura_vendita: il montaggio viene dopo
+#   nell'ordine dei nomi, 20261013-42).
+#
+# -- LA RICONSEGNA E' ESENTE (A-6 di Tid) -----------------------------------
+#   Chi riconsegna restituisce cio' che e' uscito, anche se l'articolo nel
+#   frattempo e' cambiato. La natura e' gia' esente per costruzione (la riga
+#   riconsegnata porta quella della riga resa, A-4); il solo componente no,
+#   perche' e' un flag vivo dell'articolo. La riga di riconsegna al momento
+#   dell'INSERT non ha ancora il legame col reso (resi_righe_riconsegne si
+#   scrive dopo), e la testata di una riconsegna legata a un ordine e' uguale a
+#   quella di una bolla da ordine: non c'e' niente di strutturale da leggere.
+#   Quindi la porta e' quella del verbo: vendite.fn_genera_ddt_riconsegna
+#   (20261013-43) accende zeroerp.ddt_riconsegna con l'id del reso.
+#   ⭐ La porta e' STRETTA: esenta solo una riga il cui articolo e' fra le
+#   righe di QUEL reso. Il verbo e' SECURITY INVOKER, quindi non c'e' il
+#   controllo «proprietario della tabella» delle altre porte: senza questo
+#   vincolo una GUC accesa per sbaglio esenterebbe qualunque articolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261013-41-create-trgfn-righe-guard-articolo-ammesso-mctit.yaml
+
+  - changeSet:
+      id: 20261013-41-create-trgfn-righe-guard-articolo-ammesso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo BB script.trgfn_righe_guard_articolo_ammesso: solleva il primo motivo di
+        script.fn_check_articolo_riga; la riga di riconsegna e' esente (porta zeroerp.ddt_riconsegna,
+        stretta sugli articoli del reso). Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2, A-6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_righe_guard_articolo_ammesso()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- ⚠️ v_documento nudo: e' il selettore del montaggio (TG_ARGV);
+                  --   lo valida la check. v_documento_id e' l'id del padre (tre
+                  --   testate diverse).
+                  v_documento    text   := TG_ARGV[0];
+                  v_col_padre    text   := TG_ARGV[1];
+                  v_documento_id bigint := (to_jsonb(NEW) ->> TG_ARGV[1])::bigint;
+                  v_porta        text   := COALESCE(current_setting('zeroerp.ddt_riconsegna', true), '');
+                  v_motivi       jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Rifiutare una riga il cui articolo il documento non
+                  --   ammette: solleva il primo motivo di
+                  --   script.fn_check_articolo_riga. BEFORE INSERT OR UPDATE
+                  --   OF articolo_id.
+                  -- =========================================================
+
+                  -- La riconsegna (A-6): solo dal verbo, e solo per un articolo
+                  -- che sta fra le righe del reso che si riconsegna.
+                  IF v_documento = 'DDT_VENDITA' AND v_porta ~ '^[0-9]+$'
+                     AND EXISTS (SELECT 1 FROM vendite.resi_righe rr
+                                  WHERE rr.reso_id = v_porta::bigint
+                                    AND rr.articolo_id = NEW.articolo_id) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_articolo_riga(
+                      v_documento, v_documento_id, NEW.articolo_id, NEW.natura_vendita_id);
+
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', TG_NAME::text,
+                      v_motivi,
+                      v_motivi -> 0 -> 'dettaglio' ->> 'campo',
+                      NEW.tx_id,
+                      jsonb_build_object('riga_id', NEW.id, v_col_padre, v_documento_id));
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_righe_guard_articolo_ammesso()
+              IS 'BB guard BEFORE INSERT OR UPDATE OF articolo_id sulle righe di documento (vendite.preventivi_righe, vendite.ordini_righe, vendite.ddt_righe): solleva il primo motivo di script.fn_check_articolo_riga (il predicato sta nella check: linee-guida-sql §12.5.2), passando la natura della riga. TG_ARGV[0]: documento (codice di config.tipi_entita); TG_ARGV[1]: colonna del padre. Montato DOPO script.trgfn_righe_natura_vendita nell''ordine dei nomi (_a10_natura_vendita < _a10_regole_articolo). La riconsegna e'' esente (A-6): con la porta zeroerp.ddt_riconsegna = id del reso, accesa da vendite.fn_genera_ddt_riconsegna, una riga di bolla passa se il suo articolo e'' fra le righe di quel reso; la porta e'' stretta sugli articoli del reso perche'' il verbo e'' SECURITY INVOKER. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2, A-6).';

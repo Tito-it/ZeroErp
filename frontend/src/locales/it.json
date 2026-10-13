@@ -2108,6 +2108,17 @@
     "indirizzo_label": "Indirizzo"
   },
   "vendite": {
+    "righe": {
+      "articolo_reason": {
+        "solo_componente": "Articolo usabile solo dentro un kit: inserisci il kit che lo contiene.",
+        "ricorrente_usa_offerta": "Servizio ricorrente: si vende con un'offerta commerciale, non con un preventivo.",
+        "natura_non_merce": "È un servizio: in un ordine o in una bolla vanno solo merci.",
+        "senza_erogazione": "Articolo senza erogazioni ammesse: non può stare in un'offerta o in un contratto.",
+        "aggiunta_gia_in_listino": "È già nel listino del documento: per cambiargli il prezzo usa «prezzo diverso», non una riga nuova.",
+        "eccezione_senza_listino": "Il documento non ha un listino in vigore: un prezzo diverso o un'esclusione vale solo per un articolo del listino.",
+        "eccezione_fuori_listino": "Non è nel listino del documento: aggiungilo come riga nuova."
+      }
+    },
     "date_consegna": {
       "azione": "Aggiorna date di consegna",
       "titolo": "Aggiorna date di consegna",

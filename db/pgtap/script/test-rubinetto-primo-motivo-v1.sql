@@ -298,6 +298,21 @@ SELECT is(
     --   fn_check_ordine_annullabile, fn_check_commessa_annullabile,
     --   fn_check_sorgente_chiudibile): prima cio' che vieta, poi la conferma
     --   (brief-db-annullo-a-valle-riapre-a-monte, D-3).
+    -- ⭐ 2026-10-13: da 39 a 40. Un sito NUOVO nato sull'helper:
+    --   script.trgfn_righe_guard_articolo_ammesso (20261013-41), il guard di
+    --   tabella delle righe di preventivo, ordine e bolla, solleva il primo
+    --   motivo di script.fn_check_articolo_riga (20261013-40), la stessa check
+    --   da cui leggera' il picker degli articoli ammessi
+    --   (brief-db-articoli-ammessi-per-documento, A-2). Il guard che ritira
+    --   (vendite.trgfn_preventivi_righe_set_natura_vendita) sollevava un codice
+    --   letterale e non era nel conto.
+    -- ⭐ 2026-10-13 (sera): da 40 a 39. Un sito RITIRATO per estrazione:
+    --   script.trgfn_righe_guard_esclusione_figlio_bundle (20261013-57) se ne va,
+    --   e il suo predicato (script.fn_check_esclusione_articolo_documento) lo
+    --   compone ora script.fn_check_articolo_riga, che il guard di tabella
+    --   script.trgfn_righe_guard_articolo_ammesso — gia' nel conto — solleva anche
+    --   sulle righe di offerta e contratto (Lotto 3b del
+    --   brief-db-articoli-ammessi-per-documento).
     'le trentanove funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids

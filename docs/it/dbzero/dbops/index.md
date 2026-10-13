@@ -84,6 +84,7 @@
 - [fn_name_from_template](funzioni/fn_name_from_template.md) — La funzione **`fn_name_from_template`** genera in modo consistente un **nome normalizzato** (per trigger, constraint, indici, ecc.) a partire da un **template testuale** con *placeholder* e da un set di parametri (schema, tabella, parent/child, nome FK, operazione).
 - [fn_non_editable_fields](funzioni/fn_non_editable_fields.md)
 - [fn_normalize_indirizzo](funzioni/fn_normalize_indirizzo.md) — (rev 2026-08-21)
+- [fn_pgtap_articolo_correggi_struttura](funzioni/fn_pgtap_articolo_correggi_struttura.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-10)
 - [fn_pgtap_cf_libero](funzioni/fn_pgtap_cf_libero.md) — (rev 2026-08-21)
 - [fn_pgtap_concedi_azione](funzioni/fn_pgtap_concedi_azione.md) — (scritta il 2026-09-24)
 - [fn_pgtap_crea_articolo](funzioni/fn_pgtap_crea_articolo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
@@ -108,6 +109,7 @@
 - [fn_pgtap_crea_roster_processo](funzioni/fn_pgtap_crea_roster_processo.md)
 - [fn_pgtap_crea_soggetto_pg](funzioni/fn_pgtap_crea_soggetto_pg.md) — (rev 2026-08-21)
 - [fn_pgtap_crea_soggetto_ruolo](funzioni/fn_pgtap_crea_soggetto_ruolo.md) — (rev 2026-08-21)
+- [fn_pgtap_listino_aggiungi_articoli](funzioni/fn_pgtap_listino_aggiungi_articoli.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento Lotto 3b)
 - [fn_pgtap_piva_libera](funzioni/fn_pgtap_piva_libera.md) — (rev 2026-08-21)
 - [fn_pgtap_porta_a_stato](funzioni/fn_pgtap_porta_a_stato.md) — (rev 2026-10-08)
 - [fn_populate_fk_index_policy](funzioni/fn_populate_fk_index_policy.md) — (latest review 27-07-26)

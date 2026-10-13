@@ -1,0 +1,168 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_check_articolo_riga(documento, documento_id, articolo, natura)
+#   Perche' un articolo NON puo' stare in una riga di questo documento.
+#   Brief: brief-db-articoli-ammessi-per-documento (§8.3, §8.6 A-2, §9.3.1)
+#
+# -- PERCHE' UNA CHECK SOLA PER TIPO DI RIGA (A-2 di Tid) -------------------
+#   Un articolo puo' violare piu' regole insieme (un servizio che e' anche
+#   solo componente). Se ogni regola avesse il suo trigger, il motivo che
+#   l'operatore legge lo deciderebbe l'ordine alfabetico dei nomi; e il picker
+#   (Lotto 4), componendo le regole per conto suo, ne mostrerebbe un altro.
+#   Qui l'ordine e' SCRITTO, per documento, e lo leggono tutti: il guard di
+#   tabella (20261013-41) solleva il primo motivo, il picker lo mostra.
+#   L'ordine dell'array e' il contratto (linee-guida-sql §12.5.2).
+#
+# -- LE REGOLE (motivi di ARTICOLO: dipendono solo dall'articolo e dal
+#    documento, non dagli altri campi della riga — brief §8.1) ---------------
+#   1. SOLO_COMPONENTE, ogni documento (D-3): l'articolo vive solo dentro un
+#      kit. E_ARTICOLO_SOLO_COMPONENTE (gia' a catalogo, la frase e' quella).
+#   2. la natura, secondo la destinazione (config.nature_vendita):
+#      PREVENTIVO     -> la ricorrenza (destinazione CONTRATTO) va in offerta:
+#                        E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA (era il guard di
+#                        20260609-02, che 20261013-42 ritira);
+#      ORDINE_VENDITA,
+#      DDT_VENDITA    -> solo merce (destinazione ORDINE), D-1 e D-2:
+#                        E_RIGA_NATURA_NON_AMMESSA.
+#   Prima il solo componente: «usa il kit» viene prima di «va altrove».
+#   La natura e' quella della RIGA quando c'e' (p_natura_vendita_id: la
+#   natura congelata, A-4), altrimenti quella dell'articolo (una riga che
+#   ancora non esiste: il picker).
+#
+# -- LA FORMA ------------------------------------------------------------
+#   p_documento e' un codice di config.tipi_entita (A-8). p_documento_id oggi
+#   non serve a nessuna regola di questi tre documenti: c'e' per la firma
+#   comune con offerta e contratto (Lotto 3b), dove il perimetro dipende dalla
+#   testata (A-1). Articolo NULL o assente: nessun motivo (parla la FK).
+#   ⚠️ p_documento nudo DICHIARATO: un selettore con tre valori, validato qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261013-40-create-fn-check-articolo-riga-mctit.yaml
+
+  - changeSet:
+      id: 20261013-40-create-fn-check-articolo-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova check script.fn_check_articolo_riga: i motivi, in ordine dichiarato, per cui un
+        articolo non puo' stare in una riga di preventivo, ordine o bolla. La chiamano il guard di
+        tabella e il picker. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2, §9.3.1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_articolo_riga(
+                  p_documento         config.tipi_entita.codice%TYPE,
+                  p_documento_id      bigint,
+                  p_articolo_id       catalogo.articoli.id%TYPE,
+                  p_natura_vendita_id config.nature_vendita.id%TYPE DEFAULT NULL)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_motivi       jsonb := '[]'::jsonb;
+                  v_codice       catalogo.articoli.codice%TYPE;
+                  v_solo_comp    catalogo.articoli.is_solo_componente%TYPE;
+                  v_natura_id    config.nature_vendita.id%TYPE;
+                  v_destinazione config.nature_vendita.destinazione_tipo%TYPE;
+                  v_natura_descr config.nature_vendita.descrizione%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   I motivi per cui l'articolo NON puo' stare in una riga del
+                  --   documento p_documento. '[]' = ammesso. Non solleva: lo fa
+                  --   il guard di tabella, che la CHIAMA (§12.5.2).
+                  -- Ritorna: array ORDINATO di
+                  --   {codice, reason, reason_key, dettaglio, valori}.
+                  -- =========================================================
+                  IF p_documento IS NULL
+                     OR p_documento NOT IN ('PREVENTIVO', 'ORDINE_VENDITA', 'DDT_VENDITA') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'script.fn_check_articolo_riga',
+                          'E_DOC_TIPO_NON_GESTITO',
+                          jsonb_build_object('documento', p_documento),
+                          NULL::uuid,
+                          COALESCE(p_documento, '<null>'));
+                  END IF;
+
+                  IF p_articolo_id IS NULL THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  SELECT a.codice, a.is_solo_componente,
+                         COALESCE(p_natura_vendita_id, a.natura_vendita_id)
+                    INTO v_codice, v_solo_comp, v_natura_id
+                    FROM catalogo.articoli a
+                   WHERE a.id = p_articolo_id;
+                  IF NOT FOUND THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  SELECT nv.destinazione_tipo, COALESCE(nv.descrizione, nv.codice)
+                    INTO v_destinazione, v_natura_descr
+                    FROM config.nature_vendita nv
+                   WHERE nv.id = v_natura_id;
+
+                  -- 1. Solo componente: vive solo dentro un kit (D-3).
+                  IF v_solo_comp IS TRUE THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_ARTICOLO_SOLO_COMPONENTE',
+                          'reason',     'SOLO_COMPONENTE',
+                          'reason_key', 'vendite.righe.articolo_reason.solo_componente',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',       'articolo_id',
+                                            'documento',   p_documento,
+                                            'articolo_id', p_articolo_id),
+                          -- Frase chiusa: niente da infilare nei segnaposto.
+                          'valori',     jsonb_build_array());
+                  END IF;
+
+                  -- 2. La natura, secondo la destinazione.
+                  IF p_documento = 'PREVENTIVO' AND v_destinazione = 'CONTRATTO' THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA',
+                          'reason',     'RICORRENTE_USA_OFFERTA',
+                          'reason_key', 'vendite.righe.articolo_reason.ricorrente_usa_offerta',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',             'articolo_id',
+                                            'documento',         p_documento,
+                                            'articolo_id',       p_articolo_id,
+                                            'articolo_codice',   v_codice,
+                                            'natura_vendita_id', v_natura_id,
+                                            'destinazione_tipo', v_destinazione),
+                          'valori',     jsonb_build_array(COALESCE(v_codice, p_articolo_id::text)));
+                  ELSIF p_documento IN ('ORDINE_VENDITA', 'DDT_VENDITA')
+                        AND v_destinazione IS DISTINCT FROM 'ORDINE' THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_RIGA_NATURA_NON_AMMESSA',
+                          'reason',     'NATURA_NON_MERCE',
+                          'reason_key', 'vendite.righe.articolo_reason.natura_non_merce',
+                          'dettaglio',  jsonb_build_object(
+                                            'campo',             'articolo_id',
+                                            'documento',         p_documento,
+                                            'articolo_id',       p_articolo_id,
+                                            'natura_vendita_id', v_natura_id,
+                                            'destinazione_tipo', v_destinazione),
+                          'valori',     jsonb_build_array(
+                                            COALESCE(v_codice, p_articolo_id::text),
+                                            COALESCE(v_natura_descr, '?')));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_articolo_riga(text, bigint, uuid, bigint)
+              IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui un articolo non puo'' stare in una riga del documento p_documento (codice di config.tipi_entita: PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA, altrimenti E_DOC_TIPO_NON_GESTITO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Motivi: 1. SOLO_COMPONENTE (ogni documento, E_ARTICOLO_SOLO_COMPONENTE); 2. la natura secondo la destinazione: sul preventivo la ricorrenza va in offerta (E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA), su ordine e bolla solo merce (E_RIGA_NATURA_NON_AMMESSA). La natura e'' quella della riga (p_natura_vendita_id, congelata) se c''e'', altrimenti quella dell''articolo. p_documento_id non serve a queste regole: e'' nella firma per offerta e contratto, dove il perimetro dipende dalla testata. Una sola check per tipo di riga (A-2): la chiamano il guard di tabella script.trgfn_righe_guard_articolo_ammesso (solleva il primo motivo) e il picker degli articoli ammessi; l''ordine dell''array e'' il contratto. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2, D-1, D-2, D-3).';

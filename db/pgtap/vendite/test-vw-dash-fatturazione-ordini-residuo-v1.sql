@@ -35,12 +35,16 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-13: il mondo si COSTRUISCE (in CI l'utente 1 non esiste;
+--   anagrafiche e articoli sono vuoti). fn_pgtap_crea_mondo_cliente fa azienda,
+--   operatore, cliente BA legato a quell'azienda e APRE il contesto da se'.
+CREATE TEMP TABLE _m AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP dash residuo');
+-- Il mondo ha gia' aperto il contesto sul suo operatore: la riga lo
+--   dichiara (e il guardrail del preambolo la cerca).
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
 
 SELECT plan(6);
-
-SET LOCAL app.ruolo_applicativo = 'OPERATORE';
-SET LOCAL app.current_user_id = '1';
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -55,24 +59,14 @@ END $az$;
 -- ============================================================
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
-  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
-  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
-  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
-    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
+  -- ⛔ rev 2026-10-13: BA, ruolo del cliente ed emittente dal mondo costruito;
+  --   l'articolo si costruisce (merce, non gestito: il test non misura il magazzino).
+  (SELECT billing_account_id FROM _m)                                    AS billing_account_id,
+  (SELECT cliente_soggetto_ruolo_id FROM _m)                             AS soggetto_ruolo_id,
+  dbops.fn_pgtap_crea_articolo('PGTAP-DASH-RESIDUO', false)                  AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
+  (SELECT emittente_fiscale_id FROM _m)                                  AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
@@ -163,11 +157,16 @@ SELECT is(
   0::numeric, '3) evaso tutto -> valore 0 (il valore e'' interamente in mano al DDT)');
 
 -- 4) B + reso 3 PER RICONSEGNA confermato: il residuo risale (reso-aware)
-WITH reso AS (
+-- ⛔ rev 2026-10-13: testata e righe del reso in due istruzioni. Con un operatore
+--   vero (non piu' l'utente 1) la WITH CHECK di resi_righe risale al reso, e un
+--   reso scritto nella stessa istruzione (CTE) e' fuori dalla sua snapshot.
+CREATE TEMP TABLE reso AS
+WITH ins AS (
   INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, storicizza, meta)
   SELECT r.stato_reso_draft_id, r.sorgente_ddt_id, (SELECT d.uid FROM vendite.ddt d WHERE d.id=(SELECT ddt_id FROM tmp_b_ddt)),
          false, jsonb_build_object('test_scope','pgtap_residuo')
   FROM tmp_refs r RETURNING id)
+SELECT id FROM ins;
 INSERT INTO vendite.resi_righe (reso_id, riga_nr, ddt_riga_id, ordine_riga_id,
   articolo_id, descrizione, qta_operativa, uom_operativa_id, factor_to_base, tipo_reso_id, storicizza)
 SELECT (SELECT id FROM reso), 1, dr.id, (SELECT ordine_riga_id FROM tmp_b),
@@ -175,8 +174,7 @@ SELECT (SELECT id FROM reso), 1, dr.id, (SELECT ordine_riga_id FROM tmp_b),
        (SELECT tipo_riconsegna_id FROM tmp_refs), false
 FROM vendite.ddt_righe dr WHERE dr.ddt_id=(SELECT ddt_id FROM tmp_b_ddt);
 
-SELECT vendite.fn_conferma_reso((SELECT r.id FROM vendite.resi r
-  WHERE r.meta->>'test_scope'='pgtap_residuo' ORDER BY r.id DESC LIMIT 1));
+SELECT vendite.fn_conferma_reso((SELECT id FROM reso));
 
 SELECT is(
   (SELECT valore_totale FROM vendite.vw_dash_fatturazione_ordini
