@@ -1,6 +1,6 @@
 # Guida — Gestione delle Istanze Utility
 
-> **Ultimo aggiornamento**: 8 ottobre 2026
+> **Ultimo aggiornamento**: 14 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -22,6 +22,9 @@
 > * [script.fn_check_utility_istanza_coerenza](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza) — il check riusabile sulla coppia istanza/utility
 > * [anagrafiche.fn_guard_istanza_ha_ba](/dbzero/anagrafiche/manual/fn_guard_istanza_ha_ba) — un'istanza non resta mai senza billing account
 > * [anagrafiche.fn_guard_istanza_ba_emittente](/dbzero/anagrafiche/manual/fn_guard_istanza_ba_emittente) — i billing account di un'istanza sono di una sola azienda
+> * [anagrafiche.fn_clienti_stessa_chiave](/dbzero/anagrafiche/manual/fn_clienti_stessa_chiave) — chi occupa la fornitura soggetto + servizio + azienda
+> * [anagrafiche.fn_guard_cliente_chiave_unica](/dbzero/anagrafiche/manual/fn_guard_cliente_chiave_unica) — un cliente manuale per soggetto, servizio e azienda
+> * [anagrafiche.trgfn_clienti_guard_stato_date](/dbzero/anagrafiche/manual/trgfn_clienti_guard_stato_date) — gli stati del cliente e le loro date
 >
 > **Vedi anche** — guide correlate:
 >
@@ -229,12 +232,17 @@ Quando un'istanza viene collegata a un PDP:
 
 ### Aggiornamento automatico dello stato PDP
 
-Lo stato del PDP cambia automaticamente in base al cliente (tramite trigger `trgfn_clienti_sync_stato_pdp`):
+Lo stato del PDP segue l'**occupazione**: un PDP è occupato se un suo cliente ha un periodo di
+fornitura che contiene la data di oggi (trigger `trgfn_clienti_sync_stato_pdp`):
 
-* Cliente → **ATTIVO** (AT) → PDP diventa **ATTIVO**
-* Cliente → **CHIUSO** (CH) → PDP torna **DISPONIBILE**
+* PDP occupato e **DISPONIBILE** → diventa **ATTIVO**
+* PDP libero e **ATTIVO** → torna **DISPONIBILE**
 
-Gli altri stati cliente (sospeso, annullato, ecc.) non modificano lo stato del PDP.
+Un cliente sospeso occupa ancora il PDP; un annullato e un pre-contrattuale no. Gli stati
+tecnici «staccato» e «dismesso» non cambiano da qui: li governano processi loro.
+
+⚠️ Lo stato si ricalcola quando si scrive il cliente. Una chiusura con data futura libera il PDP
+alla prossima scrittura del cliente, non il giorno della chiusura.
 
 ---
 
@@ -265,7 +273,8 @@ Gli altri stati cliente (sospeso, annullato, ecc.) non modificano lo stato del P
 * Non può essere creato senza istanza
 * L'attivazione del cliente modifica lo stato del PDP
 * Il vincolo UNIQUE su `billing_account_id` garantisce un solo cliente per billing account, sia per istanze reali che fittizie; un'istanza con più utility ha un cliente per ciascuna
-* Il vincolo di esclusione `ex_clienti_no_overlap_stesso_pdp` (su `pdp_id, periodo`) aggiunge una seconda protezione: impedisce periodi sovrapposti sullo stesso PDP **tra istanze diverse**. Per le istanze fittizie (senza PDP) questa seconda protezione non scatta, ma non serve: il UNIQUE sul billing account basta
+* Il vincolo di esclusione `ex_clienti_no_overlap_stesso_pdp` (su `pdp_id, periodo`) aggiunge una seconda protezione: impedisce periodi sovrapposti sullo stesso PDP **tra istanze diverse**
+* Per le istanze fittizie (senza PDP) la stessa protezione la dà la regola «un cliente per soggetto, servizio e azienda» (sotto, [Un cliente manuale per soggetto, servizio e azienda](#un-cliente-manuale-per-soggetto-servizio-e-azienda)): il UNIQUE sul billing account non basta, perché ogni creazione manuale fa un'istanza e un billing account nuovi
 
 ---
 
@@ -293,6 +302,10 @@ Il PDP passa ad ATTIVO. L'istanza è pienamente in servizio.
 ### 5. Chiusura del cliente
 
 Può avvenire per **subentro** (un nuovo intestatario subentra) o per **disdetta** (il servizio si chiude senza sostituto). In entrambi i casi il PDP torna DISPONIBILE e l'istanza resta nel database come record storico.
+
+Un cliente chiuso **non si riapre**: se la fornitura riparte, nasce una **catena nuova** (istanza,
+billing account e cliente nuovi), collegata alla precedente. Il billing account vecchio resta per
+le fatture finali e i conguagli. Vedi [Gli stati del cliente](#gli-stati-del-cliente-e-le-loro-date).
 
 Per i dettagli su subentro e disdetta: [Guida Generazione Cliente – Appendici](/guide/generazione-cliente).
 
@@ -346,6 +359,61 @@ L'operatore non interagisce direttamente con l'istanza: il `ClienteService` la c
 Per le utility con `richiede_pdp = true` (GAS, Energia, Idrico), la creazione del cliente passa obbligatoriamente dal motore pratiche e l'istanza è sempre reale, con indirizzo e PDP obbligatori.
 
 Per i dettagli completi: [Guida Generazione Cliente — Creazione manuale vs creazione da pratica](/guide/generazione-cliente#creazione-manuale-vs-creazione-da-pratica).
+
+### Un cliente manuale per soggetto, servizio e azienda
+
+Un'istanza fittizia non rappresenta niente di fisico: senza un punto di fornitura, ciò che
+distingue una fornitura è **chi la riceve, quale servizio e quale azienda la fornisce**. Due
+clienti con lo stesso soggetto, lo stesso servizio e la stessa azienda, attivi negli stessi
+giorni, sono la stessa fornitura scritta due volte, e il database rifiuta il secondo
+(`E_CLIENTE_STESSA_CHIAVE`, decisione del 2026-10-13). Il messaggio porta il codice del billing
+account del cliente che esiste già.
+
+| Caso | Esito |
+| --- | --- |
+| stesso soggetto e azienda, un altro servizio | due forniture: ammesso |
+| stesso soggetto e servizio, un'altra azienda | due forniture: ammesso |
+| il cliente esistente è sospeso | la fornitura c'è ancora: rifiutato |
+| il cliente esistente è chiuso | dalla data di chiusura la fornitura è libera: la catena nuova parte da lì |
+| il cliente esistente è annullato | non conta |
+| un cliente pre-contrattuale | si prepara anche se un altro è attivo; il rifiuto arriva quando lo si attiva |
+
+L'azienda è quella **dell'installazione**: quella a cui il billing account è collegato o, se non
+è collegato, l'azienda predefinita. Non dipende da chi sta lavorando. Per questo la regola si
+controlla anche quando si cambia l'azienda di un billing account, quando si sposta l'azienda
+predefinita e quando un'istanza diventa fittizia. Il controllo avviene **alla conferma**
+dell'operazione: dentro la stessa operazione si può chiudere il cliente vecchio e aprire il
+nuovo in qualunque ordine.
+
+Quando la catena nuova si attiva, la sua istanza viene collegata da sola alla precedente
+(`parent_istanza_id`): il predecessore è l'ultimo cliente con lo stesso soggetto, servizio e
+azienda.
+
+Per avvisare l'operatore mentre prepara un pre-contrattuale, il database offre la lettura
+[anagrafiche.fn_clienti_stessa_chiave](/dbzero/anagrafiche/manual/fn_clienti_stessa_chiave):
+è la stessa che usa il rifiuto, quindi l'avviso e il rifiuto non possono dire due cose diverse.
+
+### Gli stati del cliente e le loro date
+
+Lo stato del cliente segue un percorso (decisione del 2026-10-14), scritto come dato in
+[config.transizioni_stati_cliente](/dbzero/config/tabelle/transizioni_stati_cliente):
+
+| Da | Può andare a |
+| --- | --- |
+| Pre-contrattuale | Attivo, Annullato |
+| Attivo | Richiesta sospensione, Sospeso (fatturabile o no), Chiuso, Chiuso per morosità, Chiuso per switch, Annullato |
+| Richiesta sospensione | Attivo, Sospeso (fatturabile o no) |
+| Sospeso | Attivo, l'altro Sospeso, Chiuso, Chiuso per morosità, Chiuso per switch |
+| Chiuso, Chiuso per morosità, Chiuso per switch | solo Chiuso e fatturato |
+| Chiuso e fatturato, Annullato | nessuno: sono stati finali |
+
+Un cliente chiuso **non torna attivo**, e la sua data di chiusura non cambia più. Ogni stato
+pretende la sua data: l'attivo quella di attivazione, il sospeso quella di sospensione, il chiuso
+quella di chiusura, e chi torna attivo da una sospensione quella di riattivazione. La chiusura
+non può precedere l'attivazione.
+
+Lo stato «Aggregante» resta a catalogo come promemoria: non è una fornitura, non entra nel
+percorso e non occupa la fornitura.
 
 ---
 

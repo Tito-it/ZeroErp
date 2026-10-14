@@ -64,6 +64,27 @@ risponde `false`, `titodb` risponde `true`.
 ℹ️ I job **devono** esserci in produzione (decisione di Tid, 2026-09-02): non è
 una fase opzionale da lasciare a `MARK_RAN`.
 
+### 🔴 Il ruolo che esegue `analyze_statistiche` deve poter analizzare ogni tabella
+
+Il job notturno delle statistiche
+([fn_analyze_statistiche](dbzero/maintenance/manual/fn_analyze_statistiche.md))
+lancia `ANALYZE` e poi **verifica** di esserci riuscito: `ANALYZE` salta in
+silenzio una tabella su cui il ruolo non ha `MAINTAIN`, e l'autoverifica in quel
+caso solleva `E_STATISTICHE_MANCANTI`. Il ruolo che lo esegue deve quindi essere
+superuser, proprietario di tutte le tabelle, oppure membro di `pg_maintain`:
+
+```sql
+GRANT pg_maintain TO <ruolo>;
+```
+
+| ambiente | chi esegue | serve il grant? |
+| --- | --- | --- |
+| **dbdev** | pgAgent, con ogni probabilità `postgres` | no, se superuser |
+| **CI** (`ci.yaml`, `ci-validate.yaml`) e scratch (`scripts/ci-local.sh`) | Liquibase `ci_apply` come `zeroerp` | ✅ sì, ed è nel passo di bootstrap: `databasechangelog`, `databasechangeloglock`, `internal.project_metadata` e `version_info` li crea il provision-pre come `postgres` |
+
+⚠️ È un **ruolo** del cluster, non un privilegio del database: si dà una volta
+per cluster. ⛔ Mai in un changeSet (linee-guida-sql §11.6).
+
 ---
 
 ## 3. Struttura dei Changelog e delle Cartelle (v2)

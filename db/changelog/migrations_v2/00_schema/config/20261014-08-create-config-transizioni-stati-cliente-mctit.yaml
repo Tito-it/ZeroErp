@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GRAFO DEGLI STATI DEL CLIENTE
+#   NASCE config.transizioni_stati_cliente: i passaggi di stato ammessi
+#   per anagrafiche.clienti.
+#   Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility (C-5, C-6)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il cliente non aveva un grafo: un chiuso poteva tornare attivo, e la
+#   riapertura non esisteva solo perche' nessuno la scriveva (C-5). Decisione
+#   di Tid del 2026-10-14 (C-6): da CH, CM, CW si va solo a CF, CF e AN sono
+#   terminali, fra attivo e sospeso si va nei due versi.
+#
+# -- LA FORMA -------------------------------------------------------
+#   Stessa forma delle sorelle (config.transizioni_stati_reso, _ddt): coppia
+#   (da, a) UNIQUE, da <> a, `attivo`, FK sui due lati. Senza `meta`: oggi
+#   nessun pulsante legge il grafo del cliente; la colonna arriva con il
+#   primo consumatore UI.
+#   L'INSERT del cliente non passa dal grafo (linee-guida-sql §7c punto 6):
+#   lo legge solo il guard sul cambio di stato,
+#   anagrafiche.trgfn_clienti_guard_stato_date (20261014-15).
+#   Seed: 80_data, 20261014-09. Nessun GRANT: le ALTER DEFAULT PRIVILEGES
+#   coprono la tabella nuova.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261014-08-create-config-transizioni-stati-cliente-mctit.yaml
+
+  - changeSet:
+      id: 20261014-08-create-config-transizioni-stati-cliente
+      author: mctit
+      comment: >
+        Crea config.transizioni_stati_cliente, il grafo degli stati del cliente (C-6).
+        Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - tableExists:
+                    schemaName: config
+                    tableName: transizioni_stati_cliente
+            - tableExists:
+                schemaName: config
+                tableName: stati_cliente
+      changes:
+        - createTable:
+            schemaName: config
+            tableName: transizioni_stati_cliente
+            remarks: >-
+              Passaggi di stato ammessi per anagrafiche.clienti (C-6 del brief
+              brief-db-cliente-manuale-uno-per-soggetto-e-utility). Lo legge il guard
+              anagrafiche.trgfn_clienti_guard_stato_date sul cambio di stato.
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  generationType: BY DEFAULT
+                  remarks: "PK surrogata tecnica."
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_transizioni_stati_cliente
+                    nullable: false
+
+              - column:
+                  name: stato_da_id
+                  type: integer
+                  remarks: "FK -> config.stati_cliente.id (stato di partenza)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: stato_a_id
+                  type: integer
+                  remarks: "FK -> config.stati_cliente.id (stato di arrivo)."
+                  constraints:
+                    nullable: false
+
+              - column:
+                  name: attivo
+                  type: boolean
+                  defaultValueBoolean: true
+                  remarks: >-
+                    Se false il passaggio resta scritto ma il guard lo rifiuta.
+                  constraints:
+                    nullable: false
+
+              - column: { name: data_insert, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_insert, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+              - column: { name: data_update, type: timestamp with time zone, defaultValueComputed: "now()", constraints: { nullable: false } }
+              - column: { name: user_update, type: text, defaultValueComputed: "CURRENT_USER", constraints: { nullable: false } }
+
+        - addUniqueConstraint:
+            schemaName: config
+            tableName: transizioni_stati_cliente
+            columnNames: stato_da_id, stato_a_id
+            constraintName: uq_transizioni_stati_cliente
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: transizioni_stati_cliente
+            baseColumnNames: stato_da_id
+            constraintName: fk_tsc_da
+            referencedTableSchemaName: config
+            referencedTableName: stati_cliente
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - addForeignKeyConstraint:
+            baseTableSchemaName: config
+            baseTableName: transizioni_stati_cliente
+            baseColumnNames: stato_a_id
+            constraintName: fk_tsc_a
+            referencedTableSchemaName: config
+            referencedTableName: stati_cliente
+            referencedColumnNames: id
+            onUpdate: CASCADE
+            onDelete: NO ACTION
+
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.transizioni_stati_cliente
+                ADD CONSTRAINT ck_transizioni_stati_cliente_da_diverso_a
+                CHECK (stato_da_id <> stato_a_id);
+
+              COMMENT ON TABLE config.transizioni_stati_cliente IS
+                  'Passaggi di stato ammessi per anagrafiche.clienti (C-5, C-6 di Tid del 2026-10-14): '
+                  'da CH, CM, CW si va solo a CF; CF e AN sono terminali; fra attivo e sospeso nei due versi. '
+                  'Lo legge anagrafiche.trgfn_clienti_guard_stato_date sul cambio di stato (E_CLIENTE_STATO_TRANSIZIONE_INVALIDA); '
+                  'l''INSERT non passa dal grafo. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+
+      rollback:
+        - dropTable:
+            schemaName: config
+            tableName: transizioni_stati_cliente

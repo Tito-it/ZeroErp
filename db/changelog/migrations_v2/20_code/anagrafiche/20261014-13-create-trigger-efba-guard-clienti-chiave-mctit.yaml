@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN CLIENTE MANUALE PER SOGGETTO, UTILITY E AZIENDA — movimenti 2 e 4:
+#   l'azienda del billing account
+#   NASCE anagrafiche.trgfn_efba_guard_clienti_chiave
+#   + constraint trigger trg_emittenti_fiscali_ba_z90_guard_clienti_chiave_ins_upd_dlt
+#     (AFTER INSERT OR UPDATE OR DELETE, DEFERRABLE INITIALLY DEFERRED).
+#   Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility (§4-bis)
+#
+# -- PERCHE' --------------------------------------------------------
+#   L'azienda e' nella chiave (C-1), e sta nel collegamento BA -> azienda,
+#   non sul cliente. Collegare, cambiare o togliere il collegamento di un BA
+#   cambia la chiave del suo cliente; spostare la riga di default la cambia a
+#   tutti i clienti dei BA senza collegamento (raggio N). Tassonomia di
+#   anagrafiche.trgfn_efba_guard_istanza_emittente: stessi quattro movimenti.
+# -- PERCHE' AL COMMIT ----------------------------------------------
+#   «Spostare» un BA il frontend lo fa con DELETE + INSERT: in mezzo il BA
+#   ricade sulla predefinita, e un controllo immediato giudicherebbe uno
+#   stato che nessuno vuole tenere.
+# Ritorno indietro: DROP del trigger e della funzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261014-13-create-trigger-efba-guard-clienti-chiave-mctit.yaml
+
+  - changeSet:
+      id: 20261014-13-create-trigger-efba-guard-clienti-chiave
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Constraint trigger al COMMIT su anagrafiche.emittenti_fiscali_billing_account: cambiare
+        l'azienda di un BA, o la predefinita, non crea un doppione di cliente manuale
+        (E_CLIENTE_STESSA_CHIAVE). Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_efba_guard_clienti_chiave()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_ba_id anagrafiche.emittenti_fiscali_billing_account.billing_account_id%TYPE;
+              BEGIN
+                -- Un collegamento spostato da un BA a un altro: i clienti
+                -- di entrambi; se uno dei due lati e' la riga di default,
+                -- anche il raggio N.
+                IF TG_OP = 'UPDATE'
+                   AND NEW.billing_account_id IS DISTINCT FROM OLD.billing_account_id THEN
+                    PERFORM anagrafiche.fn_guard_clienti_chiave_unica_di(OLD.billing_account_id, NULL);
+                    PERFORM anagrafiche.fn_guard_clienti_chiave_unica_di(NEW.billing_account_id, NULL);
+                    IF OLD.billing_account_id IS NULL OR NEW.billing_account_id IS NULL THEN
+                        PERFORM anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale();
+                    END IF;
+                    RETURN NULL;
+                END IF;
+
+                IF TG_OP = 'DELETE' THEN
+                    v_ba_id := OLD.billing_account_id;
+                ELSE
+                    v_ba_id := NEW.billing_account_id;
+                END IF;
+
+                IF v_ba_id IS NOT NULL THEN
+                    -- Movimenti 1-3: collegamento di un BA creato, cambiato
+                    -- o tolto.
+                    PERFORM anagrafiche.fn_guard_clienti_chiave_unica_di(v_ba_id, NULL);
+                    RETURN NULL;
+                END IF;
+
+                -- Movimento 4: la riga senza BA e' l'azienda predefinita.
+                PERFORM anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale();
+                RETURN NULL;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_efba_guard_clienti_chiave()
+              IS 'Constraint trigger function (AFTER INSERT OR UPDATE OR DELETE DEFERRABLE INITIALLY DEFERRED su anagrafiche.emittenti_fiscali_billing_account): l''azienda di un BA e'' nella chiave del cliente manuale. Per un collegamento creato, cambiato o tolto controlla i clienti del BA (anagrafiche.fn_guard_clienti_chiave_unica_di); per la riga di default il raggio N (anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale). E_CLIENTE_STESSA_CHIAVE. Tassonomia di anagrafiche.trgfn_efba_guard_istanza_emittente. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+
+              CREATE CONSTRAINT TRIGGER trg_emittenti_fiscali_ba_z90_guard_clienti_chiave_ins_upd_dlt
+                AFTER INSERT OR UPDATE OR DELETE ON anagrafiche.emittenti_fiscali_billing_account
+                DEFERRABLE INITIALLY DEFERRED
+                FOR EACH ROW
+                EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_clienti_chiave();
+
+              COMMENT ON TRIGGER trg_emittenti_fiscali_ba_z90_guard_clienti_chiave_ins_upd_dlt
+                ON anagrafiche.emittenti_fiscali_billing_account
+              IS 'Al COMMIT: cambiare l''azienda di un BA, o la predefinita, non crea un doppione di cliente manuale (E_CLIENTE_STESSA_CHIAVE). Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_ba_z90_guard_clienti_chiave_ins_upd_dlt ON anagrafiche.emittenti_fiscali_billing_account;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_efba_guard_clienti_chiave();

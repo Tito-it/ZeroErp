@@ -10,6 +10,8 @@ CREATE PROCEDURE proc_sync_storico_set_storicizza_job()
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_sync_storico_set_storicizza_job()
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
 AS $procedure$
   BEGIN
     PERFORM maintenance.fn_run_and_log(

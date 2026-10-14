@@ -110,13 +110,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
+CI_DB_ENV="${CI_DB:-}"
 CI_DB="${CI_DB:-zeroerp_ci}"
 FRESH=false
 CI_APPLY=false
+# ⭐ Dal 2026-10-15 il MODELLO DEI RUOLI DI SISTEMA e' il default (decisione di
+#   Tid): lo scratch curato e' `zeroerp_ruoli`. Il modo vecchio si chiede con
+#   --classico, finche' la fase 2 (la CI di GitHub sul modello) non lo ritira.
+MODELLO_RUOLI=true
 for a in "$@"; do
   case "$a" in
     --fresh)    FRESH=true ;;
     --ci-apply) CI_APPLY=true ;;
+    # Il default e' il MODELLO DEI RUOLI DI SISTEMA (brief-db-ruoli-di-sistema):
+    #   migra `zeroerp_owner`, i ruoli e il database li crea
+    #   scripts/sql/provision_zeroerp.sql, e in coda si VERIFICA che l'owner sia
+    #   uno solo. Database `zeroerp_ruoli`, password in $ZEROERP_RUOLI_ENV (sotto).
+    # --classico: il modo vecchio — migratore `zeroerp`/`secret`, database
+    #   `zeroerp_ci` —, lo specchio locale della CI di GitHub finche' la fase 2
+    #   non la porta sul modello.
+    --classico) MODELLO_RUOLI=false ;;
     # ⚠️ Il numero di riga finale si CALCOLA, non si scrive: inchiodato a 73
     #   l'aiuto troncava in silenzio la coda dell'intestazione ogni volta che
     #   qualcuno la allungava — successo il 2026-09-09 aggiungendo l'elenco
@@ -125,6 +138,52 @@ for a in "$@"; do
     *) echo "Opzione sconosciuta: $a" >&2; exit 1 ;;
   esac
 done
+
+# --- Chi migra. Classico: `zeroerp`/`secret`, i letterali di un database usa e
+#     getta. Modello dei ruoli: `zeroerp_owner`, con la password presa da un file
+#     FUORI dal repo (D-3: nessun default). Il file contiene, una per riga:
+#       ZEROERP_OWNER_PASSWORD=…
+#       ZEROERP_JOB_PASSWORD=…
+#     ⚠️ Servono solo a CREARE i due ruoli la prima volta: i ruoli sono di
+#     cluster, e di un ruolo che esiste lo script non tocca la password. Dalla
+#     seconda corsa in poi la password di zeroerp_owner serve a Liquibase per
+#     collegarsi, quindi deve restare quella.
+MIGR=zeroerp
+MIGR_PWD=secret
+# ⛔ E il verso opposto: il modo classico non va sullo scratch del modello —
+#   con --fresh lo cancellerebbe e lo ricostruirebbe con owner `zeroerp`.
+if ! $MODELLO_RUOLI && [[ "$CI_DB" == "zeroerp_ruoli" ]]; then
+  echo "⛔ RIFIUTO: --classico non va su zeroerp_ruoli (lo scratch del modello). Togli CI_DB: il default classico e' zeroerp_ci." >&2
+  exit 1
+fi
+if $MODELLO_RUOLI; then
+  [[ -n "$CI_DB_ENV" ]] || CI_DB=zeroerp_ruoli
+  # ⛔ Il modello non si costruisce sullo scratch classico: con --fresh lo
+  #   cancellerebbe, e `zeroerp_ci` e' il metro delle prove di oggi (owner
+  #   `zeroerp`, come la CI). Successo quasi il 2026-10-14: l'abitudine di
+  #   lanciare con CI_DB=zeroerp_ci.
+  if [[ "$CI_DB" == "zeroerp_ci" ]]; then
+    echo "⛔ RIFIUTO: il modello dei ruoli non va su zeroerp_ci (lo scratch classico). Togli CI_DB (il default e' zeroerp_ruoli), oppure usa --classico." >&2
+    exit 1
+  fi
+  ZEROERP_RUOLI_ENV="${ZEROERP_RUOLI_ENV:-$HOME/.config/zeroerp/ruoli-sviluppo.env}"
+  if [[ ! -f "$ZEROERP_RUOLI_ENV" ]]; then
+    cat >&2 <<MSG
+⛔ Manca il file delle password dei ruoli di sistema: $ZEROERP_RUOLI_ENV
+   Va creato a mano, fuori dal repo, con permessi 600:
+     mkdir -p "$(dirname "$ZEROERP_RUOLI_ENV")"
+     printf 'ZEROERP_OWNER_PASSWORD=%s\nZEROERP_JOB_PASSWORD=%s\n' '<pwd owner>' '<pwd job>' > "$ZEROERP_RUOLI_ENV"
+     chmod 600 "$ZEROERP_RUOLI_ENV"
+MSG
+    exit 1
+  fi
+  # shellcheck disable=SC1090
+  set -a; . "$ZEROERP_RUOLI_ENV"; set +a
+  : "${ZEROERP_OWNER_PASSWORD:?manca ZEROERP_OWNER_PASSWORD in $ZEROERP_RUOLI_ENV}"
+  : "${ZEROERP_JOB_PASSWORD:?manca ZEROERP_JOB_PASSWORD in $ZEROERP_RUOLI_ENV}"
+  MIGR=zeroerp_owner
+  MIGR_PWD="$ZEROERP_OWNER_PASSWORD"
+fi
 
 # --- Host/porta dal file env del progetto (NON il nome del database)
 [[ -f db/internal.env ]] || { echo "Manca db/internal.env" >&2; exit 1; }
@@ -185,6 +244,26 @@ if $FRESH; then
   psql_admin -d postgres -c "DROP DATABASE IF EXISTS \"$CI_DB\" WITH (FORCE);"
 fi
 
+if $MODELLO_RUOLI; then
+  # ⭐ I ruoli di sistema e il database con owner zeroerp_owner: li crea lo
+  #   script del modello (fase ruoli), sul database `postgres`. Dallo STDIN,
+  #   come provision_db_roles piu' sotto: `postgres` non attraversa /home/tid.
+  APP_PWD_MODELLO="$(awk -F: -v db="$DEV_DB" '$3==db && $4=="zeroerp_app" {print $5; exit}' ~/.pgpass 2>/dev/null || true)"
+  echo "── ruoli di sistema e database $CI_DB (provision_zeroerp.sql, fase ruoli)"
+  psql_admin -d postgres -v fase=ruoli -v db_name="$CI_DB" \
+    -v owner_password="$ZEROERP_OWNER_PASSWORD" -v job_password="$ZEROERP_JOB_PASSWORD" \
+    -v app_password="$APP_PWD_MODELLO" \
+    < scripts/sql/provision_zeroerp.sql >/dev/null
+  # ⚠️ Il canale dblink del migratore resta VUOTO, come in CI: la stringa di
+  #   connessione con la password finirebbe in pg_db_role_setting, che ogni
+  #   ruolo puo' leggere. fn_get_or_create_session_tx_id prende il ramo della
+  #   sentinella, avvisa e prosegue.
+  psql_admin -d "$CI_DB" <<SQL
+ALTER ROLE zeroerp_owner IN DATABASE "$CI_DB" SET myapp.user_language = 'it';
+ALTER ROLE zeroerp_owner IN DATABASE "$CI_DB" SET myapp.dblink_log_connection = '';
+SQL
+fi
+
 if ! psql_admin -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$CI_DB'" | grep -q 1; then
   echo "── creo $CI_DB"
   psql_admin -d postgres -c "CREATE DATABASE \"$CI_DB\" OWNER postgres;"
@@ -192,7 +271,9 @@ fi
 
 # --- Ruolo applicativo: si crea SOLO se manca (i ruoli sono di cluster).
 #     Le GUC si impostano PER DATABASE, mai globalmente.
-psql_admin -d "$CI_DB" <<SQL
+# ⚠️ Solo nel modo classico: nel modello dei ruoli il migratore e' zeroerp_owner,
+#   proprietario del database, e non gli serve niente di tutto questo.
+$MODELLO_RUOLI || psql_admin -d "$CI_DB" <<SQL
 DO \$\$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='zeroerp') THEN
     CREATE ROLE zeroerp LOGIN PASSWORD 'secret';
@@ -244,7 +325,7 @@ SQL
 if psql_admin -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='zeroerp_batch_fatturazione'" | grep -q 1; then
   echo "── il ruolo batch esiste nel cluster: gli do il DML sugli oggetti futuri di $CI_DB"
   psql_admin -d "$CI_DB" -c "
-    ALTER DEFAULT PRIVILEGES FOR ROLE zeroerp
+    ALTER DEFAULT PRIVILEGES FOR ROLE $MIGR
       GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO zeroerp_batch_fatturazione;
     ALTER DEFAULT PRIVILEGES FOR ROLE postgres
       GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO zeroerp_batch_fatturazione;" >/dev/null
@@ -303,12 +384,24 @@ echo "── provision pre"
 #   ⭐ E' esattamente il passo «Grant CREATE on public (CI bootstrap)» di
 #   ci.yaml, che sta anch'esso DOPO il provision-pre: qui si copia la sua
 #   posizione, non solo il suo contenuto.
-echo "── grant post-provision (come il passo 'CI bootstrap' di ci.yaml)"
-psql_admin -d "$CI_DB" <<SQL
+if $MODELLO_RUOLI; then
+  # ⭐ Niente GRANT di raccordo: cio' che il provision-pre ha creato da superuser
+  #   (tabelle di Liquibase, `internal`) passa a zeroerp_owner, e `pgagent` riceve
+  #   i diritti per owner e job. E' la fase pre dello script del modello.
+  echo "── proprieta' a zeroerp_owner e diritti su pgagent (provision_zeroerp.sql, fase pre)"
+  psql_admin -d "$CI_DB" -v fase=pre < scripts/sql/provision_zeroerp.sql >/dev/null
+fi
+$MODELLO_RUOLI || echo "── grant post-provision (come il passo 'CI bootstrap' di ci.yaml)"
+$MODELLO_RUOLI || psql_admin -d "$CI_DB" <<SQL
 GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;
 GRANT CREATE ON DATABASE "$CI_DB" TO zeroerp;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO zeroerp;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO zeroerp;
+-- pg_maintain: il job analyze_statistiche (ci_apply) gira come zeroerp e deve
+-- poter analizzare anche le tabelle che il provision-pre crea come postgres
+-- (databasechangelog, internal.project_metadata). Brief:
+-- brief-db-statistiche-tabelle-job-notturno (D15).
+GRANT pg_maintain TO zeroerp;
 SQL
 
 # ── ⚠️ E LE TABELLE CHE ESISTONO GIA' ─────────────────────────────────
@@ -346,7 +439,7 @@ fi
 #   si vede perche' pgAgent fu installato a mano dallo stesso utente.
 #   🔵 Domanda aperta per il deploy vero: in produzione, chi lancia Liquibase ha
 #   USAGE su `pgagent`? Se no, quei nove changeSet falliranno li' come qui.
-if psql_admin -d "$CI_DB" -tAc "SELECT 1 FROM pg_namespace WHERE nspname='pgagent'" | grep -q 1; then
+if ! $MODELLO_RUOLI && psql_admin -d "$CI_DB" -tAc "SELECT 1 FROM pg_namespace WHERE nspname='pgagent'" | grep -q 1; then
   echo "── grant su schema pgagent a zeroerp (la fase 85 qui gira davvero)"
   psql_admin -d "$CI_DB" <<'SQL' >/dev/null
 GRANT USAGE ON SCHEMA pgagent TO zeroerp;
@@ -359,7 +452,7 @@ fi
 
 echo "── passata principale  (--contexts=\"!provision and !dati_macchina\")"
 echo "   ⭐ e' qui che il migrate si ferma: guarda il numero 'Run:' salire"
-"$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_APP" --username=zeroerp --password=secret \
+"$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_APP" --username="$MIGR" --password="$MIGR_PWD" \
   --changeLogFile=db/changelog/changelog-master-v2.yaml update --contexts="!provision and !dati_macchina"
 
 # ⛔ PROVISION *POST*, e mancava. Il passo gemello di ci-validate.yaml
@@ -386,7 +479,7 @@ echo "── provision post  (come il passo 'Liquibase admin (provision - post)'
 if $CI_APPLY; then
   echo "── automazioni  (--contexts=ci_apply)"
   echo "   ⚠️ senza il ruolo batch provisionato, i grant runtime possono fallire"
-  "$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_CI" --username=zeroerp --password=secret \
+  "$LB" --defaults-file="$DEFAULTS_VUOTO" --url="$URL_CI" --username="$MIGR" --password="$MIGR_PWD" \
     --changeLogFile=db/changelog/changelog-master-v2.yaml update --contexts=ci_apply
 fi
 
@@ -446,7 +539,7 @@ if ! psql_admin -d "$CI_DB" -tAc \
     sudo -u postgres pg_dump -d "$DEV_DB" --schema-only --no-owner --no-acl \
          -n django -T 'django.token_blacklist_*' \
       | sed -e '/^CREATE SCHEMA django;$/d' \
-      | PGPASSWORD=secret psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U zeroerp -d "$CI_DB" \
+      | PGPASSWORD="$MIGR_PWD" psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U "$MIGR" -d "$CI_DB" \
           -X -q -v ON_ERROR_STOP=1 >/dev/null
     # ⛔ Il dump porta con se' anche gli indici che su dev ha creato LIQUIBASE
     #    sulle tabelle di Django (`ix_*`, 90_end con onFail CONTINUE). In CI non
@@ -456,7 +549,7 @@ if ! psql_admin -d "$CI_DB" -tAc \
     #    finiva in ERRORE_FIXTURE (2026-09-26, test-credenziale-email-unica-v1:
     #    ix_auth_user_email_lower_unique). Si tolgono: lo scratch torna com'e'
     #    in CI.
-    PGPASSWORD=secret psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U zeroerp -d "$CI_DB" \
+    PGPASSWORD="$MIGR_PWD" psql --no-psqlrc -h "$PGHOST" -p "$PGPORT" -U "$MIGR" -d "$CI_DB" \
         -X -q -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
 DO $$
 DECLARE r record;
@@ -505,7 +598,7 @@ if [ -n "$APP_PWD" ]; then
   #   il file lo apre la shell, che gira come l'utente giusto, e a psql arriva
   #   gia' un descrittore.
   psql_admin -d "$CI_DB" \
-    -v app_role=zeroerp_app -v app_password="$APP_PWD" -v migrator_role=zeroerp \
+    -v app_role=zeroerp_app -v app_password="$APP_PWD" -v migrator_role="$MIGR" \
     < scripts/sql/provision_db_roles.sql >/dev/null
 else
   echo "⚠️  password di zeroerp_app non trovata in ~/.pgpass: salto i privilegi." >&2
@@ -533,11 +626,14 @@ fi
 #    ritira di nuovo: a regime e' un no-op che rifa' la stessa postura.
 if psql_admin -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='zeroerp_batch_fatturazione'" | grep -q 1; then
   echo "── ruolo batch: ritiro il DML largo del ponte e lancio il provisioning vero (senza password)"
-  psql_admin -d "$CI_DB" <<'SQL' >/dev/null
-ALTER DEFAULT PRIVILEGES FOR ROLE zeroerp
+  # ⚠️ Le due ALTER DEFAULT PRIVILEGES stanno FUORI dall'heredoc: quello e' tra
+  #   apici (il DO $$ non deve vedere la shell), quindi $MIGR non si espanderebbe.
+  psql_admin -d "$CI_DB" -c "
+ALTER DEFAULT PRIVILEGES FOR ROLE $MIGR
   REVOKE INSERT, UPDATE, DELETE ON TABLES FROM zeroerp_batch_fatturazione;
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres
-  REVOKE INSERT, UPDATE, DELETE ON TABLES FROM zeroerp_batch_fatturazione;
+  REVOKE INSERT, UPDATE, DELETE ON TABLES FROM zeroerp_batch_fatturazione;" >/dev/null
+  psql_admin -d "$CI_DB" <<'SQL' >/dev/null
 DO $$
 DECLARE s text;
 BEGIN
@@ -551,10 +647,19 @@ BEGIN
 END $$;
 SQL
   psql_admin -d "$CI_DB" \
-    -v batch_role=zeroerp_batch_fatturazione -v migrator_role=zeroerp \
+    -v batch_role=zeroerp_batch_fatturazione -v migrator_role="$MIGR" \
     < scripts/sql/provision_db_role_batch_fatturazione.sql >/dev/null
 else
   echo "ℹ️  ruolo batch assente nel cluster: niente postura da collaudare qui (in CI lo crea il suo passo)."
+fi
+
+# 5. ⭐ Il modello dei ruoli: EXECUTE di zeroerp_job sulle procedure dei job, la
+#    proprieta' ripassata a zeroerp_owner (cio' che e' nato dopo la fase pre), e
+#    la VERIFICA «un owner solo»: se un oggetto del progetto non e' suo — fuori
+#    da dbops.sec_functions_owner — lo script si ferma e lo nomina.
+if $MODELLO_RUOLI; then
+  echo "── ruoli di sistema: fase post e verifica «un owner solo» (provision_zeroerp.sql)"
+  psql_admin -d "$CI_DB" -v fase=post < scripts/sql/provision_zeroerp.sql
 fi
 
 DEV_DOPO="$(testimone_dev)"

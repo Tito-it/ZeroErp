@@ -265,7 +265,8 @@ sono le sue trappole. **44 guide**, raggruppate per area:
   [configurazione](./guide/gestione-pratiche-configurazione.md) ·
   [code di lavoro](./guide/gestione-code-di-lavoro.md) ·
   [tracciamento processi e job](./guide/analisi-tracciamento-processi-e-job.md) ·
-  [job pgAgent](./guide/processi-pgagent-funzionali.md)
+  [job pgAgent](./guide/processi-pgagent-funzionali.md) ·
+  [statistiche del planner](./guide/statistiche-del-planner.md)
 - **Documenti e comunicazioni** — [documenti e stampe](./guide/documenti-e-stampe.md) ·
   [gestione mail](./guide/gestione-mail.md)
 - **Accessi e sicurezza** — [multi-face auth](./guide/architettura-multi-face-auth.md) ·

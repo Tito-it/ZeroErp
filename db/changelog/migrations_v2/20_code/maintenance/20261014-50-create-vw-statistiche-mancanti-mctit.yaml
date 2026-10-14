@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ LE TABELLE SENZA STATISTICHE — il perimetro del job notturno e la sua prova.
+#   Brief: brief-db-statistiche-tabelle-job-notturno §4.2, §4.3 (D15)
+#
+# Il planner stima quante righe escono da ogni passaggio leggendo le statistiche
+# che scrive ANALYZE. Senza, usa stime di default. Questa vista elenca le tabelle
+# che, per chi la interroga, resterebbero senza statistiche dopo un ANALYZE:
+#
+#   MAI_ANALIZZATA    pg_class.reltuples < 0: mai un ANALYZE ne' un VACUUM. Sta
+#                     nel catalogo, quindi sopravvive a un crash (i contatori di
+#                     pg_stat_* no).
+#   NON_ANALIZZABILE  il ruolo corrente non ha MAINTAIN: ANALYZE la SALTEREBBE
+#                     con un WARNING, senza fallire. Copre anche la tabella gia'
+#                     analizzata in passato, che reltuples non distingue.
+#
+# ── IL PERIMETRO, PER STRUTTURA ─────────────────────────────────────
+#   Tabelle ordinarie e partizionate, tranne: gli schemi di sistema, le
+#   temporanee delle ALTRE sessioni (non sono nostre, e alle 02:30 un backend
+#   ne puo' avere), e gli oggetti che appartengono a un'ESTENSIONE (pgagent,
+#   postgis, topology): pg_depend.deptype = 'e', non un elenco di nomi.
+#   ⚠️ Le temporanee della sessione corrente restano dentro: e' cio' che lascia
+#   a un pgTAP costruire il suo caso.
+#   ⚠️ Una partizionata SENZA partizioni non ha dati da descrivere: dopo ANALYZE
+#   resta reltuples = -1 (provato su PG 18.6, 2026-10-14). Non e' un guasto, e
+#   tenerla dentro farebbe fallire il job per sempre.
+#
+# ⚠️ has_table_privilege(..., 'MAINTAIN') guarda il ruolo CORRENTE: la vista
+#   risponde per chi la interroga. Come zeroerp_app ogni tabella di progetto e'
+#   NON_ANALIZZABILE, ed e' giusto: l'applicazione non analizza. Chi conta e'
+#   il ruolo del job.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261014-50-create-vw-statistiche-mancanti-mctit.yaml
+
+  - changeSet:
+      id: 20261014-50-create-vw-statistiche-mancanti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.vw_statistiche_mancanti: le tabelle del perimetro (non di sistema,
+        non di estensione, non temporanee di altre sessioni) che dopo un ANALYZE
+        resterebbero senza statistiche per il ruolo corrente: MAI_ANALIZZATA
+        (reltuples < 0) o NON_ANALIZZABILE (niente MAINTAIN). La legge l'autoverifica
+        di maintenance.fn_analyze_statistiche. Brief: brief-db-statistiche-tabelle-job-notturno.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'maintenance' AND c.relname = 'vw_statistiche_mancanti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW maintenance.vw_statistiche_mancanti AS
+              SELECT c.oid::regclass   AS relid,
+                     n.nspname::text   AS schema_nome,
+                     c.relname::text   AS tabella_nome,
+                     c.relkind::text   AS relkind,
+                     -- ⚠️ L'ordine dei rami conta: una tabella che il ruolo non
+                     --   puo' analizzare resta senza statistiche qualunque cosa
+                     --   dica reltuples.
+                     CASE
+                         WHEN NOT pg_catalog.has_table_privilege(c.oid, 'MAINTAIN')
+                             THEN 'NON_ANALIZZABILE'
+                         ELSE 'MAI_ANALIZZATA'
+                     END               AS motivo
+                FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE c.relkind IN ('r', 'p')
+                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+                 AND n.nspname NOT LIKE 'pg\_toast%'
+                 -- Temporanee: solo quelle della sessione corrente.
+                 AND (c.relpersistence <> 't'
+                      OR c.relnamespace = pg_catalog.pg_my_temp_schema())
+                 -- Oggetti di un'estensione: non sono del progetto.
+                 AND NOT EXISTS (
+                         SELECT 1 FROM pg_catalog.pg_depend d
+                          WHERE d.classid  = 'pg_catalog.pg_class'::regclass
+                            AND d.objid    = c.oid
+                            AND d.refclassid = 'pg_catalog.pg_extension'::regclass
+                            AND d.deptype  = 'e')
+                 AND (
+                         NOT pg_catalog.has_table_privilege(c.oid, 'MAINTAIN')
+                      OR (c.reltuples < 0
+                          -- Una partizionata senza partizioni non ha dati da
+                          -- descrivere: resta a -1 anche dopo ANALYZE.
+                          AND NOT (c.relkind = 'p'
+                                   AND NOT EXISTS (
+                                       SELECT 1 FROM pg_catalog.pg_inherits i
+                                        WHERE i.inhparent = c.oid)))
+                 );
+
+              COMMENT ON VIEW maintenance.vw_statistiche_mancanti IS
+                  'Le tabelle che dopo un ANALYZE resterebbero senza statistiche per il ruolo CORRENTE. motivo: MAI_ANALIZZATA (pg_class.reltuples < 0: mai un ANALYZE ne'' un VACUUM; sta nel catalogo e sopravvive a un crash, i contatori di pg_stat_* no) oppure NON_ANALIZZABILE (niente MAINTAIN: ANALYZE la salterebbe con un WARNING, senza fallire). Perimetro per struttura: tabelle ordinarie e partizionate, esclusi gli schemi di sistema, le temporanee di altre sessioni e gli oggetti di un''estensione (pg_depend deptype e); esclusa anche la partizionata senza partizioni, che non ha dati da descrivere e resta a -1 dopo ANALYZE. ⚠️ Risponde per chi interroga: come zeroerp_app ogni tabella di progetto e'' NON_ANALIZZABILE, ed e'' giusto. La legge l''autoverifica di maintenance.fn_analyze_statistiche. Brief: brief-db-statistiche-tabelle-job-notturno (D15).';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles
+                              WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON maintenance.vw_statistiche_mancanti TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS maintenance.vw_statistiche_mancanti;

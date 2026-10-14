@@ -879,6 +879,15 @@ dall'autovacuum. Con le soglie di default (50 righe più il 10%) una tabella
 piccola non ci arriva mai da sé, e nello scheduler non c'è nessun job che le
 analizzi.
 
+> Fatto datato **2026-10-14** (dbdev, `pg_stat_user_tables`): mai analizzate 69
+> tabelle su 89 in `vendite`, 25 su 25 in `magazzino`, 9 su 9 in `acquisti`;
+> `autovacuum_analyze_*` ai default, nessuna `reloptions`. Il lavoro sul planner
+> dello stesso periodo (D26-2, cardinalità dichiarata su `pg_proc`) ha curato le
+> **forme** dei piani, non le statistiche: D15 resta aperta.
+
+⏭️ **Brief:** [brief-db-statistiche-tabelle-job-notturno.md](brief-db-statistiche-tabelle-job-notturno.md)
+(aperto il 2026-10-14; decisione di Tid: un job notturno, niente soglie per tabella). Lo stato vive lì.
+
 ⛔ **La conseguenza non è «dbdev è lento»**: è che il planner sceglie su stime di
 default, e il piano **si ribalta da solo**. Fatto datato del 22-09: lo stesso
 corpo, senza nessuna modifica in mezzo, misurava 63 ms alle 16:12 e **95–104 ms
@@ -1213,6 +1222,7 @@ D6 e il registro dei rossi in CI.
       e si ribalta da solo. ⛔ È un **prerequisito** di qualunque cantiere che
       misuri un piano, non una miglioria — e finché non c'è, un guadagno
       dichiarato in millisecondi non è difendibile.
+      Brief: `brief-db-statistiche-tabelle-job-notturno.md` (2026-10-14).
 * [ ] **D17** — Q-2, rimandata da Tid: legare le GUC di bypass al proprietario
       delle tabelle (proposta in `work-done/brief-db-esclusioni-implicite.md`
       §4). Il resto di D17 è chiuso (§7), R-1 del BE compresa.

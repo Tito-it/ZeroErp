@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN CLIENTE MANUALE PER SOGGETTO, UTILITY E AZIENDA — movimento 1: il cliente
+#   NASCE anagrafiche.trgfn_clienti_guard_chiave_unica
+#   + constraint trigger trg_clienti_z90_guard_chiave_unica_ins_upd
+#     (AFTER INSERT OR UPDATE, DEFERRABLE INITIALLY DEFERRED).
+#   Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility (C-1, C-2)
+#
+# -- PERCHE' AL COMMIT ----------------------------------------------
+#   Dentro la stessa operazione l'ordine e' libero: si puo' preparare la
+#   catena nuova e chiudere la vecchia in qualunque ordine (C-5). Il guard
+#   rilegge il cliente per id, quindi vede la riga com'e' alla fine.
+#   Senza WHEN: la stessa definizione serve INSERT e UPDATE, e il guard su
+#   un cliente fuori dalla chiave esce alla prima query.
+# Ritorno indietro: DROP del trigger e della funzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261014-12-create-trigger-clienti-guard-chiave-unica-mctit.yaml
+
+  - changeSet:
+      id: 20261014-12-create-trigger-clienti-guard-chiave-unica
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Constraint trigger al COMMIT su anagrafiche.clienti: un cliente di un'istanza fittizia non
+        si sovrappone a un altro con lo stesso soggetto, utility e azienda (E_CLIENTE_STESSA_CHIAVE).
+        Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_guard_chiave_unica()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Al COMMIT: il cliente scritto non duplica una fornitura
+                -- (soggetto + utility + azienda) gia' occupata nel periodo.
+                PERFORM anagrafiche.fn_guard_cliente_chiave_unica(NEW.id);
+                RETURN NULL;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_clienti_guard_chiave_unica()
+              IS 'Constraint trigger function (AFTER INSERT OR UPDATE DEFERRABLE INITIALLY DEFERRED su anagrafiche.clienti): al COMMIT delega ad anagrafiche.fn_guard_cliente_chiave_unica (E_CLIENTE_STESSA_CHIAVE). Al COMMIT perche'' chiudere il cliente vecchio e attivare il nuovo nella stessa operazione resta libero nell''ordine. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+
+              CREATE CONSTRAINT TRIGGER trg_clienti_z90_guard_chiave_unica_ins_upd
+                AFTER INSERT OR UPDATE ON anagrafiche.clienti
+                DEFERRABLE INITIALLY DEFERRED
+                FOR EACH ROW
+                EXECUTE FUNCTION anagrafiche.trgfn_clienti_guard_chiave_unica();
+
+              COMMENT ON TRIGGER trg_clienti_z90_guard_chiave_unica_ins_upd
+                ON anagrafiche.clienti
+              IS 'Al COMMIT: un cliente manuale per soggetto, utility e azienda nello stesso periodo (E_CLIENTE_STESSA_CHIAVE). Fratelli: trg_emittenti_fiscali_ba_z90_guard_clienti_chiave_ins_upd_dlt, trg_istanze_utilities_z90_guard_clienti_chiave_upd. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_clienti_z90_guard_chiave_unica_ins_upd ON anagrafiche.clienti;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_clienti_guard_chiave_unica();

@@ -43,7 +43,9 @@
 - [fn_build_indirizzo_normalizzato](funzioni/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). Il backend Python la usa per check duplicato via GIN index.
 - [fn_check_ba_coppia_emittente_omogenea](funzioni/fn_check_ba_coppia_emittente_omogenea.md) — (latest review 18-08-26)
 - [fn_check_fornitore_attivo](funzioni/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
+- [fn_check_pdp_occupato](funzioni/fn_check_pdp_occupato.md)
 - [fn_check_titolo_iva_ambito](funzioni/fn_check_titolo_iva_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_clienti_stessa_chiave](funzioni/fn_clienti_stessa_chiave.md) — (latest review 14-10-26)
 - [fn_consuma_plafond_titolo_iva_righe](funzioni/fn_consuma_plafond_titolo_iva_righe.md) — (funzione nata il 2026-10-03, `20261003-07`; rev 2026-10-04, `20261004-06`)
 - [fn_crea_auth_user](funzioni/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_indirizzo_soggetto](funzioni/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
@@ -62,6 +64,9 @@
 - [fn_guard_albero_ba_gestore_globale](funzioni/fn_guard_albero_ba_gestore_globale.md) — (latest review 18-08-26)
 - [fn_guard_ba_cambio_emittente](funzioni/fn_guard_ba_cambio_emittente.md) — (latest review 26-08-26)
 - [fn_guard_ba_gestore_globale_storia](funzioni/fn_guard_ba_gestore_globale_storia.md) — (latest review 26-08-26)
+- [fn_guard_cliente_chiave_unica](funzioni/fn_guard_cliente_chiave_unica.md) — (latest review 14-10-26)
+- [fn_guard_clienti_chiave_unica_di](funzioni/fn_guard_clienti_chiave_unica_di.md)
+- [fn_guard_clienti_chiave_unica_gestore_globale](funzioni/fn_guard_clienti_chiave_unica_gestore_globale.md)
 - [fn_guard_fornitore_attivo](funzioni/fn_guard_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_guard_fornitore_attivo()`** applica una verifica fail-fast sul fornitore prima di consentirne l'uso nei flussi operativi del ciclo passivo, in particolare ordini e DDT.
 - [fn_guard_istanza_ba_emittente](funzioni/fn_guard_istanza_ba_emittente.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ba_gestore_globale](funzioni/fn_guard_istanza_ba_gestore_globale.md) — (latest review 08-10-26)
@@ -86,7 +91,9 @@
 - [trgfn_billing_account_guard_soggetto_coerenza_istanza](funzioni/trgfn_billing_account_guard_soggetto_coerenza_istanza.md) — (latest review 02-05-2026)
 - [trgfn_billing_account_link_ef](funzioni/trgfn_billing_account_link_ef.md)
 - [trgfn_billing_account_require_istanza_ha_ba](funzioni/trgfn_billing_account_require_istanza_ha_ba.md) — (latest review 08-10-26)
+- [trgfn_clienti_guard_chiave_unica](funzioni/trgfn_clienti_guard_chiave_unica.md)
 - [trgfn_clienti_guard_ruolo_cliente](funzioni/trgfn_clienti_guard_ruolo_cliente.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “cliente”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+- [trgfn_clienti_guard_stato_date](funzioni/trgfn_clienti_guard_stato_date.md) — (latest review 14-10-26)
 - [trgfn_clienti_set_parent_istanza](funzioni/trgfn_clienti_set_parent_istanza.md) — (latest update 09-12-25) La funzione `anagrafiche.trgfn_clienti_set_parent_istanza()` ha il compito di **mantenere la catena lineare delle istanze** (`istanze_utilities.parent_istanza_id`) per ciascun **PDP** quando viene inserito o attivato un nuovo cliente.
 - [trgfn_clienti_set_periodo](funzioni/trgfn_clienti_set_periodo.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_set_periodo()` è una **trigger function di dominio** che ha il compito di:
 - [trgfn_clienti_sync_pdp](funzioni/trgfn_clienti_sync_pdp.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_sync_pdp()` è una **trigger function di sincronizzazione** che ha il compito di mantenere allineato il campo `pdp_id` della tabella `anagrafiche.clienti` con il valore presente sull’istanza collegata (`anagrafiche.istanze_utilities`).
@@ -98,6 +105,7 @@
 - [trgfn_dati_societari_guard_forma_giuridica](funzioni/trgfn_dati_societari_guard_forma_giuridica.md)
 - [trgfn_dati_societari_guard_tipo_soggetto](funzioni/trgfn_dati_societari_guard_tipo_soggetto.md) — (latest review 03-12-25) Garantire che *solo* i soggetti autorizzati secondo le **policy dati societari** possano inserire o aggiornare una riga in `anagrafiche.dati_societari`.
 - [trgfn_efba_guard_albero_emittente](funzioni/trgfn_efba_guard_albero_emittente.md) — (latest review 18-08-26)
+- [trgfn_efba_guard_clienti_chiave](funzioni/trgfn_efba_guard_clienti_chiave.md)
 - [trgfn_efba_guard_istanza_emittente](funzioni/trgfn_efba_guard_istanza_emittente.md) — (latest review 08-10-26)
 - [trgfn_efba_guard_storia_emittente](funzioni/trgfn_efba_guard_storia_emittente.md) — (latest review 26-08-26)
 - [trgfn_emittenti_fiscali_default_bootstrap](funzioni/trgfn_emittenti_fiscali_default_bootstrap.md) — (latest review 23-01-2026) La funzione `anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()` crea in modo automatico la **riga di default** nel mapping emittenti fiscali quando viene inserito il **primo emittente**.
@@ -124,6 +132,7 @@
 - [trgfn_indirizzi_sync_geoloc](funzioni/trgfn_indirizzi_sync_geoloc.md) — Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi` o `anagrafiche.indirizzi_soggetti`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.
 - [trgfn_istanze_dati_precontrattuali_protect_update](funzioni/trgfn_istanze_dati_precontrattuali_protect_update.md) — (latest review 20-01-26) La funzione `anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()` impedisce la modifica o cancellazione dei dati precontrattuali quando sono gia` stati **congelati** in `vendite.contratti_utilities`.
 - [trgfn_istanze_utilities_gen_codice](funzioni/trgfn_istanze_utilities_gen_codice.md) — (rev 2026-08-21)
+- [trgfn_istanze_utilities_guard_clienti_chiave](funzioni/trgfn_istanze_utilities_guard_clienti_chiave.md)
 - [trgfn_istanze_utilities_normalize](funzioni/trgfn_istanze_utilities_normalize.md) — (latest review 28-12-25) Il trigger `anagrafiche.trgfn_istanze_utilities_normalize` è invocato **prima di ogni INSERT o UPDATE** su `anagrafiche.istanze_utilities` e ha i seguenti obiettivi:
 - [trgfn_istanze_utilities_require_utility_dichiarata](funzioni/trgfn_istanze_utilities_require_utility_dichiarata.md)
 - [trgfn_iu_clone_catasto_from_parent](funzioni/trgfn_iu_clone_catasto_from_parent.md) — (latest review 15-12-25) La trigger function **`anagrafiche.trgfn_iu_clone_catasto_from_parent()`** è un wrapper minimale che, in risposta a un evento di modifica dell’istanza (tipicamente valorizzazione di `parent_istanza_id`), attiva la clonazione del catasto dalla parent verso l’istanza corrente.

@@ -173,7 +173,13 @@ jobs:
             "GRANT USAGE, CREATE ON SCHEMA public TO zeroerp;
              GRANT CREATE ON DATABASE zeroerp TO zeroerp;
              GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO zeroerp;
-             GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO zeroerp;"
+             GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO zeroerp;
+             GRANT pg_maintain TO zeroerp;"
+          # pg_maintain: in ci_apply il job analyze_statistiche gira come zeroerp, e
+          #   databasechangelog, databasechangeloglock e internal.project_metadata li
+          #   crea il provision-pre come postgres. Senza, ANALYZE le salta e
+          #   l'autoverifica (E_STATISTICHE_MANCANTI) ferma la CI.
+          #   Brief: brief-db-statistiche-tabelle-job-notturno (D15).
 
       - name: Applica migrazioni Liquibase
         run: |

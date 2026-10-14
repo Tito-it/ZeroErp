@@ -311,6 +311,16 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (al 2026-10-11: resi curati con `20261011-42`, pannello e liste chiusi nel brief della lineage; D-2, il
   lister dei DDT senza filtri, chiusa con `20261012-03`, 1135 → 154 ms; resta D-3b, il verbo dell'accredito,
   ~115 ms — da profilare).
+- ⬜ **I ruoli di sistema — aperto il 2026-10-14** (`work-in-progress/brief-db-ruoli-di-sistema.md`): nomi
+  fissi (`zeroerp_owner`, `zeroerp_app`, `zeroerp_log`), password senza default, un provisioning unico per CI,
+  scratch e installazione; un owner solo anche su dbdev (oggi `titodb` su dev, `zeroerp` in CI); pgAgent come
+  `zeroerp_job`, che chiama solo le procedure dei job, `DEFINER` di `zeroerp_owner` (D-2). Decisioni tutte prese (14-10). Fase 1-bis scritta e provata: le 16 procedure dei job `DEFINER` (`20261014-55`), da applicare dopo aver tolto a mano su dbdev la firma orfana `proc_apply_fk_index_policy_job()`. Fase 1 scritta: `scripts/sql/provision_zeroerp.sql` + `ci-local.sh --modello-ruoli` (scratch `zeroerp_ruoli`), da lanciare da Tid con `sudo`.
+- ⬜ **Le statistiche delle tabelle: un job notturno (D15) — aperto il 2026-10-14**
+  (`work-in-progress/brief-db-statistiche-tabelle-job-notturno.md`): nessuno lancia `ANALYZE`, l'autovacuum
+  non arriva alle tabelle piccole né alle madri partizionate, e in CI i pgTAP partono senza statistiche. Disegno:
+  verbo in `maintenance` con autoverifica (`reltuples < 0`, `MAINTAIN`), procedura dal giornale, riga in
+  `dbops.processi` con `ci_ordine` ultimo, job in `85_pgagent` alle 02:30 (`20261014-50…-53`). Lato DB scritto e
+  provato il 2026-10-14; serve `GRANT pg_maintain TO zeroerp` (bootstrap CI e cluster di sviluppo), poi apply e pgTAP.
 - ✅ **La lineage dei documenti si costruisce per il documento: chiuso il 2026-10-11**
   (`work-done/brief-db-lineage-seminata-per-chiave.md`): grafo seminato per chiave (`fn_documento_lineage_nodi`,
   `_archi`, `_sintesi`), le sette viste di lista senza il grafo e `vw_documento_lineage` ritirata
