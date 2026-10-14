@@ -11,7 +11,7 @@
 | 3 | ✅ sessione BE | **A2** — magazzino sulla testata di bolla e reso (Lotto 3 R-2a, 3-bis R-1a) | §3 | A1 |
 | 4 | Tid | collaudo del blocco A: una bolla che muove merce si emette, senza scelte | §4 | 1, 3 |
 | 5 | ✅ sessione BE | **B1** — i prelievi della bolla (Lotto 3 R-2b) | §3 | A2 |
-| 6 | ✅ sessione BE · ⏳ team DB | **B2** — i rientri del reso (3-bis R-1b) ✅; R-1c: [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md) al team DB | §3 | B1 |
+| 6 | ✅ sessione BE · ✅ team DB · ⏳ Tid | **B2** — i rientri del reso (3-bis R-1b) ✅; R-1c: [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md) scritto e provato (`20261014-07`, 2026-10-14), attende l'apply di Tid | §3 | B1 |
 | 7 | Tid | collaudo del blocco B: lotti, seriali, ubicazioni, reso e storno | §4 | 6 |
 | 8 | ✅ sessione BE | **C1** — blocchi dalla scheda disponibilità (Lotto 3 R-5) | §3 | — |
 | 9 | ✅ sessione BE | **C2** — offerta: cliente in bozza, fornitura, codici delle eccezioni; commenti superati | §3 | — |

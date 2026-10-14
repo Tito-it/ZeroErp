@@ -1,20 +1,20 @@
 # Brief DB — i motivi della «Conferma» del reso arrivano senza i numeri
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-13
+## ⏭️ Chi riparte — aggiornato al 2026-10-14
 
-**Riparte: il team DB** (`dev/db-tid`): un changeSet su `script.fn_available_actions_reso` (§3).
-Analisi DB fatta il 2026-10-13 (§5); codice non iniziato, su indicazione di Tid: si parte quando lo dice lui.
+**Riparte: Tid**, con l'apply del `20261014-07` e la corsa pgTAP (§6). Il codice DB è scritto e
+provato prima dell'apply: 29/29 verdi su `zeroerp_ci` con l'SQL estratto.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | team DB | `reasons` con i `valori` sull'azione CONFERMATO, come la bolla | §3, §5 | via di Tid |
-| 2 | team DB | pgTAP: il motivo porta i `valori` della check | §4 | 1 |
-| 3 | Tid | apply e corsa pgTAP | — | 2 |
+| 1 | ✅ team DB | `reasons` con i `valori` sull'azione CONFERMATO, come la bolla: `20261014-07` | §6.1 | — |
+| 2 | ✅ team DB | pgTAP `magazzino/test-reso-carico-v1` (25 → 29), manual della funzione | §6.2 | — |
+| 3 | Tid | apply del `20261014-07` e corsa pgTAP | §6.3 | — |
 | 4 | Tid | collaudo a video (blocco B del piano BE/FE): il tooltip della «Conferma» porta i numeri | — | 3 |
-| 5 | sessione BE | archiviare in `work-done/` | — | 4 |
+| 5 | chi chiude | archiviare in `work-done/` | — | 4 |
 
 **Decisioni aperte di Tid:** nessuna.
-**Da committare:** il §5 di questo brief (analisi DB del 2026-10-13).
+**Da committare:** il changeSet `20261014-07`, il pgTAP, il manual e questo brief (2026-10-14).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-13, dal giro B2 del
 > [piano BE/FE del Lotto 3](piano-be-fe-magazzino-lotto-3.md) (3-bis R-1c). **A chi:** team DB.
@@ -129,3 +129,44 @@ gia' il caso: al passo 3 la riga a lotti ha due prelievi e nessun rientro
 ⚠️ Il caso «rientro oltre l'uscito» ha anche lui i segnaposti, ma la forma e' la stessa: il primo
 caso prova il trasporto dei `valori`, non serve ripeterlo per ogni motivo.
 
+## 6. Consegna DB (2026-10-14)
+
+### 6.1 Il changeSet
+
+`20_code/script/20261014-07-update-fn-available-actions-reso-motivi-con-valori-mctit.yaml`. Corpo
+preso dal `20261010-76`, verificato identico alla doc auto-generata. Cosa cambia, come nel §5.2:
+
+* `v_motivi_merce` tiene l'array intero di `fn_check_reso_merce`; `v_motivo_merce` ne è il primo
+  elemento;
+* le tre condizioni (accrediti, documento vuoto, merce) e la loro precedenza stanno **una volta**
+  in due `CROSS JOIN LATERAL` sulla transizione (`p`, poi `m`, con `m.merce` che esclude le due
+  precedenti). `enabled`, `reason`, `reason_key` e `reasons` le leggono e basta;
+* `reasons` = `v_motivi_merce` quando parla la merce, altrimenti `null` (la chiave c'è sempre,
+  come nella bolla);
+* firma ancorata (`vendite.resi.id%TYPE`) come prima; la variabile nuova è un `jsonb` calcolato;
+  `COMMENT` = quello vivo + la revisione.
+
+Niente codici d'errore, niente chiavi i18n nuove, nessuna ricaduta su BE e FE.
+
+### 6.2 Il pgTAP e la doc
+
+`magazzino/test-reso-carico-v1` passa da 25 a 29 asserzioni, senza rinumerare le esistenti:
+
+* **4a**: `reasons` è l'array della check, intero;
+* **4b**: `reasons -> 0 -> 'valori'` = `["2","0","4"]` (riga 2, 0 indicati su 4: la fixture);
+* **6a**: rientri completi → «Conferma» accesa, `reasons` presente e `null`;
+* **6b**, **presidio**: un reso costruito senza righe → `DOCUMENTO_SENZA_RIGHE`, `reasons` `null`.
+  Prima del changeSet è rosso solo perché la chiave non esiste; con il changeSet è verde anche
+  senza la precedenza in `m.merce`. Sorveglia l'incastro, non prova la regola (§5.3).
+
+Manual: `dbzero/script/manual/fn_available_actions_reso.md`, la precedenza scritta una volta e la
+sezione «La «Conferma» porta i motivi interi».
+
+### 6.3 La prova prima dell'apply (2026-10-14)
+
+* **`zeroerp_ci`**, come owner, in transazione annullata, con l'SQL **estratto** dallo YAML: senza
+  il changeSet 25/29 (rossi solo 4a, 4b, 6a, 6b); con il changeSet **29/29**.
+* **Equivalenza sui dati**, su dbdev come app (corpo nuovo in `pg_temp`, contesto operatore): 16
+  resi, nessuna differenza fuori dalla chiave `reasons`. È un fatto datato. Oggi nessun reso di
+  dbdev ha la «Conferma» spenta dalla merce, e infatti il caso lo costruisce il pgTAP.
+* Da fare dopo l'apply: la corsa pgTAP di Tid come app.
