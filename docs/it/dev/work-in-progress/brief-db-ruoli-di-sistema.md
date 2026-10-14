@@ -18,7 +18,7 @@ ha bisogno di un superuser per la prova.**
 | 5-ter-bis | ✅ **Tid** | La suite pgTAP intera su `zeroerp_ruoli`: **nessuna regressione** rispetto alla baseline di `zeroerp_ci` (2026-10-15) | §9.4 | — |
 | 5-ter-ter | **Tid** | La baseline dello scratch rifatta su `zeroerp_ruoli` (`--update`), dopo aver guardato i rientrati | §10 | niente |
 | 5-quater | **team DB** + **Tid** | Il presidio D-5: due changeSet (uno nel contesto `provision`, da superuser) | §7 D-5 | 5-ter |
-| 6 | 🔨 **team DB** | Fase 2: i due workflow di GitHub sul modello, scritti (§11); prova sul cluster usa-e-getta | §11 | — |
+| 6 | ✅ **team DB** | Fase 2: i due workflow di GitHub sul modello (§11); provata sul cluster usa-e-getta, verde (§11.2) | §11 | — |
 | 6-bis | **Tid** | Push e prima corsa vera su GitHub; la baseline della CI va guardata | §11.4 | 6 |
 | 7 | **Tid** | Fase 3: allineare dbdev (owner, `titodb` membro con `SET role`, pgAgent come `zeroerp_job`, Liquibase) — da superuser, in una finestra | §6 | 4, 6 |
 | 8 | **team DB** | Fase 4: documentazione d'installazione e ritiro dei vecchi script e ruoli | §6 | 7 |
@@ -490,3 +490,21 @@ Password letterali di CI (D-3): `secret-owner`, `secret-job`, `secret-app` (ques
   `DB_USER=zeroerp` all'immagine senza un database: non tocca il modello, si guarda con la fase 4.
 * In `ci.yaml` `zeroerp_app` ora esiste (prima no): i `GRANT` dei changeSet scritti «salta se il
   ruolo manca» si applicano anche li', come gia' in `ci-validate`.
+
+### 11.2 La prova sul cluster usa-e-getta (2026-10-15)
+
+I passi DB di `ci-validate.yaml` su un PostgreSQL 18 vergine, senza ruoli preesistenti (come il container
+di GitHub; `manage.py migrate` sostituito dalla copia del DDL di `django`, come in `ci-local.sh`):
+fase `ruoli` (tre ruoli creati), provision-pre, fase `pre`, passata principale come `zeroerp_owner`,
+provision-post, `ci_apply`, ruolo batch, `provision_db_roles`, fase `post`: **«un owner solo:
+verificato»**; 705 relazioni del progetto tutte di `zeroerp_owner`. pgTAP mirati, nessun rosso e nessuno
+skip: procedure dei job 7, `search_path` delle DEFINER 5, statistiche 10, verbale fuori transazione 6,
+convergenza in CI 8, catalogo presidi 11, postura del ruolo batch 19, riferimenti morti 9, postura di
+`django` 11, registri append-only 24. ⚠️ Il cluster era in `trust`: le password dei workflow le prova
+solo la prima corsa su GitHub.
+
+### 11.3 Le PR
+
+PR 1 (#1861, mergiata il 2026-10-15): tutto tranne la fase 2, con i workflow nella sola versione
+«`pg_maintain`». PR 2: i due workflow della fase 2 — la prima corsa del modello su GitHub. Dopo, la
+baseline della CI (`baseline-rossi-ci.tsv`) va guardata.
