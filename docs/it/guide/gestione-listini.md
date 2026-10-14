@@ -1,6 +1,6 @@
 # Guida — Gestione Listini e Pricing
 
-> **Ultimo aggiornamento**: 20 settembre 2026
+> **Ultimo aggiornamento**: 14 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
@@ -108,6 +108,9 @@ Tabella `vendite.promo_articoli`. È un **overlay temporale** indipendente:
 * (articolo, uom, validità) → tipo e valore variazione
 * batte qualsiasi altro stadio se il cliente appartiene a una categoria con `partecipa_promo = true`
 * ammette `PREZZO_FISSO` (prezzo assoluto sostitutivo) — vietato negli altri stadi
+* non si crea su un articolo **solo componente**: un articolo che si vende solo dentro un kit non
+  ha un prezzo suo, e dentro un kit le promo non si applicano. Il kit invece la promo la può
+  avere: la riceve quando il contratto gli dà un prezzo suo
 
 ---
 
@@ -513,6 +516,7 @@ Il database rafforza la determinismo con vincoli espliciti (non è "responsabili
 | `uq_listini_righe_key_attiva`                 | `listini_righe`             | Una sola riga attiva per (versione, articolo, uom)                            |
 | `script.fn_check_articolo_riga` (guard `script.trgfn_righe_guard_articolo_ammesso`) | check + trigger | Articolo e listino della stessa tipologia; niente solo componente; il kit coi componenti (dal 2026-10-13) |
 | `trgfn_contratti_modalita_c_righe_complete`   | trigger                     | Modalità C: attivazione blocca se righe incomplete                            |
+| `script.fn_check_articolo_riga` (guard su `promo_articoli`) | check + trigger | Nessuna promo su un articolo solo componente (dal 2026-10-14) |
 | `trgfn_contratti_utilities_guard_tipo_classe` | trigger                     | Tipo/classe utenza coerenti con ambito (NULL per COMMERCIO)                   |
 
 Il resolver poggia su queste invarianti — il codice Python non deve duplicarle.

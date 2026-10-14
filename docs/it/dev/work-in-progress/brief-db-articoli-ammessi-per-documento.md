@@ -1,8 +1,8 @@
 # Brief DB — Quali articoli ammette un documento: una regola sola, per il picker e per il guard
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-13
+## ⏭️ Chi riparte — aggiornato al 2026-10-14
 
-**Riparte: il team DB** col **Lotto 4** (il picker degli articoli ammessi, §9). Lotti 3a, 3u, 3b e 3c applicati e verdi (Tid, 2026-10-13). Lotti 3a e 3u applicati e verdi (Tid, 2026-10-13). Dal 2026-10-13 il brief lo porta avanti la sessione DB di questa conversazione (l'altra si è fermata). Lotti 1 e 2 sono applicati, verdi e committati. Il BE/FE parte **alla fine**, a lotti DB chiusi, con tutte le richieste insieme (Tid, 2026-10-13: non c'è produzione).
+**Riparte: la sessione BE/FE**, col giro finale del §9.6 (tutte le richieste dei lotti, in un giro: Tid, 2026-10-13, non c'è produzione). ✅ **Lato DB chiuso il 2026-10-14**: Tid ha applicato `20261014-06` (D-7, il kit senza componenti, §9.4.1), pgTAP verdi; prima il Lotto 4 (`20261014-01 → -05` + CSV dei codici + locales), pgTAP verdi; il Lotto 5 (doc) è scritto. Lotti 1, 2, 3a, 3u, 3b, 3c applicati, verdi e committati.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -20,11 +20,15 @@
 | 4h | Tid | ✅ A-8-bis (2026-10-13): i lettori del listino passano a `config.tipi_entita` col giro BE/FE | §9.3.3, §9.6 | — |
 | 4i | ✅ DB | Lotto **3c** (versione di listino e distinta) scritto e provato (2026-10-13) | §9.3.4 | — |
 | 4j | Tid | ✅ 3c applicata (`20261013-59 → -61` + CSV + locales), pgTAP verdi (2026-10-13) | §9.3.4 | — |
-| 4k | DB | Lotti 4 (il picker) e 5 | §9 | — |
-| 5 | BE/FE | **tutto in un giro, alla fine**: policy dei codici nuovi di ogni lotto, lookup e `ArticoloLookup` sulla sede unica, ritiro dei filtri liberi | §7, §9.6 | Lotto 5 |
+| 4k | ✅ DB | Lotto **4** (il picker, la promo) scritto e provato; Lotto **5** (doc) scritto (2026-10-14) | §9.4, §9.5 | — |
+| 4l | Tid | ✅ Lotto 4 applicato (`20261014-01 → -05` + `codici_errore.csv`, `messaggi_errore.csv` + locales), pgTAP verdi (2026-10-14) | §9.4 | — |
+| 4m | ✅ DB | D-7 (Tid, 2026-10-14: sì): `20261014-06` + codice + locales, scritto e provato | §9.4.1 | — |
+| 4n | Tid | ✅ `20261014-06` applicato (+ `codici_errore.csv`, `messaggi_errore.csv` + locales), pgTAP verdi (2026-10-14) | §9.4.1 | — |
+| 5 | BE/FE | **tutto in un giro**: policy dei codici nuovi di ogni lotto, lookup e `ArticoloLookup` sulla sede unica `catalogo.fn_articoli_ammessi`, ritiro dei filtri liberi, A-8-bis | §7, §9.6 | — |
 | 6 | Tid | collaudo a video | — | 5 |
+| 7 | DB | archiviazione del brief in `work-done/` (resta aperto solo per il giro BE/FE e il collaudo) | — | 6 |
 
-Decisioni aperte di Tid: nessuna (A-8-bis presa il 2026-10-13; D-5 rinviato al cantiere acquisti). **Da committare: il Lotto 3c** (§9.3.4: tre changeSet, CSV, locales, pgTAP nuovo e quattro presidi, manual). ✅ **Committati il 2026-10-13 (sessione DB)**: Lotti 1, 2 e `20261013-14` (prima); poi Lotti **3a, 3u, 3b** (`20261013-40 … -52`, `-55 … -58`), CSV dei codici, chiavi dei locales, baseline B-7, pgTAP nuovi e corretti, manual, guide e questo documento. ⚠️ **Restano fuori, col lavoro che ne porta la causa**: i cinque file pgTAP misti con un altro cantiere (`test-fn-list-ddt-da-pushare-contatore-v1`, `test-vw-dash-backlog-resi-v1`, `test-vw-partite-merce-v1`, `test-vw-resi-da-accreditare-contatore-v1`, `test-vw-situazione-merce-ordine-v1`); i quattro SORGENTE_POLIMORFA del §9.2.1 erano gia' fuori. Fuori anche, perche' di altri cantieri: `20261013-53` (lettori dell'emittente della bolla) col suo pgTAP e la sua doc, il D32, la pulizia di `baseline-rossi-scratch.tsv`.
+Decisioni aperte di Tid: nessuna (D-7 presa il 2026-10-14; A-8-bis il 2026-10-13; D-5 rinviato al cantiere acquisti). Da guardare (scelte del team DB dentro le decisioni prese, §9.4): la check divisa in due metà per R-5; il composito ammesso nella promo (D-6). ✅ **D-7 committata il 2026-10-14** (§9.4.1: `20261014-06`, CSV, locales, pgTAP del picker e due fixture, manual, guide, questo documento). ✅ Lotti 4 e 5 committati il 2026-10-14 (`7797acc42`); il Lotto 3c in `42bc5d2e0`. ✅ **Committati il 2026-10-13 (sessione DB)**: Lotti 1, 2 e `20261013-14` (prima); poi Lotti **3a, 3u, 3b** (`20261013-40 … -52`, `-55 … -58`), CSV dei codici, chiavi dei locales, baseline B-7, pgTAP nuovi e corretti, manual, guide e questo documento. ⚠️ **Restano fuori, col lavoro che ne porta la causa**: i cinque file pgTAP misti con un altro cantiere (`test-fn-list-ddt-da-pushare-contatore-v1`, `test-vw-dash-backlog-resi-v1`, `test-vw-partite-merce-v1`, `test-vw-resi-da-accreditare-contatore-v1`, `test-vw-situazione-merce-ordine-v1`); i quattro SORGENTE_POLIMORFA del §9.2.1 erano gia' fuori. Fuori anche, perche' di altri cantieri: `20261013-53` (lettori dell'emittente della bolla) col suo pgTAP e la sua doc, il D32, la pulizia di `baseline-rossi-scratch.tsv`.
 
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-11. **A chi:** team DB
 > (`dev/db-tid`); poi BE/FE (§7), che **attende** la consegna DB.
@@ -33,7 +37,7 @@ Decisioni aperte di Tid: nessuna (A-8-bis presa il 2026-10-13; D-5 rinviato al c
 > documento può usare»*. Il caso che l'ha aperto è nel §H di
 > [brief-db-offerta-emissione-ed-erogazione](brief-db-offerta-emissione-ed-erogazione.md): un
 > articolo scelto dal picker, rifiutato dopo.
-> **Stato (2026-10-13):** analisi del team DB fatta (§8); decisioni di Tid prese (§8.6); consegna a lotti (§9): ✅ Lotti 1 e 2 applicati, verdi e committati (con `20261013-14`); ⏳ Lotto 3.
+> **Stato (2026-10-14):** analisi del team DB fatta (§8); decisioni di Tid prese (§8.6); consegna a lotti (§9): ✅ Lotti 1, 2, 3a, 3u, 3b, 3c applicati, verdi e committati; ✅ Lotto 4 applicato da Tid il 2026-10-14, pgTAP verdi, e Lotto 5 (doc) scritto: **lato DB chiuso**, da committare; ora il giro BE/FE (§9.6).
 
 ## 1. Il principio
 
@@ -359,6 +363,7 @@ senza regole sull'articolo, listino (tipologia, composito in INSERT), promo (il 
 | **D-5** | Acquisti | rinviato alla ripartenza del cantiere, con i riferimenti del §8.4 |
 | **D-6** | Promo | ✅ **Tid, 2026-10-13: una promo si crea solo se il calcolo del prezzo la può applicare.** Solo componente: rifiutata (il resolver salta la promo in contesto bundle, «STADIO PROMO OVERLAY (non applicato in contesto bundle)» in `fn_resolve_prezzo_listino_v2_esito`, e con D-3 non c'è prezzo standalone). Composito: in consegna si verifica se il kit riceve la promo; se no, rifiutata, e la promo sul kit diventa una richiesta a parte |
 | **A-10** | I flag che decidono come si vende un articolo si possono cambiare dopo che l'articolo è stato usato? | ✅ **Tid, 2026-10-13: no.** Cambiano troppe cose a valle (listini, ordini, bolle): invece di rincorrere le conseguenze (natura congelata, ricontrolli nei verbi di copia, porte), un articolo **usato** non cambia più i flag strutturali. **Usato** = compare in una riga di documento (preventivo, offerta, contratto, ordine, bolla, fattura, reso), in un listino, in una commessa o in un movimento di magazzino, **in qualunque stato** (anche chiuso o annullato: i documenti chiusi si rileggono). **Bloccate se usato**: `is_composito`, `is_solo_componente`, `natura_vendita_id`, `causale_onere_id`, `listino_tipologia_id`, `gestito_a_magazzino`, `requires_lotto`, `requires_serial` (`codice` e `uom_id` lo sono già sempre). **Libere**: `iva_id` (l'aliquota cambia per legge, le righe hanno la loro), descrizioni, gruppi, conti, tempi, modo di approvvigionamento. **Via d'uscita**: un articolo nuovo (il ritiro del vecchio non è obbligatorio), più una **porta amministratore** per correggere un errore di caricamento. ⚠️ Gli articoli sono **unici per tutte le aziende** (nessun emittente né RLS nel catalogo, verificato il 2026-10-13): il predicato «usato» deve vedere i documenti di tutte, quindi SECURITY DEFINER, e il messaggio non nomina documenti che l'operatore non vede. ⚠️ La porta oggi esistente (`zeroerp.allow_lock_columns_override`) la accende qualunque sessione: quella amministratore vuole anche il controllo del ruolo. Un predicato solo, letto dal guard e dal form (`lock_columns_conditional`). Sostituisce il guard «solo componente in bozza» (`20261013-44/-45/-46`), chiude la decisione sui verbi di copia (un ordine confermato non trova un articolo cambiato) e il buco multi-azienda di quel guard. Lotto **3u** (§9.3), prima della 3b |
+| **D-7** | Il composito con la **distinta vuota** è un motivo della check per tipo di riga? | ✅ **Tid, 2026-10-14: sì.** Motivo 2 (dopo il solo componente) di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto, codice nuovo `E_ARTICOLO_KIT_SENZA_COMPONENTI`; «vuoto» = nessun componente attivo a qualunque data, il caso legato alla data resta all'init (`E_DOC_COMPOSITO_BOM_VUOTA`). `20261014-06` (§9.4.1) |
 
 **P-1 (al BE).** Esiste un flusso in cui una riga di documento si scrive prima che la testata
 esista (una creazione testata + righe in una chiamata sola)? Se no, il «creazione senza id»
@@ -388,9 +393,9 @@ documento (A-1); per la promo riceve solo il tipo di documento.
 | --- | --- | --- | --- |
 | **1** | **Catalogo**: la distinta a un livello (guard sul componente e dal lato articolo), l'articolo-onere non è merce | D-4, A-9 | ✅ applicato da Tid, pgTAP verdi, committato (2026-10-13) (§9.1) |
 | **2** | **Vocabolario e natura in riga**: le voci mancanti in `config.tipi_entita`; `natura_vendita_id` su `ordini_righe` e `ddt_righe`, scritta dal DB e portata dai verbi di copia | A-8, A-4 | ✅ applicato da Tid con la correzione `-14`, pgTAP verdi, committato (2026-10-13) (§9.2, §9.2.1) |
-| **3** | **Le regole sulle righe** (diviso in 3a, 3b, 3c: §9.3): i predicati, la check per tipo di riga, un guard per tabella; natura su ordine e bolla, solo componente ovunque, OVERRIDE/ESCLUSIONE nel listino; i verbi di copia controllano prima di scrivere; «solo componente» dal lato articolo; la riconsegna esente. Le funzioni con `p_documento text` passano al vocabolario | A-2, A-3, A-5, A-6, D-1, D-2, D-3 | da scrivere; **insieme al §H** del brief offerta (§8.5) |
-| **4** | **La sede unica di lettura**: candidati della ricerca con il motivo, ammessi prima; promo | A-1, A-7, D-6 | da scrivere |
-| **5** | **Doc e richieste**: guide, manual, richieste BE/FE del §7 aggiornate | — | da scrivere |
+| **3** | **Le regole sulle righe** (diviso in 3a, 3u, 3b, 3c: §9.3): i predicati, la check per tipo di riga, un guard per tabella; natura su ordine e bolla, solo componente ovunque, OVERRIDE/ESCLUSIONE nel listino; «solo componente» dal lato articolo (poi l'articolo usato, A-10); la riconsegna esente | A-2, A-3, A-5, A-6, A-10, D-1…D-4 | ✅ applicato da Tid, verde, committato (2026-10-13). I passi successivi (R-6) restano al §H del brief offerta; la migrazione al vocabolario va col giro BE/FE (A-8-bis) |
+| **4** | **La sede unica di lettura**: candidati della ricerca con il motivo, ammessi prima; la check divisa in contesto e motivi (R-5); promo | A-1, A-2, A-7, D-6 | ✅ applicato da Tid, pgTAP verdi (2026-10-14), da committare (§9.4) |
+| **5** | **Doc e richieste**: guide, manual, linee guida, richieste BE/FE del §7 aggiornate | R-8 | ✅ scritto (2026-10-14) (§9.5, §9.6) |
 
 ### 9.1 Lotto 1 — catalogo (✅ applicato da Tid il 2026-10-13, pgTAP verdi)
 
@@ -936,6 +941,179 @@ guida `gestione-listini`; **cancellati** manual e pagine generate dei quattro gu
 ⚠️ `docs/it/dev/backend/catalogo-building-block-backend.md` nomina ancora il guard della tipologia:
 al giro BE/FE.
 
+### 9.4 Lotto 4 — la sede unica del picker e la promo (✅ applicato da Tid il 2026-10-14, pgTAP verdi)
+
+Il picker degli articoli di una riga legge la stessa check dei guard (A-2): dato il documento e il
+suo id (A-1), gli articoli **attivi** che la ricerca trova, ciascuno col **primo motivo** per cui il
+documento non lo ammette (`NULL` = ammesso), prima gli ammessi (A-7). E la promo prende la sua
+regola (D-6).
+
+**ChangeSet**:
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20261014-01` | nuovo `script.fn_articolo_riga_contesto(documento, documento_id, tipo_eccezione, padre)`: il **lato documento** della check, letto una volta (listino operativo, versione espansa → `articoli_listino`, etichetta; tipologia del listino; padre della distinta), e le validazioni dei parametri (spostate qui, stesse frasi). `PROMO_ARTICOLO` è un documento nuovo |
+| `20261014-02` | nuovo `script.fn_check_articolo_riga_su_contesto(contesto, articolo, natura)`: **i motivi**, il corpo del `-59` identico nelle regole, nell'ordine, nei codici e nei valori, che legge il documento dal contesto; più la promo (solo componente → `E_PROMO_ARTICOLO_SOLO_COMPONENTE`) |
+| `20261014-03` | `script.fn_check_articolo_riga`: **stessa firma**, `CREATE OR REPLACE`; il corpo compone le due metà (`v_motivi := …_su_contesto(…_contesto(…))`, la forma che `dbops.vw_funzioni_check_codici` riconosce come delega). Nessun chiamante cambia. Rollback: il corpo del `-59` |
+| `20261014-04` | nuovo `catalogo.fn_articoli_ammessi(documento, documento_id, search, limit, tipo_eccezione, padre)` → `{articolo_id, codice, descrizione, motivo, ordine}`. Id obbligatorio per i documenti con testata (non per `ARTICOLO` e `PROMO_ARTICOLO`); solo articoli attivi; ricerca «contiene» letterale (`strpos` su `lower`) su codice o descrizione; il tetto lo sceglie il chiamante, dopo il giudizio; INVOKER |
+| `20261014-05` | `script.trgfn_righe_guard_articolo_ammesso` montato su `vendite.promo_articoli` con `('PROMO_ARTICOLO', 'id')`, `BEFORE INSERT OR UPDATE OF articolo_id`, prima del guard delle date; COMMENT del guard riscritto coi montaggi di oggi (mancava `listini_righe`) |
+
+**Codici**: `E_PROMO_ARTICOLO_SOLO_COMPONENTE` (1306, DATO_ERRATO; valori: codice dell'articolo;
+campo `articolo_id`). **Locales**: `vendite.promo_articoli.articolo_reason.solo_componente` (it, en),
+aggiunta dalla sessione DB; `check_i18n_keys` pulito.
+
+**Scelte del team DB** (dentro le decisioni prese, da guardare):
+
+* **La check divisa in due metà (R-5).** Il profilo della check per articolo, misurato su dbdev il
+  2026-10-14 (un contratto col listino, 268 articoli attivi, come app), dava ~5,2 ms per articolo:
+  ~4,9 ms erano `vendite.fn_espandi_listino_versione`, ~0,7 ms il listino operativo, cioè **lavoro sul
+  documento rifatto per ogni articolo**. Il costo del picker cresce così come «articoli trovati ×
+  dimensione del listino». La correzione non tocca la regola: il documento si legge una volta (il
+  contesto), i motivi si scrivono per articolo, e la firma di sempre compone le due metà per i guard.
+  Scartate: una funzione «nel listino» più leggera (una seconda definizione di «nel listino», accanto
+  a quella dell'espansione: la regola del 2 al contrario) e un parametro-cache sulla check (un
+  ingresso da cui un chiamante può passare un insieme sbagliato).
+* **Il composito nella promo è ammesso (D-6, verifica chiesta in consegna).** Il resolver dà un
+  prezzo a sé a un composito quando il contratto ha un'eccezione su di lui (stadio 1a, AGGIUNTA o
+  OVERRIDE), e su quel prezzo lo stadio promo si applica (`fn_resolve_prezzo_listino_v2_esito`). Il
+  kit la promo la riceve: niente motivo, e niente richiesta a parte.
+* **Un codice nuovo per la promo**, non `E_ARTICOLO_SOLO_COMPONENTE`: il suo messaggio parla di una
+  riga di documento («non può essere inserito come riga autonoma»).
+* **L'id obbligatorio è del picker, non del contesto.** I pgTAP della 3a chiamano la check senza id
+  per preventivo, ordine e bolla, che non leggono il documento: metterlo nel contesto avrebbe
+  ristretto i guard senza una ragione di modello.
+* **Il composito nella versione di listino** esce col motivo `COMPOSITO_COME_BUNDLE` (§9.3.4): il FE lo
+  propone come bundle.
+* ⚠️ **Fuori dalla check resta la distinta vuota** (`E_DOC_COMPOSITO_BOM_VUOTA`, all'init dei
+  componenti): il picker propone un composito senza componenti, che poi l'init rifiuta. È una
+  proprietà dell'articolo, quindi un motivo di articolo; nessuna decisione l'ha chiesta nella check.
+  Decisa da Tid il 2026-10-14 (**D-7**, sì): §9.4.1.
+
+**pgTAP**:
+
+* nuovo `catalogo/test-articoli-ammessi-picker-v1.sql` (23 test), **tutto costruito**: i parametri
+  (id mancante, documento sconosciuto anche senza candidati, tetto, tipo d'eccezione); il preventivo
+  (elenco e ordine, lo spento assente, `ordine`, tetto, ricerca letterale e senza maiuscole, guard e
+  scrittura); il contratto (AGGIUNTA, OVERRIDE); versione di listino e distinta; la promo (picker,
+  guard all'INSERT e all'UPDATE, il composito ammesso, la firma di sempre). ⭐ «Picker e guard non
+  dissentono» (R-7) si prova confrontando, per **ogni** articolo restituito, il motivo del picker col
+  primo motivo di `script.fn_check_articolo_riga`, e contando le righe (5 per documento, 15 sui tre
+  tipi d'eccezione): un confronto su zero righe sarebbe verde per sottrazione;
+* **tre presidi di struttura** che nominavano la vecchia sede, aggiornati con la nota datata:
+  `test-contratto-righe-lista-v1` (test 12) e `test-guard-esclusione-figlio-bundle-v1` (test 1)
+  cercano la composizione dell'esclusione in `fn_check_articolo_riga_su_contesto`;
+  `test-listino-versione-in-vigore-v1` (test 13) conta fra i consumatori di
+  `fn_documento_listino_operativo` il contesto al posto della check;
+* **due fixture della promo** pescavano «il primo articolo attivo per id», che può essere un solo
+  componente: ora lo **costruiscono** (`test-promo-articoli-v1`, `test-promo-articoli-guard-data-driven-v1`;
+  nel secondo il test 3 non ha più il ramo «nessun articolo vergine»).
+
+**Prova pre-apply** (2026-10-14, SQL estratto da `-01 … -05` + le righe del codice nuovo in testa a
+transazioni annullate, corpo dei pgTAP senza runner, `PGTZ=Pacific/Kiritimati`):
+
+* `plpgsql_check`: sulle tre funzioni nuove e sulla check i soliti avvisi «STABLE ma VOLATILE» delle
+  chiamate di errore; il guard sulla promo pulito;
+* su `zeroerp_ci`, da owner: test nuovo **23/23**; 19 pgTAP vicini (le tre check dei lotti 3, i
+  presidi di struttura, catalogo messaggi, riferimenti morti, codici e valori attesi, risalita delle
+  check sotto JIT, rubinetto, canale campo, promo) **senza e con** il lotto: cambiano esito solo i tre
+  presidi sopra, verdi dopo la correzione (e rossi senza il lotto, come devono); il test del resolver
+  è `ERRORE_FIXTURE` uguale prima e dopo (sullo scratch non trova un billing account);
+* ⭐ **equivalenza sui dati veri** (dbdev, come app, contesto operatore, transazione annullata; le
+  due metà create in `pg_temp`, perché su dbdev la DDL non si può fare): le due metà composte contro la
+  check viva (`-59`) su **tutti** gli articoli (341, anche spenti) e i documenti visibili più recenti
+  (40 per tipo; contratti e offerte sui tre tipi d'eccezione; 40 distinte): **100.936 confronti,
+  zero dissensi**, su tutti e sette i documenti;
+* **tempi del picker** (misure datate, dbdev, 2026-10-14, 268 articoli attivi): contratto con la
+  ricerca vuota ~150 ms (con la check per articolo ~1,5 s); con un testo e il tetto di 51, ~50 ms;
+  preventivo, ordine, versione di listino, distinta e promo fra 2 e 27 ms;
+* presidio B-7 nella transazione: nessuna famiglia nuova (`E_PARAMETRO_INVALIDO` 240 → 243 punti:
+  le validazioni del picker e del contesto); guardrail statici, preambolo pgTAP, licenze e
+  `check_i18n_keys` verdi.
+
+⚠️ **Non provato prima dell'apply**: la RLS del picker come app su un documento di un'altra azienda
+(il contesto dà «senza listino», come per il guard); lo vede la corsa di Tid.
+
+**Dopo l'apply (Tid)**: i pgTAP `catalogo/test-articoli-ammessi-picker-v1`, i tre presidi
+(`vendite/test-contratto-righe-lista-v1`, `vendite/test-guard-esclusione-figlio-bundle-v1`,
+`vendite/test-listino-versione-in-vigore-v1`), le due della promo, e le baseline di `catalogo`,
+`script`, `vendite`, `dbops`. ✅ **2026-10-14: migrazione applicata, test verdi** (Tid). Con la corsa
+di Tid è coperto anche ciò che la prova pre-apply non poteva vedere: la RLS del picker come app.
+
+**Doc**: manual nuovi `catalogo/manual/fn_articoli_ammessi`, `script/manual/fn_articolo_riga_contesto`,
+`script/manual/fn_check_articolo_riga_su_contesto`; aggiornati `script/manual/fn_check_articolo_riga`
+(la promo, le due metà, il ponte A-8 nel contesto), `script/manual/trgfn_righe_guard_articolo_ammesso`
+(il montaggio sulla promo), `vendite/manual/promo_articoli`. La doc generata la rigenera la build di Tid.
+
+### 9.4.1 D-7 — il kit senza componenti (`20261014-06`, ✅ applicato da Tid il 2026-10-14, pgTAP verdi)
+
+Decisione di Tid del 2026-10-14: un composito senza componenti non compare più come ammesso nel
+picker, per poi essere rifiutato dall'init dei componenti dopo la scelta.
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20261014-06` | `script.fn_check_articolo_riga_su_contesto` (stessa firma, `CREATE OR REPLACE`, corpo dal `-02`): motivo nuovo `KIT_SENZA_COMPONENTI` in posizione 2, dopo il solo componente, per preventivo, ordine, bolla e per AGGIUNTA e OVERRIDE di offerta e contratto; riscritto anche il COMMENT di `script.fn_check_articolo_riga`, che elenca le regole. Rollback: corpo e COMMENT del `-02`/`-03` |
+
+**Codice**: `E_ARTICOLO_KIT_SENZA_COMPONENTI` (1307, DATO_ERRATO; valori: codice dell'articolo; campo
+`articolo_id`). **Locales**: `vendite.righe.articolo_reason.kit_senza_componenti` (it, en);
+`check_i18n_keys` pulito.
+
+**Scelte del team DB**:
+
+* **«Vuoto» = nessun componente attivo, a qualunque data.** La check non ha una data; l'init giudica i
+  componenti validi alla data del documento. Così la check rifiuta solo ciò che l'init rifiuterebbe
+  sempre, e non rifiuta mai un kit che l'init accetta. Il caso «componenti che ci sono ma non a quella
+  data» resta all'init, col suo codice.
+* **Un codice nuovo**, non `E_DOC_COMPOSITO_BOM_VUOTA`: quella frase porta la data («senza componenti
+  validi alla data [%s]»).
+* **Fuori**: l'ESCLUSIONE (escludere non vende), la versione di listino e la distinta (il composito ha
+  già i suoi motivi), la promo (il prezzo del kit lo dà il contratto, non i componenti).
+
+**pgTAP**:
+
+* `catalogo/test-articoli-ammessi-picker-v1` (plan 23 → 26): nella fixture P ha ora il suo componente F,
+  e V è il kit vuoto; nuovi test 24 (il guard dell'ordine rifiuta V), 25 (AGGIUNTA: primo motivo), 26
+  (ESCLUSIONE: non si giudica); attese dei test 5-7, 10, 15, 17, 18 col nuovo elenco (7 articoli);
+* **due fixture** costruivano un kit vuoto e lo mettevano in un contratto, cioè il dato che D-7 ora
+  vieta: `vendite/test-righe-erogazione-da-articolo-v1` (test 22) e
+  `vendite/test-righe-quantita-per-fonte-v1` (test 5 e 13). Il kit K riceve il suo componente KC.
+
+**Prova pre-apply** (2026-10-14, `zeroerp_ci`, da owner, SQL estratto del `-06` + le righe del codice
+in transazioni annullate, `PGTZ=Pacific/Kiritimati`):
+
+* test del picker 26/26; senza il `-06` rossi solo il 5, il 24 e il 25;
+* **83 pgTAP** (tutti quelli che nominano `is_composito`, più i presidi trasversali: catalogo messaggi,
+  riferimenti morti, codici e valori attesi, risalita delle check, rubinetto, canale campo, le tre
+  check dei lotti 3) senza e con il `-06`: cambiano esito solo il test del picker e le due fixture
+  sopra, ora verdi in entrambi i casi;
+* le quattro pgTAP che **pescano** un composito dai dati di dbdev (`test-componenti-helpers-v1`,
+  `test-preventivi-righe-componenti-v1`, `test-ddt-componenti-senza-prezzo-v1`,
+  `test-fn-init-componenti-jsonb-override-v1`) scelgono compositi **con** componenti attivi: il `-06`
+  non le tocca;
+* `plpgsql_check`: il solito avviso STABLE/VOLATILE; B-7 invariato; guardrail statici e preambolo verdi.
+
+**Fatto datato** (dbdev come app, 2026-10-14): 40 compositi senza componenti attivi, di cui 2 attivi.
+Le righe già scritte non si rigiudicano (il guard è `UPDATE OF articolo_id`).
+
+**Esito** (Tid, 2026-10-14): `20261014-06` applicato; pgTAP `catalogo/test-articoli-ammessi-picker-v1`,
+`vendite/test-righe-erogazione-da-articolo-v1`, `vendite/test-righe-quantita-per-fonte-v1` verdi.
+
+**Doc**: manual `script/manual/fn_check_articolo_riga` (le tabelle dei motivi),
+`script/manual/fn_check_articolo_riga_su_contesto`; guide `gestione-preventivi`, `gestione-ordini`,
+`gestione-ddt`, `gestione-offerte-commerciali`, `gestione-contratti`.
+
+### 9.5 Lotto 5 — doc e richieste (2026-10-14)
+
+* **Guide**: `gestione-listini` (§2.5 e §9: nessuna promo su un solo componente; il kit sì);
+  `gestione-offerte-commerciali` (§2.2: quali articoli ammette un'eccezione, le regole dei Lotti 3b,
+  che la guida non diceva). Preventivi, ordini e bolle le hanno dal Lotto 3a, i contratti dal 3b, i
+  listini dal 3c. Il picker **a video** non c'è ancora: le guide lo racconteranno col giro BE/FE,
+  quando sarà lo stato attuale.
+* **Linee guida SQL §12.6** (R-8: la regola generale): un picker di un campo giudicato da un guard è
+  una lettura nel database sulla **stessa** check; gli esclusi restano col motivo; il contesto è la
+  testata salvata; con molti candidati su un documento la check si divide in contesto e motivi. Due
+  precedenti: `fn_listini_selezionabili`, `fn_articoli_ammessi`.
+* **Richieste BE/FE**: raccolte nel §9.6, con la riga del Lotto 4.
+
 ### 9.6 Il giro BE/FE finale (raccolta)
 
 Il BE/FE parte quando i lotti DB sono chiusi (Tid, 2026-10-13). Qui si raccolgono le richieste lotto per
@@ -949,4 +1127,5 @@ lotto, così il giro finale ha un elenco solo:
 | 3b | **BE**: policy e ripiego per `E_ARTICOLO_SENZA_EROGAZIONE`, `E_RIGA_ECCEZIONE_SENZA_LISTINO`, `E_RIGA_ECCEZIONE_FUORI_LISTINO`; **A-8-bis** (deciso da Tid il 2026-10-13): `fn_documento_listino_operativo`, `fn_check_esclusione_articolo_documento`, `fn_check_riga_erogazione` passano a `config.tipi_entita` (`OFFERTA_COMMERCIALE`, `CONTRATTO`) insieme ai chiamanti del BE, e si ritira il ponte in `fn_check_articolo_riga`; doc BE `api_contratti`, `modello-contratti` (nominano i guard ritirati). **FE**: le quattro chiavi `vendite.righe.articolo_reason.*` le ha già aggiunte la sessione DB |
 | 3c | **BE**: policy e ripiego per `E_BOM_COMPONENTE_PADRE` (campo `componente_id`); i codici del listino e della distinta ora arrivano dal guard di tabella col campo nel contesto (`articolo_id`, `componente_id`); doc BE `catalogo-building-block-backend` (nomina il guard della tipologia ritirato). **FE**: le sei chiavi `vendite.righe.articolo_reason.*` e `catalogo.distinta.componente_reason.*` le ha già aggiunte la sessione DB; nel picker della versione di listino il composito si propone come bundle (`COMPOSITO_COME_BUNDLE`), non come escluso |
 | 2 | **BE**: policy e ripiego per `E_RIGA_NATURA_VENDITA_IMMUTABILE`; via `E_PREV_RIGA_NATURA_IMMUTABILE` (ritirato). **FE**: ✅ le cinque chiavi `config.tipi_entita.*` le ha già aggiunte la sessione DB (§9.2) |
+| 4 | **BE**: il lookup articoli delle **righe di documento** legge `catalogo.fn_articoli_ammessi(documento, documento_id, search, limit, tipo_eccezione, padre)` (§9.4) e unisce le colonne di `catalogo.vw_articoli_dettaglio` su `articolo_id`, ordinando su `ordine`; il tetto e la sonda `+1` restano in `fetch_con_sonda` (passa `limit + 1`); `motivo` passa al FE intero. **Si ritirano** per quelle righe i filtri liberi (`escludi_destinazione_tipi`, `is_solo_componente`, `is_composito`) di `catalogo_repository.lookup_articoli`; restano la ricerca e i filtri delle consultazioni (attivi/inattivi, `solo_oneri`, `gestito_a_magazzino` di inventari e rettifiche, che non sono righe di questa check). Policy e ripiego per `E_PROMO_ARTICOLO_SOLO_COMPONENTE` e, da D-7, per `E_ARTICOLO_KIT_SENZA_COMPONENTI` (campo `articolo_id` per entrambi). **FE**: `ArticoloLookup` riceve `documento` e l'id del documento (o il padre della distinta, o il tipo d'eccezione) dalla maschera, al posto dei filtri; si ricarica quando cambiano; un articolo col `motivo` si mostra non selezionabile con la `reason_key` (le chiavi ci sono tutte nei locales); nella versione di listino `COMPOSITO_COME_BUNDLE` apre la strada del bundle. Maschere: righe di preventivo, ordine, bolla, eccezioni di offerta e contratto, versione di listino, distinta, promo. Catalogo BB BE e FE aggiornati (`ArticoloLookup` cambia contratto). Guide: il picker a video (§9.5) |
 

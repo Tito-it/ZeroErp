@@ -219,7 +219,7 @@ in commessa, un servizio ricorrente in contratto (tramite un'offerta). La merce 
 dalla **natura con cui la riga è stata venduta**: una riga nata da un preventivo porta la natura di lì, anche
 se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo per tutti i
 documenti ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)), e
-il messaggio dice perché e dove va invece l'articolo.
+il messaggio dice perché e dove va invece l'articolo. Un **kit senza componenti** (dal 2026-10-14) non si mette in nessuna riga: va prima completata la sua distinta.
 
 ### 3.3 Componenti BoM `ordini_righe_componenti`
 

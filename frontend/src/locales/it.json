@@ -2126,7 +2126,8 @@
         "eccezione_fuori_listino": "Non è nel listino del documento: aggiungilo come riga nuova.",
         "composito_come_bundle": "È un kit: in un listino entra come bundle, coi prezzi dei suoi componenti.",
         "tipologia_mancante": "L'articolo non ha una tipologia di listino: in un listino non può entrare.",
-        "tipologia_incompatibile": "La tipologia dell'articolo non è quella del listino."
+        "tipologia_incompatibile": "La tipologia dell'articolo non è quella del listino.",
+        "kit_senza_componenti": "Kit senza componenti: completa la sua distinta prima di usarlo."
       }
     },
     "date_consegna": {
@@ -4114,7 +4115,10 @@
       "col_valido_al": "Al",
       "col_attivo": "Stato",
       "saved": "Promo aggiornata.",
-      "created": "Promo creata."
+      "created": "Promo creata.",
+      "articolo_reason": {
+        "solo_componente": "Articolo usabile solo dentro un kit: una promo su di lui non si applicherebbe mai. Metti la promo sul kit."
+      }
     },
     "resi": {
       "reso": "Reso",

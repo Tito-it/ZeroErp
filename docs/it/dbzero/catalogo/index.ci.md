@@ -12,6 +12,7 @@
 - [uom_tipi](manual/uom_tipi.md)
 
 ## ⚙️ Funzioni (manuale)
+- [fn_articoli_ammessi](manual/fn_articoli_ammessi.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: R-2, R-4, R-5; A-1, A-2, A-7)
 - [fn_articolo_correggi_struttura](manual/fn_articolo_correggi_struttura.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-10)
 - [fn_articolo_usato](manual/fn_articolo_usato.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-10)
 - [fn_get_uom_base](manual/fn_get_uom_base.md) — (latest updates 13-01-26) La funzione **`catalogo.fn_get_uom_base(p_articolo_id)`** ritorna la **UoM base** dell’articolo, leggendo il campo `catalogo.articoli.uom_id`.

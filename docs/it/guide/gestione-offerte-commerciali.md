@@ -1,6 +1,6 @@
 # Guida — Gestione Offerte commerciali
 
-> **Ultimo aggiornamento**: 20 settembre 2026
+> **Ultimo aggiornamento**: 14 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -135,6 +135,20 @@ Constraint principali:
 * al massimo una riga AGGIUNTA per `(offerta, articolo)` (unique parziale separato)
 * CHECK di coerenza prezzo per tipo: `prezzo_unitario` obbligatorio se OVERRIDE o
   AGGIUNTA, NULL se ESCLUSIONE
+
+**Quali articoli ammette un'eccezione** (dal 2026-10-13, le stesse regole del contratto):
+
+* un **prezzo diverso** (OVERRIDE) o un'**esclusione** valgono solo per un articolo che sta nel
+  listino dell'offerta, e solo se l'offerta ha un listino in vigore;
+* una **riga nuova** (AGGIUNTA) vale solo per un articolo che nel listino **non** c'è: per uno che
+  c'è già si usa il prezzo diverso;
+* chi vende (OVERRIDE e AGGIUNTA) non può usare un articolo che si vende solo dentro un kit, un
+  kit senza componenti (dal 2026-10-14), né un articolo la cui tipologia non è prevista per la utility dell'offerta o che non ha nessun
+  modo di erogazione;
+* non si esclude il componente di un kit: si esclude il kit.
+
+Lo dice il database, in una regola sola per tutte le righe di documento
+([script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga)).
 
 Per gli **articoli compositi** (distinta base): un'eccezione ESCLUSIONE **non genera
 componenti**. L'esclusione toglie l'articolo per intero, quindi non ha prezzo né

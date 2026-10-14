@@ -10,16 +10,21 @@ loro sta qui, al §5. Questo piano e' l'unico documento aperto dei due lotti.
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ Tid | SQL delle azioni `emetti_ddt` e `conferma_reso` sui profili, su dbdev (2026-10-12) | §2 | — |
-| 2 | ✅ sessione BE | A1, A2, B1, B2, C1, C2 (2026-10-12/13) | §3 | — |
-| 3 | Tid | dati di partenza del collaudo (magazzini, articoli a lotti e seriali, inventario) | collaudo §0 | — |
-| 4 | Tid | collaudo a video, §1 … §8 | [collaudo](collaudo-in-app-magazzino-bolla-e-reso.md) | 3 |
-| 5 | ⏳ team DB | i motivi della «Conferma» del reso coi numeri (3-bis R-1c) | [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md) | via di Tid |
-| 6 | Tid | ricontrollo a video di §5.3 e §5.7 del collaudo, dopo il 5 | collaudo §5 | 5 |
-| 7 | Tid | i residui del §5 (CI da zero, corsa del pgTAP kit/seriali) | §5 | — |
-| 8 | sessione BE | archiviare collaudo e piano in `work-done/`; PROJECT_CONTEXT | — | 4, 6, 7 |
+| 2 | ✅ sessione BE | **A1** — ogni cambio di stato della bolla dal verbo (Lotto 3 R-1) | §3 | — |
+| 3 | ✅ sessione BE | **A2** — magazzino sulla testata di bolla e reso (Lotto 3 R-2a, 3-bis R-1a) | §3 | A1 |
+| 4 | Tid | collaudo del blocco A: una bolla che muove merce si emette, senza scelte | §4 | 1, 3 |
+| 5 | ✅ sessione BE | **B1** — i prelievi della bolla (Lotto 3 R-2b) | §3 | A2 |
+| 6 | ✅ sessione BE · ✅ team DB · ⏳ Tid | **B2** — i rientri del reso (3-bis R-1b) ✅; R-1c: [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md) scritto e provato (`20261014-07`, 2026-10-14), attende l'apply di Tid | §3 | B1 |
+| 7 | Tid | collaudo del blocco B: lotti, seriali, ubicazioni, reso e storno | §4 | 6 |
+| 8 | ✅ sessione BE | **C1** — blocchi dalla scheda disponibilità (Lotto 3 R-5) | §3 | — |
+| 9 | ✅ sessione BE | **C2** — offerta: cliente in bozza, fornitura, codici delle eccezioni; commenti superati | §3 | — |
+| 10 | Tid | collaudo del blocco C, poi archiviazione dei due brief e di questo piano | — | 8, 9 |
 
-**Decisioni aperte di Tid:** nessuna.
-**Da committare:** il collaudo nuovo, questo piano, i due brief archiviati e i link aggiornati (2026-10-14).
+**Decisioni aperte di Tid:** nessuna (2026-10-12: SQL delle azioni preparato qui; lookup dei magazzini
+filtrato sull'emittente del documento; cliente dell'offerta modificabile in bozza; gli endpoint
+`…/contratti/<id>/utility/` **restano**, li usera' R-FE-3 di brief-db-indirizzi-documento-seguono-il-cliente;
+il piano procede per blocchi, senza passaggi intermedi: non siamo in produzione).
+**Da committare:** niente: A1…C2, la revisione e il BB `SezioneMerceDocumento` sono in git dal 2026-10-13.
 
 > **Chi scrive:** sessione BE, 2026-10-12, su decisione di Tid. **Origine:** §6 del
 > [brief del Lotto 3](../work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md) (R-1…R-5) e §6 del

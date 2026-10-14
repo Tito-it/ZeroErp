@@ -2608,6 +2608,37 @@ Il censimento vero — azione per azione, con accanto la sua sede — è il lavo
 chiude questa sezione, e va fatto **prima** del prossimo collaudo che lo trovi da
 solo.
 
+### 12.6 ⭐ Un picker propone ciò che il guard accetta — leggendo la stessa check
+
+Un **picker** (la tendina o la ricerca che propone i valori di un campo) è la
+stessa domanda del guard che giudicherà quel campo, fatta **prima** della
+scrittura. Se le regole le sceglie la maschera che apre il picker, ogni maschera
+ne tiene una copia, e le copie divergono dal guard: il picker propone un valore
+che poi viene rifiutato, o nasconde un valore che il database accetterebbe.
+
+**La regola**: il picker di un campo giudicato da un guard è una **funzione di
+lettura nel database** che chiama la **stessa** `fn_check_*` del guard. Il
+chiamante passa il contesto (il documento, il tipo di riga), mai i filtri.
+
+* Un valore escluso **resta** nell'elenco col suo motivo (il primo, quello che il
+  guard solleverebbe), dopo gli ammessi: chi lo cerca sa perché non può usarlo.
+  Come mostrarlo lo decide il frontend (§12.1: uno stato si disabilita col
+  motivo).
+* Il contesto è **quello che giudica il guard**: per una riga, la testata
+  **salvata** (il suo id), non i valori del form. Valori del form solo quando la
+  cosa giudicata non esiste ancora (la testata in creazione).
+* ⚠️ **Molti candidati, un documento.** Il guard giudica una riga; il picker
+  giudica tutti i candidati della ricerca. Se la check rilegge il documento per
+  ogni candidato, il costo cresce col prodotto. Si divide la check in due metà —
+  il **contesto** del documento (letto una volta) e i **motivi** di un candidato su
+  quel contesto — e la firma di sempre le compone, per i guard. Le regole restano
+  in un posto solo: si sposta la lettura, non il giudizio.
+
+Precedenti: `vendite.fn_listini_selezionabili` (il listino della testata, sui
+valori del form) e `catalogo.fn_articoli_ammessi` (gli articoli di una riga,
+sull'id della testata, con la check divisa in `script.fn_articolo_riga_contesto`
+e `script.fn_check_articolo_riga_su_contesto`; brief-db-articoli-ammessi-per-documento).
+
 ---
 
 *Documento riassuntivo delle best practice SQL per lo sviluppo e la manutenzione di Zero ERP.*

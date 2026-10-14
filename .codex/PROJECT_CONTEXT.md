@@ -323,7 +323,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),
   il collaudo a video (§D.5 + §G.4) e l'archivio.
 - 📝 **Quali articoli ammette un documento** (`work-in-progress/brief-db-articoli-ammessi-per-documento.md`):
-  una regola sola per il picker e per il guard. Analisi DB fatta (§8), decisioni di Tid prese il 2026-10-13 (§8.6); ⏳ consegna DB.
+  una regola sola per il picker e per il guard. Analisi DB fatta (§8), decisioni di Tid prese il 2026-10-13 (§8.6).
+  ✅ Lato DB chiuso il 2026-10-14: lotti 1…4 applicati e verdi (il 4 è la sede unica del picker,
+  `catalogo.fn_articoli_ammessi`), lotto 5 (doc) scritto. ⏭️ Ora il giro BE/FE (§9.6), poi il collaudo di Tid. Aperta D-7.
 - 📝 **Canone, orario e consumo del contratto in commessa**
   (`work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md`, D31, 2026-10-13): il push dei
   contratti manda solo le righe UNA_TANTUM, col giorno di attivazione (`20261013-24`, D-1/D-2 di Tid); la
@@ -411,14 +413,19 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   colonne `character(n)` a lunghezza variabile portate a `varchar` (`20261010-26…-40`), sigla di provincia con la
   sua regola, `destinatario_fe` diventato il canale FE (P/C) che pretende il suo recapito; BE/FE e collaudo a video
   superati. Regola nuova: §7e di `linee-guida-sql.md`, presidio `test-character-n-v1`. BB FE `InputMaiuscolo`.
-- 📝 **Dati fiscali e societari del soggetto** (`work-in-progress/brief-db-dati-fiscali-e-societari-del-soggetto.md`,
+- 📝 **Dati societari in creazione** (`work-in-progress/brief-db-dati-societari-in-creazione.md`, D34 del registro
+  DB, 2026-10-14): la creazione non scrive tutta la sezione. Una società perde la data di costituzione
+  (`fn_crea_soggetto_pg` passa `NULL` al verbo), e una ditta individuale perde **tutta** la sezione
+  (`fn_crea_soggetto_pf` non la riceve, e il BE la scarta senza errore). Attende E-1 di Tid.
+- ✅ **Dati fiscali e societari del soggetto: chiuso il 2026-10-14** (`work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`,
   2026-10-10): (A) «Cliente PA» e «Split payment» ammessi per ogni natura, anche per un privato; (B) in modifica i
   dati societari non si salvano, serve il verbo di scrittura (decisione di Tid); (C) la forma giuridica non è legata
   alla natura, e il drawer la mostra vuota; (D) un titolo IVA si registra su qualunque soggetto (assorbito
   `brief-db-regime-fiscale-per-natura-soggetto`, rimando cancellato il 2026-10-12). ✅ Lato DB applicato e verde il 2026-10-10 (§8):
   verbo `fn_scrivi_dati_societari` unica porta, regole per natura su flag, titoli e forma. ✅ BE/FE scritti e verdi
   il 2026-10-10 (§9) e collaudati in-app il 2026-10-11, con due difetti trovati e corretti: il lookup delle forme
-  falliva sempre (colonna inesistente) e il cambio di natura in modifica non arrivava al DB. Resta aperta D-4.
+  falliva sempre (colonna inesistente) e il cambio di natura in modifica non arrivava al DB. Archiviato il
+  2026-10-14: la data di costituzione in creazione è nel brief qui sopra, gli altri residui in § «Aperto — Media priorità».
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato
@@ -431,6 +438,21 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **Residui di `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`** (ereditati il 2026-10-14 dalla
+  chiusura):
+  - **D-4, che cosa registra il titolo IVA `COOPERATIVA`** (§4): l'aliquota agevolata delle cooperative sociali
+    riguarda di solito le prestazioni rese **dalla** cooperativa, ma il titolo sta sul cliente. Finché non è
+    chiarito, `COOPERATIVA` non ha righe nella matrice `config.tipi_titolo_iva_tipi_soggetto_dettaglio`, e quindi
+    non è ammesso su nessun soggetto. Se la risposta è «titolare il cliente», basta una riga nel CSV. Altrimenti il
+    titolo è nella tabella sbagliata. Da decidere, di Tid;
+  - **censimento dei titoli IVA fuori regola** (§8.2, query pronta): la deve lanciare Tid **come owner**, perché
+    come app la RLS non mostra nessun titolo. I titoli fuori regola non bloccano niente, ma alla prossima
+    modifica il guard li rifiuta;
+  - **`SGT-0000121` con `cliente_pa = 'S'`** (§8.1): un privato, il caso della segnalazione. Il guard lo rifiuterà
+    alla prossima modifica dei flag o della natura. Da riportare a `N` a mano (Tid);
+  - **`anagrafiche.fornitori.split_payment`** (§7): nullable, senza regola sulla natura, senza lettori oltre
+    `vw_fornitori_dettaglio`. Sul passivo la scissione dipende dall'emittente, non dal fornitore: forse è nella
+    sede sbagliata. Da verificare; se confermato, brief suo.
 - **La commessa vuota lasciata dal push batch** (DB + BE, ereditata il 2026-10-13 dalla chiusura di
   `work-done/brief-db-annullo-a-valle-riapre-a-monte.md` §10.8): nel push batch (`pr_run_commesse_push`,
   best-effort per riga) la commessa nasce prima che il batch delle righe le accetti; se una riga e'
