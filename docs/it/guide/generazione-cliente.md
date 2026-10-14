@@ -1,6 +1,6 @@
 # Guida — Generazione di un Cliente
 
-> **Ultimo aggiornamento**: 8 ottobre 2026
+> **Ultimo aggiornamento**: 14 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -460,8 +460,9 @@ La funzione [`script.fn_disdetta_cliente`](/dbzero/script/funzioni/fn_disdetta_c
 
 Effetti:
 
-* Verifica che il cliente sia in stato ATTIVO
 * Verifica che `p_data_cessazione >= data_attivazione` del cliente
+* Da quale stato si può chiudere lo decide il percorso degli stati del cliente: attivo e sospeso
+  sì, un cliente già chiuso, annullato o pre-contrattuale no ([Gli stati del cliente](/guide/gestione-delle-istanze-utility#gli-stati-del-cliente-e-le-loro-date))
 * Imposta `data_chiusura = p_data_cessazione`
 * Imposta `stato_cliente = CH` (chiuso)
 * Ritorna l'`id` del cliente chiuso
@@ -469,7 +470,7 @@ Effetti:
 I trigger si occupano automaticamente di:
 
 * Ricalcolare il `periodo` commerciale → `[data_attivazione, data_cessazione)`
-* Aggiornare lo stato PDP → **DISPONIBILE**
+* Aggiornare lo stato PDP → **DISPONIBILE**, se dalla data di oggi nessun altro cliente lo occupa
 * Storicizzare il record e aggiornare i campi audit
 
 ## Policy sul billing account dopo la disdetta
@@ -478,7 +479,11 @@ Il billing account **non viene toccato** dalla disdetta. Resta attivo per consen
 
 * Emissione di fatture finali
 * Conguagli e riconciliazioni
-* Eventuali riattivazioni future
+
+Il billing account di un cliente chiuso **non si riattiva**: un cliente chiuso non si riapre
+(decisione del 2026-10-13). Se la fornitura riparte, nasce una catena nuova — istanza, billing
+account e cliente nuovi, collegata alla precedente — come nel subentro. Vedi
+[Gestione delle istanze utility — Chiusura del cliente](/guide/gestione-delle-istanze-utility#5-chiusura-del-cliente).
 
 La chiusura del billing account (tramite `valido_al`) e un'operazione separata, da eseguire solo quando tutti i documenti fiscali sono stati emessi e le partite aperte sono chiuse.
 

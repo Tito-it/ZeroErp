@@ -38,14 +38,17 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()` |
-| trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()` |
 | trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()` |
-| trg_emittenti_fiscali_ba_a10_guard_storia_emittente_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente()` |
+| trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()` |
 | trg_emittenti_fiscali_ba_a10_guard_storia_emittente_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente()` |
 | trg_emittenti_fiscali_ba_a10_guard_storia_emittente_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente()` |
+| trg_emittenti_fiscali_ba_a10_guard_storia_emittente_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente()` |
+| trg_emittenti_fiscali_ba_z90_guard_clienti_chiave_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_clienti_chiave()` |
+| trg_emittenti_fiscali_ba_z90_guard_clienti_chiave_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_clienti_chiave()` |
+| trg_emittenti_fiscali_ba_z90_guard_clienti_chiave_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_clienti_chiave()` |
+| trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()` |
 | trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()` |
 | trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()` |
-| trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()` |
 | trg_emittenti_fiscali_ba_z95_guard_istanza_ef_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_istanza_emittente()` |
 | trg_emittenti_fiscali_ba_z95_guard_istanza_ef_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_istanza_emittente()` |
 | trg_emittenti_fiscali_ba_z95_guard_istanza_ef_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_istanza_emittente()` |

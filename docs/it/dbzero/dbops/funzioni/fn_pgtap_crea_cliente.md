@@ -24,12 +24,11 @@ DECLARE
     v_soggetto_id anagrafiche.soggetti.id%TYPE;
     v_utility_id  anagrafiche.billing_account.utility_id%TYPE;
     v_stato_id    config.stati_cliente.id%TYPE;
-    v_macro       config.stati_cliente.codice%TYPE;
     v_cliente_id  anagrafiche.clienti.id%TYPE;
     v_oggi        anagrafiche.clienti.data_attivazione%TYPE;
 BEGIN
-    SELECT sc.id, sc.codice
-      INTO v_stato_id, v_macro
+    SELECT sc.id
+      INTO v_stato_id
       FROM config.stati_cliente sc
      WHERE sc.codice_interno = p_stato_codice_interno;
 
@@ -51,18 +50,21 @@ BEGIN
 
     v_oggi := script.fn_data_operativa();
 
-    -- Le date come le pretende trgfn_clienti_set_periodo: AT vuole
-    -- l'attivazione, gli stati CH la chiusura (>= attivazione).
-    -- Pre-contratto (IS) e annullato (AN) non hanno attivazione.
+    -- Le date come le pretende anagrafiche.trgfn_clienti_guard_stato_date
+    -- (rev 2026-10-14): attivazione per attivi, sospesi e chiusi;
+    -- sospensione per SF/SC; chiusura per i chiusi. PR, AN, AG
+    -- senza date. Per codice_interno, non per l'etichetta `codice`.
     -- ⚠️ Ruolo e istanza dal BA: sono le sue copie (FK composte),
     --   la utility la mette il trigger dal BA.
     INSERT INTO anagrafiche.clienti
         (billing_account_id, istanza_utility_id, soggetto_ruolo_id,
-         stato_cliente_id, data_attivazione, data_chiusura)
+         stato_cliente_id, data_attivazione, data_sospensione, data_chiusura)
     VALUES
         (v_ba_id, v_ist_id, v_sr_id, v_stato_id,
-         CASE WHEN v_macro IN ('IS', 'AN') THEN NULL ELSE v_oggi END,
-         CASE WHEN v_macro = 'CH' THEN v_oggi END);
+         CASE WHEN p_stato_codice_interno IN ('AT', 'RS', 'SF', 'SC', 'CH', 'CM', 'CW', 'CF')
+              THEN v_oggi END,
+         CASE WHEN p_stato_codice_interno IN ('SF', 'SC') THEN v_oggi END,
+         CASE WHEN p_stato_codice_interno IN ('CH', 'CM', 'CW', 'CF') THEN v_oggi END);
 
     -- Senza RETURNING: sotto la RLS si rilegge a istruzione finita.
     SELECT c.id INTO v_cliente_id

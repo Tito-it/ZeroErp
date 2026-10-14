@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BUILDER DEL CLIENTE SCRIVE LE DATE CHE LO STATO PRETENDE
+#   UPDATE dbops.fn_pgtap_crea_cliente (corpo dalla doc auto-gen).
+#   Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility (C-6)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Dal 20261014-15 ogni stato pretende la sua data
+#   (anagrafiche.trgfn_clienti_guard_stato_date): i sospesi SF e SC anche la
+#   data di sospensione, che il builder non scriveva. E sceglieva le date
+#   dalla colonna `codice` di config.stati_cliente, l'etichetta modificabile
+#   (linee-guida-sql §6c): ora per liste di codice_interno, le stesse del guard.
+#   Stessa firma, stesso ritorno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261014-20-update-fn-pgtap-crea-cliente-date-per-stato-mctit.yaml
+
+  - changeSet:
+      id: 20261014-20-update-fn-pgtap-crea-cliente-date-per-stato
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_cliente scrive le date che lo stato pretende (anche la sospensione) e
+        le sceglie per codice_interno. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_cliente(
+                  p_etichetta text DEFAULT 'pgTAP'::text,
+                  p_utility_id integer DEFAULT NULL::integer,
+                  p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint,
+                  p_stato_codice_interno character varying DEFAULT 'AT'::character varying)
+               RETURNS TABLE(cliente_id bigint, billing_account_id bigint, istanza_utility_id bigint, soggetto_ruolo_id bigint, soggetto_id uuid, utility_id integer)
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un cliente COMPLETO, fino alla
+              --   riga di anagrafiche.clienti, con uno stato ammesso e le date
+              --   che quello stato pretende.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_cli AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_cliente('RICERCA');
+              DECLARE
+                  v_ba_id       anagrafiche.billing_account.id%TYPE;
+                  v_ist_id      anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_sr_id       anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+                  v_soggetto_id anagrafiche.soggetti.id%TYPE;
+                  v_utility_id  anagrafiche.billing_account.utility_id%TYPE;
+                  v_stato_id    config.stati_cliente.id%TYPE;
+                  v_cliente_id  anagrafiche.clienti.id%TYPE;
+                  v_oggi        anagrafiche.clienti.data_attivazione%TYPE;
+              BEGIN
+                  SELECT sc.id
+                    INTO v_stato_id
+                    FROM config.stati_cliente sc
+                   WHERE sc.codice_interno = p_stato_codice_interno;
+
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_cliente: stato cliente % non a catalogo', p_stato_codice_interno;
+                  END IF;
+
+                  SELECT c.billing_account_id, c.istanza_utility_id, c.soggetto_ruolo_id,
+                         c.soggetto_id, c.utility_id
+                    INTO v_ba_id, v_ist_id, v_sr_id, v_soggetto_id, v_utility_id
+                    FROM dbops.fn_pgtap_crea_cliente_ba(
+                             p_etichetta,
+                             COALESCE(p_utility_id,
+                                      (SELECT u.id FROM config.utilities u
+                                        WHERE NOT u.richiede_pdp
+                                        ORDER BY u.id LIMIT 1)),
+                             p_emittente_soggetto_ruolo_id) c;
+
+                  v_oggi := script.fn_data_operativa();
+
+                  -- Le date come le pretende anagrafiche.trgfn_clienti_guard_stato_date
+                  -- (rev 2026-10-14): attivazione per attivi, sospesi e chiusi;
+                  -- sospensione per SF/SC; chiusura per i chiusi. PR, AN, AG
+                  -- senza date. Per codice_interno, non per l'etichetta `codice`.
+                  -- ⚠️ Ruolo e istanza dal BA: sono le sue copie (FK composte),
+                  --   la utility la mette il trigger dal BA.
+                  INSERT INTO anagrafiche.clienti
+                      (billing_account_id, istanza_utility_id, soggetto_ruolo_id,
+                       stato_cliente_id, data_attivazione, data_sospensione, data_chiusura)
+                  VALUES
+                      (v_ba_id, v_ist_id, v_sr_id, v_stato_id,
+                       CASE WHEN p_stato_codice_interno IN ('AT', 'RS', 'SF', 'SC', 'CH', 'CM', 'CW', 'CF')
+                            THEN v_oggi END,
+                       CASE WHEN p_stato_codice_interno IN ('SF', 'SC') THEN v_oggi END,
+                       CASE WHEN p_stato_codice_interno IN ('CH', 'CM', 'CW', 'CF') THEN v_oggi END);
+
+                  -- Senza RETURNING: sotto la RLS si rilegge a istruzione finita.
+                  SELECT c.id INTO v_cliente_id
+                    FROM anagrafiche.clienti c
+                   WHERE c.billing_account_id = v_ba_id;
+
+                  IF v_cliente_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_cliente: il cliente del billing account % e'' stato scritto ma non si legge: sotto la RLS serve un operatore dell''emittente del BA in sessione',
+                          v_ba_id;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT v_cliente_id, v_ba_id, v_ist_id, v_sr_id, v_soggetto_id, v_utility_id;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 'rollback: il corpo precedente (date per `codice`) sta nella doc auto-gen del 2026-10-13' AS nota;

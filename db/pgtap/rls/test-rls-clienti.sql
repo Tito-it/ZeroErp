@@ -141,12 +141,19 @@ SELECT id AS istanza_utility_id FROM iu;
 --   che rende il test 9 una prova sul CANALE e non sul proprietario. Se
 --   cambiassero tutti e due, quel test sarebbe verde anche con una policy che
 --   guarda la sola proprieta' — cioe' proprio con il difetto che deve scoprire.
+-- ⛔ Ma su un'ALTRA utility (rev 2026-10-14, brief-db-cliente-manuale-uno-per-
+--   soggetto-e-utility): due clienti attivi dello stesso soggetto, utility e
+--   azienda su istanze fittizie sono un doppione (E_CLIENTE_STESSA_CHIAVE). Al
+--   test 9 serve lo stesso proprietario con due canali, non la stessa utility.
 CREATE TEMP TABLE _ba_shop AS
 WITH nuovo AS (
     INSERT INTO anagrafiche.billing_account
         (istanza_utility_id, soggetto_ruolo_id, utility_id, codice,
          categoria_cliente_id, valuta_id, canale_origine)
-    SELECT i.istanza_utility_id, ba.soggetto_ruolo_id, ba.utility_id,
+    SELECT i.istanza_utility_id, ba.soggetto_ruolo_id,
+           (SELECT u.id FROM config.utilities u
+             WHERE u.richiede_pdp IS FALSE AND u.id <> ba.utility_id
+             ORDER BY u.id LIMIT 1),
            left(ba.codice, 40) || '-SHOP', ba.categoria_cliente_id, ba.valuta_id,
            'SHOP'::config.canale_origine
       FROM _istanza_shop i

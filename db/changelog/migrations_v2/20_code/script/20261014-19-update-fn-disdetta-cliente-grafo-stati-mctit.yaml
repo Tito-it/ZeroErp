@@ -1,0 +1,188 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA DISDETTA CHIUDE DA DOVE IL GRAFO LO AMMETTE
+#   UPDATE script.fn_disdetta_cliente (corpo dalla doc auto-gen).
+#   Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility (C-6, C-8)
+#
+# -- PERCHE' --------------------------------------------------------
+#   La disdetta accettava solo un cliente AT (E_CLIENTE_NON_ATTIVO): un
+#   sospeso non si poteva disdire. Il grafo di C-6 dice da dove si chiude
+#   (AT, SF, SC), e lo applica gia' il guard
+#   anagrafiche.trgfn_clienti_guard_stato_date sull'UPDATE di questa
+#   funzione (E_CLIENTE_STATO_TRANSIZIONE_INVALIDA). La copia qui si toglie
+#   nello stesso giro, ed E_CLIENTE_NON_ATTIVO si ritira.
+#   Resta la verifica della data sul parametro (E_DATA_CESSAZIONE_INVALIDA):
+#   parla del parametro del verbo, prima che diventi data_chiusura.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261014-19-update-fn-disdetta-cliente-grafo-stati-mctit.yaml
+
+  - changeSet:
+      id: 20261014-19-update-fn-disdetta-cliente-grafo-stati
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        La disdetta delega al grafo degli stati da dove si chiude: via il controllo «solo da AT»
+        (E_CLIENTE_NON_ATTIVO). Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility (C-6).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_disdetta_cliente(p_cliente_id bigint, p_data_cessazione date)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato_chiuso_id   config.stati_cliente.id%TYPE;
+                  v_codice_chiuso     config.stati_cliente.codice_interno%TYPE := 'CH';
+                  v_data_attivazione  anagrafiche.clienti.data_attivazione%TYPE;
+              BEGIN
+              -- ------------------------------------------------------------
+              -- Funzione: script.fn_disdetta_cliente
+              --
+              -- Scopo:
+              --   Cessazione di un cliente senza subentro (disdetta).
+              --   Chiude il cliente impostando data_chiusura e stato CH.
+              --   Da quale stato si puo' chiudere lo decide il grafo
+              --   config.transizioni_stati_cliente, applicato dal guard
+              --   anagrafiche.trgfn_clienti_guard_stato_date (rev 2026-10-14,
+              --   brief-db-cliente-manuale-uno-per-soggetto-e-utility, C-6):
+              --   AT, SF, SC si chiudono; un chiuso, un annullato o un
+              --   pre-contrattuale no.
+              --   I trigger cascata gestiscono:
+              --     - trgfn_clienti_set_periodo -> aggiorna periodo
+              --     - trgfn_clienti_sync_stato_pdp -> PDP libero se nessuno lo occupa
+              --     - trgfn_storico_generic -> storicizzazione
+              --     - trgfn_audit_data_user_generic -> audit
+              --
+              -- Policy BA:
+              --   Il billing_account NON viene toccato dalla disdetta.
+              --   Resta per fatture finali e conguagli; non si riattiva
+              --   (C-5: chi torna apre una catena nuova).
+              --
+              -- Ritorna:
+              --   ID del cliente cessato
+              -- ------------------------------------------------------------
+
+                  ----------------------------------------------------------------
+                  -- 1) Guard: parametri non nulli e validi
+                  ----------------------------------------------------------------
+                  IF p_cliente_id IS NULL OR p_cliente_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_disdetta_cliente',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'parametro', 'p_cliente_id',
+                              'valore', p_cliente_id
+                          ),
+                          NULL::uuid,
+                          'p_cliente_id deve essere NOT NULL e > 0'
+                      );
+                  END IF;
+
+                  IF p_data_cessazione IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_disdetta_cliente',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'parametro', 'p_data_cessazione'
+                          ),
+                          NULL::uuid,
+                          'p_data_cessazione deve essere NOT NULL'
+                      );
+                  END IF;
+
+                  ----------------------------------------------------------------
+                  -- 2) Stato CH
+                  ----------------------------------------------------------------
+                  SELECT sc.id INTO v_stato_chiuso_id
+                    FROM config.stati_cliente sc
+                   WHERE sc.codice_interno = v_codice_chiuso;
+
+                  IF v_stato_chiuso_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_disdetta_cliente',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object(
+                              'detail', 'Stato cliente CH non trovato in config.stati_cliente'
+                          ),
+                          NULL::uuid,
+                          'CH'
+                      );
+                  END IF;
+
+                  ----------------------------------------------------------------
+                  -- 3) Leggo il cliente con lock (evita race condition)
+                  ----------------------------------------------------------------
+                  SELECT c.data_attivazione
+                    INTO v_data_attivazione
+                    FROM anagrafiche.clienti c
+                   WHERE c.id = p_cliente_id
+                     FOR UPDATE;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_disdetta_cliente',
+                          'E_CLIENTE_NON_TROVATO',
+                          jsonb_build_object('p_cliente_id', p_cliente_id),
+                          NULL::uuid,
+                          p_cliente_id::text
+                      );
+                  END IF;
+
+                  ----------------------------------------------------------------
+                  -- 4) Guard: data cessazione >= data attivazione
+                  ----------------------------------------------------------------
+                  IF v_data_attivazione IS NOT NULL
+                     AND p_data_cessazione < v_data_attivazione
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_disdetta_cliente',
+                          'E_DATA_CESSAZIONE_INVALIDA',
+                          jsonb_build_object(
+                              'campo', 'data_cessazione',
+                              'p_cliente_id', p_cliente_id,
+                              'p_data_cessazione', p_data_cessazione,
+                              'data_attivazione', v_data_attivazione
+                          ),
+                          NULL::uuid,
+                          p_data_cessazione::text, v_data_attivazione::text
+                      );
+                  END IF;
+
+                  ----------------------------------------------------------------
+                  -- 5) Eseguo disdetta: data_chiusura + stato CH. Il grafo
+                  --    (da quale stato) lo applica il guard sulla tabella.
+                  ----------------------------------------------------------------
+                  UPDATE anagrafiche.clienti c
+                     SET data_chiusura    = p_data_cessazione,
+                         stato_cliente_id = v_stato_chiuso_id
+                   WHERE c.id = p_cliente_id;
+
+                  RETURN p_cliente_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_disdetta_cliente(bigint, date)
+              IS 'Cessazione cliente senza subentro (disdetta): data_chiusura e stato CH. Da quale stato si chiude lo decide il grafo config.transizioni_stati_cliente (guard anagrafiche.trgfn_clienti_guard_stato_date: AT, SF, SC; rev 2026-10-14, prima solo AT). I trigger aggiornano periodo, PDP e storico. Il billing account resta per fatture finali e conguagli e non si riattiva: chi torna apre una catena nuova (C-5). Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              SELECT 'rollback: il corpo precedente (solo da AT, E_CLIENTE_NON_ATTIVO) sta nella doc auto-gen del 2026-10-13' AS nota;

@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I CLIENTI CON LA STESSA CHIAVE
+#   NASCE anagrafiche.fn_clienti_stessa_chiave(soggetto_ruolo, utility,
+#   emittente): i clienti delle istanze fittizie che occupano quella chiave.
+#   Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility (C-1, C-2, C-4, C-9)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Senza punto fisico, una fornitura e' soggetto + utility + azienda
+#   emittente (C-1). Il predicato «chi occupa questa chiave» ha TRE lettori,
+#   e deve essere uno solo (C-4: «se fossero due, prima o poi l'avviso
+#   direbbe una cosa e il guard un'altra»):
+#     1. il guard che rifiuta il doppione, anagrafiche.fn_guard_cliente_chiave_unica;
+#     2. la lettura che avvisa mentre si prepara un pre-contrattuale (BE);
+#     3. la catena delle fittizie, anagrafiche.trgfn_clienti_set_parent_istanza (C-9).
+#
+# -- CHI OCCUPA LA CHIAVE --------------------------------------------
+#   Un cliente di un'istanza fittizia, con un periodo, in uno stato di
+#   fornitura per ELENCO (C-2, C-6, C-7): AT, RS, SF, SC e i chiusi CH, CM,
+#   CW, CF. Fuori: AN (non ha periodo), PR (non blocca, C-4), AG (non e' una
+#   fornitura, C-7). Whitelist e non blacklist (linee-guida-sql §7c): uno
+#   stato nuovo resta fuori finche' qualcuno non lo dichiara.
+#   Il periodo resta nella riga restituita: la sovrapposizione la decide chi
+#   legge (il guard confronta col periodo del cliente, l'avviso con oggi).
+#
+# -- L'AZIENDA -------------------------------------------------------
+#   Per l'INSTALLAZIONE (script.fn_get_ba_emittente_sr_id_installazione):
+#   collegamento del BA, altrimenti la predefinita. Mai il risolutore di
+#   sessione: una regola che dipende da chi la guarda non e' una regola
+#   (brief-db-istanza-nasce-col-ba-residui, D-5).
+#
+# -- SECURITY DEFINER ------------------------------------------------
+#   clienti e billing_account sono in RLS: da INVOKER un cliente di
+#   un'azienda fuori dal perimetro di chi scrive sarebbe invisibile, e il
+#   guard direbbe «a posto». L'azienda e' nella chiave: la lettura mostra solo
+#   clienti dell'azienda che il chiamante dichiara.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261014-10-create-fn-clienti-stessa-chiave-mctit.yaml
+
+  - changeSet:
+      id: 20261014-10-create-fn-clienti-stessa-chiave
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea anagrafiche.fn_clienti_stessa_chiave: i clienti delle istanze fittizie che occupano
+        la chiave soggetto + utility + azienda emittente. Predicato unico per guard, avviso e
+        catena. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility (C-4).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_clienti_stessa_chiave(
+                  p_soggetto_ruolo_id           anagrafiche.clienti.soggetto_ruolo_id%TYPE,
+                  p_utility_id                  anagrafiche.clienti.utility_id%TYPE,
+                  p_emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE)
+              RETURNS TABLE (
+                  cliente_id             anagrafiche.clienti.id%TYPE,
+                  billing_account_id     anagrafiche.clienti.billing_account_id%TYPE,
+                  billing_account_codice anagrafiche.billing_account.codice%TYPE,
+                  istanza_utility_id     anagrafiche.clienti.istanza_utility_id%TYPE,
+                  stato_codice_interno   config.stati_cliente.codice_interno%TYPE,
+                  data_attivazione       anagrafiche.clienti.data_attivazione%TYPE,
+                  data_chiusura          anagrafiche.clienti.data_chiusura%TYPE,
+                  periodo                anagrafiche.clienti.periodo%TYPE)
+              LANGUAGE sql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+                  -- Scopo: chi occupa la chiave soggetto + utility + azienda
+                  --   fra le istanze fittizie (C-1). Lo leggono il guard del
+                  --   doppione, l'avviso del pre-contrattuale e la catena.
+                  -- ⚠️ SECURITY DEFINER: clienti e billing_account sono in
+                  --   RLS, e un cliente fuori perimetro sarebbe invisibile.
+                  SELECT c.id,
+                         c.billing_account_id,
+                         ba.codice,
+                         c.istanza_utility_id,
+                         sc.codice_interno,
+                         c.data_attivazione,
+                         c.data_chiusura,
+                         c.periodo
+                    FROM anagrafiche.clienti c
+                    JOIN anagrafiche.istanze_utilities iu
+                      ON iu.id = c.istanza_utility_id
+                    JOIN anagrafiche.billing_account ba
+                      ON ba.id = c.billing_account_id
+                    JOIN config.stati_cliente sc
+                      ON sc.id = c.stato_cliente_id
+                   WHERE c.soggetto_ruolo_id = p_soggetto_ruolo_id
+                     AND c.utility_id = p_utility_id
+                     AND iu.fittizia
+                     AND c.periodo IS NOT NULL
+                     -- Gli stati di fornitura, per elenco (C-2, C-6, C-7).
+                     AND sc.codice_interno IN ('AT', 'RS', 'SF', 'SC',
+                                               'CH', 'CM', 'CW', 'CF')
+                     AND script.fn_get_ba_emittente_sr_id_installazione(c.billing_account_id)
+                         = p_emittente_soggetto_ruolo_id
+                   ORDER BY c.data_attivazione DESC, c.id DESC;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_clienti_stessa_chiave(
+                  anagrafiche.clienti.soggetto_ruolo_id%TYPE,
+                  anagrafiche.clienti.utility_id%TYPE,
+                  anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE)
+              IS 'I clienti delle istanze fittizie che occupano la chiave soggetto (ruolo CL) + utility + azienda emittente (C-1 di Tid del 2026-10-13): con un periodo e in uno stato di fornitura per elenco (AT, RS, SF, SC, CH, CM, CW, CF; fuori AN, PR, AG). L''azienda si legge per l''installazione (script.fn_get_ba_emittente_sr_id_installazione), mai per chi agisce. Restituisce anche il periodo: la sovrapposizione la decide chi legge. Predicato unico (C-4) di tre lettori: il guard anagrafiche.fn_guard_cliente_chiave_unica (E_CLIENTE_STESSA_CHIAVE), l''avviso del pre-contrattuale (BE) e la catena delle fittizie (anagrafiche.trgfn_clienti_set_parent_istanza, C-9). SECURITY DEFINER: clienti e billing_account sono in RLS. Ordine: data_attivazione e id decrescenti. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_clienti_stessa_chiave(bigint, integer, bigint);

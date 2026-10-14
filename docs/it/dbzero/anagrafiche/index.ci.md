@@ -44,6 +44,7 @@
 - [fn_check_ba_coppia_emittente_omogenea](manual/fn_check_ba_coppia_emittente_omogenea.md) — (latest review 18-08-26)
 - [fn_check_fornitore_attivo](manual/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
 - [fn_check_titolo_iva_ambito](manual/fn_check_titolo_iva_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_clienti_stessa_chiave](manual/fn_clienti_stessa_chiave.md) — (latest review 14-10-26)
 - [fn_consuma_plafond_titolo_iva_righe](manual/fn_consuma_plafond_titolo_iva_righe.md) — (funzione nata il 2026-10-03, `20261003-07`; rev 2026-10-04, `20261004-06`)
 - [fn_crea_auth_user](manual/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_indirizzo_soggetto](manual/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
@@ -61,6 +62,7 @@
 - [fn_guard_albero_ba_gestore_globale](manual/fn_guard_albero_ba_gestore_globale.md) — (latest review 18-08-26)
 - [fn_guard_ba_cambio_emittente](manual/fn_guard_ba_cambio_emittente.md) — (latest review 26-08-26)
 - [fn_guard_ba_gestore_globale_storia](manual/fn_guard_ba_gestore_globale_storia.md) — (latest review 26-08-26)
+- [fn_guard_cliente_chiave_unica](manual/fn_guard_cliente_chiave_unica.md) — (latest review 14-10-26)
 - [fn_guard_fornitore_attivo](manual/fn_guard_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_guard_fornitore_attivo()`** applica una verifica fail-fast sul fornitore prima di consentirne l'uso nei flussi operativi del ciclo passivo, in particolare ordini e DDT.
 - [fn_guard_istanza_ba_emittente](manual/fn_guard_istanza_ba_emittente.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ba_gestore_globale](manual/fn_guard_istanza_ba_gestore_globale.md) — (latest review 08-10-26)
@@ -81,6 +83,7 @@
 - [trgfn_billing_account_link_ef](manual/trgfn_billing_account_link_ef.md)
 - [trgfn_billing_account_require_istanza_ha_ba](manual/trgfn_billing_account_require_istanza_ha_ba.md) — (latest review 08-10-26)
 - [trgfn_clienti_guard_ruolo_cliente](manual/trgfn_clienti_guard_ruolo_cliente.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “cliente”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+- [trgfn_clienti_guard_stato_date](manual/trgfn_clienti_guard_stato_date.md) — (latest review 14-10-26)
 - [trgfn_clienti_set_parent_istanza](manual/trgfn_clienti_set_parent_istanza.md) — (latest update 09-12-25) La funzione `anagrafiche.trgfn_clienti_set_parent_istanza()` ha il compito di **mantenere la catena lineare delle istanze** (`istanze_utilities.parent_istanza_id`) per ciascun **PDP** quando viene inserito o attivato un nuovo cliente.
 - [trgfn_clienti_set_periodo](manual/trgfn_clienti_set_periodo.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_set_periodo()` è una **trigger function di dominio** che ha il compito di:
 - [trgfn_clienti_sync_pdp](manual/trgfn_clienti_sync_pdp.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_sync_pdp()` è una **trigger function di sincronizzazione** che ha il compito di mantenere allineato il campo `pdp_id` della tabella `anagrafiche.clienti` con il valore presente sull’istanza collegata (`anagrafiche.istanze_utilities`).
