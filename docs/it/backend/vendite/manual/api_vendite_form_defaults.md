@@ -62,7 +62,15 @@ Risposta `200`:
     "utility_descrizione": "Gas",
     "valuta_id": 1,
     "valuta_codice": "EUR",
-    "valuta_descrizione": "Euro"
+    "valuta_descrizione": "Euro",
+    "fornitura": {
+      "istanza_dati_precontrattuali_id": 55,
+      "classe_utenza_id": 4,
+      "tipo_utenza_id": 2,
+      "param_1_num": "3.500000",
+      "param_2_txt": "B1",
+      "meta": {}
+    }
   }
 }
 ```
@@ -72,6 +80,14 @@ Risposta `200`:
 `billing_account_id`: campi BA-derived = `null`, presenti solo
 `default_valido_dal`, `default_data` e (se EF utente o gestore configurato)
 i campi valuta.
+
+`fornitura` (2026-10-14, R-BE-5 di brief-db-indirizzi-documento-seguono-il-cliente):
+la scheda di fornitura che l'anagrafica dà alla coppia (istanza, utility) del BA,
+letta da `vendite.fn_get_fornitura_da_anagrafica` — la stessa da cui il DB parte
+alla nascita del contratto, prima di applicarci la scheda dell'operatore (D-7).
+`null` senza `billing_account_id` o se la coppia non ha dati precontrattuali.
+Il drawer la precompila in creazione: l'operatore vede quello che verrà scritto
+e lo corregge.
 
 Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
@@ -102,16 +118,25 @@ Risposta `200`:
     "utility_descrizione": "Gas",
     "valuta_id": 1,
     "valuta_codice": "EUR",
-    "valuta_descrizione": "Euro"
+    "valuta_descrizione": "Euro",
+    "fornitura": {
+      "istanza_dati_precontrattuali_id": 55,
+      "classe_utenza_id": 4,
+      "tipo_utenza_id": 2,
+      "param_1_num": "3.500000",
+      "param_2_txt": "B1",
+      "meta": {}
+    }
   }
 }
 ```
 
 Risoluzione `valuta_id`: vedi sezione preventivi sotto (stesso BB).
+`fornitura`: come per il contratto, dalla stessa lettura.
 
 Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 
-Consumer FE: `OffertaDrawer.vue` (integrazione FE pendente).
+Consumer FE: `OffertaDrawer.vue`.
 
 ### `GET /api/v1/vendite/preventivi/form-defaults/` (Fase 2.B4)
 

@@ -625,7 +625,7 @@ const { close } = useDrawerAutosaveBozza({
 //    risolutore (I2), non un default copiato dall'anagrafica.
 // Watcher BA→defaults condiviso (guard token + valuta BA-wins nel composable).
 // Extra preventivo: termine pagamento (solo se l'operatore non l'ha scelto).
-const { applicaDefaults: applicaDefaultsBa } = useBaFormDefaults({
+const { applicaDefaults: applicaDefaultsBa, inCorso: defaultsClienteInCorso } = useBaFormDefaults({
   form,
   isEdit,
   fetchDefaults: getPreventivoFormDefaults,
@@ -644,8 +644,11 @@ const { applicaDefaults: applicaDefaultsBa } = useBaFormDefaults({
 // Defense-in-depth: il footer segue la stessa regola (`useTestataDocumento`),
 // ma la guard sta anche qui cosi' qualsiasi consumer futuro del computed
 // (shortcut tastiera, save programmato) e' coperto.
+// Finche' arrivano i dati del cliente (BB `useBaFormDefaults`) il Salva
+// aspetta: partirebbe un form senza quei dati, presi per scelte dell'operatore.
 const canSave = computed(() => {
   if (!testata.modificabile.value) return false
+  if (defaultsClienteInCorso.value) return false
   const f = form.value
   if (f.utility_id == null) return false
   if (!isEdit.value && f.istanza_utility_id == null) return false

@@ -147,20 +147,16 @@ class ClientiService:
             else {}
         )
 
+        # Niente campi del cliente ne' categoria: 400, PRIMA della scrittura (il
+        # cliente esiste, l'ha verificato `get_cliente`: non e' un 404). La
+        # categoria `None` non e' un reset: vuol dire «non toccarla».
+        categoria = {} if ba_categoria is None else {"ba_categoria_cliente_id": ba_categoria}
+        _V.require_campi_da_aggiornare({**cliente_fields, **categoria})
         # Una sola SELECT fn_madre(): categoria BA + campi cliente in atomica.
-        result = self._repo.update_cliente_atomico(
+        self._repo.update_cliente_atomico(
             cliente_id,
             ba_categoria_cliente_id=ba_categoria,
             cliente_fields=cliente_fields,
-        )
-        # L'esistenza e' gia' garantita dal guard get_cliente sopra: se entrambi
-        # i flag sono False il cliente c'e' ma il payload non conteneva nessun
-        # campo editabile ne' la categoria (niente da aggiornare) -> validazione
-        # (400), non "non trovato" (404): il cliente esiste (review 2026-07-08).
-        ErrorManager.require(
-            result["categoria_aggiornata"] or result["campi_aggiornati"],
-            code=E_ANAG_VALIDAZIONE,
-            message="Nessun campo da aggiornare.",
         )
         return {"updated": True}
 

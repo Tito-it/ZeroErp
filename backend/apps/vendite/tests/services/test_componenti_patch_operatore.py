@@ -23,6 +23,9 @@
 3. test_stringa_vuota_diventa_none
 4. test_campi_del_workflow_e_origine_dal_client_rifiutati
 5. test_ordini_e_ddt_scrivono_l_origine_manuale
+5-bis. test_patch_vuota_e_400_in_tutti_e_cinque — 2026-10-14: prima ordini e
+   DDT «aggiornato» senza scrivere, il preventivo 404, contratto e offerta 400
+   ma dopo la scrittura
 6. test_lo_schema_openapi_pubblica_il_contratto
 7. test_le_cinque_patch_usano_lo_schema_unico
 """
@@ -107,6 +110,32 @@ class DatiPatchComponenteTests(TestCase):
                 repo.update_componente.assert_called_once_with(
                     50, prezzo_unitario="3.00", origine_prezzo="MANUALE",
                 )
+
+
+    # 5-bis. ⛔ Una PATCH senza campi: 400 col codice del dominio, PRIMA del
+    #    repository, uguale nei cinque documenti (lo dice il BB).
+    def test_patch_vuota_e_400_in_tutti_e_cinque(self) -> None:
+        for codice in ("E_ORD_VALIDAZIONE", "E_DDT_VALIDAZIONE", "E_PREV_VALIDAZIONE", "E_VENDITE_VALIDATION"):
+            with self.subTest(codice=codice), self.assertRaises(ServiceError) as ctx:
+                dati_patch_componente({}, function_name="t", error_code=codice)
+            self.assertEqual(ctx.exception.code, codice)
+        casi = (
+            ("apps.vendite.services.ordini_service", "OrdiniRepository",
+             {"ordine_id": 1, "riga_ordine_id": 10}),
+            ("apps.vendite.services.ddt_service", "DdtRepository",
+             {"ddt_id": 1, "riga_ddt_id": 10}),
+        )
+        for modulo, repo_cls, scope in casi:
+            with self.subTest(modulo=modulo), \
+                    patch(f"{modulo}.{repo_cls}") as MockRepo, \
+                    patch(f"{modulo}.richiedi_righe_in_bozza"):
+                repo = MagicMock()
+                repo.load_componente_with_scope.return_value = scope
+                MockRepo.return_value = repo
+                servizio = __import__(modulo, fromlist=["update_componente"])
+                with self.assertRaises(ServiceError):
+                    servizio.update_componente(1, 10, 50, {})
+                repo.update_componente.assert_not_called()
 
 
 class SchemaPatchComponenteTests(TestCase):

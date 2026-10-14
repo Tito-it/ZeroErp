@@ -207,7 +207,7 @@ la confronta coi vincoli veri della tabella, nei due versi.
 
 `E_ANAG_CONTO_NOT_FOUND` ed `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` sono a catalogo
 come `NON_TROVATO` dal 2026-10-07: fino ad allora uscivano **400** «Errore di
-validazione.» (E-1 di [analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+validazione.» (E-1 di [analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ---
 

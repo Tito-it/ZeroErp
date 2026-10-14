@@ -1345,14 +1345,12 @@ def fn_create_articolo(payload: dict[str, Any]) -> dict[str, Any]:
 def fn_update_articolo(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "catalogo.catalogo_service.fn_update_articolo"
     data = _extract_articolo_payload(payload, for_update=True, function_name=function_name)
-    ErrorManager.require(
-        bool(data),
-        code="E_CATALOGO_VALIDATION",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Payload articolo non valido.",
         detail="Nessun campo aggiornabile presente nel payload.",
         context={"allowed_nullable_fields": sorted(_ARTICOLO_NULLABLE_FIELDS)},
         function_name=function_name,
-        log_to_db=True,
     )
     repository = CatalogoRepository()
     try:
@@ -1572,13 +1570,11 @@ def fn_update_uom_operativa(
     function_name = "catalogo.catalogo_service.fn_update_uom_operativa"
     _get_articolo_base(articolo_id)
     data = _extract_uom_operativa_payload(payload, for_update=True, function_name=function_name)
-    ErrorManager.require(
-        bool(data),
-        code="E_CATALOGO_VALIDATION",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Payload UoM operativa non valido.",
         detail="Nessun campo aggiornabile presente nel payload.",
         function_name=function_name,
-        log_to_db=True,
     )
     repository = CatalogoUomRepository()
     try:
@@ -1680,13 +1676,11 @@ def fn_update_componente(
     function_name = "catalogo.catalogo_service.fn_update_componente"
     _get_articolo_base(articolo_id)
     data = _extract_componente_payload(payload, for_update=True, function_name=function_name)
-    ErrorManager.require(
-        bool(data),
-        code="E_CATALOGO_VALIDATION",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Payload componente non valido.",
         detail="Nessun campo aggiornabile presente nel payload.",
         function_name=function_name,
-        log_to_db=True,
     )
     repository = CatalogoBomRepository()
     try:
@@ -1775,13 +1769,11 @@ def fn_update_nota(nota_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "catalogo.catalogo_service.fn_update_nota"
     resolved = _resolve_single_nota(nota_id, function_name=function_name)
     data = _extract_nota_payload(payload, for_update=True, function_name=function_name)
-    ErrorManager.require(
-        bool(data),
-        code="E_CATALOGO_VALIDATION",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Payload nota non valido.",
         detail="Nessun campo aggiornabile presente nel payload.",
         function_name=function_name,
-        log_to_db=True,
     )
     repository = CatalogoBomRepository()
     try:

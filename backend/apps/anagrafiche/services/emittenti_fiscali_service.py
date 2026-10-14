@@ -250,6 +250,8 @@ class EmittentiFiscaliService:
         _regime_dichiarato(payload)
         # Verifica che l'emittente esista
         self.get_emittente(emittente_id)
+        # Un PATCH vuoto e' un 400, non il 404 che dava il rowcount (2026-10-14).
+        _V.require_campi_da_aggiornare(payload)
         # Copia difensiva: il repo normalizza stringhe vuote -> None e non deve mutare
         # request.data della view (che potrebbe essere riusato dal middleware di logging).
         with _regime_nel_catalogo():
@@ -257,7 +259,7 @@ class EmittentiFiscaliService:
         ErrorManager.require(
             updated,
             code=E_ANAG_NOT_FOUND,
-            message="Emittente fiscale non trovato o nessun campo modificato.",
+            message="Emittente fiscale non trovato.",
         )
         return {"updated": True}
 
@@ -580,12 +582,14 @@ class EmittentiFiscaliUtilitiesService:
             self._parent, self._repo, emittente_id, record_id,
             "Record utility non trovato per l'emittente indicato.",
         )
+        # Un PATCH vuoto e' un 400, non il 404 che dava il rowcount (2026-10-14).
+        _V.require_campi_da_aggiornare(payload)
         with self._vincoli_tradotti(record_id=record_id):
             updated = self._repo.update_record(record_id, dict(payload))
         ErrorManager.require(
             updated,
             code=E_ANAG_NOT_FOUND,
-            message="Record utility non trovato o nessun campo modificato.",
+            message="Record utility non trovato.",
         )
         return {"updated": True}
 

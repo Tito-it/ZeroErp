@@ -115,7 +115,7 @@ e' stato emesso e resta valido, l'invito si recupera col reinvio — ma il falli
 logga (logger `security`, il motivo e' nel giornale email) e `invito_inviato_at` non si
 aggiorna. In console mode (`DEBUG`) la mail e' stampata e vale come partita. Fino al
 2026-09-28 la risposta era `inviato: true` anche a email fallita (F-3 dell'
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 Dal 2026-09-25 anche `invita`, come `reinvia-invito`, invalida i token pendenti della
 veste nella transazione del nuovo — vale un link solo.
 

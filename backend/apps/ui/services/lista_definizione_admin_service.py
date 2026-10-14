@@ -239,10 +239,8 @@ class ListaDefinizioneAdminService:
             message="Payload definizione lista non valido.",
         )
         data = self._build_update_data(payload)
-        ErrorManager.require(
-            bool(data),
-            code=E_DEFINIZIONE_VALIDATION,
-            message="Nessun campo aggiornabile presente nel payload.",
+        self._v.require_campi_da_aggiornare(
+            data,
             detail=f"allowed_keys={sorted(UPDATE_KEYS)!r}",
         )
 

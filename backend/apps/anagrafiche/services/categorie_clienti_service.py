@@ -176,10 +176,8 @@ class CategorieClientiService:
         )
         data = self._build_update_data(payload)
 
-        ErrorManager.require(
-            bool(data),
-            code=E_ANAG_VALIDAZIONE,
-            message="Nessun campo aggiornabile presente nel payload.",
+        self._v.require_campi_da_aggiornare(
+            data,
             context={"allowed_keys": sorted(_UPDATE_KEYS)},
         )
 

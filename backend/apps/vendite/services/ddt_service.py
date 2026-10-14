@@ -421,10 +421,8 @@ def aggiorna_ddt(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 
     data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_DDT}
     _coerci_id_controparte(data, op="aggiorna_ddt")
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_DDT_VALIDAZIONE",
-        message="Nessun campo aggiornabile nel payload.",
+    _V.require_campi_da_aggiornare(
+        data,
         function_name=f"{_FN}.aggiorna_ddt",
     )
     with _db_errors("aggiorna_ddt"):
@@ -694,9 +692,8 @@ def aggiorna_riga(
     )
     _get_riga_or_raise(repo, ddt_id, riga_id, op="aggiorna_riga")
     data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_DDT_VALIDAZIONE",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Nessun campo aggiornabile nel payload riga.",
         function_name=f"{_FN}.aggiorna_riga",
     )
@@ -858,10 +855,8 @@ def aggiorna_prelievo(
     data = _payload_prelievo(
         payload, UPDATE_KEYS_PRELIEVO, op="aggiorna_prelievo", qta_obbligatoria=False,
     )
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_DDT_VALIDAZIONE",
-        message="Nessun campo aggiornabile nel payload.",
+    _V.require_campi_da_aggiornare(
+        data,
         function_name=f"{_FN}.aggiorna_prelievo",
     )
     with _db_errors("aggiorna_prelievo"):

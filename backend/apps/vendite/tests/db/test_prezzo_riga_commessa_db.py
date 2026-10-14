@@ -14,8 +14,8 @@
 #    E leggeva `prezzo`, che il resolver chiama `prezzo_finale`. Solo una
 #    chiamata vera vede la giuntura fra il service e la funzione DB.
 #
-# ⭐ IL MONDO SI COSTRUISCE (regola zero), con i builder dei pgTAP: commessa con
-#    una riga, cliente con una categoria mappata su un listino, il listino con
+# ⭐ IL MONDO SI COSTRUISCE (regola zero), con i builder dei pgTAP e la madre
+#    `vendite.fn_upsert_commessa_attivita`: commessa con una riga, cliente con una categoria mappata su un listino, il listino con
 #    due versioni — V1 (2020, chiusa) e V2 (dal 2021, aperta: e' quella in
 #    vigore alla data della riga). La riga nasce «registrata sotto V1»: e' la
 #    riga di un push fatto quando V1 era in vigore. Tutto in transazione
@@ -58,8 +58,6 @@ _PREZZO_KIT = Decimal("75.00")
 _FIXTURE = (
     "CREATE TEMP TABLE _c ON COMMIT DROP AS"
     " SELECT * FROM dbops.fn_pgtap_crea_commessa('L0 prezzo riga')",
-    "CREATE TEMP TABLE _a ON COMMIT DROP AS"
-    " SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita((SELECT commessa_id FROM _c), 10)",
     # Il cliente ha una categoria, e la categoria porta al listino.
     "CREATE TEMP TABLE _cat ON COMMIT DROP AS WITH ins AS ("
     " INSERT INTO anagrafiche.categorie_clienti (codice, codice_interno, descrizione, partecipa_promo)"
@@ -75,8 +73,54 @@ _FIXTURE = (
     " INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)"
     " SELECT listino_id, 'L0_V2', '2021-01-01'::date, 'BOZZA' FROM _l RETURNING id"
     ") SELECT id FROM ins",
+    # ⛔ L'articolo nasce GIA' della tipologia del listino, e solo dopo va sulla
+    #    riga di commessa: un articolo usato non cambia la tipologia (guard
+    #    `catalogo.trgfn_articoli_guard_struttura_se_usato`, A-10 del
+    #    2026-10-13). Fino a quel giorno la fixture usava il builder
+    #    `fn_pgtap_crea_commessa_attivita` — che costruisce un articolo senza
+    #    tipologia — e gliela dava DOPO: un mondo che il modello non ammette
+    #    piu'. Come il gemello pgTAP `test-riga-listino-propagata-dalla-commessa-v1`.
+    "CREATE TEMP TABLE _art ON COMMIT DROP AS SELECT dbops.fn_pgtap_crea_articolo("
+    " ('PGT-L0P-' || substr(md5(clock_timestamp()::text || random()::text), 1, 12))::varchar,"
+    " false) AS articolo_id",
     "UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _l)"
-    " WHERE id = (SELECT articolo_id FROM _a)",
+    " WHERE id = (SELECT articolo_id FROM _art)",
+    # La riga, scritta dalla madre, «registrata sotto V1»: e' la riga di un
+    # push fatto quando V1 era in vigore.
+    "CREATE TEMP TABLE _a ON COMMIT DROP AS"
+    " SELECT r.attivita_id, a.articolo_id, ar.uom_id"
+    " FROM _c c, _l l, _art a"
+    " JOIN catalogo.articoli ar ON ar.id = a.articolo_id,"
+    " vendite.fn_upsert_commessa_attivita("
+    "   p_commessa_id                   => c.commessa_id,"
+    "   p_segment_key                   => ('PGT-L0P-' || substr(md5(clock_timestamp()::text || 'seg'), 1, 12))::varchar,"
+    "   p_articolo_id                   => a.articolo_id,"
+    "   p_istanza_utility_id            => c.istanza_utility_id,"
+    "   p_data_attivita                 => script.fn_data_operativa(),"
+    "   p_uom_id                        => ar.uom_id,"
+    "   p_quantita                      => 1.000000,"
+    "   p_competenza_mese               => date_trunc('month', script.fn_data_operativa())::date,"
+    "   p_competenza_dal                => date_trunc('month', script.fn_data_operativa())::date,"
+    "   p_competenza_al                 => (date_trunc('month', script.fn_data_operativa())"
+    "                                       + interval '1 month - 1 day')::date,"
+    "   p_prezzo_snapshot               => 10,"
+    "   p_prezzo_base_snapshot          => NULL,"
+    "   p_origine_prezzo                => NULL,"
+    "   p_tipo_variazione_applicata     => NULL,"
+    "   p_valore_variazione_applicata   => NULL,"
+    "   p_promo_id                      => NULL,"
+    "   p_contratto_id                  => NULL,"
+    "   p_categoria_cliente_id_snapshot => NULL,"
+    "   p_classe_utenza_id_snapshot     => NULL,"
+    "   p_listino_versione_id           => l.listino_versione_id,"
+    "   p_listino_riga_id               => NULL,"
+    "   p_stato_approvazione            => 'APPROVATA',"
+    "   p_stato_emissione               => 'NON_EMESSA',"
+    "   p_sorgente_tipo_id              => (SELECT so.id FROM config.sorgenti so"
+    "                                        WHERE so.codice_interno = 'COMMESSA' AND so.attivo),"
+    "   p_sorgente_uid                  => c.commessa_id::text,"
+    "   p_tipo_movimento                => 'NORMALE',"
+    "   p_meta                          => jsonb_build_object('test_scope', 'l0_prezzo_riga')) r",
     "INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)"
     f" SELECT (SELECT id FROM _v2), a.articolo_id, a.uom_id, {_PREZZO_V2} FROM _a a",
     # Il kit P di cui l'articolo della riga e' componente: nel listino, il
@@ -96,9 +140,6 @@ _FIXTURE = (
     " emittente_soggetto_ruolo_id, classe_utenza_id, listino_id, valido_dal)"
     " SELECT (SELECT id FROM _cat), c.utility_id, c.emittente_soggetto_ruolo_id, NULL,"
     " (SELECT listino_id FROM _l), '2021-01-01' FROM _c c",
-    # La riga e' stata registrata quando era in vigore V1.
-    "UPDATE vendite.commesse_attivita SET listino_versione_id = (SELECT listino_versione_id FROM _l)"
-    " WHERE id = (SELECT attivita_id FROM _a)",
 )
 
 _RIGA = (

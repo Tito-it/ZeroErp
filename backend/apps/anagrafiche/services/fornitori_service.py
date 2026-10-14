@@ -98,9 +98,10 @@ class FornitoriService:
         )
         # Verifica che il fornitore esista
         self.get_fornitore(fornitore_id)
+        # Un PATCH vuoto e' un 400, non il 404 che dava il rowcount (2026-10-14).
+        _V.require_campi_da_aggiornare(payload)
         updated = self._repo.update_fornitore(fornitore_id, payload)
-        ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
-                             message="Fornitore non trovato o nessun campo modificato.")
+        ErrorManager.require(updated, code=E_ANAG_NOT_FOUND, message="Fornitore non trovato.")
         return {"updated": True}
 
     # =================================================================

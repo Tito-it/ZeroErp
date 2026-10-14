@@ -3,7 +3,7 @@
 > **Chi scrive:** sessione backend (`dev/backend-tid`), 2026-10-08. **A chi:** team
 > DB (`dev/db-tid`), tramite Tid.
 > **Origine:** voci E-4, E-5 ed E-10 di
-> [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+> [analisi-be-difetti-emersi-verifica-doc-api-core.md](../work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 > La parte che si poteva chiudere coi codici già a catalogo è fatta lato backend
 > (2026-10-08, righe E-4/E-5 dell'analisi). Restano i punti per cui **nessun codice
 > esistente dice la cosa giusta**: servono righe nuove nel catalogo.

@@ -2420,6 +2420,8 @@
       "field_codice_commessa": "Codice Commessa",
       "field_tipo_utenza": "Tipo utenza",
       "field_classe_utenza": "Classe utenza",
+      "field_param_1_num": "Parametro 1 (numero)",
+      "field_param_2_txt": "Parametro 2 (testo)",
       "field_pdp": "PDP/POD",
       "field_nr_righe": "Numero righe",
       "field_utility_associata": "Utility associata",

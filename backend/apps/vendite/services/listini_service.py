@@ -1086,14 +1086,12 @@ def fn_create_listino(payload: dict[str, Any]) -> dict[str, Any]:
 def fn_update_listino(listino_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_update_listino"
     data = _extract_listino_payload(payload, for_update=True, function_name=function_name)
-    ErrorManager.require(
-        bool(data),
-        code="E_VENDITE_VALIDATION",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Payload listino non valido.",
         detail="Nessun campo aggiornabile presente nel payload.",
         context={"allowed_nullable_fields": sorted(_LISTINO_NULLABLE_FIELDS)},
         function_name=function_name,
-        log_to_db=True,
     )
     repository = ListiniRepository()
     try:
@@ -1185,14 +1183,12 @@ def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any
     function_name = "vendite.listini_service.fn_update_versione"
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     data = _extract_versione_payload(payload, for_update=True, function_name=function_name)
-    ErrorManager.require(
-        bool(data),
-        code="E_VENDITE_VALIDATION",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Payload versione listino non valido.",
         detail="Nessun campo aggiornabile presente nel payload.",
         context={"allowed_nullable_fields": sorted(_VERSIONE_NULLABLE_FIELDS)},
         function_name=function_name,
-        log_to_db=True,
     )
     _assert_versione_patch_allowed(versione, data, function_name=function_name)
     repository = ListiniRepository()
@@ -1525,14 +1521,12 @@ def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dic
     _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
     current = _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
     data = _extract_riga_payload(payload, for_update=True, function_name=function_name)
-    ErrorManager.require(
-        bool(data),
-        code="E_VENDITE_VALIDATION",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Payload riga listino non valido.",
         detail="Nessun campo aggiornabile presente nel payload.",
         context={"allowed_nullable_fields": sorted(_RIGA_NULLABLE_FIELDS)},
         function_name=function_name,
-        log_to_db=True,
     )
     articolo_id = str(current["articolo_id"])
     uom_id = int(current["uom_id"])

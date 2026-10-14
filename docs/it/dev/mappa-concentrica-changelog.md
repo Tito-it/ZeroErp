@@ -567,8 +567,8 @@ il collaudo a video dell'inventario. Vedi
 [brief-db-magazzino-lotto-2-bis-be-fe.md](work-done/brief-db-magazzino-lotto-2-bis-be-fe.md),
 [brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md](work-done/brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md),
 [piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md](work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md),
-[brief-db-magazzino-lotto-3-scarico-da-ddt.md](work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md),
-[brief-db-magazzino-lotto-3-bis-carico-da-reso.md](work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md).
+[brief-db-magazzino-lotto-3-scarico-da-ddt.md](work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md),
+[brief-db-magazzino-lotto-3-bis-carico-da-reso.md](work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md).
 
 **Anello 3 (`vendite`, `pagamenti`) — Le forme che reggono, e annullare vuol
 dire chiudere.** **D14 è chiusa il 22-09**: la capability di un DDT pagava le
@@ -609,7 +609,7 @@ scorre `riga.componenti`, pubblicata dall'app. ✅ Chiuso il 2026-10-01. Vedi
 47 documenti di `core` apre un'analisi BE che chiude in quattro giorni una
 ventina di voci (fra cui 90 letture grezze di `request.data` passate al BB
 `corpo_oggetto`), con dodici ancora aperte
-([analisi-be-difetti-emersi-verifica-doc-api-core.md](work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md));
+([analisi-be-difetti-emersi-verifica-doc-api-core.md](work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md));
 nelle migliorie BE/FE i primi **test di componente** del frontend (23-09),
 `pip-audit` in CI e la schermata del log email (D7); i **copioni di collaudo
 in-app** scritti e da eseguire salgono a otto (capability annidata e prezzi,

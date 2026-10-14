@@ -412,7 +412,7 @@ watch(() => props.visible, async (v) => {
 // offerte). Il DDT non ha termini/modalita di pagamento in testata: nessun
 // `apply` extra. Se la risposta arriva dopo l'auto-save bozza, il trigger DB
 // ha comunque gia' risolto la valuta sul record (fn_get_valuta_id).
-useBaFormDefaults({ form, isEdit, fetchDefaults: getDdtFormDefaults })
+const { inCorso: defaultsClienteInCorso } = useBaFormDefaults({ form, isEdit, fetchDefaults: getDdtFormDefaults })
 
 // Costruisce il payload testata (create/update). Numeri e stringhe vuote → null:
 // il BE normalizza empty→NULL (empty_to_none). emittente_fiscale_id solo in
@@ -489,8 +489,11 @@ const { close } = useDrawerAutosaveBozza({
   },
 })
 
+// Finche' arrivano i dati del cliente (BB `useBaFormDefaults`) il Salva
+// aspetta: partirebbe un form senza quei dati, presi per scelte dell'operatore.
 const canSave = computed(() => {
   if (!testata.modificabile.value) return false
+  if (defaultsClienteInCorso.value) return false
   return form.value.billing_account_id != null || form.value.destinatario_soggetto_ruolo_id != null
 })
 

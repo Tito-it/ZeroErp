@@ -23,9 +23,8 @@ from django.db import IntegrityError, transaction
 from apps.config.sorgenti import SORGENTE_COMMESSA, SORGENTE_PREVENTIVO
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
-from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._cliente_coppia_documento import risolvi_cliente_coppia
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.vendite.services._date_consegna_righe import aggiorna_date_consegna_righe
 from apps.vendite.services._annullo_con_legami import (
@@ -402,33 +401,15 @@ def delete_indirizzo(preventivo_id: int, indirizzo_id: int) -> dict[str, Any]:
 # ══════════════════════════════════════════════════════════
 
 
-# Scopo: il billing account della coppia (istanza, utility) di un preventivo,
-#        letto dal lato che il payload porta. Ritorna (billing_account_id,
-#        istanza_utility_id), entrambi valorizzati.
-# Perimetro: dal 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2) il preventivo
-#        ha sempre il BA, come offerta e contratto: `billing_account_id` NOT NULL
-#        e FK composta `fk_preventivi_ba_coppia` verso il BA della coppia.
-#        ⭐ Non e' una scelta fra candidati: la coppia ha UN BA per struttura
-#        (`uq_billing_instance_utility`), e il BA ha UNA istanza. Il preventivo
-#        «prospect senza BA» non esiste piu': l'istanza nasce col suo BA.
-#        - payload col BA: l'istanza e' la sua (BB `istanza_del_billing_account`,
-#          lo stesso della pratica), e il BA dev'essere QUELLO della coppia
-#          (istanza, utility). Se non lo e' — istanza diversa da quella del BA,
-#          o BA di un'altra utility — l'errore e' sul BA;
-#        - payload con la sola istanza: il BA e' quello della coppia. Se la
-#          coppia non ne ha, la utility non e' dichiarata sull'istanza: e' la
-#          regola di `script.fn_check_utility_istanza_coerenza`, che dal
-#          2026-10-08 legge il solo BA — qui detta prima del trigger.
-#        ⚠️ Fino al 2026-10-09 un BA fuori coppia, quando la coppia non aveva
-#           BA, usciva «Utility non coerente» sul campo `utility_id`: in
-#           modifica la utility e' immutabile, quindi l'operatore era mandato a
-#           correggere un campo che non puo' toccare. La FK composta resta il
-#           presidio di ultima istanza (`_vincoli_cliente_preventivo`).
 _MSG_BA_FUORI_COPPIA = (
     "Il billing account non e' quello dell'istanza e della utility del preventivo."
 )
 
 
+# Scopo: il cliente del preventivo, letto dal lato che il payload porta: il BB
+#        `risolvi_cliente_coppia` (regola del 2 con offerta e contratto), coi
+#        codici del preventivo. La coppia senza BA resta
+#        `E_PREV_UTILITY_ISTANZA_INCOERENTE` sul campo `utility_id`.
 def _risolvi_cliente_preventivo(
     *,
     billing_account_id: int | None,
@@ -436,53 +417,16 @@ def _risolvi_cliente_preventivo(
     utility_id: int,
     function_name: str,
 ) -> tuple[int, int]:
-    if billing_account_id is not None:
-        istanza_utility_id = istanza_del_billing_account(
-            billing_account_id,
-            istanza_utility_id,
-            code="E_PREV_VALIDAZIONE",
-            function_name=function_name,
-        )
-
-    ErrorManager.require(
-        istanza_utility_id is not None,
+    return risolvi_cliente_coppia(
+        billing_account_id=billing_account_id,
+        istanza_utility_id=istanza_utility_id,
+        utility_id=utility_id,
         code="E_PREV_VALIDAZIONE",
-        message="istanza_utility_id obbligatorio.",
-        detail="Specificare il billing account o l'istanza utility.",
-        context={"field": "istanza_utility_id"},
+        msg_ba_fuori_coppia=_MSG_BA_FUORI_COPPIA,
         function_name=function_name,
+        code_coppia_senza_ba="E_PREV_UTILITY_ISTANZA_INCOERENTE",
+        campo_coppia_senza_ba="utility_id",
     )
-    assert istanza_utility_id is not None
-
-    ba_della_coppia = BillingAccountRepository().get_id_by_coppia(int(istanza_utility_id), utility_id)
-    if billing_account_id is not None:
-        ErrorManager.require(
-            ba_della_coppia == int(billing_account_id),
-            code="E_PREV_VALIDAZIONE",
-            message=_MSG_BA_FUORI_COPPIA,
-            context={"field": "billing_account_id"},
-            detail=(
-                f"billing_account_id={billing_account_id}, coppia "
-                f"(istanza_utility_id={istanza_utility_id}, utility_id={utility_id}) "
-                f"-> billing_account_id={ba_della_coppia}."
-            ),
-            function_name=function_name,
-        )
-        return int(billing_account_id), int(istanza_utility_id)
-
-    ErrorManager.require(
-        ba_della_coppia is not None,
-        code="E_PREV_UTILITY_ISTANZA_INCOERENTE",
-        message="Utility non coerente con l'istanza selezionata.",
-        context={"field": "utility_id"},
-        detail=(
-            f"istanza_utility_id={istanza_utility_id} non ha il billing "
-            f"account per utility_id={utility_id}."
-        ),
-        function_name=function_name,
-    )
-    assert ba_della_coppia is not None
-    return ba_della_coppia, int(istanza_utility_id)
 
 
 # Scopo: traduce la FK composta del cliente del preventivo (R-2 di
@@ -1927,14 +1871,7 @@ def update_componente(
         payload, function_name=f"{_FN}.update_componente",
         error_code="E_PREV_VALIDAZIONE",
     )
-    updated = repo.update_componente(componente_id, **data)
-    ErrorManager.require(
-        updated,
-        code="E_PREV_COMPONENTE_NOT_FOUND",
-        message="Nessun campo aggiornato sul componente.",
-        detail="Payload vuoto o senza campi nella whitelist.",
-        function_name=f"{_FN}.update_componente",
-    )
+    repo.update_componente(componente_id, **data)
     return {"status": "ok", "componente_id": componente_id}
 
 

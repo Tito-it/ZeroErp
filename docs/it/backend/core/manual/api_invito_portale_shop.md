@@ -78,7 +78,7 @@ utilizzabile. ⚠️ Fino al 2026-09-24 il primo invito creava l'identita' gia'
 `attivo=true` con una password temporanea, e il flusso si sceglieva da «l'utente
 e' stato appena creato»: il reinvio cadeva nel CROSS ed era rifiutato con
 `E_INVITO_PORTALE` («ha gia' accesso»), cioe' **impossibile** (M-3 della
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 **Semantica transazionale del reinvio (fix analisi-fix-transazioni #17, 2026-07-08).**
 L'invalidazione dei token precedenti e la ri-emissione identita/token avvengono nella
@@ -105,7 +105,7 @@ lo shop aveva ancora l'invalidazione fuori-atomic).
 ```
 
 `inviato` e' l'esito **dell'email** (dal 2026-09-28, F-3 dell'
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)):
+[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)):
 `false` se non e' partita. La chiamata non fallisce — veste e token ci sono, l'invito si
 recupera col reinvio — ma `invito_inviato_at` non si aggiorna e il fallimento si logga.
 Stesso contratto per le tre vesti (la strada e' una: `InvitoVeste.spedisci`).
@@ -190,7 +190,7 @@ volta che un token vivo esiste, quindi anche su `ATTIVO`.
 
 Dopo un invito, in entrambi i flussi, la veste e' **`PENDING`** fino
 all'attivazione — **`NON_SPEDITO`** se l'email non e' partita (dal 2026-09-28, F-3
-dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md):
+dell'[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md):
 prima un link pendente bastava a dire «invito inviato»). La regola e' la funzione
 pura `stato_veste` di `portale_repository.py`. ⚠️ Fino al 2026-09-24 l'invito con email nuova creava l'identita'
 gia' attiva, e quel cliente risultava `ATTIVO` prima di aver scelto la password

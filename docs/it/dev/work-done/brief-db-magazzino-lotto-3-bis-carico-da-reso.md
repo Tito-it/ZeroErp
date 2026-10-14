@@ -3,15 +3,20 @@
 > **Destinatario:** team DB (`dev/db-tid`). 🔵 **Richieste a BE/FE in §6**, da
 > fare nello stesso giro di PR.
 >
+> ✅ **Chiuso il 2026-10-14** (sessione BE, su richiesta di Tid): lato DB applicato e verde, richieste a
+> BE/FE fatte (giri del [piano BE/FE](../work-in-progress/piano-be-fe-magazzino-lotto-3.md) §3). Quel che
+> restava — collaudo a video, CI da zero, la corsa del pgTAP kit/seriali, i motivi della «Conferma» (R-1c, brief suo) — e' raccolto nel piano, §5, e il copione e'
+> [collaudo-in-app-magazzino-bolla-e-reso](../work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md).
+>
 > **Origine.** [Brief del Lotto 3](brief-db-magazzino-lotto-3-scarico-da-ddt.md),
 > D-L3-i (Tid, 28-09: *«B, fuori, in un 3-bis subito dopo»*), e la riga «3-bis» di
-> [analisi carico e scarico §8](analisi-db-magazzino-carico-e-scarico.md). La
+> [analisi carico e scarico §8](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md). La
 > regola che lo mette **subito dopo**: *«un'asimmetria fra due versi si chiude
 > subito»*. Prerequisiti **chiusi**: Lotto 3 applicato e verde (28-09).
 >
 > ⏩ **Lato BE/FE al 2026-10-13: R-1…R-5 fatti, da collaudare** — dettaglio e collaudo in
-> [piano-be-fe-magazzino-lotto-3](piano-be-fe-magazzino-lotto-3.md) (giri A2, B2). R-1c (i motivi della
-> «Conferma» senza i numeri) e' un difetto DB: [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md).
+> [piano-be-fe-magazzino-lotto-3](../work-in-progress/piano-be-fe-magazzino-lotto-3.md) (giri A2, B2). R-1c (i motivi della
+> «Conferma» senza i numeri) e' un difetto DB: [brief-db-reso-motivi-conferma-con-valori](../work-in-progress/brief-db-reso-motivi-conferma-con-valori.md).
 >
 > **Stato al 2026-09-29:** ✅ **LATO DB APPLICATO E VERDE.** I diciannove
 > changeSet (`20260928-84 → -98`, `20260929-01 → -04`) sono `EXECUTED` su dbdev;
@@ -490,10 +495,10 @@ prova il loader (celle vuote → token `NULL` e `nullValue: "NULL"`).
 ## 8. Riferimenti
 
 - Le decisioni: [Lotto 3](brief-db-magazzino-lotto-3-scarico-da-ddt.md) (D-L3-a,
-  -b, -d, -e, -f, -i), [analisi carico e scarico](analisi-db-magazzino-carico-e-scarico.md)
+  -b, -d, -e, -f, -i), [analisi carico e scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md)
   (§6 identità, §7-quinquies storno, §8 lotti),
-  [Lotto 2](../work-done/brief-db-magazzino-lotto-2-motore.md) (D-L2-c costo,
-  D-L2-m ubicazioni), [permesso nel verbo](../work-done/brief-db-permesso-nel-verbo-di-scrittura.md).
+  [Lotto 2](brief-db-magazzino-lotto-2-motore.md) (D-L2-c costo,
+  D-L2-m ubicazioni), [permesso nel verbo](brief-db-permesso-nel-verbo-di-scrittura.md).
 - Le forme da copiare: il verbo → `vendite.fn_cambia_stato_ddt`; la merce da
   muovere in una sede → `vendite.fn_ddt_merce_da_movimentare`; la check che
   parla → `script.fn_check_ddt_merce`; il posting → `magazzino.fn_posta_ddt`; lo
@@ -508,7 +513,7 @@ prova il loader (celle vuote → token `NULL` e `nullValue: "NULL"`).
 | Data | Cosa |
 | --- | --- |
 | 2026-09-28 | Prima stesura, da D-L3-i. ⚠️ Emerso leggendo `fn_genera_ddt_riconsegna`: la bolla di ri-consegna **eredita la causale** dalla bolla d'origine, quindi col Lotto 3 una ri-consegna scarica di nuovo merce che il reso non ha ricaricato — il 3-bis chiude un errore, non solo un buco. Sette decisioni aperte con una raccomandazione: magazzino sulla testata del reso con default dalla bolla (D-3b-a); il **rientro** punta al prelievo d'origine e ne eredita lotto, seriale e kit (D-3b-b); il carico alla **conferma** (D-3b-c); sorgente `RESO_VENDITA_RIENTRO`, `RESO_VENDITA_RIGA` resta `ROW_VALIDATOR` (D-3b-d); costo dell'uscita d'origine (D-3b-e); conferma e annullo **verbi** con azione `conferma_reso` e porta (D-3b-f); kit per componenti proporzionale ma libero sotto il tetto (D-3b-g). Due estrazioni per regola del 2: il controllo «magazzino dell'emittente» della bolla, e il presidio «documento senza movimento» |
-| 2026-10-01 | 🧭 **Il registro di magazzino è un servizio dell'anello 2** (Tid): la dipendenza `vendite` → `magazzino` è verso l'interno; il verso inverso — `magazzino.fn_posta_reso` nello schema `magazzino`, che legge le tabelle di `vendite` — si sposta in `vendite`. [brief-db-magazzino-registro-anello-interno](../work-done/brief-db-magazzino-registro-anello-interno.md) — scritto lo stesso giorno: `vendite.fn_posta_reso` (`20261001-19`), la `magazzino.fn_posta_reso` ritirata in `90_end/20261001-24`, ⏳ da applicare |
+| 2026-10-01 | 🧭 **Il registro di magazzino è un servizio dell'anello 2** (Tid): la dipendenza `vendite` → `magazzino` è verso l'interno; il verso inverso — `magazzino.fn_posta_reso` nello schema `magazzino`, che legge le tabelle di `vendite` — si sposta in `vendite`. [brief-db-magazzino-registro-anello-interno](brief-db-magazzino-registro-anello-interno.md) — scritto lo stesso giorno: `vendite.fn_posta_reso` (`20261001-19`), la `magazzino.fn_posta_reso` ritirata in `90_end/20261001-24`, ⏳ da applicare |
 | 2026-09-29 | 📝 **Documentazione e pgTAP dei casi mancanti.** `manual/`: `vendite/resi` (magazzino di rientro, conferma che carica, annullo che storna, porta, presidio), `vendite/resi_righe` (righe solo in bozza, il dettaglio fisico nei rientri), `vendite/trgfn_resi_guard_transizione` (la porta), pagina nuova `vendite/resi_righe_rientri`; e il debito del Lotto 3: `magazzino/movimenti_attesi` (i verbi del blocco, l'app in sola lettura) e `magazzino/magazzini` (il predefinito, la regola «magazzino della sua azienda»). pgTAP nuovo `magazzino/test-reso-carico-kit-seriali-v1`: kit per componenti, seriale, ubicazione di rientro — 14/14 sullo scratch; la proporzione con resto resta dichiarata e non provata |
 | 2026-09-29 | ✅ **Applicato e verde** (Tid): `20260928-84 → -98` e `20260929-01 → -04` `EXECUTED` su dbdev, suite pgTAP col runner come app senza regressioni. Il lato DB del 3-bis è consegnato; restano R-1…R-5 a BE/FE, la CI da zero e il pgTAP di kit, seriale e ubicazione. ⭐ La lezione del giro, in memoria: una tabella nuova, un nuovo scrittore di stato, un motivo nuovo e un adottante nuovo di un BB accendono ciascuno un presidio trasversale diverso — si provano PRIMA dell'apply, non si scoprono dal runner |
 | 2026-09-29 | 🔴 **Runner di Tid**: `vendite/test-trgfn-doc-righe-lock-fuori-bozza-v1`, test 2 — l'elenco ESATTO degli adottanti del BB non conosceva il quarto, `vendite.resi_righe` (`20260929-01`, D-3b-h). È il presidio che fa il suo mestiere: aggiornato l'elenco atteso («i quattro adottanti»), 21/21 sullo scratch. ⚠️ Mancato al censimento di D-3b-h, che aveva cercato solo chi MODIFICA le righe dopo la conferma. Riverificato: nessun pgTAP inserisce righe in un reso già confermato (nove `INSERT` dopo una conferma, tutte su resi nuovi in bozza) |
@@ -518,3 +523,4 @@ prova il loader (celle vuote → token `NULL` e `nullValue: "NULL"`).
 | 2026-09-29 | ✅ **D-3b-h, Tid: A.** Le righe del reso si toccano solo in bozza: `20260929-01` monta il BB delle righe dei documenti su `resi_righe` (tipo `RESO`, già noto al lettore dal `20260928-86`). Test 25 nel pgTAP del carico; test 9 della vista delle righe effettive riscritto sul modello (la riga si spegne in bozza). Richiesta R-5 al backend |
 | 2026-09-28 (notte) | ✅ **Scritto, non applicato** (§4-bis): quindici changeSet `20260928-84 → -98`, seed, postura nelle tre sedi, un pgTAP nuovo e 22 aggiornati. Due scostamenti di metodo dichiarati: il BB estratto è la sola regola «magazzino dell'emittente» (l'immutabilità resta nei due guard), e il presidio è una **seconda vista** gemella, non una vista unica (P-3, P-13). 🔴 Rilievo di Tid: firme e `RETURNS TABLE` erano a tipi nudi, corretti con `%TYPE`. ✅ Prova pre-apply su `zeroerp_ci` (§4-ter). ⏸️ Emersa scrivendo **D-3b-h**: le righe di un reso confermato si possono ancora cambiare |
 | 2026-09-28 | ✅ **Tid accoglie le sette raccomandazioni** (D-3b-a → D-3b-g), compreso il permesso `conferma_reso` richiesto **sempre** (D-3b-f). Si scrivono i changeSet |
+| 2026-10-14 | ✅ **Chiuso e archiviato** (sessione BE, su richiesta di Tid). I residui (CI da zero, corsa col runner del pgTAP kit/seriali, R-1c nel suo brief) passano al §5 del [piano BE/FE](../work-in-progress/piano-be-fe-magazzino-lotto-3.md); il collaudo a video e' [collaudo-in-app-magazzino-bolla-e-reso](../work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md) |

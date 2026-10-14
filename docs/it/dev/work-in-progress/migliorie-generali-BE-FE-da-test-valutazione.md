@@ -71,6 +71,12 @@
 > ✅ **Riallineato il 2026-10-09**: **D2-b chiude** (§9) — `mypy` col plugin
 > Django in CI, a cricchetto. In §3 restano **D9-a, D10-bis, D12**. Lo
 > smaltimento del registro (lotti L2, L3+) vive nel piano, non qui.
+> ✅ **Riallineato il 2026-10-14**: **D9-a chiude** (§9, decisione di Tid) col
+> giro del 13-10 — il runner lancia anche i 35 smoke bash, e il **giro
+> notturno** (`smoke_notturno`, solo sviluppo) porta le regressioni nel digest
+> delle 7. Non è la CI che D9-a chiedeva: è una terza strada, e il perché sta
+> in §9. Con lei chiude **D10-bis**: la baseline degli smoke ha un lettore ogni
+> notte. In §3 resta **D12**. Corrette anche le date di D2-b scritte «10-08».
 
 ---
 
@@ -235,53 +241,32 @@ testa al suo file in `frontend/scripts/`, e la tabella dice solo cosa tiene.
 > ✅ **Le voci chiuse non stanno qui**: sono in **§9 «Attività svolte»**, con la
 > data e il rimando. La tabella dice riga per riga **che cosa resta in §3** e
 > **che cosa è passato in §9** — e quando una voce ha due facce il suo numero
-> compare in tutti e due i posti: `D9`, `D10` (`D7` fino al 26-09, `D1` e `D3` fino all'08-10, `D2` fino al 09-10).
+> compare in tutti e due i posti (`D7` fino al 26-09, `D1` e `D3` fino all'08-10, `D2` fino al 09-10, `D9` e `D10` fino al 14-10).
 > Le voci aperte, in ordine di ritorno, sono elencate anche in §8.
 
 |     | Difetto                                                                | Stato                                                                                           |
 | --- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | D1  | Il frontend non ha nessun cancello                                     | ✅ 09-09, D1-d-bis 23-09 e D1-f 08-10 — **in §9**                                                |
-| D2  | Backend senza analisi statica                                          | ✅ 09-09/10 e D2-b 10-08 (`mypy` in CI) — **in §9**                                          |
+| D2  | Backend senza analisi statica                                          | ✅ 09-09/10 e D2-b 08-10 (`mypy` in CI, registro a zero il 09-10) — **in §9**                |
 | D3  | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | ✅ D3-a 09-09, D3-c 28-09, D3-b 08-10 (`check --deploy` completo in CI) — **in §9** |
 | D4  | `hint` trasportato e mai reso a video                                  | ✅ 09-09 — **in §9**                                                                             |
 | D5  | `area_funzionale = "ai_assistant"` non a catalogo                      | ✅ 09-25 — **in §9**                                                                             |
 | D6  | Il `count` che è un'eco                                                | ✅ 09-10 — **in §9**                                                                             |
 | D7  | Endpoint senza consumatore                                             | ✅ decisione 09-11 e schermata 09-26 — **in §9**                                                 |
 | D8  | View sotto `KeepAlive` che caricano solo in `onMounted`                | ✅ 09-10 — **in §9**                                                                             |
-| D9  | Suite larga e poco profonda; smoke non lanciati                        | ✅ D9-b 09-11 — **in §9** · resta **D9-a**                                                       |
-| D10 | I registri di debito non hanno un verso                                | ✅ la parte con un cricchetto — **in §9** · resta **D10-bis** (la tabella qui sotto è lo stato)  |
+| D9  | Suite larga e poco profonda; smoke non lanciati                        | ✅ D9-b 09-11, D9-a 14-10 (giro notturno degli smoke) — **in §9**                                |
+| D10 | I registri di debito non hanno un verso                                | ✅ i cricchetti, D10-bis 08-10 e 14-10 — **in §9** (la tabella qui sotto resta lo stato)          |
 | D11 | Quattro app scheletro                                                  | ✅ deciso 09-11 — **in §9**                                                                      |
 | D12 | Portali costruiti a DB, senza porte                                    | 🟡 **cantiere dichiarato**                                                                       |
 | D13 | Job notturno rotto da quattro notti                                    | ✅ 09-09 · D13-bis 09-11 · D13-quater 09-26 — **in §9**                                          |
 | D14 | «Inviata» detto di una mail mai partita                                | ✅ 09-11 — **in §9**                                                                             |
 | D15 | `skip_area_check` è **muto** su 15 view; sei scrivono senza permesso   | ✅ 09-12, tutte e 15 — **in §9**                                                                 |
 
-### D9 — La suite è larga e poco profonda, e il livello profondo nessuno lo lancia — D9-b chiuso l'11-09 (§9), resta D9-a
+### D10 — I registri di debito: lo stato — tutti con un verso dal 2026-10-14 (§9)
 
-4.560 test in 33 secondi è una descrizione, non un vanto: 261 file di test su
-309 usano `unittest.mock` (6.578 fra `patch(` e `MagicMock`). È il livello
-giusto per validazione, dedup e not-found, non una copertura d'integrazione.
-
-⭐ Il livello che attraversa la giuntura esiste e cresce da solo: **22 file** con
-`richiedi_db_provvisto` (rimisurato l'11-09; erano 19 il 09-09; **82** il
-2026-09-28; **96** il 2026-10-04; **104** il 2026-10-08), accesi in CI da `ZEROERP_TEST_DB_E2E=1`, registrati in `api.md`
-§Test dal 09-09.
-
-**Aperto — D9-a**: gli smoke Python di `backend/scripts/tests/` (sedici al
-09-09, **diciassette** al 28-09 con quello dell'inventario di magazzino) non li
-lancia niente. Sono isolati in transazione con rollback e il registro
-`baseline-smoke.tsv` ha **due** righe — ma ⛔ **in CI non si possono mettere
-così**: cercano i soggetti nei dati esistenti e su un DB ricostruito da zero
-uscirebbero quasi tutti `SENZA_MATERIA`, cioè un cancello verde per
-sottrazione. Prima serve che si fabbrichino i soggetti (o un DB di CI popolato),
-e va corretto lo smoke che esce `0` su «ESITO: FALLITO».
-⚠️ Resta vera la dipendenza implicita documentata in `AGENTS.md`: **nessun test
-dichiara un database**, quindi i file di `tests/db/` trovano lo schema Liquibase
-completo. Il primo che dichiarerà `databases = [...]` li romperà tutti.
-
-### D10 — I registri di debito non hanno un verso — i cricchetti ci sono (§9), resta D10-bis
-
-Un registro è una buona invenzione **a condizione che scenda**. Stato:
+Un registro è una buona invenzione **a condizione che scenda**. La voce è
+chiusa (§9); la tabella resta qui perché è lo **stato** dei registri, e si
+rilegge a ogni riallineamento:
 
 | Registro                               | Valore                      | Il suo verso                                                                                                                                                                                                                                                         |
 | -------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -291,12 +276,11 @@ Un registro è una buona invenzione **a condizione che scenda**. Stato:
 | …di cui senza commento di motivazione  | **9**, 08-10; erano 11 il 29-09 e il 04-10, 12 il 28-09, 33 prima | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import). Otto delle 9 sono **decisioni di Tid aperte** ([brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md) §5); le righe di `FatturaDrawer` sono uscite il 29-09 col lotto C del [brief righe documento](../work-done/brief-db-liste-righe-documento.md) (con `ArticoloBomDrawer` fra le grezze), e `ContrattoRigheDrawer` il 04-10 alla chiusura dello stesso brief. Il 05-10 `OffertaEccezioniDrawer` è diventata `OffertaRigheDrawer` ([brief righe esclusione](brief-db-righe-esclusione-solo-non-si-vende.md)), e il 06-10 `PermessiRiepilogoView` è stata ritirata: il riepilogo è un interruttore della lista operatori ([brief riepilogo permessi](../work-done/brief-db-riepilogo-permessi-lista-operatori.md)). Gli step di `PraticaFlussiTab` sono Gruppo B per il piano e manca solo il commento |
 | Filtri di lista scritti a mano         | **0** su tre voci, dal 09-23 | ✅ cricchetto `check-filtri-lista.mjs` + `filtri-lista.baseline.json` (blocchi grezzi, larghezze inline, coppie di date a mano)                                                                                                                                        |
 | File tracciati senza header di licenza | 1.169 su 5.787 (09-10)      | ✅ cala davvero (erano 2.042 il 08-26); l'hook guarda i soli file aggiunti, per scelta                                                                                                                                                                                |
-| `baseline-smoke.tsv`                   | 2 su 16                     | ⛔ nessun verso: vive o muore con D9-a                                                                                                                                                                                                                                |
+| `baseline-smoke.tsv`                   | **7** su 52 (14-10: 17 Python + 35 bash); erano 2 su 16 Python il 09-09 | ✅ **letto ogni notte dal 2026-10-13** (D9-a, §9): `smoke-baseline.sh` nel giro `smoke_notturno`; un non-verde nuovo è una corsa `ok=false` nel digest delle 7. Un rientrato è segnalato (`RIENTRATO`), non rosso: il verso in discesa resta a chi legge il riepilogo |
 | `skip_area_check = True`               | 73 view (09-12); 78 (08-10) | ✅ **presidio dal 09-12** (D15): chi **scrive** con lo skip dichiara un `<metodo>_permission` o sta in un registro motivato; le 15 **mute** sono un registro a cricchetto. ✅ Le **letture** lette una per una il 2026-10-08 (D10-bis, §9) |
 
-**Aperto — D10-bis**: resta la sola baseline degli smoke, che dipende da D9-a.
-✅ La lettura delle letture cross-dominio con lo skip è **fatta il 2026-10-08**
-(§9): un difetto vero, chiuso.
+✅ **D10-bis chiusa**: le letture cross-dominio con lo skip il 2026-10-08, la
+baseline degli smoke il 2026-10-14 con D9-a (§9).
 
 ⚠️ **Le `DataTable` grezze non sono in D10-bis**: il registro ha un verso e
 cala, e ciò che lo tiene sopra zero sono quasi solo decisioni, non letture.
@@ -359,7 +343,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | Area                                    | Peso    | Voto       | Cosa regge il voto                                                                                                                                                                                                     |
 | --------------------------------------- | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Catena di verifica — frontend**       | 🔴 alto  | **7/10**   | Cancello in CI dal 09-09 (§2.1), test di componente dal 23-09 (D1-d-bis). `npm audit` dal 08-10 (D1-f)                                                                                                                      |
-| **Analisi statica — backend**           | 🔴 alto  | **6,5/10** | `ruff` a registro zero dal 09-09 (§2.2). `mypy` a cricchetto dal 10-08 (D2-b): voto da rivedere                                                                                                                                                  |
+| **Analisi statica — backend**           | 🔴 alto  | **6,5/10** | `ruff` a registro zero dal 09-09 (§2.2). `mypy` a cricchetto dall'08-10, registro a zero dal 09-10 (D2-b): voto da rivedere                                                                                                                                                  |
 | **Catena di verifica — backend**        | 🔴 alto  | **8/10**   | Cancello duro, 4.560 test verdi, sette guardrail, `plpgsql_check`. Manca la profondità (D9); `check --deploy` completo in CI dal 08-10 (D3-b)                                                                                                |
 | **Contratto API pubblicato**            | 🟠 medio | **9/10**   | `securitySchemes` e `security:` su 815 operazioni (D3-a). `W002` e collisioni a zero con cricchetto per nome, schemi dei corpi letti dal contratto del service (26-09: era 7, fermo su quei due registri). `check --deploy` completo in CI dal 08-10 (D3-b): voto da rivedere |
 | **Contratto d'errore — lato backend**   | 🟠 medio | **9/10**   | 763 codici vivi, zero senza ripiego, zero orfani (§2.3)                                                                                                                                                                |
@@ -369,7 +353,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Simmetria del dominio**               | 🟠 medio | **non votata** (04-10) | Che `acquisti` e `magazzino` abbiano BE e FE indietro rispetto al DB è l'**ordine di costruzione** scelto, non un difetto (§4). Il voto 4/10 dato fino al 04-10 misurava il calendario. Ciò che si presidia è la regola: *ogni decisione presa su `vendite` vale anche per `acquisti`* |
 | **Building block — frontend**           | 🟡 basso | **9/10**   | Un solo punto HTTP (presidiato anche nei componenti dal 26-09), `bersagli`, contratto KeepAlive presidiato (D8), 13 guard. `DataTable` grezze 45 → 33 → 31 → 30 → **28** e senza motivo 33 → 12 → 11 → **9** (28-09 → 08-10): le rimaste aspettano una decisione di Tid (voto rivisto il 28-09; era 8,5) |
 | **Multilingua**                         | 🟡 basso | **9/10**   | Parità perfetta e guard in CI. Il catalogo a monte è monolingue (§2.6)                                                                                                                                                 |
-| **Gestione del debito**                 | 🟡 basso | **8/10**   | Registri con cancello o cricchetto (D10), e quello delle `DataTable` è sceso davvero il 26-28/09. Senza verso: le letture cross-dominio con `skip_area_check` e la baseline smoke                                        |
+| **Gestione del debito**                 | 🟡 basso | **8/10**   | Registri con cancello o cricchetto (D10), e quello delle `DataTable` è sceso davvero il 26-28/09. Dal 14-10 nessun registro è senza verso: le letture con `skip_area_check` lette l'08-10, la baseline smoke letta ogni notte (D9-a)                                        |
 | **Documentazione di contesto**          | 🟡 basso | **9/10**   | Sette righe su sette chiuse (§1)                                                                                                                                                                                       |
 
 ### Il giudizio, al 2026-09-12 (elenco degli aperti riallineato al 04-10)
@@ -382,8 +366,9 @@ backend senza nessuna analisi statica — erano economiche e sono chiuse.
 
 ⚠️ **La frase sulla «production-readiness» non cambia**: un cancello di build
 prova che il codice si compila, non che faccia la cosa giusta. Resta aperto ciò
-che è **cantiere** e non configurazione — la profondità della suite backend e
-gli smoke in CI (D9-a) — più ciò che aspetta una decisione (D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
+che è **cantiere** e non configurazione: la profondità della suite backend
+(gli smoke girano ogni notte dal 13-10, ma sul DB di sviluppo e non in CI: D9-a,
+§9) e i portali (D12). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
 
 ### Lezioni di metodo, in quattro righe
 
@@ -465,8 +450,9 @@ gli smoke in CI (D9-a) — più ciò che aspetta una decisione (D10-bis). E il p
       L'outbox resta sotto `config` e vive nel piano (§2.3 passo 5).
 * [x] **D8** — ✅ 2026-09-10: tre view, otto store, guard `check-keepalive-onactivated.mjs`.
 * [x] **D8-bis** — ✅ 2026-09-10: dati compagni in `onActivated`, con `force`.
-* [ ] **D9-a** — gli smoke in CI: prima insegnargli a fabbricarsi i soggetti, e
-      correggere lo smoke che esce `0` su «ESITO: FALLITO».
+* [x] **D9-a** — ✅ 2026-10-14 (Tid): non in CI ma **ogni notte** sul DB di
+      sviluppo — runner su tutti e 52 gli smoke, giro `smoke_notturno`, esito
+      nel digest delle 7 (§9).
 * [x] **D9-b** — ✅ 2026-09-11: `AGENTS.md` prescrive `SimpleTestCase` e dice perché.
 
 ### 🟡 Ordine e verità dei documenti
@@ -478,9 +464,9 @@ gli smoke in CI (D9-a) — più ciò che aspetta una decisione (D10-bis). E il p
       33 → 12; il 29-09 → **31** e **11** col lotto C delle righe documento,
       il 04-10 → **30** alla chiusura di quel brief; l'08-10 → **28** e **9**.
       Le rimaste aspettano decisioni di Tid (§3 D10).
-* [~] **D10-bis** — ✅ 2026-10-08: le 52 letture con lo skip lette una per una,
+* [x] **D10-bis** — ✅ 2026-10-08: le 52 letture con lo skip lette una per una,
       i due restore per id fuori scope chiusi, BB «se stesso o amministratore»
-      (§9). Resta la baseline degli smoke (con D9-a).
+      (§9). ✅ 2026-10-14: la baseline degli smoke, con D9-a.
 * [x] **D11** — ✅ 2026-09-11: `acquisti`/`magazzino` prossimo cantiere, in `PROJECT_CONTEXT.md`.
 * [x] **§1-a/b/c/d** — ✅ 2026-09-09 (stack tolto, app complete, `ui_action` e
       §Test) e 2026-09-11 (§1-d con D9-b). ⚠️ Resta aperto l'ingresso di
@@ -557,13 +543,14 @@ gli smoke in CI (D9-a) — più ciò che aspetta una decisione (D10-bis). E il p
 
 | #   | Cosa                                               | Perché sta qui                                                                                      |
 | --- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| —   | *nessuna*: le voci aperte che restano sono cantieri (qui sotto) o il cantiere dei portali (D12) | D2-b chiusa il 10-08 (§9)                                                                           |
+| —   | *nessuna*: le voci aperte che restano sono cantieri (qui sotto) o il cantiere dei portali (D12) | D2-b chiusa l'08-10, D9-a e D10-bis il 14-10 (§9)                                                                           |
 
 ### ⛔ Sembrano facili e non lo sono — sono cantieri veri
 
-* **Smoke in CI (D9-a).** Tutti e diciassette cercano i soggetti nei dati esistenti:
-  su un DB di CI ricostruito da zero il cancello nascerebbe verde per
-  sottrazione. Prima devono fabbricarsi i soggetti.
+* **Smoke in CI.** D9-a è chiusa col giro notturno (§9), non con la CI: gli
+  smoke cercano ancora i soggetti nei dati esistenti, e su un DB di CI
+  ricostruito da zero il cancello nascerebbe verde per sottrazione. Portarli
+  in CI resta possibile solo dopo che si fabbricano i soggetti.
 * **`acquisti` / `magazzino` (D11).** Il cantiere è aperto (stato in
   `PROJECT_CONTEXT.md`): `magazzino` avanza a lotti, `acquisti` ha il solo
   modello. È un cantiere, non un difetto (§4).
@@ -749,6 +736,50 @@ avveniva mai (ora `useSearchTable` **avvisa in DEV** quando manca). Presidio:
 `check-keepalive-onactivated.mjs` (§2.7). Regola operativa: il caricamento va nel
 **solo** `onActivated` — *si sostituisce, non si aggiunge*.
 
+### ✅ D9-a — Gli smoke girano ogni notte — 2026-10-14
+
+Il difetto: gli smoke di `backend/scripts/tests/` non li lanciava niente. E i
+bash nemmeno il runner, che prendeva i soli `.py`: al primo giro completo, il
+2026-10-12, erano rossi più della metà, da settimane.
+
+✅ **Il giro del 2026-10-13** (`b3e35f899`, `10ee0c897`, `f6f446402`):
+
+* `scripts/smoke-baseline.sh` lancia **tutte e due le famiglie** — 17 `.py`
+  in transazione con rollback, 35 bash via HTTP che **scrivono** documenti di
+  prova sull'emittente attivo dell'utente `smoke`. Un login solo per il giro,
+  attesa e un nuovo tentativo sul `429`, chi non si può lanciare è stampato fra
+  gli esclusi, uno smoke con dei `SKIP` è `PARZIALE`. Il codice di uscita non
+  conta: si classifica dall'**output** (è così che si prende anche lo smoke che
+  esce `0` su «ESITO: FALLITO»). Escluso `smoke-c9`, l'unico senza rollback.
+* I bash che creano un documento prendono il cliente da tre helper
+  (`_smoke_cliente.sh`, `_smoke_documenti.sh`, `_smoke_pratiche.sh`) invece di
+  copiare lo stesso blocco con un id cablato.
+* **Il giro notturno**: management command `smoke_notturno`, timer
+  `zeroerp-smoke-notturno` (02:30, `sveglie.json`), processo `smoke_notturno`
+  (riga 47 di `dbops.processi`). Con regressioni la corsa chiude `ok=false` e
+  `maintenance.vw_job_run_da_guardare` la porta nel digest delle 7.
+  ⛔ **Solo sviluppo**, con tre difese: sveglia spenta di default, nessun
+  «Esegui ora», e il comando rifiuta di partire senza
+  `SMOKE_NOTTURNO_CONSENTITO=1`.
+* Ritirato `smoke-test-pratica-preventivi-conferma.sh` (`b3cdfa34e`).
+
+⭐ **Perché chiude anche senza CI** (chiusura decisa da Tid il 2026-10-14). D9-a prevedeva due
+strade per la CI: soggetti fabbricati, o un DB di CI popolato. Il giro notturno
+è una terza strada: gli smoke girano **dove i dati ci sono**, e il difetto —
+*nessuno li lancia* — non esiste più. Resta vero ciò che la CI avrebbe dato in
+più, ed è dichiarato in §8: un cancello **prima** del merge, e un giro che non
+dipende dallo stato del DB di sviluppo. La baseline è **7 su 52** (§3 D10):
+registro di debito, non lista di eccezioni.
+
+⚠️ Resta vera la dipendenza implicita documentata in `AGENTS.md`: **nessun test
+dichiara un database**, quindi i file di `tests/db/` trovano lo schema Liquibase
+completo. Il primo che dichiarerà `databases = [...]` li romperà tutti.
+⚠️ E resta vero il fatto da cui D9 partiva: la suite Django è quasi tutta
+mockata (il 09-09: 261 file di test su 309 con `unittest.mock`). Il livello che
+attraversa la giuntura cresce — i file con `richiedi_db_provvisto` erano 19 il
+09-09 e sono **123** il 2026-10-14, accesi in CI da `ZEROERP_TEST_DB_E2E=1` —
+ma quella è la profondità, non un difetto con una chiusura.
+
 ### ✅ D9-b — `SimpleTestCase` è la regola, e si sa perché — 2026-09-11
 
 `AGENTS.md` §Regole test prescrive l'unica classe che **impedisce** l'accesso al
@@ -766,9 +797,9 @@ Cinque dei registri di §3 hanno un **cricchetto** dal 09-10: `oxlint` **0** e
 standard, di cui **33** senza motivazione) con `check-datatable-baseline.mjs`
 che **elenca i file** ed è rosso **anche se cala** senza riscrivere il registro,
 gli header di licenza che calano davvero (2.042 → **1.169**), e gli
-`skip_area_check` con il presidio di D15. Restano senza verso la baseline degli
-smoke (vive o muore con D9-a) e la lettura cross-dominio (D10-bis, fatta il
-2026-10-08: §9).
+`skip_area_check` con il presidio di D15. Restavano senza verso la lettura
+cross-dominio (D10-bis, fatta il 2026-10-08) e la baseline degli smoke (letta
+ogni notte dal 2026-10-14, con D9-a): §9.
 
 ✅ **Il registro delle `DataTable` cala davvero — 2026-09-26 → 28.** Decisione
 di Tid (26-09): *«correggere le DataTable grezze»*. I 44 file sono stati
@@ -900,7 +931,9 @@ i difetti aperti, le attività svolte stanno in §9 — con lo stesso numero in
 entrambe le sezioni quando una voce ha due facce. **Riallineato il 2026-09-26**
 (D1-d-bis, D5, D7, D13-quater e metà di D3-b in §9) e il **2026-09-28** (il
 registro delle `DataTable` in D10, i numeri di §2 e D9, il rimando di D2-b) e
-il **2026-10-04** (D3-c in §9, brief righe documento chiuso, numeri datati). Lo
+il **2026-10-04** (D3-c in §9, brief righe documento chiuso, numeri datati), il
+**2026-10-08** e **09-10** (D1-f, D3-b, D10-bis, D2-b) e il **2026-10-14** (D9-a
+e con lei D10-bis). Lo
 strato DB è valutato
 separatamente in
 [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).*
