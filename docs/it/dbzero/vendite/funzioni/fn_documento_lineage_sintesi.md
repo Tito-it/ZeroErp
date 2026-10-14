@@ -69,12 +69,34 @@ BEGIN
           FROM (SELECT DISTINCT (s->>'t')::bigint AS t, s->>'u' AS u
                   FROM jsonb_array_elements(v_stati) s) q;
 
+        -- ⭐ rev 2026-10-13 (D-15 di Tid): un arco col LEGAME RITIRATO non e'
+        --    una destinazione e non e' una sorgente (vendite.fn_documento_
+        --    lineage_legami). Il filtro sta qui, alla lettura degli archi del
+        --    livello, quindi vale per tutto cio' che ne discende: cammino,
+        --    frontiera, discendenti, transitato, sorgenti e radice. Un arco non
+        --    censito (NULL) resta, come prima. Il pannello «Passaggi»
+        --    (fn_documento_lineage) lo mostra ancora, come storia.
+        WITH a AS MATERIALIZED (
+            SELECT * FROM vendite.fn_documento_lineage_archi(v_tipi, v_uids)
+        ), ag AS (
+            -- UNA SELECT: le cinque aggregazioni vedono le righe nello stesso ordine.
+            SELECT array_agg(a.arco) AS x, array_agg(a.from_tipo_id) AS ft,
+                   array_agg(a.from_uid) AS fu, array_agg(a.to_tipo_id) AS tt,
+                   array_agg(a.to_uid) AS tu
+              FROM a
+        ), lg AS MATERIALIZED (
+            SELECT g.* FROM ag, vendite.fn_documento_lineage_legami(ag.x, ag.ft, ag.fu, ag.tt, ag.tu) g
+        )
         SELECT coalesce(jsonb_agg(jsonb_build_object(
                    'from_t', a.from_tipo_id, 'from_u', a.from_uid,
                    'to_t', a.to_tipo_id, 'to_u', a.to_uid,
                    'ruolo', a.ruolo, 'inv', a.is_ramo_inverso, 'rango', a.rango_origine)), '[]'::jsonb)
           INTO v_archi
-          FROM vendite.fn_documento_lineage_archi(v_tipi, v_uids) a;
+          FROM a
+          LEFT JOIN lg ON lg.arco = a.arco
+                      AND lg.from_tipo_id = a.from_tipo_id AND lg.from_uid = a.from_uid
+                      AND lg.to_tipo_id   = a.to_tipo_id   AND lg.to_uid   = a.to_uid
+         WHERE lg.is_legame_ritirato IS NOT TRUE;
 
         -- Al primo livello il seme e' esattamente l'insieme dei nodi chiesti:
         -- gli archi ENTRANTI non di ritorno sono le loro sorgenti.
@@ -204,7 +226,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_documento_lineage_sintesi(p_tipo_ids bigint[], p_uids text[])
-IS 'La SINTESI della lineage — pratica, frontiera, discendenti diretti e attivi, sorgenti e radice, natura — per i soli documenti del seme (la pagina di una lista, il drawer di un documento), con le colonne e l''ordine che erano di vw_documento_lineage. Seme = chiave del nodo (tipo_id, uid::text) in due array paralleli, OBBLIGATORIO (NULL solleva E_ERRORE_PARAMETRI). Costruita un livello alla volta da vendite.fn_documento_lineage_archi e decorata una volta da vendite.fn_documento_lineage_nodi: il costo segue il seme, non il grafo. Cammino in avanti senza rami di ritorno, per percorsi, 10 livelli; frontiera = attivo, poi livello, poi pipeline_rank; sorgenti dagli archi entranti, radice per ROOT, rango, uid; pratica da pratiche.fn_pratica_del_documento. Sede UNICA della regola: la vista vw_documento_lineage e'' ritirata (20261011-98). STABLE, INVOKER: la RLS resta di chi legge.';
+IS '⭐ rev 2026-10-13 (20261013-71, D-15 di Tid): un arco col LEGAME RITIRATO (vendite.fn_documento_lineage_legami) non e'' una destinazione ne'' una sorgente: si scarta alla lettura degli archi di ogni livello, quindi non conta per cammino, frontiera, discendenti, transitato, sorgenti e radice. Un arco non censito (NULL) resta. Il pannello «Passaggi» lo mostra ancora, come storia. La SINTESI della lineage — pratica, frontiera, discendenti diretti e attivi, sorgenti e radice, natura — per i soli documenti del seme (la pagina di una lista, il drawer di un documento), con le colonne e l''ordine che erano di vw_documento_lineage. Seme = chiave del nodo (tipo_id, uid::text) in due array paralleli, OBBLIGATORIO (NULL solleva E_ERRORE_PARAMETRI). Costruita un livello alla volta da vendite.fn_documento_lineage_archi e decorata una volta da vendite.fn_documento_lineage_nodi: il costo segue il seme, non il grafo. Cammino in avanti senza rami di ritorno, per percorsi, 10 livelli; frontiera = attivo, poi livello, poi pipeline_rank; sorgenti dagli archi entranti, radice per ROOT, rango, uid; pratica da pratiche.fn_pratica_del_documento. Sede UNICA della regola: la vista vw_documento_lineage e'' ritirata (20261011-98). STABLE, INVOKER: la RLS resta di chi legge.';
 ```
 
 ---
