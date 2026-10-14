@@ -13,7 +13,7 @@
 
 **Decisioni aperte di Tid: nessuna** (2026-10-14: la lettura della scheda nei form-defaults, i due
 parametri nel drawer del contratto, l'offerta come terzo consumatore del BB della coppia; §8.6.1).
-**Da committare:** il giro BE/FE del §8.6 (`dev/backend-tid`) e questo documento.
+✅ **Committato** il giro BE/FE del §8.6 con questo documento (`cf89dfbc5`, `dev/backend-tid`, 2026-10-14). Niente da committare.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-10. **A chi:** team DB; poi BE/FE (§6).
 > **Origine:** §12.3 di [brief-db-esecutivi-ba-coppia](../work-done/brief-db-esecutivi-ba-coppia.md).
