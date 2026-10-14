@@ -10,6 +10,8 @@ CREATE PROCEDURE proc_automations_lock_columns_job()
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_automations_lock_columns_job()
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
 AS $procedure$
   BEGIN
     -- rev 20260923-46: anche il guard delle date di validita'

@@ -9,6 +9,8 @@ CREATE PROCEDURE proc_accoda_chiusura_scadenze_job()
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job()
  LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
 AS $procedure$
 BEGIN
     -- ⚠️ `p_jobname` e' il CODICE DEL PROCESSO: e' cosi' che

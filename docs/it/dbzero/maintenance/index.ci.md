@@ -4,8 +4,10 @@
 - [job_run_log](manual/job_run_log.md) — (latest review 18-06-2026) La tabella `maintenance.job_run_log` memorizza i log di esecuzione dei job schedulati o lanciati manualmente all’interno del sistema Zero ERP. Ogni riga rappresenta una singola esecuzione di un job, includendo informazioni di stato, tempi di inizio/fine, eventuali errori e dettagli di esecuzione.
 
 ## ⚙️ Funzioni (manuale)
+- [fn_analyze_statistiche](manual/fn_analyze_statistiche.md) — (latest review 14-10-2026)
 - [fn_job_run_log_failure](manual/fn_job_run_log_failure.md) — (latest review 05-09-2026)
 - [fn_run_and_log](manual/fn_run_and_log.md) — (latest review 07-01-26) `maintenance.fn_run_and_log` esegue in modo sicuro uno *statement* SQL arbitrario e ne registra l’esecuzione su `maintenance.job_run_log`, gestendo in modo opzionale un **lock consulente** (advisory lock) per prevenire esecuzioni sovrapposte dello stesso job/step.
+- [proc_analyze_statistiche_job](manual/proc_analyze_statistiche_job.md) — (latest review 14-10-2026)
 - [proc_apply_fk_index_policy_job](manual/proc_apply_fk_index_policy_job.md) — (latest review 16-01-26) * **Eseguire in modo schedulato** l’applicazione della **policy indici FK** incapsulando la chiamata a `dbops.apply_fk_index_policy()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
 - [proc_apply_storicizza_defaults](manual/proc_apply_storicizza_defaults.md) — (latest review 05-09-2026)
 - [proc_apply_storicizza_defaults_job](manual/proc_apply_storicizza_defaults_job.md) — (latest review 07-01-26) * **Eseguire in modo schedulato** l’applicazione delle **impostazioni di storicizzazione di default** sull’intero database, incapsulando la chiamata a `maintenance.proc_apply_storicizza_defaults()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.
@@ -25,3 +27,7 @@
 
 ## 🔍 Views (manuale)
 - [vw_job_run_da_guardare](manual/vw_job_run_da_guardare.md) — (latest review 05-09-2026)
+- [vw_statistiche_mancanti](manual/vw_statistiche_mancanti.md) — (latest review 14-10-2026)
+
+## ⏰ Job pgAgent
+- [I job pgAgent](job_pgagent.md) — quali lavori a orario esistono, quando partono e che cosa chiamano
