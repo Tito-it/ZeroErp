@@ -1,19 +1,19 @@
 # Brief DB — Gli indirizzi del documento seguono il cliente
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-12
+## ⏭️ Chi riparte — aggiornato al 2026-10-14
 
-**Riparte: Tid (collaudo) e BE/FE (§8.4.6, §8.3), in parallelo. Il lato DB e' chiuso: applicato e verde.**
+**Riparte: Tid (collaudo, §8.5 e §8.6.4) e il team DB (§8.7), in parallelo. Il giro BE/FE del §8.3 e del §8.4.6 e' fatto e verde.**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | **Tid** | Collaudo in-app del giro BE/FE (slot di default alla creazione, cambio di cliente in bozza su DDT, preventivo e offerta). Il backend di sviluppo è già ricaricato | §8.5 | niente |
-| 2 | **BE/FE** | Ricaduta della scheda di fornitura (R-BE-4 … R-BE-7, R-FE-3, R-FE-4) e cambio di cliente del contratto in bozza, col BB della coppia BA/istanza e il ritiro della copia del preventivo. ⛔ R-BE-4 nello stesso giro dell'apply (CI) | §8.4.6, §8.3 | niente |
-| 3 | **Tid** | Archiviazione in `work-done/` | — | i punti 1 e 2 |
+| 1 | **Tid** | Collaudo in-app: slot di default alla creazione, cambio di cliente in bozza su DDT, preventivo e offerta (§8.5); poi la scheda precompilata in creazione e il cambio di cliente del contratto (§8.6.4). Il backend di sviluppo è ricaricato | §8.5, §8.6.4 | niente |
+| 2 | **team DB** | Emittente e utility fermi in modifica su offerta, contratto e preventivo: capability e guard | §8.7 | niente |
+| 3 | **BE/FE** | Il ritiro dei due campi dalla modifica dell'offerta, dopo la consegna DB | §8.7.3 | 2 |
+| 4 | **Tid** | Archiviazione in `work-done/` | — | 1, 3 |
 
-1 e 2 vanno in parallelo. **Decisioni aperte di Tid: nessuna** (D-5 … D-7 decise il
-2026-10-12, §8.4.3-8.4.4). Il giro BE/FE del §8.2 e' committato e mergiato (`842c9b142`);
-⚠️ il giro DB del §8.4.5 (`20261012-34` … `-42`, CSV, pgTAP, manual) e' applicato e verde ma
-**non ancora committato** (`dev/db-tid`).
+**Decisioni aperte di Tid: nessuna** (2026-10-14: la lettura della scheda nei form-defaults, i due
+parametri nel drawer del contratto, l'offerta come terzo consumatore del BB della coppia; §8.6.1).
+**Da committare:** il giro BE/FE del §8.6 (`dev/backend-tid`) e questo documento.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-10. **A chi:** team DB; poi BE/FE (§6).
 > **Origine:** §12.3 di [brief-db-esecutivi-ba-coppia](../work-done/brief-db-esecutivi-ba-coppia.md).
@@ -24,7 +24,8 @@
 > (2026-10-12, §8): R-BE-1 … R-FE-2. ✅ **La scheda di fornitura segue il cliente** (§8.4): lato DB
 > applicato e verde il 2026-10-12 (`20261012-34` … `-42`, pgTAP verdi nella corsa di Tid). ⏳ Restano il
 > collaudo in-app di Tid (§8.5), la ricaduta BE/FE del §8.4.6 e il cambio di cliente del **contratto** in
-> bozza (§8.3).
+> bozza (§8.3). ✅ **§8.3 e §8.4.6 fatti il 2026-10-14** (§8.6). ⏳ Restano il collaudo e la richiesta DB
+> del §8.7.
 > **Nel registro dei difetti DB:** voce **D27** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -317,7 +318,7 @@ degli indirizzi e quindi dal guard d'origine, sono verdi prima e dopo. La confer
 | **R-BE-3** | `get_soggetto_ruolo_documento`, `get_ancora_indirizzi_documento` e `resolve_indirizzo_documento` non avevano altri utilizzatori: ritirati, con gli attributi `_indirizzi_documento_table`, `_indirizzi_doc_sr_column`, `_indirizzi_doc_istanza_column`. Il cliente del documento lo legge il DB (`script.fn_get_cliente_testata_documento`). Lo smoke `smoke-indirizzi-documento-catena.py` interroga la catena con l'SQL |
 | **R-FE-2** | `DocumentoIndirizziSection` osserva l'identita' del cliente che il drawer le passa dal `detail` salvato (`soggettoRuoloId`, `istanzaUtilityId`): se un cliente c'era e cambia, ricarica. Da vuota a valorizzata (apertura, cambio di documento) no: carica gia' il watch su `docId`. Vale per i cinque drawer senza toccarli |
 
-### 8.3 ⏳ Il cambio di cliente del contratto in bozza (B-1) — sbloccato (§8.4.5)
+### 8.3 ✅ Il cambio di cliente del contratto in bozza (B-1) — fatto il 2026-10-14 (§8.6)
 
 * **Regola del 2 — ✅ ok di Tid (2026-10-12).** Il preventivo risolve il
   cliente per coppia BA/istanza in `preventivi_service._risolvi_cliente_preventivo`
@@ -488,7 +489,7 @@ trigger e' sparito: un record precontrattuale per coppia
 | **R-FE-3** | FE | Condizione di Tid su D-7: in **creazione** di contratto e offerta, scelti BA/istanza, il drawer **precompila** la scheda di fornitura da R-BE-5 e l'operatore la vede e la corregge. Il contratto ora si crea anche su un contatore con dati precontrattuali e la scheda compilata (prima: «Questo contratto ha gia' una riga utility associata») |
 | **R-BE-6** | BE | ⚠️ `offerte_service.aggiorna_offerta` aggiorna la testata e **poi** fa l'upsert della scheda (`_upsert_utility_inline`) nella stessa richiesta. Se la richiesta cambia la coppia, il trigger ha appena rifatto la scheda dal contatore nuovo e l'upsert ci scriverebbe sopra i valori del form, cioe' quelli del contatore di prima: D-5 svanirebbe in silenzio. Con un cambio di coppia la scheda del payload non si applica (o il FE non la manda). Lo stesso vale per il contratto quando il §8.3 apre il cambio di cliente |
 | **R-FE-4** | FE | Dopo il salvataggio di un cambio di cliente in bozza (offerta; contratto col §8.3) la sezione della scheda di fornitura si **ricarica**, come gli indirizzi (R-FE-2) |
-| ↳ *stato* | — | ✅ **Offerta, R-BE-6 e R-FE-4 fatti il 2026-10-13** (sessione BE, giro C2 di [piano-be-fe-magazzino-lotto-3](piano-be-fe-magazzino-lotto-3.md)): il cliente dell'offerta si cambia in bozza, `aggiorna_offerta` non applica la scheda del payload quando la coppia cambia, il form non la manda e rilegge il dettaglio. Restano R-BE-5, R-FE-3 e, per il contratto, R-BE-7 col §8.3 |
+| ↳ *stato* | — | ✅ **Offerta, R-BE-6 e R-FE-4 fatti il 2026-10-13** (sessione BE, giro C2 di [piano-be-fe-magazzino-lotto-3](piano-be-fe-magazzino-lotto-3.md)): il cliente dell'offerta si cambia in bozza, `aggiorna_offerta` non applica la scheda del payload quando la coppia cambia, il form non la manda e rilegge il dettaglio. ✅ **R-BE-4 c'era gia'** (policy e ripiego dei due codici). ✅ **R-BE-5, R-FE-3 e R-BE-7 fatti il 2026-10-14** (§8.6) |
 | **R-BE-7** | BE | Il §8.3 non e' piu' bloccato: il cambio di cliente del contratto lascia al DB la scheda di fornitura (la rifa' il trigger) |
 
 ### 8.5 Prove
@@ -529,3 +530,92 @@ trigger e' sparito: un record precontrattuale per coppia
   una consegna scritta a mano resta; un preventivo e un'offerta che cambiano
   cliente fanno lo stesso; il DDT da ordine e la riconsegna tengono la consegna
   della sorgente.
+
+### 8.6 Giro BE/FE del 2026-10-14 (sessione BE, `dev/backend-tid`)
+
+#### 8.6.1 Decisioni di Tid (2026-10-14)
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| **E-1** | R-BE-5: un endpoint nuovo, o i form-defaults di contratto e offerta, che dal BA ricavano gia' istanza e utility e che il drawer chiama al cambio di BA (`useBaFormDefaults`)? | ✅ **I form-defaults**: la scheda e' un default che dipende dal cliente. Nessun endpoint e nessun watcher nuovi |
+| **E-2** | Il drawer del contratto mostrava solo tipo e classe; i due parametri della scheda no (l'offerta si'). La condizione di D-7 vuole che l'operatore veda cio' che l'anagrafica scrive | ✅ **I due parametri anche sul contratto**, come sull'offerta |
+| **E-3** | L'offerta cambiava cliente senza risolutore (la coppia andava al DB com'era, e la fermava la FK composta), e in modifica lasciava cambiare emittente e utility, che preventivo e contratto fermano (B-4) | ✅ **Terzo consumatore del BB**; emittente e utility fermi anche sull'offerta. ⚠️ Quest'ultima e' una regola di dominio: la scrive il DB (§8.7), il BE/FE la legge dopo |
+
+#### 8.6.2 Cosa e' stato fatto
+
+| # | Che cosa |
+| --- | --- |
+| **BB** | `apps/vendite/services/_cliente_coppia_documento.py` (regola del 2): `risolvi_cliente_coppia` — il cliente letto dal lato che il payload porta, codici e frase del dominio chiamante — e `coppia_cambiata`. Consumatori: preventivo (la copia `_risolvi_cliente_preventivo` e' ora un adattatore dei suoi codici), contratto, offerta. Ritirata la copia locale dell'offerta (`_COPPIA_FORNITURA`, `_come_testo`). Catalogo BB backend aggiornato |
+| **R-BE-7** | `ContrattiService.update_contratto`: `billing_account_id` e `istanza_utility_id` escono da `_FORBIDDEN_TESTATA_UPDATE` ed entrano in `UPDATE_KEYS_TESTATA` e in `TESTATA_UPDATE_COLUMNS`, risolti dal BB sulla utility della testata; `utility_id` ed emittente restano fermi (B-4), col commento riscritto. La frase della FK composta e del BB e' una sola |
+| **Difetto** | ⛔ **Trovato**: in modifica il drawer del contratto mostrava tipo e classe utenza modificabili in bozza, ma la PATCH non li portava e il backend non li accettava: «contratto salvato», niente scritto. Ora la PATCH porta la scheda inline (`UPDATE_KEYS_CONTRATTO` = testata + `utility`, come l'offerta), nella stessa transazione; con un cambio di coppia non si applica (R-BE-6 sul contratto) |
+| **R-BE-5** | `fornitura_da_anagrafica` in `_documento_eccezioni_repo.py` (le letture comuni di contratto e offerta) su `vendite.fn_get_fornitura_da_anagrafica`; i form-defaults di contratto e offerta portano `fornitura` (E-1). Manual `api_vendite_form_defaults.md` aggiornato |
+| **R-FE-3** | BB `vendite/_shared/fornitura/schedaFornitura.js` (regola del 2: le due copie della scheda nei drawer erano gia' divergenti). In creazione la scheda segue il cliente scelto (callback `apply` di `useBaFormDefaults`), e un cliente senza dati precontrattuali la svuota. Il contratto spedisce in creazione la scheda com'e' a video (D-7: quello che si vede e' quello che si scrive) |
+| **§8.3 FE** | `ContrattoDrawer`: il BA si sceglie anche in modifica (spento da `isLocked('billing_account_id')`, cioe' dal lock di testata del DB); la PATCH in bozza porta BA e istanza; la scheda parte se `can_edit_utility` e il cliente non cambia; dopo il salvataggio il dettaglio si rilegge (prima no), cosi' la scheda e gli indirizzi rifatti dal DB arrivano nel form (R-FE-4). I due parametri della scheda nel form (E-2) |
+| **Offerta** | `aggiorna_offerta` risolve il cliente col BB; `OffertaDrawer` usa il BB della scheda e riceve la scheda precompilata in creazione |
+
+#### 8.6.3 Prove
+
+* Unitari: `test_contratti_cambio_cliente.py` (nuovo, `SimpleTestCase`, 10 test: la coppia dal BB sulla
+  utility della testata, utility ed emittente rifiutati, la scheda inline creata o aggiornata, il cambio di
+  cliente che non la applica, l'id in testo, la coppia nella scheda rifiutata, il BB vero con un BA
+  d'altri); i guardrail della catena della PATCH del contratto con i due campi nuovi; i due test
+  dell'offerta col BB; i form-defaults con la scheda (4 test). Provati per mutazione (la guardia sul
+  cambio di cliente, il calcolo della coppia, la chiamata della lettura).
+* DB vero: `vendite/tests/db/test_contratto_cliente_e_fornitura_db.py` (nuovo, 5 test, mondo fabbricato
+  come il pgTAP del team DB): la lettura della scheda, i form-defaults, il cambio di cliente con la scheda
+  rifatta dal DB e non dal form, la scheda del form scritta a cliente fermo, il BA d'altri rifiutato sul
+  BA. La guardia del cambio di cliente provata per mutazione anche qui.
+* Suite `apps.vendite` + `apps.core`: 4019 verdi. mypy a cricchetto: nessun rilievo nuovo. ruff pulito.
+* FE: vitest 879 verdi (`schedaFornitura.spec.js` nuovo, 5 test, provato per mutazione), lint, guard,
+  build e `check_i18n_keys` verdi. Due chiavi nuove: `vendite.contratti.field_param_1_num` /
+  `field_param_2_txt` (it, en).
+
+#### 8.6.4 Collaudo in-app (Tid)
+
+* Contratto nuovo su un cliente con dati precontrattuali: scelto il BA, la scheda (tipo, classe, i due
+  parametri) si riempie dall'anagrafica; corretta e salvata, il contratto la porta com'e' a video.
+  Cambiato il BA prima di salvare, la scheda passa al cliente nuovo (vuota se non ne ha).
+* Contratto in bozza: cambiato il cliente e salvato, la testata, la scheda e gli indirizzi sono del
+  cliente nuovo. A cliente fermo, cambiati classe o parametri e salvato, restano (prima si perdevano).
+* Offerta nuova: la scheda si precompila allo stesso modo.
+* Contratto attivo: il BA e la scheda sono spenti.
+
+### 8.7 Richiesta al team DB — emittente e utility fermi in modifica
+
+> Per decisione di Tid (2026-10-14, E-3) la richiesta sta in questo brief, come quella del §8.4.
+
+#### 8.7.1 Il difetto
+
+«Emittente e utility di un documento non si cambiano in modifica: si cambia il cliente, dentro la
+stessa utility» (B-4 di Tid, 2026-10-12, per contratto e preventivo; esteso all'offerta il 2026-10-14)
+e' una regola di dominio, e oggi la scrive solo il backend, in tre modi diversi:
+
+| Documento | `utility_id` | `emittente_fiscale_id` | Lo dice il DB? |
+| --- | --- | --- | --- |
+| Preventivo | fuori dalla whitelist di modifica | fuori dalla whitelist di modifica | ✅ la utility, nella capability (`c_sempre_non_edit` di `script.fn_available_actions_preventivo`); l'emittente no |
+| Contratto | rifiutato (`_FORBIDDEN_TESTATA_UPDATE`) | rifiutato | ❌ |
+| Offerta | **ammesso** (`UPDATE_KEYS_OFFERTA`) | **ammesso** | ❌ — e il drawer accende l'emittente in bozza, perche' la capability non lo ferma (la utility la spegne il BA scelto) |
+
+Il guard `script.trgfn_doc_guard_emittente_ba` impedisce un emittente incoerente col BA, e la FK
+composta un BA fuori coppia; nessuno dei due impedisce di **cambiare** emittente o utility insieme al
+cliente.
+
+#### 8.7.2 La richiesta
+
+* le due colonne fra quelle «sempre» ferme nella capability di offerta, contratto e preventivo
+  (`c_sempre_non_edit`), perche' il form le legga da `non_editable_fields` (la stessa forma di
+  `utility_id` sul preventivo);
+* un presidio in scrittura sulle tre testate (il lock di testata o un guard), col suo codice, perche' la
+  regola valga anche fuori dal backend.
+
+Forma, codice e nome sono scelte del team DB.
+
+#### 8.7.3 Ricaduta BE/FE (dopo la consegna)
+
+* `offerte_service`: `utility_id` ed `emittente_fiscale_id` escono da `UPDATE_KEYS_OFFERTA`; il BB della
+  coppia prende la utility dalla testata. Codice nuovo in policy e ripiego.
+* `OffertaDrawer`: i due campi seguono `testata.bloccato(...)` come oggi, e si spengono da soli quando
+  la capability li nomina.
+* Contratto e preventivo: il divieto Python resta come errore parlante anticipato, o si ritira se il
+  codice del DB arriva sul campo giusto: da decidere sulla consegna.
+

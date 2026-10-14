@@ -81,7 +81,7 @@ class SchemaDaContrattoTest(SimpleTestCase):
                 set(preventivi_service.UPDATE_RIGA_LETTE_A_PARTE),
             ),
             "contratto create": (views_contratti._CONTRATTO_CREATE_REQUEST, contratti_service.CREATE_KEYS_TESTATA, set()),
-            "contratto update": (views_contratti._CONTRATTO_PATCH_REQUEST, contratti_service.UPDATE_KEYS_TESTATA, set()),
+            "contratto update": (views_contratti._CONTRATTO_PATCH_REQUEST, contratti_service.UPDATE_KEYS_CONTRATTO, set()),
             "contratto riga create": (views_contratti._RIGA_CREATE_REQUEST, contratti_service.CREATE_KEYS_RIGA, set()),
             "contratto riga update": (views_contratti._RIGA_PATCH_REQUEST, contratti_service.UPDATE_KEYS_RIGA, set()),
             "contratto utility create": (

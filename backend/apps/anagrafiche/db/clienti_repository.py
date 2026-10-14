@@ -467,8 +467,8 @@ class ClientiRepository:
     #        piu' stato parziale con la categoria BA committata e l'UPDATE
     #        cliente fallito (fix analisi-fix-transazioni Classe A, finding #1;
     #        prima erano due UPDATE separati in autocommit).
-    #        Risultato: dict {categoria_aggiornata, campi_aggiornati}; il service
-    #        decide se sollevare "nessun campo modificato" quando entrambi False.
+    #        Risultato: dict {categoria_aggiornata, campi_aggiornati}. Il payload
+    #        vuoto lo rifiuta il service PRIMA di chiamare qui (400).
     #        La fn e' SECURITY INVOKER: RLS e scope emittente su billing_account
     #        restano valutati come dal Python (vincolo invariante §2-bis).
     #

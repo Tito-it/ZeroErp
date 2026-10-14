@@ -20,6 +20,7 @@ Indice test eseguiti:
  7c) test_crea_fornitore_integrity_non_mappato_rilancia — vincolo non mappato → rilanciato
  8) test_update_fornitore_ok — aggiorna campi editabili
  9) test_update_fornitore_not_found — id inesistente → E_ANAG_NOT_FOUND
+ 9b) test_update_fornitore_vuoto_e_400 — PATCH vuoto su fornitore esistente → 400, non 404 (2026-10-14)
 """
 
 from unittest import TestCase
@@ -207,6 +208,17 @@ class TestFornitoriUpdate(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             FornitoriService().update_fornitore(999, {"rating": 90})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+
+    @patch(FORN_REPO)
+    def test_update_fornitore_vuoto_e_400(self, mock_repo):
+        """⛔ PATCH vuoto su un fornitore che esiste: 400 prima della scrittura.
+        Fino al 2026-10-14 il rowcount zero usciva 404 «non trovato»."""
+        mock_repo.return_value.get_fornitore.return_value = _fornitore_detail()
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        with self.assertRaises(ServiceError) as ctx:
+            FornitoriService().update_fornitore(1, {})
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_repo.return_value.update_fornitore.assert_not_called()
 
 
 class TestResolveFiltriExportLabel(TestCase):

@@ -56,6 +56,9 @@ import { displayDate, parseIsoDate, toDateString, oggiAziendaleString } from '..
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { getOffertaFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
+import {
+  applicaFornituraDaDefaults, schedaDaForm, schedaDaFornitura, schedaVuota,
+} from '../../_shared/fornitura/schedaFornitura'
 import ListinoDocumentoSelect from '../../components/ListinoDocumentoSelect.vue'
 import TipoVariazioneSelect from '../../components/TipoVariazioneSelect.vue'
 import {
@@ -255,12 +258,8 @@ function defaultForm() {
     valore_variazione_globale: null,
     validita_dal: oggiAziendaleString(),
     validita_al: null,
-    // Sezione utility inline (mirror contratti_utilities)
-    utility_tipo_utenza_id: null,
-    utility_classe_utenza_id: null,
-    utility_param_1_num: null,
-    utility_param_2_txt: null,
-    utility_istanza_dati_precontrattuali_id: null,
+    // Scheda di fornitura inline (BB `schedaFornitura`, come il contratto)
+    ...schedaVuota(),
   }
 }
 
@@ -290,11 +289,7 @@ function populateFromDetail(d) {
     valore_variazione_globale: d.valore_variazione_globale,
     validita_dal: d.validita_dal,
     validita_al: d.validita_al,
-    utility_tipo_utenza_id: d.utility?.tipo_utenza_id || null,
-    utility_classe_utenza_id: d.utility?.classe_utenza_id || null,
-    utility_param_1_num: d.utility?.param_1_num ?? null,
-    utility_param_2_txt: d.utility?.param_2_txt || null,
-    utility_istanza_dati_precontrattuali_id: d.utility?.istanza_dati_precontrattuali_id || null,
+    ...schedaDaFornitura(d.utility),
   }
 }
 
@@ -345,7 +340,12 @@ function onBaSelected(item) {
 // Auto-fill valuta dal form-defaults BE (BB resolve_valuta_default), al cambio
 // BA in CREATE: la valuta del BA vince (regola di coerenza dominio). Watcher
 // condiviso `useBaFormDefaults` con guard latest-wins inclusa.
-useBaFormDefaults({ form, isEdit, fetchDefaults: getOffertaFormDefaults })
+// ⭐ In creazione la scheda di fornitura segue il cliente scelto: quella che
+//    l'anagrafica gli da', che l'operatore vede e corregge (R-FE-3 di
+//    brief-db-indirizzi-documento-seguono-il-cliente, D-7 di Tid).
+const { inCorso: defaultsClienteInCorso } = useBaFormDefaults({
+  form, isEdit, fetchDefaults: getOffertaFormDefaults, apply: applicaFornituraDaDefaults,
+})
 
 // Carica/resetta su apertura/chiusura/cambio-id.
 // Watch composito [visible, offertaId]: scatena ricaricamento sia quando il
@@ -414,13 +414,19 @@ async function loadOrReset() {
 watch(() => [props.visible, props.offertaId], loadOrReset)
 
 // Validazione FE create: campi obbligatori secondo whitelist BE.
+// Finche' arrivano i dati del cliente (BB `useBaFormDefaults`) il Salva
+// aspetta: partirebbe un form senza quei dati, presi per scelte dell'operatore.
 const canSave = computed(() => {
   if (!testata.modificabile.value) return false
+  if (defaultsClienteInCorso.value) return false
   const f = form.value
   const hasTipo = !!f.tipo_variazione_globale
   const hasValore = f.valore_variazione_globale != null && f.valore_variazione_globale !== ''
   if (hasTipo !== hasValore) return false
-  if (isEdit.value) return true
+  // In bozza il cliente si cambia ma non si toglie (come il contratto): col BA
+  // svuotato il backend rifiuterebbe su `istanza_utility_id`, un campo che il
+  // form non mostra.
+  if (isEdit.value) return !!f.billing_account_id
   return !!(f.emittente_fiscale_id
     && f.billing_account_id
     && f.istanza_utility_id
@@ -456,38 +462,13 @@ function buildPayload() {
   }
 }
 
-function buildUtilityPayloadFromForm() {
-  const f = form.value
-  return {
-    istanza_utility_id: f.istanza_utility_id,
-    utility_id: f.utility_id,
-    tipo_utenza_id: f.utility_tipo_utenza_id || null,
-    classe_utenza_id: f.utility_classe_utenza_id || null,
-    param_1_num: f.utility_param_1_num != null && f.utility_param_1_num !== ''
-      ? String(f.utility_param_1_num) : null,
-    param_2_txt: f.utility_param_2_txt || null,
-    istanza_dati_precontrattuali_id: f.utility_istanza_dati_precontrattuali_id || null,
-  }
-}
-
-// Costruisce il sub-oggetto `utility` opzionale per le chiamate atomiche
-// CREATE/UPDATE testata. Restituisce null se i campi business non sono
-// valorizzati (nessuna ragione di toccare il record satellite).
+// Il sotto-oggetto `utility` della richiesta (BB `schedaDaForm`): null finche'
+// il cliente non e' scelto, perche' la scheda e' della sua coppia (istanza,
+// utility), che il backend prende dalla testata.
 function buildUtilityInline() {
-  const u = buildUtilityPayloadFromForm()
-  if (!u.istanza_utility_id || !u.utility_id) return null
-  return {
-    // istanza_utility_id/utility_id sono richiesti dal BE in create della
-    // utility; nella UPDATE vengono ignorati perche' immutabili (lo split
-    // BE filtra solo i campi business sulla whitelist update).
-    istanza_utility_id: u.istanza_utility_id,
-    utility_id: u.utility_id,
-    tipo_utenza_id: u.tipo_utenza_id,
-    classe_utenza_id: u.classe_utenza_id,
-    param_1_num: u.param_1_num,
-    param_2_txt: u.param_2_txt,
-    istanza_dati_precontrattuali_id: u.istanza_dati_precontrattuali_id,
-  }
+  const f = form.value
+  if (!f.istanza_utility_id || !f.utility_id) return null
+  return schedaDaForm(f)
 }
 
 async function handleSave() {
@@ -981,10 +962,8 @@ const footerDrawer = useFooterDocumento({
               <div class="form-field">
                 <label>{{ t('vendite.offerte.field_utility') }} <span v-if="!isEdit">*</span></label>
                 <!-- Building block standard utility-per-ruolo-EF
-                     (`UtilityPerRuoloSelect`). Filtra le utility configurate
-                     per l'EF dell'operatore + ammesse al ruolo CLIENTE
-                     (intersezione `emittenti_fiscali_utilities` x
-                     `utilities_tipi_ruolo`). Pre-popolata dal `defaultForm()`
+                     (`UtilityPerRuoloSelect`). Le utility ammesse per il ruolo EF
+                     e per il ruolo CLIENTE (`utilities_tipi_ruolo`). Pre-popolata dal `defaultForm()`
                      via `utilityDefaultId` (parametro `DEFAULT_UTILITY`,
                      codice_interno -> id locale). Quando l'operatore sceglie
                      il BA, `onBaSelected` sovrascrive con la utility canonical

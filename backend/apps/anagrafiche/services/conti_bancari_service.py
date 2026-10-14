@@ -152,14 +152,6 @@ _db_errors_legame_ruolo = make_db_errors_translator(
 )
 
 
-# Scopo: un PATCH senza campi e' una richiesta malformata (400), non un legame
-#        inesistente: prima il repository rispondeva False e usciva 404.
-def _richiedi_campi(payload: dict[str, Any]) -> None:
-    ErrorManager.require(
-        bool(payload), code=E_ANAG_VALIDAZIONE, message="Nessun campo da aggiornare.",
-    )
-
-
 # Scopo: l'`uso` del payload normalizzato (maiuscolo, senza spazi) e validato
 #        contro `_USI_LEGAME`; None se assente o vuoto. UNA regola per create e
 #        PATCH: prima la PATCH lo passava grezzo e «incasso», accettato in
@@ -255,7 +247,7 @@ class ContiBancariService:
         _V.validate_allowed_keys(
             payload, allowed=_UPDATE_LEGAME_SOGGETTO_KEYS, message=_MESSAGE_LEGAME,
         )
-        _richiedi_campi(payload)
+        _V.require_campi_da_aggiornare(payload)
         payload = _payload_patch(payload)
         self._require_soggetto_exists(soggetto_id)
         # Guard predefinito/bloccato: legge stato corrente per merge con payload
@@ -362,7 +354,7 @@ class ContiBancariService:
         _V.validate_allowed_keys(
             payload, allowed=_UPDATE_LEGAME_RUOLO_KEYS, message=_MESSAGE_LEGAME,
         )
-        _richiedi_campi(payload)
+        _V.require_campi_da_aggiornare(payload)
         payload = _payload_patch(payload)
         # Guard predefinito/bloccato: legge stato corrente per merge con payload
         current = self._repo.get_legame_flags_ruolo(conto_ruolo_id)

@@ -16,6 +16,8 @@ Indice test eseguiti:
  6) test_preventivo_con_ba_termini_da_cliente — termine_pagamento_id da clienti
  7) test_preventivo_valuta_da_emittente_se_ba_null — fallback emittente del BA
  8) test_preventivo_no_ba_valuta_da_user_ef        — fallback EF utente loggato
+ 8-bis) test_contratto/offerta_scheda_fornitura_dal_cliente — R-BE-5: la scheda
+        dell'anagrafica della coppia del BA; senza BA niente lettura
  8a) test_ddt_no_ba_no_user_payload_vuoto     — utility/valuta None (no BA/user)
  8b) test_ddt_con_ba_popola_utility_e_valuta  — utility+valuta dal BA, no pagamento
  8c) test_ddt_ba_inesistente_404              — E_VENDITE_NOT_FOUND
@@ -56,6 +58,21 @@ _BA_REPO = f"{_MOD}.BillingAccountRepository"
 # resolver finisce a fare una query DB reale.
 _RESOLVER_CONN = "apps.anagrafiche.services.valuta_resolver.connection"
 _LISTINI_REPO = f"{_MOD}.ListiniRepository"
+# La scheda di fornitura dall'anagrafica (R-BE-5): una lettura del DB, finta
+# in tutti i test di contratto e offerta.
+_FORNITURA = f"{_MOD}.fornitura_da_anagrafica"
+_SCHEDA = {
+    "istanza_dati_precontrattuali_id": 55, "classe_utenza_id": 4, "tipo_utenza_id": 2,
+    "param_1_num": "3.50", "param_2_txt": "B1", "meta": {},
+}
+
+
+# Scopo: finge la lettura della scheda per una classe di test (setUp).
+def _finge_fornitura(test: TestCase) -> MagicMock:
+    patcher = patch(_FORNITURA, return_value=_SCHEDA)
+    mock = patcher.start()
+    test.addCleanup(patcher.stop)
+    return mock
 
 
 def _ba_lookup_row(*, ba_id=10, categoria_id=7, valuta_id=None):
@@ -81,6 +98,31 @@ def _ba_lookup_row(*, ba_id=10, categoria_id=7, valuta_id=None):
 
 
 class TestContrattoFormDefaults(TestCase):
+
+    def setUp(self):
+        self.fornitura = _finge_fornitura(self)
+
+    @patch(f"{_MOD}.resolve_valuta_default", return_value={})
+    @patch(_BA_REPO)
+    @patch(_PARAM)
+    def test_contratto_scheda_fornitura_dal_cliente(
+        self, mock_param_cls, mock_ba_repo_cls, _mock_resolve,
+    ):
+        # Scopo: col BA la scheda e' quella che l'anagrafica da' alla coppia
+        #        (istanza, utility) del BA, letta dal DB e restituita com'e'.
+        mock_param_cls.return_value.get_defaults.return_value = {}
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = _ba_lookup_row()
+        result = fn_get_contratto_form_defaults(billing_account_id=10)
+        self.fornitura.assert_called_once_with(100, 1)
+        self.assertEqual(result["fornitura"], _SCHEDA)
+
+    @patch(_PARAM)
+    def test_contratto_senza_ba_nessuna_scheda(self, mock_param_cls):
+        mock_param_cls.return_value.get_defaults.return_value = {}
+        with patch(_RESOLVER_CONN):
+            result = fn_get_contratto_form_defaults(billing_account_id=None)
+        self.fornitura.assert_not_called()
+        self.assertIsNone(result["fornitura"])
 
     @patch(_PARAM)
     def test_contratto_no_ba_solo_parameters(self, mock_param_cls):
@@ -169,6 +211,23 @@ class TestContrattoFormDefaults(TestCase):
 
 
 class TestOffertaFormDefaults(TestCase):
+
+    def setUp(self):
+        self.fornitura = _finge_fornitura(self)
+
+    @patch(_BA_REPO)
+    def test_offerta_scheda_fornitura_dal_cliente(self, mock_ba_repo_cls):
+        # Scopo: stessa scheda del contratto, dalla stessa sede.
+        mock_ba_repo_cls.return_value.get_lookup_by_id.return_value = _ba_lookup_row(valuta_id=1)
+        result = fn_get_offerta_form_defaults(billing_account_id=10)
+        self.fornitura.assert_called_once_with(100, 1)
+        self.assertEqual(result["fornitura"], _SCHEDA)
+
+    @patch(_RESOLVER_CONN)
+    def test_offerta_senza_ba_nessuna_scheda(self, _mock_resolver_conn):
+        result = fn_get_offerta_form_defaults(billing_account_id=None)
+        self.fornitura.assert_not_called()
+        self.assertIsNone(result["fornitura"])
 
     @patch(_RESOLVER_CONN)
     def test_offerta_no_ba_no_user_payload_vuoto(self, mock_resolver_conn):

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Collection, Iterable, Iterator
+from collections.abc import Collection, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -264,6 +264,43 @@ class PayloadValidator:
             message=f"Valore '{field}' non valido.",
             detail=f"atteso stringa non vuota, ricevuto {value!r}",
             context={field: value},
+            **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
+        )
+
+    # Scopo: un aggiornamento deve portare almeno un campo da scrivere: un PATCH
+    #        vuoto e' una richiesta malformata (400), MAI un «salvato» che non
+    #        ha scritto niente, e mai un 404 su un record che esiste.
+    #        `data` sono i campi GIA' estratti per la scrittura (dopo whitelist
+    #        e normalizzazione: una chiave presente col valore None e' un
+    #        reset, quindi conta). `sotto_oggetti` i satelliti scritti nella
+    #        stessa richiesta (es. la scheda `utility` di offerta e contratto):
+    #        contano solo se portano almeno una chiave — `{"utility": {}}` non
+    #        e' una modifica.
+    # Perimetro: si chiama PRIMA della scrittura. ⛔ Non dal rowcount del
+    #        repository dopo l'UPDATE: «zero righe» confonde il payload vuoto
+    #        col record sparito, ed e' cosi' che PATCH vuoti uscivano 404.
+    # ⭐ BB per la regola del 2 (2026-10-14, ok Tid): la stessa regola era
+    #    scritta a mano in ~45 punti di 25 service, con 13 codici, quattro
+    #    formulazioni, e alcuni dopo la scrittura. Il codice resta quello del
+    #    dominio (`validation_code` dell'istanza).
+    def require_campi_da_aggiornare(
+        self,
+        data: Mapping[str, Any],
+        *,
+        sotto_oggetti: Mapping[str, Any] | None = None,
+        message: str = "Nessun campo aggiornabile presente nel payload.",
+        detail: str | None = None,
+        context: dict[str, Any] | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> None:
+        satelliti = sotto_oggetti or {}
+        ErrorManager.require(
+            bool(data) or any(isinstance(v, Mapping) and bool(v) for v in satelliti.values()),
+            code=self._code,
+            message=message,
+            detail=detail,
+            context=context,
             **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
         )
 

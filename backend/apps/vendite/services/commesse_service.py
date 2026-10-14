@@ -583,13 +583,11 @@ def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict
             )
         dati["responsabile_risorsa_umana_id"] = responsabile_id
 
-    ErrorManager.require(
-        bool(dati),
-        code="E_COMMESSA_VALIDATION",
+    _V_TESTATA.require_campi_da_aggiornare(
+        dati,
         message="Nessun campo aggiornabile nel payload commessa.",
         context={"commessa_id": commessa_id, "allowed_keys": sorted(_TESTATA_KEYS)},
         function_name=function_name,
-        log_to_db=True,
     )
 
     repo = CommesseRepository()

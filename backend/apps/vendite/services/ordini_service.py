@@ -492,10 +492,8 @@ def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         data["billing_account_id"] = _V.optional_positive_int(
             data, "billing_account_id", function_name=f"{_FN}.aggiorna_ordine",
         )
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_ORD_VALIDAZIONE",
-        message="Nessun campo aggiornabile nel payload.",
+    _V.require_campi_da_aggiornare(
+        data,
         function_name=f"{_FN}.aggiorna_ordine",
     )
     with _db_errors("aggiorna_ordine"):
@@ -1006,9 +1004,8 @@ def aggiorna_riga(
     )
     _get_riga_or_raise(repo, ordine_id, riga_id, op="aggiorna_riga")
     data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_ORD_VALIDAZIONE",
+    _V.require_campi_da_aggiornare(
+        data,
         message="Nessun campo aggiornabile nel payload riga.",
         function_name=f"{_FN}.aggiorna_riga",
     )

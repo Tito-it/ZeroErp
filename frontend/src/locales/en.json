@@ -2419,6 +2419,8 @@
       "field_codice_commessa": "Order Code",
       "field_tipo_utenza": "Usage type",
       "field_classe_utenza": "Usage class",
+      "field_param_1_num": "Param 1 (number)",
+      "field_param_2_txt": "Param 2 (text)",
       "field_pdp": "PDP/POD",
       "field_nr_righe": "Number of rows",
       "field_utility_associata": "Associated utility",

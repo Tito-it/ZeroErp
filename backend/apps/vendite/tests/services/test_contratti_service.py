@@ -2919,6 +2919,10 @@ class ContrattiCatenaUpdateTests(TestCase):
     # qui un campione fa fallire il primo test — che è il momento in cui serve
     # fermarsi a pensare se il mapper la gestisce.
     _CAMPIONI: dict[str, object] = {
+        # Il cliente in coppia: il BB `risolvi_cliente_coppia` e' finto nel
+        # test 2 e restituisce questi due.
+        "billing_account_id": 7,
+        "istanza_utility_id": 8,
         "ambito": "COMMODITY",
         "valido_dal": "2026-03-01",
         "valido_al": "2026-12-31",
@@ -2967,10 +2971,10 @@ class ContrattiCatenaUpdateTests(TestCase):
     def test_update_keys_accettate_anche_in_create(self) -> None:
         from apps.vendite.services.contratti_service import (
             CREATE_KEYS_TESTATA,
-            UPDATE_KEYS_TESTATA,
+            UPDATE_KEYS_CONTRATTO,
         )
 
-        solo_update = sorted(set(UPDATE_KEYS_TESTATA) - set(CREATE_KEYS_TESTATA))
+        solo_update = sorted(set(UPDATE_KEYS_CONTRATTO) - set(CREATE_KEYS_TESTATA))
         self.assertEqual(
             solo_update, [],
             "Chiavi accettate in UPDATE ma non in CREATE. Il drawer spreda il "
@@ -2994,8 +2998,12 @@ class ContrattiCatenaUpdateTests(TestCase):
 
     # 2) ⭐ Anello 1 → 2: ogni chiave accettata ATTRAVERSA il mapper e arriva al
     #    repository. È il test che sarebbe stato rosso sul difetto reale.
+    @patch(
+        "apps.vendite.services.contratti_service.risolvi_cliente_coppia",
+        return_value=(7, 8),
+    )
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_ogni_chiave_attraversa_il_mapper(self, repo_cls) -> None:
+    def test_ogni_chiave_attraversa_il_mapper(self, repo_cls, _cliente) -> None:
         from apps.vendite.services.contratti_service import (
             UPDATE_KEYS_TESTATA,
             ContrattiService,

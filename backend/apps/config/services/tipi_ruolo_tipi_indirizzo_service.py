@@ -267,10 +267,8 @@ class TipiRuoloTipiIndirizzoService:
                 payload, "fallback_tipo_indirizzo_id"
             )
 
-        ErrorManager.require(
-            bool(fields),
-            code=E_CONFIG_VALIDATION,
-            message="Nessun campo aggiornabile fornito.",
+        self._v.require_campi_da_aggiornare(
+            fields,
             context={"record_id": record_id},
         )
 

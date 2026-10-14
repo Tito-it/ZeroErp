@@ -563,10 +563,8 @@ def aggiorna_reso(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     # che esiste: il lettore leggero, non la testata intera.
     _get_testata_or_raise(repo, reso_id, op="aggiorna_reso", getter=repo.get_stato_codice)
     data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RESO}
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_RESO_VALIDAZIONE",
-        message="Nessun campo aggiornabile nel payload.",
+    _PAYLOAD.require_campi_da_aggiornare(
+        data,
         function_name=f"{_FN}.aggiorna_reso",
     )
     if "data" in data:
@@ -691,10 +689,8 @@ def aggiorna_rientro(
     _get_riga_or_raise(repo, reso_id, riga_id, op="aggiorna_rientro")
     _get_rientro_or_raise(repo, riga_id, rientro_id, op="aggiorna_rientro")
     data = _payload_rientro(payload, UPDATE_KEYS_RIENTRO, op="aggiorna_rientro", in_creazione=False)
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_RESO_VALIDAZIONE",
-        message="Nessun campo aggiornabile nel payload.",
+    _PAYLOAD.require_campi_da_aggiornare(
+        data,
         function_name=f"{_FN}.aggiorna_rientro",
     )
     with _db_errors("aggiorna_rientro"):
@@ -985,9 +981,8 @@ def aggiorna_riga(
     _richiedi_righe_in_bozza(repo, reso_id, verbo="modificare", op="aggiorna_riga")
     _get_riga_or_raise(repo, reso_id, riga_id, op="aggiorna_riga")
     data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
-    ErrorManager.require(
-        len(data) > 0,
-        code="E_RESO_VALIDAZIONE",
+    _PAYLOAD.require_campi_da_aggiornare(
+        data,
         message="Nessun campo aggiornabile nel payload riga.",
         function_name=f"{_FN}.aggiorna_riga",
     )

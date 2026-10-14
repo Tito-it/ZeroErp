@@ -173,12 +173,12 @@ class TestPreventiviService(unittest.TestCase):
         self.MockIva.return_value = (None, {})
         self.addCleanup(self.iva_patcher.stop)
 
-        # Mock del repository BA usato da `_risolvi_cliente_preventivo`: il
+        # Mock del repository BA usato dal BB `risolvi_cliente_coppia`: il
         # cliente del preventivo e' la coppia (istanza, utility) col suo BA
         # (brief-db-istanza-nasce-col-ba, R-2). Default: BA → istanza id=100,
         # la coppia ha il BA id=42.
         self.ba_repo_patcher = patch(
-            "apps.vendite.services.preventivi_service.BillingAccountRepository"
+            "apps.vendite.services._cliente_coppia_documento.BillingAccountRepository"
         )
         self.MockBaRepoClass = self.ba_repo_patcher.start()
         self.mock_ba_repo = MagicMock()

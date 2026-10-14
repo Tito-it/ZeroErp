@@ -62,18 +62,28 @@ ORIGINE_PREZZO_MANUALE = "MANUALE"
 #        le stringhe vuote a None e deriva `origine_prezzo` dal prezzo: un
 #        prezzo scritto -> `MANUALE`; un prezzo tolto (solo i DDT lo ammettono,
 #        prezzo e origine sono facoltativi insieme) -> origine NULL.
+#        Un payload senza campi e' un 400 (BB `require_campi_da_aggiornare`).
+# ⛔ Fino al 2026-10-14 il payload vuoto lo giudicava ogni documento a modo
+#    suo, e DOPO la scrittura: ordini e DDT rispondevano «aggiornato» senza
+#    aver scritto niente, il preventivo 404 su un componente che esiste,
+#    contratto e offerta 400. Ora lo dice questo BB, uguale per i cinque.
 def dati_patch_componente(
     payload: dict[str, Any],
     *,
     function_name: str,
     error_code: str = "E_VENDITE_VALIDATION",
 ) -> dict[str, Any]:
-    PayloadValidator(validation_code=error_code).validate_allowed_keys(
+    validator = PayloadValidator(validation_code=error_code)
+    validator.validate_allowed_keys(
         payload, allowed=COMPONENTE_PATCH_OPERATORE,
         message="Payload componente non valido.",
         function_name=function_name,
     )
     data = {k: empty_to_none(v) for k, v in payload.items()}
+    validator.require_campi_da_aggiornare(
+        data, message="Nessun campo aggiornabile sul componente.",
+        function_name=function_name,
+    )
     if "prezzo_unitario" in data:
         data["origine_prezzo"] = (
             ORIGINE_PREZZO_MANUALE if data["prezzo_unitario"] is not None else None

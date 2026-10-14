@@ -23,7 +23,6 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.core.db.lookup_repository import LookupRepository
-from apps.core.api.endpoint_helpers import utente_autenticato_id
 
 
 class LookupTipiSoggettoDettaglioView(DomainAPIView):
@@ -147,16 +146,14 @@ class LookupUtilitiesPerRuoloView(DomainAPIView):
 class LookupUtilitiesPerEmittenteView(DomainAPIView):
     """Utility per popolare la combo "Utility" del FE.
 
-    Regola di business:
+    Regola: le utility **ammesse per il ruolo emittente fiscale** (`EF`) in
+    `config.utilities_tipi_ruolo`, uguali per ogni operatore. «Per emittente»
+    nel nome della rotta vuol dire il **ruolo** EF, non l'emittente attivo.
 
-    - **Operatore con emittente fiscale**: vede SOLO le utility configurate
-      nella matrice `anagrafiche.emittenti_fiscali_utilities` per il proprio
-      emittente. Le utility globali non attivate sul suo EF non sono
-      visibili. Il pattern impedisce all'operatore di selezionare utility
-      che il proprio emittente non gestisce.
-    - **Super-admin senza emittente** (cross-emittente, configurazioni di
-      sistema, audit): vede TUTTE le utility con ruolo EF — niente filtro
-      matrice perche' non e' associato a uno specifico emittente.
+    ⛔ Non filtra con `anagrafiche.emittenti_fiscali_utilities`: quella e' la
+    tabella opzionale dei PARAMETRI di fatturazione per (emittente, utility),
+    non l'elenco delle utility dell'emittente (dettaglio nel repository,
+    `list_utilities_per_emittente`). Fino al 2026-10-14 la usava come filtro.
 
     Filtro orthogonale `?ruolo=CL|FO|...`:
 
@@ -168,9 +165,7 @@ class LookupUtilitiesPerEmittenteView(DomainAPIView):
 
     Default lato FE: `useUtilityDefaultId` legge il parametro
     `DEFAULT_UTILITY` (catena user/group/emittente/sistema) e fa match
-    `codice_interno -> id` sul set ritornato qui. Il default e' quindi
-    automaticamente coerente con il filtro applicato (l'operatore non
-    riceve come default un'utility che non avrebbe potuto vedere).
+    `codice_interno -> id` sul set ritornato qui.
     """
     skip_area_check = True
 
@@ -180,7 +175,7 @@ class LookupUtilitiesPerEmittenteView(DomainAPIView):
                 name="ruolo",
                 type=str,
                 location=OpenApiParameter.QUERY,
-                description="Codice ruolo soggetto (es. CL, FO). Se omesso, ritorna tutte le utility EF dell'emittente.",
+                description="Codice ruolo soggetto (es. CL, FO). Se omesso, ritorna tutte le utility ammesse per il ruolo EF.",
                 required=False,
             ),
         ],
@@ -189,22 +184,11 @@ class LookupUtilitiesPerEmittenteView(DomainAPIView):
             fields={"data": serializers.ListField(child=serializers.DictField())},
         )},
     )
-    # Scopo: Restituisce utility configurate per l'emittente dell'utente.
-    #        Se ruolo fornito, applica intersezione con ruolo soggetto.
-    #        Super-admin senza emittente -> tutte le utility EF (fallback).
+    # Scopo: Restituisce le utility ammesse per il ruolo EF; se `ruolo` e'
+    #        fornito, intersecate con quelle ammesse per il ruolo del soggetto.
     def get(self, request: Request) -> JsonResponse:
-        from apps.core.services.parameter_service import ParameterService
-
         ruolo = (request.query_params.get("ruolo") or "").strip().upper() or None
-
-        # Risolve emittente dell'utente corrente (stessa catena di parameter settings).
-        # Se None (es. super-admin cross-emittente), si delega alla repo che
-        # ritorna tutte le utility EF (eventualmente filtrate per ruolo).
-        svc = ParameterService()
-        emittente_fiscale_id = svc.get_emittente_fiscale_id_for_user(utente_autenticato_id(request))
-
-        repo = LookupRepository()
-        results = repo.list_utilities_per_emittente(emittente_fiscale_id, ruolo)
+        results = LookupRepository().list_utilities_per_emittente(ruolo)
         return success_response({"results": results})
 
 
@@ -295,10 +279,17 @@ class LookupSistemaCodiciView(DomainAPIView):
     # Scopo: Verifica se esiste configurazione sistema codici.
     #        Se configurato: auto=true, il codice viene generato dal DB.
     #        Se non configurato: auto=false, il codice deve essere inserito manualmente.
+    # ⛔ `schema` e `tabella` sono obbligatori: assenti o vuoti → 400
+    #    `E_VALIDATION_INPUT`. Fino al 2026-10-14 valevano "" e la risposta era
+    #    «non configurato», cioe' un «scrivi il codice a mano» detto a una
+    #    domanda mai fatta (§6 di analisi-be-difetti-emersi-verifica-doc-api-core).
     def get(self, request: Request) -> JsonResponse:
-        schema = request.query_params.get("schema", "")
-        tabella = request.query_params.get("tabella", "")
-        colonna = request.query_params.get("colonna", "codice")
+        schema = qp_str(request.query_params.get("schema"))
+        tabella = qp_str(request.query_params.get("tabella"))
+        if not schema or not tabella:
+            mancanti = [nome for nome, valore in (("schema", schema), ("tabella", tabella)) if not valore]
+            raise ValueError(f"Parametri obbligatori mancanti: {', '.join(mancanti)}.")
+        colonna = qp_str(request.query_params.get("colonna")) or "codice"
         repo = LookupRepository()
         config = repo.get_sistema_codici(schema, tabella, colonna)
         if config:

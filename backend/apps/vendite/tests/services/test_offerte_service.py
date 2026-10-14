@@ -916,7 +916,11 @@ class OfferteServiceTests(TestCase):
     #        quella del contatore di prima.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_aggiorna_offerta_cambio_cliente_non_riscrive_la_scheda(self, repo_cls, _atomic):
+    @patch(
+        "apps.vendite.services.offerte_service.risolvi_cliente_coppia",
+        return_value=(11, 4),
+    )
+    def test_aggiorna_offerta_cambio_cliente_non_riscrive_la_scheda(self, _cliente, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
         _atomic.return_value.__enter__ = MagicMock()
@@ -936,12 +940,22 @@ class OfferteServiceTests(TestCase):
         repo.update_offerta.assert_called_once()
         repo.update_utility.assert_not_called()
         repo.create_utility.assert_not_called()
+        # Il cliente lo risolve il BB, sulla utility della testata: BA e
+        # istanza arrivano al repository in coppia.
+        self.assertEqual(_cliente.call_args.kwargs["utility_id"], 1)
+        self.assertEqual(_cliente.call_args.kwargs["billing_account_id"], 11)
+        dati = repo.update_offerta.call_args.args[1]
+        self.assertEqual((dati["billing_account_id"], dati["istanza_utility_id"]), (11, 4))
 
     # Scopo: stesso cliente (anche se arriva come testo dal JSON): non e' un
     #        cambio di coppia, la scheda del payload si applica.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_aggiorna_offerta_stesso_cliente_applica_la_scheda(self, repo_cls, _atomic):
+    @patch(
+        "apps.vendite.services.offerte_service.risolvi_cliente_coppia",
+        return_value=(10, 3),
+    )
+    def test_aggiorna_offerta_stesso_cliente_applica_la_scheda(self, _cliente, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
         _atomic.return_value.__enter__ = MagicMock()
@@ -959,6 +973,23 @@ class OfferteServiceTests(TestCase):
         })
 
         repo.update_utility.assert_called_once()
+
+    # Scopo: ⛔ `{"utility": {}}` da solo non e' una modifica: 400 e niente
+    #        scritto. Fino al 2026-10-14 passava il guard (il payload aveva una
+    #        chiave) e la risposta era «salvata» a vuoto.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_scheda_vuota_da_sola_e_400(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "BOZZA"
+        with self.assertRaises(ServiceError) as ctx:
+            OfferteService().aggiorna_offerta(1, {"utility": {}})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        repo.update_offerta.assert_not_called()
+        repo.update_utility.assert_not_called()
+        repo.create_utility.assert_not_called()
 
     # Scopo: PATCH testata con `utility: {...}` inline su offerta SENZA
     #        record utility (es. creata senza utility, ora arricchita) ->

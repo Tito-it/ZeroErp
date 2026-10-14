@@ -71,6 +71,7 @@ _UTILITY_UPDATE_REQUEST = schema_da_contratto(
 # La classe, non l'istanza: una per uso (l'istanza legata a un campo non si
 # riusa, e due classi con lo stesso nome fanno uno schema sbagliato).
 _UTILITY_CREATE_CLS = type(_UTILITY_CREATE_REQUEST)
+_UTILITY_UPDATE_CLS = type(_UTILITY_UPDATE_REQUEST)
 _CONTRATTO_CREATE_REQUEST = schema_da_contratto(
     "VenditeContrattoCreateReq", contratti_service.CREATE_KEYS_TESTATA,
     obbligatorie=("billing_account_id", "istanza_utility_id", "utility_id", "valido_dal"),
@@ -79,7 +80,9 @@ _CONTRATTO_CREATE_REQUEST = schema_da_contratto(
 
 
 _CONTRATTO_PATCH_REQUEST = schema_da_contratto(
-    "VenditeContrattoPatchReq", contratti_service.UPDATE_KEYS_TESTATA,
+    "VenditeContrattoPatchReq", contratti_service.UPDATE_KEYS_CONTRATTO,
+    # La scheda inline: le sole chiavi del form, la coppia e' della testata.
+    speciali={"utility": _UTILITY_UPDATE_CLS(required=False, allow_null=True)},
 )
 
 

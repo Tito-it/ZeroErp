@@ -336,10 +336,8 @@ def aggiorna_documento(codice_famiglia: str, doc_id: int, payload: dict[str, Any
             campi["descrizione"] = descrizione
     if "meta" in payload:
         campi["meta"] = _PAYLOAD.optional_meta(payload, "meta") or {}
-    ErrorManager.require(
-        bool(campi),
-        code=E_VALIDAZIONE,
-        message="Nessun campo da aggiornare.",
+    _PAYLOAD.require_campi_da_aggiornare(
+        campi,
         function_name=f"{_FN}.aggiorna_documento",
     )
     repository = MagazzinoRepository()
@@ -533,10 +531,8 @@ def crea_riga(codice_famiglia: str, doc_id: int, payload: dict[str, Any]) -> dic
 def aggiorna_riga(codice_famiglia: str, doc_id: int, riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     f = famiglia(codice_famiglia)
     campi = _campi_riga(f, payload, parziale=True)
-    ErrorManager.require(
-        bool(campi),
-        code=E_VALIDAZIONE,
-        message="Nessun campo da aggiornare.",
+    _PAYLOAD.require_campi_da_aggiornare(
+        campi,
         function_name=f"{_FN}.aggiorna_riga",
     )
     repository = MagazzinoRepository()

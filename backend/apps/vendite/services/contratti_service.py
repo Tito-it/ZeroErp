@@ -46,6 +46,10 @@ from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
+from apps.vendite.services._cliente_coppia_documento import (
+    coppia_cambiata,
+    risolvi_cliente_coppia,
+)
 from apps.vendite.services._annullo_con_legami import (
     DOCUMENTO_CONTRATTO,
     STATO_ANNULLATO,
@@ -208,6 +212,14 @@ CREATE_KEYS_TESTATA: frozenset[str] = frozenset({
 })
 
 UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
+    # Il cliente si cambia in bozza, per coppia (B-1 di Tid, 2026-10-12,
+    # brief-db-indirizzi-documento-seguono-il-cliente §8.3): BA e istanza
+    # viaggiano insieme, risolti dal BB `risolvi_cliente_coppia` sulla utility
+    # della testata. Fuori bozza li ferma il lock di testata del DB. Al cambio
+    # di coppia il DB rifa' la scheda di fornitura e gli indirizzi presi
+    # dall'anagrafica.
+    "billing_account_id",
+    "istanza_utility_id",
     "ambito",
     "valido_dal",
     "valido_al",
@@ -228,6 +240,14 @@ UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
     *_CODICI_ATTO,
     "meta",
 })
+
+# Il corpo della PATCH: le colonne della testata piu' la scheda di fornitura
+# inline (`utility`), come in creazione e come sull'offerta, nella stessa
+# transazione. ⛔ Fino al 2026-10-14 il drawer mostrava tipo e classe utenza
+# modificabili in bozza ma la PATCH non le portava: «contratto salvato» e
+# niente scritto. `utility` non e' una colonna: resta fuori da
+# `UPDATE_KEYS_TESTATA`, la catena che i guardrail confrontano col repository.
+UPDATE_KEYS_CONTRATTO: frozenset[str] = UPDATE_KEYS_TESTATA | {"utility"}
 
 # Quali colonne della testata si cambiano in quale stato lo dice il DB,
 # colonna per colonna: il lock `vendite.trgfn_doc_testata_lock_fuori_bozza`
@@ -251,24 +271,19 @@ UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
 # come gating FE / warning, non come hard guard BE.
 
 # In create: numero e stato_doc_contratto_id sono impostati dal service,
-# mai in payload. In update: oltre a questi, anche gli identificativi
-# (BA/istanza/utility) diventano immutabili — per cambiarli si crea un
-# contratto nuovo.
+# mai in payload. In update: oltre a questi, utility ed emittente (vedi sotto).
 _FORBIDDEN_TESTATA_CREATE: frozenset[str] = frozenset({
     "numero",
     "stato_doc_contratto_id",
 })
 _FORBIDDEN_TESTATA_UPDATE: frozenset[str] = frozenset({
     "numero",
-    "billing_account_id",
-    "istanza_utility_id",
+    # Utility ed emittente non si cambiano in modifica, come sul preventivo
+    # (B-4 di Tid, 2026-10-12): si cambia il cliente, cioe' BA e istanza in
+    # coppia, dentro la stessa utility. Se il BA nuovo non e' dell'emittente
+    # del contratto lo dice il guard DB `script.trgfn_doc_guard_emittente_ba`
+    # (`E_DOC_EMITTENTE_BA_INCOERENTE`).
     "utility_id",
-    # Post brief simmetria 2026-05-26: l'emittente fiscale e' immutabile in
-    # update. Il BA e' gia' immutabile (riga sopra) e il guard DB
-    # `script.trgfn_doc_guard_emittente_ba` rifiuta divergenze BA<->EF: un
-    # patch su `emittente_fiscale_id` produrrebbe quindi solo rumore (errore
-    # DB criptico al primo invio). Esclusione esplicita = errore parlante
-    # lato applicativo.
     "emittente_fiscale_id",
     "stato_doc_contratto_id",
 })
@@ -407,6 +422,11 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         "Questo contratto ha gia' una riga utility associata.",
     ),
 }
+# Lo dicono il BB `risolvi_cliente_coppia` (prima) e la FK composta (dopo):
+# una frase sola.
+_MSG_BA_FUORI_COPPIA = (
+    "Il billing account non e' quello dell'istanza e della utility del contratto."
+)
 _FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_contratti_billing_account": (E_VENDITE_FK, "Billing account inesistente."),
     # FK composta (billing_account_id, istanza_utility_id, utility_id) verso il
@@ -414,7 +434,7 @@ _FK_CONSTRAINTS: dict[str, tuple] = {
     # semplice qui sopra resta accanto, e dice solo «non esiste».
     "fk_contratti_ba_coppia": (
         E_VENDITE_FK,
-        "Il billing account non e' quello dell'istanza e della utility del contratto.",
+        _MSG_BA_FUORI_COPPIA,
         "billing_account_id",
     ),
     "fk_contratti_istanza": (E_VENDITE_FK, "Istanza utility inesistente."),
@@ -735,25 +755,44 @@ class ContrattiService:
             forbidden=_FORBIDDEN_TESTATA_UPDATE,
             reason="Identificativi contratto non modificabili.",
             detail_prefix=(
-                "numero, billing_account_id, istanza_utility_id, utility_id "
-                "e stato_doc_contratto_id non modificabili. Campi rifiutati"
+                "numero, utility_id, emittente_fiscale_id e "
+                "stato_doc_contratto_id non modificabili. Campi rifiutati"
             ),
             context_extra={"contratto_id": contratto_id},
         )
-        self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_TESTATA, message=_MESSAGE)
+        self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_CONTRATTO, message=_MESSAGE)
+        utility_payload = payload.get("utility")
+        if utility_payload is not None:
+            ErrorManager.require(
+                isinstance(utility_payload, dict),
+                code=E_VENDITE_VALIDATION,
+                message=_MESSAGE_UTILITY,
+                detail="Campo 'utility' deve essere oggetto.",
+                context={"field": "utility"},
+            )
+            # La coppia della scheda e' quella della testata, mai del payload.
+            self._v.reject_keys(
+                utility_payload,
+                forbidden=_UTILITY_IMMUTABLE_KEYS,
+                reason="Identificativi utility immutabili.",
+                detail_prefix="Campi rifiutati",
+            )
+            self._validate_utility_payload_shape(utility_payload, for_create=False)
+        testata_payload = {k: v for k, v in payload.items() if k != "utility"}
 
         # Leggiamo la testata esistente PRIMA di validare la coppia variazione
         # globale: serve al validator per sapere il listino_id corrente quando
         # il payload patch non lo include (es. patch solo su variazione globale).
         existing = self._get_contratto_or_raise(contratto_id, op="update_contratto")
 
-        data = self._build_update_data_testata(payload, existing=existing)
+        data = self._build_update_data_testata(testata_payload, existing=existing)
 
-        ErrorManager.require(
-            bool(data),
-            code=E_VENDITE_VALIDATION,
-            message="Nessun campo aggiornabile presente nel payload.",
-            context={"allowed_keys": sorted(UPDATE_KEYS_TESTATA)},
+        # Almeno un campo, della testata o della scheda: `{"utility": {}}` da
+        # solo non e' una modifica.
+        self._v.require_campi_da_aggiornare(
+            data, sotto_oggetti={"utility": utility_payload},
+            context={"allowed_keys": sorted(UPDATE_KEYS_CONTRATTO)},
+            log_to_db=False,
         )
 
         # Refactor modalita 2026-05-15 §3-bis-E: se il PATCH tocca la
@@ -767,16 +806,50 @@ class ContrattiService:
             auth_user_id=auth_user_id,
         )
 
-        with self._map_db_errors({"contratto_id": contratto_id}):
-            updated = self._repo.update_contratto(contratto_id, data)
-
-        ErrorManager.require(
-            updated,
-            code=E_VENDITE_NOT_FOUND,
-            message="Contratto non trovato.",
-            context={"contratto_id": contratto_id},
-        )
+        # ⛔ Con un CAMBIO DI CLIENTE la scheda del payload NON si applica: il
+        #    trigger `trg_contratti_m50_fornitura_segue_cliente_upd` l'ha appena
+        #    rifatta dal contatore nuovo, e quella del form e' del contatore di
+        #    prima (R-BE-6/R-BE-7 di brief-db-indirizzi-documento-seguono-il-
+        #    cliente, D-5 di Tid). Il dettaglio restituito porta la scheda del DB.
+        cambia_cliente = coppia_cambiata(data, existing)
+        with self._map_db_errors({"contratto_id": contratto_id}), transaction.atomic():
+            if data:
+                updated = self._repo.update_contratto(contratto_id, data)
+                ErrorManager.require(
+                    updated,
+                    code=E_VENDITE_NOT_FOUND,
+                    message="Contratto non trovato.",
+                    context={"contratto_id": contratto_id},
+                )
+            if utility_payload is not None and not cambia_cliente:
+                self._scrivi_utility_inline(contratto_id, existing, utility_payload)
         return self.get_contratto(contratto_id)
+
+    # Scopo: la scheda di fornitura inline della PATCH di testata (payload gia'
+    #        validato da `update_contratto`): la crea se il contratto non ce
+    #        l'ha, altrimenti ne aggiorna i campi del form. La coppia (istanza,
+    #        utility) della scheda e' quella della testata. Lo stato lo giudica
+    #        il DB (lock «solo in bozza» dei satelliti, 409).
+    def _scrivi_utility_inline(
+        self, contratto_id: int, testata: dict[str, Any], corpo: dict[str, Any],
+    ) -> None:
+        existing = self._repo.get_utility(contratto_id)
+        if existing is None:
+            self._repo.create_utility(contratto_id, self._build_utility_data(
+                corpo,
+                istanza_utility_id=int(testata["istanza_utility_id"]),
+                utility_id=int(testata["utility_id"]),
+                for_create=True,
+            ))
+            return
+        data = self._build_utility_data(
+            corpo,
+            istanza_utility_id=int(existing["istanza_utility_id"]),
+            utility_id=int(existing["utility_id"]),
+            for_create=False,
+        )
+        if data:
+            self._repo.update_utility(int(existing["id"]), data)
 
     # =================================================================
     # Cambio stato
@@ -1352,11 +1425,11 @@ class ContrattiService:
         richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
         data = self._build_data_riga(payload, for_create=False)
 
-        ErrorManager.require(
-            bool(data),
-            code=E_VENDITE_VALIDATION,
+        self._v.require_campi_da_aggiornare(
+            data,
             message="Nessun campo aggiornabile presente nel payload riga.",
             context={"allowed_keys": sorted(UPDATE_KEYS_RIGA)},
+            log_to_db=False,
         )
 
         # Coerenza prezzo_unitario / tipo_eccezione (refactor 2026-05-15):
@@ -1629,14 +1702,7 @@ class ContrattiService:
             {"componente_id": componente_id, "riga_id": riga_id},
             fallback_message="Violazione vincolo DB su componente riga contratto.",
         ):
-            updated = self._repo.update_componente(componente_id, **payload)
-        ErrorManager.require(
-            updated,
-            code=E_VENDITE_VALIDATION,
-            message="Nessun campo aggiornato sul componente.",
-            detail="Payload vuoto o senza campi nella whitelist.",
-            function_name="contratti_service.update_componente_riga",
-        )
+            self._repo.update_componente(componente_id, **payload)
         return {"status": "ok", "componente_id": componente_id}
 
     # Scopo: Soft delete componente riga contratto (`attivo=FALSE`). Guard
@@ -1728,11 +1794,11 @@ class ContrattiService:
             utility_id=int(existing["utility_id"]),
             for_create=False,
         )
-        ErrorManager.require(
-            bool(data),
-            code=E_VENDITE_VALIDATION,
+        self._v.require_campi_da_aggiornare(
+            data,
             message="Nessun campo aggiornabile presente nel payload utility.",
             context={"allowed_keys": sorted(UTILITY_UPDATE_KEYS)},
+            log_to_db=False,
         )
 
         with self._map_db_errors(
@@ -1888,6 +1954,23 @@ class ContrattiService:
         self, payload: dict[str, Any], *, existing: dict[str, Any]
     ) -> dict[str, Any]:
         data: dict[str, Any] = {}
+        # Il cliente si cambia per coppia: BA e istanza viaggiano insieme, letti
+        # dal lato che il payload porta, sulla utility della testata (che non
+        # cambia). Cambiare il solo BA lascerebbe l'istanza vecchia, che la FK
+        # composta `fk_contratti_ba_coppia` rifiuta.
+        if "billing_account_id" in payload or "istanza_utility_id" in payload:
+            data["billing_account_id"], data["istanza_utility_id"] = risolvi_cliente_coppia(
+                billing_account_id=self._v.optional_positive_int(
+                    payload, "billing_account_id", message=_MESSAGE,
+                ),
+                istanza_utility_id=self._v.optional_positive_int(
+                    payload, "istanza_utility_id", message=_MESSAGE,
+                ),
+                utility_id=int(existing["utility_id"]),
+                code=E_VENDITE_VALIDATION,
+                msg_ba_fuori_coppia=_MSG_BA_FUORI_COPPIA,
+                function_name=f"{__name__}.update_contratto",
+            )
         if "ambito" in payload:
             data["ambito"] = self._extract_ambito(payload)
         if "valido_dal" in payload:

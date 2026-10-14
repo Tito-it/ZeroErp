@@ -676,6 +676,10 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     # `ContrattiCatenaUpdateTests`, che confronta i tre anelli fra loro: senza
     # un punto di accesso, il terzo anello non era verificabile da un test.
     TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
+        # Il cliente, in coppia (B-1, brief-db-indirizzi-documento-seguono-il-
+        # cliente §8.3): li risolve il service, li ferma fuori bozza il lock.
+        "billing_account_id",
+        "istanza_utility_id",
         "ambito",
         "valido_dal",
         "valido_al",
