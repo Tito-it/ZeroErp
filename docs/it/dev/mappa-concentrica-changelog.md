@@ -311,8 +311,8 @@ il collaudo a video dell'inventario. Vedi
 [brief-db-magazzino-lotto-2-bis-be-fe.md](work-done/brief-db-magazzino-lotto-2-bis-be-fe.md),
 [brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md](work-done/brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici.md),
 [piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md](work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md),
-[brief-db-magazzino-lotto-3-scarico-da-ddt.md](work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md),
-[brief-db-magazzino-lotto-3-bis-carico-da-reso.md](work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md).
+[brief-db-magazzino-lotto-3-scarico-da-ddt.md](work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md),
+[brief-db-magazzino-lotto-3-bis-carico-da-reso.md](work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md).
 
 **Anello 3 (`vendite`, `pagamenti`) — Le forme che reggono, e annullare vuol
 dire chiudere.** **D14 è chiusa il 22-09**: la capability di un DDT pagava le

@@ -1,31 +1,29 @@
 # Piano BE/FE — magazzino, Lotti 3 e 3-bis (bolla e reso muovono la merce)
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-12
+## ⏭️ Chi riparte — aggiornato al 2026-10-14
 
-**Riparte: Tid** (collaudo dei blocchi A, B, C — §4) **e il team DB** sul brief dei motivi del reso (B2, R-1c). Il lato BE/FE del piano e' fatto. Il collaudo del blocco A (§4) Tid lo rimanda (2026-10-12: «per ora lasciamo il collaudo, procedi con lo sviluppo»).
+**Riparte: Tid**, col collaudo a video:
+[collaudo-in-app-magazzino-bolla-e-reso](collaudo-in-app-magazzino-bolla-e-reso.md). Il lato BE/FE e' fatto;
+i due brief DB del Lotto 3 e del 3-bis sono **chiusi e archiviati** (2026-10-14), e quel che restava
+loro sta qui, al §5. Questo piano e' l'unico documento aperto dei due lotti.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ Tid | SQL delle azioni `emetti_ddt` e `conferma_reso` sui profili, su dbdev (2026-10-12) | §2 | — |
-| 2 | ✅ sessione BE | **A1** — ogni cambio di stato della bolla dal verbo (Lotto 3 R-1) | §3 | — |
-| 3 | ✅ sessione BE | **A2** — magazzino sulla testata di bolla e reso (Lotto 3 R-2a, 3-bis R-1a) | §3 | A1 |
-| 4 | Tid | collaudo del blocco A: una bolla che muove merce si emette, senza scelte | §4 | 1, 3 |
-| 5 | ✅ sessione BE | **B1** — i prelievi della bolla (Lotto 3 R-2b) | §3 | A2 |
-| 6 | ✅ sessione BE · ⏳ team DB | **B2** — i rientri del reso (3-bis R-1b) ✅; R-1c: [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md) al team DB | §3 | B1 |
-| 7 | Tid | collaudo del blocco B: lotti, seriali, ubicazioni, reso e storno | §4 | 6 |
-| 8 | ✅ sessione BE | **C1** — blocchi dalla scheda disponibilità (Lotto 3 R-5) | §3 | — |
-| 9 | ✅ sessione BE | **C2** — offerta: cliente in bozza, fornitura, codici delle eccezioni; commenti superati | §3 | — |
-| 10 | Tid | collaudo del blocco C, poi archiviazione dei due brief e di questo piano | — | 8, 9 |
+| 2 | ✅ sessione BE | A1, A2, B1, B2, C1, C2 (2026-10-12/13) | §3 | — |
+| 3 | Tid | dati di partenza del collaudo (magazzini, articoli a lotti e seriali, inventario) | collaudo §0 | — |
+| 4 | Tid | collaudo a video, §1 … §8 | [collaudo](collaudo-in-app-magazzino-bolla-e-reso.md) | 3 |
+| 5 | ⏳ team DB | i motivi della «Conferma» del reso coi numeri (3-bis R-1c) | [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md) | via di Tid |
+| 6 | Tid | ricontrollo a video di §5.3 e §5.7 del collaudo, dopo il 5 | collaudo §5 | 5 |
+| 7 | Tid | i residui del §5 (CI da zero, corsa del pgTAP kit/seriali) | §5 | — |
+| 8 | sessione BE | archiviare collaudo e piano in `work-done/`; PROJECT_CONTEXT | — | 4, 6, 7 |
 
-**Decisioni aperte di Tid:** nessuna (2026-10-12: SQL delle azioni preparato qui; lookup dei magazzini
-filtrato sull'emittente del documento; cliente dell'offerta modificabile in bozza; gli endpoint
-`…/contratti/<id>/utility/` **restano**, li usera' R-FE-3 di brief-db-indirizzi-documento-seguono-il-cliente;
-il piano procede per blocchi, senza passaggi intermedi: non siamo in produzione).
-**Da committare:** niente: A1…C2, la revisione e il BB `SezioneMerceDocumento` sono in git dal 2026-10-13.
+**Decisioni aperte di Tid:** nessuna.
+**Da committare:** il collaudo nuovo, questo piano, i due brief archiviati e i link aggiornati (2026-10-14).
 
 > **Chi scrive:** sessione BE, 2026-10-12, su decisione di Tid. **Origine:** §6 del
-> [brief del Lotto 3](brief-db-magazzino-lotto-3-scarico-da-ddt.md) (R-1…R-5) e §6 del
-> [brief del 3-bis](brief-db-magazzino-lotto-3-bis-carico-da-reso.md) (R-1…R-5), il cui lato DB e'
+> [brief del Lotto 3](../work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md) (R-1…R-5) e §6 del
+> [brief del 3-bis](../work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md) (R-1…R-5), il cui lato DB e'
 > applicato e verde dal 28/29-09. Piu' i residui trovati rileggendo la modifica dei documenti (§3, C2).
 
 ---
@@ -176,61 +174,32 @@ usera' R-FE-3 dello stesso brief.
 
 ## 4. Collaudo
 
-Per blocco, da Tid a video: si scrive qui l'elenco dei casi alla chiusura di ogni blocco.
+Il copione sta in [collaudo-in-app-magazzino-bolla-e-reso](collaudo-in-app-magazzino-bolla-e-reso.md)
+(2026-10-14): l'elenco breve che era qui, per blocchi A, B, C, e' diventato i §1 … §8 di quel documento,
+coi dati di partenza (§0) e i casi del modello che l'elenco non aveva (entrata del trasferimento al
+consegnato, storni, ri-consegna, causali che non muovono). Si spunta li', non qui.
 
-### Blocco A (dopo l'SQL del §2)
+## 5. I residui dei due brief DB chiusi
 
-Prima: un magazzino **predefinito** per l'emittente di prova (anagrafica magazzini), con un articolo
-**gestito a magazzino**, senza lotti ne' seriali, caricato da un inventario.
+Raccolti qui all'archiviazione dei brief del
+[Lotto 3](../work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md) e del
+[3-bis](../work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md) (2026-10-14): il loro lato DB e'
+applicato e verde, le richieste a BE/FE (§6 di entrambi) sono i giri del §3. Restava questo.
 
-1. Nuova bolla di vendita: alla creazione il campo «Magazzino di partenza» si riempie da solo col
-   predefinito. La tendina propone solo i magazzini dell'azienda della bolla.
-2. Riga con l'articolo gestito, entro la giacenza → «Emetti»: la bolla diventa emessa e la giacenza
-   scende (Disponibilita' / Movimenti del magazzino: uno scarico `SCARICO_VEN` della bolla).
-3. Stessa cosa oltre la giacenza → «Emetti» rifiuta con la frase del DB («disponibili N, richiesti M»),
-   la bolla resta in bozza.
-4. Bolla con un solo articolo **non** gestito → si emette come prima, nessun movimento.
-5. Causale «Trasferimento»: compare «Magazzino di arrivo»; non propone la partenza; tornando a una
-   causale di vendita sparisce e si svuota. Emissione senza arrivo → motivo «magazzino di arrivo».
-6. Bolla emessa: i due campi del magazzino sono spenti.
-7. Annullo di una bolla emessa con merce: la giacenza torna su (storno).
-8. Reso da una bolla consegnata: «Magazzino di rientro» proposto dalla bolla, modificabile in bozza,
-   spento dopo la conferma.
-9. Un operatore il cui profilo **non** ha `emetti_ddt` riceve «Non hai i permessi» all'emissione.
+| Residuo | Da dove | Chi | Stato |
+| --- | --- | --- | --- |
+| Motivi della «Conferma» del reso senza i numeri (3-bis R-1c) | 3-bis §6; giro B2 | team DB | brief suo: [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md) |
+| CI da zero (`ci_apply` + suite) che scrive la sua baseline | Lotto 3 e 3-bis, testata | Tid | ⏳ |
+| La corsa col runner come app di `magazzino/test-reso-carico-kit-seriali-v1` (14/14 sullo scratch il 29-09) | 3-bis, testata | Tid | ⏳ da confermare: se la suite completa e' girata dopo il 29-09, e' gia' fatta |
+| La vista di **lettura** della merce in viaggio (`transfer_uid` con la sola uscita) | Lotto 3, P-13.2 | team DB | ⏸️ nasce col suo lettore: non e' un presidio, la merce in viaggio e' normale. Fino ad allora a video non si vede (collaudo §9) |
 
-### Blocco B
+Non sono residui, e restano dove sono: la merce presso terzi (D-L3-g), gli eventi asset (D-L2-l), la
+ricezione acquisti e il reso a fornitore (Lotto 4), le colonne impegnata / in arrivo (satellite D-17),
+i prelievi proposti alla ri-consegna e l'RMA (3-bis §7). Le scritture delle anagrafiche e dei
+documenti interni di magazzino dal verbo sono un brief a se':
+[brief-db-magazzino-tutte-le-scritture-dal-verbo](brief-db-magazzino-tutte-le-scritture-dal-verbo.md).
 
-Prima: un articolo **a lotti** (due lotti caricati), uno **a seriali**, un magazzino **con scaffali**.
-
-1. Bolla con l'articolo a lotti: compare «Prelievi», la riga e' «Da completare» e chiede quantita' e lotto;
-   la quantita' proposta e' quella che manca. Prelievo da due lotti → «Completo» → «Emetti» scarica i due lotti.
-2. Lo stesso lotto due volte sulla stessa riga → «aumentane la quantita'».
-3. Articolo a seriali: niente quantita', si sceglie il seriale.
-4. Magazzino con scaffali: anche l'articolo semplice chiede lo scaffale (non e' piu' automatico).
-5. Kit composto al momento (padre non gestito, componenti gestiti): una voce per componente.
-6. Bolla emessa: niente aggiunte ne' cestini; trasferimento verso un magazzino con scaffali: lo scaffale di
-   arrivo si sceglie anche dopo l'emissione, fino alla consegna.
-7. Reso di una bolla a lotti consegnata: compare «Rientri»; la riga propone il prelievo d'origine (lotto
-   scritto accanto) e la quantita' resa; «Conferma» → la giacenza di quel lotto risale.
-8. Reso di una riga uscita da due lotti: si sceglie da quale prelievo rientra; rientri incompleti → la
-   «Conferma» spenta col motivo (⚠️ senza i numeri finche' il team DB non chiude il brief R-1c).
-9. Magazzino di rientro con scaffali: lo scaffale si chiede, e la riga non e' piu' automatica.
-
-### Blocco C
-
-1. Disponibilita' per magazzino: «Blocca merce» c'e' solo con l'azione `blocca_merce` sul profilo
-   (o da super admin). Blocco di 2 pezzi «per chi» un cliente: il numero dei blocchi sale, il disponibile
-   scende di 2.
-2. Blocco senza cliente ne' nota → il messaggio chiede per chi, col campo nota acceso.
-3. Dal popover dei blocchi: «Libera» c'e' solo sui blocchi manuali; liberato, il disponibile torna su.
-4. Una bolla che vorrebbe scaricare i pezzi bloccati: l'emissione la ferma col motivo della disponibilita'.
-5. Offerta in bozza: il cliente si cambia; la utility segue il cliente e resta spenta; dopo il salvataggio
-   la scheda di fornitura mostra i dati del contatore nuovo (non quelli di prima). Offerta emessa: cliente
-   spento.
-6. Eccezione aggiunta su un'offerta emessa (da API, o se il pulsante fosse acceso): il messaggio e' quello
-   delle righe «non e' piu' in bozza», non un errore generico.
-
-## 5. Registro
+## 6. Registro
 
 | Data | Che cosa |
 | --- | --- |
@@ -243,3 +212,4 @@ Prima: un articolo **a lotti** (due lotti caricati), uno **a seriali**, un magaz
 | 2026-10-13 | ✅ **B2**: endpoint dei rientri (situazione del reso coi prelievi d'origine + CRUD sotto la riga), vincoli tradotti; sezione «Rientri» nel drawer del reso; classe CSS comune `app-voce-merce`. Brief DB R-1c. Prove: test DB (bolla a lotti emessa e consegnata → reso → rientro dal prelievo scelto → conferma: il lotto risale), test del service, spec FE `ResoRientroVoce`; Django 3991, vitest 849, build, mypy |
 | 2026-10-13 | ✅ **B1**: endpoint dei prelievi (situazione della bolla + CRUD sotto la riga), vincoli tradotti; sezione «Prelievi» nel drawer della bolla. Prove: test DB (prelievo dal lotto e scarico di quel lotto; rifiuti con il loro codice), test del service (raggruppamento per voce del kit, coercizione, 404), spec FE `DdtPrelievoVoce`; Django 3988, vitest 845, build, mypy |
 | 2026-10-12 | ✅ **A2**: magazzino di bolla (partenza, arrivo) e reso (rientro) letti nel dettaglio con le etichette e scritti in creazione e modifica; lookup specializzati `magazzino.magazzini` (`emittente_fiscale_id`) e `config.causali_trasporto` (`causale_magazzino`); BB FE `MagazzinoDocumentoSelect` (regola del 2, catalogo FE), arco `vendite -> magazzino` nel guard dei confini; il form del reso spegne per campo. 3-bis R-5: commenti di `resi_service` corretti. Prove: Django 3985 verdi, DB e2e verdi, vitest 840, guard, build, mypy a cricchetto pulito |
+| 2026-10-14 | 📋 **Collaudo scritto e brief DB chiusi** (su richiesta di Tid). Il §4 diventa il copione [collaudo-in-app-magazzino-bolla-e-reso](collaudo-in-app-magazzino-bolla-e-reso.md); i brief DB del Lotto 3 e del 3-bis vanno in `work-done/`, coi residui raccolti al §5. Il brief tutte-le-scritture-dal-verbo resta aperto: e' un'altra materia, con cinque decisioni di Tid |

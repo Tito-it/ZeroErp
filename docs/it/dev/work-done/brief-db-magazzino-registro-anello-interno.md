@@ -297,8 +297,8 @@ transazione.
 ## 8. Riferimenti
 
 - [Mappa concentrica](../../mappa-concentrica.md) — la regola degli anelli (§1), l'anello 2, la matrice.
-- [Lotto 3](../work-in-progress/brief-db-magazzino-lotto-3-scarico-da-ddt.md) (P-7, `fn_posta_ddt`) ·
-  [Lotto 3-bis](../work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md) (P-7, `fn_posta_reso`).
+- [Lotto 3](brief-db-magazzino-lotto-3-scarico-da-ddt.md) (P-7, `fn_posta_ddt`) ·
+  [Lotto 3-bis](brief-db-magazzino-lotto-3-bis-carico-da-reso.md) (P-7, `fn_posta_reso`).
 - [Analisi carico e scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md) — M-2 (la primitiva), §6 (l'identità e le sorgenti).
 - Vista gemella del cancello: `dbops.vw_audit_log_scrittori_fuori_perimetro` (`20_code/dbops/20260911-32`).
 - [linee-guida-sql §11.8](../../linee-guida-sql.md) — le tre sedi della postura.

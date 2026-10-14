@@ -10,7 +10,7 @@ Analisi DB fatta il 2026-10-13 (§5); codice non iniziato, su indicazione di Tid
 | 1 | team DB | `reasons` con i `valori` sull'azione CONFERMATO, come la bolla | §3, §5 | via di Tid |
 | 2 | team DB | pgTAP: il motivo porta i `valori` della check | §4 | 1 |
 | 3 | Tid | apply e corsa pgTAP | — | 2 |
-| 4 | Tid | collaudo a video (blocco B del piano BE/FE): il tooltip della «Conferma» porta i numeri | — | 3 |
+| 4 | Tid | collaudo a video: il tooltip della «Conferma» porta i numeri | [collaudo bolla e reso](collaudo-in-app-magazzino-bolla-e-reso.md) §5.3, §5.7 | 3 |
 | 5 | sessione BE | archiviare in `work-done/` | — | 4 |
 
 **Decisioni aperte di Tid:** nessuna.
