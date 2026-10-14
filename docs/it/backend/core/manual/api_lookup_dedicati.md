@@ -58,8 +58,8 @@ quali sono obbligatori per il tipo scelto.
 | `dati_societari_policy` | `tipi_soggetto_dettaglio` | enum `config.presenza_policy_enum` (`NONE`/`OPTIONAL`/`REQUIRED`) |
 | `sesso_policy` | `tipi_soggetto_dettaglio` | idem: `REQUIRED` asterisco, `OPTIONAL` vuoto ammesso, `NONE` campo nascosto (dal 2026-10-09) |
 
-Ordine per `id`. ⚠️ Nessun filtro di attività: tornano **tutte** le righe (il
-commento del repository dice «solo attivi», la query no).
+Ordine per `id`. Tornano **tutte** le righe: `config.tipi_soggetto_dettaglio`
+non ha una colonna `attivo`, quindi non c'è un'attività da filtrare.
 
 ---
 
@@ -103,18 +103,18 @@ li fissano i `CHECK` della tabella), `attivo`. Ordine per descrizione.
 |---|---|---|---|
 | `ruolo` | string | No | Codice del tipo ruolo del soggetto (es. `CL`, `FO`), maiuscole indifferenti |
 
-Alimenta la combo «Utility». Si parte dalle utility ammesse per il ruolo
-emittente (`EF`) in `config.utilities_tipi_ruolo` (riga attiva e valida oggi).
-Poi:
+Alimenta la combo «Utility»: le utility ammesse per il ruolo emittente
+fiscale (`EF`) in `config.utilities_tipi_ruolo` (riga attiva e valida alla data
+operativa), **uguali per ogni operatore**. Con `ruolo`, l'intersezione con le
+utility ammesse anche per quel ruolo. «Per emittente», nel nome della rotta, è
+il **ruolo** EF, non l'emittente attivo.
 
-- **emittente dell'utente** (risolto con la catena dei parametri,
-  `ParameterService.get_emittente_fiscale_id_for_user`): restano le sole utility
-  attive nella matrice `anagrafiche.emittenti_fiscali_utilities` di quell'emittente;
-- **nessun emittente, o matrice dell'emittente vuota**: nessun filtro
-  d'emittente, tornano tutte le utility `EF`. ⚠️ Il secondo caso vale per
-  chiunque, non solo per il super admin: un emittente senza nessuna riga in
-  matrice vede tutte le utility;
-- **`ruolo`**: intersezione con le utility ammesse anche per quel ruolo.
+⛔ La tabella `anagrafiche.emittenti_fiscali_utilities` **non** filtra: è
+opzionale e porta i parametri di fatturazione di una coppia emittente-utility
+(fattura minima, arrotondamento del totale), non l'elenco delle utility
+dell'emittente — la sola ammissibilità del modello è `utilities_tipi_ruolo`
+(changeSet `20260408-01`). Fino al 2026-10-14 la usava come filtro: un
+emittente con i parametri della sola luce si vedeva sparire il gas.
 
 Righe: `id`, `codice`, `codice_interno`, `descrizione`; ordine per
 descrizione. Il default lato FE (`useUtilityDefaultId`, parametro
@@ -133,7 +133,8 @@ descrizione. Il default lato FE (`useUtilityDefaultId`, parametro
 Lookup dedicato perché espone `tipo_conto`, che il generico non restituisce;
 lo usa il drawer dell'articolo per le due combo conto vendita / conto
 acquisto. Righe: `id`, `codice`, `descrizione`, `tipo_conto`; ordine per
-codice. ⚠️ Nessun filtro di attività.
+codice. Tornano tutti i conti del tipo chiesto: `config.conti_contabili` non
+ha una colonna `attivo`.
 
 ---
 
@@ -148,9 +149,10 @@ codice. ⚠️ Nessun filtro di attività.
 | `colonna` | string | No | Colonna del codice, default `codice` |
 
 Dice al form se il codice di un record lo genera il DB o va scritto a mano,
-leggendo `config.sistema_codici`. ⚠️ I due parametri «obbligatori» non sono
-controllati: assenti valgono stringa vuota, e la risposta è «non
-configurato».
+leggendo `config.sistema_codici`. `schema` o `tabella` assenti (o vuoti) →
+400 `E_VALIDATION_INPUT`, col nome del parametro nel messaggio (dal
+2026-10-14: prima valevano stringa vuota e la risposta era «non
+configurato»). `colonna` assente vale `codice`.
 
 Risposta (oggetto, non lista):
 

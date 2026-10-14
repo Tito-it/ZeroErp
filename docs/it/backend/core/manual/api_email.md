@@ -450,7 +450,7 @@ account si risolve la chiamata fallisce con `E_EMAIL_ACCOUNT_NON_CONFIGURATO`
 (500: manca la configurazione, chi invia non puo' rimediare) e la bozza **resta `DRAFT`**,
 quindi si puo' riprovare o annullare. Fino al 2026-09-28 l'ordine era inverso e la
 bozza restava `READY`, ne' rinviabile ne' annullabile (F-1 dell'
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ### Annulla bozza
 

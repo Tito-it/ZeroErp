@@ -353,7 +353,7 @@ scorre `riga.componenti`, pubblicata dall'app. ✅ Chiuso il 2026-10-01. Vedi
 47 documenti di `core` apre un'analisi BE che chiude in quattro giorni una
 ventina di voci (fra cui 90 letture grezze di `request.data` passate al BB
 `corpo_oggetto`), con dodici ancora aperte
-([analisi-be-difetti-emersi-verifica-doc-api-core.md](work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md));
+([analisi-be-difetti-emersi-verifica-doc-api-core.md](work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md));
 nelle migliorie BE/FE i primi **test di componente** del frontend (23-09),
 `pip-audit` in CI e la schermata del log email (D7); i **copioni di collaudo
 in-app** scritti e da eseguire salgono a otto (capability annidata e prezzi,

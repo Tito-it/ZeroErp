@@ -602,27 +602,22 @@ adottare la modifica (un click) o ignorarla.
 Alcune scelte di design pensate per evitare situazioni di blocco
 all'utente o configurazioni stale silenziose.
 
-### 11.1 Combo "Utility" — fallback matrice vuota
+### 11.1 Combo "Utility" — le utility ammesse per il ruolo emittente
 
 La combo "Utility" presente nei drawer (clienti, contratti, preventivi,
-filtri lista) è popolata da `/api/v1/core/lookup/utilities-per-emittente/`
-con tre comportamenti distinti:
+filtri lista) è popolata da `/api/v1/core/lookup/utilities-per-emittente/`:
+mostra le utility **ammesse per il ruolo emittente fiscale** nella matrice
+utility/ruoli (`config.utilities_tipi_ruolo`), le stesse per ogni operatore.
+Dove il drawer lavora per un ruolo preciso (per esempio il cliente), restano
+quelle ammesse anche per quel ruolo.
 
-| Caso | Comportamento |
-| --- | --- |
-| Operatore con emittente fiscale + matrice `emittenti_fiscali_utilities` popolata | SOLO le utility configurate per il proprio emittente |
-| Operatore con emittente fiscale + matrice **vuota** | **Fallback**: tutte le utility con ruolo EF (la combo non resta mai vuota) |
-| Super-admin senza emittente | Tutte le utility con ruolo EF |
-
-Il fallback evita il caso "operatore con emittente nuovo, matrice non
-ancora configurata dall'admin → combo vuota → impossibile creare
-clienti/contratti". La regola business resta: una volta popolata la
-matrice, l'operatore vede solo le utility del proprio emittente.
+⚠️ I **parametri di fatturazione** che l'amministratore imposta per un
+emittente e una utility (fattura minima, arrotondamento del totale) **non**
+decidono quali utility compaiono: sono facoltativi, e un'utility senza
+parametri dedicati usa quelli di sistema.
 
 L'eventuale parametro `DEFAULT_UTILITY` (catena
-user → group → emittente → sistema) viene risolto sul set già filtrato:
-l'operatore non riceve come default un'utility che non avrebbe potuto
-selezionare.
+user → group → emittente → sistema) viene risolto su questo stesso insieme.
 
 ### 11.2 Workflow "lista in fase di sviluppo"
 

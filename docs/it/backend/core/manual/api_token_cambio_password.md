@@ -144,7 +144,7 @@ I tre campi **non** vengono ripuliti dagli spazi: si verifica e si salva la pass
 > ⚠️ Fino al 2026-09-24 la coppia si emetteva con `RefreshToken.for_user(user)`, senza i
 > claim della veste: il frontend la installava e la richiesta successiva usciva 401
 > `E_JWT_SENZA_IDENTITA` — proprio nel cambio obbligatorio al primo accesso — e l'audit
-> registrava il `jti` al posto del `sid` (M-2 della [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+> registrava il `jti` al posto del `sid` (M-2 della [analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 #### Output (successo)
 

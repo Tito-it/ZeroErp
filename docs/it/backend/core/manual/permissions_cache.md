@@ -62,7 +62,7 @@ Architettura a due livelli:
 - `invalidate_all()` cambia la generazione globale. Oggi non ha chiamanti.
   ⚠️ Fino al 2026-09-24 usava `cache.delete_pattern()` con un pattern costruito a mano
   col prefisso, che `django-redis` aggiunge da se': non cancellava niente (S-3 della
-  [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+  [analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ## Dipendenze DB
 
@@ -85,7 +85,7 @@ Architettura a due livelli:
 
 ⚠️ Fino al 2026-09-24 la chiave era `perms:user:{user_id}`: un utente con due vesti, o che
 cambiava emittente attivo, riceveva livelli e perimetro dell'altro contesto (M-1 della
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ## Configurazione
 

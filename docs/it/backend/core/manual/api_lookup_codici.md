@@ -94,7 +94,7 @@ Una pagina oltre l'ultima risponde `results: []` col **`count` vero**: la pagina
 passa dal BB `fetch_paged_with_total`, e quando è vuota il totale lo ricalcola il
 conteggio di ripiego sullo stesso frammento FROM+WHERE. Vale per il ramo generico e
 per gli specializzati. Fino al 2026-09-28 rispondeva `count: 0` e `total_pages: 0`
-(F-8 dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+(F-8 dell'[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ## Lookup specializzati (colonna extra)
 

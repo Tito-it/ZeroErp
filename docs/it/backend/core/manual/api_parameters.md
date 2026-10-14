@@ -104,10 +104,7 @@ Il contesto utente viene risolto dal JWT. Query string opzionale:
 | Parametro              | Tipo | Note |
 |------------------------|------|------|
 | `categoria_cliente_id` | int  | Attiva il livello categoria cliente (fra user e group). Deve essere > 0, altrimenti `E_PARAMETER_VALIDATION` |
-| `billing_account_id`   | int  | Alternativa: la categoria si deriva dal BA. Ignorato se c'e' `categoria_cliente_id`. BA inesistente → categoria NULL senza errore |
-
-> ⚠️ Difetto noto (F-6): `billing_account_id` non e' controllato (esistenza e
-> scope) — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+| `billing_account_id`   | int  | Alternativa: la categoria si deriva dal BA (BB `categoria_cliente_da_query`). Ignorato se c'e' `categoria_cliente_id`. Non numerico o ≤ 0 → 400 `E_VALIDATION_INPUT`; BA inesistente o fuori scope (RLS) → 404 `E_ANAG_NOT_FOUND`, senza distinguere i due casi |
 
 ### Output
 
@@ -208,7 +205,7 @@ Body JSON:
 - Il `parameter_code` deve esistere in `config.parameters`: se manca, **404
   `E_PARAMETER_NOT_FOUND`** e non si scrive niente (dal 2026-09-28; prima l'INSERT
   violava il NOT NULL su `parameter_id` ed usciva `E_DATABASE` 400 — E-9 dell'
-  [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+  [analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 - Errore `E_PARAMETER_VALIDATION` se `parameter_code` vuoto, `scope` non ammesso o
   `categoria_cliente_id` mancante/non positivo.
 
