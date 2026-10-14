@@ -501,7 +501,13 @@ jobs:
         run: |
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.databasechangelog TO zeroerp; \
-             GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.databasechangeloglock TO zeroerp;"
+             GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.databasechangeloglock TO zeroerp; \
+             GRANT pg_maintain TO zeroerp;"
+          # pg_maintain: in ci_apply il job analyze_statistiche gira come zeroerp, e
+          #   le tabelle di Liquibase e internal.project_metadata le crea il
+          #   provision-pre come postgres. Senza, ANALYZE le salta e l'autoverifica
+          #   (E_STATISTICHE_MANCANTI) ferma la CI. Come in ci.yaml e ci-local.sh.
+          #   Brief: brief-db-statistiche-tabelle-job-notturno (D15).
 
       - name: Liquibase update (standard, no provision)
         # NIENTE bypass_tx_id_check qui, ed e' voluto: questo step deve esercitare
