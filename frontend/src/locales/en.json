@@ -4112,7 +4112,10 @@
       "col_valido_al": "To",
       "col_attivo": "Status",
       "saved": "Promo updated.",
-      "created": "Promo created."
+      "created": "Promo created.",
+      "articolo_reason": {
+        "solo_componente": "Item usable only inside a kit: a promotion on it would never apply. Put the promotion on the kit."
+      }
     },
     "resi": {
       "reso": "Return",

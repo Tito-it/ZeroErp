@@ -6,6 +6,7 @@
 - [fn_area_consente_azione](funzioni/fn_area_consente_azione.md) — (scritta il 04-10-2026)
 - [fn_area_di_oggetto](funzioni/fn_area_di_oggetto.md) — (scritta il 25-09-2026)
 - [fn_arrotonda_importo](funzioni/fn_arrotonda_importo.md) — Arrotondare un importo secondo i **decimali** e il **metodo** configurati, in **un punto solo** per tutto il database.
+- [fn_articolo_riga_contesto](funzioni/fn_articolo_riga_contesto.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: R-5)
 - [fn_audit_summary](funzioni/fn_audit_summary.md)
 - [fn_available_actions_commessa](funzioni/fn_available_actions_commessa.md) — (latest review 16-06-2026) Espone le **capability del ciclo di vita di una commessa** per il detail/stato API: quali azioni di stato l'utente può eseguire e cosa può modificare. Mirror del pattern `fn_available_actions_ordine` / `_offerta` / `_contratto` / `_preventivo`, **senza azioni applicative** (il push è *verso* la commessa, non un'azione della commessa).
 - [fn_available_actions_contratto](funzioni/fn_available_actions_contratto.md)
@@ -26,7 +27,8 @@
 - [fn_check_accredito_annullabile](funzioni/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](funzioni/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
-- [fn_check_articolo_riga](funzioni/fn_check_articolo_riga.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta)
+- [fn_check_articolo_riga](funzioni/fn_check_articolo_riga.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta; Lotto 4, `20261014-03`: due metà, e la promo)
+- [fn_check_articolo_riga_su_contesto](funzioni/fn_check_articolo_riga_su_contesto.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: A-2, D-6)
 - [fn_check_attivita_riportabile_da_emettere](funzioni/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)
 - [fn_check_ba_cambio_emittente](funzioni/fn_check_ba_cambio_emittente.md) — (latest review 27-08-26)
@@ -318,7 +320,7 @@
 - [trgfn_qta_from_operativa](funzioni/trgfn_qta_from_operativa.md) — Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a partire dalla **sorgente operativa** (`NEW.uom_operativa_id`, `NEW.qta_operativa`) sulle righe documentali (es. `vendite.ddt_righe`). La funzione:
 - [trgfn_righe_default_erogazione_da_articolo](funzioni/trgfn_righe_default_erogazione_da_articolo.md)
 - [trgfn_righe_default_fonte_qta](funzioni/trgfn_righe_default_fonte_qta.md) — (rev 2026-08-21)
-- [trgfn_righe_guard_articolo_ammesso](funzioni/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2, A-6; Lotti 3b e 3c, `20261013-56/-57/-61`)
+- [trgfn_righe_guard_articolo_ammesso](funzioni/trgfn_righe_guard_articolo_ammesso.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2, A-6, D-6; Lotti 3b e 3c, `20261013-56/-57/-61`; Lotto 4, `20261014-05`: la promo)
 - [trgfn_righe_guard_erogazione_obbligatoria](funzioni/trgfn_righe_guard_erogazione_obbligatoria.md) — (funzione nata il 2026-10-04, `20261004-31`; trigger `20261004-32`)
 - [trgfn_righe_guard_erogazione_perimetro](funzioni/trgfn_righe_guard_erogazione_perimetro.md)
 - [trgfn_righe_guard_esclusione_immutabile](funzioni/trgfn_righe_guard_esclusione_immutabile.md) — (funzione nata il 2026-10-04, `20261004-46`; trigger `20261004-48` e `-49`)

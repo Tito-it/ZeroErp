@@ -4112,7 +4112,10 @@
       "col_valido_al": "Al",
       "col_attivo": "Stato",
       "saved": "Promo aggiornata.",
-      "created": "Promo creata."
+      "created": "Promo creata.",
+      "articolo_reason": {
+        "solo_componente": "Articolo usabile solo dentro un kit: una promo su di lui non si applicherebbe mai. Metti la promo sul kit."
+      }
     },
     "resi": {
       "reso": "Reso",
