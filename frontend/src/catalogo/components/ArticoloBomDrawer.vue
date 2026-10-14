@@ -563,7 +563,8 @@ const fotoDuplica = useFotografiaDialog(() => ({ chiudiAl: duplicaDialogChiudiAl
             :model-value="componenteObj"
             :placeholder="t('catalogo.search_componente')"
             :disabled="isFormReadonly"
-            :filtri="{ compositi: 'escludi' }"
+            documento="ARTICOLO"
+            :articolo-padre-id="articoloId"
             @select="onComponenteSelect"
           />
         </div>

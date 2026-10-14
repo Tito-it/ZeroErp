@@ -27,6 +27,7 @@ from apps.catalogo.db.catalogo_repository import (
     ARTICOLI_ORDER_COLUMNS,
     ARTICOLI_UPDATE_COLUMNS,
     CONVERSIONI_UPDATE_COLUMNS,
+    LOOKUP_ARTICOLI_MAX,
     UNITA_MISURA_UPDATE_COLUMNS,
     UOM_CONVERSIONI_ORDER_COLUMNS,
     UOM_ORDER_COLUMNS,
@@ -1413,6 +1414,21 @@ def fn_riattiva_articolo(articolo_id: UUID | str) -> dict[str, Any]:
     return fn_get_articolo(articolo_id)
 
 
+# Scopo: Correzione amministratore della STRUTTURA di un articolo anche se
+#        usato (A-10 di brief-db-articoli-ammessi-per-documento, Lotto 3u):
+#        `campi` porta le sole colonne strutturali da cambiare. Ritorna il
+#        dettaglio aggiornato. Serve per un errore di caricamento: la via
+#        normale per vendere o gestire diversamente resta un articolo nuovo.
+# ⭐ Il backend non decide niente: il permesso (SUPER_ADMIN), la FORMA di
+#    `campi` (un oggetto non vuoto: assente, lista o `{}` arrivano al verbo come
+#    jsonb non-oggetto), le otto colonne ammesse e l'articolo inesistente li
+#    giudica il verbo `catalogo.fn_articolo_correggi_struttura`, coi suoi codici
+#    (`E_PARAMETRO_INVALIDO` e' DATO_ERRATO: 400). Una copia qui divergerebbe.
+def fn_correggi_struttura_articolo(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, Any]:
+    CatalogoRepository().correggi_struttura_articolo(articolo_id, payload.get("campi"))
+    return fn_get_articolo(articolo_id)
+
+
 # Scopo: Restituisce defaults pre-compilazione form articolo (Fase 8 — A5).
 #        Centralizza il consumo dei parametri usati dal FE per il form di
 #        creazione articolo (oggi: DEFAULT_IVA). Tipi gia' risolti: il FE non
@@ -1486,17 +1502,15 @@ def fn_lookup_articoli(
     search: str | None = None,
     attivo: bool | None = True,
     is_composito: bool | None = None,
-    is_solo_componente: bool | None = None,
     # R-5 (brief magazzino 2-bis): `None` = nessun filtro. Lo passa SOLO il
     # picker di riga di inventario e rettifica; altrove la tendina propone tutto.
     gestito_a_magazzino: bool | None = None,
-    escludi_destinazione_tipi: list[str] | None = None,
     solo_oneri: bool = False,
     limit: int = 20,
 ) -> dict[str, Any]:
     _validate_lookup_limit(
         limit,
-        max_limit=50,
+        max_limit=LOOKUP_ARTICOLI_MAX,
         function_name="catalogo.catalogo_service.fn_lookup_articoli",
     )
     repository = CatalogoRepository()
@@ -1504,10 +1518,50 @@ def fn_lookup_articoli(
         search=search,
         attivo=attivo,
         is_composito=is_composito,
-        is_solo_componente=is_solo_componente,
         gestito_a_magazzino=gestito_a_magazzino,
-        escludi_destinazione_tipi=escludi_destinazione_tipi,
         solo_oneri=solo_oneri,
+        limit=limit,
+    )
+    return _lookup_response(results, troncato=troncato)
+
+
+# Scopo: Il lookup articoli di una RIGA di documento (preventivo, ordine, bolla,
+#        eccezioni di offerta e contratto, versione di listino, distinta, promo):
+#        gli articoli trovati col `motivo` per cui il documento non li ammette
+#        (None = ammesso), prima gli ammessi. Stesso envelope di
+#        `fn_lookup_articoli` (`results` + `troncato`).
+# ⭐ La regola e' del DB (`catalogo.fn_articoli_ammessi`, la check dei guard):
+#    il service valida solo cio' che al cast diventerebbe un 500 e passa il resto.
+#    Documento sconosciuto, id mancante, tipo d'eccezione o padre mancanti li
+#    rifiuta la funzione, coi suoi codici.
+def fn_lookup_articoli_ammessi(
+    *,
+    documento: str,
+    documento_id: int | None = None,
+    search: str | None = None,
+    tipo_eccezione: str | None = None,
+    articolo_padre_id: UUID | str | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    function_name = "catalogo.catalogo_service.fn_lookup_articoli_ammessi"
+    _validate_lookup_limit(limit, max_limit=LOOKUP_ARTICOLI_MAX, function_name=function_name)
+    repository = CatalogoRepository()
+    if tipo_eccezione is not None:
+        ErrorManager.require(
+            repository.tipo_eccezione_valido(tipo_eccezione),
+            code="E_CATALOGO_VALIDATION",
+            message="Parametri lookup non validi.",
+            detail="tipo_eccezione non e' un valore di vendite.tipo_eccezione_contratto.",
+            context={"tipo_eccezione": tipo_eccezione},
+            function_name=function_name,
+            log_to_db=True,
+        )
+    results, troncato = repository.lookup_articoli_ammessi(
+        documento=documento,
+        documento_id=documento_id,
+        search=search,
+        tipo_eccezione=tipo_eccezione,
+        articolo_padre_id=articolo_padre_id,
         limit=limit,
     )
     return _lookup_response(results, troncato=troncato)

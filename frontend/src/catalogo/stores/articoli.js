@@ -3,7 +3,7 @@
 
 import {
   listArticoli, getArticolo, createArticolo, updateArticolo,
-  disattivaArticolo, riattivaArticolo,
+  disattivaArticolo, riattivaArticolo, correggiStrutturaArticolo,
 } from '../api/catalogo'
 import { createCrudStore } from '../../core/stores/createCrudStore'
 import { TAB_ENTITIES } from '../../core/constants'
@@ -20,5 +20,9 @@ export const useArticoliStore = createCrudStore('catalogo-articoli', {
   // dichiarazioni divergevano — invisibile finche' il FE non consuma
   // `ordinamento_default`, poi sarebbe cambiato l'ordine da solo.
   orderBy: 'codice',
-  extraActions: { disattiva: disattivaArticolo, riattiva: riattivaArticolo },
+  extraActions: {
+    disattiva: disattivaArticolo,
+    riattiva: riattivaArticolo,
+    correggiStruttura: correggiStrutturaArticolo,
+  },
 })

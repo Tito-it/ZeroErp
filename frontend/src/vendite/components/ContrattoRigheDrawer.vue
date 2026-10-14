@@ -136,6 +136,7 @@ watch(() => props.visible, (v) => {
     :documento-id="props.contrattoId"
     :emittente-fiscale-id="props.emittenteFiscaleId"
     lista-codice="vendite.contratto_righe"
+    documento="CONTRATTO"
     :righe-store="righeStore"
     :scritture="scritture"
     :esporta-righe="exportRigheLista"

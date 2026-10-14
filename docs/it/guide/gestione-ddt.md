@@ -172,6 +172,8 @@ se nel frattempo l'articolo è cambiato in anagrafica. Il controllo è uno solo 
 documenti ([`script.fn_check_articolo_riga`](/dbzero/script/manual/fn_check_articolo_riga)), e
 il messaggio dice perché e dove va invece l'articolo. Un **kit senza componenti** (dal 2026-10-14) non si mette in nessuna riga: va prima completata la sua distinta.
 
+**Nella ricerca dell'articolo** trovi prima quelli che la riga può usare. Gli altri compaiono dopo, in grigio, col motivo sotto, e non si possono scegliere: chi cerca un codice preciso e non lo trova fra i primi vede perché. La ricerca e il rifiuto al salvataggio usano la stessa regola, quindi un articolo proposto non viene rifiutato dopo.
+
 La **riconsegna** di un reso è esente: restituisce ciò che è uscito, anche se l'articolo nel
 frattempo è diventato «solo componente».
 

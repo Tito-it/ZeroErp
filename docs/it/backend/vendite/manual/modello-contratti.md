@@ -102,9 +102,13 @@ Vincoli DB:
   eccezione OVERRIDE/ESCLUSIONE per coppia `(contratto_id, articolo_id)`.
 - `uq_contrighe_one_aggiunta_per_articolo` (UNIQUE parziale): max 1
   AGGIUNTA per coppia `(contratto_id, articolo_id)`.
-- `script.trgfn_righe_guard_aggiunta_fuori_listino` (BEFORE INSERT/UPDATE, generica per contratto e offerta):
-  blocca AGGIUNTA per articolo gia' presente nel listino di riferimento del
-  contratto. L'operatore avrebbe dovuto usare OVERRIDE.
+- `script.trgfn_righe_guard_articolo_ammesso` (BEFORE INSERT/UPDATE OF `articolo_id`, lo stesso
+  su contratto e offerta; dal Lotto 3b di brief-db-articoli-ammessi-per-documento, 2026-10-13):
+  rifiuta l'articolo col primo motivo di `script.fn_check_articolo_riga`, la stessa check del
+  picker. Fra i motivi: AGGIUNTA di un articolo gia' nel listino (`E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO`,
+  si usa OVERRIDE), OVERRIDE o ESCLUSIONE senza listino o fuori listino, ESCLUSIONE di un figlio di
+  bundle. Ha ritirato `trgfn_righe_guard_aggiunta_fuori_listino` e
+  `trgfn_righe_guard_esclusione_figlio_bundle`.
 
 `tipo_eccezione` e' **immutabile in UPDATE**. Per cambiare tipo serve
 DELETE + INSERT (evita cambi di semantica silenti). Validato in

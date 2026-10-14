@@ -169,9 +169,11 @@ il gesto per intero: nessuna riga cambia. Lo stesso gesto, sull'ordine, in
 #### Quali articoli possono stare su un preventivo
 
 Sul preventivo puoi mettere **merce** e **servizi una tantum**. **Non** puoi
-inserire articoli a **servizio ricorrente** (canone/abbonamento): se ci provi, il
-sistema rifiuta la riga con un messaggio che ti invita a usare l'**offerta
-commerciale**. Il motivo è semplice — la ricorrenza ha un suo ciclo di vita
+inserire articoli a **servizio ricorrente** (canone/abbonamento): nella ricerca
+dell'articolo compaiono in grigio, col motivo sotto, e non si possono scegliere; il
+motivo ti invita a usare l'**offerta commerciale**. Lo stesso vale per un articolo
+che si vende solo dentro un kit e per un kit senza componenti. La ricerca e il
+rifiuto al salvataggio usano la stessa regola. Il motivo è semplice — la ricorrenza ha un suo ciclo di vita
 ([offerta → contratto → fatturazione periodica](gestione-offerte-commerciali.md))
 che non passa dal preventivo. Ogni articolo porta con sé questa "natura" dal
 catalogo, e l'operatore non può cambiarla sulla riga.

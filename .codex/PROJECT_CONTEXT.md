@@ -325,7 +325,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 📝 **Quali articoli ammette un documento** (`work-in-progress/brief-db-articoli-ammessi-per-documento.md`):
   una regola sola per il picker e per il guard. Analisi DB fatta (§8), decisioni di Tid prese il 2026-10-13 (§8.6).
   ✅ Lato DB chiuso il 2026-10-14: lotti 1…4 applicati e verdi (il 4 è la sede unica del picker,
-  `catalogo.fn_articoli_ammessi`), lotto 5 (doc) scritto. ⏭️ Ora il giro BE/FE (§9.6), poi il collaudo di Tid. Aperta D-7.
+  `catalogo.fn_articoli_ammessi`), lotto 5 (doc) scritto, D-7 applicata. ✅ Giro BE/FE fatto e committato il 2026-10-14 (§9.7,
+  revisione §9.7.5; aperti R-DB-3 e R-BE-1) tranne l'A-8-bis, che va applicato insieme al suo pezzo DB (§9.7.3, R-DB-1). ⏳ collaudo di Tid (§9.7.4).
 - 📝 **Canone, orario e consumo del contratto in commessa**
   (`work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md`, D31, 2026-10-13): il push dei
   contratti manda solo le righe UNA_TANTUM, col giorno di attivazione (`20261013-24`, D-1/D-2 di Tid); la

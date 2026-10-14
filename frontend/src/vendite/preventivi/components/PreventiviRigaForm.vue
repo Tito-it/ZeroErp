@@ -479,8 +479,7 @@ defineExpose({ modificato, chiudiConConferma })
     <div class="form-field">
       <label>{{ t('vendite.preventivi.riga_articolo') }} <span v-if="!isEdit">*</span></label>
       <ArticoloLookup :model-value="articoloObj" :disabled="isEdit"
-        :filtri="{ soloComponenti: 'escludi' }"
-        :escludi-destinazione="['CONTRATTO']"
+        documento="PREVENTIVO" :documento-id="preventivoId"
         :placeholder="t('vendite.preventivi.riga_cerca_articolo')" @select="onArticoloSelect" />
     </div>
 

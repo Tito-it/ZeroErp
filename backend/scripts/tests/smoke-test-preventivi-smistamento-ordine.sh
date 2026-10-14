@@ -7,7 +7,7 @@
 # che gli unit test mockano):
 #  - MERCE→ORDINE: vista vw_preventivi_righe_smistabili_ordine, endpoint
 #    righe-smistabili-ordine + genera-ordine (fn_push_preventivo_a_ordine),
-#    idempotenza di riga, filtro catalogo natura;
+#    idempotenza di riga, picker degli articoli della riga (sede unica);
 #  - SERVIZIO→COMMESSA su preventivo MISTO (2026-06-10): articolo servizio
 #    creato via API (natura_vendita_id amministrabile, opzione A), push-commessa
 #    natura-aware (il servizio non appare tra le righe-smistabili-ordine), gate
@@ -31,8 +31,11 @@
 # ------------------------------------------------------------
 # Indice:
 #  0) Autenticazione JWT
-#  1) Filtro catalogo natura: lookup ?escludi_destinazione=CONTRATTO (standalone)
+#  1) (ritirato il 2026-10-14: era il filtro libero `escludi_destinazione`; la
+#     prova del picker e' ora il passo 2-bis)
 #  2) Crea preventivo BOZZA + riga merce
+#  2-bis) Picker della riga sulla sede unica (?documento=PREVENTIVO): l'articolo
+#     che il guard ha appena accettato e' fra gli AMMESSI (motivo null)
 #  3) Porta ad ACCETTATO (emetti multipart + accetta con modalita) [prereq-gated]
 #  4) GET righe-smistabili-ordine → la riga merce compare
 #  5) POST genera-ordine {righe_ids} → ordine creato (ordine_id + numero)
@@ -130,12 +133,6 @@ echo "== Smoke smistamento merce→ordine =="
 smoke_login --senza-prompt --uscita 2
 log_ok "Autenticazione JWT"
 
-# --- 1. Filtro catalogo natura (standalone, sempre eseguibile) ---
-echo ""; echo "-- 1. Lookup catalogo escludi_destinazione=CONTRATTO --"
-do_curl GET "/api/v1/catalogo/articoli/lookup/?search=art&escludi_destinazione=CONTRATTO"
-# 200 atteso; se nessun articolo ha codice 'art' la lista è vuota ma 200.
-check "GET lookup con filtro natura" 200 || true
-
 # --- 2. Crea preventivo + riga merce ---
 echo ""; echo "-- 2. Crea preventivo BOZZA + riga merce --"
 # Serve una tripla COERENTE (billing_account + utility + istanza). Fonte 1: lookup
@@ -206,6 +203,39 @@ do_curl POST "/api/v1/vendite/preventivi/${PREV_ID}/righe/" \
     "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"10\", \"prezzo_unitario\": \"100.00\", \"iva_id\": 16}"
 check "POST aggiungi riga merce" 200 "data.id" || true
 RIGA_ID="$EXTRACTED"; log_info "riga_id = $RIGA_ID"
+
+# --- 2-bis. Picker della riga sulla sede unica ---
+# ⭐ Il picker e il guard fanno la STESSA domanda (catalogo.fn_articoli_ammessi,
+#    brief-db-articoli-ammessi-per-documento §9.4): l'articolo che il guard ha
+#    appena accettato sulla riga deve uscire AMMESSO (`motivo` null). Prima qui
+#    c'era il filtro libero `escludi_destinazione`, ritirato: il BE lo ignorava
+#    e il passo restava verde senza provare niente.
+echo ""; echo "-- 2-bis. Picker riga preventivo (?documento=PREVENTIVO) --"
+if [[ -n "$RIGA_ID" ]]; then
+    do_curl GET "/api/v1/catalogo/articoli/${ARTICOLO_ID}/"
+    ART_CODICE=$(json_get "$LAST_BODY" "data.codice")
+    if [[ ${#ART_CODICE} -lt 3 ]]; then
+        log_skip "picker: codice articolo '${ART_CODICE}' sotto i 3 caratteri della ricerca"
+    else
+        do_curl GET "/api/v1/catalogo/articoli/lookup/?documento=PREVENTIVO&documento_id=${PREV_ID}&search=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$ART_CODICE")&limit=50"
+        if check "GET picker riga preventivo" 200; then
+            ESITO=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+rows = json.load(sys.stdin).get('data', {}).get('results') or []
+r = next((x for x in rows if str(x.get('id')) == '$ARTICOLO_ID'), None)
+if r is None: print('ASSENTE')
+elif 'motivo' not in r: print('SENZA_MOTIVO')
+elif r['motivo'] is None: print('AMMESSO')
+else: print('ESCLUSO:' + str(r['motivo'].get('reason')))
+" 2>/dev/null)
+            [[ "$ESITO" == "AMMESSO" ]] \
+                && log_ok "picker: l'articolo della riga e' ammesso (motivo null), come per il guard" \
+                || log_fail "picker: atteso AMMESSO per l'articolo della riga, trovato ${ESITO:-illeggibile}"
+        fi
+    fi
+else
+    log_skip "picker: la riga merce non e' stata creata, niente da confrontare"
+fi
 
 # --- 3. Porta ad ACCETTATO (prereq-gated: emetti + accetta) ---
 echo ""; echo "-- 3. BOZZA → EMESSO (/emetti/) → ACCETTATO --"
