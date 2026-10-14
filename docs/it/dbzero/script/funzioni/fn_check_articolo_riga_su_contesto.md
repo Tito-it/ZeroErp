@@ -234,13 +234,31 @@ BEGIN
                     'valori',     jsonb_build_array());
             END IF;
 
-            -- 2. Tipologia fuori utility: la stessa domanda del form
+            -- 2. Un kit senza nessun componente attivo non si vende (D-7):
+            --    l'init dei componenti lo rifiuterebbe sempre. Il caso «componenti
+            --    ma non validi alla data» resta all'init (E_DOC_COMPOSITO_BOM_VUOTA).
+            IF v_composito IS TRUE AND NOT EXISTS (
+                   SELECT 1 FROM catalogo.articoli_componenti ac
+                    WHERE ac.prodotto_id = p_articolo_id
+                      AND COALESCE(ac.attivo, TRUE)) THEN
+                v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_ARTICOLO_KIT_SENZA_COMPONENTI',
+                    'reason',     'KIT_SENZA_COMPONENTI',
+                    'reason_key', 'vendite.righe.articolo_reason.kit_senza_componenti',
+                    'dettaglio',  jsonb_build_object(
+                                      'campo',       'articolo_id',
+                                      'documento',   v_documento,
+                                      'articolo_id', p_articolo_id),
+                    'valori',     jsonb_build_array(v_codice));
+            END IF;
+
+            -- 3. Tipologia fuori utility: la stessa domanda del form
             --    delle erogazioni, composta (erogazione e fonte NULL).
             v_motivi := v_motivi || script.fn_check_riga_erogazione(
                 v_doc_listino, v_documento_id, p_articolo_id,
                 v_tipo_ecc, NULL, NULL);
 
-            -- 3. Nessuna erogazione ammessa (§8.1).
+            -- 4. Nessuna erogazione ammessa (§8.1).
             IF NOT EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(p_articolo_id)) THEN
                 v_motivi := v_motivi || jsonb_build_object(
                     'codice',     'E_ARTICOLO_SENZA_EROGAZIONE',
@@ -253,7 +271,7 @@ BEGIN
                     'valori',     jsonb_build_array(v_codice));
             END IF;
 
-            -- 4a. AGGIUNTA di un articolo gia' nel listino.
+            -- 5a. AGGIUNTA di un articolo gia' nel listino.
             IF v_tipo_ecc = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
                AND v_in_listino THEN
                 v_motivi := v_motivi || jsonb_build_object(
@@ -270,7 +288,7 @@ BEGIN
             END IF;
         END IF;
 
-        -- 4b. OVERRIDE ed ESCLUSIONE vivono sul listino (A-5).
+        -- 5b. OVERRIDE ed ESCLUSIONE vivono sul listino (A-5).
         IF v_tipo_ecc <> 'AGGIUNTA'::vendite.tipo_eccezione_contratto THEN
             IF v_versione_id IS NULL THEN
                 v_motivi := v_motivi || jsonb_build_object(
@@ -323,7 +341,25 @@ BEGIN
             'valori',     jsonb_build_array());
     END IF;
 
-    -- 2. La natura, secondo la destinazione.
+    -- 2. Un kit senza nessun componente attivo non si vende (D-7):
+    --    l'init dei componenti lo rifiuterebbe sempre. Il caso «componenti
+    --    ma non validi alla data» resta all'init (E_DOC_COMPOSITO_BOM_VUOTA).
+    IF v_composito IS TRUE AND NOT EXISTS (
+           SELECT 1 FROM catalogo.articoli_componenti ac
+            WHERE ac.prodotto_id = p_articolo_id
+              AND COALESCE(ac.attivo, TRUE)) THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice',     'E_ARTICOLO_KIT_SENZA_COMPONENTI',
+            'reason',     'KIT_SENZA_COMPONENTI',
+            'reason_key', 'vendite.righe.articolo_reason.kit_senza_componenti',
+            'dettaglio',  jsonb_build_object(
+                              'campo',       'articolo_id',
+                              'documento',   v_documento,
+                              'articolo_id', p_articolo_id),
+            'valori',     jsonb_build_array(v_codice));
+    END IF;
+
+    -- 3. La natura, secondo la destinazione.
     IF v_documento = 'PREVENTIVO' AND v_destinazione = 'CONTRATTO' THEN
         v_motivi := v_motivi || jsonb_build_object(
             'codice',     'E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA',
@@ -359,7 +395,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint)
-IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; in piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4).';
+IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; rev 2026-10-14 (20261014-06, D-7): KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI), un composito senza nessun legame attivo in catalogo.articoli_componenti, motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto (dopo il solo componente); il caso date-dipendente resta all''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). In piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4).';
 ```
 
 ---

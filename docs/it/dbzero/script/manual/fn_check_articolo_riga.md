@@ -10,7 +10,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta; Lotto 4, `20261014-03`: due metà, e la promo)
+(latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta; Lotto 4, `20261014-03`: due metà, e la promo; `20261014-06`: il kit senza componenti, D-7)
 
 Dice **perché un articolo non può stare in una riga** di un documento. `[]` vuol dire ammesso;
 altrimenti un array **ordinato** di motivi `{codice, reason, reason_key, dettaglio, valori}`.
@@ -29,10 +29,18 @@ dei trigger.
 | # | Motivo | Documenti | Codice |
 | --- | --- | --- | --- |
 | 1 | l'articolo vive solo dentro un kit | tutti | `E_ARTICOLO_SOLO_COMPONENTE` |
-| 2 | la ricorrenza va in offerta | `PREVENTIVO` | `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA` |
-| 2 | solo merce (destinazione `ORDINE`) | `ORDINE_VENDITA`, `DDT_VENDITA` | `E_RIGA_NATURA_NON_AMMESSA` |
+| 2 | il kit non ha nessun componente attivo (D-7) | tutti | `E_ARTICOLO_KIT_SENZA_COMPONENTI` |
+| 3 | la ricorrenza va in offerta | `PREVENTIVO` | `E_VENDITA_RIGA_RICORRENTE_USA_OFFERTA` |
+| 3 | solo merce (destinazione `ORDINE`) | `ORDINE_VENDITA`, `DDT_VENDITA` | `E_RIGA_NATURA_NON_AMMESSA` |
 
-Prima il solo componente: «usa il kit» viene prima di «va altrove».
+Prima il solo componente: «usa il kit» viene prima di «va altrove». Il kit vuoto viene subito
+dopo: non si vende in nessun documento.
+
+**Il kit senza componenti** (dal 2026-10-14, `20261014-06`): «vuoto» vuol dire nessun legame
+attivo nella distinta, a qualunque data. L'inizializzazione dei componenti giudica invece i
+componenti validi **alla data del documento** (`E_DOC_COMPOSITO_BOM_VUOTA`): la check rifiuta
+solo ciò che l'init rifiuterebbe sempre, e il caso «componenti che ci sono ma non a quella
+data» resta all'init.
 
 La natura giudicata è **quella della riga** (`p_natura_vendita_id`, la natura congelata con cui
 la riga è stata venduta), se il chiamante la passa; altrimenti quella dell'articolo, come per
@@ -49,10 +57,11 @@ riga, `p_tipo_eccezione`, obbligatorio qui) decide le regole.
 | # | AGGIUNTA e OVERRIDE (la riga vende) | Codice |
 | --- | --- | --- |
 | 1 | l'articolo vive solo dentro un kit | `E_ARTICOLO_SOLO_COMPONENTE` |
-| 2 | la tipologia dell'articolo non è della utility del documento | `E_RIGA_TIPOLOGIA_FUORI_UTILITY` (composta da `script.fn_check_riga_erogazione`) |
-| 3 | l'articolo non ha nessuna erogazione ammessa | `E_ARTICOLO_SENZA_EROGAZIONE` |
-| 4 | AGGIUNTA di un articolo già nel listino | `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` |
-| 4 | OVERRIDE: documento senza listino / articolo fuori listino (A-5) | `E_RIGA_ECCEZIONE_SENZA_LISTINO` / `_FUORI_LISTINO` |
+| 2 | il kit non ha nessun componente attivo (D-7) | `E_ARTICOLO_KIT_SENZA_COMPONENTI` |
+| 3 | la tipologia dell'articolo non è della utility del documento | `E_RIGA_TIPOLOGIA_FUORI_UTILITY` (composta da `script.fn_check_riga_erogazione`) |
+| 4 | l'articolo non ha nessuna erogazione ammessa | `E_ARTICOLO_SENZA_EROGAZIONE` |
+| 5 | AGGIUNTA di un articolo già nel listino | `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` |
+| 5 | OVERRIDE: documento senza listino / articolo fuori listino (A-5) | `E_RIGA_ECCEZIONE_SENZA_LISTINO` / `_FUORI_LISTINO` |
 
 | # | ESCLUSIONE (la riga toglie un articolo dal listino) | Codice |
 | --- | --- | --- |

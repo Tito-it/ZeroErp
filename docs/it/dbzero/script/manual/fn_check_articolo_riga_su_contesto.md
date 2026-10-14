@@ -32,6 +32,8 @@ trovato. Una regola, due chiamanti (A-2).
 * Articolo `NULL` o inesistente: nessun motivo, parla la FK.
 * Qui è nato il documento `PROMO_ARTICOLO` (D-6): un solo componente non può avere una promo
   (`E_PROMO_ARTICOLO_SOLO_COMPONENTE`).
+* Rev 2026-10-14 (`20261014-06`, D-7): il kit senza nessun componente attivo è il motivo 2 di
+  preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE (`E_ARTICOLO_KIT_SENZA_COMPONENTI`).
 
 ---
 {% include-markdown "signature-core.md" %}

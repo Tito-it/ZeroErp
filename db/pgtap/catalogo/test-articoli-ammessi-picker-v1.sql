@@ -8,14 +8,15 @@
 -- documento (letto una volta) e motivi. E la promo (D-6).
 -- Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-1, A-2, A-7, D-6;
 --   R-7; §9.4)
--- ChangeSet: 20261014-01 -> -05
+-- ChangeSet: 20261014-01 -> -05; 20261014-06 (D-7, il kit senza componenti)
 --
 -- ⭐ TUTTO COSTRUITO: mondo, listino con una versione propria, contratto,
 --   preventivo e articoli nascono qui. Nessuna pesca dal catalogo.
 --
 -- LA FIXTURE — articoli PGT-AMM4-*: A merce nel listino; M merce (tipologia
---   del listino, fuori listino); P composito merce; C solo componente merce;
---   R servizio ricorrente; X merce SPENTA. Un contratto DRAFT sul listino
+--   del listino, fuori listino); P composito merce col componente F; F merce;
+--   V composito SENZA componenti; C solo componente merce; R servizio
+--   ricorrente; X merce SPENTA. Un contratto DRAFT sul listino
 --   (versione in vigore con A), un preventivo in bozza.
 --
 -- ⭐ «Picker e guard non dissentono» (R-7) si prova CONFRONTANDO, per ogni
@@ -23,7 +24,7 @@
 --   check dei guard (script.fn_check_articolo_riga), e contando le righe: un
 --   confronto su zero righe sarebbe verde per sottrazione.
 --
--- Elenco test (plan 23):
+-- Elenco test (plan 26):
 --  I parametri
 --   1) documento con testata senza id: E_PARAMETRO_INVALIDO (A-1)
 --   2) documento non gestito: E_DOC_TIPO_NON_GESTITO anche se la ricerca
@@ -53,13 +54,17 @@
 --  21) guard: la promo sul composito P si scrive
 --  22) guard: spostare la promo su C e' rifiutato
 --  23) la firma di sempre conosce PROMO_ARTICOLO
+--  Il kit senza componenti (D-7)
+--  24) ordine: il guard rifiuta il kit vuoto, col motivo del picker
+--  25) contratto, AGGIUNTA: il kit vuoto, primo motivo dopo il solo componente
+--  26) contratto, ESCLUSIONE: il kit vuoto non si giudica (escludere non vende)
 -- ------------------------------------------------------------
 
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(23);
+SELECT plan(26);
 
 -- ============================================================
 -- FIXTURE
@@ -90,7 +95,7 @@ SELECT id FROM ins;
 
 CREATE TEMP TABLE _art AS
 SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-AMM4-' || v.sigla, false) AS id
-  FROM (VALUES ('A'), ('M'), ('P'), ('C'), ('R'), ('X')) AS v(sigla);
+  FROM (VALUES ('A'), ('M'), ('P'), ('F'), ('V'), ('C'), ('R'), ('X')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
 CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
@@ -105,7 +110,10 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT ricorrente FROM _nat)
  WHERE id = pg_temp.art('R');
 UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _listino)
  WHERE id = pg_temp.art('M');
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('P');
+UPDATE catalogo.articoli SET is_composito = TRUE WHERE id IN (pg_temp.art('P'), pg_temp.art('V'));
+-- P ha un componente (F); V no: e' il kit vuoto (D-7).
+INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
+VALUES (pg_temp.art('P'), pg_temp.art('F'), 1, '2020-01-01');
 UPDATE catalogo.articoli SET is_solo_componente = TRUE WHERE id = pg_temp.art('C');
 -- X spento: figli prima, padre poi (la UoM operativa nata col builder).
 UPDATE catalogo.articoli_uom_operativa SET attivo = FALSE WHERE articolo_id = pg_temp.art('X');
@@ -187,16 +195,16 @@ SELECT throws_like(
 -- Il preventivo (5-12)
 -- ============================================================
 SELECT is(pg_temp.elenco('PREVENTIVO', (SELECT preventivo_id FROM _prev), 'PGT-AMM4-'),
-          'A:OK,M:OK,P:OK,C:SOLO_COMPONENTE,R:RICORRENTE_USA_OFFERTA',
+          'A:OK,F:OK,M:OK,P:OK,C:SOLO_COMPONENTE,R:RICORRENTE_USA_OFFERTA,V:KIT_SENZA_COMPONENTI',
     '5) preventivo: prima gli ammessi, poi gli esclusi col motivo; lo spento no');
 
 SELECT is((SELECT array_agg(f.ordine ORDER BY f.ordine)
              FROM catalogo.fn_articoli_ammessi('PREVENTIVO', (SELECT preventivo_id FROM _prev), 'PGT-AMM4-') f),
-          ARRAY[1, 2, 3, 4, 5],
+          ARRAY[1, 2, 3, 4, 5, 6, 7],
     '6) ordine e'' la posizione, da 1 senza buchi');
 
 SELECT is(pg_temp.elenco('PREVENTIVO', (SELECT preventivo_id FROM _prev), 'PGT-AMM4-', 2),
-          'A:OK,M:OK',
+          'A:OK,F:OK',
     '7) il tetto prende i primi: gli ammessi');
 
 SELECT is((SELECT count(*)::integer
@@ -209,7 +217,7 @@ SELECT is(pg_temp.elenco('PREVENTIVO', (SELECT preventivo_id FROM _prev), 'pgt-a
     '9) la ricerca non distingue le maiuscole');
 
 SELECT is(pg_temp.dissensi('PREVENTIVO', (SELECT preventivo_id FROM _prev)),
-          '5 righe, 0 dissensi',
+          '7 righe, 0 dissensi',
     '10) preventivo: picker e guard non dissentono');
 
 SELECT throws_like(
@@ -247,7 +255,7 @@ SELECT is((SELECT string_agg(replace(f.codice, 'PGT-AMM4-', '') || ':'
 SELECT is(pg_temp.dissensi('CONTRATTO', (SELECT id FROM _ctr), 'AGGIUNTA') || ' | '
           || pg_temp.dissensi('CONTRATTO', (SELECT id FROM _ctr), 'OVERRIDE') || ' | '
           || pg_temp.dissensi('CONTRATTO', (SELECT id FROM _ctr), 'ESCLUSIONE'),
-          '5 righe, 0 dissensi | 5 righe, 0 dissensi | 5 righe, 0 dissensi',
+          '7 righe, 0 dissensi | 7 righe, 0 dissensi | 7 righe, 0 dissensi',
     '15) contratto: picker e guard non dissentono, sui tre tipi d''eccezione');
 
 -- ============================================================
@@ -261,14 +269,14 @@ SELECT is((SELECT string_agg(replace(f.codice, 'PGT-AMM4-', '') || ':'
     '16) versione di listino: P entra come bundle, A ammesso');
 
 SELECT is(pg_temp.dissensi('LISTINO_VERSIONE', (SELECT id FROM _ver)),
-          '5 righe, 0 dissensi',
+          '7 righe, 0 dissensi',
     '17) versione di listino: picker e guard non dissentono');
 
 SELECT is((SELECT f.motivo ->> 'reason'
              FROM catalogo.fn_articoli_ammessi('ARTICOLO', NULL, 'PGT-AMM4-P', NULL, NULL,
                                                pg_temp.art('P')) f)
           || ' | ' || pg_temp.dissensi('ARTICOLO', NULL, NULL, pg_temp.art('P')),
-          'COMPONENTE_PADRE | 5 righe, 0 dissensi',
+          'COMPONENTE_PADRE | 7 righe, 0 dissensi',
     '18) distinta di P: P stesso escluso, e picker e guard non dissentono');
 
 -- ============================================================
@@ -307,6 +315,31 @@ SELECT throws_like(
 SELECT is(script.fn_check_articolo_riga('PROMO_ARTICOLO', NULL, pg_temp.art('C')) -> 0 ->> 'codice',
           'E_PROMO_ARTICOLO_SOLO_COMPONENTE',
     '23) la firma di sempre conosce PROMO_ARTICOLO');
+
+-- ============================================================
+-- Il kit senza componenti (24-26, D-7)
+-- ============================================================
+CREATE TEMP TABLE _ord AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine('pgTAP picker articoli ammessi');
+
+SELECT throws_like(
+    format($$INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione, iva_id, prezzo_unitario, qta_operativa)
+             VALUES (%s, 1, %L, 'kit vuoto', %s, 10, 1)$$,
+           (SELECT ordine_id FROM _ord), pg_temp.art('V'), (SELECT id FROM _iva)),
+    '%non ha nessun componente%',
+    '24) ordine: il guard rifiuta il kit vuoto, col motivo del picker');
+
+SELECT is((SELECT f.motivo ->> 'reason'
+             FROM catalogo.fn_articoli_ammessi('CONTRATTO', (SELECT id FROM _ctr), 'PGT-AMM4-V',
+                                               NULL, 'AGGIUNTA') f),
+          'KIT_SENZA_COMPONENTI',
+    '25) contratto, AGGIUNTA: il kit vuoto, primo motivo');
+
+SELECT is((SELECT f.motivo ->> 'reason'
+             FROM catalogo.fn_articoli_ammessi('CONTRATTO', (SELECT id FROM _ctr), 'PGT-AMM4-V',
+                                               NULL, 'ESCLUSIONE') f),
+          'ECCEZIONE_FUORI_LISTINO',
+    '26) contratto, ESCLUSIONE: il kit vuoto non si giudica, parla solo il listino');
 
 SELECT * FROM finish();
 ROLLBACK;

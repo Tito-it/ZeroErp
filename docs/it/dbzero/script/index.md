@@ -27,7 +27,7 @@
 - [fn_check_accredito_annullabile](funzioni/fn_check_accredito_annullabile.md) — (latest review 25-08-2026)
 - [fn_check_almeno_un_super_admin_attivo](funzioni/fn_check_almeno_un_super_admin_attivo.md) — (latest review 19-04-2026)
 - [fn_check_annullo_movimento_titolo_iva](funzioni/fn_check_annullo_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
-- [fn_check_articolo_riga](funzioni/fn_check_articolo_riga.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta; Lotto 4, `20261014-03`: due metà, e la promo)
+- [fn_check_articolo_riga](funzioni/fn_check_articolo_riga.md) — (latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2; Lotto 3b, `20261013-55`: offerta e contratto; Lotto 3c, `20261013-59`: versione di listino e distinta; Lotto 4, `20261014-03`: due metà, e la promo; `20261014-06`: il kit senza componenti, D-7)
 - [fn_check_articolo_riga_su_contesto](funzioni/fn_check_articolo_riga_su_contesto.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: A-2, D-6)
 - [fn_check_attivita_riportabile_da_emettere](funzioni/fn_check_attivita_riportabile_da_emettere.md) — (latest review 26-08-2026)
 - [fn_check_azione_processo](funzioni/fn_check_azione_processo.md) — (riscritta il 04-10-2026, brief-db-permessi-tetto-area)

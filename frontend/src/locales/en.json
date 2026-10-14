@@ -2126,7 +2126,8 @@
         "eccezione_fuori_listino": "Not in the document's price list: add it as a new line.",
         "composito_come_bundle": "It is a kit: it enters a price list as a bundle, with its components' prices.",
         "tipologia_mancante": "The item has no price-list type: it cannot enter a price list.",
-        "tipologia_incompatibile": "The item's type is not the price list's type."
+        "tipologia_incompatibile": "The item's type is not the price list's type.",
+        "kit_senza_componenti": "Kit without components: complete its bill of materials before using it."
       }
     },
     "date_consegna": {

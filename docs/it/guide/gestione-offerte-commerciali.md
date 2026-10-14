@@ -142,8 +142,8 @@ Constraint principali:
   listino dell'offerta, e solo se l'offerta ha un listino in vigore;
 * una **riga nuova** (AGGIUNTA) vale solo per un articolo che nel listino **non** c'è: per uno che
   c'è già si usa il prezzo diverso;
-* chi vende (OVERRIDE e AGGIUNTA) non può usare un articolo che si vende solo dentro un kit, né
-  un articolo la cui tipologia non è prevista per la utility dell'offerta o che non ha nessun
+* chi vende (OVERRIDE e AGGIUNTA) non può usare un articolo che si vende solo dentro un kit, un
+  kit senza componenti (dal 2026-10-14), né un articolo la cui tipologia non è prevista per la utility dell'offerta o che non ha nessun
   modo di erogazione;
 * non si esclude il componente di un kit: si esclude il kit.
 
