@@ -7,7 +7,7 @@
 
 ### 🎯 Scopo Principale
 
-(latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-2, A-6; Lotti 3b e 3c, `20261013-56/-57/-61`)
+(latest review 2026-10-14, brief-db-articoli-ammessi-per-documento A-2, A-6, D-6; Lotti 3b e 3c, `20261013-56/-57/-61`; Lotto 4, `20261014-05`: la promo)
 
 Rifiuta una riga il cui articolo il documento non ammette, sollevando il **primo motivo** di
 `script.fn_check_articolo_riga`. Il predicato sta nella check: qui si solleva soltanto
@@ -26,6 +26,7 @@ dell'array.
 | `vendite.offerte_commerciali_eccezioni` | `trg_offerte_eccezioni_a10_guard_articolo_ammesso_ins_upd` | `('OFFERTA_COMMERCIALE', 'offerta_id')` |
 | `vendite.contratti_righe` | `trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd` | `('CONTRATTO', 'contratto_id')` |
 | `vendite.listini_righe` | `trg_listini_righe_a10_guard_articolo_ammesso_ins_upd` (anche `UPDATE OF listino_versione_id`) | `('LISTINO_VERSIONE', 'listino_versione_id')` |
+| `vendite.promo_articoli` | `trg_promo_articoli_a10_guard_articolo_ammesso_ins_upd` | `('PROMO_ARTICOLO', 'id')`: la promo non ha un padre, il «documento» è la promo stessa |
 
 La distinta ha un guard suo, [catalogo.trgfn_articoli_componenti_guard_componente](/dbzero/catalogo/manual/trgfn_articoli_componenti_guard_componente):
 lì l'articolo è `componente_id` e il padre un `uuid`. Sulla versione di listino questo guard ha
@@ -47,6 +48,14 @@ Su offerta e contratto il nome lo fa parlare **prima** dei guard di riga
 (`…_a10_guard_articolo_ammesso` < `…_a10_guard_erogazione_obbligatoria`, `_perimetro`):
 prima i motivi dell'articolo, poi quelli della riga. Lì ha preso il posto dei guard «aggiunta
 fuori listino» ed «esclusione figlio di bundle» (ritirati dal `20261013-57`).
+
+Sulla promo parla prima del guard delle date (`…_a10_guard_articolo_ammesso` <
+`…_a10_guard_data_driven`): prima l'articolo, poi le date. Una promo già scritta non può
+diventare invalida dopo: l'articolo con una promo è **usato** (A-10), e il suo flag «solo
+componente» non cambia più.
+
+Il picker ([catalogo.fn_articoli_ammessi](/dbzero/catalogo/manual/fn_articoli_ammessi)) mostra
+lo stesso motivo prima della scelta.
 
 Sul preventivo sostituisce il guard della ricorrenza `trgfn_preventivi_righe_set_natura_vendita`
 (ritirato il 2026-10-13): la regola è il motivo 2 della check, con lo stesso codice e la stessa

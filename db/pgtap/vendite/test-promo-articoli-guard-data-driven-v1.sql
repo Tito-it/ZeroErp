@@ -59,18 +59,20 @@ SELECT plan(18);
 -- Setup fixture
 -- ============================================================
 
--- 3 articoli attivi senza promo preesistenti (uno per stato).
+-- 4 articoli COSTRUITI, senza promo (uno per stato, piu' quello del test 3).
+-- ⚠️ Rev 2026-10-14 (20261014-05, D-6 di brief-db-articoli-ammessi-per-documento):
+--   prima si pescavano «i primi articoli attivi senza promo per id», e uno
+--   poteva essere solo componente, su cui una promo ora e' rifiutata. Il
+--   builder li fa nascere merce e non solo componente. La UoM in una seconda
+--   istruzione: la riga nata dal builder non e' visibile alla stessa.
 CREATE TEMP TABLE tmp_ctx_articoli AS
-SELECT a.id AS articolo_id, a.uom_id,
-       ROW_NUMBER() OVER (ORDER BY a.id) AS rn
+SELECT dbops.fn_pgtap_crea_articolo('PGTAP-PROMO-GD-' || g, false) AS articolo_id,
+       NULL::bigint AS uom_id,
+       g AS rn
+  FROM generate_series(1, 4) AS g;
+UPDATE tmp_ctx_articoli t SET uom_id = a.uom_id
   FROM catalogo.articoli a
- WHERE a.attivo IS TRUE
-   AND NOT EXISTS (
-       SELECT 1 FROM vendite.promo_articoli p
-        WHERE p.articolo_id = a.id
-   )
- ORDER BY a.id
- LIMIT 3;
+ WHERE a.id = t.articolo_id;
 
 -- Disabilita il guard data-driven solo per inserire le fixture nei
 -- 3 stati pre-esistenti. Gli altri trigger (audit, tx_id, il guard comune
@@ -145,32 +147,15 @@ SELECT throws_ok(
 
 -- ============================================================
 -- 3) INSERT con valido_dal = domani -> ammesso
---    Articolo "vergine" diverso dai 3 della fixture per evitare
---    overlap con la promo FUTURA gia' presente su rn=1.
+--    Il quarto articolo costruito: diverso dai 3 delle promo
+--    nei tre stati, per evitare overlap con la FUTURA su rn=1.
 -- ============================================================
-DO $$
-DECLARE
-    v_art uuid;
-    v_uom bigint;
-BEGIN
-    SELECT a.id, a.uom_id INTO v_art, v_uom
-      FROM catalogo.articoli a
-     WHERE a.attivo IS TRUE
-       AND NOT EXISTS (
-           SELECT 1 FROM vendite.promo_articoli p
-            WHERE p.articolo_id = a.id
-       )
-     ORDER BY a.id LIMIT 1;
-    -- v_art puo' essere NULL se non ci sono articoli vergini residui;
-    -- in quel caso il test 3 sara' "skip-equivalent" via SAVEPOINT.
-    IF v_art IS NOT NULL THEN
-        INSERT INTO vendite.promo_articoli(
-            codice, descrizione, articolo_id, uom_id,
-            tipo_variazione, valore_variazione, valido_dal, valido_al)
-        VALUES ('PGTAP_PROMO_GD_INS_OK', 'Test', v_art, v_uom,
-                'PERCENTUALE', 5, script.fn_data_operativa() + 1, script.fn_data_operativa() + 10);
-    END IF;
-END $$;
+INSERT INTO vendite.promo_articoli(
+    codice, descrizione, articolo_id, uom_id,
+    tipo_variazione, valore_variazione, valido_dal, valido_al)
+SELECT 'PGTAP_PROMO_GD_INS_OK', 'Test', a.articolo_id, a.uom_id,
+       'PERCENTUALE', 5, script.fn_data_operativa() + 1, script.fn_data_operativa() + 10
+  FROM tmp_ctx_articoli a WHERE a.rn = 4;
 
 SELECT ok(
     EXISTS (

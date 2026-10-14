@@ -17,7 +17,7 @@
 > * [vendite.trgfn_contratti_freeze_listino_versione](/dbzero/vendite/manual/trgfn_contratti_freeze_listino_versione) — snapshot versione listino a DRAFT→ATTIVO
 > * [vendite.trgfn_doc_testata_lock_fuori_bozza](/dbzero/vendite/funzioni/trgfn_doc_testata_lock_fuori_bozza) — che cosa della testata si cambia ancora dopo la bozza
 > * [vendite.trgfn_doc_righe_lock_fuori_bozza](/dbzero/vendite/manual/trgfn_doc_righe_lock_fuori_bozza) — righe solo in bozza (building block condiviso con DDT e ordini)
-> * [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — quali articoli ammette una riga (contratto e offerta): AGGIUNTA già in listino, OVERRIDE ed ESCLUSIONE solo su un articolo del listino, solo componente, figlio di bundle
+> * [script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga) — quali articoli ammette una riga (contratto e offerta): AGGIUNTA già in listino, OVERRIDE ed ESCLUSIONE solo su un articolo del listino, solo componente, kit senza componenti, figlio di bundle
 > * [vendite.fn_contratto_riga_componenti_init](/dbzero/vendite/manual/fn_contratto_riga_componenti_init) — popola componenti BoM su riga padre composito
 > * [vendite.fn_contratto_riga_componenti_preview](/dbzero/vendite/manual/fn_contratto_riga_componenti_preview) — suggerimento prezzi pre-save
 >

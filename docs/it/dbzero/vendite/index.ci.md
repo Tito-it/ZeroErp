@@ -75,7 +75,7 @@
 - [preventivi_riepiloghi_iva](manual/preventivi_riepiloghi_iva.md) — (latest review 02-05-2026)
 - [preventivi_righe](manual/preventivi_righe.md) — `vendite.preventivi_righe` contiene il dettaglio economico-tecnico del preventivo: articolo, quantita`, prezzo, sconto, IVA e snapshot UoM operativa.
 - [preventivi_righe_componenti](manual/preventivi_righe_componenti.md) — `vendite.preventivi_righe_componenti` modella il **prezzo negoziabile per singolo componente** di un articolo composito CASO A: una riga per ogni componente attivo e valido della distinta (modello unificato del 2026-05-13). L'esposizione del componente in fattura (`catalogo.articoli_componenti.esposizione_in_fattura`) è una regola di presentazione della fattura, non un filtro su queste righe.
-- [promo_articoli](manual/promo_articoli.md) — (latest review 14-04-26)
+- [promo_articoli](manual/promo_articoli.md) — (latest review 2026-10-14: l'articolo ammesso, D-6)
 - [registri_fatturazione](manual/registri_fatturazione.md) — (latest review 26-01-2026) `vendite.registri_fatturazione` definisce i **sezionali di numerazione**: serie, regole di reset, politica della data e collegamento all'emittente fiscale. Ogni documento numerato si aggancia a un registro, che ne governa numerazione e perimetro.
 - [registri_fatturazione_progressivi](manual/registri_fatturazione_progressivi.md) — (latest review 26-01-2026) `vendite.registri_fatturazione_progressivi` memorizza i **progressivi di numerazione** per ciascun registro, anno e serie. E` la base per l’assegnazione del numero documento in fase di emissione.
 - [resi](manual/resi.md) — (rev 2026-07-13)

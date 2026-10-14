@@ -96,7 +96,7 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
 
 CREATE TEMP TABLE tmp_eda_art AS
 SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-EDA-' || v.sigla) AS id
-  FROM (VALUES ('M'), ('M2'), ('R'), ('R2'), ('C'), ('P'), ('K'), ('RP')) AS v(sigla);
+  FROM (VALUES ('M'), ('M2'), ('R'), ('R2'), ('C'), ('P'), ('K'), ('RP'), ('KC')) AS v(sigla);
 
 CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
 RETURNS uuid LANGUAGE sql STABLE AS $fx$
@@ -116,6 +116,11 @@ UPDATE catalogo.articoli
  WHERE id = pg_temp.art('P');
 
 UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('K');
+-- rev 2026-10-14 (D-7, 20261014-06 di brief-db-articoli-ammessi-per-documento): un kit
+--   senza nessun componente attivo non sta piu' in una riga (E_ARTICOLO_KIT_SENZA_COMPONENTI).
+--   K riceve il suo componente KC: la fixture costruiva un kit vuoto.
+INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
+VALUES (pg_temp.art('K'), pg_temp.art('KC'), 1, '2020-01-01');
 
 -- Contratto DRAFT senza listino: ogni AGGIUNTA e' ammessa dal guard del listino.
 CREATE TEMP TABLE tmp_eda_ctr AS

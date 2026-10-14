@@ -253,11 +253,14 @@ SELECT lives_ok(
 --   ritirato; il figlio di bundle e' ora il primo motivo dell'ESCLUSIONE nella
 --   check per tipo di riga, script.fn_check_articolo_riga, che lo COMPONE dalla
 --   stessa check. Il presidio resta lo stesso, sulla nuova sede.
+-- rev 2026-10-14 (Lotto 4, 20261014-02): i motivi della check stanno in
+--   script.fn_check_articolo_riga_su_contesto (la firma di sempre la compone
+--   col contesto del documento): la sede e' quella.
 SELECT ok(
     (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_documento\s*\('
         AND regexp_replace(prosrc, '--[^\n]*', '', 'g') !~ 'listini_righe_componenti'
        FROM pg_proc
-      WHERE oid = 'script.fn_check_articolo_riga(text,bigint,uuid,bigint,vendite.tipo_eccezione_contratto,uuid)'::regprocedure),
+      WHERE oid = 'script.fn_check_articolo_riga_su_contesto(jsonb,uuid,bigint)'::regprocedure),
     '12) la check di riga chiama la check dell''esclusione e non contiene il predicato');
 
 SELECT * FROM finish();

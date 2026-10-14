@@ -10,7 +10,7 @@
 > corse pgTAP verdi. ✅ **Lato BE/FE fatto** il 2026-10-10 (§6.1). ✅ **Collaudo a video superato** (R-2,
 > Tid, 2026-10-10). ✅ **Chiuso e archiviato il 2026-10-10.** Il seguito (verbo di scrittura dei dati
 > societari, forma giuridica non legata alla natura) sta in
-> `work-in-progress/brief-db-dati-fiscali-e-societari-del-soggetto.md` (§8).
+> `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md` (§8).
 > **Da leggere per primo:** §6 (richieste a BE/FE), poi §7 per cosa è cambiato a DB.
 
 ## 1. Il difetto, sul modello
@@ -414,7 +414,7 @@ Nessuna. (D-6 decisa; la provincia `TEST` cancellata a mano da Tid il 2026-10-10
 
 Tre difetti emersi chiudendo questo brief riguardano lo stesso oggetto, i dati fiscali e societari
 del soggetto. Su indicazione di Tid stanno in **un** brief,
-`work-in-progress/brief-db-dati-fiscali-e-societari-del-soggetto.md`:
+`work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`:
 
 - **A** — «Cliente PA» e «Split payment» valgono per ogni natura, anche per un privato;
 - **B** — in modifica i dati societari non si salvano (§6.2): il verbo di scrittura, deciso da Tid

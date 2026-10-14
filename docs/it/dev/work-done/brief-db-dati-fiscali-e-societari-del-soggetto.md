@@ -1,10 +1,39 @@
 # Brief DB — Dati fiscali e societari del soggetto: chi li scrive, e per quali nature
 
+## ✅ Chiuso il 2026-10-14
+
+Lato DB applicato e verde (§8.4), BE/FE scritti e verdi (§9), collaudo in-app di Tid superato il
+2026-10-11. Decisione di Tid del 2026-10-14: si chiude, e i residui escono di qui.
+
+| # | Chi | Che cosa | Dove |
+| --- | --- | --- | --- |
+| 1 | ✅ team DB | A, D, B, C: `20261010-85 … -99`, `20261011-01 … -04`, 12 codici, pgTAP | §8 |
+| 2 | ✅ Tid | 6 righe senza forma corrette a mano, apply, test verdi | §8.4 |
+| 3 | ✅ sessione BE/FE | A, B, C, D; lookup delle forme e natura in modifica corretti | §9 |
+| 4 | ✅ Tid | collaudo in-app | §9.4 |
+| 5 | ✅ team DB | `20261012-02`: soggetto NULL nel verbo → `E_PARAMETRO_INVALIDO` | §6 |
+| 6 | ✅ sessione DB | archiviato in `work-done/`, residui sistemati (sotto) | — |
+
+**Dove sono andati i residui:**
+
+- `data_costituzione` in creazione (§9.5) → brief
+  [brief-db-dati-societari-in-creazione](../work-in-progress/brief-db-dati-societari-in-creazione.md)
+  (D34 del registro DB). Rileggendo la creazione è emerso anche il caso più grave: la ditta individuale
+  perde **tutta** la sezione;
+- cambio di natura con dati non congrui → già nel suo brief,
+  [brief-db-cambio-natura-soggetto-conferma-e-pulizia](../work-in-progress/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md);
+- D-4 (`COOPERATIVA`), il censimento dei titoli IVA fuori regola (§8.2), `cliente_pa` di
+  `SGT-0000121` (§8.1) e `fornitori.split_payment` (§7) → `.codex/PROJECT_CONTEXT.md`
+  § «Aperto — Media priorità».
+
+⚠️ `20261012-02` era dato «da applicare» al 2026-10-11: lo stato dell'apply non è stato riletto da
+`databasechangelog` alla chiusura.
+
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-10, su segnalazioni di Tid e su quanto
 > trovato chiudendo `work-done/brief-db-character-n-spazi-di-riempimento.md`.
 > **A chi:** team DB; poi BE/FE (§5).
-> **Stato:** ✅ lato DB applicato e verde (2026-10-10, §8.4); ✅ BE/FE scritti e verdi (2026-10-10,
-> §9), collaudati in-app da Tid il 2026-10-11. Aperta solo D-4 (`COOPERATIVA`). Storia: pronto per il team DB: decisioni di Tid prese il 2026-10-10 (§4), resta aperta solo
+> **Stato:** ✅ chiuso e archiviato il 2026-10-14 (vedi in cima). Lato DB applicato e verde (2026-10-10, §8.4); ✅ BE/FE scritti e verdi (2026-10-10,
+> §9), collaudati in-app da Tid il 2026-10-11. Storia: pronto per il team DB: decisioni di Tid prese il 2026-10-10 (§4), resta aperta solo
 > D-4 (`COOPERATIVA`, Tid verifica; non blocca: senza righe di matrice). B-2, D-5, D-6 sono scelte
 > tecniche del team DB. BE/FE attendono il DB.
 >
@@ -307,6 +336,7 @@ farne lo decide Tid, guardandoli (come C-3).
 | 2026-10-10 | Sviluppo BE/FE (§9): A, B, C, D. Trovati due difetti fuori dal perimetro del brief e corretti: il lookup delle forme falliva sempre (colonna inesistente, §9.2) e la natura offerta in modifica non arrivava mai al DB (§9.3). |
 | 2026-10-11 | Collaudo in-app di Tid: superato. |
 | 2026-10-11 | CI rossa sul rubinetto degli accumulatori (`scripts/codici-errore-baseline.sh`): `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` aveva acquistato la famiglia PARAMETRO, perché il verbo `20261010-99` rifiutava `p_soggetto_id IS NULL OR NOT EXISTS` con un solo codice. Un soggetto non passato è un chiamante rotto, non un 404. `20261012-02`: NULL → `E_PARAMETRO_INVALIDO`, inesistente → `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` come prima; COMMENT con la firma in `%TYPE`. pgTAP `test-fn-scrivi-dati-societari-v1` con l'8-bis (plan 23), rosso sul corpo vecchio per il motivo giusto. Prova sullo scratch, SQL estratto: 22/23, rosso solo il 22 (da owner per costruzione); fotografia delle famiglie col changeSet dentro: nessun accumulo. Baseline `db/baseline-codici-errore-famiglie.tsv` stretta da quella fotografia (gli stessi 1 ristretto e 4 rientrati della CI, più i codici nati dopo con una sola famiglia). BE invariato: nessun chiamante passa NULL. ⏳ Da applicare (Tid). |
+| 2026-10-14 | Chiuso su decisione di Tid. `data_costituzione` in creazione va in `brief-db-dati-societari-in-creazione` (D34), che prende anche la ditta individuale, che in creazione perde tutta la sezione. D-4, censimento dei titoli, `SGT-0000121` e `fornitori.split_payment` vanno in PROJECT_CONTEXT. Archiviato in `work-done/`. |
 
 ## 7. Fuori perimetro, da verificare
 
@@ -611,14 +641,16 @@ lo dicono i guard.
   la può scrivere. Il FE la offre quindi **solo in modifica** (`DatiSocietariForm`, prop
   `showDataCostituzione`): in creazione si sarebbe persa in silenzio. Proposta: un parametro
   `p_data_costituzione date DEFAULT NULL` passato al verbo; poi BE (`crea_soggetto_pg`,
-  `_create_pg`) e FE (togliere la prop) si allineano;
+  `_create_pg`) e FE (togliere la prop) si allineano. ➡️ 2026-10-14: in
+  [brief-db-dati-societari-in-creazione](../work-in-progress/brief-db-dati-societari-in-creazione.md),
+  insieme alla ditta individuale, che in creazione perde tutta la sezione;
 - il rifiuto di un REA gia' usato (`uq_ds_prov_cea`) accende `iscrizione_rea`, in modifica e in
   creazione (`create_with_constraint_mapping`, test 13 e 15 sul DB vero). In creazione fino al
   2026-10-11 usciva «CF/PIVA duplicata»: difetto del solo BE, il DB nominava gia' il vincolo;
 - ⚠️ **Cambio di natura con dati non congrui** (dati societari su una natura `NONE`, titoli IVA
   non ammessi, flag PA/split): oggi o vicolo cieco o perdita silenziosa. Decisione di Tid
   (2026-10-11): conferma esplicita, poi pulizia → brief proprio,
-  [brief-db-cambio-natura-soggetto-conferma-e-pulizia](brief-db-cambio-natura-soggetto-conferma-e-pulizia.md);
+  [brief-db-cambio-natura-soggetto-conferma-e-pulizia](../work-in-progress/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md);
 - ⛔ Trovato e corretto (solo BE): `get_config_resolver` leggeva il default di natura per ruolo con
   `get_parameter`, che su un parametro non dichiarato solleva; il seed lo dichiara per CL e FO, e
   per RIS_UMANA ed EF il risolutore andava in errore (il FE lo ingoiava: cercatore senza filtro di
@@ -630,3 +662,6 @@ lo dicono i guard.
   che confronta i due, marcava ogni ente «natura bloccata». Ora e' l'enum ovunque (test 14);
 - **D-4** (`COOPERATIVA`) e il censimento dei titoli fuori regola (§8.2), invariati;
 - `fornitori.split_payment` (§7), invariato.
+
+➡️ 2026-10-14: gli ultimi due punti, con il `cliente_pa` di `SGT-0000121` (§8.1), sono in
+`.codex/PROJECT_CONTEXT.md` § «Aperto — Media priorità».

@@ -7,7 +7,8 @@
 --
 -- Indice test (1..5):
 --   Struttura:
---   1)  La check per tipo di riga compone la regola: script.fn_check_articolo_riga chiama
+--   1)  La check per tipo di riga compone la regola: i suoi motivi
+--       (script.fn_check_articolo_riga_su_contesto dal 2026-10-14, Lotto 4) chiamano
 --       script.fn_check_esclusione_articolo_documento (rev 2026-10-13, Lotto 3b)
 --   2)  Trigger trg_contratti_righe_a10_guard_articolo_ammesso_ins_upd presente, sul guard di
 --       tabella script.trgfn_righe_guard_articolo_ammesso
@@ -122,12 +123,15 @@ SELECT plan(5);
 
 -- ============================================================
 -- 1) la check per tipo di riga compone la regola (rev 2026-10-13, Lotto 3b)
+--    rev 2026-10-14 (Lotto 4, 20261014-02): i motivi stanno in
+--    script.fn_check_articolo_riga_su_contesto, che la firma di sempre compone
+--    col contesto del documento.
 -- ============================================================
 SELECT ok(
     (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_documento\s*\('
        FROM pg_proc
-      WHERE oid = 'script.fn_check_articolo_riga(text,bigint,uuid,bigint,vendite.tipo_eccezione_contratto,uuid)'::regprocedure),
-    '1) script.fn_check_articolo_riga compone script.fn_check_esclusione_articolo_documento'
+      WHERE oid = 'script.fn_check_articolo_riga_su_contesto(jsonb,uuid,bigint)'::regprocedure),
+    '1) script.fn_check_articolo_riga_su_contesto compone script.fn_check_esclusione_articolo_documento'
 );
 
 -- ============================================================
