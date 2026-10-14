@@ -2,22 +2,22 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-14
 
-**Riparte: Tid**, con l'apply del `20261014-07` e la corsa pgTAP (§6). Il codice DB è scritto e
-provato prima dell'apply: 29/29 verdi su `zeroerp_ci` con l'SQL estratto.
+**Riparte: nessuno, brief chiuso e archiviato.** Il collaudo a video è passato nel copione del
+magazzino: [collaudo-in-app-magazzino-bolla-e-reso](../work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md)
+§5.3 e §5.7.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ team DB | `reasons` con i `valori` sull'azione CONFERMATO, come la bolla: `20261014-07` | §6.1 | — |
 | 2 | ✅ team DB | pgTAP `magazzino/test-reso-carico-v1` (25 → 29), manual della funzione | §6.2 | — |
-| 3 | Tid | apply del `20261014-07` e corsa pgTAP | §6.3 | — |
-| 4 | Tid | collaudo a video (blocco B del piano BE/FE): il tooltip della «Conferma» porta i numeri | — | 3 |
-| 5 | chi chiude | archiviare in `work-done/` | — | 4 |
+| 3 | ✅ Tid | apply del `20261014-07` e corsa pgTAP | §6.3 | — |
+| 4 | ✅ sessione BE | BE e FE: nessun codice. Il BE passa il blob della capability così com'è, il FE legge già `reasons` (`testoMotivi`) | — | — |
+| 5 | → collaudo | il tooltip della «Conferma» porta i numeri: §5.3 e §5.7 del collaudo del magazzino | — | — |
 
 **Decisioni aperte di Tid:** nessuna.
-**Da committare:** il changeSet `20261014-07`, il pgTAP, il manual e questo brief (2026-10-14).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-13, dal giro B2 del
-> [piano BE/FE del Lotto 3](piano-be-fe-magazzino-lotto-3.md) (3-bis R-1c). **A chi:** team DB.
+> [piano BE/FE del Lotto 3](../work-in-progress/piano-be-fe-magazzino-lotto-3.md) (3-bis R-1c). **A chi:** team DB.
 > Nessuna ricaduta su BE e FE: leggono gia' la forma richiesta.
 
 ---

@@ -196,8 +196,8 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   (`work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md`, `work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`).
   Aperto in un solo documento, `work-in-progress/piano-be-fe-magazzino-lotto-3.md` (§5 i residui: CI da zero,
   vista della merce in viaggio, pgTAP kit/seriali col runner); ⏳ collaudo a video di Tid:
-  `work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md`; un difetto DB aperto
-  (`brief-db-reso-motivi-conferma-con-valori.md`).
+  `work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md`. Il difetto DB dei motivi della «Conferma» del reso
+  è chiuso il 2026-10-14 (`work-done/brief-db-reso-motivi-conferma-con-valori.md`), a video al §5.3/§5.7 del collaudo.
 - 📝 **Magazzino: tutte le scritture dal verbo**
   (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): bozza, cinque decisioni di Tid (§3).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
