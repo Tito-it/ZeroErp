@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-14
 
-**Riparte: la sessione BE/FE**, col giro finale del §9.6 (tutte le richieste dei lotti, in un giro: Tid, 2026-10-13, non c'è produzione). ✅ **Lato DB chiuso il 2026-10-14**: Tid ha applicato `20261014-06` (D-7, il kit senza componenti, §9.4.1), pgTAP verdi; prima il Lotto 4 (`20261014-01 → -05` + CSV dei codici + locales), pgTAP verdi; il Lotto 5 (doc) è scritto. Lotti 1, 2, 3a, 3u, 3b, 3c applicati, verdi e committati.
+**Riparte: il team DB** con l'A-8-bis (§9.7.3, R-DB-1), che va applicato **insieme** al suo pezzo BE, e con R-DB-3 (le colonne correggibili); in parallelo **Tid** col collaudo a video (§9.7.4). ✅ **Giro BE/FE del §9.6 fatto, rivisto e committato il 2026-10-14** (§9.7, revisione §9.7.5), tranne l'A-8-bis; aperta per la sessione BE/FE R-BE-1 (§9.7.3-bis). ✅ **Lato DB chiuso il 2026-10-14**: Tid ha applicato `20261014-06` (D-7, il kit senza componenti, §9.4.1), pgTAP verdi; prima il Lotto 4 (`20261014-01 → -05` + CSV dei codici + locales), pgTAP verdi; il Lotto 5 (doc) è scritto. Lotti 1, 2, 3a, 3u, 3b, 3c applicati, verdi e committati.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -24,11 +24,15 @@
 | 4l | Tid | ✅ Lotto 4 applicato (`20261014-01 → -05` + `codici_errore.csv`, `messaggi_errore.csv` + locales), pgTAP verdi (2026-10-14) | §9.4 | — |
 | 4m | ✅ DB | D-7 (Tid, 2026-10-14: sì): `20261014-06` + codice + locales, scritto e provato | §9.4.1 | — |
 | 4n | Tid | ✅ `20261014-06` applicato (+ `codici_errore.csv`, `messaggi_errore.csv` + locales), pgTAP verdi (2026-10-14) | §9.4.1 | — |
-| 5 | BE/FE | **tutto in un giro**: policy dei codici nuovi di ogni lotto, lookup e `ArticoloLookup` sulla sede unica `catalogo.fn_articoli_ammessi`, ritiro dei filtri liberi, A-8-bis | §7, §9.6 | — |
-| 6 | Tid | collaudo a video | — | 5 |
+| 5 | ✅ BE/FE | giro del §9.6 (2026-10-14): policy e ripieghi, lookup e `ArticoloLookup` sulla sede unica, ritiro dei filtri liberi, scheda articolo e correzione di struttura, doc | §9.7 | — |
+| 5a | team DB | **A-8-bis** (R-DB-1): i tre lettori del listino a `config.tipi_entita`, ritiro del ponte; e la nota di `E_ARTICOLO_SOLO_COMPONENTE` nel CSV (R-DB-2) | §9.7.3 | — |
+| 5b | sessione BE | il pezzo BE dell'A-8-bis, **nello stesso giro** dell'apply di 5a | §9.7.3 | 5a |
+| 5c | team DB | **R-DB-3**: la sede leggibile delle colonne correggibili della struttura | §9.7.3 | — |
+| 5d | sessione BE/FE | il ritiro di `COLONNE_STRUTTURA` (dopo 5c) e **R-BE-1**, il salvataggio con correzione in una transazione | §9.7.3, §9.7.3-bis | 5c per la prima metà |
+| 6 | Tid | collaudo a video | §9.7.4 | 5 (5b per le eccezioni) |
 | 7 | DB | archiviazione del brief in `work-done/` (resta aperto solo per il giro BE/FE e il collaudo) | — | 6 |
 
-Decisioni aperte di Tid: nessuna (D-7 presa il 2026-10-14; A-8-bis il 2026-10-13; D-5 rinviato al cantiere acquisti). Da guardare (scelte del team DB dentro le decisioni prese, §9.4): la check divisa in due metà per R-5; il composito ammesso nella promo (D-6). ✅ **D-7 committata il 2026-10-14** (§9.4.1: `20261014-06`, CSV, locales, pgTAP del picker e due fixture, manual, guide, questo documento). ✅ Lotti 4 e 5 committati il 2026-10-14 (`7797acc42`); il Lotto 3c in `42bc5d2e0`. ✅ **Committati il 2026-10-13 (sessione DB)**: Lotti 1, 2 e `20261013-14` (prima); poi Lotti **3a, 3u, 3b** (`20261013-40 … -52`, `-55 … -58`), CSV dei codici, chiavi dei locales, baseline B-7, pgTAP nuovi e corretti, manual, guide e questo documento. ⚠️ **Restano fuori, col lavoro che ne porta la causa**: i cinque file pgTAP misti con un altro cantiere (`test-fn-list-ddt-da-pushare-contatore-v1`, `test-vw-dash-backlog-resi-v1`, `test-vw-partite-merce-v1`, `test-vw-resi-da-accreditare-contatore-v1`, `test-vw-situazione-merce-ordine-v1`); i quattro SORGENTE_POLIMORFA del §9.2.1 erano gia' fuori. Fuori anche, perche' di altri cantieri: `20261013-53` (lettori dell'emittente della bolla) col suo pgTAP e la sua doc, il D32, la pulizia di `baseline-rossi-scratch.tsv`.
+✅ **Committato il 2026-10-14 (sessione BE, `dev/backend-tid`)**: il giro del §9.7 con la sua revisione (§9.7.5). Decisioni aperte di Tid: nessuna (D-7 presa il 2026-10-14; A-8-bis il 2026-10-13; D-5 rinviato al cantiere acquisti). Da guardare (scelte del team DB dentro le decisioni prese, §9.4): la check divisa in due metà per R-5; il composito ammesso nella promo (D-6). ✅ **D-7 committata il 2026-10-14** (§9.4.1: `20261014-06`, CSV, locales, pgTAP del picker e due fixture, manual, guide, questo documento). ✅ Lotti 4 e 5 committati il 2026-10-14 (`7797acc42`); il Lotto 3c in `42bc5d2e0`. ✅ **Committati il 2026-10-13 (sessione DB)**: Lotti 1, 2 e `20261013-14` (prima); poi Lotti **3a, 3u, 3b** (`20261013-40 … -52`, `-55 … -58`), CSV dei codici, chiavi dei locales, baseline B-7, pgTAP nuovi e corretti, manual, guide e questo documento. ⚠️ **Restano fuori, col lavoro che ne porta la causa**: i cinque file pgTAP misti con un altro cantiere (`test-fn-list-ddt-da-pushare-contatore-v1`, `test-vw-dash-backlog-resi-v1`, `test-vw-partite-merce-v1`, `test-vw-resi-da-accreditare-contatore-v1`, `test-vw-situazione-merce-ordine-v1`); i quattro SORGENTE_POLIMORFA del §9.2.1 erano gia' fuori. Fuori anche, perche' di altri cantieri: `20261013-53` (lettori dell'emittente della bolla) col suo pgTAP e la sua doc, il D32, la pulizia di `baseline-rossi-scratch.tsv`.
 
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-11. **A chi:** team DB
 > (`dev/db-tid`); poi BE/FE (§7), che **attende** la consegna DB.
@@ -1128,4 +1132,114 @@ lotto, così il giro finale ha un elenco solo:
 | 3c | **BE**: policy e ripiego per `E_BOM_COMPONENTE_PADRE` (campo `componente_id`); i codici del listino e della distinta ora arrivano dal guard di tabella col campo nel contesto (`articolo_id`, `componente_id`); doc BE `catalogo-building-block-backend` (nomina il guard della tipologia ritirato). **FE**: le sei chiavi `vendite.righe.articolo_reason.*` e `catalogo.distinta.componente_reason.*` le ha già aggiunte la sessione DB; nel picker della versione di listino il composito si propone come bundle (`COMPOSITO_COME_BUNDLE`), non come escluso |
 | 2 | **BE**: policy e ripiego per `E_RIGA_NATURA_VENDITA_IMMUTABILE`; via `E_PREV_RIGA_NATURA_IMMUTABILE` (ritirato). **FE**: ✅ le cinque chiavi `config.tipi_entita.*` le ha già aggiunte la sessione DB (§9.2) |
 | 4 | **BE**: il lookup articoli delle **righe di documento** legge `catalogo.fn_articoli_ammessi(documento, documento_id, search, limit, tipo_eccezione, padre)` (§9.4) e unisce le colonne di `catalogo.vw_articoli_dettaglio` su `articolo_id`, ordinando su `ordine`; il tetto e la sonda `+1` restano in `fetch_con_sonda` (passa `limit + 1`); `motivo` passa al FE intero. **Si ritirano** per quelle righe i filtri liberi (`escludi_destinazione_tipi`, `is_solo_componente`, `is_composito`) di `catalogo_repository.lookup_articoli`; restano la ricerca e i filtri delle consultazioni (attivi/inattivi, `solo_oneri`, `gestito_a_magazzino` di inventari e rettifiche, che non sono righe di questa check). Policy e ripiego per `E_PROMO_ARTICOLO_SOLO_COMPONENTE` e, da D-7, per `E_ARTICOLO_KIT_SENZA_COMPONENTI` (campo `articolo_id` per entrambi). **FE**: `ArticoloLookup` riceve `documento` e l'id del documento (o il padre della distinta, o il tipo d'eccezione) dalla maschera, al posto dei filtri; si ricarica quando cambiano; un articolo col `motivo` si mostra non selezionabile con la `reason_key` (le chiavi ci sono tutte nei locales); nella versione di listino `COMPOSITO_COME_BUNDLE` apre la strada del bundle. Maschere: righe di preventivo, ordine, bolla, eccezioni di offerta e contratto, versione di listino, distinta, promo. Catalogo BB BE e FE aggiornati (`ArticoloLookup` cambia contratto). Guide: il picker a video (§9.5) |
+
+### 9.7 Il giro BE/FE (sessione BE, `dev/backend-tid`, 2026-10-14)
+
+Fatto tutto il §9.6 **tranne l'A-8-bis** (§9.7.3), che vuole un pezzo DB applicato nello stesso
+momento.
+
+#### 9.7.1 Che cosa è stato fatto
+
+| Lotto | Fatto |
+| --- | --- |
+| 1, 2, 3a, 3u, 3b, 3c | Policy e ripieghi c'erano già (`a81596789`). `E_PREV_RIGA_NATURA_IMMUTABILE` ed `E_ARTICOLO_SOLO_COMPONENTE_IN_USO` stanno fra i ritirati del modulo generato e nessun punto vivo li nomina |
+| 4, D-7 | `error_policies_generated.py` rigenerato: entrano `E_PROMO_ARTICOLO_SOLO_COMPONENTE` ed `E_ARTICOLO_KIT_SENZA_COMPONENTI`, entrambi `DATO_ERRATO`, nessuna classe cambiata; i due ripieghi in `error_messages_fallback.py` |
+| 4 — BE | `GET /catalogo/articoli/lookup/?documento=…&documento_id=…&tipo_eccezione=…&articolo_padre_id=…` → `CatalogoRepository.lookup_articoli_ammessi`: `catalogo.fn_articoli_ammessi` unita a `vw_articoli_dettaglio`, ordinata su `ordine`, `motivo` intero (decodificato con `jsonb_out`: psycopg 3 lo consegnava come stringa, e ogni articolo sarebbe sembrato ammesso). Il tetto resta in `fetch_con_sonda` (alla funzione `p_limit` NULL). Accanto a `documento` i filtri liberi danno 400. `tipo_eccezione` si valida contro l'enum letto dal DB (un valore estraneo al cast sarebbe un 500). **Ritirati** `is_solo_componente` ed `escludi_destinazione` |
+| 4 — FE | `ArticoloLookup`: prop `documento`, `documentoId`, `tipoEccezione`, `articoloPadreId`, `motiviSelezionabili`; l'escluso resta in elenco, **spento**, col testo del motivo (`testoMotivi`, coi `valori`). Le otto maschere passano il documento al posto dei filtri; `RigheEccezioniDrawer` riceve `documento` dai due involucri; la versione di listino lascia sceglibile `COMPOSITO_COME_BUNDLE` (la strada del bundle c'era già) |
+| 3a, 3u — FE | La scheda articolo spegne da `non_editable_fields` tutte le colonne strutturali che il DB può bloccare: prima ne leggeva tre (composito, solo componente, seriale), ora anche natura, tipologia di listino, gestito a magazzino e lotto. La causale onere non è in quel form |
+| 3u — BE/FE | `POST /catalogo/articoli/<id>/struttura/` (`AdminAPIView`, `Idempotency-Key`), body `{"campi": {…}}` → `catalogo.fn_articolo_correggi_struttura`, risponde col dettaglio. Nella scheda: azione «Correggi struttura», solo SUPER_ADMIN e solo con una struttura bloccata; riapre i campi, e al salvataggio le colonne cambiate passano dal verbo, poi il PATCH di sempre |
+| 3u — verifica | I quattro test Django che toccano i flag (§9.3.2): 18 verdi su dbdev, nessuno saltato |
+| 3b, 3c — doc | `api_contratti`, `modello-contratti` e il catalogo BB backend non nominano più i guard ritirati |
+| 4 — doc | `api_catalogo` (§1.6-bis, §2.1), cataloghi BB backend e frontend, guide di preventivi, ordini, bolle, offerte, contratti e listini: il picker a video |
+
+#### 9.7.2 Le prove
+
+* **Su dbdev, chiamata vera** (contesto operatore): il picker risponde su tutti e sette i
+  documenti, con motivi e `valori` interi (per esempio `IVA_DISCORDANTE` sulla distinta,
+  `TIPOLOGIA_MANCANTE` sulla versione). Il verbo: il SUPER_ADMIN corregge; un operatore e una
+  colonna estranea li rifiuta il DB, e anche il corpo vuoto (il controllo che il BE ne
+  ripeteva è stato tolto in revisione, 2026-10-14: test 7 su DB vero). Tutto in transazioni annullate.
+* **Test**: `apps.catalogo` 135 verdi, di cui il file nuovo su DB vero
+  `tests/db/test_articoli_ammessi_db.py` (7, costruiti o indipendenti dai dati), provato per
+  mutazione sulla decodifica di `motivo`; FE 886 verdi, di cui `ArticoloLookup.spec.js` nuovo (4,
+  provato per mutazione sull'escluso sceglibile); `check_i18n_keys` pulito; build FE riuscita.
+* ⚠️ **Fatto datato**: `apps.core` ha **tre rossi che non vengono da questo giro**. Il DB di
+  sviluppo è **avanti** rispetto a git: porta i codici `E_CLIENTE_*` ed `E_STATISTICHE_MANCANTI`
+  di un altro cantiere (brief-db-cliente-manuale-uno-per-soggetto-e-utility), che non sono nel CSV
+  in git. Per questo il modulo generato **non** è stato rigenerato una seconda volta, e
+  `E_DATA_APERTURA` risulta una promessa vuota (il suo sito non c'è più a DB). Si chiudono col
+  push di quel cantiere e col giro BE suo.
+
+#### 9.7.3 Richieste al team DB
+
+* **R-DB-1 — A-8-bis.** `vendite.fn_documento_listino_operativo`,
+  `script.fn_check_esclusione_articolo_documento` e `script.fn_check_riga_erogazione` passano dalla
+  grammatica `OFFERTA | CONTRATTO` ai codici di `config.tipi_entita` (`OFFERTA_COMMERCIALE`,
+  `CONTRATTO`), e si ritira il ponte in `script.fn_articolo_riga_contesto` (manual: «Ponte A-8»).
+  ⚠️ **Il BE non può andare per primo**: chiama `fn_documento_listino_operativo` con `OFFERTA` /
+  `CONTRATTO` (`_documento_eccezioni_repo.py`, `offerte_service.py`, `contratti_service.py`), e un
+  cambio di grammatica da una parte sola rompe le eccezioni di offerta e contratto. Proposta: il
+  team DB scrive e prova il changeSet; la sessione BE prepara il suo pezzo sullo stesso giro e Tid
+  applica i due insieme. Il pezzo BE è piccolo (i valori passati), più un test su DB vero del
+  binding con le due grammatiche.
+* **R-DB-2 — la nota di `E_ARTICOLO_SOLO_COMPONENTE`** in `codici_errore.csv` dice ancora
+  «── 400 · il problema non e' un campo del form (`show_error_banner`) ──». Dalla 3a il codice porta
+  il campo `articolo_id`: la nota va riscritta. Nessuna ricaduta sul comportamento: il campo a
+  video lo accende `fields`, che arriva già.
+* **R-DB-3 — l'elenco delle colonne correggibili, letto e non ricopiato** (revisione del
+  2026-10-14, ok di Tid). Le otto colonne che `catalogo.fn_articolo_correggi_struttura` accetta
+  stanno solo nella sua costante `c_ammessi`, e la scheda articolo le **ricopia**
+  (`COLONNE_STRUTTURA` in `ArticoloDrawer.vue`) per sapere quali controlli riaprire: alla nona
+  colonna le due copie divergono, e il campo nuovo resta spento anche in correzione. Richiesta:
+  una sede leggibile (per esempio una funzione `catalogo.fn_articolo_colonne_struttura()` che il
+  verbo stesso usa al posto della costante); il BE la porta nel dettaglio dell'articolo
+  (`struttura_correggibile`) e il FE ritira la sua lista nello stesso giro.
+
+#### 9.7.3-bis Richiesta alla sessione BE/FE (revisione del 2026-10-14, ok di Tid)
+
+* **R-BE-1 — il salvataggio con correzione di struttura in UNA transazione.** Oggi la scheda fa
+  due scritture: `POST …/struttura/` (il verbo), poi il `PATCH` di sempre. Se il PATCH fallisce
+  (una descrizione vuota, un altro guard), la struttura è **già corretta** a DB e l'operatore vede
+  solo l'errore. In revisione la scheda allinea il dettaglio dopo il verbo (un nuovo salvataggio
+  non lo rimanda), ma il salvataggio a metà resta. Proposta, tutta BE/FE e senza DB: il `PATCH`
+  dell'articolo accetta la correzione (`{"correzione_struttura": true, …}`, solo `AdminAPIView`
+  o col controllo SUPER_ADMIN del verbo), e il service chiama il verbo con le colonne strutturali
+  cambiate e poi l'UPDATE, dentro **un** `transaction.atomic()`; il FE torna a una chiamata sola.
+  Si ritira `POST …/struttura/` nello stesso giro, se nessun altro lo usa. Prova: test su DB vero
+  con un PATCH che fallisce dopo la correzione, e la struttura che resta quella di prima.
+
+#### 9.7.5 La revisione del codice (sessione BE, 2026-10-14)
+
+Prima del commit, una revisione critica del giro. Corretti:
+
+| Che cosa | Perché |
+| --- | --- |
+| Tolto dal service il controllo di `campi` (oggetto non vuoto) della correzione di struttura | ripeteva la regola del verbo, che lo rifiuta già con `E_PARAMETRO_INVALIDO` (`DATO_ERRATO`, 400); il commento diceva il contrario. Prova su DB vero: test 7 di `test_articoli_ammessi_db.py` |
+| `qp_str_upper` al posto dell'`.upper()` a mano; il tetto `50` in una sede (`LOOKUP_ARTICOLI_MAX`); `LIMITE_RIGHE` e `buildDisplay` in `ArticoloLookup` | regola del 2: copie della stessa cosa |
+| Dopo il verbo la scheda articolo allinea il dettaglio | se il PATCH che segue fallisce, la struttura è già corretta: senza, un nuovo salvataggio la rimandava al verbo. Il salvataggio a metà resta (R-BE-1) |
+| `is_solo_componente` ed `escludi_destinazione` danno `400` (`…_ritirato`) invece di essere ignorati | lo smoke `smoke-test-preventivi-smistamento-ordine.sh` li mandava ancora ed era verde senza provare niente |
+| Lo smoke: il passo 1 diventa il 2-bis, il picker del preventivo sulla sede unica | l'articolo che il guard ha appena accettato deve uscire **ammesso**. ⚠️ Non ancora eseguito: scrive su dbdev e vuole il backend ricaricato |
+| `test_gli_ammessi_vengono_prima` costruisce i due articoli (l'escluso alfabeticamente primo) | prima poteva passare per le sole 50 righe. Provato per mutazione (ordine per codice → rosso) |
+| `test_struttura_articolo_e_da_amministratore` è una chiamata HTTP: 403, 200, 400 senza `Idempotency-Key` | prima controllava solo la classe. Provato per mutazione (permesso tolto → rosso) |
+
+Prove: `apps.catalogo` 137 verdi su DB vero (`ZEROERP_TEST_DB_E2E=1`), FE `src/catalogo` verde,
+gate mypy pulito.
+
+#### 9.7.4 Il collaudo a video (Tid)
+
+1. **Righe di preventivo, ordine e bolla**: cercando un articolo compaiono prima gli ammessi; un
+   servizio, un solo componente o un kit senza componenti compaiono **grigi, col motivo sotto**,
+   e non si scelgono.
+2. **Eccezioni di offerta e contratto** (riga nuova, AGGIUNTA): un articolo già nel listino è
+   grigio, col motivo che rimanda al prezzo diverso (OVERRIDE).
+3. **Versione di listino**: un articolo di un'altra tipologia è grigio; un **kit** porta l'avviso
+   «entra come bundle» ma si sceglie, e apre i prezzi dei componenti.
+4. **Distinta**: il kit stesso e un componente con IVA diversa sono grigi col motivo.
+5. **Promo**: un solo componente è grigio col motivo.
+6. **Scheda di un articolo usato** (in un documento): natura, tipologia di listino, composito,
+   solo componente, gestito a magazzino, lotto, seriale sono **spenti**. Da SUPER_ADMIN compare
+   «Correggi struttura»: dopo la conferma i campi si riaprono, e il salvataggio passa. Da
+   operatore il pulsante non c'è.
+7. **Consultazioni invariate**: il picker di movimenti, disponibilità, inventari e rettifiche
+   (solo gestiti a magazzino) e del test resolver si comporta come prima.
 

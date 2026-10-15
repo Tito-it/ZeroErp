@@ -176,18 +176,66 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(result["results"][0]["id"], 1)
         self.assertFalse(result["troncato"])
 
-    # Scopo: il filtro natura (escludi_destinazione_tipi) è inoltrato al
-    # repository invariato (passthrough, filtro applicato in SQL).
+    # Scopo: la riga di un documento passa il suo contesto al repository della
+    # sede unica, e il `motivo` torna intero (brief-db-articoli-ammessi-per-
+    # documento §9.6, Lotto 4).
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
-    def test_fn_lookup_articoli_escludi_destinazione(self, mock_repo_cls):
-        from apps.catalogo.services.catalogo_service import fn_lookup_articoli
+    def test_fn_lookup_articoli_ammessi_passa_il_contesto(self, mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_lookup_articoli_ammessi
 
-        mock_repo_cls.return_value.lookup_articoli.return_value = ([], False)
+        repo = mock_repo_cls.return_value
+        repo.tipo_eccezione_valido.return_value = True
+        motivo = {"codice": "E_X", "reason": "X", "reason_key": "k.x", "valori": ["A"]}
+        repo.lookup_articoli_ammessi.return_value = (
+            [{"id": 1, "motivo": None}, {"id": 2, "motivo": motivo}], False,
+        )
 
-        fn_lookup_articoli(search="art", escludi_destinazione_tipi=["CONTRATTO"])
+        result = fn_lookup_articoli_ammessi(
+            documento="CONTRATTO", documento_id=7, search="art", tipo_eccezione="AGGIUNTA",
+        )
 
-        kwargs = mock_repo_cls.return_value.lookup_articoli.call_args.kwargs
-        self.assertEqual(kwargs["escludi_destinazione_tipi"], ["CONTRATTO"])
+        kwargs = repo.lookup_articoli_ammessi.call_args.kwargs
+        self.assertEqual(kwargs["documento"], "CONTRATTO")
+        self.assertEqual(kwargs["documento_id"], 7)
+        self.assertEqual(kwargs["tipo_eccezione"], "AGGIUNTA")
+        self.assertIsNone(kwargs["articolo_padre_id"])
+        self.assertEqual(result["results"][1]["motivo"], motivo)
+        self.assertFalse(result["troncato"])
+
+    # Scopo: un tipo d'eccezione fuori enum e' un 400 PRIMA del cast, che
+    # sarebbe un 500 (22P02): il picker non viene nemmeno chiamato.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_lookup_articoli_ammessi_tipo_eccezione_estraneo(self, mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_lookup_articoli_ammessi
+
+        repo = mock_repo_cls.return_value
+        repo.tipo_eccezione_valido.return_value = False
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_lookup_articoli_ammessi(documento="CONTRATTO", documento_id=7, tipo_eccezione="BANANA")
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        repo.lookup_articoli_ammessi.assert_not_called()
+
+    # Scopo: la correzione di struttura non ha regole nel backend: `campi` arriva
+    # al verbo DB com'e', anche vuoto o assente (forma, permesso e colonne li
+    # giudica il verbo; il rifiuto e' provato su DB vero in
+    # tests/db/test_articoli_ammessi_db.py).
+    @patch("apps.catalogo.services.catalogo_service.fn_get_articolo")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_correggi_struttura_articolo_inoltra_i_campi(self, mock_repo_cls, mock_get):
+        from apps.catalogo.services.catalogo_service import fn_correggi_struttura_articolo
+
+        articolo_id = "00000000-0000-0000-0000-000000000001"
+        mock_get.return_value = {"id": articolo_id}
+        for payload, atteso in (
+            ({"campi": {"requires_lotto": True}}, {"requires_lotto": True}),
+            ({"campi": {}}, {}),
+            ({}, None),
+        ):
+            with self.subTest(payload=payload):
+                result = fn_correggi_struttura_articolo(articolo_id, payload)
+                mock_repo_cls.return_value.correggi_struttura_articolo.assert_called_with(articolo_id, atteso)
+                self.assertEqual(result, {"id": articolo_id})
 
     # Scopo: 🔴 IL CASO PER CUI D6 ESISTE — un lookup TAGLIATO lo dichiara.
     #        Prima di oggi la risposta era `{"count": 20, "results": [20 righe]}`

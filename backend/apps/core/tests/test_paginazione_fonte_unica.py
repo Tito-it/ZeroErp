@@ -73,6 +73,7 @@ _DEFAULT_FIRMA = re.compile(r"\b(?:limit|page_size): int = \d+")
 #    tendina), un batch prende cio' che deve lavorare.
 _FIRME_AMMESSE: dict[tuple[str, str], str] = {
     ("catalogo/services/catalogo_service.py", "fn_lookup_articoli"): "lookup articoli: 20 righe",
+    ("catalogo/services/catalogo_service.py", "fn_lookup_articoli_ammessi"): "picker delle righe di documento: 20 righe, come il lookup",
     ("anagrafiche/db/conti_bancari_repository.py", "search_conti_bancari"): "autocomplete IBAN",
     ("anagrafiche/db/conti_bancari_repository.py", "search_bank_branches"): "autocomplete filiali",
     ("anagrafiche/services/conti_bancari_service.py", "search_conti_bancari"): "autocomplete IBAN",

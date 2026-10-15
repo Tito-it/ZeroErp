@@ -111,6 +111,9 @@ Constraint DB:
 * Guard: una ESCLUSIONE è bloccata se l'articolo è un **componente** (figlio) di un
   bundle del listino del contratto — l'esclusione va applicata al **padre bundle**,
   non al singolo componente (`E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA`)
+* Nella ricerca dell'articolo di una riga nuova compaiono prima gli articoli che la riga può
+  usare; gli altri sono in grigio, col motivo sotto, e non si scelgono. È la stessa regola dei
+  guard qui sopra
 
 Per gli **articoli compositi** (distinta base): una riga ESCLUSIONE **non genera
 componenti**. L'esclusione toglie l'articolo per intero, quindi non ha prezzo né

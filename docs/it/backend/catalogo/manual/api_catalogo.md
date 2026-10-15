@@ -239,6 +239,30 @@ immutabilita' (Fase 5):
   (parent inattivo: iva/gruppo/tipologia) si propagano come
   `E_PARENT_*`.
 
+### 1.6-bis Correzione di struttura (amministratore)
+
+| | |
+|---|---|
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/struttura/` |
+| **Permesso** | solo SUPER_ADMIN (`AdminAPIView`); lo ripete il verbo DB |
+| **Header** | `Idempotency-Key` obbligatorio |
+
+Un articolo **usato** (in un documento, un listino, una commessa o in magazzino) non cambia la
+sua struttura: natura, tipologia di listino, causale onere, composito, solo componente, gestito a
+magazzino, lotto, seriale (`E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE`). La via normale è un articolo
+nuovo. Per un errore di caricamento l'amministratore corregge da qui (A-10 di
+brief-db-articoli-ammessi-per-documento).
+
+Body: `{"campi": {"natura_vendita_id": 3}}`, le sole colonne da cambiare. Risposta: il dettaglio
+aggiornato dell'articolo.
+
+* chi non è SUPER_ADMIN: `E_PERMESSO_NEGATO`; `campi` mancante, vuoto o non oggetto, o una
+  colonna fuori dalle otto: `400` `E_PARAMETRO_INVALIDO`; articolo inesistente:
+  `E_ARTICOLO_NOT_FOUND` — li solleva tutti il verbo `catalogo.fn_articolo_correggi_struttura`,
+  l'unica porta (il backend non ripete nessuna di queste regole);
+* gli altri guard dell'articolo parlano lo stesso; le righe già scritte non cambiano.
+
 ### 1.7 Defaults form articolo (Fase 8)
 
 | | |
@@ -301,31 +325,57 @@ di prima.
 | **Metodo** | `GET` |
 | **URL** | `/api/v1/catalogo/articoli/lookup/` |
 
-#### Query param
+Due usi, che non si mescolano (dal 2026-10-14, brief-db-articoli-ammessi-per-documento §9.6):
+
+* **la riga di un documento** — con `documento`: quali articoli ammette la riga lo dice il
+  database (`catalogo.fn_articoli_ammessi`, la stessa check dei guard di riga). Ogni articolo
+  porta il suo `motivo`; prima gli ammessi;
+* **le consultazioni** — senza `documento`: ricerca libera coi filtri qui sotto.
+
+#### Query param — la riga di un documento
+
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `documento` | string | Sì | Codice di `config.tipi_entita`: `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `CONTRATTO`, `LISTINO_VERSIONE`, `ARTICOLO` (la distinta), `PROMO_ARTICOLO`. Maiuscolo non richiesto. Sconosciuto: lo rifiuta la funzione (`E_DOC_TIPO_NON_GESTITO`) |
+| `documento_id` | int | per i documenti con testata | L'id della testata salvata (o della versione di listino). Mancante: `E_PARAMETRO_INVALIDO` |
+| `tipo_eccezione` | string | offerta e contratto | `AGGIUNTA`, `OVERRIDE`, `ESCLUSIONE` (l'enum del DB). Fuori enum: `400` `E_CATALOGO_VALIDATION` |
+| `articolo_padre_id` | uuid | distinta | Il padre. Non UUID: `400` `E_VALIDATION_INPUT` |
+| `search` | string | No | Come sotto. Il «contiene» lo fa la funzione, letterale e senza distinzione fra maiuscole |
+| `limit` | int | No | Default `20`, max `50`; il tetto si applica dopo il giudizio, sull'ordine della funzione |
+
+⛔ Accanto a `documento` **nessun filtro libero** (`attivo`, `is_composito`,
+`gestito_a_magazzino`, `solo_oneri`): `400` `E_VALIDATION_INPUT`. La funzione propone solo
+articoli attivi, e un filtro in più nasconderebbe un articolo che il guard accetta.
+
+Ogni riga ha le colonne della ricerca libera più `motivo`:
+`{codice, reason, reason_key, dettaglio, valori}` — il primo motivo per cui il documento non
+ammette l'articolo, lo stesso che il guard solleverebbe — oppure `null` (ammesso). Nella
+versione di listino un composito arriva con `COMPOSITO_COME_BUNDLE`: come riga semplice non
+entra, ma entra come bundle.
+
+#### Query param — le consultazioni
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `search` | string | No | Ricerca su `codice` e `descrizione` (la lookup non e' una lista: niente catalogo). `%` e `_` sono caratteri, non jolly; spazi ai bordi ignorati. Sotto 3 caratteri: `400` `E_SEARCH_VALIDATION` |
-| `voce_utility` | bool | No | Filtro utility |
 | `attivo` | bool | No | Default API `true` |
 | `is_composito` | bool | No | Filtro composti |
-| `is_solo_componente` | bool | No | Filtro articoli usabili solo come componente BoM |
-| `escludi_destinazione` | string (CSV) | No | Esclude gli articoli la cui **natura** ha una `destinazione_tipo` tra quelle elencate (`ORDINE` / `COMMESSA` / `CONTRATTO`). Filtro **data-driven sulla destinazione**, non sul codice natura. Es. `escludi_destinazione=CONTRATTO` per non proporre articoli ricorrenti sulle righe di un **preventivo** (difesa in profondità del blocco DB D9, modello split per natura). Valori normalizzati a maiuscolo; token vuoti ignorati. |
+| `gestito_a_magazzino` | bool | No | Solo gestiti a magazzino (picker di inventari e rettifiche). Assente = nessun filtro |
+| `solo_oneri` | bool | No | Solo articoli-onere; aggiunge la causale ai risultati |
 | `limit` | int | No | Default `20`, max `50` |
 
-> **Nota natura (split per natura)**: il filtro fa `LEFT JOIN catalogo.articoli → config.nature_vendita` (`natura_vendita_id`) e applica `(destinazione_tipo IS NULL OR destinazione_tipo <> ALL(escluse))` — **NULL-tolerant**: un articolo con natura NULL non viene nascosto, è escluso solo se la sua destinazione è tra quelle vietate (coerente col "NULL = include" di `fn_list_preventivi_da_pushare`). Senza il parametro il lookup è invariato (nessun JOIN natura). Usato dal FE `ArticoloLookup` via prop `escludiDestinazione` (riga preventivo passa `['CONTRATTO']`).
+⛔ `is_solo_componente` ed `escludi_destinazione` sono **ritirati** il 2026-10-14: li usavano solo
+le righe di documento, ed erano una seconda copia della regola dei guard. Chi li manda ancora
+riceve `400` `E_VALIDATION_INPUT` (`is_solo_componente_ritirato`, `escludi_destinazione_ritirato`),
+non un elenco intero spacciato per filtrato.
 
 #### Output specifico
 
-Restituisce campi minimali per autocomplete cross-dominio:
-- `id`
-- `codice`
-- `descrizione`
-- `uom_codice`
-- `uom_descrizione`
-- `is_composito`
-- `voce_utility`
-- `attivo`
+Envelope `{"count", "results", "troncato"}` (`troncato`: il tetto ha tagliato). Campi per
+autocomplete cross-dominio: `id`, `codice`, `descrizione`, `uom_codice`, `uom_descrizione`,
+`is_composito`, `attivo`, `iva_id`, `iva_codice`, `iva_descrizione`, `iva_aliquota_iva`,
+`gestito_a_magazzino`, `requires_lotto`, `requires_serial` (più `motivo` sulla riga di un
+documento, e la causale con `solo_oneri`).
 
 ### 2.2 Lookup unita` di misura — RIMOSSO
 

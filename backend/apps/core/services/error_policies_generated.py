@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1072, di cui 118 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1074, di cui 118 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -112,6 +112,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # script.trgfn_lock_columns: il trigger e' stato dichiarato con un · numero dispari di argomenti. Se ne accorge chi lo monta, mai · l'operatore.
     "E_ARGOMENTI_A_COPPIE": "TECNICO",
     "E_ARTICOLO_ESCLUSO_DA_CONTRATTO": "NON_ESEGUIBILE",
+    # Motivo 2 di script.fn_check_articolo_riga_su_contesto per PREVENTIVO, ORDINE_VENDITA, DDT_VENDITA e per AGGIUNTA e OVERRIDE di OFFERTA_COMMERCIALE e CONTRATTO (D-7 di Tid, 2026-10-14, brief-db-articoli-ammessi-per-documento; 20261014-06): l'articolo e' un composito senza NESSUN legame attivo in catalogo.articoli_componenti. Prima lo rifiutava solo l'init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA), dopo la scelta: ora lo dice il picker catalogo.fn_articoli_ammessi e lo solleva il guard script.trgfn_righe_guard_articolo_ammesso. Non si e' riusato E_DOC_COMPOSITO_BOM_VUOTA: quella frase porta la data, ed e' il caso date-dipendente (componenti che ci sono ma non sono validi alla data del documento), che resta all'init. I VALORI: codice dell'articolo; campo articolo_id.
+    "E_ARTICOLO_KIT_SENZA_COMPONENTI": "DATO_ERRATO",
     # Sono i codici che CAMBIANO comportamento: oggi la pagina evidenzia · un campo (400) dove invece deve ricaricare e mostrare lo stato vero. · Le due righe esistono entrambe e non vanno d'accordo: non c'e' un · campo da correggere, va scelto un altro abbinamento.
     "E_ARTICOLO_MISMATCH": "CONFLITTO_STATO",
     "E_ARTICOLO_NON_COMPOSITO": "DATO_ERRATO",
@@ -1251,6 +1253,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PROFILO_ACCESSO_TIPO_NON_GESTITO": "TECNICO",
     # Multi-face: code sollevato dal trigger DB · `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` quando · un'operazione (disabilita identita, demote SUPER_ADMIN, delete · binding) lascerebbe il sistema senza alcun super admin attivo. · Sostituisce E_ADMIN_ULTIMO post-cutover (Fase 1 multi-face); il · service preserva il code originale del DB anche quando il preview · `can_disable` lato detail aveva valutato true (race tra sessioni).
     "E_PROFILO_ULTIMO_SUPER_ADMIN": "CONFLITTO_STATO",
+    # Motivo 1 di script.fn_check_articolo_riga_su_contesto per PROMO_ARTICOLO (D-6 di Tid, 2026-10-13; Lotto 4 di brief-db-articoli-ammessi-per-documento, 2026-10-14): una promo su un articolo solo componente. Una promo si crea solo se il calcolo del prezzo la puo' applicare: un solo componente non ha mai un prezzo a se' (D-3), e in contesto bundle il resolver salta la promo (vendite.fn_resolve_prezzo_listino_v2_esito, stadio promo). Sollevato dal guard script.trgfn_righe_guard_articolo_ammesso montato su vendite.promo_articoli (20261014-05); lo stesso motivo lo da' il picker catalogo.fn_articoli_ammessi. Non si e' riusato E_ARTICOLO_SOLO_COMPONENTE: il suo messaggio parla di una riga di documento. I VALORI: codice dell'articolo; campo articolo_id.
+    "E_PROMO_ARTICOLO_SOLO_COMPONENTE": "DATO_ERRATO",
     "E_PROMO_INIZIATA_CAMPI_RISTRETTI": "CONFLITTO_STATO",
     "E_PROMO_RETROATTIVA": "DATO_ERRATO",
     "E_PROMO_SCADUTA_IMMUTABILE": "CONFLITTO_STATO",

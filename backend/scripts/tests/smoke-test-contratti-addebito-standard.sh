@@ -30,6 +30,7 @@ BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"   # smoke_emetti
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_soggetto.sh"
 # Override esplicito emittente (opzionale). Se vuoto, si deriva dal documento
 # sorgente del BA (vedi setup); ultimo fallback 32.
 EMITTENTE_OVERRIDE="${EMITTENTE_ID:-}"
@@ -164,8 +165,16 @@ smoke_chiudi_contratti "$BA_ID" "$AMBITO"   # residui sul cliente condiviso
 # (E_VENDITE_CONTRATTO_OVERLAP) e il contratto attivo governava i prezzi degli
 # altri smoke. La creazione manuale di un cliente apre ogni volta istanza e BA
 # nuovi: il contratto vive li', isolato.
-do_curl GET "/api/v1/anagrafiche/clienti/?limit=1"
-SOGG_ID=$(json_get "$LAST_BODY" "data.results.0.soggetto_id")   # ha gli indirizzi del ruolo
+# ⭐ E un SOGGETTO PROPRIO per ogni giro (2026-10-15): dal 2026-10-14 un
+# soggetto ha UN cliente manuale per utility e azienda (E_CLIENTE_STESSA_CHIAVE,
+# brief-db-cliente-manuale-uno-per-soggetto-e-utility C-1/C-2). Prima il
+# cliente nasceva sul soggetto del primo cliente della lista: dal secondo giro
+# il DB lo rifiutava, giustamente. Il soggetto lo crea il BB dall'API.
+smoke_soggetto_privato "Contratto"
+if [[ -z "$SOGG_ID" ]]; then
+    echo -e "${RED}Setup fallito: impossibile creare il soggetto del giro (motivo sopra). Stop.${NC}"; exit 1
+fi
+log_info "soggetto del giro: $SOGG_ID (CF $SOGG_CF)"
 do_curl GET "/api/v1/anagrafiche/utilities/manual-lookup/"
 UTIL_MANUALE=$(echo "$LAST_BODY" | python3 -c "
 import sys, json
@@ -179,8 +188,11 @@ except Exception:
 " "${UTILITY_ID:-}" 2>/dev/null)
 do_curl GET "/api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti&limit=1"
 CAT_ID=$(json_get "$LAST_BODY" "data.results.0.id")
+# Gli indirizzi del RUOLO cliente: un soggetto appena nato non li ha (il guard
+# del ruolo pretende FATT, con ripiego DOMFISC). Ne basta uno: i tipi
+# obbligatori mancanti li clona il service dalla matrice del ruolo.
 do_curl POST "/api/v1/anagrafiche/clienti/" \
-    "{\"soggetto_id\": \"${SOGG_ID}\", \"utility_id\": ${UTIL_MANUALE:-null}, \"ba_categoria_cliente_id\": ${CAT_ID:-null}}"
+    "{\"soggetto_id\": \"${SOGG_ID}\", \"utility_id\": ${UTIL_MANUALE:-null}, \"ba_categoria_cliente_id\": ${CAT_ID:-null}, \"indirizzi\": [{\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}]}"
 if ! check "POST cliente proprio del giro" 200 "data.billing_account_id"; then
     echo -e "${RED}Setup fallito: impossibile creare il cliente del giro. Stop.${NC}"; exit 1
 fi

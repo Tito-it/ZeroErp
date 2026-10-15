@@ -132,11 +132,11 @@ portata a Consegnata).
 | --- | --- | --- | --- |
 | **5.1** | Reso dalla bolla del §1.9, 1 pezzo | «**Magazzino di rientro**» proposto **dalla bolla**, modificabile in bozza; la sezione «**Rientri**» con la voce «Automatico alla conferma» | Campo vuoto = il default del reso (`trgfn_resi_default_magazzino`) non arriva |
 | **5.2** | Reso dalla bolla **a lotti**, 3 pezzi | La voce propone il **prelievo d'origine** («Da quale prelievo della bolla», lotto scritto accanto, «usciti N»); con un solo prelievo la scelta è già fatta | Nessuna scelta = la voce non legge i prelievi d'origine |
-| **5.3** | La riga era uscita da **due** lotti: rientro di 2 da `L1` e lascia scoperto 1 → guarda «Conferma» | Spenta col motivo dei rientri incompleti. ⚠️ Oggi la frase esce **coi segnaposti** `{0}`, `{1}`, `{2}`: è il difetto DB aperto (§9) | Acceso = il motivo non arriva |
+| **5.3** | La riga era uscita da **due** lotti: rientro di 2 da `L1` e lascia scoperto 1 → guarda «Conferma» | Spenta col motivo dei rientri incompleti, **coi numeri**: *«Riga N del reso: indicati 2 pezzi su 3. Indica quali lotti o seriali rientrano, e dove.»* (N = il numero della riga) | Acceso = il motivo non arriva. Frase coi segnaposti `{0}`, `{1}`, `{2}` = i `valori` non arrivano: la capability non porta `reasons` (`20261014-07` non applicato?), o il FE non lo legge (`testoMotivi`) |
 | **5.4** | Completa (1 da `L2`) → «Conferma» | Movimenti: carichi `CARICO_RESO_VEN` sui lotti scelti; Disponibilità: `L1` +2, `L2` +1 | Conferma senza carico = la conferma non passa dal verbo (`fn_conferma_reso`) |
 | **5.5** | Reso confermato | Magazzino di rientro **spento**; righe e rientri in sola lettura | — |
 | **5.6** | Reso con magazzino di rientro **con scaffali** | Lo scaffale si chiede, e la voce non è più automatica | — |
-| **5.7** | Rientro che supera l'uscito del suo lotto (contando gli altri resi della bolla) | «Conferma» spenta col motivo «rientrerebbero … da cui ne erano usciti …» (anche qui coi segnaposti, §9) | — |
+| **5.7** | Rientro che supera l'uscito del suo lotto (contando gli altri resi della bolla) | «Conferma» spenta col motivo, **coi numeri**: *«Riga N del reso: rientrerebbero X pezzi di un lotto o seriale da cui ne erano usciti Y…»* | Segnaposti al posto dei numeri = come al §5.3 |
 | **5.8** | Annulla il reso confermato del §5.4 | La giacenza riscende: storno (`STORNO_NEG`) dei carichi | Nessuno storno = l'annullo non passa dal verbo (`fn_annulla_reso`) |
 | **5.9** | (Facoltativo) dalla bolla del §5.1 genera la **ri-consegna** ed emettila | Scarica di nuovo la merce rientrata col reso: la giacenza torna a quella di prima del reso | Scarico che porta sotto zero = il reso non aveva ricaricato (l'errore che il 3-bis chiude) |
 
@@ -181,7 +181,7 @@ Non è magazzino, ma è il giro C2 dello stesso piano.
 
 | | Cosa | Dove sta scritto |
 | --- | --- | --- |
-| **Motivi del reso** | I motivi della «Conferma» con i numeri (§5.3, §5.7) escono coi segnaposti finché il team DB non passa i `valori` | [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md) |
+| **Motivi del reso** | Chiuso lato DB (`20261014-07` applicato e pgTAP verde): la «Conferma» porta `reasons` coi `valori`, come la «Emetti» della bolla. Si conferma a video al §5.3 e al §5.7. | [brief-db-reso-motivi-conferma-con-valori](../work-done/brief-db-reso-motivi-conferma-con-valori.md) (archiviato, il collaudo è passato qui) |
 | **Bolle senza merce** | Il permesso all'emissione di una bolla che **non** muove merce lo controlla il backend, non il verbo (D-L3-e affinata, limite dichiarato) | brief del Lotto 3, §9 (28-09) |
 | **Merce presso terzi** | Conto visione, riparazione, conto lavoro non muovono (§1.8): decisione a sé | D-L3-g |
 | **Merce in viaggio** | Nessuna vista la mostra fra il §2.4 e il §2.6: nasce col suo lettore (P-13.2) | [piano §5](piano-be-fe-magazzino-lotto-3.md) |
@@ -194,3 +194,4 @@ Non è magazzino, ma è il giro C2 dello stesso piano.
 | Data | Cosa |
 | --- | --- |
 | **2026-10-14** | ✏️ Stesura, dall'elenco breve del piano BE/FE (§4, blocchi A, B, C) più i casi del modello che l'elenco non aveva: l'entrata del trasferimento al consegnato (§2.4-2.6), gli storni (§4, §5.8), la ri-consegna (§5.9), le causali che non muovono (§1.8). Dati di partenza letti su `dbdev`. Tutto a codice, **niente visto a video** |
+| **2026-10-14** | Assorbito il collaudo del brief-db-reso-motivi-conferma-con-valori (archiviato): §5.3 e §5.7 ora attendono i numeri nel tooltip, §9 aggiornato |

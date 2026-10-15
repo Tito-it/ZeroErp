@@ -275,7 +275,7 @@ blocchi A/B/C e dell'inventario, i motivi della conferma del reso senza valori
 [collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
 [collaudo-in-app-casella-ricerca-liste.md](work-done/collaudo-in-app-casella-ricerca-liste.md),
 [piano-be-fe-magazzino-lotto-3.md](work-in-progress/piano-be-fe-magazzino-lotto-3.md),
-[brief-db-reso-motivi-conferma-con-valori.md](work-in-progress/brief-db-reso-motivi-conferma-con-valori.md).
+[brief-db-reso-motivi-conferma-con-valori.md](work-done/brief-db-reso-motivi-conferma-con-valori.md).
 
 **In breve, senza un tema proprio** — la valutazione DB prende una parte
 qualitativa sul **design** (§2-bis, 04-10), da cui nascono le voci da D17 a

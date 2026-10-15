@@ -84,9 +84,15 @@ with transaction.atomic():
         # Gli ingredienti: un soggetto e un emittente nel perimetro
         # dell'operatore (o la RLS non farebbe vedere il titolo appena scritto),
         # il tipo di titolo con plafond e un codice IVA.
+        # ⭐ Soggetto e tipo di titolo si scelgono INSIEME, con il predicato del
+        #    guard (`anagrafiche.fn_titolo_iva_ammesso` sulla natura del
+        #    soggetto, dal 2026-10-10): la dichiarazione d'intento la presenta un
+        #    soggetto IVA, non un privato. Prima erano due `LIMIT 1` separati e
+        #    senza ordine, e il giorno in cui il primo soggetto e' stato un
+        #    privato lo smoke e' andato rosso nella fixture (2026-10-15).
         cur.execute(
             """
-            SELECT s.id, ef.id
+            SELECT s.id, ef.id, t.id
               FROM anagrafiche.emittenti_fiscali ef
               -- ⚠️ Il ponte lega il SOGGETTO-RUOLO dell'emittente, non la sua
               --    PK: e' la convenzione `_sr_ids` contro `_pk_ids`, e sbagliarla
@@ -96,21 +102,21 @@ with transaction.atomic():
               JOIN anagrafiche.billing_account ba ON ba.id = efba.billing_account_id
               JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
               JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+              JOIN config.tipi_titolo_iva t
+                ON t.ha_plafond IS TRUE
+               AND anagrafiche.fn_titolo_iva_ammesso(t.id, s.tipo_soggetto_dettaglio_id)
              WHERE ef.attivo
+             ORDER BY t.id, ef.id, s.id
              LIMIT 1
             """
         )
         base = cur.fetchone()
-        cur.execute(
-            "SELECT id FROM config.tipi_titolo_iva WHERE ha_plafond IS TRUE LIMIT 1"
-        )
-        tipo = cur.fetchone()
         cur.execute("SELECT id FROM config.iva WHERE attivo LIMIT 1")
         iva = cur.fetchone()
-        if not (base and tipo and iva):
+        if not (base and iva):
             raise SystemExit(
-                f"SENZA_MATERIA: soggetto/emittente={bool(base)} "
-                f"tipo_con_plafond={bool(tipo)} iva={bool(iva)}."
+                f"SENZA_MATERIA: soggetto/emittente/tipo con plafond ammesso={bool(base)} "
+                f"iva={bool(iva)}."
             )
 
         cur.execute(
@@ -122,7 +128,7 @@ with transaction.atomic():
                     10000, TRUE)
             RETURNING id
             """,
-            [base[0], base[1], tipo[0], iva[0]],
+            [base[0], base[1], base[2], iva[0]],
         )
         titolo_id = cur.fetchone()[0]
     check("titolo costruito", True, f"id={titolo_id}")

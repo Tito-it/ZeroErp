@@ -150,6 +150,8 @@ Constraint principali:
 Lo dice il database, in una regola sola per tutte le righe di documento
 ([script.fn_check_articolo_riga](/dbzero/script/manual/fn_check_articolo_riga)).
 
+**Nella ricerca dell'articolo** trovi prima quelli che la riga può usare. Gli altri compaiono dopo, in grigio, col motivo sotto, e non si possono scegliere: chi cerca un codice preciso e non lo trova fra i primi vede perché. La ricerca e il rifiuto al salvataggio usano la stessa regola, quindi un articolo proposto non viene rifiutato dopo.
+
 Per gli **articoli compositi** (distinta base): un'eccezione ESCLUSIONE **non genera
 componenti**. L'esclusione toglie l'articolo per intero, quindi non ha prezzo né
 pezzi da dettagliare — coerente con il vincolo "ESCLUSIONE ⇒ prezzo NULL". I

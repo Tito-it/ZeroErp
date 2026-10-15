@@ -76,8 +76,11 @@ Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-
     immutabili dopo l'attivazione del contratto padre: la stessa regola «le
     righe si toccano solo in bozza» dei DDT e degli ordini, un trigger per
     documento, codice `E_RIGA_DOC_NON_BOZZA` (409)
-  - `script.trgfn_righe_guard_aggiunta_fuori_listino` — blocca AGGIUNTA
-    su articolo gia' presente nel listino
+  - `script.trgfn_righe_guard_articolo_ammesso` — l'articolo della riga col
+    primo motivo di `script.fn_check_articolo_riga` (AGGIUNTA gia' in listino,
+    eccezione senza listino o fuori listino, figlio di bundle, solo componente,
+    kit senza componenti, tipologia, erogazioni): la stessa check del picker
+    `GET /catalogo/articoli/lookup/?documento=CONTRATTO`
   - `trgfn_contratti_utilities_guard_tipo_classe`
   - CHECK `chk_contrighe_prezzo_per_tipo_eccezione` — ESCLUSIONE ↔ prezzo NULL
   - EXCLUDE gist parziale `ex_contratti_no_overlap` su `(billing_account_id WITH =, istanza_utility_id WITH =, utility_id WITH =, ambito WITH =, validita WITH &&) WHERE (partecipa_overlap_snapshot)` (migration `20260521-03`; predicato DRAFT-escluso da `20260602-17..22`). I contratti DRAFT e quelli abortiti **non** partecipano al vincolo: l'esclusivita' scatta solo all'attivazione (vedi nota DRAFT-scope sotto). Governato dal framework `dbops.automazione_overlap` (re-apply notturno).
@@ -410,10 +413,10 @@ Tipi ammessi (allineati col CHECK DB `chk_contrighe_prezzo_per_tipo_eccezione`):
 
 Vincoli:
 
-- **AGGIUNTA su articolo presente nel listino**: bloccata dal trigger
-  `script.trgfn_righe_guard_aggiunta_fuori_listino` (generica, la stessa dell'offerta) →
+- **AGGIUNTA su articolo presente nel listino**: bloccata dal guard
+  `script.trgfn_righe_guard_articolo_ammesso` (lo stesso dell'offerta) →
   `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` (422). L'operatore avrebbe dovuto
-  usare OVERRIDE.
+  usare OVERRIDE. Il picker lo mostra gia' spento, col motivo.
 - **Coerenza prezzo/tipo**: ESCLUSIONE con prezzo NOT NULL o
   OVERRIDE/AGGIUNTA con prezzo NULL → `E_VENDITE_VALIDATION` (pre-DB) o
   CHECK violation (DB).
@@ -974,8 +977,11 @@ alle righe di contratto via `target_riga_id`.
 | `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
 | `E_DATA_AL_MINORE_DAL` | 400 | DB P0001, campo `valido_al` — `valido_al < valido_dal` in create, PATCH testata e cessazione. Il service non lo anticipa (dal 2026-09-23). Frase del catalogo con le due date, soluzione in `hint`: `raise_from_database_error` fa vincere il codice del DB anche fuori da `_KNOWN_DB_ERROR_MARKERS` | `script.trgfn_guard_date_validita` (automazione `DATE_VALIDITA`) |
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` | 422 | DB P0001 (refactor modalita 2026-05-15) — attivazione di contratto senza listino senza righe AGGIUNTA con prezzo valorizzato | `trgfn_contratti_freeze_listino_versione` (guard interno) |
-| `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` | 422 | DB P0001 (refactor 2026-05-15) — INSERT/UPDATE riga `tipo_eccezione=AGGIUNTA` per articolo gia' presente nel listino di riferimento | `script.trgfn_righe_guard_aggiunta_fuori_listino` |
-| `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 422 | DB P0001 (§6.1 2026-05-16) — INSERT/UPDATE riga `tipo_eccezione=ESCLUSIONE` per articolo che e' `articolo_figlio_id` in un bundle del listino del contratto. L'ESCLUSIONE si applica al padre bundle, non al singolo componente | `script.trgfn_righe_guard_esclusione_figlio_bundle` |
+| `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` | 422 | DB P0001 (refactor 2026-05-15) — INSERT/UPDATE riga `tipo_eccezione=AGGIUNTA` per articolo gia' presente nel listino di riferimento | `script.trgfn_righe_guard_articolo_ammesso` (dal 2026-10-13; prima `trgfn_righe_guard_aggiunta_fuori_listino`, ritirato) |
+| `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 422 | DB P0001 (§6.1 2026-05-16) — INSERT/UPDATE riga `tipo_eccezione=ESCLUSIONE` per articolo che e' `articolo_figlio_id` in un bundle del listino del contratto. L'ESCLUSIONE si applica al padre bundle, non al singolo componente | `script.trgfn_righe_guard_articolo_ammesso` (dal 2026-10-13; prima `trgfn_righe_guard_esclusione_figlio_bundle`, ritirato) |
+| `E_ARTICOLO_SENZA_EROGAZIONE` | 400 | DB P0001 (2026-10-13) — AGGIUNTA o OVERRIDE di un articolo che non si eroga in nessun modo. Campo `articolo_id`. Stesso codice sull'offerta | `script.trgfn_righe_guard_articolo_ammesso` |
+| `E_RIGA_ECCEZIONE_SENZA_LISTINO` · `E_RIGA_ECCEZIONE_FUORI_LISTINO` | 400 | DB P0001 (2026-10-13) — OVERRIDE o ESCLUSIONE su un contratto senza listino operativo, o di un articolo che il listino non ha. Campo `articolo_id`. Stessi codici sull'offerta | `script.trgfn_righe_guard_articolo_ammesso` |
+| `E_ARTICOLO_SOLO_COMPONENTE` · `E_ARTICOLO_KIT_SENZA_COMPONENTI` | 400 | DB P0001 (2026-10-13 / 2026-10-14) — AGGIUNTA o OVERRIDE di un articolo usabile solo dentro un kit, o di un kit senza componenti attivi. Campo `articolo_id`. Stessi codici sull'offerta e sulle righe di preventivo, ordine e bolla | `script.trgfn_righe_guard_articolo_ammesso` |
 | `E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE` | 409 | DB P0001 (2026-10-04) — UPDATE di una riga ESCLUSIONE che cambia una colonna di contenuto (ammesse le sole tecniche). Parla prima dei guard `_a10_` e del CHECK sul prezzo. Nessun valore nel messaggio | `script.trgfn_righe_guard_esclusione_immutabile` (fascia `_a05_`) |
 | `E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE` | 409 | DB P0001 (2026-10-04) — UPDATE che cambia `tipo_eccezione` di una riga qualunque. Dall'API non si raggiunge: il service rifiuta la chiave prima | lock di colonna generato (`trg_contratti_righe_a10_lock_columns_upd`) |
 | `E_RIGA_EROGAZIONE_OBBLIGATORIA` | 400 | DB P0001 (2026-10-04) — PATCH che toglie `tipo_erogazione` a una riga OVERRIDE/AGGIUNTA (in create, dal 2026-10-07, la riga la eredita dall'articolo). Campo `tipo_erogazione` in `error.fields`. Stesso codice sulle eccezioni dell'offerta | `script.trgfn_righe_guard_erogazione_obbligatoria` |

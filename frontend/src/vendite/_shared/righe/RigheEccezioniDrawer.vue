@@ -95,6 +95,10 @@ const VOC = 'vendite.contratti'
 const props = defineProps({
   visible: Boolean,
   documentoId: { type: Number, required: true },
+  // Il documento, come lo nomina `config.tipi_entita` (`OFFERTA_COMMERCIALE`,
+  // `CONTRATTO`): lo chiede il picker degli articoli, che giudica la riga con
+  // la check dei guard di quel documento.
+  documento: { type: String, required: true },
   // L'emittente del documento (PK di `anagrafiche.emittenti_fiscali`): il
   // lasciapassare del cancello di perimetro della lista. Finche' manca la
   // lista e' in attesa, non vuota (padre composto di `useListaStoreCore`).
@@ -918,7 +922,9 @@ function origineSeverity(origine) {
             v-model="form.articolo_obj"
             @update:modelValue="onArticoloSelected"
             :disabled="formMode === 'edit' || form.tipo_eccezione !== TIPO_ECCEZIONE.AGGIUNTA"
-            :filtri="{ soloComponenti: 'escludi' }"
+            :documento="documento"
+            :documento-id="documentoId"
+            :tipo-eccezione="form.tipo_eccezione"
             :placeholder="tv('select_articolo')"
           />
           <!-- Nessuna combinazione: la tipologia dell'articolo non e' fra

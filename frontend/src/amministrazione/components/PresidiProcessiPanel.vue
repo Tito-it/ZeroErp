@@ -287,8 +287,8 @@ function cella(valore) {
 
 <style scoped>
 /* Layout locale del pannello: non è un pattern di pagina, non va in main.css. */
-/* Il pannello riempie il corpo della sezione (che ha il tetto): le schede
-   prendono lo spazio e scorrono dentro di se', la striscia a zero non cede. */
+/* Il pannello riempie la scheda «Presidi» della vista: le schede prendono lo
+   spazio e scorrono dentro di se', la striscia a zero non cede. */
 .app-presidi {
   display: flex; flex-direction: column; gap: 1rem;
   height: 100%; min-height: 0;

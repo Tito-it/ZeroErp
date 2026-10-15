@@ -14,7 +14,7 @@ loro sta qui, al §5. Questo piano e' l'unico documento aperto dei due lotti.
 | 3 | ✅ sessione BE | **A2** — magazzino sulla testata di bolla e reso (Lotto 3 R-2a, 3-bis R-1a) | §3 | A1 |
 | 4 | Tid | collaudo del blocco A: una bolla che muove merce si emette, senza scelte | §4 | 1, 3 |
 | 5 | ✅ sessione BE | **B1** — i prelievi della bolla (Lotto 3 R-2b) | §3 | A2 |
-| 6 | ✅ sessione BE · ✅ team DB · ⏳ Tid | **B2** — i rientri del reso (3-bis R-1b) ✅; R-1c: [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md) scritto e provato (`20261014-07`, 2026-10-14), attende l'apply di Tid | §3 | B1 |
+| 6 | ✅ sessione BE · ✅ team DB | **B2** — i rientri del reso (3-bis R-1b) ✅; R-1c ✅: [brief-db-reso-motivi-conferma-con-valori](../work-done/brief-db-reso-motivi-conferma-con-valori.md) applicato e archiviato (2026-10-14), BE/FE senza codice; il tooltip coi numeri si collauda al §5.3/§5.7 del collaudo | §3 | B1 |
 | 7 | Tid | collaudo del blocco B: lotti, seriali, ubicazioni, reso e storno | §4 | 6 |
 | 8 | ✅ sessione BE | **C1** — blocchi dalla scheda disponibilità (Lotto 3 R-5) | §3 | — |
 | 9 | ✅ sessione BE | **C2** — offerta: cliente in bozza, fornitura, codici delle eccezioni; commenti superati | §3 | — |
@@ -141,7 +141,7 @@ sceglie, lotto e seriale si mostrano). R-1c: brief al team DB — `fn_available_
 …/righe/<riga>/rientri/`, `PATCH`/`DELETE …/rientri/<id>/`; vincoli tradotti. Sezione «Rientri» nel drawer
 del reso (`ResoRientriSection` + `ResoRientroVoce`); con un solo prelievo d'origine la scelta e' gia' fatta.
 Lo stile del blocco voce e' una classe sola, `app-voce-merce` in `main.css`, per prelievi e rientri.
-R-1c: [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md).
+R-1c: [brief-db-reso-motivi-conferma-con-valori](../work-done/brief-db-reso-motivi-conferma-con-valori.md) (chiuso il 2026-10-14).
 
 ### Blocco C — il resto
 
@@ -193,7 +193,7 @@ applicato e verde, le richieste a BE/FE (§6 di entrambi) sono i giri del §3. R
 
 | Residuo | Da dove | Chi | Stato |
 | --- | --- | --- | --- |
-| Motivi della «Conferma» del reso senza i numeri (3-bis R-1c) | 3-bis §6; giro B2 | team DB | brief suo: [brief-db-reso-motivi-conferma-con-valori](brief-db-reso-motivi-conferma-con-valori.md) |
+| Motivi della «Conferma» del reso senza i numeri (3-bis R-1c) | 3-bis §6; giro B2 | team DB | ✅ chiuso il 2026-10-14: [brief-db-reso-motivi-conferma-con-valori](../work-done/brief-db-reso-motivi-conferma-con-valori.md); a video al §5.3/§5.7 del collaudo |
 | CI da zero (`ci_apply` + suite) che scrive la sua baseline | Lotto 3 e 3-bis, testata | Tid | ⏳ |
 | La corsa col runner come app di `magazzino/test-reso-carico-kit-seriali-v1` (14/14 sullo scratch il 29-09) | 3-bis, testata | Tid | ⏳ da confermare: se la suite completa e' girata dopo il 29-09, e' gia' fatta |
 | La vista di **lettura** della merce in viaggio (`transfer_uid` con la sola uscita) | Lotto 3, P-13.2 | team DB | ⏸️ nasce col suo lettore: non e' un presidio, la merce in viaggio e' normale. Fino ad allora a video non si vede (collaudo §9) |

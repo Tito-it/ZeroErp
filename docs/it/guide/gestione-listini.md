@@ -110,7 +110,8 @@ Tabella `vendite.promo_articoli`. È un **overlay temporale** indipendente:
 * ammette `PREZZO_FISSO` (prezzo assoluto sostitutivo) — vietato negli altri stadi
 * non si crea su un articolo **solo componente**: un articolo che si vende solo dentro un kit non
   ha un prezzo suo, e dentro un kit le promo non si applicano. Il kit invece la promo la può
-  avere: la riceve quando il contratto gli dà un prezzo suo
+  avere: la riceve quando il contratto gli dà un prezzo suo. Nella ricerca dell'articolo della
+  promo un solo componente compare in grigio, col motivo, e non si sceglie
 
 ---
 
@@ -205,6 +206,12 @@ PREZZO_FISSO: prezzo_finale = valore
 ### 5.1 Tipologia articolo
 
 Ogni articolo ha `listino_tipologia_id` (FK a `config.listini_tipologie`). Un articolo può essere inserito solo in listini con la **stessa tipologia** (lo dice la check per tipo di riga `script.fn_check_articolo_riga`, che il guard `trg_listini_righe_a10_guard_articolo_ammesso_ins_upd` solleva; dal 2026-10-13 anche: niente articoli «solo componente», e un kit entra coi suoi componenti).
+
+Nella ricerca dell'articolo di una riga di versione trovi prima gli articoli che la versione
+può usare; gli altri compaiono in grigio, col motivo sotto, e non si scelgono. Un **kit**
+compare col suo avviso («entra come bundle») ma si sceglie: apre i prezzi dei suoi componenti.
+Anche il componente di una distinta si cerca così: un componente con un'IVA diversa da quella
+del kit, o il kit stesso, compaiono in grigio col motivo.
 
 Esempi:
 

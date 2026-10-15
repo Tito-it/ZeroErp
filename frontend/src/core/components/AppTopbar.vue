@@ -16,7 +16,7 @@ import { useContextStore } from '../../stores/context'
 import { DOMAINS, NAV_ICONS } from '../navigation'
 import { getAIStatus } from '../api/ai-api'
 import { setAppLanguage, SUPPORTED_LOCALES, intlLocale } from '../i18n'
-import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../constants'
+import { MANAGE_ICONS, PROCESSI_TABS, READONLY_DOMAINS, STATUS_ICONS } from '../constants'
 import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
 import CodeLavoroDrawer from './CodeLavoroDrawer.vue'
@@ -150,8 +150,13 @@ const presidiTooltip = computed(() => {
       })
 })
 
+// ⭐ Il pallino porta GIÀ sulla scheda dei presidi: chi ci clicca ha visto
+//    qualcosa di acceso, e la lista dei processi non è la sua notizia.
 function apriProcessiAutomatici() {
-  router.push({ name: 'strumenti-diagnostica-processi-automatici' })
+  router.push({
+    name: 'strumenti-diagnostica-processi-automatici',
+    query: { tab: PROCESSI_TABS.PRESIDI },
+  })
 }
 
 // Scopo: classe CSS standard per le voci del kebab topbar. Tutte neutre/

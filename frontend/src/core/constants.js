@@ -1151,6 +1151,16 @@ export const CODE_TABS = Object.freeze({
   STAMPA: 'stampa',
 })
 
+// Scopo: le schede della vista «Processi automatici» (`ProcessiAutomaticiListView`).
+// ⚠️ Stesso contratto di `CODE_TABS`: il pallino dei presidi in topbar
+//    (`AppTopbar`, producer del deep-link `?tab=`) apre la vista GIÀ sui
+//    presidi. Scritto come literal, un refuso non fallirebbe: il click sul
+//    pallino rosso porterebbe in silenzio sulla lista dei processi.
+export const PROCESSI_TABS = Object.freeze({
+  PROCESSI: 'processi',
+  PRESIDI: 'presidi',
+})
+
 // Keyboard shortcuts
 export const SHORTCUTS = {
   SEARCH: { key: 'k', ctrl: true, shift: false },
