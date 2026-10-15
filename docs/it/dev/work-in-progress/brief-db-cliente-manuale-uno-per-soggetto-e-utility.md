@@ -1,19 +1,21 @@
 # Brief DB — Un cliente manuale per soggetto e utility
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-14
+## ⏭️ Chi riparte — aggiornato al 2026-10-15
 
-**Riparte: il team BE**, con il §6: il lato DB è applicato e verde (2026-10-14).
+**Riparte: il team DB**, coi residui (§7) e l'archivio. Il giro BE è fatto e lo smoke è verde
+(2026-10-15).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | Tid | ✅ decisioni C-1…C-9 (C-1…C-5 il 2026-10-13, C-6…C-9 il 2026-10-14) | §4, §4-bis | — |
 | 2 | DB | ✅ changeSet, CSV, pgTAP e doc scritti e provati sullo scratch il 2026-10-14 | §5-bis | — |
 | 3 | Tid | ✅ bonifica a mano del doppione 115/121 (115 chiuso al 2026-03-20); ✅ apply di `20261014-08` … `-20` e pgTAP senza regressioni (2026-10-14) | §5-bis.3, §5-bis.4 | — |
-| 4 | BE | il rifiuto al COMMIT della creazione manuale, l'avviso del pre-contrattuale, `ha_ba_attivo` sul periodo, due codici ritirati, lo smoke fuori dal registro dei rossi | §6 | — |
-| 5 | DB | i residui (§7) in un brief loro, poi l'archivio | §7 | 4 |
+| 4 | BE | ✅ il rifiuto al COMMIT della creazione manuale, `ha_ba_attivo` sul periodo, i codici (2026-10-15); l'avviso del pre-contrattuale passa ai residui (§7, decisione di Tid) | §6-bis | — |
+| 5 | BE | ✅ `smoke-test-clienti.sh` verde (16 OK, 2026-10-15), fuori da `baseline-smoke.tsv` | §6-bis | — |
+| 6 | DB | i residui (§7) in un brief loro, poi l'archivio | §7 | — |
 
 Decisioni aperte di Tid: nessuna (la data di attivazione di un chiuso, §7, si decide col brief dei
-residui). Lavoro DB committato il 2026-10-14.
+residui). Lavoro DB committato il 2026-10-14; lavoro BE del 2026-10-15 da committare.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-13. **A chi:** Tid, poi il team DB.
 > **Origine:** lo smoke `smoke-test-clienti.sh` del giro notturno (commit BE `b3e35f899`), il passo
@@ -379,7 +381,40 @@ rifiutato, che è l'esito atteso.
 * `smoke-test-clienti.sh`: il passo oggi in «DOMANDA APERTA» si aspetta il rifiuto
   (`E_CLIENTE_STESSA_CHIAVE`), ed esce da `baseline-smoke.tsv`.
 
+## 6-bis. Giro BE fatto (2026-10-15)
+
+* **`E_CLIENTE_STESSA_CHIAVE`**: nessuna modifica al service. L'errore del constraint trigger esce
+  dal `transaction.atomic()` di `ClientiService.crea_cliente` al COMMIT e passa dalla traduzione
+  generica degli errori DB: 409 col messaggio del DB, che porta il codice del BA esistente (C-3).
+  Nessun pre-check. Provato sul DB vero: `anagrafiche/tests/db/test_cliente_stessa_chiave_db.py`
+  (il COMMIT simulato con `SET CONSTRAINTS ALL IMMEDIATE`);
+* **`PraticheRepository.ha_ba_attivo`** legge `cl.periodo @> script.fn_data_operativa()` (C-8).
+  Provato sul DB vero: `pratiche/tests/db/test_ha_ba_attivo_db.py` (attivo oggi, attivazione
+  futura, chiusura futura, chiuso ieri, annullato); col criterio vecchio vanno rossi i due casi in
+  cui i criteri divergono;
+* **codici**: `error_policies_generated.py` rigenerato (i quattro nuovi più `E_STATISTICHE_MANCANTI`
+  di un altro cantiere, i due ritirati in `CODICI_RITIRATI`); i ripieghi dei cinque codici vivi
+  nuovi in `error_messages_fallback.py`. ⚠️ **Scostamento dal §6, confermato da Tid il
+  2026-10-15**: `E_DATA_APERTURA` ed `E_CLIENTE_NON_ATTIVO` **restano** nel ripiego e negli
+  override. Un codice ritirato continua a risolvere, perché le sue righe in `dbops.error_log`
+  devono restare leggibili; il presidio delle promesse `highlight` esclude i ritirati per
+  costruzione;
+* **avviso del pre-contrattuale (C-4)**: non fatto, per decisione di Tid del 2026-10-15. Oggi nessuno
+  prepara un cliente `PR` (il BE crea sempre `AT`, la pratica non crea clienti, a DB lo scrive solo
+  il builder pgTAP): l'avviso non ha un punto in cui agganciarsi. Passa ai residui (§7);
+* **smoke**: il passo 8 di `smoke-test-clienti.sh` si aspetta il 409 (commit `78b243f0f`). Verde il
+  2026-10-15, 16 OK su 16, dopo il reload dei worker (senza, il backend in esecuzione aveva il
+  modulo generato vecchio e rispondeva 400: il codice non era a catalogo per lui). Uscito da
+  `baseline-smoke.tsv`;
+* test: `apps.anagrafiche`, `apps.pratiche`, `apps.core` con `ZEROERP_TEST_DB_E2E=1`, 2731 verdi
+  (1 skip); ruff pulito; mypy senza rilievi nuovi.
+
 ## 7. Residui (da portare in un brief loro alla chiusura)
+
+* **l'avviso del pre-contrattuale (C-4)** nasce col percorso che prepara un cliente `PR`, che
+  arriverà con le pratiche (Tid, 2026-10-15). Il BE chiamerà `anagrafiche.fn_clienti_stessa_chiave`
+  con l'azienda del BA in lavorazione e il FE mostrerà l'avviso senza bloccare (§6); la funzione a
+  DB c'è già e oggi non ha un chiamante;
 
 * **il PDP libero alla data di chiusura**: `sync_stato_pdp` ricalcola quando si scrive il cliente;
   una chiusura con data futura libera il PDP alla prossima scrittura, non quel giorno. Serve un giro

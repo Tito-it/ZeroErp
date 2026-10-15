@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1074, di cui 118 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1079, di cui 120 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -239,12 +239,22 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CF_OBBLIGATORIO": "DATO_ERRATO",
     "E_CHANGE_PASSWORD": "DATO_ERRATO",
     "E_CHIUDE_LOTTO_SINGLETON": "CONFLITTO_STATO",
+    # Guard anagrafiche.trgfn_clienti_guard_stato_date (C-5 di Tid del 2026-10-13): la data di chiusura di un cliente gia' chiuso (CH, CM, CW, CF) non cambia, nemmeno nel passaggio a CF. Il VARIADIC porta il codice del billing account e la data di chiusura in vigore; campo data_chiusura. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+    "E_CLIENTE_DATA_CHIUSURA_IMMUTABILE": "CONFLITTO_STATO",
     # Lock di colonna (dbops.automation_lock_columns) su anagrafiche.clienti.billing_account_id, istanza_utility_id, soggetto_ruolo_id, utility_id - D-7 di brief-db-esecutivi-ba-coppia (Tid, 2026-10-09): il cliente non cambia fornitura ne' intestatario (il subentro crea un cliente nuovo). Le quattro insieme perche' le FK composte verso il BA (fk_clienti_billing_account, fk_clienti_ba_cliente) bloccherebbero le altre tre comunque, ma con un 23503 grezzo. CONFLITTO_STATO come gli altri lock; VARIADIC il nome della colonna.
     "E_CLIENTE_FORNITURA_IMMUTABILE": "CONFLITTO_STATO",
+    # Ritirato il 2026-10-14 (brief-db-cliente-manuale-uno-per-soggetto-e-utility, C-6): lo sollevava solo script.fn_disdetta_cliente, che accettava solo un cliente in stato AT. Da dove si puo' chiudere lo dice ora il grafo config.transizioni_stati_cliente, letto dal guard anagrafiche.trgfn_clienti_guard_stato_date (E_CLIENTE_STATO_TRANSIZIONE_INVALIDA). Nessun punto del database lo solleva piu'.
+    # ⚠️ RITIRATO il 2026-10-14
     "E_CLIENTE_NON_ATTIVO": "CONFLITTO_STATO",
     "E_CLIENTE_NON_TROVATO": "NON_TROVATO",
     # Guard anagrafiche.trgfn_soggetti_guard_regime_pa (20261010-86): cliente_pa = 'S' su una natura di dettaglio con cliente_pa_ammesso = false (config.tipi_soggetto_dettaglio, 20261010-85). Un codice per flag e non uno per due: il flag sbagliato lo dice il codice, non un'etichetta italiana nel VARIADIC, che non si traduce. DATO_ERRATO, campo cliente_pa nel contesto; il VARIADIC porta la descrizione della natura. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (A-3).
     "E_CLIENTE_PA_NON_AMMESSO": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_clienti_guard_stato_date (C-6 di Tid del 2026-10-14): AT e RS vogliono data_attivazione, SF e SC anche data_sospensione, i chiusi (CH, CM, CW, CF) anche data_chiusura, un AT che arriva da un sospeso data_riattivazione. Campo nel contesto: la colonna mancante. Il VARIADIC porta il codice del billing account, la descrizione dello stato e il nome della data in italiano. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+    "E_CLIENTE_STATO_SENZA_DATA": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_clienti_guard_stato_date sul cambio di stato (C-5, C-6 di Tid del 2026-10-14): il passaggio non e' nel grafo config.transizioni_stati_cliente. Il VARIADIC porta il codice del billing account e le descrizioni dei due stati. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+    "E_CLIENTE_STATO_TRANSIZIONE_INVALIDA": "CONFLITTO_STATO",
+    # Guard anagrafiche.fn_guard_cliente_chiave_unica, al COMMIT (C-1, C-2, C-3 di Tid del 2026-10-13): fra le istanze fittizie, due clienti con lo stesso soggetto, utility e azienda emittente (per l'installazione) e periodi sovrapposti sono un doppione. Sorella di ex_clienti_no_overlap_stesso_pdp, il cui perno e' il PDP. CONFLITTO_STATO: non c'e' un campo da correggere, c'e' un altro cliente. Il VARIADIC porta il codice del billing account del cliente esistente (C-3: il cliente non ha un codice suo). Nessun bersaglio: config.tipi_entita non ha il cliente. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.
+    "E_CLIENTE_STESSA_CHIAVE": "CONFLITTO_STATO",
     "E_CLIENTE_UTILITY_MISMATCH_BA": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI": "DATO_ERRATO",
@@ -432,10 +442,13 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Motivo di script.fn_check_credenziale_eliminabile (reason STORIA_NON_VERIFICABILE), sollevato da script.fn_elimina_credenziale: la FK di anagrafiche.identita_digitali verso django.auth_user non esiste, quindi mancano i legami che la check legge per dire se la credenziale ha una storia, e che il DELETE userebbe per portarsi via le righe che le appartengono. * Succede su un'installazione nuova e in CI: Liquibase gira prima di manage.py migrate, e i changeSet del ponte django finiscono MARK_RAN (voce aperta in PROJECT_CONTEXT). * Fail-closed per decisione di Tid (2026-10-06): senza i legami eliminare lascerebbe righe orfane. TECNICO: l'operatore non puo' rimediare, serve chi amministra il database. Frase chiusa. Nasce il 2026-10-06 (brief-db-elimina-credenziale-senza-veste).
     "E_CREDENZIALE_STORIA_NON_VERIFICABILE": "TECNICO",
     "E_DATA_AL_MINORE_DAL": "DATO_ERRATO",
+    # Ritirato il 2026-10-14 (brief-db-cliente-manuale-uno-per-soggetto-e-utility, C-6): lo sollevava trgfn_clienti_set_periodo per un AT senza data di attivazione. La regola «ogni stato pretende la sua data» sta in anagrafiche.trgfn_clienti_guard_stato_date con E_CLIENTE_STATO_SENZA_DATA. Nessun punto del database lo solleva piu'.
+    # ⚠️ RITIRATO il 2026-10-14
     "E_DATA_APERTURA": "DATO_ERRATO",
     "E_DATABASE": "DATO_ERRATO",
     "E_DATABASE_RETRYABLE": "CONFLITTO_STATO",
     "E_DATA_CESSAZIONE_INVALIDA": "DATO_ERRATO",
+    # Chiusura precedente all'attivazione di un cliente. Dal 2026-10-14 (brief-db-cliente-manuale-uno-per-soggetto-e-utility) lo solleva anagrafiche.trgfn_clienti_guard_stato_date, per ogni stato (prima trgfn_clienti_set_periodo, solo per CH). Il VARIADIC porta il codice del billing account, la data di chiusura e quella di attivazione; campo data_chiusura. Gemello del CHECK chk_clienti_date_coerenti, che il guard BEFORE ROW precede con una frase leggibile.
     "E_DATA_CHIUSURA": "DATO_ERRATO",
     "E_DATA_ERRATA": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-07
@@ -1507,6 +1520,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SQL_READ_TABLE": "TECNICO",
     # Scritto dal backend in vendite.fatture_stampa_coda.ultimo_errore (vendite/db/pipeline_repository.py, reset_stale_stampe_in_corso), non sollevato: un render rimasto IN_CORSO oltre la soglia (worker morto o ucciso) viene recuperato dal reaper. Non attraversa HTTP. TECNICO come il gemello E_CODA_JOB_STANTIO della coda lavori generica. Messo a catalogo il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri R-1).
     "E_STAMPA_JOB_STANTIO": "TECNICO",
+    # Autoverifica di maintenance.fn_analyze_statistiche (job notturno analyze_statistiche e convergenza in CI; brief-db-statistiche-tabelle-job-notturno, D15, 2026-10-14): dopo ANALYZE, maintenance.vw_statistiche_mancanti ha ancora tabelle. ANALYZE salta con un WARNING cio' che il ruolo non puo' analizzare: senza questo errore il giornale direbbe done. TECNICO: il rimedio e' un diritto al ruolo del job (provisioning, pg_maintain) o una tabella da guardare, non un gesto dell'operatore. Nessun bersaglio. Il contesto porta tabelle (con motivo MAI_ANALIZZATA o NON_ANALIZZABILE) e ruolo. I VALORI: quante tabelle, l'elenco delle prime dieci.
+    "E_STATISTICHE_MANCANTI": "TECNICO",
     # Codice sollevato dal trigger guard transizioni DDT · (trgfn_ddt_guard_transizione): la coppia (stato_attuale, stato_target) · non e' nella matrice config.transizioni_stati_ddt.
     "E_STATO_DDT_TRANSIZIONE_NON_VALIDA": "CONFLITTO_STATO",
     "E_STATO_DOC_ESITO_NON_VERDETTO": "DATO_ERRATO",
@@ -1859,6 +1874,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_BOM_SORGENTE_GIA_CHIUSA",
         "E_BOM_VALIDO_AL_INVALIDO",
         "E_BOM_VERSIONE_OVERLAP",
+        "E_CLIENTE_NON_ATTIVO",
         "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI",
         "E_COMPETENZA",
         "E_COMPETENZA_SUPERATA",
@@ -1875,6 +1891,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
         "E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
         "E_CONTRATTO_NON_MODIFICABILE",
+        "E_DATA_APERTURA",
         "E_DATA_FINE_INFERIORE_DI_INIZIO",
         "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO",
         "E_DBLINK_LOG_CONN_MISSING",

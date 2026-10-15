@@ -160,10 +160,14 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CF_OBBLIGATORIO": "Codice fiscale obbligatorio.",
     "E_CHANGE_PASSWORD": "Errore cambio password.",
     "E_CHIUDE_LOTTO_SINGLETON": "Un solo stato puo' avere il flag chiude_lotto attivo.",
+    "E_CLIENTE_DATA_CHIUSURA_IMMUTABILE": "Il cliente e' chiuso: la data di chiusura non si cambia piu'.",
     "E_CLIENTE_FORNITURA_IMMUTABILE": "Un cliente appartiene per sempre alla sua fornitura: per un'altra fornitura si crea un cliente nuovo, per un nuovo intestatario si usa il subentro.",
     "E_CLIENTE_NON_ATTIVO": "Il cliente non e' in stato attivo.",
     "E_CLIENTE_NON_TROVATO": "Cliente non trovato.",
     "E_CLIENTE_PA_NON_AMMESSO": "Questo tipo soggetto non puo' essere una Pubblica Amministrazione.",
+    "E_CLIENTE_STATO_SENZA_DATA": "Lo stato scelto per il cliente richiede la sua data.",
+    "E_CLIENTE_STATO_TRANSIZIONE_INVALIDA": "Il cliente non puo' passare allo stato richiesto.",
+    "E_CLIENTE_STESSA_CHIAVE": "Per questo soggetto, servizio e azienda esiste gia' un cliente attivo nello stesso periodo.",
     "E_CLIENTE_UTILITY_MISMATCH_BA": "Utility non coerente con il billing account del cliente.",
     # ⚠️ SENZA segnaposto, mentre il messaggio a catalogo ha un `%s` con lo
     # STATO della riga: è proprio quando gli argomenti non arrivano che il
@@ -1217,6 +1221,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_SPLIT_PAYMENT_NON_AMMESSO": "Questo tipo soggetto non puo' essere in split payment.",
     "E_SQL_READ_TABLE": "Errore in lettura sulla tabella indicata.",
     "E_STAMPA_JOB_STANTIO": "Render interrotto (worker morto o kill): recuperato dal reaper.",
+    "E_STATISTICHE_MANCANTI": "Dopo l'aggiornamento delle statistiche restano tabelle senza statistiche.",
     "E_STATO_DDT_TRANSIZIONE_NON_VALIDA": "Transizione di stato non ammessa per il DDT.",
     "E_STATO_DOC_ESITO_NON_VERDETTO": "L'esito indicato non e' un verdetto: non ammesso come proiezione.",
     "E_STATO_RESO_TRANSIZIONE_NON_VALIDA": "Transizione di stato non ammessa per il reso.",
