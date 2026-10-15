@@ -33,6 +33,11 @@ Descrivere configurazione e workflow di **Liquibase** per **ZeroErp (struttura v
 * Driver JDBC PostgreSQL presente nel classpath
 * Accesso a un DB di sviluppo/test
 
+> ⭐ **I ruoli e i loro diritti li dà uno script solo**, `scripts/sql/provision_zeroerp.sql`
+> (ruoli di sistema `zeroerp_owner`, `zeroerp_job`, `zeroerp_app`): modello, regole e
+> ordine dei passi in [Provisioning ruoli DB](/dev/backend/provisioning-db-roles). I due paragrafi qui sotto restano perché
+> raccontano **perché** quei diritti servono; il «come» è lo script.
+
 ### 🔴 Il ruolo che lancia Liquibase deve avere `USAGE` sullo schema `pgagent`
 
 La fase `85_pgagent` crea i **job schedulati** (storicizzazione, automazioni,
@@ -64,6 +69,10 @@ risponde `false`, `titodb` risponde `true`.
 ℹ️ I job **devono** esserci in produzione (decisione di Tid, 2026-09-02): non è
 una fase opzionale da lasciare a `MARK_RAN`.
 
+⭐ Col modello dei ruoli di sistema questi diritti li dà la fase `pre` di
+`provision_zeroerp.sql`, a `zeroerp_owner` (il migratore) e a `zeroerp_job` (il
+demone pgAgent).
+
 ### 🔴 Il ruolo che esegue `analyze_statistiche` deve poter analizzare ogni tabella
 
 Il job notturno delle statistiche
@@ -77,13 +86,20 @@ superuser, proprietario di tutte le tabelle, oppure membro di `pg_maintain`:
 GRANT pg_maintain TO <ruolo>;
 ```
 
+⭐ **Col modello dei ruoli di sistema il grant non serve.** La procedura del job è
+`SECURITY DEFINER` del proprietario, e il proprietario (`zeroerp_owner`) possiede
+tutte le tabelle: le tabelle che il provision-pre crea come `postgres`
+(`databasechangelog`, `databasechangeloglock`, `internal.project_metadata`) gliele
+passa la fase `pre` di `provision_zeroerp.sql`.
+
 | ambiente | chi esegue | serve il grant? |
 | --- | --- | --- |
-| **dbdev** | pgAgent, con ogni probabilità `postgres` | no, se superuser |
-| **CI** (`ci.yaml`, `ci-validate.yaml`) e scratch (`scripts/ci-local.sh`) | Liquibase `ci_apply` come `zeroerp` | ✅ sì, ed è nel passo di bootstrap: `databasechangelog`, `databasechangeloglock`, `internal.project_metadata` e `version_info` li crea il provision-pre come `postgres` |
+| database di prova (`scripts/ci-local.sh`, `zeroerp_ruoli`) e CI col modello | `zeroerp_owner` (`ci_apply`, e la procedura `DEFINER`) | no: possiede tutto |
+| **dbdev**, finché non si allinea al modello | pgAgent come `postgres`, la procedura gira come `titodb` | no: `titodb` possiede tutte le tabelle del progetto |
+| `scripts/ci-local.sh --classico` (`zeroerp_ci`) | `ci_apply` come `zeroerp` | ✅ `GRANT pg_maintain TO zeroerp`, ed è nel suo passo di bootstrap |
 
-⚠️ È un **ruolo** del cluster, non un privilegio del database: si dà una volta
-per cluster. ⛔ Mai in un changeSet (linee-guida-sql §11.6).
+⚠️ `pg_maintain` è un **ruolo** del cluster, non un privilegio del database. ⛔ Mai
+in un changeSet (linee-guida-sql §11.6).
 
 ---
 

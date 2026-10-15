@@ -132,7 +132,8 @@ Questo approccio garantisce che il log venga salvato **indipendentemente dalla t
 
 ## Buone pratiche Zero ERP
 
-* Utilizzare **utente tecnico dedicato** (es. `titodb`)
+* Utilizzare **utente tecnico dedicato**: il canale di log è `zeroerp_log`, che può
+  solo scrivere `dbops.error_log` (ruoli di sistema: [Provisioning ruoli DB](/dev/backend/provisioning-db-roles))
 * Evitare password in chiaro nei parametri GUC
 * Usare connessioni preconfigurate (`service=...`)
 * Utilizzare `script.fn_ensure_logconn()` come controllo iniziale

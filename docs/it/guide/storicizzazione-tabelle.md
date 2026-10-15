@@ -152,7 +152,9 @@ creato shadow come `postgres`, quelle tabelle non sono alterabili dai changeSet,
 trigger nuovo — che scrive le due colonne — si ferma finché una tabella ne è priva.
 `scripts/sql/provision_storico_scope.sql` le allinea e ne riassegna la proprietà al
 migratore: serve su qualunque database dove il job abbia creato shadow come `postgres`.
-Dettagli in [Provisioning ruoli DB](/dev/backend/provisioning-db-roles).
+Col modello dei ruoli di sistema non serve più: le procedure dei job sono `SECURITY
+DEFINER` del proprietario, quindi le shadow nascono sue. Dettagli in
+[Provisioning ruoli DB](/dev/backend/provisioning-db-roles).
 
 Controlli: `db/pgtap/dbops/test-storico-scope-policy-v1.sql` (la mappa) e
 `db/pgtap/storico/test-storico-scope-congelato-v1.sql` (colonne, policy,

@@ -139,17 +139,17 @@ cluster**, nel provisioning, e mai in un changeSet.
 | Ambiente | Chi esegue il lavoro | Diritto |
 | --- | --- | --- |
 | Server di sviluppo | pgAgent chiama la procedura, che gira come il **proprietario** del database (procedura `SECURITY DEFINER`) | già sufficiente: il proprietario possiede tutte le tabelle |
-| CI e database di prova (`scripts/ci-local.sh`) | Liquibase, al passaggio `ci_apply`, come `zeroerp` | `GRANT pg_maintain TO zeroerp`, nel passo di bootstrap |
+| Database di prova (`scripts/ci-local.sh`) e CI, col modello dei ruoli | `zeroerp_owner`, il proprietario (passaggio `ci_apply`) | già sufficiente: un owner solo possiede tutto |
+| `scripts/ci-local.sh --classico` | `zeroerp` | `GRANT pg_maintain TO zeroerp`, nel suo passo di bootstrap |
 
-In CI serve il diritto in più perché alcune tabelle le crea il primo passaggio di
-Liquibase come `postgres` (le due tabelle di Liquibase stessa e
-`internal.project_metadata`), mentre il lavoro gira come `zeroerp`. Il dettaglio
-è in [Setup Liquibase](/liquibase-setup-workflow), §2.
+Il modello dei ruoli di sistema (un proprietario solo, `zeroerp_owner`) è descritto in
+[Provisioning ruoli DB](/dev/backend/provisioning-db-roles); il dettaglio sul
+diritto è in [Setup Liquibase](/liquibase-setup-workflow), §2.
 
 ### In CI e sul database di prova
 
 Sulla CI di GitHub pgAgent non c'è; sul database di prova costruito da
-`scripts/ci-local.sh` (`zeroerp_ci`) c'è, il job viene creato, ma nessun demone
+`scripts/ci-local.sh` (`zeroerp_ruoli`) c'è, il job viene creato, ma nessun demone
 lo fa partire. In entrambi il lavoro gira lo stesso: il processo dichiara a
 catalogo la procedura e la sua posizione (`ci_ordine`, **l'ultima**), e il
 passaggio `ci_apply` la chiama dopo tutti gli altri lavori strutturali, prima
