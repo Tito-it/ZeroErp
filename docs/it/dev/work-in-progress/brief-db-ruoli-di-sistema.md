@@ -361,9 +361,9 @@ La postura di `zeroerp_app` resta a `provision_db_roles.sql`, chiamato con
   fermo è un errore vero (codice 3). ⚠️ Lo stesso difetto è in `provision_db_roles.sql` e
   `provision_dblink_log_channel.sql` (variabili obbligatorie mancanti): da correggere con la fase 4,
   quando si unificano.
-* **Un changeSet scrive `titodb` alla lettera**: `90_end/20260205-42` imposta il canale di log per
-  `titodb` e `zeroerp_app` (gira solo quando gli si passa la password del canale). Va sostituito
-  nella fase 3.
+* **Un changeSet scriveva `titodb` alla lettera**: `90_end/20260205-42` impostava il canale di log
+  per `titodb` e `zeroerp_app`. Era `context: disabled` (non girava mai): ✅ ritirato il 2026-10-15
+  (§15), la sede è lo script `provision_dblink_log_channel.sql`.
 * Il canale `dblink` del migratore, sullo scratch del modello, resta **vuoto** come in CI: la stringa
   con la password finirebbe in `pg_db_role_setting`, che ogni ruolo può leggere.
 
@@ -607,9 +607,11 @@ passata principale esclude `provision`, e l'ordine scritto sotto vale com'è.
   `provision_dblink_log_channel`, `provision_db_role_batch_fatturazione`,
   `retire_db_role_batch_fatturazione`): un fermo usciva con 0, ora con 3 (provato su ognuno).
 * ✅ Il canale di log per `zeroerp_job` (§14.1).
-* ⬜ **Da decidere con Tid**: `90_end/20260205-42` imposta il canale per `titodb` alla lettera (gira
-  solo se gli si passa la password del canale). O lo si sostituisce con un changeSet sul modello, o lo si
-  lascia morire a favore dello script (che è la sede del provisioning).
+* ✅ **`90_end/20260205-42` ritirato** (decisione di Tid, 2026-10-15): impostava il canale per `titodb`
+  alla lettera, ma era `context: disabled` e non girava mai. Una seconda copia del provisioning del canale,
+  morta: la sede è `scripts/sql/provision_dblink_log_channel.sql`, che segue il modello (migratore, app,
+  `zeroerp_job`). Su dbdev la riga in `databasechangelog` resta (RERAN del 2026-02-05): Liquibase non
+  protesta per un changeSet registrato il cui file non c'è più.
 * ⬜ **Distruttivi, da superuser sul cluster vero, con Tid**: ritiro di `zeroerp_batch_fatturazione`
   (script pronto), di `pgagent`, di `zeroerp_ci` con `internal.ci.env` e `--classico` (dopo che la CI
   col modello ha fatto girare anche i pgTAP).

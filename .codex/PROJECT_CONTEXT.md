@@ -630,8 +630,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `tx_id = uuid_nil`** (DB+CI, ereditata il 2026-09-19 dalla chiusura di
   `work-done/brief-db-privilegio-app-job-run-log.md`, §5). La sede del
   privilegio esiste — `scripts/sql/provision_dblink_log_channel.sql` — ma la CI
-  non la esegue: il changeSet che la incarna (`90_end/20260205-42`) è
-  `context: disabled`, il bootstrap di `ci-validate.yaml` crea il ruolo e il
+  non la esegue (il vecchio changeSet `90_end/20260205-42`, `context:
+  disabled`, è stato ritirato il 2026-10-15), il bootstrap di `ci-validate.yaml` crea il ruolo e il
   DSN senza concedergli niente su `dbops`, e `90_end/20260905-38` gli dà
   `maintenance`, non `dbops`. Su dev il grant c'è, a mano (§11.9, stessa
   forma). Effetto: `fn_get_or_create_session_tx_id` ripiega su `uuid_nil`
