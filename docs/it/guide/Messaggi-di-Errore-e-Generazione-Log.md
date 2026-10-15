@@ -904,8 +904,9 @@ Environment=PGPASSFILE=/var/lib/postgresql/.pgpass
 **4. La GUC per i ruoli applicativi** — da admin: dice alla funzione quale servizio usare.
 
 ```sql
-ALTER ROLE titodb       IN DATABASE zeroerp SET myapp.dblink_log_connection = 'service=zeroerp_log';
-ALTER ROLE zeroerp_app  IN DATABASE zeroerp SET myapp.dblink_log_connection = 'service=zeroerp_log';
+ALTER ROLE zeroerp_owner IN DATABASE zeroerp SET myapp.dblink_log_connection = 'service=zeroerp_log';
+ALTER ROLE zeroerp_app   IN DATABASE zeroerp SET myapp.dblink_log_connection = 'service=zeroerp_log';
+ALTER ROLE zeroerp_job   IN DATABASE zeroerp SET myapp.dblink_log_connection = 'service=zeroerp_log';
 ```
 
 **5. Il riallineamento dell'owner** — il changeSet che sincronizza le funzioni sensibili dal

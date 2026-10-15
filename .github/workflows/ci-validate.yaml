@@ -423,6 +423,7 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -v fase=ruoli -v db_name=zeroerp \
             -v owner_password=secret-owner -v job_password=secret-job -v app_password=secret-app \
+            -v log_password=secret-log \
             -f scripts/sql/provision_zeroerp.sql
           # ⚠️ Il ruolo applicativo va creato ORA, PRIMA di Liquibase, e non dopo.
           # Molti changeSet di GRANT sono scritti «idempotenti e difensivi: skip
@@ -439,18 +440,12 @@ jobs:
           # (zeroerp_app lo crea ora la fase `ruoli` qui sopra.)
 
           # ── Il ruolo del canale di log fuori transazione (dblink) ──────
-          # ⭐ STESSA RAGIONE del commento qui sopra, e vale la pena dirla due
-          # volte: `90_end/20260905-38` concede a `zeroerp_log` USAGE su
-          # `maintenance` e INSERT sul giornale dei job, ma e' scritto
-          # «skip se il ruolo manca» — e in CI mancava sempre. Quindi quel GRANT
-          # non e' mai stato applicato, e i test 3, 4 e 5 di
-          # `db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql`
-          # facevano `skip()`: tre asserzioni che sembravano coperte e non lo
-          # erano. Creandolo QUI — prima di Liquibase — diventano verdi veri.
-          # ⛔ Il ruolo deve nascere PRIMA del migrate: i GRANT stanno in
-          # `90_end`, cioe' dentro la corsa di Liquibase.
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "CREATE ROLE zeroerp_log LOGIN PASSWORD 'secret-log';"
+          # ⭐ zeroerp_log lo crea la fase `ruoli` qui sopra (-v log_password), PRIMA
+          #   di Liquibase: `90_end/20260905-38` gli concede USAGE su `maintenance`
+          #   e INSERT sul giornale dei job, ma e' scritto «skip se il ruolo manca».
+          #   Senza il ruolo i test 3, 4 e 5 di
+          #   `db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql` farebbero
+          #   `skip()`: tre asserzioni che sembrerebbero coperte e non lo sono.
           # ⚠️ DSN ESPLICITO, non `service=zeroerp_log` come sul database di
           # sviluppo: la forma `service=` si risolve da `pg_service.conf` sul
           # SERVER, e nel container della CI quel file non esiste — il canale

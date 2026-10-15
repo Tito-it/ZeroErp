@@ -522,7 +522,7 @@ errore.
 > di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
 > alla sua chiusura (2026-10-10), chiusa lo stesso giorno. **D26** (la testata dopo l'emissione) e
 > **D27** (gli indirizzi del documento seguono il cliente) da `brief-db-esecutivi-ba-coppia`
-> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11), chiusa lo stesso giorno. **D30** (tornare indietro: annullare a valle riapre a monte) dal collaudo di D29 (2026-10-11), chiusa il 2026-10-13. **D31** (canone, orario e consumo del contratto in commessa) dalla segnalazione BE sul push dei contratti (2026-10-13). **D32** (un documento nasce nel suo stato iniziale) dal giro del `20261013-53` (2026-10-13). **D33** (un cliente manuale per soggetto e utility) dallo smoke clienti del giro notturno (2026-10-13). **D34** (la creazione non scrive tutta la sezione dei dati societari) dalla chiusura di `brief-db-dati-fiscali-e-societari-del-soggetto` (2026-10-14).
+> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11), chiusa lo stesso giorno. **D30** (tornare indietro: annullare a valle riapre a monte) dal collaudo di D29 (2026-10-11), chiusa il 2026-10-13. **D31** (canone, orario e consumo del contratto in commessa) dalla segnalazione BE sul push dei contratti (2026-10-13). **D32** (un documento nasce nel suo stato iniziale) dal giro del `20261013-53` (2026-10-13). **D33** (un cliente manuale per soggetto e utility) dallo smoke clienti del giro notturno (2026-10-13). **D34** (la creazione non scrive tutta la sezione dei dati societari) dalla chiusura di `brief-db-dati-fiscali-e-societari-del-soggetto` (2026-10-14). **D35** (`zeroerp_log` nasce con gli altri ruoli di sistema) dalla chiusura di `brief-db-ruoli-di-sistema` (2026-10-15), chiusa lo stesso giorno.
 >
 > ⚠️ **Rinumerazione del 2026-10-10:** D23 e D25 erano stati dati due volte, a voci diverse. Il
 > numero è rimasto alla voce che l'aveva preso per prima (D23 alla ricerca universale, D25 ai
@@ -1280,6 +1280,8 @@ D6 e il registro dei rossi in CI.
       `brief-db-cliente-manuale-uno-per-soggetto-e-utility` (aperto il 2026-10-13, decisioni prese, codice DB non iniziato).
 * [ ] **D34** — dati societari in creazione: brief
       `brief-db-dati-societari-in-creazione` (aperto il 2026-10-14, non iniziato; decisione E-1).
+* [x] **D35** — `zeroerp_log` nella fase `ruoli`: brief
+      `work-done/brief-db-zeroerp-log-nella-fase-ruoli` — aperto e chiuso il 2026-10-15.
 
 ---
 
@@ -1817,6 +1819,14 @@ avanti verso la commessa sta tutto nel DB; il link documento → commessa resta 
 commessa aperta per documento, e il lineage dice quando il legame e' ritirato (`is_legame_ritirato`).
 Brief `work-done/brief-db-annullo-a-valle-riapre-a-monte.md`; il residuo (la commessa vuota del push
 batch) e' in PROJECT_CONTEXT § «Aperto — Media priorità».
+
+### ✅ D35 — `zeroerp_log` nasce con gli altri ruoli di sistema — chiuso il 2026-10-15
+
+Il ruolo del canale dei registri lo creavano a mano i workflow e la guida d'installazione, e doveva
+esistere prima del migrate perche' il `20260905-38` gli desse il giornale dei job. Ora lo crea la fase
+`ruoli` di `provision_zeroerp.sql`, con gli altri ruoli di sistema; lo script del canale non lo crea piu'.
+Con lui le due code della chiusura dei ruoli di sistema: i vecchi privilegi di default di `titodb` e una
+corsa di `ci-local.sh`. Brief `work-done/brief-db-zeroerp-log-nella-fase-ruoli.md`.
 
 
 *Valutazione 2026-09-08 — perimetro DB. Le misure sono letture di struttura sul

@@ -311,10 +311,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (al 2026-10-11: resi curati con `20261011-42`, pannello e liste chiusi nel brief della lineage; D-2, il
   lister dei DDT senza filtri, chiusa con `20261012-03`, 1135 → 154 ms; resta D-3b, il verbo dell'accredito,
   ~115 ms — da profilare).
-- ⬜ **I ruoli di sistema — aperto il 2026-10-14** (`work-in-progress/brief-db-ruoli-di-sistema.md`): nomi
-  fissi (`zeroerp_owner`, `zeroerp_app`, `zeroerp_log`), password senza default, un provisioning unico per CI,
-  scratch e installazione; un owner solo anche su dbdev (oggi `titodb` su dev, `zeroerp` in CI); pgAgent come
-  `zeroerp_job`, che chiama solo le procedure dei job, `DEFINER` di `zeroerp_owner` (D-2). Decisioni tutte prese (14-10). Fase 1-bis scritta e provata: le 16 procedure dei job `DEFINER` (`20261014-55`), da applicare dopo aver tolto a mano su dbdev la firma orfana `proc_apply_fk_index_policy_job()`. Fasi 1, 1-bis e 2 fatte (PR #1861 e la PR della CI sul modello); scratch `zeroerp_ruoli`, default di `ci-local.sh`. D-5 scritta e provata (`20261015-01…-04`: ruolo di ogni corsa nel giornale, presidio `vw_job_run_da_superuser`; il `-03` va col provision-post da superuser). Prossimi: apply D-5, fase 3 (dbdev sul modello, da superuser).
+- ✅ **I ruoli di sistema: chiuso il 2026-10-15** (`work-done/brief-db-ruoli-di-sistema.md`): nomi fissi
+  (`zeroerp_owner` proprietario di tutto, `zeroerp_job` per pgAgent, `zeroerp_app`, `zeroerp_log`),
+  password senza default, un provisioning solo (`scripts/sql/provision_zeroerp.sql`, fasi `ruoli`/`pre`/`post`)
+  per CI, scratch e installazione. dbdev convertito (`converti_db_al_modello_ruoli.sql`: `titodb` lavora
+  come `zeroerp_owner` con `SET role`), pgAgent come `zeroerp_job` sulle procedure dei job `DEFINER`, il
+  giornale registra il ruolo di ogni corsa (presidio `vw_job_run_da_superuser`). Ritirati `zeroerp_batch_fatturazione`,
+  `pgagent`, `zeroerp` e `zeroerp_ci` (`scripts/ritira_ruoli_dismessi.sh`). Guida: `installazione.md`, «Il database».
+  Il debito residuo (D35: `zeroerp_log` nella fase `ruoli`) è chiuso lo stesso giorno
+  (`work-done/brief-db-zeroerp-log-nella-fase-ruoli.md`).
 - ⬜ **Le statistiche delle tabelle: un job notturno (D15) — aperto il 2026-10-14**
   (`work-in-progress/brief-db-statistiche-tabelle-job-notturno.md`): nessuno lancia `ANALYZE`, l'autovacuum
   non arriva alle tabelle piccole né alle madri partizionate, e in CI i pgTAP partono senza statistiche. Disegno:

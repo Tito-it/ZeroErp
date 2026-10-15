@@ -2,7 +2,7 @@
 -- ============================================================================
 -- ZeroErp — Provisioning dei RUOLI DI SISTEMA (modello unico)
 -- ----------------------------------------------------------------------------
--- Brief: docs/it/dev/work-in-progress/brief-db-ruoli-di-sistema.md §3, §4
+-- Brief: docs/it/dev/work-done/brief-db-ruoli-di-sistema.md §3, §4
 --
 -- I nomi dei ruoli sono di SISTEMA e non si configurano: il database li nomina
 -- (grant, policy, presidi). Chi installa e vuole un utente suo lo AGGIUNGE come
@@ -15,8 +15,12 @@
 --   zeroerp_job    il demone pgAgent. Non possiede niente: puo' SOLO chiamare
 --                  le procedure dei job (maintenance.proc_*_job), che sono
 --                  SECURITY DEFINER di zeroerp_owner (20261014-55).
---   zeroerp_app    il backend. La sua postura la da' la fase post (era
---                  scripts/sql/provision_db_roles.sql, unificato qui).
+--   zeroerp_app    il backend. La sua postura la da' la fase post.
+--   zeroerp_log    il canale dei registri fuori transazione (dblink). Nasce
+--                  qui, PRIMA delle migrazioni: 90_end/20260905-38 gli da' il
+--                  giornale dei job solo se il ruolo c'e' gia'. I suoi diritti
+--                  su dbops.error_log e i parametri del canale li da'
+--                  scripts/sql/provision_dblink_log_channel.sql, dopo.
 --
 -- ── Le tre fasi (variabile `fase`), da SUPERUSER ─────────────────────────────
 --   ruoli  sul database `postgres`: crea i ruoli che mancano e il database
@@ -32,14 +36,15 @@
 --
 -- ── ⛔ Le password (D-3) ──────────────────────────────────────────────────────
 --   Nessun default. Si passano con -v owner_password=… -v job_password=…
---   -v app_password=…, e servono SOLO per creare un ruolo che manca: se manca il
---   ruolo e manca la sua password, lo script si ferma.
+--   -v app_password=… -v log_password=…, e servono SOLO per creare un ruolo che
+--   manca: se manca il ruolo e manca la sua password, lo script si ferma.
 --   ⚠️ Di un ruolo che ESISTE la password non si tocca mai: i ruoli sono di
 --   CLUSTER, e lo stesso ruolo puo' servire un altro database (lo sviluppo).
 --
 -- Esempio (fase ruoli):
 --   sudo -u postgres psql -d postgres -v fase=ruoli -v db_name=zeroerp_ruoli \
 --        -v owner_password=… -v job_password=… -v app_password=… \
+--        -v log_password=… \
 --        < scripts/sql/provision_zeroerp.sql
 -- ============================================================================
 
@@ -74,6 +79,9 @@ SELECT set_config('zeroerp.prov_job_password', :'job_password', false) \gset _x_
 \if :{?app_password}
 SELECT set_config('zeroerp.prov_app_password', :'app_password', false) \gset _x_
 \endif
+\if :{?log_password}
+SELECT set_config('zeroerp.prov_log_password', :'log_password', false) \gset _x_
+\endif
 
 -- ============================================================================
 -- FASE ruoli
@@ -93,7 +101,9 @@ BEGIN
         ('zeroerp_job',   'zeroerp.prov_job_password',
          'Il demone pgAgent di ZeroERP. Non possiede niente: chiama soltanto le procedure dei job (maintenance.proc_*_job), che girano come zeroerp_owner. Ruolo di sistema: il nome non si cambia.'),
         ('zeroerp_app',   'zeroerp.prov_app_password',
-         'Il backend di ZeroERP: NOBYPASSRLS, non proprietario, la RLS lo filtra. Ruolo di sistema: il nome non si cambia.')
+         'Il backend di ZeroERP: NOBYPASSRLS, non proprietario, la RLS lo filtra. Ruolo di sistema: il nome non si cambia.'),
+        ('zeroerp_log',   'zeroerp.prov_log_password',
+         'Il canale dei registri di ZeroERP: scrive dbops.error_log e il giornale dei job su una connessione separata (dblink), cosi'' il verbale di un errore sopravvive al rollback. Solo INSERT. Ruolo di sistema: il nome non si cambia.')
     ) AS t(ruolo, guc, commento)
     LOOP
         IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r.ruolo) THEN
@@ -132,7 +142,7 @@ SELECT format('CREATE DATABASE %I OWNER zeroerp_owner', :'db_name')
 \gexec
 SELECT format('ALTER DATABASE %I OWNER TO zeroerp_owner', :'db_name')
 \gexec
-SELECT format('GRANT CONNECT ON DATABASE %I TO zeroerp_job, zeroerp_app', :'db_name')
+SELECT format('GRANT CONNECT ON DATABASE %I TO zeroerp_job, zeroerp_app, zeroerp_log', :'db_name')
 \gexec
 \endif
 

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Ritira dal CLUSTER uno o piu' ruoli PostgreSQL dismessi.
 #   Copyright (C) 2026 Tid (Michele Carlo Titini)
-#   Brief: docs/it/dev/work-in-progress/brief-db-ruoli-di-sistema.md §18
+#   Brief: docs/it/dev/work-done/brief-db-ruoli-di-sistema.md §18
 #
 # A COSA SERVE: un `DROP ROLE` riesce solo quando il ruolo non ha piu' niente in
 #   NESSUN database del cluster — privilegi, privilegi di default, oggetti. Ma

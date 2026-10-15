@@ -1,10 +1,14 @@
 # Brief DB — I ruoli di sistema: nomi fissi, un provisioning solo, uguali ovunque
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-15 (sera)
+## ✅ Chiuso il 2026-10-15
 
-**Il modello è in vigore ovunque**: CI, scratch `zeroerp_ruoli` e dbdev (convertito, pgAgent come
-`zeroerp_job`). I ruoli dismessi sono fuori dal cluster. **Riparte: Tid — la baseline completa su
-dbdev (in corsa), poi il commit e la PR della fase 4.**
+**Il modello è in vigore ovunque** — CI di GitHub (verde), scratch `zeroerp_ruoli`, dbdev convertito
+con pgAgent come `zeroerp_job` — e i ruoli dismessi sono fuori dal cluster. Fasi 1, 1-bis, 2, 3, 4,
+D-5 e i rientri dopo la conversione (§19) sono committati e uniti (ultima: PR #1866).
+
+**Debito residuo**, chiuso lo stesso giorno → [brief-db-zeroerp-log-nella-fase-ruoli](brief-db-zeroerp-log-nella-fase-ruoli.md)
+(D35): `zeroerp_log` creato dalla fase `ruoli` invece che a mano; i vecchi privilegi di default di
+`titodb` (facoltativo); una corsa di `ci-local.sh` dopo la fase 4.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -17,11 +21,12 @@ dbdev (in corsa), poi il commit e la PR della fase 4.**
 | 7 | ✅ **team DB** + **Tid** | Fase 4: nel repo (via `--classico`, un solo provisioning, ruolo batch) e sul cluster (`zeroerp_batch_fatturazione`, `pgagent`, `zeroerp` con `zeroerp_ci`) | §18 | — |
 | 8 | ✅ **team DB** + **Tid** | Dopo la conversione: la guard di scope (`20261015-06`) e `pg_read_all_stats` a `zeroerp_owner` (D-6), applicati; i 19 rossi nuovi rientrati | §19 | — |
 | 9 | **Tid** | La baseline completa su dbdev (in corsa): conferma che non resta niente della conversione | §19 | niente |
-| 10 | **team DB**, al via di Tid | Il commit della fase 4, del `-06` e della D-6; poi la PR. ⚠️ Cambia `ci.yaml` e `ci-validate.yaml` (via il passo del ruolo batch e quello di `provision_db_roles`): è la PR a provarli | §18, §19 | 9 |
-| 11 | **Tid** | `scripts/ci-local.sh --ci-apply` (incrementale) su `zeroerp_ruoli`: lo script è cambiato (via `--classico`, il ponte del batch e il passo dell'app) e qui non si può lanciare (vuole `sudo`). `--fresh` solo con la memoria libera | §18.1 | 10 |
-| 12 | **Tid**, facoltativo | I 48 vecchi privilegi di default di `titodb` su `zeroerp`: non scattano più, un comando li toglie | §18.3 punto 3 | — |
-| 12-bis | **team DB**, proposta | `zeroerp_log` dentro la fase `ruoli` di `provision_zeroerp.sql`: è un ruolo di sistema, deve esistere **prima** del migrate (il `20260905-38` gli dà il giornale dei job solo se c'è), e oggi lo creano a mano i workflow e la guida d'installazione (passo 1-bis) | `installazione.md` | 10 |
-| 13 | **team DB** | Chiusura: il brief in `work-done/`, la mappa concentrica, `PROJECT_CONTEXT.md`, la memoria | — | 10, 11 |
+| 10 | ✅ **Tid** | Fase 4, `-06` e D-6 committati e uniti (PR #1866, 2026-10-15). La CI della PR prova i due workflow cambiati | §18, §19 | — |
+| 10-bis | ✅ **team DB** | Le guide allineate al modello, senza riferimenti storici: permessi (§7.6 «Chi si collega al database»), pgAgent («Con che utente girano i lavori»), RLS, dblink, Liquibase, statistiche, storicizzazione, GUC, audit, tracciamento, installazione | — | — |
+| 11 | → D35 | `scripts/ci-local.sh --ci-apply` dopo la fase 4: nel brief del debito residuo | — | — |
+| 12 | → D35 | I 48 vecchi privilegi di default di `titodb`: nel brief del debito residuo | — | — |
+| 12-bis | → D35 | `zeroerp_log` dentro la fase `ruoli`: nel brief del debito residuo | — | — |
+| 13 | ✅ **team DB** | Chiusura (2026-10-15): brief in `work-done/`, guide allineate, `PROJECT_CONTEXT.md`, memoria, D35 | — | — |
 
 **Decisioni aperte di Tid: nessuna.**
 ⬜ Da committare (2026-10-15): fase 4 nel repo (§18), `20261015-06`, il test 8 di
@@ -34,7 +39,7 @@ documento. Committati e pushati: fasi 1, 1-bis, 2; committati e non pushati dopo
 > ([brief-db-statistiche-tabelle-job-notturno](brief-db-statistiche-tabelle-job-notturno.md) §7.2-§7.3):
 > il job ha trovato in CI tabelle create da `postgres` che `zeroerp` non poteva analizzare. Proposta
 > di Tid: dare ruoli standard «di sistema», da non riconfigurare a ogni installazione.
-> **Stato:** ✅ modello in vigore ovunque (2026-10-15); restano il commit della fase 4, la PR e la chiusura (tabella in testa).
+> **Stato:** ✅ chiuso il 2026-10-15. Debito residuo (D35) chiuso lo stesso giorno: `work-done/brief-db-zeroerp-log-nella-fase-ruoli`.
 > **Ricadute BE/FE:** nessuna sul codice (il backend resta `zeroerp_app`). Ricadute su documentazione
 > d'installazione e configurazione dei server.
 
