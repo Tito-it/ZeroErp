@@ -1561,9 +1561,17 @@ class PraticheRepository:
     # -- VERIFICA STATO BA SOGGETTO (cross-schema) ----------------------
 
     # Scopo: Verifica se il soggetto ha un billing_account attivo per l'emittente.
-    # Ritorna True se esiste un BA con data_attivazione NOT NULL e data_chiusura IS NULL.
+    # Ritorna True se esiste un cliente il cui periodo contiene il giorno operativo.
     # Usato dal guard pre/post-attivazione in crea_pratica.
     # La query attraversa: clienti → billing_account → istanze_utilities.
+    # ⭐ «Attivo» e' il PERIODO (C-8 di brief-db-cliente-manuale-uno-per-soggetto-
+    #    e-utility, 2026-10-14), la misura del modello: la stessa di
+    #    `ex_clienti_no_overlap_stesso_pdp`, `anagrafiche.fn_check_pdp_occupato`
+    #    e `fn_clienti_stessa_chiave`. Il periodo lo deriva il DB
+    #    (`trgfn_clienti_set_periodo`): AN e PR non ne hanno, un sospeso occupa.
+    #    ⛔ Fino al 2026-10-15 si leggeva «`data_attivazione NOT NULL AND
+    #    data_chiusura IS NULL`»: una chiusura con data futura valeva «non
+    #    attivo» gia' oggi, e un'attivazione con data futura valeva «attivo».
     def ha_ba_attivo(self, soggetto_id: str, emittente_fiscale_id: int) -> bool:
         # Scope emittente via fn ufficiale sul BA: l'istanza NON ha un
         # emittente (la relazione vive su billing_account -> efba, fallback
@@ -1577,8 +1585,7 @@ class PraticheRepository:
                 JOIN anagrafiche.istanze_utilities iu ON iu.id = cl.istanza_utility_id
                 WHERE iu.soggetto_id = %s::uuid
                   AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) = %s
-                  AND cl.data_attivazione IS NOT NULL
-                  AND cl.data_chiusura IS NULL
+                  AND cl.periodo @> script.fn_data_operativa()
             )
         """
         with connection.cursor() as cursor:
