@@ -20,3 +20,6 @@ databaseChangeLog:
   - include:
       file: migrations_v2/90_end/20260912-30-drop-trgfn-audit-version-info-provision-mctit.yaml
       relativeToChangelogFile: true
+  - include:
+      file: migrations_v2/20_code/maintenance/20261015-03-update-fn-job-run-log-failure-ruolo-sessione-mctit.yaml
+      relativeToChangelogFile: true

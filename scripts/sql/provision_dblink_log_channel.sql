@@ -8,10 +8,14 @@
 \echo [ZeroErp]   migrator_role (default: titodb)
 \echo [ZeroErp]   app_role (default: zeroerp_app)
 
+-- ⛔ Un fermo e' un ERRORE VERO: `\quit 1` esce con 0 (psql ignora il codice),
+--   quindi chi lancia lo script da una pipeline lo crederebbe riuscito.
+--   Corretto il 2026-10-15 (brief-db-ruoli-di-sistema, fase 4).
 \if :{?log_password}
 \else
 \echo ERROR: missing -v log_password=...
-\quit 1
+\set ON_ERROR_STOP on
+DO $$ BEGIN RAISE EXCEPTION 'ERROR: missing -v log_password=...'; END $$;
 \endif
 
 \if :{?log_role}
@@ -72,6 +76,20 @@ SELECT format(
   :'app_role', :'log_db', 'service=' || :'log_service'
 )
 WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_role')
+\gexec
+
+-- ⭐ E il demone pgAgent (2026-10-15, brief-db-ruoli-di-sistema D-5). Il verbale di
+--   un job FALLITO (maintenance.fn_job_run_log_failure) apre il canale leggendo
+--   myapp.dblink_log_connection della SESSIONE, cioe' del ruolo che si e'
+--   collegato: zeroerp_job, anche se la procedura del job gira come il
+--   proprietario. Senza questa riga un job fallito sotto pgAgent non lascia il
+--   verbale (WARNING «nessun canale»). Su un database che la imposta per tutti
+--   (ALTER DATABASE … SET) e' gia' coperto; questa la rende esplicita.
+SELECT format(
+  'ALTER ROLE %I IN DATABASE %I SET myapp.dblink_log_connection = %L',
+  'zeroerp_job', :'log_db', 'service=' || :'log_service'
+)
+WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'zeroerp_job')
 \gexec
 
 \echo [ZeroErp] OK: dblink log channel provisioned

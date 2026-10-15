@@ -30,10 +30,14 @@
 \echo [ZeroErp] Required vars: batch_role; batch_password (obbligatoria solo se il ruolo NON esiste)
 \echo [ZeroErp] Optional vars: migrator_role (default: titodb), db_name (default: current db)
 
+-- ⛔ Un fermo e' un ERRORE VERO: `\quit 1` esce con 0 (psql ignora il codice),
+--   quindi chi lancia lo script da una pipeline lo crederebbe riuscito.
+--   Corretto il 2026-10-15 (brief-db-ruoli-di-sistema, fase 4).
 \if :{?batch_role}
 \else
 \echo ERROR: missing -v batch_role=...
-\quit 1
+\set ON_ERROR_STOP on
+DO $$ BEGIN RAISE EXCEPTION 'ERROR: missing -v batch_role=...'; END $$;
 \endif
 
 -- ⭐ La password e' OBBLIGATORIA solo per CREARE il ruolo. Se il ruolo esiste
@@ -52,7 +56,8 @@ SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'batch_role') AS _ruolo_e
 \echo [ZeroErp] batch_password non data: il ruolo esiste, la password NON si tocca
 \else
 \echo ERROR: missing -v batch_password=... (il ruolo non esiste: per crearlo la password serve)
-\quit 1
+\set ON_ERROR_STOP on
+DO $$ BEGIN RAISE EXCEPTION 'ERROR: missing -v batch_password=... (il ruolo non esiste: per crearlo la password serve)'; END $$;
 \endif
 \endif
 

@@ -31,6 +31,7 @@
 
 ## 🔍 Views
 - [vw_job_run_da_guardare](views/vw_job_run_da_guardare.md) — (latest review 05-09-2026)
+- [vw_job_run_da_superuser](views/vw_job_run_da_superuser.md)
 - [vw_statistiche_mancanti](views/vw_statistiche_mancanti.md) — (latest review 14-10-2026)
 
 ## ⏰ Job pgAgent

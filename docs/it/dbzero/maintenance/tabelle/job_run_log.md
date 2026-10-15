@@ -21,6 +21,7 @@
 | processo_codice | text | YES |  |
 | auth_user_id | integer | YES |  |
 | saltata | boolean | NO | false |
+| ruolo_sessione | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
