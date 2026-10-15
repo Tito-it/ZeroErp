@@ -2,7 +2,7 @@
 # ------------------------------------------------------------
 # Smoke test locale per API Clienti
 # Uso: ./scripts/tests/smoke-test-clienti.sh [password]
-# Prerequisiti: almeno un soggetto nel DB (lo smoke-test-soggetti.sh ne crea uno)
+# Prerequisiti: il soggetto lo crea lo smoke (BB _smoke_soggetto.sh), uno per giro
 # ------------------------------------------------------------
 # Indice test (0..12):
 #  0) Autenticazione JWT
@@ -10,21 +10,22 @@
 #  2) Lista clienti (paginata, vuota o con dati)
 #  3) Lista clienti con search
 #  4) Lista clienti con filtro utility
-#  5) Crea cliente manuale (soggetto esistente + utility manifatturiero)
+#  5) Crea cliente manuale (soggetto NUOVO del giro + utility senza PDP)
 #  6) Dettaglio cliente creato
 #  7) Crea cliente manuale — utility GAS bloccata (atteso errore)
-#  8) Crea cliente manuale — duplicato istanza (atteso errore)
+#  8) Secondo cliente manuale, stessa chiave -> 409 E_CLIENTE_STESSA_CHIAVE
 #  --- Fix #1 analisi-fix-transazioni: update via fn madre atomica ---
 #  9) Update campi cliente (fn madre) + verifica persistenza su dettaglio
 # 10) Update ATOMICO categoria BA + campo cliente in una sola fn + verifica
 # 11) Update campo numerico nullable con "" -> NULL (no crash cast, regressione)
-# 12) Update senza campi -> 404 E_ANAG_NOT_FOUND (guard "nessun campo")
+# 12) Update senza campi -> 400 E_ANAG_VALIDAZIONE (guard "nessun campo")
 # ------------------------------------------------------------
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_soggetto.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -126,26 +127,25 @@ if [[ -z "$MANUAL_UTIL_ID" || "$MANUAL_UTIL_ID" == "" ]]; then
 fi
 log_info "Utility per test: id=$MANUAL_UTIL_ID ($MANUAL_UTIL_DESC)"
 
-# --- Trova un soggetto esistente per i test ---
+# --- Il soggetto del giro: NUOVO a ogni giro ---
 echo ""
-echo "-- Prerequisito: trova soggetto --"
-# Il soggetto di un cliente ESISTENTE: ha per costruzione gli indirizzi che il
-# ruolo cliente esige (matrice tipi_ruolo_tipi_indirizzo, FATT con fallback). Un
-# soggetto qualsiasi risponde E_INDIRIZZO_OBBLIGATORIO_MANCANTE, giustamente.
-# La lista soggetti resta il ripiego.
-do_curl GET "/api/v1/anagrafiche/clienti/?limit=1"
-SOGG_ID=$(json_get "$LAST_BODY" ".data.results.0.soggetto_id")
-SOGG_NOME=$(json_get "$LAST_BODY" ".data.results.0.ragione_sociale_completa")
-if [[ -z "$SOGG_ID" || "$SOGG_ID" == "None" ]]; then
-    do_curl GET "/api/v1/anagrafiche/soggetti/?limit=1"
-    SOGG_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
-    SOGG_NOME=$(json_get "$LAST_BODY" ".data.results.0.ragione_sociale_completa")
-fi
-if [[ -z "$SOGG_ID" || "$SOGG_ID" == "" ]]; then
-    echo -e "${RED}ERRORE: nessun soggetto nel DB — eseguire prima smoke-test-soggetti.sh${NC}"
+echo "-- Prerequisito: crea il soggetto del giro --"
+# ⭐ Dal 2026-10-14 un soggetto ha UN cliente manuale per utility e azienda
+# (E_CLIENTE_STESSA_CHIAVE, brief-db-cliente-manuale-uno-per-soggetto-e-utility
+# C-1/C-2). Fino ad allora lo smoke prendeva il soggetto del primo cliente
+# della lista e gli creava un cliente in piu' a ogni giro: su dbdev ne aveva
+# lasciati decine sullo stesso soggetto, e dal giorno del guard il passo 5 era
+# rifiutato e i passi 9-11 lavoravano su un doppione. Il soggetto lo crea il
+# BB dall'API; gli indirizzi del RUOLO cliente (FATT, ripiego DOMFISC) si
+# passano alla creazione del cliente, al passo 5.
+smoke_soggetto_privato "Cliente"
+if [[ -z "$SOGG_ID" ]]; then
+    echo -e "${RED}ERRORE: impossibile creare il soggetto del giro (motivo sopra)${NC}"
     exit 1
 fi
-log_info "Soggetto per test: id=$SOGG_ID ($SOGG_NOME)"
+SOGG_NOME="SmokeTest Cliente${SMOKE_TS}"
+IND_RUOLO_JSON="[{\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}]"
+log_info "Soggetto per test: id=$SOGG_ID ($SOGG_NOME, CF $SOGG_CF)"
 
 # --- 2. Lista clienti ---
 echo ""
@@ -184,7 +184,8 @@ do_curl POST "/api/v1/anagrafiche/clienti/" \
     "{
         \"soggetto_id\": \"${SOGG_ID}\",
         \"utility_id\": ${MANUAL_UTIL_ID},
-        \"ba_categoria_cliente_id\": ${CAT_CREA_ID}
+        \"ba_categoria_cliente_id\": ${CAT_CREA_ID},
+        \"indirizzi\": ${IND_RUOLO_JSON}
     }"
 NEW_CLI_ID=""
 if [[ "$LAST_STATUS" == "200" ]]; then
@@ -193,14 +194,6 @@ if [[ "$LAST_STATUS" == "200" ]]; then
     log_info "Cliente id=$NEW_CLI_ID"
     log_info "Istanza id=$(json_get "$LAST_BODY" ".data.istanza_utility_id")"
     log_info "BA id=$(json_get "$LAST_BODY" ".data.billing_account_id")"
-elif [[ "$LAST_STATUS" == "409" ]]; then
-    ERRCODE=$(json_get "$LAST_BODY" ".error.code")
-    if [[ "$ERRCODE" == "E_ANAG_DUPLICATO" ]]; then
-        log_info "Cliente gia' esistente per questo soggetto/utility (duplicato OK)"
-        ((PASS++)) || true
-    else
-        log_fail "Crea cliente — errore inatteso: $ERRCODE"
-    fi
 elif [[ "$LAST_STATUS" == "403" ]]; then
     ERRCODE=$(json_get "$LAST_BODY" ".error.code")
     if [[ "$ERRCODE" == "E_BA_ADMIN_GLOBALE_VIETATO" ]]; then
@@ -213,7 +206,9 @@ elif [[ "$LAST_STATUS" == "403" ]]; then
         log_fail "Crea cliente — errore 403 inatteso: $ERRCODE"
     fi
 else
-    log_fail "Crea cliente — atteso HTTP 200/409/403, ricevuto $LAST_STATUS"
+    # ⛔ Niente piu' «409 = duplicato, va bene»: il soggetto e' nuovo, un
+    # rifiuto qui e' un difetto.
+    log_fail "Crea cliente — atteso HTTP 200 (o 403 admin globale), ricevuto $LAST_STATUS"
     echo "       Body: $(echo "$LAST_BODY" | head -c 300)"
 fi
 
@@ -263,28 +258,29 @@ else
     log_info "Skipped — utility GAS non trovata nel DB"
 fi
 
-# --- 8. Crea cliente duplicato (stessa istanza) ---
-# ⚠️ DOMANDA APERTA (Tid, 2026-10-12: «da approfondire»). La creazione manuale
-# crea ogni volta un'istanza fittizia NUOVA (`create_istanza_fittizia`), quindi
-# con lo stesso soggetto e la stessa utility nasce un secondo cliente (200), non
-# un duplicato. Se debba essere rifiutato (un cliente manuale per soggetto e
-# utility) o sia voluto (piu' istanze fittizie) non e' deciso: il passo resta
-# rosso finche' non lo e', ed e' in baseline-smoke.tsv.
+# --- 8. Secondo cliente manuale con la stessa chiave ---
+# ⭐ Deciso da Tid il 2026-10-13 (C-1/C-2): un cliente manuale per soggetto,
+# utility e azienda, attivo nello stesso periodo. Il secondo e' rifiutato dal
+# DB col codice del cliente esistente nel messaggio (C-3), classe
+# CONFLITTO_STATO (409). ⛔ Si pretende IL CODICE, non «un 400 o un 409
+# qualsiasi»: prima il passo passava su qualunque rifiuto, anche di tutt'altro.
 echo ""
-echo "-- 8. Crea cliente duplicato --"
+echo "-- 8. Secondo cliente, stessa chiave --"
 if [[ -n "$NEW_CLI_ID" && "$NEW_CLI_ID" != "" ]]; then
     do_curl POST "/api/v1/anagrafiche/clienti/" \
         "{
             \"soggetto_id\": \"${SOGG_ID}\",
             \"utility_id\": ${MANUAL_UTIL_ID},
-            \"ba_categoria_cliente_id\": ${CAT_CREA_ID}
+            \"ba_categoria_cliente_id\": ${CAT_CREA_ID},
+            \"indirizzi\": ${IND_RUOLO_JSON}
         }"
-    if [[ "$LAST_STATUS" == "409" ]]; then
-        log_ok "Duplicato rilevato (HTTP 409)"
-    elif [[ "$LAST_STATUS" == "400" ]]; then
-        log_ok "Duplicato rilevato (HTTP 400)"
+    ERRCODE=$(json_get "$LAST_BODY" ".error.code")
+    if [[ "$LAST_STATUS" == "409" && "$ERRCODE" == "E_CLIENTE_STESSA_CHIAVE" ]]; then
+        log_ok "Secondo cliente rifiutato (HTTP 409, $ERRCODE)"
+        log_info "$(json_get "$LAST_BODY" ".error.message")"
     else
-        log_fail "Duplicato — atteso HTTP 409 o 400, ricevuto $LAST_STATUS"
+        log_fail "Secondo cliente — atteso 409/E_CLIENTE_STESSA_CHIAVE, ricevuto $LAST_STATUS/$ERRCODE"
+        echo "       Body: $(echo "$LAST_BODY" | head -c 300)"
     fi
 else
     log_info "Skipped — test 5 non ha creato un nuovo cliente"
