@@ -1895,6 +1895,13 @@ spento è peggio di uno assente*.
 
 Presidiato da `scripts/guardrail_grant_ruolo_batch.py` in CI.
 
+> ⭐ **Dal 2026-10-15 i ruoli batch non esistono più** (brief-db-ruoli-di-sistema,
+> fase 4): `zeroerp_batch_fatturazione`, il suo provisioning, il suo controllo e il
+> suo pgTAP di postura sono ritirati. Un processo automatico gira come
+> `zeroerp_app` con un utente tecnico per azienda. Il cancello resta: un `GRANT`
+> a un ruolo che non esiste ferma comunque il migrate, e un ruolo `BYPASSRLS`
+> nuovo non si crea. Il resto della sezione racconta perché la regola è nata.
+
 **Il meccanismo.** I ruoli batch headless (`zeroerp_batch_*`) hanno `BYPASSRLS`,
 che richiede **superuser**: Liquibase gira come `zeroerp` e quindi non può
 crearli. Li crea `scripts/sql/provision_db_role_batch_<job>.sql`, lanciato come
@@ -2085,13 +2092,13 @@ secondo file che rincorre il primo.
 
 ⚠️ **Servono comunque TRE sedi, non due** — fino al 2026-09-18 questa riga
 diceva «due file», e la terza era scritta solo nell'intestazione del loop
-(riga «🔴») e in `provision_db_roles.sql` stesso:
+(riga «🔴») e in `provision_zeroerp.sql` (fase post) stesso:
 
 | Sede | Perché |
 | --- | --- |
 | il changeSet `90_end` **forward** che revoca subito | su dev `ci_apply` non gira da solo: senza, la postura arriva solo quando qualcuno digita `db-ci-apply` |
 | il **loop** `90_end/ci_apply/20260205-41`, negli elenchi in testa | a ogni passata `ci_apply` rifà i `GRANT`: senza l'eccezione dichiarata lì, il REVOKE muore nello stesso build |
-| **`scripts/sql/provision_db_roles.sql`** | 🔴 **è l'ULTIMA parola**: in `ci-validate.yaml` (passo «Privilegi del ruolo applicativo») e in `ci-local.sh` gira **dopo** `--contexts=ci_apply` e fa `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA …` all'app — riapre in silenzio ciò che il loop ha appena chiuso. Su dev non si vede: il provisioning non si rilancia dopo ogni migrate. Le eccezioni stanno nel blocco «POSTURA DICHIARATA» in coda allo script |
+| **`scripts/sql/provision_zeroerp.sql`, fase `post`** | 🔴 **è l'ULTIMA parola**: in `ci-validate.yaml` (passo «Ruoli di sistema - fase post») e in `ci-local.sh` gira **dopo** `--contexts=ci_apply` e fa `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA …` all'app — riapre in silenzio ciò che il loop ha appena chiuso. Su dev non si vede: il provisioning non si rilancia dopo ogni migrate. Le eccezioni stanno nel blocco «POSTURA DICHIARATA» in coda allo script |
 
 Trovato il 2026-09-11 da `test-registri-append-only-postura-v1.sql` — verde su
 dev, rosso sul database ricostruito da zero — che è il presidio che tiene
@@ -2141,7 +2148,7 @@ non è dichiarato.
 
 **Il meccanismo.** Le tabelle di `django` (`auth_user`, `django_session`, …) le
 crea `manage.py migrate`, il **secondo** migratore, che gira **dopo** Liquibase.
-Per questo lo schema era escluso da `scripts/sql/provision_db_roles.sql` con la
+Per questo lo schema era escluso da `scripts/sql/provision_db_roles.sql` (oggi la fase `post` di `provision_zeroerp.sql`) con la
 dicitura *«gestito da Django»* — e Django gestisce il **DDL**, non i privilegi:
 nessun changeSet, nessun passo di Django e nessuno script concedeva a
 `zeroerp_app` un solo privilegio su `django.auth_user`. Eppure quello schema è
@@ -2179,7 +2186,7 @@ restava su dev, qui viaggiava.
 
 | Sede | Cosa |
 | --- | --- |
-| `scripts/sql/provision_db_roles.sql` | `django` **entra nella whitelist** `_app_schemas`: `SELECT, INSERT, UPDATE, DELETE` su tutte le tabelle, `USAGE` sulle sequenze, e l'`ALTER DEFAULT PRIVILEGES` per chi migra — che copre le tabelle che una migration Django **futura** creerà. Anche `check_db_role_access.sql` smette di escluderlo |
+| `scripts/sql/provision_zeroerp.sql`, fase `post` | `django` **entra nella whitelist** `_app_schemas`: `SELECT, INSERT, UPDATE, DELETE` su tutte le tabelle, `USAGE` sulle sequenze, e l'`ALTER DEFAULT PRIVILEGES` per chi migra — che copre le tabelle che una migration Django **futura** creerà. Anche `check_db_role_access.sql` smette di escluderlo |
 | `ci-validate.yaml` | il passo del provisioning si sposta **dopo `manage.py migrate`**: un `GRANT … ON ALL TABLES` è una fotografia, e deve vedere le tabelle di **entrambi** i migratori |
 | `scripts/ci-local.sh` | la copia di `django` diventa `--no-acl` e passa **prima** del provisioning: lo scratch riceve i privilegi dalla stessa sede della CI, non da dev |
 
@@ -2188,7 +2195,7 @@ postura con `has_*_privilege('zeroerp_app', …)`, il default di chi possiede
 `auth_user` letto da `pg_default_acl`, e il **comportamento**: come app,
 `anagrafiche.fn_crea_auth_user` deve scrivere. ⚠️ Il test del default è rosso su
 una macchina il cui provisioning è girato **prima** che `django` fosse in
-whitelist (dev, 13-09): il rimedio è rilanciare `provision_db_roles.sql`, non
+whitelist (dev, 13-09): il rimedio è rilanciare `provision_zeroerp.sql` (fase post), non
 il test.
 
 ⛔ **La regola generale**, ed è la terza volta che si scrive (§11.6, il blocco

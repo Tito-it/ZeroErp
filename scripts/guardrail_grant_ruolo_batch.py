@@ -126,14 +126,12 @@ def main() -> int:
         print(f"      ruolo: {nome}", file=sys.stderr)
         print(f"      riga : {riga}", file=sys.stderr)
     print(
-        "\n   Rimedio: TOGLIERE la riga. Non e' una rinuncia — il privilegio arriva\n"
-        "   comunque da scripts/sql/provision_db_role_batch_<job>.sql, che fa\n"
-        "   GRANT SELECT/EXECUTE ON ALL ... IN SCHEMA sui 14 schemi applicativi piu'\n"
-        "   ALTER DEFAULT PRIVILEGES, quindi copre anche gli oggetti che nascono dopo.\n"
+        "\n   Rimedio: TOGLIERE la riga. Dal 2026-10-15 i ruoli batch non esistono\n"
+        "   piu' (ritirati: brief-db-ruoli-di-sistema, fase 4): un processo\n"
+        "   automatico gira come zeroerp_app con un utente tecnico per azienda.\n"
         "   ⚠️ Il GRANT a `zeroerp_app` accanto invece RESTA: quello e' un ruolo che\n"
         "   esiste durante il migrate, ed e' la riga da cui questa e' stata copiata.\n"
-        "   ⛔ Se un ruolo batch ha bisogno di un privilegio in PIU' del perimetro\n"
-        "   ampio, la sede e' il provisioning: si aggiunge li', e si rilancia.\n"
+        "   ⛔ Un ruolo BYPASSRLS nuovo non si crea: si usa un utente tecnico.\n"
         "   Regola: docs/it/linee-guida-sql.md §11.6",
         file=sys.stderr,
     )

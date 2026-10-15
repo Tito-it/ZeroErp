@@ -224,7 +224,7 @@ dell'applicazione vengono riallineati a ogni passata `ci_apply` da un loop che l
 concede in blocco su tutte le tabelle: un `REVOKE` isolato sarebbe annullato alla
 passata successiva. La postura più stretta dei registri è **dichiarata dentro
 quel loop** (`90_end/ci_apply/20260205-41`), che concede a questi due solo
-`SELECT, INSERT` e revoca il resto — **e** in `scripts/sql/provision_db_roles.sql`
+`SELECT, INSERT` e revoca il resto — **e** in `scripts/sql/provision_zeroerp.sql`, fase `post`
 (blocco «POSTURA DICHIARATA»), che in CI gira **dopo** quel loop, concede in
 blocco su tutte le tabelle ed è l'ultima parola. Chi aggiunge un registro
 append-only lo dichiara in **entrambi**, più il changeSet `90_end` forward che

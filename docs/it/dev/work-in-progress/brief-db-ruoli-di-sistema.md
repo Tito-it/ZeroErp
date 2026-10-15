@@ -1,42 +1,40 @@
 # Brief DB — I ruoli di sistema: nomi fissi, un provisioning solo, uguali ovunque
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-14
+## ⏭️ Chi riparte — aggiornato al 2026-10-15 (sera)
 
-**Riparte: Tid — apply della fase 1-bis (§8) e la corsa delle 21:00. Poi il team DB con la fase 1, che
-ha bisogno di un superuser per la prova.**
+**Il modello è in vigore ovunque**: CI, scratch `zeroerp_ruoli` e dbdev (convertito, pgAgent come
+`zeroerp_job`). I ruoli dismessi sono fuori dal cluster. **Riparte: Tid — la baseline completa su
+dbdev (in corsa), poi il commit e la PR della fase 4.**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | ✅ **Tid** | Decisioni D-1 … D-5 | §7 | — |
-| 2 | ✅ **team DB** | Fase 1-bis: le 16 procedure dei job `DEFINER` (`20261014-55`), presidio `maintenance/test-proc-job-definer-v1`, provato sullo scratch | §8 | — |
-| 3 | ✅ **Tid** | Tolta a mano la firma orfana `proc_apply_fk_index_policy_job()`; `-55` applicato su dbdev | §8.3 | — |
-| 3-bis | **Tid** | Apply del `20261014-56` (il `search_path` nella forma di casa) e corsa pgTAP | §8.4 | niente |
-| 4 | **Tid** | La sera dopo l'apply: le automazioni delle 21:00 nel giornale, riuscite (primo giro come `titodb` invece di `postgres`) | §8.3 | 3 |
-| 5 | ✅ **team DB** | Fase 1: `scripts/sql/provision_zeroerp.sql` e `ci-local.sh` (default dal 2026-10-15; il modo vecchio con `--classico`), scritti e provati per quanto si può senza superuser | §9 | — |
-| 5-bis | ✅ **Tid** | `scripts/ci-local.sh --fresh --ci-apply`: completato il 2026-10-14 (al secondo giro, §9.4) | §9.3 | — |
-| 5-ter | ✅ **team DB** | Verifiche sullo scratch `zeroerp_ruoli`: postura dei ruoli, un owner solo, due presidi mirati | §9.4 | — |
-| 5-ter-bis | ✅ **Tid** | La suite pgTAP intera su `zeroerp_ruoli`: **nessuna regressione** rispetto alla baseline di `zeroerp_ci` (2026-10-15) | §9.4 | — |
-| 5-ter-ter | **Tid** | La baseline dello scratch rifatta su `zeroerp_ruoli` (`--update`), dopo aver guardato i rientrati | §10 | niente |
-| 5-quater | ✅ **team DB** | Il presidio D-5: `20261015-01…-04`, scritto e provato da capo a fondo (§14) | §14 | — |
-| 5-quinquies | ✅ **Tid** | Apply della D-5 su dbdev (2026-10-15): `-01`…`-04` e i CSV registrati, il `-03` dal provision-post (funzione di `postgres`, `search_path` di casa); baseline in corso | §14.3 | — |
-| 5-sexies | ✅ **Tid** | Apply del `20261015-05` e pgTAP verdi (2026-10-15): le corse `CRON` scrivono `zeroerp_app` | §17 | — |
-| 6 | ✅ **team DB** | Fase 2: i due workflow di GitHub sul modello (§11); provata sul cluster usa-e-getta, verde (§11.2) | §11 | — |
-| 6-bis | **Tid** | Push e prima corsa vera su GitHub; la baseline della CI va guardata | §11.4 | 6 |
-| 7 | ✅ **Tid** | Fase 3 (2026-10-15): dbdev convertito (database e oggetti di `zeroerp_owner`, `titodb` membro con `SET role`), pgAgent collegato come `zeroerp_job` dalle 11:33. Il presidio si spegne quando `chiusura_scadenze_daily` e `sync_auth_user_expired_daily` rigirano (12:05, 12:10) | §16 | — |
-| 8 | **team DB** | Fase 4: documentazione d'installazione e ritiro dei vecchi script e ruoli | §6 | 7 |
+| 1 | ✅ **Tid** | Decisioni D-1 … D-5 (2026-10-14), D-6 (2026-10-15) | §7, §19.2 | — |
+| 2 | ✅ **team DB** + **Tid** | Fase 1-bis: le 16 procedure dei job `DEFINER` (`20261014-55`, `-56`), applicate su dbdev | §8 | — |
+| 3 | ✅ **team DB** + **Tid** | Fase 1: `provision_zeroerp.sql`, lo scratch `zeroerp_ruoli`, baseline rifatta senza regressioni | §9, §10 | — |
+| 4 | ✅ **team DB** + **Tid** | Fase 2: i due workflow di GitHub sul modello; prima corsa vera con i pgTAP verdi | §11 | — |
+| 5 | ✅ **team DB** + **Tid** | D-5: il ruolo di ogni corsa (`20261015-01…-05`) e il presidio «nessun superuser al lavoro», applicati; presidio vuoto | §14, §17 | — |
+| 6 | ✅ **team DB** + **Tid** | Fase 3: dbdev convertito con `converti_db_al_modello_ruoli.sql`; pgAgent come `zeroerp_job` | §16 | — |
+| 7 | ✅ **team DB** + **Tid** | Fase 4: nel repo (via `--classico`, un solo provisioning, ruolo batch) e sul cluster (`zeroerp_batch_fatturazione`, `pgagent`, `zeroerp` con `zeroerp_ci`) | §18 | — |
+| 8 | ✅ **team DB** + **Tid** | Dopo la conversione: la guard di scope (`20261015-06`) e `pg_read_all_stats` a `zeroerp_owner` (D-6), applicati; i 19 rossi nuovi rientrati | §19 | — |
+| 9 | **Tid** | La baseline completa su dbdev (in corsa): conferma che non resta niente della conversione | §19 | niente |
+| 10 | **team DB**, al via di Tid | Il commit della fase 4, del `-06` e della D-6; poi la PR. ⚠️ Cambia `ci.yaml` e `ci-validate.yaml` (via il passo del ruolo batch e quello di `provision_db_roles`): è la PR a provarli | §18, §19 | 9 |
+| 11 | **Tid** | `scripts/ci-local.sh --ci-apply` (incrementale) su `zeroerp_ruoli`: lo script è cambiato (via `--classico`, il ponte del batch e il passo dell'app) e qui non si può lanciare (vuole `sudo`). `--fresh` solo con la memoria libera | §18.1 | 10 |
+| 12 | **Tid**, facoltativo | I 48 vecchi privilegi di default di `titodb` su `zeroerp`: non scattano più, un comando li toglie | §18.3 punto 3 | — |
+| 12-bis | **team DB**, proposta | `zeroerp_log` dentro la fase `ruoli` di `provision_zeroerp.sql`: è un ruolo di sistema, deve esistere **prima** del migrate (il `20260905-38` gli dà il giornale dei job solo se c'è), e oggi lo creano a mano i workflow e la guida d'installazione (passo 1-bis) | `installazione.md` | 10 |
+| 13 | **team DB** | Chiusura: il brief in `work-done/`, la mappa concentrica, `PROJECT_CONTEXT.md`, la memoria | — | 10, 11 |
 
-**Decisioni aperte di Tid: nessuna.** Prese il 2026-10-14: owner `zeroerp_owner`; D-1 … D-5 come
-proposte, con la precisazione di Tid su D-5 (si controlla la membership, non il nome) e la sua
-ricaduta su D-1 (§7).
-⬜ Da committare: questo documento, `20261014-55`, `20261014-56`, `db/pgtap/maintenance/test-proc-job-definer-v1.sql`,
-`scripts/sql/provision_zeroerp.sql`, `scripts/ci-local.sh`.
+**Decisioni aperte di Tid: nessuna.**
+⬜ Da committare (2026-10-15): fase 4 nel repo (§18), `20261015-06`, il test 8 di
+`script/test-guard-emittente-senza-utente`, D-6 in `provision_zeroerp.sql`, la documentazione, questo
+documento. Committati e pushati: fasi 1, 1-bis, 2; committati e non pushati dopo l'ultima PR: niente
+(D-5, fase 3 e `-42` sono nella PR del 2026-10-15).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-14. **A chi:** Tid, poi il team DB.
 > **Origine:** il cantiere delle statistiche
 > ([brief-db-statistiche-tabelle-job-notturno](brief-db-statistiche-tabelle-job-notturno.md) §7.2-§7.3):
 > il job ha trovato in CI tabelle create da `postgres` che `zeroerp` non poteva analizzare. Proposta
 > di Tid: dare ruoli standard «di sistema», da non riconfigurare a ogni installazione.
-> **Stato:** 🔨 fase 1-bis scritta e provata (§8, 2026-10-14); il resto da fare.
+> **Stato:** ✅ modello in vigore ovunque (2026-10-15); restano il commit della fase 4, la PR e la chiusura (tabella in testa).
 > **Ricadute BE/FE:** nessuna sul codice (il backend resta `zeroerp_app`). Ricadute su documentazione
 > d'installazione e configurazione dei server.
 
@@ -721,3 +719,125 @@ lanciata da un amministratore sarebbe passata invisibile.
 d'ambiente; **senza** il `-05` il test 9 è rosso (il test misura). Il ramo della riga saltata provato a
 parte con due sessioni vere (una tiene il lock): `acquired = false`, `saltata = true`,
 `ruolo_sessione = titodb`.
+
+## 18. Fase 4 — il ritiro (2026-10-15)
+
+### 18.1 Nel repo
+
+1. **Il modo classico.** `ci-local.sh` non ha più `--classico`: un modo solo, il modello, su
+   `zeroerp_ruoli`. Commenti di `testpgtap.sh`, `pgtap-baseline.sh` e due pagine allineati.
+2. **Un solo script di provisioning.** La postura di `zeroerp_app` (era
+   `scripts/sql/provision_db_roles.sql`, con `app_role`, `app_password` e `migrator_role` di default
+   `titodb`) è la fase `post` di `provision_zeroerp.sql`: nomi di sistema, e la password di
+   `zeroerp_app` non si tocca più (la crea la fase `ruoli`). Il passo «Privilegi del ruolo applicativo»
+   di `ci-validate.yaml` e il passo 3 di `ci-local.sh` sono assorbiti dalla fase `post`, che sta già
+   dopo entrambi i migratori. ⚠️ Unificato e non incluso con `\ir`: `ci-local.sh` passa gli script
+   dallo standard input (`postgres` non attraversa `/home/tid`), e lì `\ir` cercherebbe nella
+   cartella corrente.
+   `provision_dblink_log_channel.sql` (nomi di sistema; la password di `zeroerp_log` solo per crearlo),
+   `provision_storico_scope.sql` (migratore `zeroerp_owner`: col default `titodb` oggi avrebbe ridato
+   le shadow a un utente personale), `check_db_role_access.sql` (default `zeroerp_app`).
+   I riferimenti attivi puntano alla fase `post`; quelli nei changeSet applicati restano (fatti datati).
+3. **Il ruolo batch.** Via il provisioning, il controllo, il vecchio script di ritiro, il passo dei due
+   workflow, il ponte di `ci-local.sh` e il pgTAP `rls/test-role-batch-fatturazione-postura`. Il test 11
+   di `rls/test-rls-fondi-fattura-source-functional` è **rovesciato**: pretendeva che il batch avesse
+   `BYPASSRLS`, ora pretende che nessun ruolo `zeroerp_*` ce l'abbia (il giro notturno gira con un
+   utente tecnico per azienda dal 2026-09-05). Il guardrail sui `GRANT` ai ruoli batch resta.
+4. **`scripts/ritira_ruoli_dismessi.sh`**: ritira ruoli dal **cluster**. Gira su ogni database
+   (`DROP OWNED` lavora su quello a cui si è collegati), si ferma se un ruolo **possiede** qualcosa,
+   cancella un database solo se lo si nomina con `--cancella-database`, rifiuta i ruoli di sistema e il
+   database di sviluppo. Senza `--esegui` è una prova a vuoto (ogni `DROP OWNED` provato e annullato).
+   Sostituisce `retire_db_role_batch_fatturazione.sql`, che non sarebbe partito (variabili psql dentro
+   blocchi `DO`) e lavorava su un database solo.
+
+### 18.2 Le prove
+
+* **Postura di `zeroerp_app`** (struttura di dbdev senza privilegi, cluster usa-e-getta piccolo — la
+  memoria del server non regge un build da zero): i privilegi dati dalla fase `post` sono **identici** a
+  quelli del vecchio script, nei due versi (vecchio sopra il nuovo non aggiunge niente; vecchio da solo
+  dà esattamente gli stessi). Rilanci: password di `zeroerp_app` e `zeroerp_log` invariate. Canale di
+  log senza `zeroerp_log` e senza password: si ferma (rc=3); con la password lo crea. La conversione
+  della fase 3 con la nuova fase `post`: verde.
+* **`ritira_ruoli_dismessi.sh`** (cluster usa-e-getta con ruoli e privilegi sparsi su più database):
+  ruolo di sistema e database di sviluppo rifiutati; prova a vuoto; un ruolo che possiede una funzione
+  si ferma e la nomina; batch e `pgagent` ritirati da tutti i database; `zeroerp` si ferma finché
+  `zeroerp_ci` esiste e passa con `--cancella-database zeroerp_ci`; rilancio idempotente.
+* ⚠️ Non provati qui: `ci-local.sh` (vuole `sudo`) e i workflow (li prova la prossima PR).
+
+### 18.3 I passi di Tid, sul cluster
+
+Fatti datati (2026-10-15, da `pg_shdepend`): `zeroerp_batch_fatturazione` ha privilegi in `zeroerp`,
+`zeroerp_ruoli`, `zeroerp_ci` e un'impostazione di cluster; `pgagent` in `postgres` e `zeroerp`;
+`zeroerp` possiede tutto `zeroerp_ci`.
+
+1. prova a vuoto, poi il ritiro dei due ruoli senza proprietà:
+   ```
+   PGPASSWORD="$PGPASSWORD_POSTGRES" scripts/ritira_ruoli_dismessi.sh zeroerp_batch_fatturazione pgagent
+   PGPASSWORD="$PGPASSWORD_POSTGRES" scripts/ritira_ruoli_dismessi.sh --esegui zeroerp_batch_fatturazione pgagent
+   ```
+   ⚠️ **prima** del prossimo `ci-local.sh --fresh`: col ruolo nel cluster lo scratch nuovo si ferma
+   sulla `preCondition` di `20260729-05` (ora `ci-local.sh` lo dice subito). Fino al ritiro il test 11
+   di `rls/test-rls-fondi-fattura-source-functional` è rosso su dbdev e sullo scratch: dice il vero;
+2. ⛔ **irreversibile**: `zeroerp_ci` e il suo ruolo (lo scratch classico, fermo dal 2026-10-14):
+   ```
+   PGPASSWORD="$PGPASSWORD_POSTGRES" scripts/ritira_ruoli_dismessi.sh --cancella-database zeroerp_ci zeroerp
+   PGPASSWORD="$PGPASSWORD_POSTGRES" scripts/ritira_ruoli_dismessi.sh --esegui --cancella-database zeroerp_ci zeroerp
+   ```
+   poi a mano `db/internal.ci.env` (fuori da git: non si recupera) e, se non serve più,
+   `db/pgtap/baseline-rossi-scratch.tsv` resta: è la baseline di `zeroerp_ruoli`;
+3. i vecchi privilegi di default di `titodb` su `zeroerp` (non crea più niente a nome suo), da superuser:
+   ```
+   psql -h localhost -U postgres -d zeroerp -c "SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE titodb%s REVOKE ALL ON %s FROM %I',
+       CASE WHEN d.defaclnamespace = 0 THEN '' ELSE ' IN SCHEMA ' || quote_ident(d.defaclnamespace::regnamespace::text) END,
+       CASE d.defaclobjtype WHEN 'r' THEN 'TABLES' WHEN 'S' THEN 'SEQUENCES' WHEN 'f' THEN 'FUNCTIONS' WHEN 'T' THEN 'TYPES' WHEN 'n' THEN 'SCHEMAS' END,
+       pg_get_userbyid(a.grantee))
+     FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a
+    WHERE d.defaclrole = 'titodb'::regrole AND a.grantee <> 0" -At | psql -h localhost -U postgres -d zeroerp
+   ```
+   (dopo il punto 1: tra i destinatari c'è anche il ruolo batch);
+4. `/var/lib/postgresql/.pgpass`: via le righe di `pgagent` e le due di `loguser`; quella di
+   `zeroerp_log` e quella di `zeroerp_job` restano.
+
+## 19. Dopo la conversione: due regressioni del «lavoro come proprietario» (2026-10-15)
+
+La baseline di Tid su dbdev (`config dbops magazzino maintenance rls`) dopo la fase 3: **19 rossi nuovi**.
+Tutti hanno la stessa radice: `titodb` si collega col suo nome e lavora come `zeroerp_owner`
+(`SET role`, D-1), quindi `session_user` (titodb) e `current_user` (zeroerp_owner) sono diversi anche
+fuori da ogni `SECURITY DEFINER`. In CI il runner si collega come `zeroerp_owner` e i due coincidono.
+
+### 19.1 La guard di scope prendeva il proprietario per una DEFINER — `20261015-06`
+
+18 pgTAP `pgtap-runner: owner` (i satelliti RLS, il magazzino) in `ERRORE_FIXTURE` con
+`E_SCOPE_SENZA_UTENTE`. `script.trgfn_guard_emittente_scope`, ramo «utente NULL», riconosceva «sono
+dentro una DEFINER» da `current_user <> session_user` (rev 18-09, `20260918-13`).
+
+* **Rimedio**: si confronta col ruolo di **sessione**, il parametro `role` (`none` → `session_user`).
+  Una DEFINER cambia `current_user` ma non `role` (provato su dbdev). Per chi si collega col proprio
+  nome (CI, l'app) l'espressione è **identica** a prima.
+* **Censimento**: il confronto `current_user <> session_user` c'era solo qui. Le altre letture di
+  `session_user` lo **registrano** (il giornale dei job: voluto il login) o controllano la
+  **membership** (`dbops.fn_sessione_del_migratore`: già giusta).
+* **Prova** (dbdev, SQL estratto in transazione annullata): `rls/test-rls-ddt-satelliti` 10/10,
+  `rls/test-rls-magazzino-perimetro-v1` 12/12, `rls/test-rls-fondi-fattura-source-functional` 11/11
+  (compreso il test 11 rovesciato: nessun ruolo con BYPASSRLS). Il ramo DEFINER resta chiuso: una
+  DEFINER del proprietario chiamata da `titodb` con `SET ROLE NONE`, senza utente, su una riga con
+  padrone → **fermata**; la stessa scrittura da `titodb` che lavora come proprietario → passa (è lui).
+* `script/test-guard-emittente-senza-utente` test 8 pinnava il testo del corpo: aggiornato al nuovo
+  criterio, verde col `-06`.
+
+### 19.2 L'orario di una sessione si vede solo dallo stesso ruolo — ✅ D-6 (a), Tid 2026-10-15
+
+`dbops/test-vw-processi-programmazione` test 17: `ultimo_segno_di_vita` NULL. È
+`min(backend_start)` da `pg_stat_activity`, che PostgreSQL **maschera** a chi legge con un ruolo diverso
+da quello della sessione (memoria «pg_stat_activity maschera», 2026-09-14): la sessione è di `titodb`,
+legge `zeroerp_owner`. Il verdetto (`OK`) è giusto, perché usa il conteggio, che non è mascherato; è vuoto solo l'orario.
+
+**D-6, per Tid:**
+
+* **(a) consigliata**: `GRANT pg_read_all_stats TO zeroerp_owner`, nella fase `ruoli` di
+  `provision_zeroerp.sql` (un ruolo di cluster: mai in un changeSet). Chi legge come proprietario — il
+  digest (`fn_conta_presidio`, DEFINER del proprietario), una psql di Tid — vede l'orario di **ogni**
+  sessione, comprese quelle di `zeroerp_app` che oggi gli arrivano vuote. È un ruolo di sola lettura
+  delle statistiche.
+* (b) il test 17 misura «la vista dice ciò che chi legge può vedere» (confronto con
+  `pg_stat_activity` della propria sessione): resta verde ovunque, ma l'orario resta mascherato al digest.

@@ -58,9 +58,9 @@ per la CI, il database di prova e un'installazione nuova.
 
 | Ruolo | Chi lo usa | Attributi | Che cosa può fare |
 | --- | --- | --- | --- |
-| **`zeroerp_owner`** | Liquibase (tutte le passate tranne quelle da superuser), `manage.py migrate` | `LOGIN`, non superuser, `NOBYPASSRLS`, `NOCREATEDB`, `NOCREATEROLE` | è il **proprietario** del database e di **tutti** gli oggetti del progetto, tranne le funzioni del registro `dbops.sec_functions_owner` (sotto) |
+| **`zeroerp_owner`** | Liquibase (tutte le passate tranne quelle da superuser), `manage.py migrate` | `LOGIN`, non superuser, `NOBYPASSRLS`, `NOCREATEDB`, `NOCREATEROLE` | è il **proprietario** del database e di **tutti** gli oggetti del progetto, tranne le funzioni del registro `dbops.sec_functions_owner` (sotto); è membro di `pg_read_all_stats`, così chi legge come proprietario (il digest) vede l'orario delle sessioni degli altri ruoli |
 | **`zeroerp_job`** | il demone **pgAgent** | `LOGIN`, non superuser, `NOBYPASSRLS`, **non possiede niente** | chiama **soltanto** le procedure dei job (`maintenance.proc_*_job`), che girano come `zeroerp_owner`; legge e scrive le tabelle di `pgagent` che servono al demone |
-| **`zeroerp_app`** | il backend Django (`DB_USER`): web, management command, timer | `LOGIN`, **`NOBYPASSRLS`**, non proprietario | quello che dà [`provision_db_roles.sql`](#provision_db_rolessql-cosa-fa); la RLS lo filtra |
+| **`zeroerp_app`** | il backend Django (`DB_USER`): web, management command, timer | `LOGIN`, **`NOBYPASSRLS`**, non proprietario | quello che dà la fase `post` di `provision_zeroerp.sql` ([La postura di zeroerp_app](#la-postura-di-zeroerp_app)); la RLS lo filtra |
 | `zeroerp_log` | il canale di log via `dblink` (scrive `dbops.error_log` fuori dalla transazione che fallisce) | `LOGIN` | solo `INSERT` su `dbops.error_log` — vedi [dblink](/postgresql/dblink) |
 | `postgres` | **solo** il provisioning | superuser | crea ruoli, database ed estensioni, poi passa la mano |
 
@@ -103,11 +103,13 @@ per la CI, il database di prova e un'installazione nuova.
 | --- | --- | --- | --- |
 | Database di prova (`scripts/ci-local.sh`, `zeroerp_ruoli`) | `zeroerp_owner` | `zeroerp_owner` | nessun demone: i job li esegue `ci_apply` |
 | CI di GitHub (`ci.yaml`, `ci-validate.yaml`) | `zeroerp_owner` (dalla fase 2 del cantiere) | `zeroerp_owner` | pgAgent non c'è |
-| Sviluppo (`zeroerp`) | ⚠️ ancora `titodb` | ⚠️ `titodb` | ⚠️ ancora `postgres` |
+| Sviluppo (`zeroerp`) | `titodb`, che lavora come `zeroerp_owner` | `zeroerp_owner` | `zeroerp_job` |
 
-Lo sviluppo si allinea in una finestra concordata, da superuser (fase 3 di
-`brief-db-ruoli-di-sistema`). Fino ad allora gli script di questa pagina si lanciano
-su sviluppo con `-v migrator_role=titodb`.
+Lo sviluppo è stato convertito il 2026-10-15 (fase 3 di `brief-db-ruoli-di-sistema`)
+con `scripts/sql/converti_db_al_modello_ruoli.sql`: `titodb` è membro di
+`zeroerp_owner` e ogni sua sessione su `zeroerp` lavora come proprietario
+(`ALTER ROLE titodb IN DATABASE zeroerp SET role = zeroerp_owner`). È lo script per
+qualunque database nato prima del modello.
 
 ⚠️ La RLS è attiva in modalità `ENABLE`, **non** `FORCE`: proprietario e superuser ne
 sono esenti per natura PostgreSQL. È per questo che `zeroerp_owner` e `postgres` non
@@ -119,7 +121,7 @@ tecnico per (processo × azienda)**, dentro il perimetro RLS di quell'azienda. N
 esistono più canali di sistema che scavalcano la RLS. Il modello sta nella guida
 [Processi automatici](/guide/processi-automatici-classe-e-identita).
 
-### ⚠️ `zeroerp_batch_fatturazione` — in ritiro
+### `zeroerp_batch_fatturazione` — ritirato
 
 Era il ruolo `BYPASSRLS` con cui il batch notturno vedeva tutte le aziende,
 quando i processi non avevano un'identità propria.
@@ -132,23 +134,22 @@ quando i processi non avevano un'identità propria.
   dichiara `dbops.vw_processi_che_bypassano`, che legge `pg_roles` in diretta:
   una riga = un bypass ancora vivo.
   ([vw_processi_che_bypassano](/dbzero/dbops/manual/vw_processi_che_bypassano))
-* Il ritiro è `scripts/sql/retire_db_role_batch_fatturazione.sql`, da
-  superuser, perché il `DROP ROLE` di un ruolo `BYPASSRLS` lo richiede:
+* **Nel repo è ritirato** dal 2026-10-15 (fase 4 di `brief-db-ruoli-di-sistema`):
+  il provisioning, il controllo, il passo dei due workflow e il pgTAP di postura.
+* **Dal cluster** lo toglie `scripts/ritira_ruoli_dismessi.sh`, da superuser: un
+  ruolo ha privilegi in **ogni** database del cluster (sviluppo e scratch), e
+  `DROP OWNED` lavora su quello a cui si è collegati, quindi lo script li gira
+  tutti. Senza `--esegui` è una prova a vuoto.
 
   ```bash
-  psql -h <DB_HOST> -U postgres -d zeroerp \
-       -v batch_role=zeroerp_batch_fatturazione \
-       -f scripts/sql/retire_db_role_batch_fatturazione.sql
+  PGPASSWORD=… scripts/ritira_ruoli_dismessi.sh zeroerp_batch_fatturazione
+  PGPASSWORD=… scripts/ritira_ruoli_dismessi.sh --esegui zeroerp_batch_fatturazione
   ```
 
   Chiuso quando `SELECT * FROM dbops.vw_processi_che_bypassano;` non restituisce
-  righe.
-* ⚠️ Finché il ritiro non è fatto, restano vivi anche i pezzi che lo creano:
-  `scripts/sql/provision_db_role_batch_fatturazione.sql`,
-  `check_db_role_batch_fatturazione.sql`, lo step «Provision ruolo batch
-  fatturazione» di `.github/workflows/ci-validate.yaml` e il pgTAP
-  `db/pgtap/rls/test-role-batch-fatturazione-postura.sql`. Vanno via **insieme**
-  al ruolo, non prima.
+  righe. ⚠️ Finché il ruolo esiste nel cluster, uno scratch ricostruito da zero
+  (`ci-local.sh --fresh`) si ferma sulla `preCondition` di `20260729-05`: il
+  ponte che lo aggirava è ritirato insieme al resto.
 * ⛔ Un processo nuovo **non** riceve un ruolo `BYPASSRLS`: riceve un utente
   tecnico.
 
@@ -178,17 +179,22 @@ psql "host=<DB_HOST> port=5432 dbname=zeroerp user=<ADMIN_DB_USER>" \
 ```
 
 L'ordine completo, passo per passo, è quello di `.github/workflows/ci-validate.yaml`
-e di `scripts/ci-local.sh`. La postura di `zeroerp_app` e il canale di log restano
-agli script qui sotto, chiamati con `-v migrator_role=zeroerp_owner`.
+e di `scripts/ci-local.sh`. La postura di `zeroerp_app` la dà la fase `post` (sotto);
+il canale di log resta a `provision_dblink_log_channel.sql`, che dipende dall'ambiente.
 
-## `provision_db_roles.sql` — cosa fa
+## La postura di zeroerp_app
+
+È la fase `post` di `provision_zeroerp.sql`. Fino al 2026-10-15 era uno script a
+parte, `provision_db_roles.sql`, con il nome del ruolo, la password e il migratore
+passati come variabili (il migratore aveva default `titodb`).
 
 È **idempotente** e si rilancia senza danni. È anche l'**ultima parola** sulla
 postura di `zeroerp_app`: in CI (`ci-validate.yaml`) e in `scripts/ci-local.sh`
 gira **dopo** Liquibase **e dopo** `manage.py migrate`, perché le tabelle dello
 schema `django` nascono con il secondo.
 
-1. Crea `zeroerp_app` se manca e ne **aggiorna sempre la password**.
+1. Pretende che `zeroerp_app` esista: lo crea la fase `ruoli`, e la sua password
+   non si tocca mai (i ruoli sono di cluster).
 2. `CONNECT` e `TEMP` sul database.
 3. `search_path = django,public,config,dbops,script,anagrafiche` sul ruolo (lo
    stesso di `settings.py`).
@@ -219,19 +225,13 @@ fa.
 
 ## Esecuzione
 
-Da un host che raggiunge PostgreSQL, con un utente amministrativo:
+La postura di `zeroerp_app` si rilancia con la fase `post`, da un utente
+amministrativo e dopo ogni migrazione che crea uno schema o una tabella:
 
 ```bash
 psql "host=<DB_HOST> port=5432 dbname=zeroerp user=<ADMIN_DB_USER>" \
-  -v app_role=zeroerp_app \
-  -v app_password='<PASSWORD_FOR_ZEROERP_APP>' \
-  -v migrator_role=titodb \
-  -f scripts/sql/provision_db_roles.sql
+  -v fase=post -f scripts/sql/provision_zeroerp.sql
 ```
-
-`migrator_role` ha default `titodb` (lo sviluppo, finché non si allinea); col modello
-dei ruoli si passa `-v migrator_role=zeroerp_owner`. `db_name` ha default il database
-corrente.
 
 Canale di log `dblink`, una volta per database:
 
@@ -240,6 +240,10 @@ psql "host=<DB_HOST> port=5432 dbname=zeroerp user=<ADMIN_DB_USER>" \
   -v log_password='<PASSWORD_FOR_ZEROERP_LOG>' \
   -f scripts/sql/provision_dblink_log_channel.sql
 ```
+
+`log_password` serve solo se `zeroerp_log` non esiste ancora: di un ruolo che
+esiste lo script non tocca la password. `log_service` (default `zeroerp_log`) è
+il nome del *service*.
 
 La password non va nelle GUC: lo script imposta solo il nome del *service*.
 Password e host stanno in `pg_service.conf`/`.pgpass`, come indica lo script alla
@@ -274,7 +278,7 @@ all'applicazione. Finché non passa, il changeSet `20260911-28` (trigger di
 storico) si ferma su una `preCondition`: è voluto.
 
 ```bash
-sudo -u postgres psql -X -d zeroerp -v migrator_role=titodb \
+sudo -u postgres psql -X -d zeroerp \
      -f scripts/sql/provision_storico_scope.sql
 ```
 
@@ -357,7 +361,7 @@ Poi `sudo systemctl restart zeroerp-gunicorn`.
 ## Note operative
 
 * Uno **schema applicativo nuovo** si aggiunge a `_app_schemas` in
-  `provision_db_roles.sql`, e lo script si rilancia.
+  `provision_zeroerp.sql` (fase post), e lo script si rilancia.
 * Una **tabella che l'app legge ma non deve scrivere direttamente** è una porta
   nuova: va nelle tre sedi (sopra), con il suo pgTAP.
 * Una **query di diagnosi a mano** su una tabella con RLS, senza GUC, restituisce

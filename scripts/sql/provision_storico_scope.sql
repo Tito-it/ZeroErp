@@ -22,29 +22,28 @@
 --   3. rifà il backfill delle versioni già scritte, se la funzione (-30) esiste
 --      già — altrimenti lo fa il -31 al migrate.
 --
--- ⚠️ In CI non serve: tutto è di `zeroerp`, e i changeSet bastano. Serve su dev
---   (una volta, prima di applicare il -28) e su qualunque database dove il job
---   pgAgent abbia creato shadow come `postgres`.
+-- ⚠️ Col modello dei ruoli di sistema (brief-db-ruoli-di-sistema) non serve piu'
+--   di regola: pgAgent si collega come zeroerp_job e le procedure dei job sono
+--   SECURITY DEFINER di zeroerp_owner, quindi le shadow nascono sue. Resta per
+--   un database dove qualcuno abbia creato shadow da superuser — il -31 in
+--   ci_apply lo segnala con un NOTICE che rimanda qui.
 --
 -- ⚠️ La riassegnazione NON cambia la semantica della RLS: il superuser bypassa
 --   comunque, il migratore è già proprietario delle madri e delle altre 52
 --   shadow. Toglie una disuniformità, non un privilegio.
 --
 -- Uso (come superuser, sul database bersaglio):
---   sudo -u postgres psql -X -d zeroerp -v migrator_role=titodb \
+--   sudo -u postgres psql -X -d zeroerp \
 --        -f scripts/sql/provision_storico_scope.sql
---   In CI/ci-local il migratore è `zeroerp`.
+--   Il migratore e' zeroerp_owner, ruolo di sistema: non si passa (fino al
+--   2026-10-15 era `-v migrator_role`, default `titodb`, che oggi ridarebbe le
+--   shadow a un utente personale e romperebbe «un owner solo»).
 --
 -- Verifica: db/pgtap/storico/test-storico-scope-congelato-v1.sql
 -- ============================================================================
 
 \echo [ZeroErp] Provisioning scope congelato sulle shadow storico.*
-\echo [ZeroErp] Optional var: migrator_role (default: titodb)
-
-\if :{?migrator_role}
-\else
-\set migrator_role titodb
-\endif
+\set migrator_role zeroerp_owner
 
 -- ⚠️ Le variabili psql NON si interpolano dentro un blocco DO (è una stringa
 --   dollar-quoted): il ruolo passa per un GUC di sessione. Trovato alla prima

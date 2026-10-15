@@ -239,9 +239,10 @@ SELECT is(
 -- ============================================================
 -- 13. Nessun bypass non dichiarato
 -- ============================================================
--- ⚠️ La regola presidiata non e' «la vista e' vuota»: oggi
---   zeroerp_batch_fatturazione ha il bypass ed e' un debito registrato, con la
---   fase in cui si chiude. La regola e' che non ne compaia uno NUOVO.
+-- ⚠️ La regola presidiata non e' «la vista e' vuota»: un bypass puo' essere un
+--   debito registrato, con la fase in cui si chiude (lo e' stato
+--   zeroerp_batch_fatturazione, ritirato il 2026-10-15). La regola e' che non ne
+--   compaia uno NUOVO.
 SELECT is_empty(
     $$SELECT ruolo FROM dbops.vw_processi_che_bypassano
        WHERE stato = 'NON_DICHIARATO'$$,

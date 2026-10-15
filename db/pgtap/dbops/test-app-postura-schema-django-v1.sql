@@ -3,7 +3,7 @@
 -- pgTAP test STRUTTURALE — postura di `zeroerp_app` sullo schema `django`
 --   django.auth_user · django.auth_user_id_seq · tutte le tabelle dello schema
 --
--- Sede della postura: scripts/sql/provision_db_roles.sql (whitelist `_app_schemas`,
+-- Sede della postura: scripts/sql/provision_zeroerp.sql (fase post) (whitelist `_app_schemas`,
 --   `django` dentro dal 2026-09-13). Gira DOPO ENTRAMBI i migratori — Liquibase
 --   e `manage.py migrate` — in ci-validate.yaml e in scripts/ci-local.sh.
 --
@@ -39,12 +39,12 @@
 --   tabelle che esistono. Le tabelle che una migration Django FUTURA creerà le
 --   copre solo l'`ALTER DEFAULT PRIVILEGES FOR ROLE <chi migra Django>` che
 --   il provisioning dichiara per ogni schema della whitelist. Il test la
---   chiede per il proprietario di `django.auth_user` (`zeroerp` in CI e sullo
---   scratch, `titodb` su dev): su dev quel default non esiste perché il
---   provisioning è stato lanciato quando `django` non era in whitelist.
---   Rimedio, una riga:  psql -U postgres -d zeroerp -v app_role=zeroerp_app
---     -v app_password=<quella di ~/.pgpass> -f scripts/sql/provision_db_roles.sql
---   (migrator_role ha default titodb). Un rosso che dice «il prossimo
+--   chiede per il proprietario di `django.auth_user` (zeroerp_owner, in ogni
+--   ambiente dal 2026-10-15): se manca, il provisioning non e' stato rilanciato
+--   dopo che `django` e' entrato in whitelist.
+--   Rimedio, una riga:  psql -U postgres -d zeroerp -v fase=post
+--     -f scripts/sql/provision_zeroerp.sql
+--   Un rosso che dice «il prossimo
 --   `manage.py migrate` lascerà l'app fuori dalla tabella nuova» è il mestiere
 --   di questo file, non un difetto suo.
 --

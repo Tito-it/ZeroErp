@@ -37,7 +37,7 @@ parte del passo 1 («auditare lo stato attuale») è ormai fatta dai fatti.
 | `backend/deploy/sveglie.json` | 2026-09-06 | **sede unica del dichiarato di deploy**: chi sveglia ogni processo, con quale cadenza e con quale tolleranza. Nel giugno non esisteva: le cadenze erano cablate nell'installer |
 | `backend/deploy/systemd/` — **15 template** versionati | lug→set 2026 | gli unit non si generano più con heredoc dentro lo script: sono file reviewabili in PR, con i placeholder per-host |
 | `backend/bin/install-timers.sh` riscritto | 2026-07-21 → 2026-09-07 | legge `sveglie.json`, è **idempotente**, e ha un test in CI (`scripts/tests/test-install-timers.sh`) che prova anche il ramo che ACCENDE |
-| `scripts/sql/provision_db_roles.sql` + `provision_db_role_batch_fatturazione.sql` | 2026-02 / 2026-06, aggiornati fino al 2026-09-09 | ⭐ **un passo di installazione che questo promemoria non nomina**: i ruoli `zeroerp_batch_*` hanno `BYPASSRLS`, vogliono **superuser** e **non possono** essere creati da Liquibase. ⚠️ La documentazione **c'è** ed è completa ([provisioning-db-roles.md](../backend/provisioning-db-roles.md), anche nel menu): quello che manca è l'**aggancio** — vedi la riga qui sotto |
+| `scripts/sql/provision_db_roles.sql` + `provision_db_role_batch_fatturazione.sql` (dal 2026-10-15: `scripts/sql/provision_zeroerp.sql`, un ingresso solo, e il ruolo batch ritirato — brief-db-ruoli-di-sistema) | 2026-02 / 2026-06, aggiornati fino al 2026-09-09 | ⭐ **un passo di installazione che questo promemoria non nomina**: i ruoli `zeroerp_batch_*` hanno `BYPASSRLS`, vogliono **superuser** e **non possono** essere creati da Liquibase. ⚠️ La documentazione **c'è** ed è completa ([provisioning-db-roles.md](../backend/provisioning-db-roles.md), anche nel menu): quello che manca è l'**aggancio** — vedi la riga qui sotto |
 | play-book §15/§16/§17 | ago→set 2026 | la parte systemd è ora descritta lì, di taglio tecnico |
 
 ⛔ **La decisione bloccante NON si è sbloccata da sé**: `docker-compose` non
@@ -65,9 +65,12 @@ delle segnalazioni non c'era. Nessuno dei tre dava errore.
 1. **Auditare/chiarire lo stato del setup attuale** (venv, makefile, Dockerfile CI).
    ⭐ **Per la parte systemd non serve più**: `sveglie.json` + i 15 template +
    l'installer con test in CI sono già il dichiarato, e vanno *citati*, non
-   ricostruiti. ⛔ Resta da nominare il **provisioning dei ruoli DB**
-   (`scripts/sql/provision_db_role*.sql`), che vuole superuser e non passa da
-   Liquibase: oggi non è in nessun documento di installazione.
+   ricostruiti. ✅ **Il database è scritto** (2026-10-15): la sezione «Il
+   database» di [installazione.md](../../installazione.md) — ruoli di sistema,
+   estensioni, i dieci passi nell'ordine della CI, la conversione di un database
+   vecchio, le verifiche. Non dipendeva da Docker o venv; è nata col cantiere
+   brief-db-ruoli-di-sistema, che ha reso il provisioning un ingresso solo con
+   nomi fissi.
    ⚠️ E il perimetro di A si è ristretto: la configurazione applicativa è uscita
    in [configurazione-iniziale.md](../../configurazione-iniziale.md), quindi qui
    resta la sola macchina.

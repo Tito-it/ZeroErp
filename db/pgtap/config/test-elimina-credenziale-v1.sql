@@ -10,7 +10,7 @@
 --   20261006-12 (vw_accessi_altri sul BB), 20_code/script/20261006-13
 --   (fn_check_credenziale_eliminabile), -14 (fn_elimina_credenziale),
 --   90_end/20261006-15 (la porta), loop ci_apply 20260205-41 e
---   provision_db_roles.sql (le altre due sedi).
+--   provision_zeroerp.sql (fase post) (le altre due sedi).
 --
 -- ⭐ I soggetti si COSTRUISCONO: il SUPER_ADMIN e l'operatore senza privilegi
 --   sono umani (dbops.fn_pgtap_crea_operatore_umano); le credenziali senza veste

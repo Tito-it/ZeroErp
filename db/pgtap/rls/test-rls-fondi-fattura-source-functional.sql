@@ -409,9 +409,15 @@ SELECT is(
 --   policy filtra» da «la riga non c'e'», e a dirlo basta il caso 3, che la
 --   stessa riga la VEDE in scope. Nel gemello sui satelliti serviva perche' li'
 --   la fixture usa una fattura ESISTENTE.
-SELECT ok(
-  (SELECT r.rolbypassrls FROM pg_roles r WHERE r.rolname = 'zeroerp_batch_fatturazione'),
-  '11) ⭐ Il giro notturno attraversa: zeroerp_batch_fatturazione ha BYPASSRLS'
+-- ⭐ Rovesciato il 2026-10-15 (brief-db-ruoli-di-sistema, fase 4). Asseriva che
+--   il ruolo batch avesse BYPASSRLS: dal 2026-09-05 il giro notturno non
+--   attraversa piu' le aziende, gira con un utente tecnico per azienda dentro il
+--   suo perimetro, e il ruolo batch e' stato ritirato. La verifica che resta e'
+--   il contrario: nessun ruolo del progetto ha il passepartout.
+SELECT is_empty(
+  $$SELECT r.rolname FROM pg_roles r
+     WHERE r.rolname LIKE 'zeroerp\_%' AND r.rolbypassrls$$,
+  '11) ⭐ Il giro notturno non attraversa: nessun ruolo zeroerp_* ha BYPASSRLS'
 );
 
 SELECT * FROM finish();

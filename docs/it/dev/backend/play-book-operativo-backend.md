@@ -22,9 +22,9 @@ export APP_DIR=/home/$APP_USER/apps/ZeroErp        # clone del repository
 export DB_NAME=zeroerp
 export DB_USER=zeroerp_app                          # ruolo runtime, MAI owner né BYPASSRLS
 export DB_PASS=⚠️StrongPassword
-export DB_MIGRATOR=⚠️titodb                          # owner degli oggetti: Liquibase e manage.py migrate
-                                                     # (zeroerp_owner col modello dei ruoli di sistema;
-                                                     #  lo sviluppo resta titodb finché non si allinea)
+export DB_MIGRATOR=zeroerp_owner                    # owner degli oggetti: Liquibase e manage.py migrate
+                                                     # (ruolo di sistema; sullo sviluppo `titodb`, che ne
+                                                     #  è membro e lavora come lui)
 export DB_HOST=⚠️dbdev
 export DB_PORT=5432
 ```
@@ -157,7 +157,7 @@ da utente amministrativo. Procedura completa, verifiche e motivazioni:
 ⭐ **Su un database nuovo** i ruoli li crea `scripts/sql/provision_zeroerp.sql`
 (ruoli di sistema `zeroerp_owner`, `zeroerp_job`, `zeroerp_app`), in tre fasi
 attorno alle migrazioni, e il migratore è `zeroerp_owner`: l'ordine dei passi è
-nella pagina qui sopra. I comandi sotto valgono per lo sviluppo com'è oggi.
+nella pagina qui sopra e, passo per passo, in [Installazione](/installazione).
 
 L'ordine conta: lo script concede **sugli schemi e sulle tabelle che esistono**,
 quindi si lancia **dopo** Liquibase **e dopo** `manage.py migrate` (§11), e si
@@ -165,10 +165,7 @@ rilancia quando nasce uno schema applicativo nuovo.
 
 ```bash
 psql "host=${DB_HOST} port=5432 dbname=${DB_NAME} user=<ADMIN_DB_USER>" \
-  -v app_role=${DB_USER} \
-  -v app_password='${DB_PASS}' \
-  -v migrator_role=${DB_MIGRATOR} \
-  -f scripts/sql/provision_db_roles.sql
+  -v fase=post -f scripts/sql/provision_zeroerp.sql
 
 psql "host=${DB_HOST} port=5432 dbname=${DB_NAME} user=<ADMIN_DB_USER>" \
   -v log_password='⚠️PasswordLog' \
@@ -178,7 +175,7 @@ psql "host=${DB_HOST} port=5432 dbname=${DB_NAME} user=<ADMIN_DB_USER>" \
 ⛔ **Nessun ruolo `BYPASSRLS`** su un host nuovo: i processi automatici girano
 come `zeroerp_app` con un utente tecnico per azienda
 ([Processi automatici](/guide/processi-automatici-classe-e-identita)). Il
-ruolo `zeroerp_batch_fatturazione` è in ritiro e non va creato.
+ruolo `zeroerp_batch_fatturazione` è stato ritirato il 2026-10-15 e non va creato.
 
 > ✅ **Come so che è andata bene**: la sezione «Verifiche» di
 > [provisioning-db-roles.md](provisioning-db-roles.md).
