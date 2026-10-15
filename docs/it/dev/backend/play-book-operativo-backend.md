@@ -23,6 +23,8 @@ export DB_NAME=zeroerp
 export DB_USER=zeroerp_app                          # ruolo runtime, MAI owner né BYPASSRLS
 export DB_PASS=⚠️StrongPassword
 export DB_MIGRATOR=⚠️titodb                          # owner degli oggetti: Liquibase e manage.py migrate
+                                                     # (zeroerp_owner col modello dei ruoli di sistema;
+                                                     #  lo sviluppo resta titodb finché non si allinea)
 export DB_HOST=⚠️dbdev
 export DB_PORT=5432
 ```
@@ -151,6 +153,11 @@ host  zeroerp  zeroerp_log  100.x.y.z/32  scram-sha-256
 ⛔ **Liquibase non dà i privilegi a `zeroerp_app`**: li dà uno script dedicato,
 da utente amministrativo. Procedura completa, verifiche e motivazioni:
 [provisioning-db-roles.md](provisioning-db-roles.md).
+
+⭐ **Su un database nuovo** i ruoli li crea `scripts/sql/provision_zeroerp.sql`
+(ruoli di sistema `zeroerp_owner`, `zeroerp_job`, `zeroerp_app`), in tre fasi
+attorno alle migrazioni, e il migratore è `zeroerp_owner`: l'ordine dei passi è
+nella pagina qui sopra. I comandi sotto valgono per lo sviluppo com'è oggi.
 
 L'ordine conta: lo script concede **sugli schemi e sulle tabelle che esistono**,
 quindi si lancia **dopo** Liquibase **e dopo** `manage.py migrate` (§11), e si

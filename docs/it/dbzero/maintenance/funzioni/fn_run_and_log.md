@@ -58,17 +58,21 @@ AS $function$
         --   vera da ogni lettore. brief-db-corsa-saltata-non-e-una-corsa.
         INSERT INTO maintenance.job_run_log
             (jobname, stepname, saltata, ended_at, message,
-             processo_codice, auth_user_id)
+             processo_codice, auth_user_id, ruolo_sessione)
         VALUES (p_jobname, p_stepname, TRUE, clock_timestamp(),
                 'skip: another run in progress',
-                v_processo, p_auth_user_id);
+                v_processo, p_auth_user_id, session_user);
         RETURN;
       END IF;
     END IF;
 
+    -- ⭐ Rev 2026-10-15 (D-5 di brief-db-ruoli-di-sistema): ruolo_sessione =
+    --   chi si e' COLLEGATO. Dentro una procedura SECURITY DEFINER
+    --   current_user e' il proprietario; session_user resta il ruolo della
+    --   connessione (zeroerp_job per pgAgent).
     INSERT INTO maintenance.job_run_log
-        (jobname, stepname, processo_codice, auth_user_id)
-    VALUES (p_jobname, p_stepname, v_processo, p_auth_user_id)
+        (jobname, stepname, processo_codice, auth_user_id, ruolo_sessione)
+    VALUES (p_jobname, p_stepname, v_processo, p_auth_user_id, session_user)
     RETURNING id, run_uuid, started_at, origine
          INTO v_id, v_run_uuid, v_started_at, v_origine;
 
@@ -147,7 +151,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION maintenance.fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint, p_processo_codice text, p_auth_user_id integer)
-IS 'Registra una corsa di job in maintenance.job_run_log ed esegue il lavoro. ⭐ Rev 2026-09-05 (R-12): il verbale di un FALLIMENTO viene scritto anche FUORI transazione, con maintenance.fn_job_run_log_failure, prima del RAISE. ⛔ Prima il gestore d''eccezione scriveva la riga ok=false e poi rilanciava: il RAISE annulla la transazione, quindi anche quella riga — il verbale veniva redatto e distrutto nello stesso istante, e NESSUNO dei dodici job che passano di qui poteva lasciare una riga rossa. Cosi'' apply_storicizza_weekly e'' morto ogni settimana per sei mesi con l''ultimo verdetto agli atti a «done». ⚠️ L''UPDATE in transazione resta e non e'' un doppione: copre il caso in cui il chiamante catturi l''eccezione senza propagarla, dove la transazione sopravvive. Nel caso normale muore e resta solo la riga fuori transazione — o l''una o l''altra, mai due. ⚠️ Il RAISE non si toglie: smettere di propagare farebbe risultare riuscito un lavoro che non lo e''. Il lavoro si annulla, il verbale no. ⚠️ fn_job_run_log_failure non solleva mai: se il canale dblink non c''e'' emette un WARNING e si torna al comportamento precedente. ⭐ Rev 2026-10-10: col lock occupato la riga nasce SALTATA (saltata = TRUE), chiusa e con ok NULL. Prima nasceva ok = TRUE e aperta — «riuscita e mai chiusa» — e ogni lettore la contava come una corsa vera. Brief: brief-db-corsa-saltata-non-e-una-corsa §8.';
+IS 'Registra una corsa di job in maintenance.job_run_log ed esegue il lavoro. ⭐ Rev 2026-09-05 (R-12): il verbale di un FALLIMENTO viene scritto anche FUORI transazione, con maintenance.fn_job_run_log_failure, prima del RAISE. ⛔ Prima il gestore d''eccezione scriveva la riga ok=false e poi rilanciava: il RAISE annulla la transazione, quindi anche quella riga — il verbale veniva redatto e distrutto nello stesso istante, e NESSUNO dei dodici job che passano di qui poteva lasciare una riga rossa. Cosi'' apply_storicizza_weekly e'' morto ogni settimana per sei mesi con l''ultimo verdetto agli atti a «done». ⚠️ L''UPDATE in transazione resta e non e'' un doppione: copre il caso in cui il chiamante catturi l''eccezione senza propagarla, dove la transazione sopravvive. Nel caso normale muore e resta solo la riga fuori transazione — o l''una o l''altra, mai due. ⚠️ Il RAISE non si toglie: smettere di propagare farebbe risultare riuscito un lavoro che non lo e''. Il lavoro si annulla, il verbale no. ⚠️ fn_job_run_log_failure non solleva mai: se il canale dblink non c''e'' emette un WARNING e si torna al comportamento precedente. ⭐ Rev 2026-10-10: col lock occupato la riga nasce SALTATA (saltata = TRUE), chiusa e con ok NULL. Prima nasceva ok = TRUE e aperta — «riuscita e mai chiusa» — e ogni lettore la contava come una corsa vera. Brief: brief-db-corsa-saltata-non-e-una-corsa §8. ⭐ Rev 2026-10-15: le due INSERT scrivono ruolo_sessione = session_user, il ruolo che si e'' collegato (dentro una procedura DEFINER current_user sarebbe il proprietario). La riga di un fallimento la valorizza maintenance.fn_job_run_log_failure. Brief: brief-db-ruoli-di-sistema D-5.';
 ```
 
 ---

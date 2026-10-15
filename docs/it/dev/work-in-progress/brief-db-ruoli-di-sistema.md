@@ -17,10 +17,12 @@ ha bisogno di un superuser per la prova.**
 | 5-ter | ✅ **team DB** | Verifiche sullo scratch `zeroerp_ruoli`: postura dei ruoli, un owner solo, due presidi mirati | §9.4 | — |
 | 5-ter-bis | ✅ **Tid** | La suite pgTAP intera su `zeroerp_ruoli`: **nessuna regressione** rispetto alla baseline di `zeroerp_ci` (2026-10-15) | §9.4 | — |
 | 5-ter-ter | **Tid** | La baseline dello scratch rifatta su `zeroerp_ruoli` (`--update`), dopo aver guardato i rientrati | §10 | niente |
-| 5-quater | **team DB** + **Tid** | Il presidio D-5: due changeSet (uno nel contesto `provision`, da superuser) | §7 D-5 | 5-ter |
+| 5-quater | ✅ **team DB** | Il presidio D-5: `20261015-01…-04`, scritto e provato da capo a fondo (§14) | §14 | — |
+| 5-quinquies | ✅ **Tid** | Apply della D-5 su dbdev (2026-10-15): `-01`…`-04` e i CSV registrati, il `-03` dal provision-post (funzione di `postgres`, `search_path` di casa); baseline in corso | §14.3 | — |
+| 5-sexies | ✅ **Tid** | Apply del `20261015-05` e pgTAP verdi (2026-10-15): le corse `CRON` scrivono `zeroerp_app` | §17 | — |
 | 6 | ✅ **team DB** | Fase 2: i due workflow di GitHub sul modello (§11); provata sul cluster usa-e-getta, verde (§11.2) | §11 | — |
 | 6-bis | **Tid** | Push e prima corsa vera su GitHub; la baseline della CI va guardata | §11.4 | 6 |
-| 7 | **Tid** | Fase 3: allineare dbdev (owner, `titodb` membro con `SET role`, pgAgent come `zeroerp_job`, Liquibase) — da superuser, in una finestra | §6 | 4, 6 |
+| 7 | ✅ **Tid** | Fase 3 (2026-10-15): dbdev convertito (database e oggetti di `zeroerp_owner`, `titodb` membro con `SET role`), pgAgent collegato come `zeroerp_job` dalle 11:33. Il presidio si spegne quando `chiusura_scadenze_daily` e `sync_auth_user_expired_daily` rigirano (12:05, 12:10) | §16 | — |
 | 8 | **team DB** | Fase 4: documentazione d'installazione e ritiro dei vecchi script e ruoli | §6 | 7 |
 
 **Decisioni aperte di Tid: nessuna.** Prese il 2026-10-14: owner `zeroerp_owner`; D-1 … D-5 come
@@ -360,9 +362,9 @@ La postura di `zeroerp_app` resta a `provision_db_roles.sql`, chiamato con
   fermo è un errore vero (codice 3). ⚠️ Lo stesso difetto è in `provision_db_roles.sql` e
   `provision_dblink_log_channel.sql` (variabili obbligatorie mancanti): da correggere con la fase 4,
   quando si unificano.
-* **Un changeSet scrive `titodb` alla lettera**: `90_end/20260205-42` imposta il canale di log per
-  `titodb` e `zeroerp_app` (gira solo quando gli si passa la password del canale). Va sostituito
-  nella fase 3.
+* **Un changeSet scriveva `titodb` alla lettera**: `90_end/20260205-42` impostava il canale di log
+  per `titodb` e `zeroerp_app`. Era `context: disabled` (non girava mai): ✅ ritirato il 2026-10-15
+  (§15), la sede è lo script `provision_dblink_log_channel.sql`.
 * Il canale `dblink` del migratore, sullo scratch del modello, resta **vuoto** come in CI: la stringa
   con la password finirebbe in `pg_db_role_setting`, che ogni ruolo può leggere.
 
@@ -508,3 +510,214 @@ solo la prima corsa su GitHub.
 PR 1 (#1861, mergiata il 2026-10-15): tutto tranne la fase 2, con i workflow nella sola versione
 «`pg_maintain`». PR 2: i due workflow della fase 2 — la prima corsa del modello su GitHub. Dopo, la
 baseline della CI (`baseline-rossi-ci.tsv`) va guardata.
+
+## 12. Documentazione anticipata dalla fase 4 (2026-10-15)
+
+La sede del modello è [provisioning-db-roles.md](../backend/provisioning-db-roles.md): i ruoli di
+sistema, le regole (nomi fissi, membership, password, un owner solo e il registro, job `DEFINER`,
+membership e non nome, il superuser non lavora), **dove il modello è in vigore** (scratch e CI sì,
+sviluppo no fino alla fase 3) e `provision_zeroerp.sql` fase per fase. Rimandano lì, e non lo
+contraddicono più: `liquibase-setup-workflow.md` §2 (`pgagent`, `pg_maintain`), `postgresql/pgAgent.md`
+(«Permessi consigliati»: era `maintenance_executor` e pgAgent come `postgres`), `postgresql/dblink.md`,
+`guide/storicizzazione-tabelle.md`, `guide/statistiche-del-planner.md`, `play-book-operativo-backend.md`.
+Lo scratch nei commenti d'uso di `testpgtap.sh` e `pgtap-baseline.sh` è `zeroerp_ruoli`. Restano per la
+fase 4: unificare gli script (`\quit 1` compreso) e ritirare `--classico`, `zeroerp_ci`, `internal.ci.env`.
+
+## 13. pgAgent come `zeroerp_job`, da capo a fondo (2026-10-15)
+
+Prova sul cluster usa-e-getta, database costruito come in CI, con il **demone pgAgent vero** (4.2.3)
+avviato con `user=zeroerp_job` e tre job programmati per partire subito:
+
+| Job | Esito pgAgent | Giornale | Che cosa dimostra |
+| --- | --- | --- | --- |
+| `CALL maintenance.proc_analyze_statistiche_job()` | riuscito | `analyze_statistiche` ok | la procedura gira come proprietario: `zeroerp_job` da solo non analizzerebbe niente |
+| `CALL maintenance.proc_guardiano_digest_job()` | riuscito | `guardiano_digest` ok | un secondo job reale passa dal giornale |
+| step libero (`CREATE TABLE public…; SELECT … FROM vendite.ddt`) | **fallito** | — | «permesso negato per lo schema public»: `zeroerp_job` può solo chiamare le procedure; nessuna tabella creata |
+
+Nessun errore di permesso del demone sulle tabelle di `pgagent` (i diritti della fase `pre` bastano);
+`zeroerp_job` non è superuser né membro di `zeroerp_owner`.
+
+⚠️ **Da sapere per la fase 3**: `ANALYZE` come `zeroerp_owner` salta i **cataloghi condivisi** del cluster
+(`pg_authid`, `pg_database`, …), che solo un superuser analizza: è la D-1 (catalogo fuori
+dall'autoverifica), quindi il job riesce. Su dbdev oggi pgAgent è superuser e li analizza; dopo la fase 3
+li lascerà all'autovacuum.
+⚠️ Il giornale scrive `origine = PGAGENT` anche per le corse di `ci_apply` (è il default della
+colonna): è il motivo per cui D-5 deve leggere il **ruolo** della corsa, non l'origine.
+
+## 14. D-5 — il ruolo di ogni corsa e il presidio «nessun superuser al lavoro» (2026-10-15)
+
+### 14.1 Che cosa c'è
+
+| Pezzo | Dove |
+| --- | --- |
+| `maintenance.job_run_log.ruolo_sessione`: chi si è collegato (`session_user`), **senza default** | `00_schema/maintenance/20261015-01` |
+| `maintenance.fn_run_and_log` lo scrive nella corsa e nella riga saltata | `20_code/maintenance/20261015-02` |
+| `maintenance.fn_job_run_log_failure` lo scrive nel verbale di un fallimento, letto nella sessione del job; `search_path` nella forma di casa | `20_code/maintenance/20261015-03`, **`context: provision`**, incluso in `changelog-provision-post.yaml` (la funzione è di un superuser: registro `sec_functions_owner`) |
+| La vista `maintenance.vw_job_run_da_superuser`, presidio `ZERO` (chi agisce: sistemista), con il testo | `20_code/maintenance/20261015-04`; `presidi.csv`, `presidi_testi.csv` |
+| pgTAP (plan 8) | `db/pgtap/maintenance/test-job-run-ruolo-sessione-v1.sql` |
+| Rubinetto D6-bis del `search_path`: 5 → 4 | `db/pgtap/dbops/test-security-definer-search-path-v1.sql` |
+| Il canale di log anche per `zeroerp_job` | `scripts/sql/provision_dblink_log_channel.sql` |
+
+**Una semplificazione rispetto alla D-5, sul modello.** Il presidio guarda «superuser» e non «membro
+di `zeroerp_job`»: dal `-55` le procedure dei job le possono chiamare solo proprietario, `zeroerp_job`
+e superuser, e il giornale non distingue pgAgent da `ci_apply` (origine `PGAGENT` di default; pgAgent
+non imposta `application_name`). Si giudica da `rolsuper`, mai dal nome.
+
+**Una lacuna trovata provando, e chiusa.** Il verbale di un fallimento apre il canale `dblink` col
+parametro `myapp.dblink_log_connection` della **sessione**, cioè di `zeroerp_job` sotto pgAgent: i
+workflow e gli script lo impostavano solo per migratore e app. Su dbdev non mordeva (il parametro è
+impostato per tutto il database), su un'installazione nuova sì: un job fallito sotto pgAgent non
+avrebbe lasciato il verbale. `provision_dblink_log_channel.sql` ora lo imposta anche per
+`zeroerp_job` (riga gemella delle due vicine; non lanciata, perché lo script riscrive la password di
+`zeroerp_log`, che è di cluster).
+
+### 14.2 La prova (cluster usa-e-getta, database come in CI, 98 s)
+
+* il `-03` si applica dal provision-post: la funzione resta di `postgres`, `search_path=pg_catalog,
+  public, pg_temp`, il corpo scrive il ruolo;
+* pgTAP verdi: il file nuovo 8 (test 3 in skip **d'ambiente**: il cluster è in `trust`, e `dblink` da
+  un non-superuser vuole una password — lo stesso skip di `test-job-run-saltata-v1`; in CI gira),
+  `search_path` 5 con la soglia a 4, catalogo presidi 11, testi 19, verbale fuori transazione 6,
+  giornale 21 + 11 + 12, procedure dei job 7, riferimenti morti 9, guardiano 9;
+* **da capo a fondo**, chiamate come `zeroerp_job`: `guardiano_digest` riuscita con ruolo
+  `zeroerp_job`; una procedura `DEFINER` che fallisce → riga **fallita scritta fuori transazione con
+  ruolo `zeroerp_job`**; `analyze_statistiche` lanciata da `postgres` → il presidio la nomina, e solo
+  lei.
+
+### 14.3 L'apply su dbdev, e che cosa aspettarsi
+
+⛔ **Su dbdev l'ordine è rovesciato: prima il provision-post, poi il migrate.** Il migrate di dbdev
+gira **senza** `--contexts`, e Liquibase senza contexts esegue anche i changeSet `context: provision`:
+il `-03` (che l'autogen raccoglie da `20_code`) lo prova il migratore e fallisce con «bisogna essere
+proprietari della funzione fn_job_run_log_failure» (successo il 2026-10-15: `-01` e `-02` applicati, il
+migrate fermo al `-03`, `-04` e CSV non ancora). Se il provision-post lo ha già registrato, il migrate
+lo trova fatto e passa — è la strada su cui passò il `20260912-41`. In CI e in `ci-local.sh` la
+passata principale esclude `provision`, e l'ordine scritto sotto vale com'è.
+
+1. migrate: `20261015-01`, `-02`, `-04` e i due CSV dei presidi;
+2. ⚠️ **provision-post da superuser** per il `-03` (la funzione è di `postgres`):
+   `scripts/liquibase5.sh --url=… --username=postgres --password=… --changeLogFile=db/changelog/changelog-provision-post.yaml update --contexts=provision`.
+   Finché non passa, `test-security-definer-search-path-v1` test 5 è **rosso** (la soglia è già 4) e le
+   righe dei fallimenti hanno `ruolo_sessione` NULL;
+3. ⚠️ **il presidio si accende su dbdev** alla prima corsa notturna: pgAgent si collega ancora come
+   `postgres`. Dice il vero; si spegne con la fase 3.
+
+## 15. Fase 4 — la parte anticipata (2026-10-15)
+
+* ✅ **`\quit 1` → errore vero** in cinque script (`check_db_role_access`, `provision_db_roles`,
+  `provision_dblink_log_channel`, `provision_db_role_batch_fatturazione`,
+  `retire_db_role_batch_fatturazione`): un fermo usciva con 0, ora con 3 (provato su ognuno).
+* ✅ Il canale di log per `zeroerp_job` (§14.1).
+* ✅ **`90_end/20260205-42` ritirato** (decisione di Tid, 2026-10-15): impostava il canale per `titodb`
+  alla lettera, ma era `context: disabled` e non girava mai. Una seconda copia del provisioning del canale,
+  morta: la sede è `scripts/sql/provision_dblink_log_channel.sql`, che segue il modello (migratore, app,
+  `zeroerp_job`). Su dbdev la riga in `databasechangelog` resta (RERAN del 2026-02-05): Liquibase non
+  protesta per un changeSet registrato il cui file non c'è più.
+* ⬜ **Distruttivi, da superuser sul cluster vero, con Tid**: ritiro di `zeroerp_batch_fatturazione`
+  (script pronto), di `pgagent`, di `zeroerp_ci` con `internal.ci.env` e `--classico` (dopo che la CI
+  col modello ha fatto girare anche i pgTAP).
+* ⬜ **Unificare gli script** in un ingresso solo: dopo la fase 3, quando non serve più il migratore
+  come variabile.
+
+## 16. Fase 3 — dbdev si converte al modello (2026-10-15)
+
+### 16.1 Lo script
+
+`scripts/sql/converti_db_al_modello_ruoli.sql`, da superuser, sul database da convertire, con
+`-v utente_personale=titodb`. **Generico**: serve a qualunque database nato prima del modello, non
+solo a dbdev. **Una transazione sola**: o tutto o niente. Con `-v solo_prova=1` fa tutto, verifica
+tutto e annulla.
+
+1. fase `ruoli` di `provision_zeroerp.sql`: postura dei ruoli di sistema, database a `zeroerp_owner`,
+   `CONNECT` a `zeroerp_job` e `zeroerp_app`;
+2. `REASSIGN OWNED BY titodb TO zeroerp_owner`. ⚠️ Prende anche gli oggetti **condivisi**: gli altri
+   database di `titodb` (su dbdev `zeroerp_b2_test`) gli vengono restituiti;
+3. i 48 privilegi di default di `titodb` **ricopiati** per `zeroerp_owner`, con gli stessi destinatari
+   (anche `zeroerp_batch_fatturazione`, che si ritira con la fase 4). Quelli di `titodb` restano: non
+   crea più niente a nome suo;
+4. `GRANT zeroerp_owner TO titodb` e `ALTER ROLE titodb IN DATABASE zeroerp SET role = zeroerp_owner`
+   (D-1). `db/liquibase.properties` e `db/internal.env` **non cambiano**: Liquibase, il runner pgTAP e
+   una psql di Tid lavorano come proprietario. `SET ROLE NONE` torna a `titodb`, `RESET ROLE` al
+   proprietario;
+5. fasi `pre` e `post` di `provision_zeroerp.sql`: `pgagent`, `EXECUTE` di `zeroerp_job` sulle 16
+   procedure, **verifica «un owner solo»**;
+6. verifica che `titodb` non possieda più niente in `zeroerp`.
+
+Fatti datati (dbdev, 2026-10-15): `titodb` possiede 1213 relazioni, 1151 funzioni, 20 schemi, 15 tipi;
+`postgres` solo le funzioni del registro; nessun oggetto del progetto di `postgres` fuori registro.
+
+### 16.2 La prova (cluster usa-e-getta, struttura di dbdev, 2026-10-15)
+
+Struttura di dbdev (`pg_dump -s` come `titodb`) più le 5 righe del registro `sec_functions_owner`,
+restore senza errori, stessa tabella dei lock di dbdev (64 × 50):
+
+* prova a vuoto: tutto verificato, ROLLBACK, proprietari invariati;
+* conversione: **0,35 s**; 1213 relazioni a `zeroerp_owner`; restano di `postgres` solo le 5 funzioni
+  del registro e `fn_sync_functions_owner`; `zeroerp_b2_test` resta di `titodb`; 48 default per
+  `zeroerp_owner`;
+* una sessione di `titodb`: `session_user=titodb`, `current_user=zeroerp_owner`; tabella e funzione
+  nuove nascono di `zeroerp_owner` e `zeroerp_app` le usa; su `zeroerp_b2_test` `titodb` resta se stesso;
+* `zeroerp_job`: `EXECUTE` su 16 procedure su 16, `pgagent` leggibile e scrivibile;
+* rilancio: idempotente.
+
+⚠️ **I lock**: `REASSIGN OWNED` ne prende **4036** in una transazione, oltre i 3200 nominali di dbdev.
+Sul cluster di prova è bastato; se su dbdev la conversione si fermasse con «out of shared memory», si
+alza `max_locks_per_transaction` (riavvio) e si rilancia: non resta niente a metà.
+⛔ La prova ha trovato un trucco: senza le righe del registro (copia della sola struttura) la conversione
+dà a `zeroerp_owner` anche le funzioni che devono restare di un superuser. Su dbdev il registro c'è.
+
+### 16.3 I passi di Tid, in una finestra
+
+1. `sudo systemctl stop pgagent` (lo script si rifiuta se vede una sessione al lavoro su `pgagent`);
+   nessun lavoro lungo del backend in corso (lo script blocca ogni tabella, per un istante);
+2. prova a vuoto, poi la vera:
+   ```
+   PGPASSWORD="$PGPASSWORD_POSTGRES" psql -h localhost -U postgres -d zeroerp \
+     -v utente_personale=titodb -v solo_prova=1 -f scripts/sql/converti_db_al_modello_ruoli.sql
+   PGPASSWORD="$PGPASSWORD_POSTGRES" psql -h localhost -U postgres -d zeroerp \
+     -v utente_personale=titodb -f scripts/sql/converti_db_al_modello_ruoli.sql
+   ```
+3. pgAgent come `zeroerp_job`: nell'override dell'unità (`sudo systemctl edit pgagent`)
+   ```
+   ExecStart=
+   ExecStart=/usr/bin/pgagent -f -l 1 "host=127.0.0.1 dbname=zeroerp user=zeroerp_job"
+   ```
+   e in `/var/lib/postgresql/.pgpass` (proprietario `postgres`, `0600`) **una riga in più**
+   `127.0.0.1:5432:zeroerp:zeroerp_job:<password di zeroerp_job>`. ⚠️ libpq confronta l'host **come
+   testo**: `localhost` e `127.0.0.1` sono due righe diverse, quindi l'host della riga è lo stesso della
+   connessione. ⛔ Le altre righe non si toccano ora: quella di `zeroerp_log` serve al canale di log (il
+   `service=zeroerp_log` di `/var/lib/postgresql/.pg_service.conf` prende la password da qui, perché
+   `dblink` si collega dal processo del server, utente di sistema `postgres`); quelle di `pgagent` e
+   `loguser` (ruolo che non esiste più) si tolgono con i ritiri della fase 4. Poi
+   `sudo systemctl daemon-reload && sudo systemctl start pgagent`. ⚠️ Su socket (`host=/var/run/…`)
+   l'autenticazione `peer` rifiuterebbe `zeroerp_job` (utente di sistema `postgres`): per questo TCP;
+4. controllo: `journalctl -u pgagent -n 20` senza errori di autenticazione; dopo la prima corsa
+   notturna `maintenance.job_run_log.ruolo_sessione = 'zeroerp_job'` e il presidio
+   `maintenance.vw_job_run_da_superuser` **vuoto**;
+5. baseline pgTAP completa (cambia il proprietario di ogni funzione `SECURITY DEFINER`).
+
+Tornare indietro, se servisse: ⛔ **non** `REASSIGN OWNED BY zeroerp_owner TO titodb`: prenderebbe anche
+il database `zeroerp_ruoli`, che è di `zeroerp_owner`. Si fa con lo stesso schema dello script, a
+parti invertite e con la restituzione degli altri database.
+
+## 17. Il terzo scrittore del giornale — `20261015-05` (2026-10-15)
+
+Dopo l'apply della D-5 il giornale di dbdev aveva ancora righe con `ruolo_sessione` NULL ogni minuto:
+`draina_coda_lavori`, `draina_coda_stampa`, `send_pending_emails`, origine `CRON`. Le scrive
+`script.fn_job_run_start`, l'apertura delle corse **headless** del backend (management command, cron,
+systemd): un terzo scrittore che la D-5 (§7, §14) non aveva censito.
+
+Al presidio non sfuggiva niente di oggi (quelle corse girano come `zeroerp_app`), ma una corsa headless
+lanciata da un amministratore sarebbe passata invisibile.
+
+* `20_code/script/20261015-05`: le due `INSERT` (corsa e riga saltata) scrivono
+  `ruolo_sessione = session_user`; corpo dal `20261010-21`, identico al vivo (confrontato su dbdev);
+  firma, `SECURITY DEFINER` e `search_path` invariati. Aggiorna anche il `COMMENT` della colonna (tre
+  scrittori). Funzione del proprietario: **passata normale**, niente provision-post;
+* pgTAP `maintenance/test-job-run-ruolo-sessione-v1`: plan 8 → 10 (test 9 la corsa, test 10 la riga
+  saltata, con lo stesso skip d'ambiente del test 3).
+
+**Prova** (dbdev, SQL estratto in transazione annullata, 2026-10-15): con il `-05` 8 verdi e 2 skip
+d'ambiente; **senza** il `-05` il test 9 è rosso (il test misura). Il ramo della riga saltata provato a
+parte con due sessioni vere (una tiene il lock): `acquired = false`, `saltata = true`,
+`ruolo_sessione = titodb`.

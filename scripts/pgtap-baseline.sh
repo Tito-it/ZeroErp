@@ -62,14 +62,15 @@
 #   della suite, quando quel file non esiste, la genera e la stampa fra due
 #   marcatori `----- 8< -----`. Si copia da li' e si committa.
 #
-#   ⛔ `PGDATABASE=zeroerp_ci` NON basta e non avvisa: l'env file viene
+#   ⛔ `PGDATABASE=zeroerp_ruoli` NON basta e non avvisa: l'env file viene
 #   caricato con `set -a; source` e sovrascrive l'ambiente, quindi la corsa
 #   finirebbe su SVILUPPO e i suoi rossi verrebbero scritti nella baseline
 #   della CI. Si sceglie il FILE, non la variabile — vedi testpgtap.sh.
 #   ⚠️ E il database scratch va preparato come la CI, o il metro non e' lo
-#   stesso: `--ci-apply` (senza, mancano i trigger di audit/tx_id/storico) e
-#   `scripts/sql/provision_db_roles.sql` con `migrator_role=zeroerp` (senza,
-#   `zeroerp_app` non ha nessun diritto e i rossi sono tutti permessi).
+#   stesso: `scripts/ci-local.sh --ci-apply` (senza `--ci-apply` mancano i
+#   trigger di audit/tx_id/storico). Lo scratch e' `zeroerp_ruoli` (env file
+#   db/internal.ruoli.env, owner zeroerp_owner); `zeroerp_ci` e' quello classico
+#   (--classico), fermo dal 2026-10-15.
 #   ⭐ Dal 2026-09-09 la PRIMA delle due non e' piu' solo questa riga di prosa:
 #   e' un cancello che ferma la corsa PRIMA di eseguirla (exit 2). La seconda
 #   resta prosa — un ruolo senza diritti si riconosce dal primo rosso, una

@@ -55,21 +55,25 @@ L'**agent di schedulazione** per PostgreSQL. In Zero ERP lo adotteremo come **be
 
 ## Permessi consigliati
 
-* Utente/servizio del pgAgent con ruolo dedicato (es. `maintenance_executor`):
+Il demone pgAgent si collega come **`zeroerp_job`**, un ruolo di sistema che **non
+possiede niente** e può soltanto chiamare le procedure dei job
+(`maintenance.proc_*_job`). Le procedure sono `SECURITY DEFINER` del proprietario
+(`zeroerp_owner`): il lavoro gira come lui, e ciò che crea nasce suo. Uno step
+scritto a mano che non sia una di quelle procedure, come `zeroerp_job`, fallisce:
+è voluto.
 
-  * `USAGE` su schema `maintenance`
-  * `EXECUTE` su funzioni/procedure in `maintenance`
-  * privilegi minimi necessari su oggetti target (tabelle, viste, ecc.)
+* ⛔ **Non come `postgres`.** Un job che gira da superuser crea oggetti col
+  proprietario sbagliato (le shadow di storico, per esempio).
+* ⛔ **Non come il proprietario.** Uno step scritto a mano potrebbe fare
+  qualunque cosa sul progetto.
 
-```sql
--- Ruolo e grant di base
-CREATE ROLE IF NOT EXISTS maintenance_executor;
-GRANT USAGE ON SCHEMA maintenance TO maintenance_executor;
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA maintenance TO maintenance_executor;
-ALTER DEFAULT PRIVILEGES IN SCHEMA maintenance GRANT EXECUTE ON FUNCTIONS TO maintenance_executor;
--- Assegna il ruolo all'utente con cui gira pgAgent (es. postgres o zeroerp)
-GRANT maintenance_executor TO postgres;
-```
+Il ruolo, i suoi diritti su `pgagent` e l'`EXECUTE` sulle procedure li dà
+`scripts/sql/provision_zeroerp.sql`: modello e regole in
+[Provisioning ruoli DB](/dev/backend/provisioning-db-roles). Il servizio si configura con `user=zeroerp_job` nella stringa di
+connessione e la password in `.pgpass`.
+
+⚠️ Sul server di sviluppo il demone gira ancora come `postgres`, finché lo
+sviluppo non si allinea al modello (fase 3 di `brief-db-ruoli-di-sistema`).
 
 ---
 

@@ -54,10 +54,14 @@
 \echo [ZeroErp] Ritiro ruolo batch (R-2)
 \echo [ZeroErp] Required vars: batch_role
 
+-- ⛔ Un fermo e' un ERRORE VERO: `\quit 1` esce con 0 (psql ignora il codice),
+--   quindi chi lancia lo script da una pipeline lo crederebbe riuscito.
+--   Corretto il 2026-10-15 (brief-db-ruoli-di-sistema, fase 4).
 \if :{?batch_role}
 \else
 \echo ERROR: missing -v batch_role=...
-\quit 1
+\set ON_ERROR_STOP on
+DO $$ BEGIN RAISE EXCEPTION 'ERROR: missing -v batch_role=...'; END $$;
 \endif
 
 -- ---------------------------------------------------------------------------

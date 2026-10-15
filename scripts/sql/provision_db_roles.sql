@@ -4,16 +4,21 @@
 \echo [ZeroErp] Required vars: app_role, app_password
 \echo [ZeroErp] Optional vars: migrator_role (default: titodb), db_name (default: current db)
 
+-- ⛔ Un fermo e' un ERRORE VERO: `\quit 1` esce con 0 (psql ignora il codice),
+--   quindi chi lancia lo script da una pipeline lo crederebbe riuscito.
+--   Corretto il 2026-10-15 (brief-db-ruoli-di-sistema, fase 4).
 \if :{?app_role}
 \else
 \echo ERROR: missing -v app_role=...
-\quit 1
+\set ON_ERROR_STOP on
+DO $$ BEGIN RAISE EXCEPTION 'ERROR: missing -v app_role=...'; END $$;
 \endif
 
 \if :{?app_password}
 \else
 \echo ERROR: missing -v app_password=...
-\quit 1
+\set ON_ERROR_STOP on
+DO $$ BEGIN RAISE EXCEPTION 'ERROR: missing -v app_password=...'; END $$;
 \endif
 
 \if :{?migrator_role}

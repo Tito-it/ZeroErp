@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION maintenance.fn_job_run_log_failure(p_jobname text, p_
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     v_sql  text;
@@ -39,9 +39,9 @@ BEGIN
         'INSERT INTO maintenance.job_run_log '
         '(jobname, stepname, started_at, ended_at, ok, message, '
         ' error_code, error_detail, agent_host, run_uuid, origine, '
-        ' meta, processo_codice, auth_user_id) '
+        ' meta, processo_codice, auth_user_id, ruolo_sessione) '
         'VALUES (%L, %L, %L, now(), false, %L, %L, %L, %L, %L, %L, '
-        '        %L::jsonb, %L, %s)',
+        '        %L::jsonb, %L, %s, %L)',
         p_jobname, p_stepname, p_started_at,
         p_message, p_error_code, p_error_detail,
         current_setting('cluster_name', true),
@@ -54,7 +54,12 @@ BEGIN
             'motivo', 'il RAISE avrebbe annullato il verbale insieme al lavoro'
         )::text,
         p_processo_codice,
-        COALESCE(p_auth_user_id::text, 'NULL'));
+        COALESCE(p_auth_user_id::text, 'NULL'),
+        -- ⭐ Rev 2026-10-15 (D-5): il ruolo che si e' COLLEGATO per la corsa.
+        --   Si legge QUI, nella sessione del job: la INSERT gira via dblink
+        --   in un'altra sessione, dove session_user sarebbe il canale di log.
+        --   Dentro questa funzione DEFINER session_user resta il chiamante.
+        session_user);
 
     BEGIN
         -- 1. la connessione nominata, gestita dal canale esistente
@@ -91,7 +96,7 @@ END
 $function$
 
 COMMENT ON FUNCTION maintenance.fn_job_run_log_failure(p_jobname text, p_stepname text, p_started_at timestamp with time zone, p_run_uuid uuid, p_origine character varying, p_processo_codice text, p_auth_user_id integer, p_message text, p_error_code text, p_error_detail text)
-IS 'Scrive una riga di run FALLITO in maintenance.job_run_log su una connessione SEPARATA (dblink), cosi'' che sopravviva al RAISE che annulla la transazione. ⛔ Esiste perche'' fn_run_and_log scriveva il verbale del fallimento e poi lo distruggeva: il RAISE fa rollback anche di quella riga, quindi NESSUNO dei dodici job poteva lasciare una riga rossa — ed e'' cosi'' che apply_storicizza_weekly e'' morto ogni settimana per sei mesi con l''ultimo verdetto a «done». ⭐ Riusa il canale gia'' in servizio di script.fn_log_error_only (143.000 righe in dbops.error_log lo dimostrano, fra cui 262 di un guard che esiste solo per sollevare eccezioni). ⛔ NON e'' una primitiva di esecuzione SQL arbitraria: prende parametri tipizzati e costruisce da sola il proprio INSERT con format(%L). ⚠️ Ogni via d''uscita e'' un WARNING: la chiama un gestore d''eccezione, e non si fa fallire un lavoro perche'' non si e'' riusciti a scrivere una nota su di lui — il rovescio e'' che quando il canale non c''e'' TACE, quindi va verificato una volta sul percorso vero di un job. ⚠️ SECURITY DEFINER: dblink rifiuta a un non-superuser una connessione senza password. L''owner (postgres) NON lo mette il changeSet — lo allinea dbops.fn_sync_functions_owner() dalla riga in dbops.sec_functions_owner, a ogni migrate.';
+IS 'Scrive una riga di run FALLITO in maintenance.job_run_log su una connessione SEPARATA (dblink), cosi'' che sopravviva al RAISE che annulla la transazione. ⛔ Esiste perche'' fn_run_and_log scriveva il verbale del fallimento e poi lo distruggeva: il RAISE fa rollback anche di quella riga, quindi NESSUNO dei dodici job poteva lasciare una riga rossa — ed e'' cosi'' che apply_storicizza_weekly e'' morto ogni settimana per sei mesi con l''ultimo verdetto a «done». ⭐ Riusa il canale gia'' in servizio di script.fn_log_error_only (143.000 righe in dbops.error_log lo dimostrano, fra cui 262 di un guard che esiste solo per sollevare eccezioni). ⛔ NON e'' una primitiva di esecuzione SQL arbitraria: prende parametri tipizzati e costruisce da sola il proprio INSERT con format(%L). ⚠️ Ogni via d''uscita e'' un WARNING: la chiama un gestore d''eccezione, e non si fa fallire un lavoro perche'' non si e'' riusciti a scrivere una nota su di lui — il rovescio e'' che quando il canale non c''e'' TACE, quindi va verificato una volta sul percorso vero di un job. ⚠️ SECURITY DEFINER: dblink rifiuta a un non-superuser una connessione senza password. L''owner (postgres) NON lo mette il changeSet — lo allinea dbops.fn_sync_functions_owner() dalla riga in dbops.sec_functions_owner, a ogni migrate. ⭐ Rev 2026-10-15: scrive anche ruolo_sessione = session_user, letto nella sessione del job e non in quella del canale dblink; search_path pg_catalog, public, pg_temp (forma di casa, rubinetto D6-bis 5 -> 4). Brief: brief-db-ruoli-di-sistema D-5.';
 ```
 
 ---

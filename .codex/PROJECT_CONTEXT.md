@@ -314,7 +314,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - ⬜ **I ruoli di sistema — aperto il 2026-10-14** (`work-in-progress/brief-db-ruoli-di-sistema.md`): nomi
   fissi (`zeroerp_owner`, `zeroerp_app`, `zeroerp_log`), password senza default, un provisioning unico per CI,
   scratch e installazione; un owner solo anche su dbdev (oggi `titodb` su dev, `zeroerp` in CI); pgAgent come
-  `zeroerp_job`, che chiama solo le procedure dei job, `DEFINER` di `zeroerp_owner` (D-2). Decisioni tutte prese (14-10). Fase 1-bis scritta e provata: le 16 procedure dei job `DEFINER` (`20261014-55`), da applicare dopo aver tolto a mano su dbdev la firma orfana `proc_apply_fk_index_policy_job()`. Fase 1 scritta: `scripts/sql/provision_zeroerp.sql` + `ci-local.sh --modello-ruoli` (scratch `zeroerp_ruoli`), da lanciare da Tid con `sudo`.
+  `zeroerp_job`, che chiama solo le procedure dei job, `DEFINER` di `zeroerp_owner` (D-2). Decisioni tutte prese (14-10). Fase 1-bis scritta e provata: le 16 procedure dei job `DEFINER` (`20261014-55`), da applicare dopo aver tolto a mano su dbdev la firma orfana `proc_apply_fk_index_policy_job()`. Fasi 1, 1-bis e 2 fatte (PR #1861 e la PR della CI sul modello); scratch `zeroerp_ruoli`, default di `ci-local.sh`. D-5 scritta e provata (`20261015-01…-04`: ruolo di ogni corsa nel giornale, presidio `vw_job_run_da_superuser`; il `-03` va col provision-post da superuser). Prossimi: apply D-5, fase 3 (dbdev sul modello, da superuser).
 - ⬜ **Le statistiche delle tabelle: un job notturno (D15) — aperto il 2026-10-14**
   (`work-in-progress/brief-db-statistiche-tabelle-job-notturno.md`): nessuno lancia `ANALYZE`, l'autovacuum
   non arriva alle tabelle piccole né alle madri partizionate, e in CI i pgTAP partono senza statistiche. Disegno:
@@ -630,8 +630,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `tx_id = uuid_nil`** (DB+CI, ereditata il 2026-09-19 dalla chiusura di
   `work-done/brief-db-privilegio-app-job-run-log.md`, §5). La sede del
   privilegio esiste — `scripts/sql/provision_dblink_log_channel.sql` — ma la CI
-  non la esegue: il changeSet che la incarna (`90_end/20260205-42`) è
-  `context: disabled`, il bootstrap di `ci-validate.yaml` crea il ruolo e il
+  non la esegue (il vecchio changeSet `90_end/20260205-42`, `context:
+  disabled`, è stato ritirato il 2026-10-15), il bootstrap di `ci-validate.yaml` crea il ruolo e il
   DSN senza concedergli niente su `dbops`, e `90_end/20260905-38` gli dà
   `maintenance`, non `dbops`. Su dev il grant c'è, a mano (§11.9, stessa
   forma). Effetto: `fn_get_or_create_session_tx_id` ripiega su `uuid_nil`

@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ NESSUN SUPERUSER AL LAVORO — il presidio.
+#   Brief: brief-db-ruoli-di-sistema §7 D-5
+#
+# Per ogni processo, l'ULTIMA corsa registrata nel giornale; e' un guasto se il
+# ruolo che si e' collegato e' un superuser.
+#
+# ── ⭐ PERCHE' BASTA «superuser», e non «membro di zeroerp_job» ──────────
+#   D-5 diceva: una corsa di pgAgent e' in regola se il ruolo e' membro di
+#   zeroerp_job, non superuser, non membro di zeroerp_owner. Due fatti,
+#   misurati il 2026-10-15, la riducono a «non superuser» senza perdere niente:
+#   * il giornale NON distingue una corsa di pgAgent da una di ci_apply o
+#     lanciata a mano: `origine` vale PGAGENT di default per tutte, e pgAgent
+#     non imposta application_name;
+#   * dal 20261014-55 le procedure dei job non hanno EXECUTE per PUBLIC ne' per
+#     l'app (presidio maintenance/test-proc-job-definer-v1): possono chiamarle
+#     solo il proprietario e i suoi membri, zeroerp_job e i suoi membri, un
+#     superuser. Il proprietario e' legittimo (ci_apply, una persona); quello
+#     che resta da vedere e' il superuser.
+#   ⛔ E si giudica dagli ATTRIBUTI (pg_roles.rolsuper), mai dal nome: chi
+#   installa puo' far girare pgAgent con un suo utente.
+#
+# ⚠️ Le corse con ruolo_sessione NULL (prima del 2026-10-15, o il verbale di un
+#   fallimento prima che il provision-post applichi 20261015-03) non entrano:
+#   «non registrato» non e' un guasto.
+# ⚠️ Un ruolo che non esiste piu' (pg_roles senza riga) non entra: non e' un
+#   superuser.
+# ⭐ Natura ZERO nel catalogo dei presidi: deve restare vuota. Su dbdev, finche'
+#   pgAgent si collega come postgres (fase 3 di brief-db-ruoli-di-sistema),
+#   DICE IL VERO e si accende.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261015-04-create-vw-job-run-da-superuser-mctit.yaml
+
+  - changeSet:
+      id: 20261015-04-create-vw-job-run-da-superuser
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.vw_job_run_da_superuser: per ogni processo l'ultima corsa del giornale, se il
+        ruolo che si e' collegato e' un superuser. Deve restare vuota. Brief:
+        brief-db-ruoli-di-sistema D-5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: maintenance
+                tableName: job_run_log
+                columnName: ruolo_sessione
+            - not:
+                - viewExists:
+                    schemaName: maintenance
+                    viewName: vw_job_run_da_superuser
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW maintenance.vw_job_run_da_superuser AS
+              WITH ultima AS (
+                  SELECT DISTINCT ON (coalesce(l.processo_codice, l.jobname))
+                         coalesce(l.processo_codice, l.jobname) AS processo_codice,
+                         l.jobname,
+                         l.started_at,
+                         l.ok,
+                         l.origine,
+                         l.ruolo_sessione
+                    FROM maintenance.job_run_log l
+                   WHERE l.ruolo_sessione IS NOT NULL
+                   ORDER BY coalesce(l.processo_codice, l.jobname), l.started_at DESC, l.id DESC
+              )
+              SELECT u.processo_codice,
+                     u.jobname,
+                     u.started_at,
+                     u.ok,
+                     u.origine,
+                     u.ruolo_sessione
+                FROM ultima u
+                JOIN pg_catalog.pg_roles r ON r.rolname = u.ruolo_sessione
+               WHERE r.rolsuper;
+
+              COMMENT ON VIEW maintenance.vw_job_run_da_superuser IS
+                  'PRESIDIO «nessun superuser al lavoro»: per ogni processo l''ULTIMA corsa del giornale, se il ruolo che si e'' collegato (ruolo_sessione) e'' un superuser. Deve restare vuota. Basta «superuser» e non «membro di zeroerp_job» perche'' le procedure dei job sono chiamabili solo da proprietario, zeroerp_job e superuser (EXECUTE tolto a PUBLIC, 20261014-55), e il giornale non distingue pgAgent da ci_apply (origine PGAGENT di default, nessun application_name). Si giudica da pg_roles.rolsuper, mai dal nome. Esclusi ruolo_sessione NULL (non registrato) e ruoli che non esistono piu''. Brief: brief-db-ruoli-di-sistema D-5.';
+
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      GRANT SELECT ON maintenance.vw_job_run_da_superuser TO zeroerp_app;
+                  ELSE
+                      RAISE NOTICE 'ruolo zeroerp_app assente: GRANT saltato';
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP VIEW IF EXISTS maintenance.vw_job_run_da_superuser;

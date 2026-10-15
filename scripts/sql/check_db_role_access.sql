@@ -1,10 +1,14 @@
 \echo [ZeroErp] Checking runtime role access
 \echo [ZeroErp] Required var: app_role
 
+-- ⛔ Un fermo e' un ERRORE VERO: `\quit 1` esce con 0 (psql ignora il codice),
+--   quindi chi lancia lo script da una pipeline lo crederebbe riuscito.
+--   Corretto il 2026-10-15 (brief-db-ruoli-di-sistema, fase 4).
 \if :{?app_role}
 \else
 \echo ERROR: missing -v app_role=...
-\quit 1
+\set ON_ERROR_STOP on
+DO $$ BEGIN RAISE EXCEPTION 'ERROR: missing -v app_role=...'; END $$;
 \endif
 
 SELECT :'app_role' AS app_role, current_database() AS db_name;
