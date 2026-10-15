@@ -19,9 +19,10 @@ ha bisogno di un superuser per la prova.**
 | 5-ter-ter | **Tid** | La baseline dello scratch rifatta su `zeroerp_ruoli` (`--update`), dopo aver guardato i rientrati | §10 | niente |
 | 5-quater | ✅ **team DB** | Il presidio D-5: `20261015-01…-04`, scritto e provato da capo a fondo (§14) | §14 | — |
 | 5-quinquies | ✅ **Tid** | Apply della D-5 su dbdev (2026-10-15): `-01`…`-04` e i CSV registrati, il `-03` dal provision-post (funzione di `postgres`, `search_path` di casa); baseline in corso | §14.3 | — |
+| 5-sexies | ✅ **Tid** | Apply del `20261015-05` e pgTAP verdi (2026-10-15): le corse `CRON` scrivono `zeroerp_app` | §17 | — |
 | 6 | ✅ **team DB** | Fase 2: i due workflow di GitHub sul modello (§11); provata sul cluster usa-e-getta, verde (§11.2) | §11 | — |
 | 6-bis | **Tid** | Push e prima corsa vera su GitHub; la baseline della CI va guardata | §11.4 | 6 |
-| 7 | **Tid** | Fase 3: allineare dbdev (owner, `titodb` membro con `SET role`, pgAgent come `zeroerp_job`, Liquibase) — da superuser, in una finestra | §6 | 4, 6 |
+| 7 | ✅ **Tid** | Fase 3 (2026-10-15): dbdev convertito (database e oggetti di `zeroerp_owner`, `titodb` membro con `SET role`), pgAgent collegato come `zeroerp_job` dalle 11:33. Il presidio si spegne quando `chiusura_scadenze_daily` e `sync_auth_user_expired_daily` rigirano (12:05, 12:10) | §16 | — |
 | 8 | **team DB** | Fase 4: documentazione d'installazione e ritiro dei vecchi script e ruoli | §6 | 7 |
 
 **Decisioni aperte di Tid: nessuna.** Prese il 2026-10-14: owner `zeroerp_owner`; D-1 … D-5 come
@@ -617,3 +618,106 @@ passata principale esclude `provision`, e l'ordine scritto sotto vale com'è.
   col modello ha fatto girare anche i pgTAP).
 * ⬜ **Unificare gli script** in un ingresso solo: dopo la fase 3, quando non serve più il migratore
   come variabile.
+
+## 16. Fase 3 — dbdev si converte al modello (2026-10-15)
+
+### 16.1 Lo script
+
+`scripts/sql/converti_db_al_modello_ruoli.sql`, da superuser, sul database da convertire, con
+`-v utente_personale=titodb`. **Generico**: serve a qualunque database nato prima del modello, non
+solo a dbdev. **Una transazione sola**: o tutto o niente. Con `-v solo_prova=1` fa tutto, verifica
+tutto e annulla.
+
+1. fase `ruoli` di `provision_zeroerp.sql`: postura dei ruoli di sistema, database a `zeroerp_owner`,
+   `CONNECT` a `zeroerp_job` e `zeroerp_app`;
+2. `REASSIGN OWNED BY titodb TO zeroerp_owner`. ⚠️ Prende anche gli oggetti **condivisi**: gli altri
+   database di `titodb` (su dbdev `zeroerp_b2_test`) gli vengono restituiti;
+3. i 48 privilegi di default di `titodb` **ricopiati** per `zeroerp_owner`, con gli stessi destinatari
+   (anche `zeroerp_batch_fatturazione`, che si ritira con la fase 4). Quelli di `titodb` restano: non
+   crea più niente a nome suo;
+4. `GRANT zeroerp_owner TO titodb` e `ALTER ROLE titodb IN DATABASE zeroerp SET role = zeroerp_owner`
+   (D-1). `db/liquibase.properties` e `db/internal.env` **non cambiano**: Liquibase, il runner pgTAP e
+   una psql di Tid lavorano come proprietario. `SET ROLE NONE` torna a `titodb`, `RESET ROLE` al
+   proprietario;
+5. fasi `pre` e `post` di `provision_zeroerp.sql`: `pgagent`, `EXECUTE` di `zeroerp_job` sulle 16
+   procedure, **verifica «un owner solo»**;
+6. verifica che `titodb` non possieda più niente in `zeroerp`.
+
+Fatti datati (dbdev, 2026-10-15): `titodb` possiede 1213 relazioni, 1151 funzioni, 20 schemi, 15 tipi;
+`postgres` solo le funzioni del registro; nessun oggetto del progetto di `postgres` fuori registro.
+
+### 16.2 La prova (cluster usa-e-getta, struttura di dbdev, 2026-10-15)
+
+Struttura di dbdev (`pg_dump -s` come `titodb`) più le 5 righe del registro `sec_functions_owner`,
+restore senza errori, stessa tabella dei lock di dbdev (64 × 50):
+
+* prova a vuoto: tutto verificato, ROLLBACK, proprietari invariati;
+* conversione: **0,35 s**; 1213 relazioni a `zeroerp_owner`; restano di `postgres` solo le 5 funzioni
+  del registro e `fn_sync_functions_owner`; `zeroerp_b2_test` resta di `titodb`; 48 default per
+  `zeroerp_owner`;
+* una sessione di `titodb`: `session_user=titodb`, `current_user=zeroerp_owner`; tabella e funzione
+  nuove nascono di `zeroerp_owner` e `zeroerp_app` le usa; su `zeroerp_b2_test` `titodb` resta se stesso;
+* `zeroerp_job`: `EXECUTE` su 16 procedure su 16, `pgagent` leggibile e scrivibile;
+* rilancio: idempotente.
+
+⚠️ **I lock**: `REASSIGN OWNED` ne prende **4036** in una transazione, oltre i 3200 nominali di dbdev.
+Sul cluster di prova è bastato; se su dbdev la conversione si fermasse con «out of shared memory», si
+alza `max_locks_per_transaction` (riavvio) e si rilancia: non resta niente a metà.
+⛔ La prova ha trovato un trucco: senza le righe del registro (copia della sola struttura) la conversione
+dà a `zeroerp_owner` anche le funzioni che devono restare di un superuser. Su dbdev il registro c'è.
+
+### 16.3 I passi di Tid, in una finestra
+
+1. `sudo systemctl stop pgagent` (lo script si rifiuta se vede una sessione al lavoro su `pgagent`);
+   nessun lavoro lungo del backend in corso (lo script blocca ogni tabella, per un istante);
+2. prova a vuoto, poi la vera:
+   ```
+   PGPASSWORD="$PGPASSWORD_POSTGRES" psql -h localhost -U postgres -d zeroerp \
+     -v utente_personale=titodb -v solo_prova=1 -f scripts/sql/converti_db_al_modello_ruoli.sql
+   PGPASSWORD="$PGPASSWORD_POSTGRES" psql -h localhost -U postgres -d zeroerp \
+     -v utente_personale=titodb -f scripts/sql/converti_db_al_modello_ruoli.sql
+   ```
+3. pgAgent come `zeroerp_job`: nell'override dell'unità (`sudo systemctl edit pgagent`)
+   ```
+   ExecStart=
+   ExecStart=/usr/bin/pgagent -f -l 1 "host=127.0.0.1 dbname=zeroerp user=zeroerp_job"
+   ```
+   e in `/var/lib/postgresql/.pgpass` (proprietario `postgres`, `0600`) **una riga in più**
+   `127.0.0.1:5432:zeroerp:zeroerp_job:<password di zeroerp_job>`. ⚠️ libpq confronta l'host **come
+   testo**: `localhost` e `127.0.0.1` sono due righe diverse, quindi l'host della riga è lo stesso della
+   connessione. ⛔ Le altre righe non si toccano ora: quella di `zeroerp_log` serve al canale di log (il
+   `service=zeroerp_log` di `/var/lib/postgresql/.pg_service.conf` prende la password da qui, perché
+   `dblink` si collega dal processo del server, utente di sistema `postgres`); quelle di `pgagent` e
+   `loguser` (ruolo che non esiste più) si tolgono con i ritiri della fase 4. Poi
+   `sudo systemctl daemon-reload && sudo systemctl start pgagent`. ⚠️ Su socket (`host=/var/run/…`)
+   l'autenticazione `peer` rifiuterebbe `zeroerp_job` (utente di sistema `postgres`): per questo TCP;
+4. controllo: `journalctl -u pgagent -n 20` senza errori di autenticazione; dopo la prima corsa
+   notturna `maintenance.job_run_log.ruolo_sessione = 'zeroerp_job'` e il presidio
+   `maintenance.vw_job_run_da_superuser` **vuoto**;
+5. baseline pgTAP completa (cambia il proprietario di ogni funzione `SECURITY DEFINER`).
+
+Tornare indietro, se servisse: ⛔ **non** `REASSIGN OWNED BY zeroerp_owner TO titodb`: prenderebbe anche
+il database `zeroerp_ruoli`, che è di `zeroerp_owner`. Si fa con lo stesso schema dello script, a
+parti invertite e con la restituzione degli altri database.
+
+## 17. Il terzo scrittore del giornale — `20261015-05` (2026-10-15)
+
+Dopo l'apply della D-5 il giornale di dbdev aveva ancora righe con `ruolo_sessione` NULL ogni minuto:
+`draina_coda_lavori`, `draina_coda_stampa`, `send_pending_emails`, origine `CRON`. Le scrive
+`script.fn_job_run_start`, l'apertura delle corse **headless** del backend (management command, cron,
+systemd): un terzo scrittore che la D-5 (§7, §14) non aveva censito.
+
+Al presidio non sfuggiva niente di oggi (quelle corse girano come `zeroerp_app`), ma una corsa headless
+lanciata da un amministratore sarebbe passata invisibile.
+
+* `20_code/script/20261015-05`: le due `INSERT` (corsa e riga saltata) scrivono
+  `ruolo_sessione = session_user`; corpo dal `20261010-21`, identico al vivo (confrontato su dbdev);
+  firma, `SECURITY DEFINER` e `search_path` invariati. Aggiorna anche il `COMMENT` della colonna (tre
+  scrittori). Funzione del proprietario: **passata normale**, niente provision-post;
+* pgTAP `maintenance/test-job-run-ruolo-sessione-v1`: plan 8 → 10 (test 9 la corsa, test 10 la riga
+  saltata, con lo stesso skip d'ambiente del test 3).
+
+**Prova** (dbdev, SQL estratto in transazione annullata, 2026-10-15): con il `-05` 8 verdi e 2 skip
+d'ambiente; **senza** il `-05` il test 9 è rosso (il test misura). Il ramo della riga saltata provato a
+parte con due sessioni vere (una tiene il lock): `acquired = false`, `saltata = true`,
+`ruolo_sessione = titodb`.

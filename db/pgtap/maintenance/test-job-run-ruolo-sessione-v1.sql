@@ -12,8 +12,9 @@
 --       presidio «nessun superuser al lavoro» (D-5)
 -- Brief: brief-db-ruoli-di-sistema §7 D-5
 -- ChangeSet: 20261015-01 (colonna) · -02 (fn_run_and_log) · -04 (vista)
+--            · -05 (script.fn_job_run_start, le corse headless)
 --
--- Elenco test (plan 8):
+-- Elenco test (plan 10):
 --  1) la colonna ruolo_sessione c'e', nullable e SENZA default
 --  2) ⭐ una corsa registrata da fn_run_and_log porta session_user
 --  3) ⭐ anche la riga SALTATA (lock occupato) porta session_user
@@ -24,6 +25,9 @@
 --     esiste piu': «non registrato» non e' un guasto
 --  7) il presidio e' a catalogo: ZERO, chi agisce il SISTEMISTA
 --  8) zeroerp_app la puo' leggere (il pannello e il digest la leggono come app)
+--  9) ⭐ una corsa HEADLESS (script.fn_job_run_start, origine CRON) porta
+--     session_user: il terzo scrittore del giornale (-05)
+-- 10) ⭐ anche la sua riga SALTATA
 --
 -- ── Perche' la colonna non ha default ─────────────────────────────────
 --   La riga di una corsa FALLITA la scrive maintenance.fn_job_run_log_failure
@@ -47,7 +51,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(8);
+SELECT plan(10);
 
 -- ============================================================
 -- 1. La colonna
@@ -74,7 +78,9 @@ VALUES (9701, 'PGTAP-RUOLO-CORSA',   'prova ruolo', 'MANUTENZIONE', 'CODA'),
        (9703, 'PGTAP-SU-ULTIMA',     'prova ruolo', 'MANUTENZIONE', 'CODA'),
        (9704, 'PGTAP-SU-PRIMA',      'prova ruolo', 'MANUTENZIONE', 'CODA'),
        (9705, 'PGTAP-SU-NULL',       'prova ruolo', 'MANUTENZIONE', 'CODA'),
-       (9706, 'PGTAP-SU-SPARITO',    'prova ruolo', 'MANUTENZIONE', 'CODA');
+       (9706, 'PGTAP-SU-SPARITO',    'prova ruolo', 'MANUTENZIONE', 'CODA'),
+       (9707, 'PGTAP-RUOLO-CRON',    'prova ruolo', 'MANUTENZIONE', 'CODA'),
+       (9708, 'PGTAP-RUOLO-CRON-SALTATA', 'prova ruolo', 'MANUTENZIONE', 'CODA');
 
 -- ============================================================
 -- 2..3. fn_run_and_log scrive il ruolo
@@ -170,6 +176,58 @@ SELECT is(
 SELECT ok(
     has_table_privilege('zeroerp_app', 'maintenance.vw_job_run_da_superuser', 'SELECT'),
     '8. zeroerp_app legge la vista (il pannello e il digest la leggono come app)');
+
+-- ============================================================
+-- 9..10. Il terzo scrittore: le corse headless (-05)
+-- ============================================================
+-- ⚠️ La corsa si apre in un'istruzione SUA: la riga che la funzione inserisce
+--   non e' visibile alla JOIN della stessa SELECT che la chiama.
+CREATE TEMP TABLE _t_cron ON COMMIT DROP AS
+SELECT r.id FROM script.fn_job_run_start('PGTAP-RUOLO-CRON', 'CRON',
+                                         p_processo_codice => 'PGTAP-RUOLO-CRON') r;
+
+SELECT is(
+    (SELECT j.origine || '/' || j.ruolo_sessione
+       FROM maintenance.job_run_log j WHERE j.id = (SELECT id FROM _t_cron)),
+    'CRON/' || session_user::text,
+    '9. una corsa headless (fn_job_run_start, CRON) porta ruolo_sessione = session_user');
+
+-- Il lock della corsia lo tiene un'altra sessione, come al test 3; la classe
+-- e' quella di fn_job_run_start (hashtext('zeroerp:job_run_log')).
+CREATE TEMP TABLE _t_cron_saltata ON COMMIT DROP AS SELECT false AS costruita, ''::text AS motivo;
+DO $cron_saltata$
+DECLARE
+    v_dsn  text := nullif(current_setting('myapp.dblink_log_connection', true), '');
+    v_lock text := format('SELECT pg_advisory_lock(%s, %s)',
+                          hashtext('zeroerp:job_run_log'), hashtext('pgtap-ruolo-cron'));
+BEGIN
+    IF to_regprocedure('public.dblink_connect(text,text)') IS NULL OR v_dsn IS NULL THEN
+        UPDATE _t_cron_saltata SET motivo = 'nessun canale dblink su questo database per tenere il lock da un''altra sessione';
+        RETURN;
+    END IF;
+    BEGIN
+        PERFORM public.dblink_connect('pgtap_lock_cron', v_dsn);
+        PERFORM public.dblink_exec('pgtap_lock_cron', v_lock);
+        PERFORM script.fn_job_run_start('PGTAP-RUOLO-CRON-SALTATA', 'CRON', NULL, 'pgtap-ruolo-cron',
+                                        p_processo_codice => 'PGTAP-RUOLO-CRON-SALTATA');
+        PERFORM public.dblink_disconnect('pgtap_lock_cron');
+        UPDATE _t_cron_saltata SET costruita = true;
+    EXCEPTION WHEN OTHERS THEN
+        BEGIN PERFORM public.dblink_disconnect('pgtap_lock_cron'); EXCEPTION WHEN OTHERS THEN NULL; END;
+        UPDATE _t_cron_saltata SET motivo = 'la sessione dblink per tenere il lock non si apre: ' || SQLERRM;
+    END;
+END
+$cron_saltata$;
+
+SELECT CASE
+    WHEN NOT (SELECT costruita FROM _t_cron_saltata)
+        THEN skip('10. ' || (SELECT motivo FROM _t_cron_saltata), 1)
+    ELSE is(
+        (SELECT saltata::text || '/' || ruolo_sessione FROM maintenance.job_run_log
+          WHERE jobname = 'PGTAP-RUOLO-CRON-SALTATA' AND started_at >= (SELECT t0 FROM _t0)),
+        'true/' || session_user::text,
+        '10. anche la riga saltata di una corsa headless porta ruolo_sessione = session_user')
+END;
 
 SELECT * FROM finish();
 ROLLBACK;
