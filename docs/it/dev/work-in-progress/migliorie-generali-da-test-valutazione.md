@@ -506,7 +506,7 @@ errore.
 
 > ✅ **Le voci chiuse non stanno qui**: sono in **§7 «Attività svolte»**, con la
 > data e il rimando al brief — chiuse **per intero** D1, D2, D3, D4, D5, D10,
-> D13, D14, D19, D20, D21, D22, D23, D25, D26, D28, D29, D30; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
+> D13, D14, D15, D19, D20, D21, D22, D23, D25, D26, D28, D29, D30; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
 > registri calati), D12 (la quantità), D17 (tutto tranne Q-2).
 >
 > ⭐ **D15 è nata dalla chiusura di D14** (2026-09-22) e **D16** da un test
@@ -531,7 +531,7 @@ errore.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D24, D26-2, D27, D31, D32, D33, D34.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D16, D24, D26-2, D27, D31, D32, D33, D34.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -868,45 +868,6 @@ il gap di febbraio è chiuso. Restano due cose:
 
 ---
 
-### 🔴 D15 — Nessuno analizza le tabelle: ogni piano nasce da stime di default
-
-> Emerso il 2026-09-22 chiudendo D14 (brief §15.2 e §16.6). ⛔ Non è un residuo
-> di quel cantiere: è la **condizione** in cui sono state prese tutte le misure
-> di piano di questo progetto, compresa ogni riga di D14.
-
-In `vendite` **82 tabelle su 87 non hanno mai avuto un `ANALYZE`** — né a mano né
-dall'autovacuum. Con le soglie di default (50 righe più il 10%) una tabella
-piccola non ci arriva mai da sé, e nello scheduler non c'è nessun job che le
-analizzi.
-
-> Fatto datato **2026-10-14** (dbdev, `pg_stat_user_tables`): mai analizzate 69
-> tabelle su 89 in `vendite`, 25 su 25 in `magazzino`, 9 su 9 in `acquisti`;
-> `autovacuum_analyze_*` ai default, nessuna `reloptions`. Il lavoro sul planner
-> dello stesso periodo (D26-2, cardinalità dichiarata su `pg_proc`) ha curato le
-> **forme** dei piani, non le statistiche: D15 resta aperta.
-
-⏭️ **Brief:** [brief-db-statistiche-tabelle-job-notturno.md](brief-db-statistiche-tabelle-job-notturno.md)
-(aperto il 2026-10-14; decisione di Tid: un job notturno, niente soglie per tabella). Lo stato vive lì.
-
-⛔ **La conseguenza non è «dbdev è lento»**: è che il planner sceglie su stime di
-default, e il piano **si ribalta da solo**. Fatto datato del 22-09: lo stesso
-corpo, senza nessuna modifica in mezzo, misurava 63 ms alle 16:12 e **95–104 ms
-alle 17:19**, con lo stesso piano storto. ⇒ Una misura di piano, in qualunque
-cantiere, è **rumore** finché le statistiche non ci sono — e un cantiere che
-promette un guadagno in millisecondi dichiara un numero che non può difendere.
-
-⭐ Ciò che regge, ed è il modo in cui D14 è stata portata a casa, sono le **forme**
-del piano — `loops=1`, `Index Cond`, una lettura invece di N — non i millisecondi
-confrontati fra due momenti.
-
-⚠️ **Il perimetro non è `vendite`**: la domanda sul modello è se esista **un**
-posto che tiene aggiornate le statistiche del database, e oggi non esiste. Sede
-`dbops`/`maintenance`, non un dominio: soglie di autovacuum per le tabelle
-piccole, un job nello scheduler, o entrambi — con il presidio che dice quando
-l'ultimo `ANALYZE` è più vecchio di quanto si è dichiarato. ⭐ È un
-**prerequisito**, non una miglioria: chiunque riapra una famiglia di funzioni per
-prestazioni lo trova davanti.
-
 ### 🟡 D16 — Test con una data scritta a mano: diventano rossi da soli
 
 > Emerso il 2026-09-23: `vendite/test-nc-rata-unica-v1.sql`, test 6, rosso senza
@@ -1216,13 +1177,13 @@ D6 e il registro dei rossi in CI.
       dell'approvazione prezzo) e tre voci BE (due commenti che nominano oggetti
       ritirati, la decisione sui pre-check `_STATI_RIGHE_MODIFICABILI`).
       ⛔ La statistica assente **non** è un residuo di questo cantiere: è **D15**.
-* [ ] **D15** — dare al database **un** posto che tiene aggiornate le
+* [x] **D15** — dare al database **un** posto che tiene aggiornate le
       statistiche (`dbops`/`maintenance`): in `vendite` 82 tabelle su 87 non
       hanno mai avuto un `ANALYZE`, quindi ogni piano nasce da stime di default
       e si ribalta da solo. ⛔ È un **prerequisito** di qualunque cantiere che
       misuri un piano, non una miglioria — e finché non c'è, un guadagno
       dichiarato in millisecondi non è difendibile.
-      Brief: `brief-db-statistiche-tabelle-job-notturno.md` (2026-10-14).
+      ✅ Chiusa il 2026-10-15: `work-done/brief-db-statistiche-tabelle-job-notturno.md`.
 * [ ] **D17** — Q-2, rimandata da Tid: legare le GUC di bypass al proprietario
       delle tabelle (proposta in `work-done/brief-db-esclusioni-implicite.md`
       §4). Il resto di D17 è chiuso (§7), R-1 del BE compresa.
@@ -1827,6 +1788,19 @@ esistere prima del migrate perche' il `20260905-38` gli desse il giornale dei jo
 `ruoli` di `provision_zeroerp.sql`, con gli altri ruoli di sistema; lo script del canale non lo crea piu'.
 Con lui le due code della chiusura dei ruoli di sistema: i vecchi privilegi di default di `titodb` e una
 corsa di `ci-local.sh`. Brief `work-done/brief-db-zeroerp-log-nella-fase-ruoli.md`.
+
+### ✅ D15 — Le statistiche delle tabelle: un job notturno — chiuso il 2026-10-15
+
+Il database non aveva un posto che tenesse aggiornate le statistiche del planner: l'autovacuum non
+arriva alle tabelle piccole né alle madri partizionate, e nessun job lanciava `ANALYZE` (fatto datato
+14-10 su dbdev: mai analizzate 69 tabelle su 89 in `vendite`, tutte quelle di `magazzino` e `acquisti`).
+Ora c'è il job `analyze_statistiche`, ogni notte alle 02:30: `maintenance.fn_analyze_statistiche` fa
+`ANALYZE` e poi un'**autoverifica**, perché `ANALYZE` salta senza errore le tabelle che il ruolo non può
+analizzare; se una tabella resta senza statistiche il job fallisce con `E_STATISTICHE_MANCANTI` e la
+nomina nel giornale. In CI gira nella convergenza di `ci_apply`, quindi i pgTAP partono da statistiche
+reali. Insieme, il panorama dei processi distingue il job nuovo in attesa dal job in ritardo
+(`IN_ATTESA`, `JOB_IN_RITARDO`). Provato su dbdev il 15-10, anche con pgAgent come `zeroerp_job`. Brief
+`work-done/brief-db-statistiche-tabelle-job-notturno.md`; guida `guide/statistiche-del-planner.md`.
 
 
 *Valutazione 2026-09-08 — perimetro DB. Le misure sono letture di struttura sul

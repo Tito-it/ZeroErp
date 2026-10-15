@@ -1,27 +1,34 @@
 # Brief DB — Le statistiche delle tabelle: un job notturno che le tiene aggiornate
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-14
+## ✅ Chiuso il 2026-10-15
 
-**Riparte: Tid — domattina (15-10) la prima corsa notturna. Grant, apply (`-50…-54`, CSV) e pgTAP fatti e verdi.**
+**Archiviato da Tid il 2026-10-15. D15 è chiusa.** Nessun debito residuo: le decisioni D-1 … D-4
+sono state prese il 2026-10-14 (§6), il codice è nel commit `5e8d5094d`.
 
-| # | Chi | Che cosa | Dove | Aspetta |
+| # | Chi | Che cosa | Dove | Esito |
 | --- | --- | --- | --- | --- |
-| 1 | ✅ **Tid** | `GRANT pg_maintain TO zeroerp` sul cluster | §7.3 | — |
+| 1 | ✅ **Tid** | `GRANT pg_maintain TO zeroerp` sul cluster (ruolo poi ritirato col modello dei ruoli di sistema) | §7.3 | — |
 | 2 | ✅ **Tid** | Apply su dbdev di `-50…-53`; prima corsa riuscita alle 17:49 (da `ci_apply`) | §7.4 | — |
 | 3 | ✅ **Tid** | Apply del `-54` e dei CSV dei presidi, corsa pgTAP: **verdi** (2026-10-14) | §7.4, §8 | — |
-| 4 | **Tid** | Domattina (15-10): la corsa delle 02:30 di pgAgent riuscita in `maintenance.job_run_log` — è la prova del ruolo di pgAgent | §5.6 | niente |
-| 5 | **Tid** | Archiviazione in `work-done/` e chiusura di D15 | — | 3, 4 |
+| 4 | ✅ **Tid** | Corse di pgAgent riuscite in `maintenance.job_run_log` (vedi sotto) | §5.6 | — |
+| 5 | ✅ **Tid** | Archiviazione in `work-done/` e chiusura di D15 | — | 2026-10-15 |
 
-**Decisioni aperte di Tid: nessuna.** Prese il 2026-10-14: un job notturno, niente soglie per tabella;
-D-1 … D-4 come proposte (§6).
-⬜ **Da committare**: i changeSet `20261014-50…-54`, le righe in `presidi.csv`, `presidi_cause.csv`, `presidi_testi.csv`, le righe nei tre CSV, il pgTAP, le tre pagine `manual/`,
-i tre file di bootstrap della CI (§7.2) e questo documento.
+**La prova del §5.6, su dbdev** (fatti datati 2026-10-15):
+
+* **02:30**, la prima corsa notturna: `ok = true`, `done`, 2,8 s; pgAgent `jlgstatus = s`. Il
+  demone si collegava ancora col ruolo vecchio, poi ritirato dal
+  [brief dei ruoli di sistema](brief-db-ruoli-di-sistema.md).
+* **19:28**, «Esegui ora» da pgAdmin: la stessa corsa col ruolo nuovo, `ruolo_sessione = zeroerp_job`,
+  `ok = true`, 2,4 s. La procedura è `SECURITY DEFINER` di `zeroerp_owner`, che è proprietario di
+  tutte le tabelle del perimetro. Il job poi si è riprogrammato da solo per il 16-10 alle 02:30.
+* `maintenance.vw_statistiche_mancanti` vuota; nel panorama `dbops.vw_processi_programmazione` il
+  processo è `OK` e `da_guardare = false`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-14. **A chi:** Tid, poi il team DB.
-> **Origine:** **D15** di [migliorie-generali-da-test-valutazione](migliorie-generali-da-test-valutazione.md),
-> emersa il 2026-09-22 chiudendo D14 ([brief della partita di merce](../work-done/brief-db-partita-merce-per-documento.md)
+> **Origine:** **D15** di [migliorie-generali-da-test-valutazione](../work-in-progress/migliorie-generali-da-test-valutazione.md),
+> emersa il 2026-09-22 chiudendo D14 ([brief della partita di merce](brief-db-partita-merce-per-documento.md)
 > §15). Nel registro D15 resta come voce che rimanda qui.
-> **Stato:** ✅ lato DB scritto e provato il 2026-10-14 (§7); ⏳ apply e corsa pgTAP di Tid.
+> **Stato:** ✅ chiuso il 2026-10-15: applicato su dbdev, pgTAP verdi, job notturno provato.
 > **Ricadute BE/FE:** nessuna. **Ricaduta di provisioning:** il ruolo con cui gira pgAgent (§4.4).
 
 ## 1. La regola

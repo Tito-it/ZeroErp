@@ -320,12 +320,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `pgagent`, `zeroerp` e `zeroerp_ci` (`scripts/ritira_ruoli_dismessi.sh`). Guida: `installazione.md`, «Il database».
   Il debito residuo (D35: `zeroerp_log` nella fase `ruoli`) è chiuso lo stesso giorno
   (`work-done/brief-db-zeroerp-log-nella-fase-ruoli.md`).
-- ⬜ **Le statistiche delle tabelle: un job notturno (D15) — aperto il 2026-10-14**
-  (`work-in-progress/brief-db-statistiche-tabelle-job-notturno.md`): nessuno lancia `ANALYZE`, l'autovacuum
-  non arriva alle tabelle piccole né alle madri partizionate, e in CI i pgTAP partono senza statistiche. Disegno:
-  verbo in `maintenance` con autoverifica (`reltuples < 0`, `MAINTAIN`), procedura dal giornale, riga in
-  `dbops.processi` con `ci_ordine` ultimo, job in `85_pgagent` alle 02:30 (`20261014-50…-53`). Lato DB scritto e
-  provato il 2026-10-14; serve `GRANT pg_maintain TO zeroerp` (bootstrap CI e cluster di sviluppo), poi apply e pgTAP.
+- ✅ **Le statistiche delle tabelle: un job notturno (D15) — chiuso il 2026-10-15**
+  (`work-done/brief-db-statistiche-tabelle-job-notturno.md`): verbo `maintenance.fn_analyze_statistiche` con
+  autoverifica (`reltuples < 0`, `MAINTAIN`, errore `E_STATISTICHE_MANCANTI`), procedura dal giornale, riga in
+  `dbops.processi` con `ci_ordine` ultimo (in CI gira nella convergenza di `ci_apply`), job pgAgent alle 02:30
+  (`20261014-50…-54`). Provato su dbdev il 15-10: corsa notturna riuscita e corsa di pgAgent come `zeroerp_job`
+  riuscita. Guida: `guide/statistiche-del-planner.md`.
 - ✅ **La lineage dei documenti si costruisce per il documento: chiuso il 2026-10-11**
   (`work-done/brief-db-lineage-seminata-per-chiave.md`): grafo seminato per chiave (`fn_documento_lineage_nodi`,
   `_archi`, `_sintesi`), le sette viste di lista senza il grafo e `vw_documento_lineage` ritirata
