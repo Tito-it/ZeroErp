@@ -130,7 +130,7 @@ Il ruolo applicativo **legge** questo giornale e **non lo scrive**:
 | `SELECT` sulla tabella e su `vw_job_run_da_guardare` | sì | lista dei processi automatici e corse di un processo, riepilogo giri e liveness, esiti delle corsie di fatturazione, `job_liveness` nel digest — cinque lettori nel backend |
 | `INSERT`, `UPDATE`, `DELETE` | **no** | la porta di scrittura sono le due funzioni `SECURITY DEFINER` qui sopra; un giornale non si cancella |
 
-Sede: `scripts/sql/provision_db_roles.sql` (blocco `maintenance`, in fondo) e il
+Sede: `scripts/sql/provision_zeroerp.sql`, fase `post` (blocco `maintenance`, in fondo) e il
 changeSet gemello `90_end/20260919-08` per i database già provisionati.
 `maintenance` **non** entra nella whitelist del provisioning, che darebbe SIUD
 pieno. Presidio: `db/pgtap/maintenance/test-app-postura-job-run-log-v1.sql`.

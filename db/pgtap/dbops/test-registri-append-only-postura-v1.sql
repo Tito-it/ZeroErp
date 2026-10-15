@@ -6,7 +6,7 @@
 -- Brief: brief-db-rls-storico-scope-congelato.md §8.4
 -- ChangeSet: 90_end/20260911-09-revoke-app-update-delete-registri-audit
 --            90_end/ci_apply/20260205-41 (eccezione dichiarata nel loop dei grant)
---            scripts/sql/provision_db_roles.sql (la stessa eccezione: e' l'ULTIMA
+--            scripts/sql/provision_zeroerp.sql (fase post) (la stessa eccezione: e' l'ULTIMA
 --            parola in CI, gira dopo ci_apply — senza, questo file e' rosso su
 --            un database ricostruito da zero e verde su dev. Successo 2026-09-11)
 --
@@ -25,7 +25,7 @@
 --   hanno senso SOLO come app: da owner passerebbero tutte.
 --
 -- ⚠️ PERCHÉ È UN PRESIDIO E NON SOLO UN TEST. Il loop `20260205-41` rifà i
---   GRANT a ogni passata `ci_apply`, e `provision_db_roles.sql` li rifà DOPO
+--   GRANT a ogni passata `ci_apply`, e `provision_zeroerp.sql` (fase post) li rifà DOPO
 --   di lui: se una delle due sedi perdesse l'eccezione dichiarata, o un
 --   DROP+CREATE riportasse `=X` (PUBLIC) sulle due funzioni, la postura si
 --   riaprirebbe in silenzio. Questo file è il rosso che lo dice — e l'ha

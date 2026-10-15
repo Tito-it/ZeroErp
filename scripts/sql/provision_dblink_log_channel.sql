@@ -1,41 +1,31 @@
 \set ON_ERROR_STOP on
 
 \echo [ZeroErp] Provisioning dblink log channel (service + .pgpass, no password in GUC)
-\echo [ZeroErp] Required vars: log_password
-\echo [ZeroErp] Optional vars:
-\echo [ZeroErp]   log_role (default: zeroerp_log)
-\echo [ZeroErp]   log_service (default: zeroerp_log)
-\echo [ZeroErp]   migrator_role (default: titodb)
-\echo [ZeroErp]   app_role (default: zeroerp_app)
+\echo [ZeroErp] Optional vars: log_service (default: zeroerp_log), log_password (solo se zeroerp_log manca)
 
+-- ⭐ I nomi dei ruoli sono di SISTEMA (brief-db-ruoli-di-sistema, fase 4,
+--   2026-10-15): zeroerp_log, e il parametro del canale per zeroerp_owner,
+--   zeroerp_app, zeroerp_job. Prima erano variabili, col migratore di default
+--   `titodb`. Resta variabile solo il nome del service, che e' dell'ambiente.
+-- ⛔ La password di zeroerp_log serve SOLO a crearlo: di un ruolo che esiste
+--   non si tocca (i ruoli sono di cluster: lo stesso canale serve lo sviluppo e
+--   la sua password sta in .pgpass dell'utente di sistema `postgres`). Prima lo
+--   script la riscriveva a ogni corsa (D-3).
+--
 -- ⛔ Un fermo e' un ERRORE VERO: `\quit 1` esce con 0 (psql ignora il codice),
 --   quindi chi lancia lo script da una pipeline lo crederebbe riuscito.
 --   Corretto il 2026-10-15 (brief-db-ruoli-di-sistema, fase 4).
-\if :{?log_password}
-\else
-\echo ERROR: missing -v log_password=...
-\set ON_ERROR_STOP on
-DO $$ BEGIN RAISE EXCEPTION 'ERROR: missing -v log_password=...'; END $$;
-\endif
-
-\if :{?log_role}
-\else
 \set log_role zeroerp_log
+\set migrator_role zeroerp_owner
+\set app_role zeroerp_app
+
+\if :{?log_password}
+SELECT set_config('zeroerp.prov_log_password', :'log_password', false) \gset _x_
 \endif
 
 \if :{?log_service}
 \else
 \set log_service zeroerp_log
-\endif
-
-\if :{?migrator_role}
-\else
-\set migrator_role titodb
-\endif
-
-\if :{?app_role}
-\else
-\set app_role zeroerp_app
 \endif
 
 \if :{?log_db}
@@ -47,12 +37,19 @@ SELECT current_database() AS _log_db \gset
 CREATE EXTENSION IF NOT EXISTS dblink;
 
 -- 1) Ruolo tecnico di logging (privilegi minimi)
-SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'log_role', :'log_password')
-WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'log_role')
-\gexec
-
-SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', :'log_role', :'log_password')
-\gexec
+DO $log$
+DECLARE
+    v_pwd text := nullif(current_setting('zeroerp.prov_log_password', true), '');
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'zeroerp_log') THEN
+        IF v_pwd IS NULL THEN
+            RAISE EXCEPTION 'Il ruolo zeroerp_log manca e non e'' stata passata -v log_password: nessun default (D-3).';
+        END IF;
+        EXECUTE format('CREATE ROLE zeroerp_log LOGIN PASSWORD %L', v_pwd);
+        RAISE NOTICE 'creato il ruolo zeroerp_log';
+    END IF;
+END
+$log$;
 
 SELECT format('GRANT USAGE ON SCHEMA dbops TO %I', :'log_role')
 \gexec

@@ -140,7 +140,6 @@ cluster**, nel provisioning, e mai in un changeSet.
 | --- | --- | --- |
 | Server di sviluppo | pgAgent chiama la procedura, che gira come il **proprietario** del database (procedura `SECURITY DEFINER`) | già sufficiente: il proprietario possiede tutte le tabelle |
 | Database di prova (`scripts/ci-local.sh`) e CI, col modello dei ruoli | `zeroerp_owner`, il proprietario (passaggio `ci_apply`) | già sufficiente: un owner solo possiede tutto |
-| `scripts/ci-local.sh --classico` | `zeroerp` | `GRANT pg_maintain TO zeroerp`, nel suo passo di bootstrap |
 
 Il modello dei ruoli di sistema (un proprietario solo, `zeroerp_owner`) è descritto in
 [Provisioning ruoli DB](/dev/backend/provisioning-db-roles); il dettaglio sul

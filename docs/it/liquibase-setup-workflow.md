@@ -95,8 +95,7 @@ passa la fase `pre` di `provision_zeroerp.sql`.
 | ambiente | chi esegue | serve il grant? |
 | --- | --- | --- |
 | database di prova (`scripts/ci-local.sh`, `zeroerp_ruoli`) e CI col modello | `zeroerp_owner` (`ci_apply`, e la procedura `DEFINER`) | no: possiede tutto |
-| **dbdev**, finché non si allinea al modello | pgAgent come `postgres`, la procedura gira come `titodb` | no: `titodb` possiede tutte le tabelle del progetto |
-| `scripts/ci-local.sh --classico` (`zeroerp_ci`) | `ci_apply` come `zeroerp` | ✅ `GRANT pg_maintain TO zeroerp`, ed è nel suo passo di bootstrap |
+| **dbdev** (convertito al modello il 2026-10-15) | pgAgent come `zeroerp_job`, la procedura gira come `zeroerp_owner` | no: possiede tutto |
 
 ⚠️ `pg_maintain` è un **ruolo** del cluster, non un privilegio del database. ⛔ Mai
 in un changeSet (linee-guida-sql §11.6).
