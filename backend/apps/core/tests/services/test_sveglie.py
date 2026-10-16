@@ -24,7 +24,7 @@
 #   5. `tolleranza_minuti` nel JSON è RIFIUTATO: il contratto vive a catalogo
 #   6. una forma non ammessa fa fallire il caricamento, non lo degrada
 #   7. un timer senza cadenza fa fallire il caricamento
-#   8. `abilita` è obbligatorio: il silenzio non vale «spento»
+#   8. `abilita` è RIFIUTATO (dal 2026-10-16): l'accensione sta nel DB
 #   9. i worker del badge code hanno un contratto nel seed del catalogo
 #  10. un nome di unit con una barra è rifiutato (finisce in un percorso)
 #  11. `comando` è obbligatorio, per ogni forma, ed è una lista non vuota
@@ -38,8 +38,9 @@
 #  17. `dovuto` si valida: vocabolario, orario, giorno, jobname, solo sui timer
 #  18. l'inizio del periodo dovuto, nel fuso dell'azienda (giorno, settimana,
 #      mese; prima delle `dalle` niente; il periodo precedente non si recupera)
-#  19. un template porta l'`ExecCondition` della SUA unit sse la voce ha
-#      `dovuto` — e nessun `comando` contiene il controllo                  ⭐
+#  19. OGNI template porta l'`ExecCondition` della SUA unit (accensione dal
+#      DB, e il periodo per le calendariali) — e nessun `comando` contiene
+#      il controllo                                                         ⭐
 #  20. il `jobname` dichiarato è quello che il comando scrive
 #  21. almeno le tre sveglie calendariali dichiarano `dovuto` (anti vuoto)
 #
@@ -49,7 +50,8 @@
 #
 #  ⭐ Dal 2026-09-15 il JSON porta `avvio_manuale`: la sede in cui si dice
 #     quali sveglie hanno il pulsante «Esegui ora» (solo comandi brevi —
-#     decisione 2a del brief §8.5, piano §3.2). Non è `abilita`.
+#     decisione 2a del brief §8.5, piano §3.2). Non è l'accensione del
+#     processo, che dal 2026-10-16 sta nel DB.
 #
 #  ⭐ Dal 2026-09-14 il JSON porta anche il `comando` (l'argv dopo
 #     `run-command.sh`), reso nel template come `__COMANDO__`: è la riga che
@@ -101,7 +103,7 @@ _ASSENTE = object()
 def _voce(**override: object) -> dict:
     base: dict = {
         "unit": "x", "processo_codice": "p", "forma": "timer",
-        "comando": ["p"], "oncalendar": "*:0/1", "abilita": True,
+        "comando": ["p"], "oncalendar": "*:0/1",
         "avvio_manuale": True,
     }
     base.update(override)
@@ -241,14 +243,14 @@ class SveglieDichiarateTests(SimpleTestCase):
             "oncalendar",
         )
 
-    # 8. ⛔ `abilita` omesso NON vale «spento». Con un default il silenzio
-    #    produrrebbe un processo che non parte — il guasto-per-assenza che
-    #    questo file esiste per togliere, reintrodotto dalla porta di servizio.
-    def test_abilita_omesso_solleva(self) -> None:
-        self._assert_dichiarato_rifiutato(
-            _voce(forma="servizio", oncalendar=None, abilita=_ASSENTE, avvio_manuale=False),
-            "abilita",
-        )
+    # 8. ⛔ `abilita` non e' piu' un campo (dal 2026-10-16): se un processo
+    #    lavora lo decide il DB (`maintenance.fn_sveglia_accesa`). Riscritto
+    #    qui farebbe credere a chi lo scrive di aver spento un processo che
+    #    invece parte: si rifiuta, con tutti e due i valori.
+    def test_abilita_e_rifiutato(self) -> None:
+        for valore in (True, False):
+            with self.subTest(abilita=valore):
+                self._assert_dichiarato_rifiutato(_voce(abilita=valore), "abilita")
 
     # 9. I due worker che alimentano il badge code DEVONO avere un contratto a
     #    catalogo: senza, `_liveness_worker` cade sul ripiego e il pallino verde
@@ -451,20 +453,19 @@ class SveglieDichiarateTests(SimpleTestCase):
         il_15 = sveglie.Dovuto("mese", time(0, 0), 15, "p:c")
         self.assertIsNone(sveglie.inizio_periodo_dovuto(il_15, utc(2026, 10, 10, 9, 0), roma))
 
-    # 19. ⭐ L'`ExecCondition` sta nel template della sveglia calendariale, con
-    #     la SUA unit — e solo li'. E il controllo non sta nel `comando`, che e'
-    #     la riga di «Esegui ora» (T-9).
-    def test_execcondition_sse_dovuto(self) -> None:
+    # 19. ⭐ L'`ExecCondition` sta in OGNI template, con la SUA unit: dal
+    #     2026-10-16 `e_dovuto` chiede prima al DB se il processo e' acceso
+    #     (l'installer accende tutto), poi il periodo per le calendariali. Una
+    #     sveglia senza cancello lavorerebbe a processo spento. E il controllo
+    #     non sta nel `comando`, che e' la riga di «Esegui ora» (T-9).
+    def test_ogni_template_porta_il_suo_execcondition(self) -> None:
         for s in sveglie.carica_sveglie():
             with self.subTest(unit=s.unit):
                 testo = (_TEMPLATE_DIR / f"{s.unit}.service").read_text(encoding="utf-8")
                 righe = [r for r in testo.splitlines() if r.startswith("ExecCondition=")]
-                if s.dovuto is None:
-                    self.assertEqual(righe, [], f"{s.unit}: ExecCondition senza 'dovuto'")
-                else:
-                    self.assertEqual(
-                        righe, [f"ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto {s.unit}"],
-                    )
+                self.assertEqual(
+                    righe, [f"ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto {s.unit}"],
+                )
                 self.assertNotIn("e_dovuto", s.comando)
 
     # 20. Il `jobname` dichiarato e' la corsia che il comando SCRIVE: se

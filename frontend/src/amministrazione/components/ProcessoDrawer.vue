@@ -24,6 +24,12 @@
 //    il comando alla corsa successiva. Il gesto è asincrono per costruzione, la
 //    UI lo dice, e NON c'è polling: la corsa si vedrà fra le «Ultime corse»
 //    alla riapertura, con `origine = COMMAND` e lo username — la colonna c'è già.
+// ⭐ Dal 2026-10-16 il drawer dice anche se il processo è ACCESO su questa
+//    installazione, e da dove viene lo stato (default per ambiente o scelta a
+//    mano), con l'interruttore e il motivo obbligatorio
+//    (brief-db-processi-accensione-per-ambiente §6.0 punto 5). È un fatto del
+//    PROCESSO, non della sveglia: sta in testa, una volta, e le sveglie non
+//    portano più la colonna «Abilitata» del deploy (`abilita` è ritirato).
 // ⛔ La lista delle CORSE è l'unica che potrebbe crescere: è limitata a 50 dal
 //    backend e lo dice a video. Se un giorno servisse scorrerla tutta, allora sì
 //    diventa una lista vera con `useDrawerTabLista` — non prima.
@@ -40,7 +46,7 @@ import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import AppDrawer from '../../core/components/AppDrawer.vue'
-import AttivoTag from '../../core/components/AttivoTag.vue'
+import MotivoDialog from '../../core/components/MotivoDialog.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -53,6 +59,7 @@ import {
   creaUtenteTecnico,
   riattivaUtenteTecnico,
   eseguiOraProcesso,
+  impostaAccensioneProcesso,
 } from '../api/amministrazione'
 import { displayTimestamp } from '../../core/utils/date'
 import { descriviDovuto as descriviDovutoSveglia } from '../dovutoSveglia'
@@ -77,7 +84,7 @@ const { t, te, locale } = useI18n()
 function descriviDovuto(dovuto) {
   return descriviDovutoSveglia(dovuto, t, intlLocale(locale.value))
 }
-const { execute } = useApiHandler()
+const { execute, loading, campiErrati } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
 
@@ -98,6 +105,65 @@ const eseguiInCorso = ref(null)
 //    ⚠️ `?? []` copre il solo caso in cui il campo manchi: un processo senza
 //    sveglie (pgAgent) riceve una LISTA VUOTA, non un'assenza.
 const sveglie = computed(() => dettaglio.value?.sveglie ?? [])
+
+// ⭐ L'accensione del processo su questa installazione, dal dettaglio: lo
+//    stato effettivo (`acceso`, null = non decidibile), da dove viene
+//    (`scelta_a_mano` o il default per `ambiente`), e la capability
+//    `can_imposta_accensione`. ⛔ Lo stato non si ricalcola qui dai due
+//    default: la regola è del database, e qui si MOSTRA.
+const accensione = computed(() => dettaglio.value?.accensione ?? null)
+// Il gesto in corso nel dialog del motivo: `true` accende, `false` spegne,
+// `null` torna al default. `undefined` = dialog chiuso.
+const gestoAccensione = ref(undefined)
+const dialogAccensione = computed({
+  get: () => gestoAccensione.value !== undefined,
+  set: (aperto) => { if (!aperto) gestoAccensione.value = undefined },
+})
+
+// Scopo: la chiave i18n del gesto in corso, per titolo e pulsante del dialog.
+function chiaveGesto(gesto) {
+  if (gesto === true) return 'accendi'
+  if (gesto === false) return 'spegni'
+  return 'torna_al_default'
+}
+
+// Scopo: il nome dell'ambiente nella lingua di chi guarda. Il vocabolario
+//        (`SVILUPPO`, `PRODUZIONE`) è del database: un valore nuovo senza
+//        traduzione si mostra com'è, invece di sparire.
+function etichettaAmbiente(ambiente) {
+  const chiave = `amministrazione.processi.ambiente_valore.${ambiente}`
+  return te(chiave) ? t(chiave) : ambiente
+}
+
+// Scopo: da dove viene lo stato, in parole: non si spegne mai, scelta a mano
+//        (motivo, quando, chi), default dell'ambiente, ambiente non dichiarato.
+function provenienzaAccensione(a) {
+  if (a.spegnibile === false) return t('amministrazione.processi.accensione_mai_spento')
+  if (a.scelta_a_mano) {
+    return t('amministrazione.processi.accensione_a_mano', {
+      motivo: a.scelta_a_mano.motivo,
+      quando: displayTimestamp(a.scelta_a_mano.data),
+      chi: a.scelta_a_mano.utente || '—',
+    })
+  }
+  if (a.ambiente) return t('amministrazione.processi.accensione_default', { ambiente: etichettaAmbiente(a.ambiente) })
+  return t('amministrazione.processi.ambiente_non_dichiarato')
+}
+
+// Scopo: accende, spegne o riporta al default col motivo, poi ricarica: le
+//        capability di «Esegui ora» dipendono dallo stato appena cambiato.
+// ⚠️ Il dialog si chiude solo sul successo: un rifiuto (motivo, non
+//    spegnibile) lo lascia aperto col motivo scritto.
+async function confermaAccensione(motivo) {
+  const res = await execute(
+    () => impostaAccensioneProcesso(props.codice, gestoAccensione.value, motivo),
+    { successMessage: t('amministrazione.processi.accensione_ok') },
+  )
+  if (res !== null) {
+    gestoAccensione.value = undefined
+    await carica()
+  }
+}
 
 // ⛔ Il vocabolario delle forme è del BACKEND (`sveglie.py`: FORMA_TIMER,
 //    FORMA_SERVIZIO). Qui si nomina il solo valore su cui il template
@@ -226,7 +292,7 @@ async function riattivaIdentita() {
 //        predicato con cui l'endpoint rifiuta (`motivi_esegui_ora`): così il
 //        tooltip e il 4xx non possono dire due cose diverse (api.md
 //        §Capability di riga, «il backend trasporta, non deduce»).
-// ⛔ Non si guarda `abilita` né `avvio_manuale` per decidere: sono dati da
+// ⛔ Non si guarda l'accensione né `avvio_manuale` per decidere: sono dati da
 //    MOSTRARE, e la regola che li combina ha una sede sola, nel backend.
 function eseguiOraBloccato(sveglia) {
   return bloccoAttivo(sveglia, 'can_esegui_ora', 'can_esegui_ora')
@@ -314,6 +380,53 @@ async function eseguiOra(sveglia) {
           severity="danger"
         />
         <span class="app-proc-descrizione">{{ dettaglio.descrizione }}</span>
+      </div>
+
+      <!-- L'accensione su QUESTA installazione: stato, provenienza, ambiente
+           e l'interruttore. Solo per chi ha una sveglia: un processo `CODA`
+           lo avvia una persona, e non c'è niente da accendere. -->
+      <div v-if="accensione" class="app-proc-accensione">
+        <Tag
+          :value="accensione.ambiente
+            ? t('amministrazione.processi.ambiente', { ambiente: etichettaAmbiente(accensione.ambiente) })
+            : t('amministrazione.processi.ambiente_non_dichiarato')"
+          :severity="accensione.ambiente ? 'secondary' : 'warn'"
+        />
+        <template v-if="accensione.ha_sveglia">
+          <Tag
+            :value="accensione.acceso === true
+              ? t('amministrazione.processi.acceso')
+              : accensione.acceso === false
+                ? t('amministrazione.processi.spento')
+                : t('amministrazione.processi.accensione_non_decidibile')"
+            :severity="accensione.acceso === true ? 'success'
+              : accensione.acceso === false ? 'secondary' : 'warn'"
+          />
+          <small class="app-field-hint">{{ provenienzaAccensione(accensione) }}</small>
+          <template v-if="accensione.can_imposta_accensione">
+            <Button
+              v-if="accensione.acceso !== false"
+              :label="t('amministrazione.processi.spegni')"
+              :icon="MANAGE_ICONS.DISATTIVA"
+              size="small" outlined severity="danger"
+              @click="gestoAccensione = false"
+            />
+            <Button
+              v-if="accensione.acceso !== true"
+              :label="t('amministrazione.processi.accendi')"
+              :icon="MANAGE_ICONS.RIATTIVA"
+              size="small" outlined
+              @click="gestoAccensione = true"
+            />
+            <Button
+              v-if="accensione.scelta_a_mano"
+              :label="t('amministrazione.processi.torna_al_default')"
+              :icon="MANAGE_ICONS.UNDO"
+              size="small" text
+              @click="gestoAccensione = null"
+            />
+          </template>
+        </template>
       </div>
 
       <Tabs v-model:value="tabAttiva">
@@ -500,7 +613,6 @@ async function eseguiOra(sveglia) {
                   <th>{{ t('amministrazione.processi.col_unit') }}</th>
                   <th>{{ t('amministrazione.processi.col_forma') }}</th>
                   <th>{{ t('amministrazione.processi.col_cadenza') }}</th>
-                  <th>{{ t('amministrazione.processi.col_abilita') }}</th>
                   <th>{{ t('amministrazione.processi.col_comando') }}</th>
                   <th>{{ t('common.col_azioni') }}</th>
                 </tr>
@@ -523,16 +635,6 @@ async function eseguiOra(sveglia) {
                     <span v-if="s.dovuto">{{ descriviDovuto(s.dovuto) }}</span>
                     <code v-else-if="s.oncalendar" class="app-proc-mono">{{ s.oncalendar }}</code>
                     <span v-else>{{ t('amministrazione.processi.sveglia_sempre_accesa') }}</span>
-                  </td>
-                  <!-- «Spenta» è una scelta del deploy, non un guasto: grigio,
-                       non arancio. Il perché sta nella nota della voce. -->
-                  <td>
-                    <AttivoTag
-                      :active="s.abilita"
-                      :active-label="t('amministrazione.processi.sveglia_abilitata')"
-                      :inactive-label="t('amministrazione.processi.sveglia_spenta')"
-                      inactive-severity="secondary"
-                    />
                   </td>
                   <td class="app-proc-wrap"><code class="app-proc-mono">{{ s.comando.join(' ') }}</code></td>
                   <td>
@@ -572,12 +674,27 @@ async function eseguiOra(sveglia) {
     </template>
 
     <p v-else-if="caricamento" class="app-proc-help">{{ t('common.loading') }}</p>
+
+    <MotivoDialog
+      v-model:visible="dialogAccensione"
+      :header="t(`amministrazione.processi.${chiaveGesto(gestoAccensione)}`)"
+      :label="t('amministrazione.processi.accensione_motivo')"
+      obbligatorio
+      :loading="loading"
+      :invalid="campiErrati.includes('motivo')"
+      :save-label="t(`amministrazione.processi.${chiaveGesto(gestoAccensione)}`)"
+      :save-severity="gestoAccensione === false ? 'danger' : null"
+      @conferma="confermaAccensione"
+    >
+      <p>{{ t(`amministrazione.processi.${chiaveGesto(gestoAccensione)}_spiegazione`) }}</p>
+    </MotivoDialog>
   </AppDrawer>
 </template>
 
 <style scoped>
 .app-proc-testa { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .app-proc-descrizione { font-size: 0.9rem; opacity: 0.85; }
+.app-proc-accensione { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
 .app-proc-help { font-size: 0.85rem; opacity: 0.8; margin: 0.5rem 0; }
 /* Tabelle di consultazione, non liste: scorrono nel proprio contenitore. */
 .app-proc-tabella { width: 100%; display: block; overflow-x: auto; font-size: 0.85rem; }

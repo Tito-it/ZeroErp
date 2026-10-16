@@ -7,8 +7,20 @@
 # Note: ⭐ LA SEDE E' UNA SOLA, ed e' `backend/deploy/sveglie.json`. Questo
 #        modulo la LEGGE, non la ridichiara: l'altro lettore e'
 #        `backend/bin/install-timers.sh`, che dallo stesso file prende
-#        l'`OnCalendar` da sostituire nei template e la lista di cosa
-#        abilitare. Due programmi, un file.
+#        l'`OnCalendar` e il `comando` da sostituire nei template. Due
+#        programmi, un file.
+#
+#        ⭐ SE UNA SVEGLIA E' ACCESA NON STA QUI (dal 2026-10-16). Fino ad allora
+#        lo diceva `abilita`, un booleano uguale su ogni host. E' un fatto del
+#        PROCESSO e dell'INSTALLAZIONE, non del deploy: il default per ambiente
+#        (`acceso_in_sviluppo`, `acceso_in_produzione`) e «non si spegne mai»
+#        (`spegnibile`) stanno in `dbops.processi`, la scelta a mano di una
+#        macchina in `dbops.processi_accensione`, e lo stato effettivo lo da'
+#        `maintenance.fn_sveglia_accesa` (brief-db-processi-accensione-per-ambiente
+#        §5). L'installer installa e accende OGNI sveglia; e' l'`ExecCondition`
+#        (`e_dovuto`) a chiedere al DB se partire. `carica_sveglie` RIFIUTA
+#        `abilita` se ricompare: un campo che nessuno legge piu' farebbe credere
+#        a chi lo scrive di aver spento qualcosa.
 #
 #        ⛔ PERCHE' ESISTE, e non e' un'astrazione di comodo. Fino al
 #        2026-09-06 lo stesso fatto — «ogni quanto ci si aspetta questo
@@ -54,17 +66,17 @@
 #        cablato; l'unit reso porta l'argv di qui).
 #
 #        ⭐ E DAL 2026-09-15 STA QUI ANCHE `avvio_manuale` — «questa sveglia e'
-#        candidata a «Esegui ora»?» — obbligatorio come `abilita` e per la
-#        stessa ragione. Decisione di Tid (piano-be-fe-avvio-manuale §3.2,
+#        candidata a «Esegui ora»?» — obbligatorio: il silenzio non e' una
+#        decisione. Decisione di Tid (piano-be-fe-avvio-manuale §3.2,
 #        brief §8.5 punto 2): il drenatore ASPETTA il sottoprocesso e intanto
 #        non drena altro, quindi a mano si lanciano solo comandi BREVI; un
 #        comando lungo per natura (i due giri di fatturazione) e il drenatore
 #        stesso non sono candidati, e «non candidato» deve avere una SEDE.
-#        ⛔ Non e' `abilita`: quella dice se il TIMER e' acceso su questa
-#        installazione, questa se il PULSANTE ha senso — i due timer di
+#        ⛔ Non e' l'accensione: quella dice se il PROCESSO e' acceso su questa
+#        installazione (DB), questa se il PULSANTE ha senso — i due timer di
 #        fatturazione sono spenti oggi per un'altra ragione (SDI sospeso), e il
 #        giorno in cui si accendono il pulsante deve restare spento. Il modello
-#        ammette `abilita = true` su un comando lungo: si progetta su quello.
+#        ammette un processo acceso con un comando lungo: si progetta su quello.
 #        ⛔ E non e' una lista di esclusioni in Python: sarebbe la seconda sede
 #        della whitelist, quella che resta indietro alla prima sveglia nuova.
 #
@@ -193,10 +205,9 @@ class Sveglia:
     # costruzione.
     comando: tuple[str, ...]
     oncalendar: str | None
-    abilita: bool
     # «Esegui ora» ha senso su questa sveglia? Dichiarato, non dedotto: un
-    # timer puo' essere acceso (`abilita`) e non candidato (comando lungo), o
-    # candidato e spento su questa installazione. Vedi header.
+    # processo puo' essere acceso e la sveglia non candidata (comando lungo), o
+    # candidata e il processo spento su questa installazione (DB). Vedi header.
     avvio_manuale: bool
     nota: str
     # Solo sulle sveglie calendariali: vedi `Dovuto` e l'header.
@@ -377,17 +388,21 @@ def carica_sveglie() -> tuple[Sveglia, ...]:
                 f"80_data/sql/dbops/processi.csv)"
             )
 
-        # ⛔ `abilita` SI DICHIARA, non si omette. Con un default il silenzio
-        #    varrebbe «spento» — cioè un processo nuovo che non parte, che è
-        #    esattamente il guasto-per-assenza per cui questo file esiste. Il
-        #    default sicuro è quello che nasconde meglio la dimenticanza.
-        if "abilita" not in riga or not isinstance(riga["abilita"], bool):
+        # ⛔ `abilita` NON E' PIU' UN CAMPO (dal 2026-10-16): se una sveglia
+        #    parte lo decide il database (`maintenance.fn_sveglia_accesa`), per
+        #    processo e per installazione. Chi lo riscrive qui crederebbe di
+        #    aver spento un processo che invece parte: si rifiuta, come
+        #    `tolleranza_minuti`.
+        if "abilita" in riga:
             raise ValueError(
-                f"{_PERCORSO_SVEGLIE}: {unit}: 'abilita' è obbligatorio e "
-                f"dev'essere true o false"
+                f"{_PERCORSO_SVEGLIE}: {unit}: 'abilita' non e' piu' un campo "
+                f"del dichiarato di deploy — l'accensione di un processo sta nel "
+                f"database (dbops.processi: acceso_in_sviluppo, "
+                f"acceso_in_produzione, spegnibile; la scelta a mano in "
+                f"dbops.processi_accensione), e si cambia dal drawer dei processi"
             )
 
-        # ⛔ `avvio_manuale` SI DICHIARA, per la stessa ragione di `abilita`: con
+        # ⛔ `avvio_manuale` SI DICHIARA, non si omette: con
         #    un default a `false` una sveglia nuova non avrebbe mai il pulsante
         #    senza che nessuno l'abbia deciso; con un default a `true` un
         #    comando lungo lo avrebbe. Nessuno dei due silenzi e' una decisione.
@@ -416,7 +431,6 @@ def carica_sveglie() -> tuple[Sveglia, ...]:
             oncalendar=str(oncalendar) if oncalendar else None,
             # Già validato bool qui sopra: un `bool(...)` in più direbbe che il
             # valore può non esserlo, cioè il contrario di quanto appena imposto.
-            abilita=riga["abilita"],
             avvio_manuale=riga["avvio_manuale"],
             nota=str(riga.get("nota") or ""),
             dovuto=_leggi_dovuto(unit, forma, riga.get("dovuto")),

@@ -10,7 +10,7 @@
 # (`fatturazione_immediata = false`) e il punto in cui il giro si ferma —
 # **EMESSA**, mentre l'immediata arriva a DEFINITIVA numerando da sé.
 #
-# ⚠️ NON abilitato dall'installer: vedi la nota sul gemello immediata.
+# ⚠️ SPENTO di default, a catalogo: vedi la nota sul gemello immediata.
 [Unit]
 Description=ZeroERP fatturazione batch — corsia differita (MASSIVO)
 After=network.target

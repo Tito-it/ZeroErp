@@ -77,6 +77,7 @@ import subprocess
 import time
 from typing import Any
 
+from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.avvio_manuale import (
     E_AVVIO_FALLITO,
     E_AVVIO_TROPPO_LUNGO,
@@ -92,16 +93,17 @@ from apps.core.services.job_run import (
     ENV_JOB_ORIGINE,
     ORIGINE_COMMAND,
 )
-from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
+from apps.core.services.processi_service import E_NOT_FOUND
+from apps.core.services.service_errors import E_CONFIG_MANCANTE, E_VALIDATION_INPUT, ServiceError
 from apps.core.services.sveglie import RUN_COMMAND, Sveglia, sveglia_di_processo
 
 logger = logging.getLogger(__name__)
 
 # Codici RIUSATI, perche' la condizione e' la stessa di dove sono nati
 # (brief §9.1): payload che non risolve nel dichiarato, wrapper assente, scope
-# senza l'attore.
+# senza l'attore. `E_CONFIG_MANCANTE` (wrapper assente) viene da
+# `service_errors`, come `E_VALIDATION_INPUT`.
 E_PAYLOAD = E_VALIDATION_INPUT
-E_CONFIG_MANCANTE = "E_CONFIG_MANCANTE"
 
 # Quanto output del comando si tiene nel lavoro: le ULTIME righe, cappate. La
 # diagnosi intera sta nel run del comando e nel journal; qui basta la coda per
@@ -170,6 +172,29 @@ def _lancia(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess
     return lancia_con_tetto(argv, TETTO_SOTTOPROCESSO_SECONDI, env=env)
 
 
+# Scopo: lo stato effettivo del processo su questa installazione, letto dal
+#        DB al momento di lanciare (P-2: spento si rifiuta anche qui, non solo
+#        all'accodamento — fra i due c'e' fino a un minuto, e una persona puo'
+#        averlo spento nel frattempo). Una funzione a se' perche' i test la
+#        sostituiscano senza un database.
+# ⛔ Il processo che non c'e' piu' nel registro (la sveglia del dichiarato
+#    nomina un codice ritirato dal catalogo) e' il SUO rifiuto, terminale:
+#    non «ambiente non dichiarato», che manderebbe a cercare altrove.
+def _acceso(processo_codice: str, unit: str) -> bool | None:
+    try:
+        return ProcessiRepository().acceso_processo(processo_codice)
+    except LookupError as exc:
+        raise ServiceError(
+            code=E_NOT_FOUND,
+            message=(
+                f"Il processo {processo_codice} della sveglia {unit} non esiste "
+                f"nel registro: il lavoro non si esegue."
+            ),
+            detail=str(exc),
+            context=contesto_terminale(processo_codice=processo_codice, unit=unit),
+        ) from exc
+
+
 # Scopo: Esegue il lavoro, nelle cinque mosse del piano §2.3: risolve la
 #        sveglia dal dichiarato; ricontrolla il predicato; verifica il wrapper;
 #        lancia il sottoprocesso con l'ambiente del figlio e il tetto; traduce
@@ -188,7 +213,9 @@ def esegui_processo_handler(
 
     # 2. Il predicato, ricontrollato dove si esegue. `lavoro_vivo=None`: il
     #    lavoro vivo con questa chiave siamo NOI.
-    motivi = motivi_esegui_ora(sveglia, lavoro_vivo=None)
+    motivi = motivi_esegui_ora(
+        sveglia, acceso=_acceso(processo_codice, unit), lavoro_vivo=None,
+    )
     if motivi:
         raise motivi[0].come_errore(**contesto_terminale(unit=unit))
 

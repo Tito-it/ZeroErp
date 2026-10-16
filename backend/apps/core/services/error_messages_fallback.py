@@ -1058,8 +1058,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     ),
     "E_PROCESSO_SENZA_SVEGLIA": "Questo processo automatico non ha una sveglia da accendere o spegnere.",
     "E_PROCESSO_SVEGLIA_NON_ABILITATA": (
-        "La sveglia non e' abilitata su questa installazione: il comando non "
-        "parte ne' dal timer ne' a mano."
+        "Il processo e' spento su questa installazione: il comando non parte "
+        "ne' dalla sveglia ne' a mano. Riaccendilo prima di eseguirlo."
     ),
     "E_PROCESSO_SVEGLIA_NON_AVVIABILE_A_MANO": (
         "La sveglia non e' avviabile a mano: e' un servizio sempre acceso oppure "

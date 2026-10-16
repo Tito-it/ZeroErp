@@ -243,6 +243,21 @@ export function eseguiOraProcesso(codice, unit) {
   )
 }
 
+// Scopo: la SCELTA A MANO sull'accensione di un processo, su questa
+//        installazione: `acceso` true accende, false spegne, null toglie la
+//        scelta e torna il default per ambiente. Il motivo è obbligatorio per
+//        tutti e tre i gesti (brief-db-processi-accensione-per-ambiente §6.0
+//        punto 5).
+// Risposta: l'accensione rinfrescata, nella forma di `accensione` del
+// dettaglio. ⚠️ `require_idempotency_key`: senza header 400.
+export function impostaAccensioneProcesso(codice, acceso, motivo) {
+  return api.post(
+    `${BASE}/processi/${encodeURIComponent(codice)}/accensione/`,
+    { acceso, motivo },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
 export function getAuditLog(params = {}) {
   return api.get(`${BASE}/audit-log/`, { params })
 }

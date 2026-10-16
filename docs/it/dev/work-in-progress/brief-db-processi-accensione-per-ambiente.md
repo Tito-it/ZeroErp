@@ -10,8 +10,9 @@ dati di sviluppo) aspetta che il BE dica che cosa crea il provisioning di svilup
 | 1 | Tid | ✅ decisioni A-1…A-5, P-1…P-3, R-1…R-4 (2026-10-15/16) | §4, §4-bis, §4-ter | — |
 | 2 | team DB | ✅ giro 1 scritto e provato sullo scratch (2026-10-16): `20261016-15` … `-32` | §5-bis | — |
 | 3 | Tid | ✅ apply del giro 1, fase `post` su dbdev (`SVILUPPO`, 2026-10-16 14:20), pgTAP verdi | §5-bis.4 | — |
-| 4 | sessione BE/FE | sveglie, installer, «Esegui ora», drawer, codici d'errore, stato `SPENTO` | §6 | — |
-| 5 | sessione BE | che cosa crea il provisioning di sviluppo (utenti `dev.*`, soggetti, clienti, `EMITEST`) | §5-ter | — |
+| 4 | sessione BE/FE | 🔨 punti 1-6 del §6.0 fatti e verdi (2026-10-16, §6.1); resta il punto 7 (decisione di Tid) e la reinstallazione delle sveglie su dbdev | §6.1 | — |
+| 4-bis | team DB | le tre richieste del BE (R-BE-1 … R-BE-3) | §6.1 | — |
+| 5 | sessione BE | ✅ che cosa crea il provisioning di sviluppo: l'elenco è in [brief-be-utenti-di-sviluppo §7](brief-be-utenti-di-sviluppo.md) (2026-10-16), decisioni di Tid del §7.4 prese (emittenti nuovi dal verbo, niente `dev.shop` per ora, portale senza contratto) | §5-ter | — |
 | 6 | team DB | giro 2 (R-4): etichette, verbo del provisioning di sviluppo, presidio | §5-ter | 5 |
 | 7 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 4, 6 |
 
@@ -157,7 +158,7 @@ spegne `listen_permessi` lascia agli utenti i diritti tolti, senza che nessuno s
     scelta è del team DB scrivendo, col pgTAP di postura che la prova;
   * la riga dice chi l'ha scritta e quando (audit); un cambio non esiste (immutabile).
 * ✅ **R-4 — gli utenti e i dati di sviluppo non stanno in un database `PRODUZIONE`** (requisito del
-  BE e decisioni di Tid, 2026-10-16). Gli utenti `dev.*` sono in preparazione: non ne esiste ancora
+  BE e decisioni di Tid, 2026-10-16). Lato BE: [brief-be-utenti-di-sviluppo](brief-be-utenti-di-sviluppo.md). Gli utenti `dev.*` sono in preparazione: non ne esiste ancora
   nessuno, e il segno si sceglie prima che nascano.
   * **Un'etichetta, non il nome.** Il prefisso `dev.` si sbaglia a mano in tutti e due i versi
     (`dev_mario` sfugge, una persona vera `dev.qualcosa` suona per niente): resta una convenzione di
@@ -371,6 +372,9 @@ non dichiarato dà rossi puliti (4, 5, 6, 7, 8, 10), e dichiarato 23/23. Dichiar
 
 ## 5-ter. Giro 2 (R-4): i dati di sviluppo — da scrivere
 
+> Il lato BE (il command, gli smoke, la lista Operatori) e l'elenco di che cosa crea il verbo stanno
+> in [brief-be-utenti-di-sviluppo](brief-be-utenti-di-sviluppo.md).
+
 Le etichette (credenziale, soggetto) coi loro guard, il verbo del provisioning di sviluppo che in
 `PRODUZIONE` non parte, il presidio delle radici etichettate in un database `PRODUZIONE`, la colonna
 dell'etichetta nella lettura della lista operatori (§4-ter, R-4). Il verbo crea ciò che il BE sta
@@ -447,3 +451,37 @@ Con quell'elenco il team DB scrive le etichette (credenziale e soggetto), il ver
 * **Area Accessi (R-4):** i tre tab non cambiano. Nel tab «Operatori» un filtro, attivo di default,
   nasconde gli utenti di prova; togliendolo si vedono col badge «di prova». Il dettaglio e i comandi
   dell'operatore funzionano su di loro come su ogni operatore.
+
+### 6.1 Risposta del BE (sessione BE, 2026-10-16)
+
+| # del §6.0 | Stato | Dove |
+| --- | --- | --- |
+| 1 codici d'errore | ✅ rigenerati nel working tree (modulo generato e ripieghi dei quattro codici), ⚠️ **non da questa sessione** e **non ancora committati**: li ha scritti la sessione che lavora in parallelo su brief-db-coerenza-listino-della-riga-di-commessa, insieme ai suoi codici. `genera_error_policies --check` pulito. Vanno nello stesso commit del resto, o il guardrail torna rosso | `error_policies_generated.py`, `error_messages_fallback.py` |
+| 2 sveglie systemd | ✅ **un comando solo**, `e_dovuto`, invece di un secondo `ExecCondition` accanto: per prima cosa chiede `maintenance.fn_sveglia_accesa` (spento → 1, systemd salta; errore del DB, ambiente non dichiarato compreso → 255, unit fallita), poi il periodo per le calendariali. «Dovuto adesso?» comprende «acceso?», e il recinto delle uscite (il 255 che un'eccezione non deve perdere) resta scritto una volta. L'`ExecCondition` sta ora su **ogni** template, anche dei non spegnibili: è il catalogo a dire chi si spegne | `e_dovuto.py`, `MaintenanceRepository.sveglia_accesa`, `deploy/systemd/*.service` |
+| 3 «Esegui ora» | ✅ il motivo 2 legge lo stato effettivo dal DB (`dbops.fn_processo_acceso_dichiarato`, passato al predicato dal chiamante, uguale per capability, rifiuto e ricontrollo dell'handler). `E_PROCESSO_SVEGLIA_NON_ABILITATA` **resta**, col significato «processo spento»: vedi R-BE-3. `acceso` NULL (ambiente non dichiarato) è un motivo a sé, `E_CONFIG_MANCANTE` | `avvio_manuale.py`, `processi_service.py`, `esegui_processo_handler.py` |
+| 4 `abilita` ritirato | ✅ da `sveglie.json`, da `Sveglia`, dall'installer (accende tutto) e dai test; `carica_sveglie` lo **rifiuta** se ricompare | `sveglie.py`, `install-timers.sh` |
+| 5 drawer | ✅ in testa l'ambiente, lo stato (acceso / spento / non decidibile) e da dove viene (non si spegne mai, scelta a mano con motivo e data, default dell'ambiente); «Spegni» / «Accendi» / «Torna al default» col motivo obbligatorio (`MotivoDialog`), solo se `can_imposta_accensione`. Endpoint `POST amm-software/processi/<codice>/accensione/` (`AdminAPIView`, come «Esegui ora»). Tolta la colonna «Su questa installazione» dalle sveglie | `ProcessoDrawer.vue`, `ProcessiAccensioneView` |
+| 6 panorama `SPENTO` | ✅ nessun lavoro: il FE non mostra gli stati del panorama (solo i presidi «da guardare», coi testi dal DB), e `SPENTO` non è da guardare | — |
+| 7 smoke | ⏳ **decisione di Tid**: tolleranza in sviluppo, e se `SMOKE_NOTTURNO_CONSENTITO` resta come seconda serratura | — |
+
+Prove: backend `apps.core` + `apps.amm_software` 1860 test verdi; `test_processi_accensione_db` (3) sul DB vero; `test-install-timers.sh` verde; frontend 886 test, lint. ⚠️ Su dbdev le sveglie vanno **reinstallate** (`sudo backend/bin/install-timers.sh`): fino ad allora girano i template vecchi, senza il cancello sui cinque che non l'avevano, e i due di fatturazione e lo smoke restano spenti dall'installer vecchio.
+⚠️ Fatto da sapere, non un motivo: l'`ExecCondition` su ogni sveglia fa partire un processo Python in più a ogni sveglia (il drenatore dei lavori ogni minuto).
+
+**Richieste al team DB:**
+
+* **R-BE-1 — «chi» nella scelta a mano è il ruolo, non la persona.** `dbops.processi_accensione` ha
+  `user_insert`/`user_update` a `CURRENT_USER` e il verbo scrive `user_update = CURRENT_USER`: dal
+  backend è sempre `zeroerp_app`. Il drawer deve dire chi ha spento (§6.0 punto 5). Le tabelle
+  coperte dall'audit usano `app.jwt_user` (`script.trgfn_audit_data_user_generic`), che il backend
+  imposta a ogni richiesta. Il backend mostra già `user_update`: corretto il DB, non cambia niente
+  di qua.
+* **R-BE-2 — il «registro delle operazioni del backend» non esiste.** §6 e la pagina manual di
+  `fn_imposta_accensione_processo` dicono che la traccia di «torna al default» (che cancella la
+  riga) la tiene quel registro: nel backend non c'è nessun registro dei gesti amministrativi. Oggi
+  il gesto si scrive nel log applicativo (chi, processo, gesto, motivo): è una traccia, non una
+  storia interrogabile. La storia delle scelte (che il §5-bis.2 rimanda a «un cantiere a parte») è
+  la soluzione sul modello: da decidere con Tid.
+* **R-BE-3 — la nota di `E_PROCESSO_SVEGLIA_NON_ABILITATA` in `codici_errore.csv`.** Il codice resta
+  (stessa classe `NON_DISPONIBILE`, stesso gesto rifiutato); la nota va riscritta: non più
+  «`abilita = false` in `sveglie.json`», ma «il processo è spento su questa installazione
+  (`dbops.fn_processo_acceso_dichiarato`)». Il ripiego nel backend è già aggiornato.

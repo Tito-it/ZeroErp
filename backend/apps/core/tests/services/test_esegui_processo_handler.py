@@ -33,13 +33,15 @@
 #       E_PROCESSO_AVVIO_TROPPO_LUNGO terminale, tetto nel context
 #    6. unit ignota per il processo -> E_VALIDATION_INPUT terminale, campo unit,
 #       e il sottoprocesso NON parte
-#    7. sveglia non candidata / spenta -> il codice del predicato, terminale,
-#       niente sottoprocesso
+#    7. sveglia non candidata / processo spento / accensione non decidibile
+#       -> il codice del predicato, terminale, niente sottoprocesso
 #    8. scope senza attore -> E_CODA_SCOPE_OPERATORE_INVALIDO terminale
 #    9. run-command.sh assente -> E_CONFIG_MANCANTE terminale
 #   10. `coda_output` tiene le ultime righe, accetta bytes e None, non solleva
 #   11. l'handler e' registrato con il codice del seed (CoreConfig.ready)
 #   12. il drenatore interrotto mentre aspetta -> il gruppo muore lo stesso
+#   13. processo non piu' nel registro -> E_PROCESSO_NON_TROVATO terminale,
+#       non «accensione non decidibile»
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -52,9 +54,10 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 
 from apps.core.services.avvio_manuale import (
+    E_ACCENSIONE_NON_DECIDIBILE,
     E_AVVIO_FALLITO,
     E_AVVIO_TROPPO_LUNGO,
-    E_SVEGLIA_NON_ABILITATA,
+    E_PROCESSO_SPENTO,
     E_SVEGLIA_NON_AVVIABILE_A_MANO,
     HANDLER_CODE,
     TETTO_SOTTOPROCESSO_SECONDI,
@@ -66,7 +69,7 @@ from apps.core.services.coda_lavori.handler_registry import get_handler
 from apps.core.services.job_run import ENV_JOB_AUTH_USER_ID, ENV_JOB_ORIGINE, ORIGINE_COMMAND
 from apps.core.services.processi import PROCESSO_DRAINA_CODA_LAVORI
 from apps.core.services.service_errors import ServiceError
-from apps.core.services.sveglie import RUN_COMMAND, Sveglia, sveglie_di_processo
+from apps.core.services.sveglie import RUN_COMMAND, sveglie_di_processo
 from apps.core.tests._sveglie import prima_sveglia_candidata
 
 _POPEN = "apps.core.services.sottoprocesso.subprocess.Popen"   # il lancio sta nel BB
@@ -122,6 +125,11 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
         patcher = patch(_IS_FILE, return_value=True)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # Il processo e' acceso per default (nessun DB): spento e non
+        # decidibile sono il test 7.
+        self._patch_acceso = patch(f"{mod.__name__}._acceso", return_value=True)
+        self.acceso = self._patch_acceso.start()
+        self.addCleanup(self._patch_acceso.stop)
         # Nessun colpo vero a nessun gruppo: si registra e basta.
         killpg = patch(_KILLPG)
         self.killpg = killpg.start()
@@ -225,13 +233,11 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
             popen.assert_not_called()
 
     # 7. Il predicato si RICONTROLLA dove si esegue: una sveglia non candidata
-    #    (il drenatore) o spenta non parte, col codice del predicato.
+    #    (il drenatore) o un processo spento non parte, col codice del
+    #    predicato. ⭐ P-2: spento fra l'accodamento e il lancio vale lo stesso
+    #    — l'accensione si rilegge qui, col codice del PROCESSO del payload.
     def test_predicato_ricontrollato(self) -> None:
         drenatore = sveglie_di_processo(PROCESSO_DRAINA_CODA_LAVORI)[0]
-        spenta = Sveglia(
-            unit="zeroerp-spenta", processo_codice="p", forma="timer", comando=("cmd",),
-            oncalendar="*:0/5", abilita=False, avvio_manuale=True, nota="",
-        )
         with _popen(_ProcessoFinto()) as popen:
             with self.assertRaises(ServiceError) as cm:
                 mod.esegui_processo_handler(
@@ -240,11 +246,15 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
             self.assertEqual(cm.exception.code, E_SVEGLIA_NON_AVVIABILE_A_MANO)
             self.assertTrue(cm.exception.context[CONTEXT_KEY_TERMINALE])
 
-            with patch(f"{mod.__name__}.sveglia_di_processo", return_value=spenta):
-                with self.assertRaises(ServiceError) as cm:
-                    mod.esegui_processo_handler({"processo_codice": "p", "unit": "zeroerp-spenta"}, scope=_SCOPE)
-            self.assertEqual(cm.exception.code, E_SVEGLIA_NON_ABILITATA)
-            self.assertTrue(cm.exception.context[CONTEXT_KEY_TERMINALE])
+            for acceso, codice in ((False, E_PROCESSO_SPENTO), (None, E_ACCENSIONE_NON_DECIDIBILE)):
+                with self.subTest(acceso=acceso):
+                    self.acceso.reset_mock()
+                    self.acceso.return_value = acceso
+                    with self.assertRaises(ServiceError) as cm:
+                        mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+                    self.assertEqual(cm.exception.code, codice)
+                    self.assertTrue(cm.exception.context[CONTEXT_KEY_TERMINALE])
+                    self.acceso.assert_called_once_with(self.sveglia.processo_codice, self.sveglia.unit)
             popen.assert_not_called()
 
     # 8. Senza l'attore nello scope il comando non si lancia: scriverlo come
@@ -266,6 +276,21 @@ class EseguiProcessoHandlerTests(SimpleTestCase):
                 mod.esegui_processo_handler(self.payload, scope=_SCOPE)
             popen.assert_not_called()
         self.assertEqual(cm.exception.code, mod.E_CONFIG_MANCANTE)
+        self.assertTrue(cm.exception.context[CONTEXT_KEY_TERMINALE])
+
+    # 13. Il processo della sveglia non c'e' piu' nel registro: il SUO
+    #     rifiuto, terminale — non None, che si leggerebbe «ambiente non
+    #     dichiarato».
+    def test_processo_inesistente_e_non_trovato(self) -> None:
+        # Qui si prova `_acceso` VERO, col solo repository finto.
+        self._patch_acceso.stop()
+        with patch(f"{mod.__name__}.ProcessiRepository") as repo_cls, \
+                _popen(_ProcessoFinto()) as popen:
+            repo_cls.return_value.acceso_processo.side_effect = LookupError("x")
+            with self.assertRaises(ServiceError) as cm:
+                mod.esegui_processo_handler(self.payload, scope=_SCOPE)
+            popen.assert_not_called()
+        self.assertEqual(cm.exception.code, mod.E_NOT_FOUND)
         self.assertTrue(cm.exception.context[CONTEXT_KEY_TERMINALE])
 
     # 10. La coda dell'output: ultime righe, cappata, bytes e None ammessi.
