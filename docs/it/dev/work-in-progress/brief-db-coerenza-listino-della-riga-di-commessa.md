@@ -11,16 +11,16 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-16
 
-**Riparte: il BE, con i due passi del §9. Il lato DB è chiuso: tre giri applicati su dbdev, pgTAP verdi, nessuna regressione (corsa di Tid, 2026-10-16).**
+**Riparte: Tid, con l'archiviazione.** Lato DB chiuso (tre giri applicati su dbdev, pgTAP verdi); ✅ i due passi BE del §9 fatti il 2026-10-16 (§9.1), da committare.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | **BE** | Rigenerare `error_policies_generated.py` (`manage.py genera_error_policies`): sette codici nuovi | §9 | niente |
-| 2 | **BE** | Riportare la fixture di `test_prezzo_riga_commessa_db` sul builder `dbops.fn_pgtap_crea_commessa_attivita` e togliere la copia della chiamata alla madre | §9 | niente |
+| 1 | ✅ BE | Rigenerato `error_policies_generated.py`: i sette codici, più i loro ripieghi | §9.1 | — |
+| 2 | ✅ BE | Fixture di `test_prezzo_riga_commessa_db` sul builder `dbops.fn_pgtap_crea_commessa_attivita`, tolta la copia della chiamata alla madre | §9.1 | — |
 | 3 | **Tid** | Archiviazione in `work-done/` | — | 1, 2 |
 
 **Decisioni aperte di Tid: nessuna.** Prese: D-1 (2026-10-15); D-2…D-4 e D-5 = opzione B sulla matrice (2026-10-16).
-✅ **Committato** su `dev/db-tid` il 2026-10-16: i tre giri (§5, §7, §8) e questo documento. Niente da committare.
+✅ **Committato** su `dev/db-tid` il 2026-10-16: i tre giri (§5, §7, §8) e questo documento. ✅ **Committato** su `dev/backend-tid` il 2026-10-16: il giro BE del §9.1. Niente da committare.
 
 ## 1. Il problema
 
@@ -347,3 +347,19 @@ Testo da passare al BE così com'è:
 > Nessun'altra modifica richiesta: il riallineamento del prezzo scrive già versione e riga di
 > listino insieme dal risolutore, e le regole nuove lo lasciano passare.
 
+### 9.1 Fatto dal BE (sessione BE, `dev/backend-tid`, 2026-10-16)
+
+* **Policy**: `error_policies_generated.py` rigenerato (git e DB allineati: ogni codice nuovo è
+  nel CSV in git). Entrano i sette codici con le classi del catalogo, nessuna classe esistente
+  cambiata. Il rigenero porta anche i quattro codici di
+  brief-db-processi-accensione-per-ambiente (`E_AMBIENTE_IMMUTABILE`, `E_PROCESSO_NON_SPEGNIBILE`,
+  `E_PROCESSO_SENZA_SVEGLIA`, `E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO`), già in git: il modulo è
+  uno solo. Per tutti e undici il ripiego senza segnaposto in `error_messages_fallback.py`.
+* **Matrice categoria → listino**: provato con una scrittura vera annullata su dbdev, come
+  operatore: un listino che l'operatore non vede dà `E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO` col campo
+  `listino_id` strutturato. Il P0001 non è un `IntegrityError`: lo traduce il middleware, come per
+  contratti e offerte, e il form accende il campo. Nessun codice BE da cambiare. Il ramo «altra
+  utility» non si è potuto provare a mano: su dbdev l'operatore vede listini di una sola utility
+  (fatto datato); lo prova la pgTAP nuova.
+* **Fixture**: `test_prezzo_riga_commessa_db` scrive la riga col builder (articolo e versione dal
+  chiamante); la copia della chiamata alla madre è tolta. 5/5 verdi.

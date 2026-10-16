@@ -64,6 +64,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ALBERO_EMITTENTE_MISTO": "Il billing account e il suo parent appartengono a emittenti fiscali diversi: un singolo albero non puo' attraversare due emittenti.",
     "E_ALLEGATO_INSERT": "Errore durante l'inserimento dell'allegato.",
     "E_ALLEGATO_NOT_FOUND": "Allegato non trovato.",
+    "E_AMBIENTE_IMMUTABILE": "L'ambiente di questa installazione non si cambia: si sceglie una volta, quando il database nasce.",
     "E_AMM_OPERATORE_NOT_FOUND": "Operatore non trovato.",
     "E_AMM_SCOPE_NON_AMMESSO": "Scope emittenti non ammesso per la richiesta.",
     "E_AMM_UTENTE_NOT_FOUND": "Utente non trovato.",
@@ -99,6 +100,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ATTIVITA_FATTURABILE_QUANTITA_IMMUTABILE": "La quantita` dell`attivita` fatturabile deve specchiare quella della commessa: modifica non consentita.",
     "E_ATTIVITA_KIT_SENZA_PADRE": "Componente di kit senza articolo padre: correggere il documento di origine.",
     "E_ATTIVITA_IN_LAVORAZIONE": "Il lavoro selezionato e' dentro un giro di fatturazione ancora in corso: non e' un residuo, e liberarlo da qui lo farebbe prendere da due giri insieme. Si aspetta che il lotto finisca.",
+    "E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO": "Il prezzo della riga cita un listino di un'altra azienda: una riga usa solo i listini dell'azienda della sua commessa.",
+    "E_ATTIVITA_LISTINO_RIGA_INCOERENTE": "La riga di listino citata per il prezzo non corrisponde alla riga: articolo, unita' di misura o versione del listino sono diversi.",
+    "E_ATTIVITA_LISTINO_VERSIONE_BOZZA": "Il prezzo della riga cita una versione di listino ancora in bozza: i prezzi di una bozza non si usano.",
     "E_ATTIVITA_LOTTO_NOT_FOUND": "Lotto attivita non trovato.",
     "E_ATTIVITA_PIPELINE": "Errore nella pipeline attivita fatturabili.",
     "E_ATTIVITA_RIPORTO_SELEZIONE_VUOTA": "Nessuna attivita' selezionata: la richiesta di riporto e' arrivata vuota. Riselezionare le righe e riprovare.",
@@ -154,7 +158,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CATALOGO_UOM_NOT_FOUND": "UoM operativa non trovata.",
     "E_CATALOGO_UOM_TIPO_NOT_FOUND": "Tipologia UoM non trovata.",
     "E_CATALOGO_VALIDATION": "Parametri catalogo non validi.",
+    "E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO": "Il listino scelto e' di un'altra azienda: a una categoria di clienti si assegna solo un listino dell'azienda indicata sulla riga.",
     "E_CATEGORIA_LISTINO_NON_MAPPATA": "Categoria cliente non mappata a listino per la quadrupla indicata.",
+    "E_CATEGORIA_LISTINO_UTILITY_DIVERSA": "Il listino scelto e' di un'altra utility: a una categoria di clienti si assegna solo un listino della utility della riga.",
     "E_CENTRO_NON_ABILITATO_COMPENSAZIONE": "Il centro di riscossione indicato non e' abilitato alle compensazioni.",
     "E_CF_NON_VALIDO": "Codice fiscale non valido.",
     "E_CF_OBBLIGATORIO": "Codice fiscale obbligatorio.",
@@ -616,6 +622,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_LISTINO_COMPONENTE_COERENZA_BOM": "Riga listino componenti incoerente con la distinta base.",
     "E_LISTINO_RIGA_COMPOSITO_VIETATO": "Articolo composito: il prezzo diretto non e' ammesso, usare i componenti.",
     "E_LISTINO_RIGA_COMP_BOM_INCOERENTE": "Prezzo bundle riferito a un componente non presente nella distinta base del padre composito.",
+    "E_LISTINO_RIGA_IDENTITA_IMMUTABILE": "Una riga di listino non cambia articolo, unita' di misura o versione.",
     "E_LISTINO_TIPOLOGIA_UTILITY": "Combinazione utility / tipologia non ammessa per questo listino.",
     "E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI": "La versione di listino e' chiusa: le sue date di validita' non si possono piu' modificare.",
     "E_LISTINO_VERSIONE_NON_ATTIVA": "Listino senza versione attiva alla data del documento. Verificare le versioni del listino o la data di riferimento.",
@@ -1021,12 +1028,14 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PREZZO_LISTINO_AMBIGUO": "Piu' prezzi trovati per lo stesso articolo/listino.",
     "E_PREZZO_LISTINO_NON_TROVATO": "Nessun prezzo listino risolto per l'articolo richiesto.",
     "E_PREZZO_LISTINO_RIGA_NON_TROVATA": "Riga listino non trovata per articolo/uom alla data.",
+    "E_PREZZO_LISTINO_VERSIONE_BOZZA": "La versione del listino e' ancora in bozza: i suoi prezzi non si usano finche' non e' attiva.",
     "E_PRICING_MAGGIORAZIONE_ECCESSIVA": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
     "E_PRICING_OVERRIDE_NON_AUTORIZZATO": "Modifica manuale del prezzo non autorizzata. Usa il prezzo suggerito dal listino o richiedi l'autorizzazione al responsabile.",
     "E_PRICING_SCONTO_ECCESSIVO": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
     # «Esegui ora» su una sveglia (brief-db-avvio-manuale-di-un-processo §9):
     # i tre motivi del predicato e i due esiti dell'handler. A catalogo portano
     # unit, id del lavoro, secondi ed exit code: qui la frase senza.
+    "E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO": "Per accendere o spegnere a mano un processo automatico serve un motivo.",
     "E_PROCESSO_AVVIO_FALLITO": (
         "Il comando della sveglia e' uscito con un errore: il dettaglio e' nel "
         "giornale del processo eseguito."
@@ -1043,9 +1052,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "Questo processo non puo' avere un utente tecnico: ne serve uno solo ai "
         "processi che fanno il lavoro di un'azienda senza che nessuno li avvii."
     ),
+    "E_PROCESSO_NON_SPEGNIBILE": "Questo processo automatico non si puo' spegnere.",
     "E_PROCESSO_NON_TROVATO": (
         "Il processo indicato non esiste nel registro dei processi automatici."
     ),
+    "E_PROCESSO_SENZA_SVEGLIA": "Questo processo automatico non ha una sveglia da accendere o spegnere.",
     "E_PROCESSO_SVEGLIA_NON_ABILITATA": (
         "La sveglia non e' abilitata su questa installazione: il comando non "
         "parte ne' dal timer ne' a mano."
