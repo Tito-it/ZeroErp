@@ -72,15 +72,15 @@ SELECT is(
 --   (chk_job_run_log_processo_dichiarato, FK su dbops.processi): si seminano,
 --   come fa dbops/test-presidio-processi-testo-per-causa-v1. Canale CODA: niente
 --   job pgAgent da dichiarare.
-INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
-VALUES (9701, 'PGTAP-RUOLO-CORSA',   'prova ruolo', 'MANUTENZIONE', 'CODA'),
-       (9702, 'PGTAP-RUOLO-SALTATA', 'prova ruolo', 'MANUTENZIONE', 'CODA'),
-       (9703, 'PGTAP-SU-ULTIMA',     'prova ruolo', 'MANUTENZIONE', 'CODA'),
-       (9704, 'PGTAP-SU-PRIMA',      'prova ruolo', 'MANUTENZIONE', 'CODA'),
-       (9705, 'PGTAP-SU-NULL',       'prova ruolo', 'MANUTENZIONE', 'CODA'),
-       (9706, 'PGTAP-SU-SPARITO',    'prova ruolo', 'MANUTENZIONE', 'CODA'),
-       (9707, 'PGTAP-RUOLO-CRON',    'prova ruolo', 'MANUTENZIONE', 'CODA'),
-       (9708, 'PGTAP-RUOLO-CRON-SALTATA', 'prova ruolo', 'MANUTENZIONE', 'CODA');
+INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, causa_fallimento)
+VALUES (9701, 'PGTAP-RUOLO-CORSA',   'prova ruolo', 'MANUTENZIONE', 'CODA', 'PROGRAMMA'),
+       (9702, 'PGTAP-RUOLO-SALTATA', 'prova ruolo', 'MANUTENZIONE', 'CODA', 'PROGRAMMA'),
+       (9703, 'PGTAP-SU-ULTIMA',     'prova ruolo', 'MANUTENZIONE', 'CODA', 'PROGRAMMA'),
+       (9704, 'PGTAP-SU-PRIMA',      'prova ruolo', 'MANUTENZIONE', 'CODA', 'PROGRAMMA'),
+       (9705, 'PGTAP-SU-NULL',       'prova ruolo', 'MANUTENZIONE', 'CODA', 'PROGRAMMA'),
+       (9706, 'PGTAP-SU-SPARITO',    'prova ruolo', 'MANUTENZIONE', 'CODA', 'PROGRAMMA'),
+       (9707, 'PGTAP-RUOLO-CRON',    'prova ruolo', 'MANUTENZIONE', 'CODA', 'PROGRAMMA'),
+       (9708, 'PGTAP-RUOLO-CRON-SALTATA', 'prova ruolo', 'MANUTENZIONE', 'CODA', 'PROGRAMMA');
 
 -- ============================================================
 -- 2..3. fn_run_and_log scrive il ruolo

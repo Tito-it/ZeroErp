@@ -36,6 +36,15 @@ prima di avere una traduzione, e sopravvive a un cambio di testo.
   compare nei log storici.
 * **`note`** — il *perché* del codice. Nel progetto sono note lunghe e argomentate: raccontano
   da quale difetto è nato, perché è distinto da un codice vicino, quale piano lo ha deciso.
+* **`causa_fallimento`** *(dal 2026-10-16)* — quando questo errore ferma un lavoro
+  automatico, di che natura è il guasto
+  ([`dbops.cause_fallimento`](/dbzero/dbops/manual/cause_fallimento)): `AMBIENTE`,
+  `PROGRAMMA` o `CONFIGURAZIONE`. ⭐ **Vuota di proposito** su quasi tutti i codici: vuol
+  dire «decide il processo». Si valorizza solo su un codice che ha un destinatario suo,
+  per esempio un errore che si sistema dalle impostazioni dell'applicazione. La legge
+  [`maintenance.vw_job_run_da_guardare`](/dbzero/maintenance/manual/vw_job_run_da_guardare).
+  ⚠️ Non è la `classe`: la classe descrive l'errore per chi ha fatto la richiesta, la
+  causa dice chi deve rimediare a un lavoro notturno fermo.
 
 ⚠️ `chk_codici_errore_note_una_riga` impone che `note` stia **su una riga sola**: è un campo
 di CSV, e un a-capo lo spezzerebbe. Le note lunghe si scrivono di seguito, senza newline.

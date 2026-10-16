@@ -63,6 +63,12 @@ databaseChangeLog:
               - column: { name: acceso_in_sviluppo, type: BOOLEAN }
               - column: { name: acceso_in_produzione, type: BOOLEAN }
               - column: { name: spegnibile, type: BOOLEAN }
+              # ⭐ Dal 2026-10-16 la natura dei fallimenti del processo quando
+              #   l'ambiente e' sano (dbops.cause_fallimento), per la causa di
+              #   maintenance.vw_job_run_da_guardare
+              #   (brief-db-presidio-job-run-a-chi-tocca). Obbligatoria: NOT NULL
+              #   e FK in 90_end/20261016-43.
+              - column: { name: causa_fallimento, type: STRING }
       rollback:
         - sql:
             splitStatements: false

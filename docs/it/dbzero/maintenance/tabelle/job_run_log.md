@@ -22,6 +22,7 @@
 | auth_user_id | integer | YES |  |
 | saltata | boolean | NO | false |
 | ruolo_sessione | text | YES |  |
+| sqlstate | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -29,6 +30,7 @@
 | CHECK | chk_job_run_log_origine |  |
 | CHECK | chk_job_run_log_processo_dichiarato |  |
 | CHECK | chk_job_run_log_saltata |  |
+| CHECK | chk_job_run_log_sqlstate_forma |  |
 | FOREIGN KEY | fk_job_run_log_processi | processo_codice |
 | PRIMARY KEY | job_run_log_pkey | id |
 

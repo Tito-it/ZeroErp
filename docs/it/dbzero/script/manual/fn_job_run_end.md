@@ -95,4 +95,14 @@ SELECT script.fn_job_run_end(123, false, 'boom', NULL, 'P0001', 'stack...', NULL
 
 ---
 
+### ⭐ Rev 2026-10-16 — `p_sqlstate`
+
+Parametro nuovo **in coda**, con default `NULL`: il backend vi passa lo SQLSTATE di un
+errore che è passato dal database (disco pieno, connessione caduta), che prima andava
+perso dietro il nome dell'eccezione. `p_error_code` resta il codice del backend. Le
+chiamate a otto argomenti continuano a funzionare.
+*Brief: `brief-db-presidio-job-run-a-chi-tocca.md` §4.2.*
+
+---
+
 {% include-markdown "signature-core.md" %}

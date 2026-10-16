@@ -97,11 +97,11 @@ BEGIN
     -- 20261016-20: un processo con una sveglia dichiara l'accensione.
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
                                 jobname_pgagent, ci_esclusione,
-                                acceso_in_sviluppo, acceso_in_produzione, spegnibile)
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
     VALUES (9750, 'PGTAP-PRESIDIO-GUASTO',
             'processo che dichiara un job inesistente',
             'MANUTENZIONE', 'PGAGENT', 'PGTAP-JOB-CHE-NON-ESISTE-MAI',
-            'pgTAP: processo guasto seminato', true, true, true);
+            'pgTAP: processo guasto seminato', true, true, true, 'PROGRAMMA');
 END
 $guasto$;
 

@@ -23,3 +23,8 @@ databaseChangeLog:
   - include:
       file: migrations_v2/20_code/maintenance/20261015-03-update-fn-job-run-log-failure-ruolo-sessione-mctit.yaml
       relativeToChangelogFile: true
+  # 16-10-2026: p_sqlstate in coda al verbale dei fallimenti (DROP + CREATE della
+  # firma). brief-db-presidio-job-run-a-chi-tocca §4.4.
+  - include:
+      file: migrations_v2/20_code/maintenance/20261016-39-update-fn-job-run-log-failure-sqlstate-mctit.yaml
+      relativeToChangelogFile: true

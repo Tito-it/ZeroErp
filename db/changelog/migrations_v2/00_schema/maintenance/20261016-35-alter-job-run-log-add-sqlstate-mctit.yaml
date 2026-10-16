@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL GIORNALE DEI JOB TIENE LO SQLSTATE SEPARATO DAL CODICE D'ERRORE.
+#   maintenance.job_run_log.sqlstate
+#   Brief: brief-db-presidio-job-run-a-chi-tocca (§4.3 punto 1, §4.4, D5)
+#
+# -- IL DIFETTO --------------------------------------------------------
+#   `error_code` portava due vocabolari a seconda di chi scriveva:
+#   * job del database (maintenance.fn_run_and_log): lo SQLSTATE. Per un
+#     errore di dominio sempre P0001, e il codice vero (il canale CONSTRAINT
+#     di script.fn_log_and_raise_error) andava perso;
+#   * command del backend (registered_job): il codice applicativo, o il nome
+#     della classe Python. Lo SQLSTATE andava perso.
+#   La causa di un fallimento (vw_job_run_da_guardare, 20261016-41) ha bisogno
+#   di tutti e due: la classe SQLSTATE dice se e' l'ambiente, il codice dice
+#   se l'errore ha un destinatario suo (config.codici_errore.causa_fallimento).
+#
+# -- IL SIGNIFICATO (D5, Tid 2026-10-16) -------------------------------
+#   * `sqlstate`: lo SQLSTATE dell'errore, quando l'errore e' passato dal
+#     database. NULL quando non c'e' (errore Python di un command, corsa ok).
+#   * `error_code`: invariato, «il codice piu' preciso che chi scrive ha»:
+#     codice di dominio o applicativo, oppure, in mancanza, lo SQLSTATE o la
+#     classe Python. I lettori (pannello, giornale) non cambiano.
+#
+# -- LE RIGHE DI PRIMA: CONVERSIONE SUL POSTO --------------------------
+#   Le righe scritte da fn_run_and_log e dal verbale dei fallimenti hanno lo
+#   SQLSTATE in error_code. La colonna nuova si riempie con la sua stessa
+#   forma: ADD COLUMN nuda, poi ALTER ... TYPE text USING, che riscrive la
+#   tabella valutando l'espressione su ogni riga SENZA trigger di riga.
+#   Il riconoscimento e' sulla FORMA dello SQLSTATE (cinque caratteri fra
+#   cifre e maiuscole), la stessa del CHECK: un codice applicativo ha il
+#   prefisso e il trattino basso (E_..., SMOKE_...), una classe Python ha le
+#   minuscole. Il codice di dominio perso nelle righe P0001 di prima non si
+#   recupera: error_code resta P0001, ed e' storia.
+#
+# ⚠️ NESSUN DEFAULT: la scrivono le tre porte di scrittura del giornale
+#   (fn_run_and_log 20261016-38, fn_job_run_log_failure 20261016-39,
+#   script.fn_job_run_end 20261016-40).
+# ⚠️ I privilegi sul giornale sono per tabella (90_end/20260905-38 INSERT a
+#   zeroerp_log, 90_end/20260919-08 SELECT a zeroerp_app): coprono la colonna.
+# ⚠️ Nessuna vista legge ancora la colonna, quindi l'ALTER TYPE non e'
+#   rifiutato. La legge la vista del 20261016-41, che viene dopo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/maintenance/20261016-35-alter-job-run-log-add-sqlstate-mctit.yaml
+
+  - changeSet:
+      id: 20261016-35-alter-job-run-log-add-sqlstate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.job_run_log.sqlstate: lo SQLSTATE dell'errore, separato da error_code
+        (il codice piu' preciso che chi scrive ha). Le righe di prima si convertono sul
+        posto dalla forma di error_code. Brief: brief-db-presidio-job-run-a-chi-tocca D5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: maintenance, tableName: job_run_log }
+            - not:
+                - columnExists: { schemaName: maintenance, tableName: job_run_log, columnName: sqlstate }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE maintenance.job_run_log
+                  ADD COLUMN sqlstate text;
+
+              -- ⭐ Conversione sul posto: riscrive la tabella valutando la
+              --   forma di error_code su ogni riga, senza trigger di riga.
+              ALTER TABLE maintenance.job_run_log
+                  ALTER COLUMN sqlstate TYPE text
+                  USING (CASE WHEN error_code ~ '^[0-9A-Z]{5}$' THEN error_code END);
+
+              ALTER TABLE maintenance.job_run_log
+                  ADD CONSTRAINT chk_job_run_log_sqlstate_forma
+                  CHECK (sqlstate ~ '^[0-9A-Z]{5}$');
+
+              COMMENT ON COLUMN maintenance.job_run_log.sqlstate IS
+                  'Lo SQLSTATE dell''errore che ha fatto fallire la corsa, quando l''errore e'' passato dal database (cinque caratteri, chk_job_run_log_sqlstate_forma). NULL per una corsa riuscita e per un errore che il database non ha visto (un''eccezione Python di un command). Separato da error_code, che resta «il codice piu'' preciso che chi scrive ha» (dominio, applicativo, o in mancanza SQLSTATE o classe Python): la classe SQLSTATE dice a maintenance.vw_job_run_da_guardare se il guasto e'' dell''ambiente (08, 53, 57, 58). Lo scrivono maintenance.fn_run_and_log, maintenance.fn_job_run_log_failure e script.fn_job_run_end. Le righe di prima del 2026-10-16 sono state convertite dalla forma di error_code. Brief: brief-db-presidio-job-run-a-chi-tocca (D5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE maintenance.job_run_log
+                  DROP CONSTRAINT IF EXISTS chk_job_run_log_sqlstate_forma,
+                  DROP COLUMN IF EXISTS sqlstate;

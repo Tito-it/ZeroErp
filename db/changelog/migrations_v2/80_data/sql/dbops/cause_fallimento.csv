@@ -1,0 +1,4 @@
+codice,descrizione
+AMBIENTE,"Il guasto e' dell'ambiente in cui il lavoro gira: server, servizi, connessione, spazio o memoria, ruoli e diritti del database. Si rimedia sul server, non nel programma."
+PROGRAMMA,"Il guasto e' del programma: il lavoro ha incontrato un caso che il codice o il database non gestiscono. Serve una modifica."
+CONFIGURAZIONE,"Il guasto si sistema dalle impostazioni dell'applicazione: una credenziale, un indirizzo, un parametro sbagliato o mancante. Ne' il server ne' il programma sono guasti."

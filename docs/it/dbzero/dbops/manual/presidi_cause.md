@@ -50,6 +50,7 @@ database.
 | Un presidio che dichiara la colonna della causa ha almeno una causa | stesso test (test 17) |
 | I valori ammessi per «a chi tocca» sono gli stessi del catalogo dei presidi | stesso test (test 15) |
 | Le cause del presidio dei processi sono **esattamente** quelle che la vista può produrre | test `db/pgtap/dbops/test-presidio-processi-testo-per-causa-v1.sql` |
+| Le cause del presidio dei lavori (`maintenance.vw_job_run_da_guardare`) sono **esattamente** il vocabolario [`dbops.cause_fallimento`](/dbzero/dbops/manual/cause_fallimento) *(dal 2026-10-16)* | test `db/pgtap/maintenance/test-vw-job-run-da-guardare-causa-v1.sql` (test 1) |
 
 ---
 

@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# QUANDO UN ERRORE FERMA UN LAVORO AUTOMATICO, A CHI TOCCA
+#   config.codici_errore.causa_fallimento
+#   Brief: brief-db-presidio-job-run-a-chi-tocca (§4.3 punto 2, D1 = B)
+#
+# -- PERCHE' PER CODICE ---------------------------------------------
+#   Un guasto «da amministratore» si riconosce dall'ERRORE, non dal processo:
+#   send_pending_emails puo' fallire per una password sbagliata nelle
+#   impostazioni (CONFIGURAZIONE) o per un difetto (PROGRAMMA). La
+#   dichiarazione del processo (dbops.processi.causa_fallimento) non li
+#   distingue; il codice si'.
+#
+# -- ⭐ NULL DI PROPOSITO -------------------------------------------
+#   NULL vuol dire «decide il processo». Si valorizza solo sui codici che
+#   hanno un destinatario loro. Un codice non registrato (gli SMOKE_* del
+#   backend) o senza valore passa al processo: nessuna riga del presidio
+#   resta «senza indicazione di chi agisce».
+#   ⛔ Le classi (config.classi_errore) non bastano: descrivono l'errore per
+#   chi ha fatto la richiesta, e TECNICO mescola server, difetto e
+#   configurazione mancante.
+#
+# ⚠️ La FK verso dbops.cause_fallimento sta in 90_end/20261016-43: da zero il
+#   mirror di codici_errore (80_data/20260614-08) gira PRIMA di quello del
+#   vocabolario (20261016-42), perche' in 80_data l'ordine e' il nome del file.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261016-37-alter-codici-errore-add-causa-fallimento-mctit.yaml
+
+  - changeSet:
+      id: 20261016-37-alter-codici-errore-add-causa-fallimento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.codici_errore.causa_fallimento: la causa (dbops.cause_fallimento) di un
+        lavoro automatico fermato da questo errore. NULL = decide il processo. FK in
+        90_end/20261016-43. Brief: brief-db-presidio-job-run-a-chi-tocca.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: codici_errore }
+            - not:
+                - columnExists: { schemaName: config, tableName: codici_errore, columnName: causa_fallimento }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.codici_errore
+                  ADD COLUMN causa_fallimento text;
+
+              COMMENT ON COLUMN config.codici_errore.causa_fallimento IS
+                  'Quando questo errore ferma un lavoro automatico, di che natura e'' il guasto (dbops.cause_fallimento): AMBIENTE, PROGRAMMA o CONFIGURAZIONE. ⭐ NULL di proposito: vuol dire «decide il processo» (dbops.processi.causa_fallimento), e si valorizza solo sui codici che hanno un destinatario loro, per esempio un errore che si sistema dalle impostazioni dell''applicazione. maintenance.vw_job_run_da_guardare la legge dopo la corsa morta senza chiudersi e lo SQLSTATE dell''ambiente, e prima del processo. Le classi (classe) non bastano: descrivono l''errore per chi ha fatto la richiesta, non per chi deve rimediare a un lavoro notturno. Seed: 80_data/sql/config/codici_errore.csv. Brief: brief-db-presidio-job-run-a-chi-tocca (D1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE config.codici_errore
+                  DROP COLUMN IF EXISTS causa_fallimento;

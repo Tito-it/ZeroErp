@@ -4,4 +4,4 @@ id,schema_name,function_name,arg_types,required_owner,note
 3,script,fn_ensure_logconn,"",postgres,Richiede permessi superuser per gestire connessioni dblink
 4,dbops,fn_generate_tx_id,"text,jsonb",postgres,Richiede permessi   elevati per generare tx_id univoci
 5,script,fn_log_error_only,"text,text,text,jsonb,uuid,text[]",postgres,Logging out-of-transaction via dblink; richiede owner superuser
-6,maintenance,fn_job_run_log_failure,"text,text,timestamptz,uuid,varchar,text,integer,text,text,text",postgres,"Scrive il verbale di un run FALLITO fuori transazione via dblink: senza owner superuser la connessione viene rifiutata e il run fallito non lascia traccia."
+6,maintenance,fn_job_run_log_failure,"text,text,timestamptz,uuid,varchar,text,integer,text,text,text,text",postgres,"Scrive il verbale di un run FALLITO fuori transazione via dblink: senza owner superuser la connessione viene rifiutata e il run fallito non lascia traccia."

@@ -2,19 +2,21 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-16
 
-**Riparte: Tid**, quando decide di aprire lo sviluppo. D1, D2 e D3 sono prese
-(D1 = variante B). La ricognizione per lo sviluppo è al §4.4. Tid ha chiesto di
-**non** iniziare lo sviluppo (2026-10-16).
+**Riparte: Tid**: fa confermare al BE il censimento (§9) e la richiesta del §4.2.
+✅ Il giro DB del §8 è applicato da Tid il 2026-10-16, pgTAP senza regressioni.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | Tid | dà il via allo sviluppo e chiude D4–D6 | §4.4, §6 | — |
-| 2 | team DB | changeSet: giornale, tre funzioni, `processi`, `codici_errore`, vista, CSV, pgTAP | §4.1, §4.3, §4.4 | 1 |
-| 3 | Tid | applica (provision-post compreso) e lancia i pgTAP | — | 2 |
-| 4 | team BE | lo SQLSTATE nella colonna nuova del giornale | §4.2, §4.3 | 2 |
-| 5 | Tid | collaudo: digest `--secco` con un rosso per causa | §5 | 3, 4 |
+| 1 | Tid | ✅ via allo sviluppo e D1–D6 (2026-10-16) | §6 | — |
+| 2 | team DB | ✅ changeSet `20261016-34…43`, CSV, pgTAP, doc (2026-10-16) | §8 | — |
+| 3 | Tid | ✅ provision-post e migrate applicati, pgTAP senza regressioni (2026-10-16) | §8.3, §8.4 | — |
+| 4 | team BE | `registered_job`: SQLSTATE al nono argomento e codice `E_` dei P0001 in `error_code` | §4.2 | — |
+| 5 | team DB | ✅ censimento D7 scritto (2026-10-16); Tid lo fa confermare al BE | §9 | — |
+| 5b | Tid | decide D8 (gli involucri `WHEN others`) e D9 (fallimenti isolati) | §9.4 | 5 |
+| 6 | Tid | collaudo: digest `--secco` con un rosso per causa | §5 | 3, 4 |
 
-Decisioni aperte di Tid: **D4, D5, D6** (§6). Lavoro fatto da committare: solo questo brief.
+Decisioni aperte di Tid: **D8, D9** (§9.4), nessuna urgente. Lavoro fatto da
+committare: tutto il giro DB del §8 e questo brief.
 
 ---
 
@@ -124,15 +126,18 @@ la riga darebbe causa NULL, e il digest direbbe «la riga non dice la sua causa�
 4. riga senza processo → `PROGRAMMA`: un job che scrive nel giornale senza un
    codice di catalogo è già una lacuna del programma.
 
-**In `dbops.processi`** una colonna nuova, **NOT NULL**, con CHECK sul
-vocabolario: «di che natura sono i miei fallimenti quando l'ambiente è sano». Un
-processo nuovo non può nascere senza dichiararla. Esempio sul modello:
-`analyze_statistiche` dichiara `AMBIENTE` (il suo errore proprio chiede un diritto
-al ruolo), `smoke_notturno` dichiara `PROGRAMMA`.
+**In `dbops.processi`** una colonna nuova, **NOT NULL**, con FK verso il
+vocabolario (D4): «di che natura sono i miei fallimenti quando l'ambiente è
+sano». Un processo nuovo non può nascere senza dichiararla.
+⚠️ *Rev 2026-10-16, in sviluppo:* l'esempio di `analyze_statistiche` («dichiara
+`AMBIENTE`») si è spostato sul **codice**: `E_STATISTICHE_MANCANTI` dichiara
+`AMBIENTE` in `config.codici_errore`, perché è quell'errore a chiedere un diritto
+al ruolo. Un difetto della funzione di analisi resta `PROGRAMMA`, come il
+processo.
 
-⚠️ La colonna **non** nasce come FK verso `presidi_cause`, che è chiavata
-`(vista, causa)`. La coerenza la tiene un pgTAP: ogni valore dichiarato in
-`processi` è una causa del presidio.
+⚠️ La colonna **non** è una FK verso `presidi_cause`, che è chiavata
+`(vista, causa)`. La coerenza fra vocabolario e cause del presidio la tiene un
+pgTAP.
 
 **In `presidi.csv`**: `colonna_variante = causa`. `chi_agisce` del presidio resta
 valorizzata, perché `chk_presidi_chi_agisce_se_allarma` la vuole; diventa il
@@ -151,12 +156,23 @@ ragione resta valida.
 Prima di scrivere si censiscono i lettori della vista (`vw_job_run_da_guardare`):
 la colonna nuova va **in coda** per non rompere chi legge per posizione.
 
-### 4.2 Lato BE — richiesta, se D2 = sì
+### 4.2 Lato BE — richiesta (D2 = sì; forma aggiornata dalla variante B)
 
-In `registered_job`, quando l'eccezione è un errore del database, scrivere in
-`error_code` lo **SQLSTATE** (psycopg 3: `exc.__cause__.sqlstate`) invece del nome
-della classe Django. Senza questo, per i command il §3.2 non vede mai l'ambiente
-e la regola cade sul processo.
+In `registered_job` (`backend/apps/core/services/job_run.py`), quando l'eccezione
+è un errore del database:
+
+1. passare lo **SQLSTATE** (psycopg 3: lo porta la causa dell'eccezione Django,
+   `exc.__cause__.sqlstate`) come **nono argomento** `p_sqlstate` di
+   `script.fn_job_run_end` (`20261016-40`). Senza, per i command il §3.2 non vede
+   mai l'ambiente e la regola cade sul codice o sul processo;
+2. *(aggiunto dal censimento del §9, 2026-10-16)* per un `P0001` scrivere in
+   `error_code` il **codice `E_`** e non `InternalError`. È la stessa regola che
+   `fn_run_and_log` applica dal `-38` (D5), e il BB c'è già:
+   `apps/core/services/db_error_fields.structured_db_error_code`. Senza, un errore
+   di dominio sollevato dal database dentro un command arriva al giornale come
+   nome di classe, e `config.codici_errore.causa_fallimento` non lo vede.
+⚠️ La chiamata a otto argomenti continua a funzionare (default `NULL`): il BE può
+arrivare dopo l'apply senza rompere niente.
 
 Resta aperto, e lo decide il BE: gli errori di sistema non-DB (`OSError`,
 `ConnectionError`). Si possono riconoscere per classe Python, ma è una tassonomia
@@ -286,22 +302,35 @@ gruppo del suo destinatario e con il suo testo.
 
 * ✅ **D1 — `CONFIGURAZIONE` / `AMMINISTRATORE` entra, variante B (§4.3)**: Tid,
   2026-10-16, dopo la stima del costo.
-* **D4 — Il vocabolario delle cause.** (a) Una tabella-vocabolario con le FK dalle
+* ✅ **D4 — Il vocabolario delle cause: (a), tabella-vocabolario** (Tid, 2026-10-16).
+  Testo della scelta: (a) Una tabella-vocabolario con le FK dalle
   due colonne. È pulita, ma una tabella nuova si porta dietro i suoi registri
   (`storico_scope_policy.csv`, perimetro RLS). (b) Due `CHECK` più un pgTAP che
   le confronta con `presidi_cause`. **Proposta: (a).**
-* **D5 — Il significato di `error_code`.** «Il codice più preciso che chi scrive
+* ✅ **D5 — `error_code` = «il codice più preciso che chi scrive ha»** (Tid,
+  2026-10-16). Testo della scelta: «Il codice più preciso che chi scrive
   ha»: dominio, backend o, in mancanza, SQLSTATE/classe. È la forma del §4.4 e
   non tocca i lettori. In alternativa, «solo il codice applicativo, NULL
   altrimenti», più pura ma da adeguare nel pannello. **Proposta: la prima.**
-* **D6 — Quando si tocca `codici_errore.csv`**: dopo il commit del cantiere
-  listino (§4.4).
+* ✅ **D6 — `codici_errore.csv`**: il cantiere listino ha committato (Tid,
+  2026-10-16), il file si può toccare.
 * ✅ **D2 — Il BE scrive lo SQLSTATE nel giornale dei command (§4.2): sì** (Tid,
   2026-10-16). In quale colonna dipende da D1.
 * ✅ **D3 — I nomi: accettati quelli proposti** (Tid, 2026-10-16). Le cause sono
   `AMBIENTE` (SISTEMISTA), `PROGRAMMA` (SVILUPPO) e, con D1, `CONFIGURAZIONE`
   (AMMINISTRATORE). La colonna nuova di `dbops.processi` si chiama
   `causa_fallimento`.
+* ✅ **D7 — Quali codici d'errore dichiarano `CONFIGURAZIONE`?** Proposta concordata da
+  Tid il 2026-10-16: il censimento lo anticipa il team DB anche per il lato BE, e Tid
+  lo fa confermare al BE (§9).
+  Il meccanismo è in servizio, ma un codice va scelto conoscendo il suo
+  significato, non per somiglianza del nome. `E_CONFIG_MANCANTE`, per esempio, lo
+  solleva anche il guardiano del digest per un tipo di lavoro non a catalogo, e
+  lì è `PROGRAMMA`. Il caso che ha aperto D1, la password SMTP sbagliata, oggi non
+  ha un codice: `send_pending_emails` registra la classe dell'eccezione Python.
+  Serve prima un codice dal BE. **Proposta:** un censimento corto dei codici che i
+  lavori automatici possono sollevare (pipeline di fatturazione, coda stampa, coda
+  email), fatto col BE, e i valori nel CSV in un giro successivo.
 
 ## 7. Fuori da questo brief
 
@@ -309,3 +338,189 @@ gruppo del suo destinatario e con il suo testo.
   (`vw_processi_programmazione_da_guardare`), non questo.
 * I processi ritirati che restano nella vista (residuo D10 di
   `migliorie-generali-da-test-valutazione.md`).
+
+## 8. Consegna DB (2026-10-16) — ✅ applicata, pgTAP senza regressioni
+
+### 8.1 Che cosa è stato scritto
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `00_schema/dbops/20261016-34` | `dbops.cause_fallimento` (vocabolario, D4) |
+| `00_schema/maintenance/20261016-35` | `job_run_log.sqlstate` + CHECK di forma; righe di prima convertite sul posto dalla forma di `error_code` |
+| `00_schema/dbops/20261016-36` | `dbops.processi.causa_fallimento` (nullable fino al `-43`) |
+| `00_schema/config/20261016-37` | `config.codici_errore.causa_fallimento` (NULL = decide il processo) |
+| `20_code/maintenance/20261016-38` | `fn_run_and_log`: `error_code` = codice di dominio col contratto P0001 + CONSTRAINT, SQLSTATE nella colonna nuova |
+| `20_code/maintenance/20261016-39` | ⚠️ **context provision**: `fn_job_run_log_failure` + `p_sqlstate` in coda (DROP + CREATE), incluso in `changelog-provision-post.yaml` |
+| `20_code/script/20261016-40` | `fn_job_run_end` + `p_sqlstate` in coda (DROP + CREATE, REVOKE PUBLIC, GRANT app) |
+| `20_code/maintenance/20261016-41` | la vista: colonne in coda `sqlstate`, `causa`, `ultimo_rosso_job_run_id`; «presa e mai chiusa» solo oltre l'ora |
+| `80_data/20261016-42` | mirror di `cause_fallimento.csv` |
+| `90_end/20261016-43` | `processi.causa_fallimento` NOT NULL + due FK verso il vocabolario |
+
+**Seed:** `processi.csv` (colonna in coda, `PROGRAMMA` su tutti e 28), `codici_errore.csv`
+(colonna in coda, `NULL` su tutti tranne `E_STATISTICHE_MANCANTI` = `AMBIENTE`),
+`presidi.csv` (`colonna_variante = causa`, nota), `presidi_cause.csv` (tre righe),
+`presidi_testi.csv` (tre testi di causa + testo generale riscritto),
+`sec_functions_owner.csv` (riga 6, firma nuova). Mirror di `processi` e
+`codici_errore` con la colonna nell'elenco.
+
+**pgTAP nuovi:** `maintenance/test-vw-job-run-da-guardare-causa-v1.sql` (14: la
+regola ramo per ramo, costruita), `maintenance/test-job-run-sqlstate-e-codice-v1.sql`
+(9: le tre porte di scrittura; i test 7-9 sono presidi sul testo, dichiarati).
+**Adeguati:** 17 file che fabbricano processi (28 `INSERT INTO dbops.processi`,
+ora con `causa_fallimento`), e `test-job-run-registrazione.sql` test 21 (la firma
+di `fn_job_run_end` cercata per nome, come il test 20 accanto).
+
+**Doc `manual/`:** `cause_fallimento` (nuova), `vw_job_run_da_guardare`,
+`job_run_log`, `processi`, `codici_errore`, `presidi_cause`, e le tre funzioni.
+
+### 8.2 Scelte fatte in sviluppo
+
+* **Il motivo «presa e mai chiusa» aveva un difetto, chiuso nello stesso giro.**
+  Diceva morta OGNI ultima corsa aperta, anche quella partita cinque minuti fa di
+  un job con rossi recenti, che entra per il ramo intermittente. Con la causa
+  sarebbe diventata `AMBIENTE` a torto. Ora «appesa» vale solo oltre l'ora, e
+  la corsa in corso ha il suo motivo: «in corso adesso, ma ha fallito di recente:
+  intermittente». I valori di motivo esistenti non cambiano.
+* **Tutti i processi dichiarano `PROGRAMMA`.** Nessun processo del catalogo fallisce,
+  per natura, per l'ambiente o per la configurazione quando l'ambiente è sano: i casi
+  d'ambiente li prendono i rami 1-2, quelli di un errore preciso il codice.
+* **Codici con causa: uno solo** (`E_STATISTICHE_MANCANTI` = `AMBIENTE`, che la sua
+  nota già diceva). Quali codici dichiarano `CONFIGURAZIONE` è D7: il meccanismo
+  c'è e il pgTAP lo prova con un codice fabbricato, ma oggi nessun codice vero
+  porta l'amministratore.
+* **Il ramo «nessun processo → PROGRAMMA» non è costruibile in un test**:
+  `chk_job_run_log_processo_dichiarato` (NOT VALID) vieta una corsa nuova senza
+  processo. Vale per le righe di prima; lo presidia il test 13 (nessuna causa NULL).
+
+### 8.3 Ordine di apply su dbdev
+
+1. **provision-post da superuser** (`changelog-provision-post.yaml`): il `-39`
+   sostituisce `fn_job_run_log_failure`. ⚠️ Fino al migrate la funzione scrive una
+   colonna che non c'è: un fallimento in quei minuti lascia solo un WARNING, non
+   la riga rossa. E `fn_sync_functions_owner` dice «non trovata» la firma del
+   registro: WARNING, non un guasto.
+2. **migrate**: `-34…-38`, `-40…-43`, e i mirror risvegliati (`processi`,
+   `codici_errore`, `presidi`, `presidi_testi`/`presidi_cause`, `sec_functions_owner`).
+
+### 8.4 Prova (sessione DB, 2026-10-16, scratch `zeroerp_ruoli` come `zeroerp_owner`)
+
+SQL estratto dai changeSet + seed simulati, in una transazione annullata
+(verificato dopo: niente persistito). Il `-39` **escluso**: la funzione è di un
+superuser e l'owner non può sostituirla.
+
+* l'intero estratto passa, compresi `NOT NULL` e FK del `-43` sulle 28 righe;
+* **upsert completo** dei cinque CSV toccati (dopo le FK): passa, zero processi
+  senza causa;
+* `test-vw-job-run-da-guardare-causa-v1`: **14/14**;
+* `test-job-run-sqlstate-e-codice-v1`: **7/9**. I due rossi (6, 7) sono il `-39`
+  non applicato, attesi: dimostrano che i test se ne accorgono. Verdi dopo il
+  provision-post;
+* i 17 file con le fixture adeguate, più `test-vw-job-run-da-guardare`,
+  `test-job-run-log-failure-out-of-tx`, `test-presidi-testi-v1`,
+  `test-job-run-registrazione`: verdi, **tranne tre rossi che ci sono identici
+  sullo scratch senza queste modifiche** (provati sul file di `HEAD`):
+  `test-identita-tecnica` e `test-fn-crea-utente-tecnico` (fixture: «Il soggetto
+  non ha contatti validi»), `test-app-postura-job-run-log-v1` test 9 (da owner il
+  vincolo del processo parla prima del privilegio: è un test da app).
+* guardrail statici (`guardrail_*.py`): tutti verdi.
+
+Non provato qui: la corsa come app, il provision-post, e la corsa pgTAP completa.
+Sono di Tid.
+
+## 9. Censimento D7 — i codici che possono far fallire un lavoro automatico (2026-10-16)
+
+> Fatto dal team DB anche per il lato BE (decisione di Tid del 2026-10-16), **da far
+> confermare al BE**. Due ricerche in sola lettura: i job pgAgent dentro
+> `maintenance.fn_run_and_log`, e i command del backend dentro `registered_job`.
+> Nessun file toccato.
+
+### 9.1 La risposta corta: oggi nessun codice dichiara `CONFIGURAZIONE`, ed è giusto
+
+Nessun errore che **fa fallire una corsa**, né nel database né nel backend, si
+sistema con un gesto dell'amministratore nelle impostazioni dell'app.
+
+**Il caso che aveva aperto D1, la password SMTP sbagliata, non arriva a questo
+presidio.** Verificato in `email_service._send_smtp`: `SMTPAuthenticationError`,
+host o porta sbagliati (`OSError`), chiave non decifrabile (`ValueError`), account
+mancante e password vuota sono **tutti catturati per email**. La singola email va
+in `FAILED`, viene ritentata fino a `max_tentativi`, e la corsa di
+`send_pending_emails` resta `ok = true` con `error_code` NULL. Quel guasto lo vede
+il presidio delle email, `dbops.vw_email_da_guardare`, non quello dei lavori.
+
+⇒ **Nessuna modifica a `codici_errore.csv`.** `CONFIGURAZIONE` resta nel
+vocabolario e nel presidio, pronta per il primo codice che fermi davvero una corsa
+per un'impostazione dell'app. Il pgTAP la prova già con un codice fabbricato.
+`E_STATISTICHE_MANCANTI` = `AMBIENTE` resta l'unico valore.
+
+### 9.2 Lato database (job pgAgent)
+
+* Nessun job pgAgent arriva alla fatturazione o alla chiusura vera.
+  `chiusura_scadenze_daily` accoda soltanto; la chiusura gira nel drenatore,
+  fuori da `fn_run_and_log`.
+* **Codici raggiungibili e la loro natura.** Tutti sono già classificati bene dal
+  ripiego del processo (`PROGRAMMA`), tranne quelli del §9.4:
+  * `E_STATISTICHE_MANCANTI`: `AMBIENTE`, già dichiarato;
+  * i codici del cablaggio job/catalogo (`E_PROCESSO_NON_TROVATO`,
+    `E_PROCESSO_SENZA_SVEGLIA`, `E_JOB_TYPE_*`), quelli strutturali dello storico
+    (`E_STORICO_FK_COL_ASSENTE`, `E_STORICO_PARENT_PK_NOT_FOUND`) e i guard di
+    chiamata (`E_PARAMETRO_INVALIDO`): `PROGRAMMA`.
+* **`E_CONFIG_MANCANTE` è ambiguo** (classe TECNICO, quattro sedi):
+  * ambiente dell'installazione non dichiarato: provisioning;
+  * `SYSTEM_FUSO_ORARIO` mancante: seed; l'app scrive solo gli override;
+  * colonne di accensione mancanti in `dbops.processi`: catalogo;
+  * `digest_presidi` assente per il guardiano: catalogo.
+
+  Nessuna delle quattro è `CONFIGURAZIONE`. Resta **NULL** (decide il processo).
+  Le due sedi della sveglia (`fn_sveglia_accesa`) girano comunque **prima** di
+  `fn_run_and_log`: un loro rosso è solo in pgAgent, e lo vede il presidio dei
+  processi.
+* `automations_overlap` può fallire con un `23P01` grezzo (righe già
+  sovrapposte): nessun codice `E_`, cade su `PROGRAMMA`. Si sistema correggendo i
+  dati. Annotato, non urgente.
+
+### 9.3 Lato backend (command)
+
+* Escono dalla corsa, cioè arrivano al giornale, solo gli errori **di
+  infrastruttura della corsa stessa**:
+  * le letture e scritture della coda o del roster (`OperationalError`,
+    `InterfaceError`: `AMBIENTE`, una volta passato lo SQLSTATE del §4.2);
+  * gli errori di funzione DB (`InternalError`: oggi il codice `E_` si perde, da
+    cui il punto 2 del §4.2);
+  * lo smoke (`SMOKE_REGRESSIONI`: `PROGRAMMA`; `SMOKE_GIRO_FALLITO`: ambiguo, sotto).
+* **Tutto ciò che riguarda il singolo elemento è catturato.** Una email, un item
+  della coda lavori, un emittente della coda stampa, un'azienda della fatturazione
+  o del badge: finisce in `meta` o nel proprio registro, e la corsa resta verde.
+* **Restano fuori dal giornale** per costruzione:
+  * il database giù già all'apertura della corsa: nessuna riga;
+  * il database giù alla chiusura: riga aperta, che dopo un'ora diventa «presa
+    e mai chiusa», cioè `AMBIENTE`;
+  * la morte del listener `listen_permessi`, che ha per segno di vita la sessione.
+* `SMOKE_*` non sono a registro: cadono su `smoke_notturno` = `PROGRAMMA`. Per
+  `SMOKE_GIRO_FALLITO` è giusto per lo script rotto, non per il tetto di tempo
+  superato. Una separazione (es. un codice per il tetto) la decide il BE.
+
+### 9.4 Due buchi del modello emersi dal censimento (decisioni per Tid)
+
+* **D8 — Gli involucri `WHEN others` nascondono l'ambiente.** `E_ATTIVO_*`,
+  `E_AUDIT_UPDATE`, `E_TX_ID`, `E_STORICO_UD`, `E_STORICO_PROVISION`,
+  `E_LOCK_COLUMNS` (ramo DDL), `E_DATE_VALIDITA` ed `E_DELETE_BLOCK` catturano
+  qualunque errore della DDL generata e lo rilanciano come `P0001` col proprio
+  codice. Un `42501` (manca un diritto) o un `55P03` (lock) dentro un'automazione
+  arriva al giornale come `P0001` + codice dell'involucro, e la causa diventa
+  `PROGRAMMA` invece di `AMBIENTE`. L'errore originale c'è, ma solo nel contesto
+  dell'eccezione. *Strade:* (a) l'involucro rilancia così com'è quando lo
+  SQLSTATE originale è di classe `08`/`42501`/`53`/`55`/`57`/`58`; (b) lo si
+  accetta e lo si dichiara. **Proposta: (a)**, in un brief suo: tocca otto
+  funzioni del framework automazioni.
+* **D9 — Un lavoro che fallisce su tutti gli elementi resta verde.** Se tutte le
+  email, tutte le aziende o tutti gli emittenti falliscono, la corsa è `ok`. Il
+  presidio dei lavori non lo vede, e lo vedono solo i presidi dei singoli
+  registri (email, coda lavori, coda stampa), quando ci sono. È il confine
+  dichiarato di questo presidio, non un suo difetto: il fallimento di un elemento
+  appartiene al registro dell'elemento. **Proposta:** verificarlo sulla
+  struttura. Ogni registro in cui un command isola i fallimenti per elemento
+  (`config.email_log`, `dbops.coda_lavori`, `vendite.fatture_stampa_coda`, il
+  `meta` della fatturazione e dei badge) deve avere un presidio a catalogo. Quello
+  che non ce l'ha è il buco da chiudere. Il `meta` della fatturazione e dei badge
+  oggi non ha presidio: è il primo candidato.
+

@@ -249,6 +249,24 @@ Brief: `brief-db-processi-accensione-per-ambiente`.
 
 ---
 
+### ⭐ Di che natura sono i fallimenti del processo *(dal 2026-10-16)*
+
+`causa_fallimento` dice a chi tocca un fallimento del processo **quando l'ambiente è
+sano**: `PROGRAMMA` (lo sviluppo), `AMBIENTE` (chi gestisce il server) o
+`CONFIGURAZIONE` (l'amministratore). Vocabolario:
+[`dbops.cause_fallimento`](/dbzero/dbops/manual/cause_fallimento).
+
+È l'**ultima parola**, non la prima:
+[`maintenance.vw_job_run_da_guardare`](/dbzero/maintenance/manual/vw_job_run_da_guardare)
+guarda prima i segni dell'ambiente (corsa morta senza chiudersi, codice di guasto del
+database) e il codice d'errore, se dichiara la sua causa. Un disco pieno resta un guasto
+del server anche per un processo che dichiara `PROGRAMMA`.
+
+Obbligatoria su **ogni** processo, anche `CODA` e ritirati: ogni processo può lasciare
+un fallimento nel giornale.
+
+---
+
 ### Come si registra un processo nuovo
 
 1. Una riga nel **seed** `80_data/sql/dbops/processi.csv` — è catalogo, non

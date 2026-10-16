@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DI CHE NATURA SONO I FALLIMENTI DI UN PROCESSO, QUANDO L'AMBIENTE E' SANO
+#   dbops.processi.causa_fallimento
+#   Brief: brief-db-presidio-job-run-a-chi-tocca (§4.1, D3)
+#
+# -- PERCHE' QUI ----------------------------------------------------
+#   maintenance.vw_job_run_da_guardare ricava la causa di una riga in
+#   quest'ordine (20261016-41): corsa morta senza chiudersi o SQLSTATE
+#   dell'ambiente → AMBIENTE; un codice d'errore che dichiara la sua causa
+#   (config.codici_errore.causa_fallimento) → quella; altrimenti → la causa
+#   che dichiara IL PROCESSO, cioe' questa colonna. E' il «di chi e' il
+#   processo» del §2: smoke_notturno che trova regressioni e' PROGRAMMA,
+#   analyze_statistiche che resta senza statistiche chiede un diritto al
+#   ruolo, quindi AMBIENTE.
+#
+# -- ⚠️ NASCE NULLABLE, E NON PER SCELTA -----------------------------
+#   Le righe esistenti hanno la colonna NULL finche' non passa il CSV di
+#   80_data (mirror 20260904-13). NOT NULL e FK verso dbops.cause_fallimento
+#   stanno in 90_end/20261016-43, dopo il seed — stessa forma di
+#   chk_processi_accensione (20261016-20/-31). Vale per OGNI processo, anche
+#   CODA e ritirati: ogni processo puo' scrivere un rosso nel giornale, e le
+#   righe vecchie di un ritirato restano nel giornale col suo codice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261016-36-alter-processi-add-causa-fallimento-mctit.yaml
+
+  - changeSet:
+      id: 20261016-36-alter-processi-add-causa-fallimento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.processi.causa_fallimento: la natura dei fallimenti del processo quando
+        l'ambiente e' sano (dbops.cause_fallimento). NOT NULL e FK in 90_end/20261016-43.
+        Brief: brief-db-presidio-job-run-a-chi-tocca.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: dbops, tableName: processi }
+            - not:
+                - columnExists: { schemaName: dbops, tableName: processi, columnName: causa_fallimento }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  ADD COLUMN causa_fallimento text;
+
+              COMMENT ON COLUMN dbops.processi.causa_fallimento IS
+                  'Di che natura sono i fallimenti di questo processo quando l''ambiente e'' sano (dbops.cause_fallimento): PROGRAMMA se un suo rosso chiede una modifica al codice, AMBIENTE se chiede un intervento sul server o sui ruoli del database, CONFIGURAZIONE se si sistema dalle impostazioni dell''applicazione. maintenance.vw_job_run_da_guardare la usa come ultima parola: prima vengono la corsa morta senza chiudersi e lo SQLSTATE dell''ambiente (AMBIENTE), poi il codice d''errore che dichiara la sua causa (config.codici_errore.causa_fallimento). Obbligatoria su ogni processo, anche CODA e ritirati (NOT NULL e FK in 90_end). Seed: 80_data/sql/dbops/processi.csv. Brief: brief-db-presidio-job-run-a-chi-tocca.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE dbops.processi
+                  DROP COLUMN IF EXISTS causa_fallimento;

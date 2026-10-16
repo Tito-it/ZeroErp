@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE DUE COLONNE causa_fallimento PARLANO IL VOCABOLARIO, E QUELLA DEL
+# PROCESSO E' OBBLIGATORIA.
+#   Brief: brief-db-presidio-job-run-a-chi-tocca (§4.4, D4)
+#
+#   * dbops.processi.causa_fallimento: NOT NULL + FK verso
+#     dbops.cause_fallimento (codice). Un processo non nasce senza dire di che
+#     natura sono i suoi fallimenti.
+#   * config.codici_errore.causa_fallimento: FK, NULL ammesso («decide il
+#     processo»).
+#
+#   Sta in 90_end perche' deve girare DOPO tutti i seed di 80_data: da zero i
+#   mirror di processi (20260904-13) e di codici_errore (20260614-08) girano
+#   PRIMA di quello del vocabolario (20261016-42), perche' in 80_data l'ordine
+#   e' il nome del file. Se un processo non dichiara la causa, o un CSV usa una
+#   causa fuori vocabolario, la migrazione si ferma qui: il catalogo
+#   incompleto detto al momento giusto. Stessa forma di 20261016-31.
+#   ⚠️ ON UPDATE CASCADE come le altre FK su chiave naturale di dbops
+#   (fk_presidi_cause_presidi); nessuna azione in cancellazione.
+#   ⚠️ I fixture pgTAP che fabbricano processi dichiarano la causa (28
+#   istruzioni in 17 file, adeguate nello stesso giro).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261016-43-fk-cause-fallimento-mctit.yaml
+
+  - changeSet:
+      id: 20261016-43-fk-cause-fallimento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.processi.causa_fallimento NOT NULL + FK, config.codici_errore.causa_fallimento
+        FK, verso dbops.cause_fallimento (codice). Dopo i seed di 80_data.
+        Brief: brief-db-presidio-job-run-a-chi-tocca.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: dbops, tableName: processi, columnName: causa_fallimento }
+            - columnExists: { schemaName: config, tableName: codici_errore, columnName: causa_fallimento }
+            - tableExists: { schemaName: dbops, tableName: cause_fallimento }
+            - not:
+                - foreignKeyConstraintExists:
+                    foreignKeyTableName: processi
+                    foreignKeyName: fk_processi_cause_fallimento
+                    schemaName: dbops
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  ALTER COLUMN causa_fallimento SET NOT NULL;
+
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT fk_processi_cause_fallimento
+                  FOREIGN KEY (causa_fallimento)
+                  REFERENCES dbops.cause_fallimento (codice)
+                  ON UPDATE CASCADE;
+
+              ALTER TABLE config.codici_errore
+                  ADD CONSTRAINT fk_codici_errore_cause_fallimento
+                  FOREIGN KEY (causa_fallimento)
+                  REFERENCES dbops.cause_fallimento (codice)
+                  ON UPDATE CASCADE;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE config.codici_errore
+                  DROP CONSTRAINT IF EXISTS fk_codici_errore_cause_fallimento;
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT IF EXISTS fk_processi_cause_fallimento,
+                  ALTER COLUMN causa_fallimento DROP NOT NULL;

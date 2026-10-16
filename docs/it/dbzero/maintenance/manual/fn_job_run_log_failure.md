@@ -103,4 +103,14 @@ presidio.
 
 ---
 
+### ⭐ Rev 2026-10-16 — `p_sqlstate`
+
+Parametro nuovo **in coda**, con default `NULL`: lo SQLSTATE dell'errore, scritto in
+`job_run_log.sqlstate`. `p_error_code` resta «il codice più preciso che si ha». La firma
+è cambiata con `DROP` + `CREATE` nel provision-post (la funzione è di un superuser), e
+la riga del registro `dbops.sec_functions_owner` porta la firma nuova.
+*Brief: `brief-db-presidio-job-run-a-chi-tocca.md`.*
+
+---
+
 {% include-markdown "signature-core.md" %}

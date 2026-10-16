@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Mirror di dbops.cause_fallimento (00_schema/dbops/20261016-34) dal suo CSV.
+#   Brief: brief-db-presidio-job-run-a-chi-tocca (D4)
+#
+# ⚠️ ORDINE: da zero questo mirror gira DOPO quelli di dbops.processi
+#   (20260904-13) e di config.codici_errore (20260614-08), che gia' scrivono
+#   causa_fallimento: in 80_data l'ordine e' il nome del file. Per questo le
+#   due FK verso il vocabolario stanno in 90_end/20261016-43, dopo tutti i seed.
+# ⚠️ Chiave naturale `codice`, non l'id dell'identity.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261016-42-upsert-dbops-cause-fallimento-mctit.yaml
+
+  - changeSet:
+      id: 20261016-42-upsert-dbops-cause-fallimento
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Mirror di dbops.cause_fallimento dal CSV: AMBIENTE, PROGRAMMA, CONFIGURAZIONE.
+        Catalogo puro. Brief: brief-db-presidio-job-run-a-chi-tocca D4.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: cause_fallimento
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/cause_fallimento.csv
+            tableName: cause_fallimento
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "codice"
+            columns:
+              - column: { name: codice,      type: STRING }
+              - column: { name: descrizione, type: STRING }

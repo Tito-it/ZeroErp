@@ -130,4 +130,15 @@ SELECT maintenance.fn_run_and_log(
 
 ---
 
+### ⭐ Rev 2026-10-16 — il codice di dominio e lo SQLSTATE
+
+Quando il lavoro fallisce, lo SQLSTATE va in `job_run_log.sqlstate` e `error_code`
+riceve il **codice di dominio** (`E_…`) se l'errore rispetta il contratto di
+`script.fn_log_and_raise_error` («`P0001` + canale `CONSTRAINT` valorizzato»),
+altrimenti lo SQLSTATE come prima. Prima un errore di dominio lasciava solo `P0001`.
+Tutti e due vanno anche al verbale fuori transazione. Firma invariata.
+*Brief: `brief-db-presidio-job-run-a-chi-tocca.md`.*
+
+---
+
 {% include-markdown "signature-core.md" %}

@@ -63,11 +63,11 @@ SELECT throws_ok(
 -- ============================================================
 DO $fixture$
 BEGIN
-    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, causa_fallimento)
     VALUES (9501, 'PGTAP-CODA-DOMINIO',
-            'processo di dominio con un tipo di coda', 'DOMINIO', 'CODA'),
+            'processo di dominio con un tipo di coda', 'DOMINIO', 'CODA', 'PROGRAMMA'),
            (9502, 'PGTAP-CODA-MANUTENZIONE',
-            'processo di manutenzione con un tipo di coda', 'MANUTENZIONE', 'CODA');
+            'processo di manutenzione con un tipo di coda', 'MANUTENZIONE', 'CODA', 'PROGRAMMA');
 
     INSERT INTO dbops.coda_lavori_tipi
         (codice, handler_code, descrizione, run_as_default, processo_codice)

@@ -120,6 +120,23 @@ Brief: `brief-db-corsa-saltata-non-e-una-corsa`.
 * **Canale fuori transazione** (il run che fallisce) → `zeroerp_log`, che ha il
   solo `INSERT` (`90_end/20260905-38`).
 
+### ⭐ Rev 2026-10-16 — il codice dell'errore e lo SQLSTATE, separati
+
+* **`sqlstate`** — il codice del database per l'errore che ha fermato la corsa
+  (cinque caratteri), quando l'errore è passato dal database. Vuoto per una corsa
+  riuscita e per un errore che il database non ha visto. Le prime due cifre dicono se
+  il guasto è dell'ambiente: è ciò che legge
+  [`vw_job_run_da_guardare`](/dbzero/maintenance/manual/vw_job_run_da_guardare) per la
+  causa.
+* **`error_code`** — resta «il codice più preciso che chi scrive ha»: il codice di
+  dominio (`E_…`) o del backend, e in mancanza lo SQLSTATE o il nome dell'eccezione.
+
+Lo scrivono le tre porte: `fn_run_and_log` (che da oggi mette in `error_code` il codice
+di dominio invece di `P0001`), il verbale fuori transazione `fn_job_run_log_failure` e
+`script.fn_job_run_end` (parametro `p_sqlstate`, che il backend deve passare). Le righe
+di prima sono state convertite dalla forma di `error_code`; il codice di dominio delle
+vecchie righe `P0001` non si recupera.
+
 ### Chi legge, chi scrive — la postura di `zeroerp_app` *(rev 2026-09-19)*
 
 Il ruolo applicativo **legge** questo giornale e **non lo scrive**:
