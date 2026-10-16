@@ -73,17 +73,13 @@ SELECT plan(12);
 --   changelog: sono due righe messe a mano su questa macchina (UUID …101 e
 --   …102). Su un database ricostruito non esistono, e il file moriva nella
 --   fixture — copertura zero, non parziale.
+-- I due PADRI nascono is_composito=true per ammettere INSERT in
+-- articoli_componenti come prodotto; il componente resta semplice.
 CREATE TEMP TABLE _t_bomcap AS
 SELECT
-    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-A') AS art_base,
-    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-B') AS art_fallback,
-    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-C') AS art_padre_futura;
-
--- I due PADRI devono essere is_composito=true per ammettere INSERT
--- in articoli_componenti come prodotto; il componente resta semplice.
-UPDATE catalogo.articoli
-   SET is_composito = true
- WHERE id IN ((SELECT art_base FROM _t_bomcap), (SELECT art_padre_futura FROM _t_bomcap));
+    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-A', p_is_composito => true) AS art_base,
+    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-B')                         AS art_fallback,
+    dbops.fn_pgtap_crea_articolo('PGT-BOMCAP-C', p_is_composito => true) AS art_padre_futura;
 
 CREATE TEMP TABLE _t_righe (scenario text, riga_id uuid);
 

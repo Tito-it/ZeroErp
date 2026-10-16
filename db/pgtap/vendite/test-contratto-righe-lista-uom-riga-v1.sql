@@ -54,29 +54,7 @@ CREATE TEMP TABLE tmp_cru_uom AS
 SELECT (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo ORDER BY u.id LIMIT 1)          AS u1,
        (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo ORDER BY u.id LIMIT 1 OFFSET 1) AS u2;
 
-CREATE TEMP TABLE tmp_cru_art AS
-SELECT v.sigla,
-       dbops.fn_pgtap_crea_articolo('PGTAP-CRU-' || v.sigla, true, false, false,
-                                    (SELECT u1 FROM tmp_cru_uom)) AS id
-  FROM (VALUES ('A'), ('B'), ('X'), ('Y'), ('P'), ('K')) AS v(sigla);
-
--- Scopo: id di un articolo della fixture per sigla.
-CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
-RETURNS uuid LANGUAGE sql STABLE AS $fx$
-  SELECT id FROM tmp_cru_art WHERE sigla = p_sigla;
-$fx$;
-
--- U2 e' un'UdM operativa di X e del componente K (1 U2 = 6 U1).
-INSERT INTO catalogo.articoli_uom_operativa (articolo_id, uom_id, is_base, factor_to_base, attivo, valido_dal)
-SELECT a.id, (SELECT u2 FROM tmp_cru_uom), false, 6, true, '2020-01-01'::date
-  FROM tmp_cru_art a WHERE a.sigla IN ('X', 'K');
-
--- Il bundle: P composito, con K come componente in distinta.
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('P');
-INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
-VALUES (pg_temp.art('P'), pg_temp.art('K'), 1, '2020-01-01');
-
--- Il listino: A e B, nella loro UdM base.
+-- Il listino (prima degli articoli: la sua tipologia serve alla loro nascita).
 -- ⚠️ La versione del builder nasce ATTIVA, e le righe non si scrivono su una
 --    versione ATTIVA. La si fa finire nel 2020, e la versione che copre OGGI si
 --    costruisce qui: BOZZA, righe, poi ATTIVA (come test-contratto-righe-lista-v1).
@@ -93,11 +71,38 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
--- Un listino TIPIZZATO accetta solo articoli della sua tipologia.
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM tmp_cru_listino)
- WHERE id IN (pg_temp.art('A'), pg_temp.art('B'));
+-- La struttura si sceglie alla nascita:
+--   A, B  nella tipologia del listino (un listino TIPIZZATO accetta solo quella);
+--   P     il bundle, composito (K e' il suo componente in distinta);
+--   Y     servizio una tantum (vedi le righe, rev 2026-10-07).
+CREATE TEMP TABLE tmp_cru_art AS
+SELECT v.sigla,
+       dbops.fn_pgtap_crea_articolo('PGTAP-CRU-' || v.sigla, true, false, false,
+                                    (SELECT u1 FROM tmp_cru_uom),
+           p_listino_tipologia_id => CASE WHEN v.sigla IN ('A', 'B') THEN
+               (SELECT tipologia_id FROM tmp_cru_listino) END,
+           p_is_composito         => v.sigla = 'P',
+           p_natura_vendita_id    => CASE WHEN v.sigla = 'Y' THEN
+               (SELECT id FROM config.nature_vendita
+                 WHERE codice_interno = 'SERVIZIO_UNA_TANTUM') END) AS id
+  FROM (VALUES ('A'), ('B'), ('X'), ('Y'), ('P'), ('K')) AS v(sigla);
 
+-- Scopo: id di un articolo della fixture per sigla.
+CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
+RETURNS uuid LANGUAGE sql STABLE AS $fx$
+  SELECT id FROM tmp_cru_art WHERE sigla = p_sigla;
+$fx$;
+
+-- U2 e' un'UdM operativa di X e del componente K (1 U2 = 6 U1).
+INSERT INTO catalogo.articoli_uom_operativa (articolo_id, uom_id, is_base, factor_to_base, attivo, valido_dal)
+SELECT a.id, (SELECT u2 FROM tmp_cru_uom), false, 6, true, '2020-01-01'::date
+  FROM tmp_cru_art a WHERE a.sigla IN ('X', 'K');
+
+-- Il bundle: P composito, con K come componente in distinta.
+INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
+VALUES (pg_temp.art('P'), pg_temp.art('K'), 1, '2020-01-01');
+
+-- Il listino: A e B, nella loro UdM base.
 INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
 SELECT (SELECT id FROM tmp_cru_ver), a.id, (SELECT u1 FROM tmp_cru_uom), 100.00
   FROM tmp_cru_art a WHERE a.sigla IN ('A', 'B');
@@ -135,13 +140,9 @@ $fx$;
 -- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe
 --   stanno nel PERIMETRO dell'articolo. B (OVERRIDE, nel listino) eredita l'erogazione
 --   dalla tipologia del listino; X e P (MERCE del builder) sono UNA_TANTUM; Y diventa un
---   servizio una tantum a consumo MANUALE: la quantita' la scrive l'operatore, come con
---   le LETTURE che una natura non ammette. Prima erano CANONE/FISSA e CONSUMO/LETTURE,
---   scritte a mano.
-UPDATE catalogo.articoli
-   SET natura_vendita_id = (SELECT id FROM config.nature_vendita
-                             WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')
- WHERE id = pg_temp.art('Y');
+--   servizio una tantum a consumo MANUALE (la natura gliela da' il builder, alla nascita):
+--   la quantita' la scrive l'operatore, come con le LETTURE che una natura non ammette.
+--   Prima erano CANONE/FISSA e CONSUMO/LETTURE, scritte a mano.
 
 -- ⚠️ Rev 2026-10-07 (§D.4 punto 2, 20261007-28/-30): B eredita la combinazione di
 --   default della tipologia del listino (quella del builder). La quantita' solo se la

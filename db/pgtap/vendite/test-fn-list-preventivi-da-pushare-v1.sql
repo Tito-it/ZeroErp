@@ -82,8 +82,12 @@ SELECT
   --   del catalogo», cioe' quello che l'ultimo smoke aveva lasciato: il
   --   2026-10-13 era un composito MERCE, la riga andava all'ordine e il lister
   --   delle commesse giustamente non la restituiva (test 3-5 rossi). La natura
-  --   (destinazione COMMESSA) si fissa subito sotto: e' la condizione del caso.
-  dbops.fn_pgtap_crea_articolo('PGT-LPP-V1', false) AS articolo_id,
+  --   (destinazione COMMESSA) si fissa alla nascita: e' la condizione del caso,
+  --   il ramo che questo lister serve.
+  dbops.fn_pgtap_crea_articolo('PGT-LPP-V1', false,
+      p_natura_vendita_id => (SELECT nv.id FROM config.nature_vendita nv
+                               WHERE nv.destinazione_tipo = 'COMMESSA' AND nv.attivo
+                               ORDER BY nv.id LIMIT 1)) AS articolo_id,
   (SELECT s.id
      FROM config.stati_doc_preventivi s
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE
@@ -103,13 +107,6 @@ SELECT
     WHERE s.codice = 'PREVENTIVO' AND s.attivo IS TRUE
     LIMIT 1
   ) AS sorgente_tipo_id;
-
--- Una natura che va in commessa: e' il ramo che questo lister serve.
-UPDATE catalogo.articoli
-   SET natura_vendita_id = (SELECT nv.id FROM config.nature_vendita nv
-                             WHERE nv.destinazione_tipo = 'COMMESSA' AND nv.attivo
-                             ORDER BY nv.id LIMIT 1)
- WHERE id = (SELECT articolo_id FROM tmp_refs_prev);
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL

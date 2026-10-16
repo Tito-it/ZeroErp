@@ -61,11 +61,9 @@ SELECT (SELECT i.id FROM config.iva i WHERE i.attivo AND i.aliquota_iva > 0 ORDE
 
 -- U: sara' usato. L: resta libero. X: usato da un'altra azienda.
 CREATE TEMP TABLE _art AS
-SELECT dbops.fn_pgtap_crea_articolo('PGT-AUS-U', false) AS u,
-       dbops.fn_pgtap_crea_articolo('PGT-AUS-L', false) AS l,
-       dbops.fn_pgtap_crea_articolo('PGT-AUS-X', false) AS x;
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT merce FROM _nat)
- WHERE id IN ((SELECT u FROM _art), (SELECT l FROM _art), (SELECT x FROM _art));
+SELECT dbops.fn_pgtap_crea_articolo('PGT-AUS-U', false, p_natura_vendita_id => (SELECT merce FROM _nat)) AS u,
+       dbops.fn_pgtap_crea_articolo('PGT-AUS-L', false, p_natura_vendita_id => (SELECT merce FROM _nat)) AS l,
+       dbops.fn_pgtap_crea_articolo('PGT-AUS-X', false, p_natura_vendita_id => (SELECT merce FROM _nat)) AS x;
 
 -- ============================================================
 -- Il predicato (1-3)

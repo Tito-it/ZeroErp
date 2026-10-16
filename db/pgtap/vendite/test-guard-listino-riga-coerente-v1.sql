@@ -114,11 +114,8 @@ SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_u_altrui), '
 
 CREATE TEMP TABLE t_art_altrui AS
 SELECT dbops.fn_pgtap_crea_articolo(
-           ('PGT-GLA-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar, false) AS a3;
-
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM t_l_altrui)
- WHERE id = (SELECT a3 FROM t_art_altrui);
+           ('PGT-GLA-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar, false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM t_l_altrui)) AS a3;
 
 CREATE TEMP TABLE t_r_altrui AS
 WITH ins AS (
@@ -152,13 +149,11 @@ SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_c), 'riga co
 -- non la cambierebbero piu').
 CREATE TEMP TABLE t_art AS
 SELECT dbops.fn_pgtap_crea_articolo(
-           ('PGT-GLR-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar, false) AS a1,
+           ('PGT-GLR-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar, false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM t_l)) AS a1,
        dbops.fn_pgtap_crea_articolo(
-           ('PGT-GLR-' || substr(md5(clock_timestamp()::text || 'b'), 1, 12))::varchar, false) AS a2;
-
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM t_l)
- WHERE id IN ((SELECT a1 FROM t_art), (SELECT a2 FROM t_art));
+           ('PGT-GLR-' || substr(md5(clock_timestamp()::text || 'b'), 1, 12))::varchar, false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM t_l)) AS a2;
 
 -- Tre unita' di misura: quella dell'articolo e due altre.
 CREATE TEMP TABLE t_uom AS

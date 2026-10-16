@@ -110,15 +110,12 @@ CREATE TEMP TABLE _m AS
 SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP prezzi autorizzati');
 
 -- Due articoli costruiti: un KIT composito e il suo COMPONENTE, con una
--- distinta base valida oggi. Il flag composito si accende PRIMA della
--- distinta: catalogo.trgfn_articoli_componenti_guard_is_composito rifiuta la
--- distinta di un articolo semplice.
+-- distinta base valida oggi. Il KIT nasce composito:
+-- catalogo.trgfn_articoli_componenti_guard_is_composito rifiuta la distinta
+-- di un articolo semplice.
 CREATE TEMP TABLE _a AS
-SELECT dbops.fn_pgtap_crea_articolo('PGT-PZA-KIT', false) AS kit_id,
-       dbops.fn_pgtap_crea_articolo('PGT-PZA-CMP', false) AS cmp_id;
-
-UPDATE catalogo.articoli SET is_composito = true
- WHERE id = (SELECT kit_id FROM _a);
+SELECT dbops.fn_pgtap_crea_articolo('PGT-PZA-KIT', false, p_is_composito => true) AS kit_id,
+       dbops.fn_pgtap_crea_articolo('PGT-PZA-CMP', false)                         AS cmp_id;
 
 -- ⚠️ obbligatorio = false: un componente obbligatorio non si spegne dalla riga
 --   documento (script.trgfn_componenti_guard_obbligatorio), e il caso 8 — un

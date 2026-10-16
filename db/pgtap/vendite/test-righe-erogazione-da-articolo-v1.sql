@@ -95,7 +95,15 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
     (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1));
 
 CREATE TEMP TABLE tmp_eda_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-EDA-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-EDA-' || v.sigla,
+           p_listino_tipologia_id => (SELECT t.id FROM config.listini_tipologie t
+                                       WHERE t.codice = CASE v.sigla WHEN 'C' THEN 'CONSUMO'
+                                                                     WHEN 'P' THEN 'PRODOTTI' END),
+           p_is_composito         => v.sigla = 'K',
+           p_natura_vendita_id    => CASE WHEN v.sigla IN ('R', 'R2', 'C', 'K', 'RP')
+                                          THEN (SELECT n.id FROM config.nature_vendita n
+                                                 WHERE n.codice_interno = 'SERVIZIO_RICORRENTE')
+                                     END) AS id
   FROM (VALUES ('M'), ('M2'), ('R'), ('R2'), ('C'), ('P'), ('K'), ('RP'), ('KC')) AS v(sigla);
 
 CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
@@ -103,19 +111,6 @@ RETURNS uuid LANGUAGE sql STABLE AS $fx$
     SELECT id FROM tmp_eda_art WHERE sigla = p_sigla;
 $fx$;
 
-UPDATE catalogo.articoli
-   SET natura_vendita_id = (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_RICORRENTE')
- WHERE id IN (pg_temp.art('R'), pg_temp.art('R2'), pg_temp.art('C'), pg_temp.art('K'), pg_temp.art('RP'));
-
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT id FROM config.listini_tipologie WHERE codice = 'CONSUMO')
- WHERE id = pg_temp.art('C');
-
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT id FROM config.listini_tipologie WHERE codice = 'PRODOTTI')
- WHERE id = pg_temp.art('P');
-
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('K');
 -- rev 2026-10-14 (D-7, 20261014-06 di brief-db-articoli-ammessi-per-documento): un kit
 --   senza nessun componente attivo non sta piu' in una riga (E_ARTICOLO_KIT_SENZA_COMPONENTI).
 --   K riceve il suo componente KC: la fixture costruiva un kit vuoto.

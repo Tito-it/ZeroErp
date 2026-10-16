@@ -49,18 +49,15 @@ SELECT plan(14);
 -- ============================================================
 -- Fixture
 -- ============================================================
+-- Padre e i due kit nascono compositi; gli altri nascono semplici.
 CREATE TEMP TABLE _t_art AS
-SELECT dbops.fn_pgtap_crea_articolo('PGT-BOM1L-PADRE', false)     AS padre,
-       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-PADRE-NC', false)  AS padre_non_comp,
-       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-KIT', false)       AS kit,
-       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-KIT-IVA', false)   AS kit_iva,
-       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-SEMPL', false)     AS semplice,
-       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-FUTURO', false)    AS futuro,
-       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-SCADUTO', false)   AS scaduto;
-
--- Padre e i due kit sono compositi; gli altri nascono semplici.
-UPDATE catalogo.articoli SET is_composito = true
- WHERE id IN ((SELECT padre FROM _t_art), (SELECT kit FROM _t_art), (SELECT kit_iva FROM _t_art));
+SELECT dbops.fn_pgtap_crea_articolo('PGT-BOM1L-PADRE', false, p_is_composito => true)   AS padre,
+       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-PADRE-NC', false)                        AS padre_non_comp,
+       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-KIT', false, p_is_composito => true)     AS kit,
+       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-KIT-IVA', false, p_is_composito => true) AS kit_iva,
+       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-SEMPL', false)                           AS semplice,
+       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-FUTURO', false)                          AS futuro,
+       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-SCADUTO', false)                         AS scaduto;
 
 -- Due aliquote diverse, scelte UNA volta. Si fissano PRIMA dei legami: con
 -- una distinta attiva l'IVA del padre e dei componenti non si cambia piu'
@@ -184,7 +181,8 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE _t_onere AS
 SELECT dbops.fn_pgtap_crea_articolo('PGT-BOM1L-ONERE-OK', false)   AS onere_ok,
-       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-DIVENTA', false)    AS diventa;
+       dbops.fn_pgtap_crea_articolo('PGT-BOM1L-DIVENTA', false,
+           p_natura_vendita_id => (SELECT merce FROM _t_nat))      AS diventa;
 
 SELECT throws_like(
     $$ UPDATE catalogo.articoli
@@ -206,9 +204,6 @@ SELECT throws_like(
         WHERE id = (SELECT onere_ok FROM _t_onere) $$,
     '%e'' un onere, e un onere non puo'' avere la natura%',
     '13) onere che passa a una natura che va in ordine: rifiutato');
-
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT merce FROM _t_nat)
- WHERE id = (SELECT diventa FROM _t_onere);
 
 SELECT throws_like(
     $$ UPDATE catalogo.articoli SET causale_onere_id = (SELECT onere_b FROM _t_causale)

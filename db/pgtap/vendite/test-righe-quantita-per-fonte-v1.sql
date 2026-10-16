@@ -81,7 +81,12 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
     (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1));
 
 CREATE TEMP TABLE tmp_qpf_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-QPF-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-QPF-' || v.sigla,
+           p_is_composito      => v.sigla = 'K',
+           p_natura_vendita_id => CASE WHEN v.sigla = 'R'
+                                       THEN (SELECT n.id FROM config.nature_vendita n
+                                              WHERE n.codice_interno = 'SERVIZIO_RICORRENTE')
+                                  END) AS id
   FROM (VALUES ('M'), ('R'), ('K'), ('N'), ('KC')) AS v(sigla);
 
 CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
@@ -89,11 +94,6 @@ RETURNS uuid LANGUAGE sql STABLE AS $fx$
     SELECT id FROM tmp_qpf_art WHERE sigla = p_sigla;
 $fx$;
 
-UPDATE catalogo.articoli
-   SET natura_vendita_id = (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_RICORRENTE')
- WHERE id = pg_temp.art('R');
-
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('K');
 -- rev 2026-10-14 (D-7, 20261014-06 di brief-db-articoli-ammessi-per-documento): un kit
 --   senza nessun componente attivo non sta piu' in una riga (E_ARTICOLO_KIT_SENZA_COMPONENTI).
 --   K riceve il suo componente KC: la fixture costruiva un kit vuoto.

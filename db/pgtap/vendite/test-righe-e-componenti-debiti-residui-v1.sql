@@ -79,7 +79,7 @@ $f$;
 --   S: articolo semplice.
 --   P: kit. F obbligatorio, G e R opzionali (G si spegne in attesa, R si
 --      spegne rifiutato).
--- Il flag composito si accende PRIMA della distinta:
+-- P nasce composito dal builder:
 -- catalogo.trgfn_articoli_componenti_guard_is_composito rifiuta la distinta
 -- di un articolo semplice.
 -- =========================================================
@@ -94,13 +94,12 @@ CREATE TEMP TABLE _l AS
 SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _m), 'pgTAP debiti residui');
 
 CREATE TEMP TABLE _art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-DR-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-DR-' || v.sigla,
+                                             p_is_composito => v.sigla = 'P') AS id
   FROM (VALUES ('S'), ('P'), ('F'), ('G'), ('R')) AS v(sigla);
 
 CREATE FUNCTION pg_temp.art(p_sigla text) RETURNS uuid
 LANGUAGE sql STABLE AS $f$ SELECT id FROM _art WHERE sigla = p_sigla $f$;
-
-UPDATE catalogo.articoli SET is_composito = true WHERE id = pg_temp.art('P');
 
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, obbligatorio, valido_dal)
 VALUES (pg_temp.art('P'), pg_temp.art('F'), 1, true,  script.fn_data_operativa() - 30),

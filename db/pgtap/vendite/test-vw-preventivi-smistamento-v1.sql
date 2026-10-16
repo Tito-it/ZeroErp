@@ -64,9 +64,13 @@ SELECT
   --   se il primo e' un onere, dal 20261013-05 il guard
   --   E_ARTICOLO_ONERE_NATURA_MERCE (giustamente) rifiuta la MERCE e il file
   --   muore nella fixture. Un articolo costruito ha solo le proprieta' che il
-  --   test gli da'.
-  dbops.fn_pgtap_crea_articolo('PGT-VS-MERCE', true)  AS art_merce_id,
-  dbops.fn_pgtap_crea_articolo('PGT-VS-SERV', false)  AS art_serv_id,
+  --   test gli da', e la natura la riceve alla nascita.
+  dbops.fn_pgtap_crea_articolo('PGT-VS-MERCE', true,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'MERCE'))               AS art_merce_id,
+  dbops.fn_pgtap_crea_articolo('PGT-VS-SERV', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')) AS art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
@@ -91,11 +95,6 @@ SELECT ok(
      FROM tmp_vs_refs),
   '0. Precondizioni soddisfatte'
 );
-
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tmp_vs_refs)
- WHERE id = (SELECT art_merce_id FROM tmp_vs_refs);
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp_vs_refs)
- WHERE id = (SELECT art_serv_id FROM tmp_vs_refs);
 
 -- Preventivo MISTO ACCETTATO: merce + servizio (da emettere) + servizio
 -- residuo + riga natura NULL (pregresso).

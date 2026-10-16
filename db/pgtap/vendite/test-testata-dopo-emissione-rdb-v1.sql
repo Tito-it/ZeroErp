@@ -196,15 +196,12 @@ WITH ins AS (
 SELECT id FROM ins;
 
 CREATE TEMP TABLE _art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-RDB-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-RDB-' || v.sigla,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM _l)) AS id
   FROM (VALUES ('A'), ('X')) AS v(sigla);
 
 CREATE FUNCTION pg_temp.art(p_sigla text) RETURNS uuid
 LANGUAGE sql STABLE AS $f$ SELECT id FROM _art WHERE sigla = p_sigla $f$;
-
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM _l)
- WHERE id IN (SELECT id FROM _art);
 
 INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
 SELECT (SELECT id FROM _v), a.id, a.uom_id, 100.00

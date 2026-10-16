@@ -95,11 +95,8 @@ SELECT isnt(
 
 -- Listino con versione attiva e riga (riusa struttura esistente o crea in-TX).
 -- L'articolo del caso: costruito, con la tipologia del contesto.
-UPDATE tmp_ctx_wd SET articolo_id = dbops.fn_pgtap_crea_articolo('PGTAP-V5B-WD');
-UPDATE catalogo.articoli a
-   SET listino_tipologia_id = t.tipologia_id
-  FROM tmp_ctx_wd t
- WHERE a.id = t.articolo_id;
+UPDATE tmp_ctx_wd SET articolo_id = dbops.fn_pgtap_crea_articolo('PGTAP-V5B-WD',
+    p_listino_tipologia_id => tipologia_id);
 UPDATE tmp_ctx_wd t
    SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = t.articolo_id);
 
@@ -238,11 +235,8 @@ SELECT isnt(
 );
 
 -- L'articolo del caso: costruito, con la tipologia del contesto.
-UPDATE tmp_ctx_nd SET articolo_id = dbops.fn_pgtap_crea_articolo('PGTAP-V5B-ND');
-UPDATE catalogo.articoli a
-   SET listino_tipologia_id = t.tipologia_id
-  FROM tmp_ctx_nd t
- WHERE a.id = t.articolo_id;
+UPDATE tmp_ctx_nd SET articolo_id = dbops.fn_pgtap_crea_articolo('PGTAP-V5B-ND',
+    p_listino_tipologia_id => tipologia_id);
 UPDATE tmp_ctx_nd t
    SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = t.articolo_id);
 

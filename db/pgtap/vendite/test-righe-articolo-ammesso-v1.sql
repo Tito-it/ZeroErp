@@ -62,19 +62,20 @@ SELECT (SELECT nv.id FROM config.nature_vendita nv
 
 -- M merce, S servizio una tantum, R ricorrente, C solo componente (e
 -- servizio), K merce che diventera' solo componente dopo la consegna.
+-- Natura e «solo componente» si scelgono alla nascita.
 CREATE TEMP TABLE _art AS
-SELECT dbops.fn_pgtap_crea_articolo('PGT-AAM-M', false) AS m,
-       dbops.fn_pgtap_crea_articolo('PGT-AAM-S', false) AS s,
-       dbops.fn_pgtap_crea_articolo('PGT-AAM-R', false) AS r,
-       dbops.fn_pgtap_crea_articolo('PGT-AAM-C', false) AS c,
-       dbops.fn_pgtap_crea_articolo('PGT-AAM-K', false) AS k;
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT merce FROM _nat)
- WHERE id IN ((SELECT m FROM _art), (SELECT k FROM _art));
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT servizio FROM _nat)
- WHERE id IN ((SELECT s FROM _art), (SELECT c FROM _art));
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT ricorrente FROM _nat)
- WHERE id = (SELECT r FROM _art);
-UPDATE catalogo.articoli SET is_solo_componente = true WHERE id = (SELECT c FROM _art);
+SELECT dbops.fn_pgtap_crea_articolo('PGT-AAM-M', false,
+           p_natura_vendita_id => n.merce)                    AS m,
+       dbops.fn_pgtap_crea_articolo('PGT-AAM-S', false,
+           p_natura_vendita_id => n.servizio)                 AS s,
+       dbops.fn_pgtap_crea_articolo('PGT-AAM-R', false,
+           p_natura_vendita_id => n.ricorrente)               AS r,
+       dbops.fn_pgtap_crea_articolo('PGT-AAM-C', false,
+           p_is_solo_componente => true,
+           p_natura_vendita_id  => n.servizio)                AS c,
+       dbops.fn_pgtap_crea_articolo('PGT-AAM-K', false,
+           p_natura_vendita_id => n.merce)                    AS k
+  FROM _nat n;
 
 CREATE TEMP TABLE _iva AS
 SELECT (SELECT i.id FROM config.iva i WHERE i.attivo AND i.aliquota_iva > 0 ORDER BY i.id LIMIT 1) AS id;

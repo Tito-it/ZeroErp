@@ -1,0 +1,174 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# `dbops.fn_pgtap_crea_articolo` costruisce l'articolo INTERO: tutta la sua
+# struttura si sceglie alla nascita.
+#
+# ── ⛔ IL DIFETTO ───────────────────────────────────────────────────
+#   Dal 2026-10-13 un articolo usato non cambia piu' struttura:
+#   `catalogo.trgfn_articoli_guard_struttura_se_usato` (A-10) blocca OTTO
+#   colonne — `is_composito`, `is_solo_componente`, `natura_vendita_id`,
+#   `causale_onere_id`, `listino_tipologia_id`, `gestito_a_magazzino`,
+#   `requires_lotto`, `requires_serial`. Il builder ne lasciava scegliere tre.
+#   Le altre cinque le correggeva il chiamante con un `UPDATE catalogo.articoli`
+#   DOPO il builder, e quell'UPDATE doveva arrivare PRIMA che l'articolo fosse
+#   usato: sbagliato l'ordine, il guard lo rifiuta e il test diventa rosso con
+#   E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE, un messaggio che non nomina l'ordine
+#   della fixture. Un builder costruisce l'oggetto come il modello lo vuole:
+#   non lascia al chiamante il compito di finirlo nel momento giusto.
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   Cinque parametri nuovi, IN CODA dopo `p_uom_id` e tutti con DEFAULT che
+#   riproducono il comportamento di prima: chi chiama con al massimo cinque
+#   argomenti posizionali non cambia di una riga. ⛔ Valorizzati nell'INSERT,
+#   mai con un UPDATE dentro il builder: altrimenti la correzione si sposta
+#   qui dentro e il difetto resta.
+#   ⚠️ `natura_vendita_id` e' NOT NULL con un DEFAULT di tabella: NULL qui
+#   vuol dire «quello della tabella», e l'INSERT ha due rami per non ricopiare
+#   nel builder un default che appartiene al DDL.
+#   ⚠️ Nessun guard sui parametri nuovi: una tipologia, una natura o una
+#   causale inesistenti le rifiuta la FK nominando la colonna; una spenta, il
+#   `require_attivo` del padre. Le combinazioni (onere su natura MERCE, ...)
+#   le decidono i guard della tabella, che il builder attraversa.
+#   ⚠️ DROP + CREATE: un parametro in piu' con `OR REPLACE` creerebbe un
+#   OVERLOAD, e le chiamate a cinque argomenti diventerebbero ambigue.
+#
+# ── CHI LO USA ──────────────────────────────────────────────────────
+#   Dentro il DB: `dbops.fn_pgtap_crea_commessa_attivita` (due argomenti
+#   posizionali, invariata). Le fixture pgTAP che correggevano a mano passano
+#   ai parametri nello stesso giro; i test BE sono una richiesta al team BE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261017-01-update-fn-pgtap-crea-articolo-struttura-alla-nascita-mctit.yaml
+
+  - changeSet:
+      id: 20261017-01-update-fn-pgtap-crea-articolo-struttura-alla-nascita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_articolo prende in coda cinque parametri opzionali
+        (listino_tipologia_id, is_composito, is_solo_componente,
+        natura_vendita_id, causale_onere_id): con le tre gia' presenti sono le
+        otto colonne che il guard A-10 congela quando l'articolo e' usato, e il
+        builder le valorizza tutte nell'INSERT. DROP + CREATE per non creare un
+        overload; chi non passa i parametri nuovi ha il comportamento di prima.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_articolo(
+                  catalogo.articoli.codice%TYPE,
+                  catalogo.articoli.gestito_a_magazzino%TYPE,
+                  catalogo.articoli.requires_lotto%TYPE,
+                  catalogo.articoli.requires_serial%TYPE,
+                  catalogo.articoli.uom_id%TYPE);
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_articolo(
+                  p_codice               catalogo.articoli.codice%TYPE,
+                  p_gestito              catalogo.articoli.gestito_a_magazzino%TYPE  DEFAULT true,
+                  p_requires_lotto       catalogo.articoli.requires_lotto%TYPE       DEFAULT false,
+                  p_requires_serial      catalogo.articoli.requires_serial%TYPE      DEFAULT false,
+                  p_uom_id               catalogo.articoli.uom_id%TYPE               DEFAULT NULL,
+                  p_listino_tipologia_id catalogo.articoli.listino_tipologia_id%TYPE DEFAULT NULL,
+                  p_is_composito         catalogo.articoli.is_composito%TYPE         DEFAULT false,
+                  p_is_solo_componente   catalogo.articoli.is_solo_componente%TYPE   DEFAULT false,
+                  p_natura_vendita_id    catalogo.articoli.natura_vendita_id%TYPE    DEFAULT NULL,
+                  p_causale_onere_id     catalogo.articoli.causale_onere_id%TYPE     DEFAULT NULL
+              )
+               RETURNS catalogo.articoli.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un articolo COSTRUITO INTERO, con la
+              --   struttura che il test sceglie: pescarne uno dal catalogo darebbe un
+              --   articolo qualunque, cioe' un rifiuto che sembra un test rosso.
+              --   UoM: la prima attiva del seed, se il test non la sceglie.
+              -- Uso: v_art := dbops.fn_pgtap_crea_articolo('PGT-A', true, true, false);
+              --      v_kit := dbops.fn_pgtap_crea_articolo('PGT-K', false,
+              --                   p_listino_tipologia_id => v_tip, p_is_composito => true);
+              -- ⭐ Rev 20260923-01: `p_uom_id` per chi la UoM base la deve SCEGLIERE —
+              --   chi misura le conversioni, che il guard ammette solo fra unita' della
+              --   stessa tipologia. La colonna e' loccata: o si sceglie qui, o mai piu'.
+              -- ⭐ Rev 20261017-01: le otto colonne che il guard A-10 congela su un
+              --   articolo usato si scelgono TUTTE qui, nell'INSERT. Un UPDATE dopo il
+              --   builder dipende dall'ordine della fixture; dentro il builder sarebbe
+              --   lo stesso difetto spostato.
+              DECLARE
+                  v_uom catalogo.unita_misura.id%TYPE;
+                  v_id  catalogo.articoli.id%TYPE;
+              BEGIN
+                  IF p_uom_id IS NULL THEN
+                      SELECT u.id INTO v_uom FROM catalogo.unita_misura u WHERE u.attivo ORDER BY u.id LIMIT 1;
+                      IF v_uom IS NULL THEN
+                          RAISE EXCEPTION 'fn_pgtap_crea_articolo: catalogo.unita_misura e'' vuoto — e'' un seed di 80_data';
+                      END IF;
+                  ELSE
+                      -- ⚠️ Guard sul RISULTATO: una UoM inesistente o spenta qui parla,
+                      --   invece di arrivare alla FK con un messaggio che non nomina
+                      --   ne' la fixture ne' il parametro.
+                      SELECT u.id INTO v_uom
+                        FROM catalogo.unita_misura u
+                       WHERE u.id = p_uom_id AND u.attivo;
+                      IF v_uom IS NULL THEN
+                          RAISE EXCEPTION
+                              'fn_pgtap_crea_articolo: p_uom_id = % non e'' una unita'' di misura attiva a catalogo',
+                              p_uom_id;
+                      END IF;
+                  END IF;
+
+                  -- ⚠️ natura_vendita_id e' NOT NULL con un DEFAULT di tabella: NULL vuol
+                  --   dire «quello della tabella». Due rami invece di ricopiare qui il
+                  --   default: la sede del default resta il DDL.
+                  IF p_natura_vendita_id IS NULL THEN
+                      INSERT INTO catalogo.articoli (codice, descrizione, uom_id,
+                                                     gestito_a_magazzino, requires_lotto, requires_serial,
+                                                     listino_tipologia_id, is_composito, is_solo_componente,
+                                                     causale_onere_id)
+                      VALUES (p_codice, 'Fixture pgTAP: ' || p_codice, v_uom,
+                              COALESCE(p_gestito, true), COALESCE(p_requires_lotto, false), COALESCE(p_requires_serial, false),
+                              p_listino_tipologia_id, COALESCE(p_is_composito, false), COALESCE(p_is_solo_componente, false),
+                              p_causale_onere_id)
+                      RETURNING id INTO v_id;
+                  ELSE
+                      INSERT INTO catalogo.articoli (codice, descrizione, uom_id,
+                                                     gestito_a_magazzino, requires_lotto, requires_serial,
+                                                     listino_tipologia_id, is_composito, is_solo_componente,
+                                                     causale_onere_id, natura_vendita_id)
+                      VALUES (p_codice, 'Fixture pgTAP: ' || p_codice, v_uom,
+                              COALESCE(p_gestito, true), COALESCE(p_requires_lotto, false), COALESCE(p_requires_serial, false),
+                              p_listino_tipologia_id, COALESCE(p_is_composito, false), COALESCE(p_is_solo_componente, false),
+                              p_causale_onere_id, p_natura_vendita_id)
+                      RETURNING id INTO v_id;
+                  END IF;
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_articolo(
+                  catalogo.articoli.codice%TYPE,
+                  catalogo.articoli.gestito_a_magazzino%TYPE,
+                  catalogo.articoli.requires_lotto%TYPE,
+                  catalogo.articoli.requires_serial%TYPE,
+                  catalogo.articoli.uom_id%TYPE,
+                  catalogo.articoli.listino_tipologia_id%TYPE,
+                  catalogo.articoli.is_composito%TYPE,
+                  catalogo.articoli.is_solo_componente%TYPE,
+                  catalogo.articoli.natura_vendita_id%TYPE,
+                  catalogo.articoli.causale_onere_id%TYPE)
+              IS 'Fixture pgTAP: un articolo COSTRUITO INTERO, con la struttura scelta dal test. Pescare un articolo dal catalogo darebbe uno qualunque, e un rifiuto che sembra un test rosso (brief magazzino Lotto 2, sezione 5). p_uom_id: la UoM BASE, colonna loccata (rev 20260923-01); senza, la prima attiva del seed. ⭐ Rev 20261017-01: in coda listino_tipologia_id, is_composito, is_solo_componente, natura_vendita_id (NULL = il default di tabella) e causale_onere_id: con gestito_a_magazzino, requires_lotto e requires_serial sono le otto colonne che catalogo.trgfn_articoli_guard_struttura_se_usato congela su un articolo usato, e il builder le valorizza tutte nell''INSERT. Un UPDATE di correzione dopo il builder dipende dall''ordine della fixture. Le combinazioni le giudicano i guard della tabella. Solo per i pgTAP.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo a cinque parametri e' nella doc auto-gen alla revisione
+              -- 20260923-01. Non si riscrive un corpo stantio.
+              SELECT 1;

@@ -90,8 +90,11 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
+-- Tutti della tipologia del listino; P nasce composito (il bundle).
 CREATE TEMP TABLE tmp_rsv_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-RSV-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-RSV-' || v.sigla,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_rsv_listino),
+           p_is_composito         => v.sigla = 'P') AS id
   FROM (VALUES ('A'), ('B'), ('C'), ('F'), ('P'), ('X')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
@@ -100,12 +103,7 @@ RETURNS uuid LANGUAGE sql STABLE AS $fx$
   SELECT id FROM tmp_rsv_art WHERE sigla = p_sigla;
 $fx$;
 
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM tmp_rsv_listino)
- WHERE id IN (SELECT id FROM tmp_rsv_art);
-
--- Il bundle: P composito, con F come componente in distinta.
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('P');
+-- Il bundle: P, con F come componente in distinta.
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
 VALUES (pg_temp.art('P'), pg_temp.art('F'), 1, '2020-01-01');
 

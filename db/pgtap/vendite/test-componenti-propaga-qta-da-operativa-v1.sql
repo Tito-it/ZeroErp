@@ -57,14 +57,11 @@ SELECT plan(5);
 CREATE TEMP TABLE _m AS
 SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP propaga qta');
 
--- Il flag composito si accende PRIMA della distinta
+-- Il kit nasce composito: il flag serve PRIMA della distinta
 -- (catalogo.trgfn_articoli_componenti_guard_is_composito).
 CREATE TEMP TABLE _a AS
-SELECT dbops.fn_pgtap_crea_articolo('PGT-PQO-KIT', false) AS kit_id,
+SELECT dbops.fn_pgtap_crea_articolo('PGT-PQO-KIT', false, p_is_composito => true) AS kit_id,
        dbops.fn_pgtap_crea_articolo('PGT-PQO-CMP', false) AS cmp_id;
-
-UPDATE catalogo.articoli SET is_composito = true
- WHERE id = (SELECT kit_id FROM _a);
 
 -- obbligatorio = false: il test 4 riscrive a mano la quantita' del componente.
 INSERT INTO catalogo.articoli_componenti
