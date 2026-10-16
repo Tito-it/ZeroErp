@@ -51,7 +51,10 @@ SELECT
   --   per id, e gli si cambiava la natura qui sotto: su dbdev e' ART_TEST_BASE,
   --   gia' usato, e dal 20261013-48 un articolo usato non cambia natura (A-10 di
   --   brief-db-articoli-ammessi-per-documento).
-  dbops.fn_pgtap_crea_articolo('PGT-LPPC-SERV', false) AS art_serv_id,
+  -- Nasce SERVIZIO_UNA_TANTUM: natura destinazione COMMESSA, per essere incluso.
+  dbops.fn_pgtap_crea_articolo('PGT-LPPC-SERV', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')) AS art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
@@ -59,12 +62,7 @@ SELECT
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
     ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_UNA_TANTUM') AS natura_serv_id;
-
--- L'articolo di test deve avere natura destinazione COMMESSA per essere incluso.
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp_refs)
- WHERE id = (SELECT art_serv_id FROM tmp_refs);
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id;
 
 -- ============================================================
 -- Preventivo 1: SENZA validita (validita_dal/al NULL, competenza_mese NULL).

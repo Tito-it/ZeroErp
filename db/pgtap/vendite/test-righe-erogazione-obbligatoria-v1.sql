@@ -89,8 +89,10 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
+-- Un listino TIPIZZATO accetta solo articoli della sua tipologia: nascono con quella.
 CREATE TEMP TABLE tmp_ero_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-ERO-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-ERO-' || v.sigla,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_ero_listino)) AS id
   FROM (VALUES ('A'), ('C'), ('E')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
@@ -98,11 +100,6 @@ CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
 RETURNS uuid LANGUAGE sql STABLE AS $fx$
   SELECT id FROM tmp_ero_art WHERE sigla = p_sigla;
 $fx$;
-
--- Un listino TIPIZZATO accetta solo articoli della sua tipologia.
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM tmp_ero_listino)
- WHERE id IN (SELECT id FROM tmp_ero_art);
 
 -- A e C a listino; E no: e' l'articolo dell'AGGIUNTA, che sul contratto deve
 -- stare fuori listino (guard _a10_guard_aggiunta_fuori_listino).

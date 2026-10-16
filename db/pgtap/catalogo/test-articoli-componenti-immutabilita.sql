@@ -75,19 +75,15 @@ SELECT plan(16);
 --   changelog: sono due righe messe a mano su questa macchina (UUID …101 e
 --   …102). Su un database ricostruito non esistono, e il file moriva nella
 --   fixture — copertura zero, non parziale.
+-- Il prodotto nasce is_composito=true: senza, il trigger
+-- trgfn_articoli_componenti_guard_is_composito rifiuta l'INSERT.
 CREATE TEMP TABLE _t_bom AS
 SELECT
-    dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-PRODOTTO')   AS prodotto_id,
+    dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-PRODOTTO',
+                                 p_is_composito => true)   AS prodotto_id,
     dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-COMPONENTE') AS componente_id,
     (script.fn_data_operativa() - INTERVAL '30 days')::date  AS v_dal,
     (script.fn_data_operativa() + INTERVAL '30 days')::date  AS v_al;
-
--- Prerequisito: il prodotto deve avere is_composito=true perche' il
--- trigger trgfn_articoli_componenti_guard_is_composito accetti l'INSERT.
--- Il ROLLBACK finale ripristina lo stato originale del seed.
-UPDATE catalogo.articoli
-   SET is_composito = true
- WHERE id = (SELECT prodotto_id FROM _t_bom);
 
 CREATE TEMP TABLE _t_bom_riga (riga_id uuid);
 

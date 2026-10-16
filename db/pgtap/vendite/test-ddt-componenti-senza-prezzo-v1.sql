@@ -69,7 +69,7 @@ SELECT plan(8);
 --   Ora un'azienda nuova col suo operatore (contesto aperto su di lui), il
 --   cliente legato a lei (dbops.fn_pgtap_crea_mondo_cliente), e il kit: un
 --   prodotto e due componenti costruiti (dbops.fn_pgtap_crea_articolo, non
---   gestiti), il flag composito acceso PRIMA della distinta, la distinta coi
+--   gestiti; il kit nasce composito, flag che serve PRIMA della distinta), la distinta coi
 --   default del dominio (obbligatorio, NASCOSTO) viva da trenta giorni.
 --   L'emittente fuori matrice e' l'azienda appena nata: nessuna mappa in
 --   anagrafiche.categorie_clienti_listini, verificato sotto e non sperato.
@@ -78,15 +78,12 @@ CREATE TEMP TABLE _az AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore()
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _az)); END $ctx$;
 CREATE TEMP TABLE _m AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('kit senza prezzo');
 
+-- Il kit nasce composito: il flag serve PRIMA della distinta
+-- (catalogo.trgfn_articoli_componenti_guard_is_composito).
 CREATE TEMP TABLE _art AS
-SELECT dbops.fn_pgtap_crea_articolo('PGT-KSP-KIT', false)  AS kit_id,
+SELECT dbops.fn_pgtap_crea_articolo('PGT-KSP-KIT', false, p_is_composito => true) AS kit_id,
        dbops.fn_pgtap_crea_articolo('PGT-KSP-CMP1', false) AS cmp1_id,
        dbops.fn_pgtap_crea_articolo('PGT-KSP-CMP2', false) AS cmp2_id;
-
--- Il flag composito si accende PRIMA della distinta
--- (catalogo.trgfn_articoli_componenti_guard_is_composito).
-UPDATE catalogo.articoli SET is_composito = true
- WHERE id = (SELECT kit_id FROM _art);
 
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
 SELECT a.kit_id, c.cmp_id, 1, script.fn_data_operativa() - 30

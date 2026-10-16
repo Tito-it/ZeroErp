@@ -67,12 +67,12 @@ BEGIN
     VALUES (v_magu, 'PGT-L3BK-U1', (SELECT t.id FROM config.tipi_ubicazione t ORDER BY t.id LIMIT 1))
     RETURNING id INTO v_u1;
 
-    v_k   := dbops.fn_pgtap_crea_articolo('PGT-L3BK-KIT',       false, false, false);
+    v_k   := dbops.fn_pgtap_crea_articolo('PGT-L3BK-KIT',       false, false, false,
+                                          p_is_composito => true);
     v_cs  := dbops.fn_pgtap_crea_articolo('PGT-L3BK-C-SEMPLICE', true, false, false);
     v_cl  := dbops.fn_pgtap_crea_articolo('PGT-L3BK-C-LOTTI',    true, true,  false);
     v_ser := dbops.fn_pgtap_crea_articolo('PGT-L3BK-SERIALE',    true, false, true);
     v_sem := dbops.fn_pgtap_crea_articolo('PGT-L3BK-SEMPLICE',   true, false, false);
-    UPDATE catalogo.articoli SET is_composito = true WHERE id = v_k;
     INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
     VALUES (v_k, v_cs, 2, script.fn_data_operativa() - 30), (v_k, v_cl, 3, script.fn_data_operativa() - 30);
 

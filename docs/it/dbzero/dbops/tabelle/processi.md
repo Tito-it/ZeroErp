@@ -30,6 +30,7 @@
 | acceso_in_sviluppo | boolean | YES |  |
 | acceso_in_produzione | boolean | YES |  |
 | spegnibile | boolean | YES |  |
+| causa_fallimento | text | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -43,6 +44,7 @@
 | CHECK | chk_processi_segno_di_vita |  |
 | CHECK | chk_processi_sessione_senza_tolleranza |  |
 | CHECK | chk_processi_tolleranza_positiva |  |
+| FOREIGN KEY | fk_processi_cause_fallimento | causa_fallimento |
 | PRIMARY KEY | pk_processi | id |
 | UNIQUE | uq_processi_ci_ordine | ci_ordine |
 | UNIQUE | uq_processi_codice | codice |

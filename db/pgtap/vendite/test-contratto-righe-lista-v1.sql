@@ -77,8 +77,12 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
+-- Un listino TIPIZZATO accetta solo articoli della sua tipologia: nascono in quella;
+-- il bundle P nasce composito.
 CREATE TEMP TABLE tmp_crl_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-CRL-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-CRL-' || v.sigla,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_crl_listino),
+           p_is_composito         => v.sigla = 'P') AS id
   FROM (VALUES ('A'), ('B'), ('C'), ('F'), ('P'), ('X')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
@@ -87,13 +91,7 @@ RETURNS uuid LANGUAGE sql STABLE AS $fx$
   SELECT id FROM tmp_crl_art WHERE sigla = p_sigla;
 $fx$;
 
--- Un listino TIPIZZATO accetta solo articoli della sua tipologia.
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM tmp_crl_listino)
- WHERE id IN (SELECT id FROM tmp_crl_art);
-
 -- Il bundle: P composito, con F come componente in distinta.
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('P');
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
 VALUES (pg_temp.art('P'), pg_temp.art('F'), 1, '2020-01-01');
 

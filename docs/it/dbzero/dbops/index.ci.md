@@ -14,6 +14,7 @@
 - [automazione_chiusura_scadenze](manual/automazione_chiusura_scadenze.md) — (latest review 26-04-2026)
 - [automazione_guard_utility_tipo_ruolo](manual/automazione_guard_utility_tipo_ruolo.md) — La tabella **`dbops.automazione_guard_utility_tipo_ruolo`** configura le tabelle su cui applicare automaticamente il trigger di guardia **utility -> tipo_ruolo**.
 - [automazione_overlap](manual/automazione_overlap.md) — (latest review 19-01-26) La tabella **`dbops.automazione_overlap`** centralizza la configurazione del controllo **anti-overlap temporale** tramite vincoli `EXCLUDE USING gist` sulle tabelle versionate.
+- [cause_fallimento](manual/cause_fallimento.md) — (latest review 16-10-2026)
 - [coda_lavori](manual/coda_lavori.md) — (latest review 20-07-2026)
 - [coda_lavori_tipi](manual/coda_lavori_tipi.md) — (latest review 14-09-2026)
 - [codici_errore_senza_policy](manual/codici_errore_senza_policy.md) — (rev 2026-08-21)

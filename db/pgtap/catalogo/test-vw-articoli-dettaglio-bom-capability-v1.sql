@@ -14,9 +14,9 @@
 -- Edge case is_composito=false AND is_solo_componente=true:
 --   prevale 'ARTICOLO_SOLO_COMPONENTE'.
 --
--- Setup: forziamo combinazioni distinte di (is_composito,
--- is_solo_componente) su ART_TEST_BASE e ART_TEST_FALLBACK.
--- ROLLBACK ripristina lo stato originale del seed.
+-- Setup: due articoli costruiti con combinazioni distinte di
+-- (is_composito, is_solo_componente) scelte alla nascita; lo Scenario C
+-- spegne i due flag sul secondo.
 --
 -- Indice test (1..7):
 --   1. presenza colonne aggiunte
@@ -73,15 +73,13 @@ SELECT bag_has(
 --   fixture — copertura zero, non parziale.
 CREATE TEMP TABLE _t_ctx AS
 SELECT
-    dbops.fn_pgtap_crea_articolo('PGT-BOMDETT-A') AS art_a,
-    dbops.fn_pgtap_crea_articolo('PGT-BOMDETT-B') AS art_b;
+    dbops.fn_pgtap_crea_articolo('PGT-BOMDETT-A', p_is_composito => true)  AS art_a,
+    dbops.fn_pgtap_crea_articolo('PGT-BOMDETT-B', p_is_composito => true,
+                                 p_is_solo_componente => true)             AS art_b;
 
 -- =========================================================
 -- Scenario A) ART_TEST_BASE composito non solo componente -> CAN
 -- =========================================================
-UPDATE catalogo.articoli
-   SET is_composito = true, is_solo_componente = false
- WHERE id = (SELECT art_a FROM _t_ctx);
 
 SELECT is(
     (SELECT puo_gestire_bom FROM catalogo.vw_articoli_dettaglio
@@ -101,9 +99,6 @@ SELECT is(
 -- (verifica anche edge case: is_composito=true insieme a is_solo_componente=true,
 -- prevale SOLO_COMPONENTE)
 -- =========================================================
-UPDATE catalogo.articoli
-   SET is_composito = true, is_solo_componente = true
- WHERE id = (SELECT art_b FROM _t_ctx);
 
 SELECT is(
     (SELECT puo_gestire_bom FROM catalogo.vw_articoli_dettaglio

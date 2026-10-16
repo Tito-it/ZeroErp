@@ -93,8 +93,14 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
+-- La struttura nasce col builder: su un articolo usato non cambia piu' (A-10).
 CREATE TEMP TABLE _art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-AMM4-' || v.sigla, false) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-AMM4-' || v.sigla, false,
+           p_listino_tipologia_id => CASE WHEN v.sigla = 'M' THEN (SELECT tipologia_id FROM _listino) END,
+           p_is_composito         => v.sigla IN ('P', 'V'),
+           p_is_solo_componente   => v.sigla = 'C',
+           p_natura_vendita_id    => CASE WHEN v.sigla = 'R' THEN (SELECT ricorrente FROM _nat)
+                                          ELSE (SELECT merce FROM _nat) END) AS id
   FROM (VALUES ('A'), ('M'), ('P'), ('F'), ('V'), ('C'), ('R'), ('X')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
@@ -103,18 +109,9 @@ RETURNS uuid LANGUAGE sql STABLE AS $fx$
   SELECT id FROM _art WHERE sigla = p_sigla;
 $fx$;
 
--- I flag PRIMA di ogni uso: su un articolo usato non cambiano piu' (A-10).
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT merce FROM _nat)
- WHERE id IN (SELECT id FROM _art WHERE sigla <> 'R');
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT ricorrente FROM _nat)
- WHERE id = pg_temp.art('R');
-UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _listino)
- WHERE id = pg_temp.art('M');
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id IN (pg_temp.art('P'), pg_temp.art('V'));
 -- P ha un componente (F); V no: e' il kit vuoto (D-7).
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
 VALUES (pg_temp.art('P'), pg_temp.art('F'), 1, '2020-01-01');
-UPDATE catalogo.articoli SET is_solo_componente = TRUE WHERE id = pg_temp.art('C');
 -- X spento: figli prima, padre poi (la UoM operativa nata col builder).
 UPDATE catalogo.articoli_uom_operativa SET attivo = FALSE WHERE articolo_id = pg_temp.art('X');
 UPDATE catalogo.articoli SET attivo = FALSE WHERE id = pg_temp.art('X');

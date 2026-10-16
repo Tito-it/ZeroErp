@@ -143,11 +143,8 @@ SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_c2), 'presid
 CREATE TEMP TABLE t_art AS
 SELECT dbops.fn_pgtap_crea_articolo(
            ('PGT-BCA-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
-           false) AS articolo_id;
-
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM t_l)
- WHERE id = (SELECT articolo_id FROM t_art);
+           false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM t_l)) AS articolo_id;
 
 -- Due righe di listino dello stesso articolo: R1 nella sua unita' di misura,
 -- R2 in un'altra (la chiave attiva e' versione + articolo + UoM).

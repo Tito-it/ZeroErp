@@ -133,6 +133,12 @@ databaseChangeLog:
               - column: { name: classe,       type: STRING }
               - column: { name: obsoleto_dal, type: DATE }
               - column: { name: note,         type: STRING }
+              # ⭐ Dal 2026-10-16: quando l'errore ferma un lavoro automatico, di
+              #   che natura e' il guasto (dbops.cause_fallimento). NULL = decide
+              #   il processo. FK in 90_end/20261016-43, perche' da zero il
+              #   vocabolario arriva dopo questo mirror.
+              #   brief-db-presidio-job-run-a-chi-tocca (D1).
+              - column: { name: causa_fallimento, type: STRING }
 
         # ── 3) IL CATALOGO DEI MESSAGGI ───────────────────────────────────
         #   ⚠️ Ha PERSO `obsoleto_dal` il 2026-08-07 (20260807-13): la colonna

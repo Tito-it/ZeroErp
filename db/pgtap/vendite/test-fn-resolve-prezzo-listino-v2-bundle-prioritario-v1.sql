@@ -96,9 +96,14 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
+-- Un listino TIPIZZATO accetta solo articoli della sua tipologia: la si
+-- sceglie alla nascita. Il bundle: P composito, con F1 e F2 in distinta.
 CREATE TEMP TABLE tmp_bnd_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-BND-' || v.sigla, false) AS id
-  FROM (VALUES ('P'), ('F1'), ('F2')) AS v(sigla);
+SELECT v.sigla,
+       dbops.fn_pgtap_crea_articolo('PGTAP-BND-' || v.sigla, false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_bnd_listino),
+           p_is_composito         => v.composito) AS id
+  FROM (VALUES ('P', true), ('F1', false), ('F2', false)) AS v(sigla, composito);
 
 -- Scopo: id di un articolo della fixture per sigla.
 CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
@@ -112,13 +117,7 @@ RETURNS bigint LANGUAGE sql STABLE AS $fx$
   SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = pg_temp.art(p_sigla);
 $fx$;
 
--- Un listino TIPIZZATO accetta solo articoli della sua tipologia.
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM tmp_bnd_listino)
- WHERE id IN (SELECT id FROM tmp_bnd_art);
-
--- Il bundle: P composito, con F1 e F2 in distinta.
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('P');
+-- La distinta del bundle P.
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
 SELECT pg_temp.art('P'), pg_temp.art(f.sigla), 1, '2020-01-01'
   FROM (VALUES ('F1'), ('F2')) AS f(sigla);

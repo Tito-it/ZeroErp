@@ -311,13 +311,12 @@ SELECT * FROM ins;
 
 -- La natura di riga la da' l'articolo: il canone vuole un servizio
 -- ricorrente (config.nature_vendita_erogazioni), la MERCE del builder ammette
--- solo UNA_TANTUM.
+-- solo UNA_TANTUM. La natura si sceglie alla nascita.
 CREATE TEMP TABLE tmp_pc_aperto_art AS
 SELECT dbops.fn_pgtap_crea_articolo('PGT-PCA-UT', false)  AS art_ut_id,
-       dbops.fn_pgtap_crea_articolo('PGT-PCA-CAN', false) AS art_can_id;
-UPDATE catalogo.articoli SET natura_vendita_id =
-       (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_RICORRENTE')
- WHERE id = (SELECT art_can_id FROM tmp_pc_aperto_art);
+       dbops.fn_pgtap_crea_articolo('PGT-PCA-CAN', false,
+           p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                                    WHERE codice_interno = 'SERVIZIO_RICORRENTE')) AS art_can_id;
 
 CREATE TEMP TABLE tmp_pc_aperto_righe AS
 WITH ins AS (

@@ -71,16 +71,13 @@ SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_c), 'riga pr
 
 -- Un articolo, due righe di listino (UoM diverse: la chiave attiva e'
 -- versione + articolo + UoM). INSERT su versione ATTIVA e' ammesso: e' la
--- rettifica controllata.
+-- rettifica controllata. Un listino TIPIZZATO accetta solo articoli della sua
+-- tipologia: l'articolo nasce con quella.
 CREATE TEMP TABLE t_art AS
 SELECT dbops.fn_pgtap_crea_articolo(
            ('PGT-RLP-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
-           false) AS articolo_id;
-
--- Un listino TIPIZZATO accetta solo articoli della sua tipologia.
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM t_l)
- WHERE id = (SELECT articolo_id FROM t_art);
+           false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM t_l)) AS articolo_id;
 
 CREATE TEMP TABLE t_uom AS
 SELECT a.uom_id AS u1,

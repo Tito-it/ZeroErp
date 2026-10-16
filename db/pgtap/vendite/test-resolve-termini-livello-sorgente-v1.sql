@@ -74,12 +74,11 @@ END $ctx$;
 CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('PGT-TRM-S') AS id;
 -- Al preventivo un SERVIZIO (non gestito a magazzino): la merce del preventivo
 -- va all'ordine (fn_push_preventivo_a_ordine), in commessa ci va il resto.
-CREATE TEMP TABLE _srv AS SELECT dbops.fn_pgtap_crea_articolo('PGT-TRM-SRV', p_gestito => false) AS id;
 -- La natura la riga la eredita dall'articolo (trg_preventivi_righe_a10_set_natura_vendita):
--- un servizio una tantum ha destinazione COMMESSA.
-UPDATE catalogo.articoli
-   SET natura_vendita_id = (SELECT nv.id FROM config.nature_vendita nv WHERE nv.codice_interno = 'SERVIZIO_UNA_TANTUM')
- WHERE id = (SELECT id FROM _srv);
+-- un servizio una tantum ha destinazione COMMESSA. Si sceglie alla nascita.
+CREATE TEMP TABLE _srv AS SELECT dbops.fn_pgtap_crea_articolo('PGT-TRM-SRV', p_gestito => false,
+    p_natura_vendita_id => (SELECT nv.id FROM config.nature_vendita nv
+                             WHERE nv.codice_interno = 'SERVIZIO_UNA_TANTUM')) AS id;
 
 -- I termini per CODICE (chiave stabile), le modalita' per codice.
 CREATE TEMP TABLE _k AS

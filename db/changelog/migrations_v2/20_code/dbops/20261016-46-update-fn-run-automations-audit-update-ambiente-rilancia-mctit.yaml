@@ -1,0 +1,198 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ dbops.fn_run_automations_audit_update: UN GUASTO DELL'AMBIENTE ESCE COL SUO SQLSTATE.
+#   Brief: brief-db-presidio-job-run-a-chi-tocca (§10.1, D8, D10, D11)
+#
+# Il gestore `WHEN others` (un gestore: E_AUDIT_UPDATE) catturava QUALUNQUE errore della
+# DDL generata e lo rilanciava come P0001 col codice dell'involucro. Un 42501
+# (manca un diritto) o un 55P03 (lock) arrivava al giornale dei job come difetto
+# del programma, e il presidio lo mandava allo sviluppo.
+#   ⇒ Se script.fn_sqlstate_di_ambiente(SQLSTATE) dice si':
+#       1. fn_log_error_only con lo stesso codice e contesto (D11: il contesto,
+#          cioe' quale tabella e quale trigger, serve a chi rimedia);
+#       2. RAISE; senza argomenti, che rilancia l'eccezione ORIGINALE.
+#     Altrimenti l'involucro di prima, invariato.
+#   Il contesto si costruisce una volta (v_ctx_errore, ancorata a
+#   dbops.error_log.context%TYPE) e serve le due chiamate: due copie dello
+#   stesso jsonb_build_object prima o poi divergerebbero.
+#   ⚠️ La decisione sta nel predicato (20261016-44). Il rilancio NON si puo'
+#   estrarre in una funzione: RAISE; vive solo dentro il gestore.
+#
+# Firma invariata. ⚠️ Corpo dal doc auto-generato (allineato al database);
+#   cambiano DECLARE e il gestore. COMMENT vivo con la revisione in coda.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261016-46-update-fn-run-automations-audit-update-ambiente-rilancia-mctit.yaml
+
+  - changeSet:
+      id: 20261016-46-update-fn-run-automations-audit-update-ambiente-rilancia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_run_automations_audit_update: nel gestore WHEN others un guasto dell'ambiente si scrive nel registro
+        errori e si rilancia com'e' (SQLSTATE originale), gli altri escono col codice di prima.
+        Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE p.oid = to_regprocedure('script.fn_sqlstate_di_ambiente(text)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_audit_update(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+                  DECLARE
+                -- ⭐ Rev 2026-10-16: il contesto dell'errore, costruito una volta e usato
+                --   dalle due chiamate del gestore (registro e involucro).
+                v_ctx_errore dbops.error_log.context%TYPE;
+                    v_schemas text[];
+                    rtab record;
+                    rrule record;
+                    rel  regclass;
+                    has_du boolean;
+                    has_uu boolean;
+                    col_ts   text;
+                    col_user text;
+                    tmpl     text;
+                    trg_name text;
+                    exist_strat text;
+                  BEGIN
+
+                    /*
+                      Scopo
+                      -----
+                      Esegue l'automazione di provisioning dei trigger "AUDIT_UPDATE" sulle tabelle in scope,
+                      applicando le regole abilitate in dbops.automation_rules_tbl (rule_type = 'AUDIT_UPDATE').
+
+                      Obiettivo del trigger:
+                      - mantenere aggiornati i campi audit (data_update, user_update, user_insert)
+                        ad ogni INSERT e UPDATE, secondo la convenzione di audit del database.
+                      - user_insert/user_update usano la GUC app.jwt_user se disponibile (JWT reale).
+
+                      Trigger generato
+                      ----------------
+                      BEFORE INSERT OR UPDATE
+                      EXECUTE FUNCTION script.trgfn_audit_data_user_generic()
+                    */
+
+                    v_schemas := dbops.fn_resolve_scope(p_schemas);
+                    FOR rtab IN
+                      SELECT n.nspname AS schema_name,
+                            c.relname AS table_name,
+                            (quote_ident(n.nspname)||'.'||quote_ident(c.relname))::regclass AS rel
+                      FROM pg_class c
+                      JOIN pg_namespace n ON n.oid=c.relnamespace
+                      WHERE c.relkind='r'
+                        AND n.nspname = ANY(v_schemas)
+                        AND dbops.fn_table_in_scope(n.nspname, c.relname)
+                    LOOP
+                      rel := rtab.rel;
+
+                      FOR rrule IN
+                        SELECT *
+                          FROM dbops.automation_rules_tbl r
+                        WHERE r.enabled
+                          AND upper(btrim(r.rule_type))='AUDIT_UPDATE'
+                          AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
+                          AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+                          AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
+                        ORDER BY r.priority, r.id
+                      LOOP
+                        exist_strat := COALESCE(rrule.existence_strategy,'BY_NAME');
+
+                        col_ts   := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'AUDIT_TS',   COALESCE(rrule.params->>'audit_ts','data_update'));
+                        col_user := dbops.fn_get_override_col(rtab.schema_name, rtab.table_name, 'AUDIT_USER', COALESCE(rrule.params->>'audit_user','user_update'));
+
+                        SELECT dbops.fn_col_exists(rtab.schema_name, rtab.table_name, col_ts)
+                            , dbops.fn_col_exists(rtab.schema_name, rtab.table_name, col_user)
+                          INTO has_du, has_uu;
+
+                        IF has_du AND has_uu THEN
+                          tmpl     := COALESCE(rrule.name_template,'trg_{table}_audit_data_user_upd');
+                          trg_name := dbops.fn_name_from_template(tmpl, rtab.schema_name, rtab.table_name, NULL,NULL,NULL,NULL);
+
+                          IF (exist_strat='BY_NAME'     AND NOT dbops.fn_trigger_exists_by_name(rel, trg_name))
+                          OR (exist_strat='BY_FUNCTION' AND NOT dbops.fn_trigger_exists_by_function(rel,'script','trgfn_audit_data_user_generic'))
+                          OR (exist_strat='BOTH'        AND NOT (dbops.fn_trigger_exists_by_name(rel, trg_name)
+                                                            OR dbops.fn_trigger_exists_by_function(rel,'script','trgfn_audit_data_user_generic')))
+                          THEN
+                            IF p_dry_run THEN
+
+                                PERFORM dbops.fn_audit_log_once(
+                                p_function_name => 'dbops.fn_run_automations',
+                                p_status        => 'DRYRUN',
+                                p_rule_type     => 'AUDIT_UPDATE',
+                                p_exec_mode     => p_exec_mode,
+                                p_parts         => ARRAY['AUDIT_UPDATE'],
+                                p_dry_run       => true,
+                                p_params        => jsonb_build_object(
+                                                    'table', rtab.schema_name||'.'||rtab.table_name,
+                                                    'trigger', trg_name,
+                                                    'action', 'DRYRUN_CREATE_TRIGGER'
+                                                  ),
+                                p_message       => 'Trigger would be created'
+                              );
+
+                            ELSE
+                              BEGIN
+                                EXECUTE format($f$
+                                  CREATE TRIGGER %I
+                                  BEFORE INSERT OR UPDATE ON %I.%I
+                                  FOR EACH ROW
+                                  EXECUTE FUNCTION script.trgfn_audit_data_user_generic()
+                                $f$, trg_name, rtab.schema_name, rtab.table_name);
+                              EXCEPTION WHEN others THEN
+
+                                  -- ⭐ Rev 2026-10-16 (brief-db-presidio-job-run-a-chi-tocca D8, D10, D11):
+                                  --   un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente: connessione,
+                                  --   risorse, arresto, sistema, privilegio, lock) si rilancia COM'E', col suo
+                                  --   SQLSTATE: l'involucro lo faceva diventare P0001, e il presidio dei job lo
+                                  --   mandava allo sviluppo. Prima si scrive nel registro errori, col contesto.
+                                  v_ctx_errore := jsonb_build_object(
+                                      'where','AUDIT_UPDATE',
+                                      'table', rtab.schema_name||'.'||rtab.table_name,
+                                      'error', SQLERRM
+                                    );
+                                  IF script.fn_sqlstate_di_ambiente(SQLSTATE) THEN
+                                    PERFORM script.fn_log_error_only(
+                                        'dbops', 'run_automations', 'E_AUDIT_UPDATE',
+                                        v_ctx_errore, NULL::uuid, SQLERRM);
+                                    RAISE;
+                                  END IF;
+                                  PERFORM script.fn_log_and_raise_error(
+                                      'dbops', 'run_automations', 'E_AUDIT_UPDATE',
+                                      v_ctx_errore, NULL::uuid, SQLERRM);
+                              END;
+                            END IF;
+                          END IF;
+                        END IF;
+                      END LOOP;
+                    END LOOP;
+                  END;
+
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_run_automations_audit_update(p_exec_mode text, p_schemas text[], p_dry_run boolean)
+              IS 'Crea i trigger di audit INSERT OR UPDATE (timestamp/utente con JWT). ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo di prima dal doc auto-generato).
+              SELECT 1;

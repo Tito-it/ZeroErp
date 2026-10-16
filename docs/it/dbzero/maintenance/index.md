@@ -31,7 +31,7 @@
 - [proc_sync_storico_set_storicizza_job](funzioni/proc_sync_storico_set_storicizza_job.md) — (last review 07-01-26) Wrapper di job che **esegue e traccia** la sincronizzazione della tabella `config.storico_set_storicizza`, delegando l’esecuzione alla procedura core `maintenance.proc_sync_storico_set_storicizza()` e centralizzando **logging** e **advisory lock** tramite `maintenance.fn_run_and_log`.
 
 ## 🔍 Views
-- [vw_job_run_da_guardare](views/vw_job_run_da_guardare.md) — (latest review 05-09-2026)
+- [vw_job_run_da_guardare](views/vw_job_run_da_guardare.md) — (latest review 16-10-2026)
 - [vw_job_run_da_superuser](views/vw_job_run_da_superuser.md)
 - [vw_statistiche_mancanti](views/vw_statistiche_mancanti.md) — (latest review 14-10-2026)
 

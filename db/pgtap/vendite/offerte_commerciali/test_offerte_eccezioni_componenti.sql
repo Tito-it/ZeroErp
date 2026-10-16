@@ -80,8 +80,12 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
+-- Struttura alla nascita: tutti nella tipologia del listino; il bundle P nasce
+-- composito.
 CREATE TEMP TABLE tmp_oce_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-OCE-' || v.sigla, false) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-OCE-' || v.sigla, false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_oce_listino),
+           p_is_composito         => v.sigla = 'P') AS id
   FROM (VALUES ('S'), ('P'), ('F1'), ('F2')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
@@ -90,13 +94,8 @@ RETURNS uuid LANGUAGE sql STABLE AS $fx$
   SELECT id FROM tmp_oce_art WHERE sigla = p_sigla;
 $fx$;
 
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM tmp_oce_listino)
- WHERE id IN (SELECT id FROM tmp_oce_art);
-
 -- Il bundle: P composito, F1 e F2 componenti opzionali (il fallback prezzo 0 del
 -- risolutore e' ammesso solo sugli opzionali), F2 NASCOSTO in fattura (test 26).
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.oce('P');
 INSERT INTO catalogo.articoli_componenti
        (prodotto_id, componente_id, coeff_qta, obbligatorio, esposizione_in_fattura, valido_dal)
 VALUES (pg_temp.oce('P'), pg_temp.oce('F1'), 1, false, 'VALORIZZATO', '2020-01-01'),

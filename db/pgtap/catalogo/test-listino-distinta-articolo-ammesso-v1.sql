@@ -61,9 +61,18 @@ SELECT (SELECT i.id FROM config.iva i WHERE i.attivo AND i.aliquota_iva > 0 ORDE
 -- Listino: A (tipologia del listino), S (solo componente), K (composito),
 -- N (senza tipologia), D (un'altra tipologia).
 -- Distinta: P padre composito; C1 semplice con l'IVA del padre; C2 composito;
--- C3 con un'altra IVA.
+-- C3 con un'altra IVA. La struttura nasce col builder (A-10); N resta senza
+-- tipologia, D prende la prima diversa da quella del listino.
 CREATE TEMP TABLE _art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-LDA-' || v.sigla, false) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGT-LDA-' || v.sigla, false,
+           p_listino_tipologia_id => CASE
+               WHEN v.sigla IN ('A', 'S', 'K') THEN (SELECT tipologia_id FROM _listino)
+               WHEN v.sigla = 'D' THEN (SELECT lt.id FROM config.listini_tipologie lt
+                                         WHERE lt.id <> (SELECT tipologia_id FROM _listino)
+                                         ORDER BY lt.id LIMIT 1)
+           END,
+           p_is_composito       => v.sigla IN ('K', 'P', 'C2'),
+           p_is_solo_componente => v.sigla = 'S') AS id
   FROM (VALUES ('A'), ('S'), ('K'), ('N'), ('D'), ('P'), ('C1'), ('C2'), ('C3')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
@@ -72,17 +81,6 @@ RETURNS uuid LANGUAGE sql STABLE AS $fx$
   SELECT id FROM _art WHERE sigla = p_sigla;
 $fx$;
 
-UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _listino)
- WHERE id IN (pg_temp.art('A'), pg_temp.art('S'), pg_temp.art('K'));
-UPDATE catalogo.articoli SET listino_tipologia_id = NULL WHERE id = pg_temp.art('N');
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT lt.id FROM config.listini_tipologie lt
-                                WHERE lt.id <> (SELECT tipologia_id FROM _listino)
-                                ORDER BY lt.id LIMIT 1)
- WHERE id = pg_temp.art('D');
-UPDATE catalogo.articoli SET is_solo_componente = TRUE WHERE id = pg_temp.art('S');
-UPDATE catalogo.articoli SET is_composito = TRUE
- WHERE id IN (pg_temp.art('K'), pg_temp.art('P'), pg_temp.art('C2'));
 UPDATE catalogo.articoli SET iva_id = (SELECT uno FROM _iva)
  WHERE id IN (pg_temp.art('P'), pg_temp.art('C1'), pg_temp.art('C2'));
 UPDATE catalogo.articoli SET iva_id = (SELECT due FROM _iva) WHERE id = pg_temp.art('C3');

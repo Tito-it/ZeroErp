@@ -93,7 +93,7 @@ $f$;
 -- Il mondo e due kit.
 --   KIT A: un componente OBBLIGATORIO e uno FACOLTATIVO (che si spegne);
 --   KIT B: un componente obbligatorio.
--- Il flag composito si accende PRIMA della distinta:
+-- I due kit nascono compositi dal builder:
 -- catalogo.trgfn_articoli_componenti_guard_is_composito rifiuta la distinta
 -- di un articolo semplice.
 -- =========================================================
@@ -101,14 +101,11 @@ CREATE TEMP TABLE _m AS
 SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP righe altre famiglie');
 
 CREATE TEMP TABLE _a AS
-SELECT dbops.fn_pgtap_crea_articolo('PGT-RAF-KA',   false) AS kit_a,
+SELECT dbops.fn_pgtap_crea_articolo('PGT-RAF-KA',   false, p_is_composito => true) AS kit_a,
        dbops.fn_pgtap_crea_articolo('PGT-RAF-KA-O', false) AS cmp_a_obb,
        dbops.fn_pgtap_crea_articolo('PGT-RAF-KA-F', false) AS cmp_a_fac,
-       dbops.fn_pgtap_crea_articolo('PGT-RAF-KB',   false) AS kit_b,
+       dbops.fn_pgtap_crea_articolo('PGT-RAF-KB',   false, p_is_composito => true) AS kit_b,
        dbops.fn_pgtap_crea_articolo('PGT-RAF-KB-O', false) AS cmp_b_obb;
-
-UPDATE catalogo.articoli SET is_composito = true
- WHERE id IN (SELECT kit_a FROM _a UNION ALL SELECT kit_b FROM _a);
 
 INSERT INTO catalogo.articoli_componenti
     (prodotto_id, componente_id, coeff_qta, valido_dal, esposizione_in_fattura, obbligatorio)

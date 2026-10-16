@@ -75,8 +75,10 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
+-- Un listino TIPIZZATO accetta solo articoli della sua tipologia: nascono in quella.
 CREATE TEMP TABLE tmp_cen_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-CEN-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-CEN-' || v.sigla,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_cen_listino)) AS id
   FROM (VALUES ('A'), ('B'), ('C'), ('D')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
@@ -84,11 +86,6 @@ CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
 RETURNS uuid LANGUAGE sql STABLE AS $fx$
   SELECT id FROM tmp_cen_art WHERE sigla = p_sigla;
 $fx$;
-
--- Un listino TIPIZZATO accetta solo articoli della sua tipologia.
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM tmp_cen_listino)
- WHERE id IN (SELECT id FROM tmp_cen_art);
 
 INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
 SELECT (SELECT id FROM tmp_cen_ver), a.id, ar.uom_id, 100.00

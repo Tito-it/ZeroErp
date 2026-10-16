@@ -149,9 +149,15 @@ SELECT ok(
         'EXECUTE'),
     'fn_job_run_start: PUBLIC senza EXECUTE'
 );
+-- ⚠️ Per NOME come il test accanto (2026-10-16: +p_sqlstate in coda, 20261016-40;
+--   la firma letterale a otto parametri non esiste piu').
 SELECT ok(
     NOT has_function_privilege('public',
-        'script.fn_job_run_end(bigint,boolean,text,bigint,text,text,jsonb,text)', 'EXECUTE'),
+        (SELECT p.oid
+           FROM pg_catalog.pg_proc p
+           JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'script' AND p.proname = 'fn_job_run_end'),
+        'EXECUTE'),
     'fn_job_run_end: PUBLIC senza EXECUTE'
 );
 

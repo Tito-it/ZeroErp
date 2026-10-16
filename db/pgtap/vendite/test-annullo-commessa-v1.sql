@@ -134,8 +134,13 @@ CREATE TEMP TABLE tmp_ac_refs AS
 SELECT
   c.billing_account_id, c.istanza_utility_id, c.utility_id, c.soggetto_ruolo_id,
   script.fn_pgtap_emittente_operatore()                                                   AS emittente_fiscale_id,
-  dbops.fn_pgtap_crea_articolo('PGT-AC-MERCE', false)                                     AS art_merce_id,
-  dbops.fn_pgtap_crea_articolo('PGT-AC-SERV', false)                                      AS art_serv_id,
+  -- La natura di riga la da' l'articolo: uno per strada, scelta alla nascita.
+  dbops.fn_pgtap_crea_articolo('PGT-AC-MERCE', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'MERCE'))                         AS art_merce_id,
+  dbops.fn_pgtap_crea_articolo('PGT-AC-SERV', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'SERVIZIO_UNA_TANTUM'))           AS art_serv_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
   (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'DRAFT')       AS prev_draft_id,
@@ -144,14 +149,6 @@ SELECT
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA')                AS sorg_commessa_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo ORDER BY t.id LIMIT 1)       AS tipo_doc_fiscale_id
 FROM tmp_ac_cli c;
-
--- La natura di riga la da' l'articolo: uno per strada.
-UPDATE catalogo.articoli SET natura_vendita_id =
-       (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE')
- WHERE id = (SELECT art_merce_id FROM tmp_ac_refs);
-UPDATE catalogo.articoli SET natura_vendita_id =
-       (SELECT id FROM config.nature_vendita WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')
- WHERE id = (SELECT art_serv_id FROM tmp_ac_refs);
 
 CREATE TEMP TABLE tmp_ac_fix(chiave text PRIMARY KEY, id bigint);
 CREATE TEMP TABLE tmp_ac_esito(caso text PRIMARY KEY, sqlstate text, messaggio text, righe int);

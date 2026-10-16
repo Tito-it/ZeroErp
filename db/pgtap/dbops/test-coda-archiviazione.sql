@@ -68,8 +68,8 @@ SELECT plan(18);
 --   ⇒ La fixture si fabbrica il proprio processo invece di appoggiarsi a uno
 --     del catalogo: MANUTENZIONE, cosi' il guard di classe non entra in gioco e
 --     questo file continua a collaudare cio' che collaudava.
-INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
-VALUES (9701, 'PGTAP_PROC_ARCHIVIAZIONE', 'processo di prova per test-coda-archiviazione', 'MANUTENZIONE', 'CODA');
+INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, causa_fallimento)
+VALUES (9701, 'PGTAP_PROC_ARCHIVIAZIONE', 'processo di prova per test-coda-archiviazione', 'MANUTENZIONE', 'CODA', 'PROGRAMMA');
 
 INSERT INTO dbops.coda_lavori_tipi
   (codice, handler_code, run_as_default, attivo, processo_codice)

@@ -60,8 +60,8 @@ SELECT throws_ok(
     -- ⚠️ 20261016-20: le righe con una sveglia dichiarano l'accensione, altrimenti
     --   il 23514 verrebbe da chk_processi_accensione (verde per il vincolo sbagliato).
     $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile)
-      VALUES (9001, 'PGTAP-CLASSE-IGNOTA', 'test', 'FANTASIA', 'COMMAND', true, true, true)$$,
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
+      VALUES (9001, 'PGTAP-CLASSE-IGNOTA', 'test', 'FANTASIA', 'COMMAND', true, true, true, 'PROGRAMMA')$$,
     '23514',
     NULL,
     'chk_processi_classe respinge una classe fuori catalogo'
@@ -69,8 +69,8 @@ SELECT throws_ok(
 
 SELECT throws_ok(
     $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile)
-      VALUES (9002, 'PGTAP-CANALE-IGNOTO', 'test', 'DOMINIO', 'PICCIONE', true, true, true)$$,
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
+      VALUES (9002, 'PGTAP-CANALE-IGNOTO', 'test', 'DOMINIO', 'PICCIONE', true, true, true, 'PROGRAMMA')$$,
     '23514',
     NULL,
     'chk_processi_canale respinge un canale fuori catalogo'
@@ -80,8 +80,8 @@ SELECT throws_ok(
 -- renderebbe ambiguo «chi ha eseguito».
 SELECT throws_ok(
     $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile)
-      VALUES (9003, 'run_fatturazione_batch', 'doppione', 'DOMINIO', 'COMMAND', true, true, true)$$,
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
+      VALUES (9003, 'run_fatturazione_batch', 'doppione', 'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA')$$,
     '23505',
     NULL,
     'uq_processi_codice respinge un codice gia'' registrato'
@@ -202,9 +202,9 @@ DECLARE
 BEGIN
     -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                acceso_in_sviluppo, acceso_in_produzione, spegnibile)
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
     VALUES (v_id, 'PGTAP-DOMINIO-SENZA-BERSAGLI',
-            'processo di prova senza bersagli dichiarati', 'DOMINIO', 'COMMAND', true, true, true);
+            'processo di prova senza bersagli dichiarati', 'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA');
 END
 $mancante$;
 
@@ -223,10 +223,10 @@ DECLARE
 BEGIN
     -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                acceso_in_sviluppo, acceso_in_produzione, spegnibile)
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
     VALUES (v_processo_id, 'PGTAP-PERCORSO-ROTTO',
             'processo di prova con percorso su colonna inesistente',
-            'DOMINIO', 'COMMAND', true, true, true);
+            'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA');
 
     -- Padre e figlio in DUE istruzioni: una CTE unica condividerebbe la stessa
     -- snapshot e la FK non troverebbe il padre.
@@ -278,10 +278,10 @@ DECLARE
 BEGIN
     -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                acceso_in_sviluppo, acceso_in_produzione, spegnibile)
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
     VALUES (v_processo_id, 'PGTAP-BERSAGLIO-SCOPERTO',
             'processo di prova con percorso dichiarato e nessuna difesa',
-            'DOMINIO', 'COMMAND', true, true, true);
+            'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA');
 
     -- ⭐ Il bersaglio e' `dbops.processi` stessa: ha la colonna dichiarata,
     --   quindi il percorso e' valido — ed e' una tabella senza RLS e senza

@@ -68,13 +68,13 @@ DO $fixture$
 BEGIN
     -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                acceso_in_sviluppo, acceso_in_produzione, spegnibile)
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
     VALUES (9611, 'PGTAP-PGAGENT-DOMINIO',
             'processo di dominio che esegue dentro pgAgent: deve comparire',
-            'DOMINIO', 'PGAGENT', true, true, true),
+            'DOMINIO', 'PGAGENT', true, true, true, 'PROGRAMMA'),
            (9612, 'PGTAP-PGAGENT-MANUTENZIONE',
             'manutenzione del database su pgAgent: e'' al suo posto',
-            'MANUTENZIONE', 'PGAGENT', true, true, true);
+            'MANUTENZIONE', 'PGAGENT', true, true, true, 'PROGRAMMA');
 END
 $fixture$;
 

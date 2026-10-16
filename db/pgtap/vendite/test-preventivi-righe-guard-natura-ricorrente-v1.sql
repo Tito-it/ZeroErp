@@ -118,12 +118,20 @@ SELECT
     --   la natura MERCE (catalogo.trgfn_articoli_guard_onere_natura,
     --   20261013-05). Riclassificare un articolo del seed era comunque un
     --   difetto della fixture: il mondo si costruisce, non si cerca.
-    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-A', false) AS articolo_a_id,
-    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-B', false) AS articolo_b_id,
+    -- La natura si sceglie alla nascita: A=ricorrente (CONTRATTO), B=MERCE.
+    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-A', false,
+        p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                                 WHERE codice_interno='SERVIZIO_RICORRENTE')) AS articolo_a_id,
+    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-B', false,
+        p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                                 WHERE codice_interno='MERCE')) AS articolo_b_id,
     -- Terzo articolo per il test 10: serve un bersaglio di cambio articolo che
     -- NON sia ricorrente, altrimenti a bloccare sarebbe il guard MODALITA' A e
-    -- non si vedrebbe se il lock lascia passare.
-    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-C', false) AS articolo_c_id,
+    -- non si vedrebbe se il lock lascia passare. C = una tantum (destinazione
+    -- COMMESSA): il guard MODALITA' A lo lascia passare.
+    dbops.fn_pgtap_crea_articolo('PGT-NATRIC-C', false,
+        p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                                 WHERE codice_interno='SERVIZIO_UNA_TANTUM')) AS articolo_c_id,
     (SELECT s.id FROM config.stati_doc_preventivi s
       WHERE s.codice='DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_draft_id,
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
@@ -152,16 +160,6 @@ SELECT ok(
     EXISTS(SELECT 1 FROM vendite.preventivi WHERE numero='PGTAP-NAT-RIC'),
     '3) fixture: preventivo DRAFT creato + 2 articoli distinti disponibili'
 );
-
--- Classifica gli articoli per il test: A=ricorrente (CONTRATTO), B=MERCE.
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_ric_id FROM tmp_nat_refs)
- WHERE id = (SELECT articolo_a_id FROM tmp_nat_refs);
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tmp_nat_refs)
- WHERE id = (SELECT articolo_b_id FROM tmp_nat_refs);
--- C = una tantum (destinazione COMMESSA): non ricorrente, quindi il guard
--- MODALITA' A lo lascia passare ed e' un bersaglio valido per il test 10.
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_ut_id FROM tmp_nat_refs)
- WHERE id = (SELECT articolo_c_id FROM tmp_nat_refs);
 
 -- ============================================================
 -- 4) INSERT con articolo a natura CONTRATTO -> BLOCCO

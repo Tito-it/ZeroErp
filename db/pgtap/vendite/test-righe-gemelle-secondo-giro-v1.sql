@@ -153,7 +153,8 @@ CREATE TEMP TABLE tmp_rg2_listino AS
 SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_rg2_mondo), 'righe gemelle secondo giro');
 
 CREATE TEMP TABLE tmp_rg2_art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-RG2-' || v.sigla) AS id
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-RG2-' || v.sigla,
+                                             p_is_composito => v.sigla = 'P') AS id
   FROM (VALUES ('P'), ('F'), ('G'), ('X'), ('Y')) AS v(sigla);
 
 -- Scopo: id di un articolo della fixture per sigla.
@@ -162,8 +163,7 @@ RETURNS uuid LANGUAGE sql STABLE AS $fx$
   SELECT id FROM tmp_rg2_art WHERE sigla = p_sigla;
 $fx$;
 
--- Il composito: F obbligatorio (coeff 2), G opzionale (coeff 1).
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('P');
+-- Il composito P: F obbligatorio (coeff 2), G opzionale (coeff 1).
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, obbligatorio, valido_dal)
 VALUES (pg_temp.art('P'), pg_temp.art('F'), 2, TRUE,  '2020-01-01'),
        (pg_temp.art('P'), pg_temp.art('G'), 1, FALSE, '2020-01-01');

@@ -63,8 +63,12 @@ SELECT
   --   del catalogo», cioe' quello che l'ultimo smoke aveva lasciato: il
   --   2026-10-13 era un composito MERCE, la riga andava all'ordine e il lister
   --   delle commesse giustamente non la restituiva. La natura (destinazione
-  --   COMMESSA) si fissa subito sotto: e' la condizione del caso.
-  dbops.fn_pgtap_crea_articolo('PGT-LPP-V2', false) AS articolo_id,
+  --   COMMESSA: e' il ramo che questo lister serve) si sceglie alla nascita:
+  --   e' la condizione del caso.
+  dbops.fn_pgtap_crea_articolo('PGT-LPP-V2', false,
+    p_natura_vendita_id => (SELECT nv.id FROM config.nature_vendita nv
+                             WHERE nv.destinazione_tipo = 'COMMESSA' AND nv.attivo
+                             ORDER BY nv.id LIMIT 1)) AS articolo_id,
   (SELECT s.id
      FROM config.stati_doc_preventivi s
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE
@@ -108,13 +112,6 @@ SELECT
     WHERE i.attivo IS TRUE
     ORDER BY i.id LIMIT 1
   ) AS iva_id;
-
--- Una natura che va in commessa: e' il ramo che questo lister serve.
-UPDATE catalogo.articoli
-   SET natura_vendita_id = (SELECT nv.id FROM config.nature_vendita nv
-                             WHERE nv.destinazione_tipo = 'COMMESSA' AND nv.attivo
-                             ORDER BY nv.id LIMIT 1)
- WHERE id = (SELECT articolo_id FROM tmp_refs_p2);
 
 -- Preventivo ACCETTATO con una riga valida (fixture principale).
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le righe, poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).

@@ -72,21 +72,6 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
-CREATE TEMP TABLE _art AS
-SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-EAA-' || v.sigla) AS id
-  FROM (VALUES ('A'), ('B'), ('F'), ('P'), ('X'), ('S'), ('N')) AS v(sigla);
-
--- Scopo: id di un articolo della fixture per sigla.
-CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
-RETURNS uuid LANGUAGE sql STABLE AS $fx$
-  SELECT id FROM _art WHERE sigla = p_sigla;
-$fx$;
-
-UPDATE catalogo.articoli
-   SET listino_tipologia_id = (SELECT tipologia_id FROM _listino)
- WHERE id IN (SELECT id FROM _art WHERE sigla <> 'N');
-UPDATE catalogo.articoli SET is_solo_componente = TRUE WHERE id = pg_temp.art('S');
-
 -- N: una tipologia che la utility prevede ma che non ha erogazioni. Il
 -- vocabolario lo ammette (config.listini_tipologie e' gestibile): oggi non ce
 -- n'e' una, quindi si costruisce.
@@ -101,10 +86,24 @@ SELECT id FROM ins;
 INSERT INTO config.listini_tipologie_utilities (id, utility_id, tipologia_id)
 SELECT (SELECT max(id) + 1 FROM config.listini_tipologie_utilities),
        (SELECT utility_id FROM _mondo), (SELECT id FROM _tip);
-UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT id FROM _tip) WHERE id = pg_temp.art('N');
 
--- Il bundle: P composito, con F come componente in distinta.
-UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = pg_temp.art('P');
+-- La struttura nasce col builder: tipologia del listino per tutti tranne N
+-- (quella senza erogazioni), S solo componente, P composito (il bundle).
+CREATE TEMP TABLE _art AS
+SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-EAA-' || v.sigla,
+           p_listino_tipologia_id => CASE WHEN v.sigla = 'N' THEN (SELECT id FROM _tip)
+                                          ELSE (SELECT tipologia_id FROM _listino) END,
+           p_is_composito         => v.sigla = 'P',
+           p_is_solo_componente   => v.sigla = 'S') AS id
+  FROM (VALUES ('A'), ('B'), ('F'), ('P'), ('X'), ('S'), ('N')) AS v(sigla);
+
+-- Scopo: id di un articolo della fixture per sigla.
+CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
+RETURNS uuid LANGUAGE sql STABLE AS $fx$
+  SELECT id FROM _art WHERE sigla = p_sigla;
+$fx$;
+
+-- Il bundle: P (composito dalla nascita), con F come componente in distinta.
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
 VALUES (pg_temp.art('P'), pg_temp.art('F'), 1, '2020-01-01');
 
