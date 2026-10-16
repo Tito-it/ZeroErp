@@ -85,7 +85,7 @@
 - [fn_pgtap_concedi_azione](manual/fn_pgtap_concedi_azione.md) — (scritta il 2026-09-24)
 - [fn_pgtap_crea_articolo](manual/fn_pgtap_crea_articolo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_pgtap_crea_commessa](manual/fn_pgtap_crea_commessa.md) — (rev 2026-10-07)
-- [fn_pgtap_crea_commessa_attivita](manual/fn_pgtap_crea_commessa_attivita.md) — (rev 2026-10-07)
+- [fn_pgtap_crea_commessa_attivita](manual/fn_pgtap_crea_commessa_attivita.md) — (rev 2026-10-07; rev 2026-10-15: articolo e listino dal chiamante)
 - [fn_pgtap_crea_fattura](manual/fn_pgtap_crea_fattura.md) — (rev 2026-09-23 — D7, lotto 1)
 - [fn_pgtap_crea_filiale_bancaria](manual/fn_pgtap_crea_filiale_bancaria.md) — (rev 2026-09-23 — D7, lotto 1)
 - [fn_pgtap_crea_gestore](manual/fn_pgtap_crea_gestore.md) — (rev 2026-09-23 — D7, lotto 2)

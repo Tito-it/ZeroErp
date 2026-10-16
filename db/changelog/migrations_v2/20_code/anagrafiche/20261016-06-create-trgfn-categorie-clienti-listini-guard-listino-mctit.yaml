@@ -1,0 +1,140 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: anagrafiche.trgfn_categorie_clienti_listini_guard_listino()
+#   La riga della matrice categoria -> listino punta a un listino della sua
+#   utility e del suo emittente.
+#   Brief: brief-db-coerenza-listino-della-riga-di-commessa (§7.4, opzione B di
+#   Tid, 2026-10-16)
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Contratti e offerte rifiutano gia' un listino di un'altra utility o di
+#   un'altra azienda (script.fn_check_listino_documento, F-2 del 2026-10-08).
+#   La matrice no: «clienti di A -> listino di B» entrava, il risolutore lo
+#   sceglieva, e il push in commessa moriva sul guard D-3
+#   (E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO, TECNICO) lontano dallo sbaglio.
+#   Qui lo sbaglio si ferma dove nasce, con un messaggio per chi configura.
+#
+# -- LA FORMA (opzione B) -------------------------------------------------
+#   * Il PREDICATO e' quello dei documenti: script.fn_check_listino_documento
+#     (regola del 2: utility ed emittente del listino, listino illeggibile
+#     sotto RLS = di un'altra azienda). La check vuole l'emittente FISCALE;
+#     la matrice porta il RUOLO, e la traduzione e' univoca
+#     (uq_emittenti_fiscali_ruolo; emittenti_fiscali senza RLS).
+#   * I CODICI sono della matrice, non quelli dei documenti (la loro frase
+#     dice «il documento»): E_CATEGORIA_LISTINO_UTILITY_DIVERSA,
+#     E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO. Si scelgono dalla `reason` del
+#     primo motivo, che e' il vocabolario stabile della check; il codice si
+#     solleva come letterale (script.fn_log_and_raise_error, linee-guida-sql
+#     §5 «Due funzioni per sollevare»). Una reason sconosciuta (un motivo
+#     nuovo nella check) fallisce forte con un errore che la nomina: il motivo
+#     nuovo non passa in silenzio e non prende la frase di un altro.
+#   * DATO_ERRATO, campo listino_id, frasi chiuse (non dicono niente del
+#     listino che l'operatore puo' non vedere).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261016-06-create-trgfn-categorie-clienti-listini-guard-listino-mctit.yaml
+
+  - changeSet:
+      id: 20261016-06-create-trgfn-categorie-clienti-listini-guard-listino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova anagrafiche.trgfn_categorie_clienti_listini_guard_listino: la riga della matrice
+        categoria -> listino punta a un listino della sua utility e del suo emittente (predicato
+        script.fn_check_listino_documento, codici della matrice). Brief:
+        brief-db-coerenza-listino-della-riga-di-commessa (§7.4, opzione B).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_categorie_clienti_listini_guard_listino()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_ef_id  anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_motivi jsonb;
+                  -- La reason del primo motivo: il vocabolario della check.
+                  v_reason text;
+                  v_codice config.codici_errore.codice%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   BEFORE INSERT, e BEFORE UPDATE quando cambiano listino,
+                  --   utility o emittente, su
+                  --   anagrafiche.categorie_clienti_listini: il listino e' della
+                  --   utility e dell'emittente della riga
+                  --   (script.fn_check_listino_documento).
+                  -- =========================================================
+
+                  -- Il ruolo dell'emittente -> il suo emittente fiscale.
+                  SELECT ef.id INTO v_ef_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.soggetto_ruolo_id = NEW.emittente_soggetto_ruolo_id;
+
+                  v_motivi := script.fn_check_listino_documento(
+                      NEW.listino_id, NEW.utility_id, v_ef_id);
+
+                  IF jsonb_array_length(v_motivi) = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_reason := v_motivi -> 0 ->> 'reason';
+                  v_codice := CASE v_reason
+                      WHEN 'LISTINO_UTILITY_DIVERSA'   THEN 'E_CATEGORIA_LISTINO_UTILITY_DIVERSA'
+                      WHEN 'LISTINO_EMITTENTE_DIVERSO' THEN 'E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO'
+                  END;
+
+                  -- Un motivo nuovo nella check non passa in silenzio.
+                  IF v_codice IS NULL THEN
+                      RAISE EXCEPTION
+                          'trgfn_categorie_clienti_listini_guard_listino: motivo % di script.fn_check_listino_documento senza codice della matrice',
+                          v_reason;
+                  END IF;
+
+                  IF v_codice = 'E_CATEGORIA_LISTINO_UTILITY_DIVERSA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', TG_NAME::text, 'E_CATEGORIA_LISTINO_UTILITY_DIVERSA',
+                          jsonb_build_object(
+                              'campo',                       'listino_id',
+                              'categoria_cliente_listino_id', NEW.id,
+                              'listino_id',                  NEW.listino_id,
+                              'utility_id',                  NEW.utility_id,
+                              'emittente_soggetto_ruolo_id', NEW.emittente_soggetto_ruolo_id),
+                          NEW.tx_id,
+                          VARIADIC ARRAY[]::text[]);
+                  ELSE
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', TG_NAME::text, 'E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO',
+                          jsonb_build_object(
+                              'campo',                       'listino_id',
+                              'categoria_cliente_listino_id', NEW.id,
+                              'listino_id',                  NEW.listino_id,
+                              'utility_id',                  NEW.utility_id,
+                              'emittente_soggetto_ruolo_id', NEW.emittente_soggetto_ruolo_id),
+                          NEW.tx_id,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_categorie_clienti_listini_guard_listino()
+              IS 'Guard BEFORE INSERT, e BEFORE UPDATE quando cambiano listino_id, utility_id o emittente_soggetto_ruolo_id, su anagrafiche.categorie_clienti_listini (brief-db-coerenza-listino-della-riga-di-commessa §7.4, opzione B di Tid del 2026-10-16): il listino della riga e'' della sua utility e del suo emittente. Predicato: script.fn_check_listino_documento, lo stesso di contratti e offerte (F-2 del 2026-10-08), con l''emittente fiscale tradotto dal ruolo (uq_emittenti_fiscali_ruolo). Codici della matrice, scelti dalla reason del primo motivo: E_CATEGORIA_LISTINO_UTILITY_DIVERSA, E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO (DATO_ERRATO, campo listino_id, frasi chiuse; un listino illeggibile sotto RLS e'' di un''altra azienda). Una reason senza codice della matrice fallisce forte. Ferma dove nasce lo sbaglio che altrimenti arriverebbe al push in commessa come E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_categorie_clienti_listini_guard_listino();

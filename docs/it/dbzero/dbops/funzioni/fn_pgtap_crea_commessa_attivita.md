@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_pgtap_crea_commessa_attivita`
 
 ```sql
-CREATE FUNCTION fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric)
+CREATE FUNCTION fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric, p_articolo_id uuid, p_listino_versione_id bigint, p_listino_riga_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric DEFAULT 10)
+CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric DEFAULT 10, p_articolo_id uuid DEFAULT NULL::uuid, p_listino_versione_id bigint DEFAULT NULL::bigint, p_listino_riga_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(attivita_id bigint, articolo_id uuid, uom_id bigint, competenza_dal date, competenza_al date)
  LANGUAGE plpgsql
 AS $function$
@@ -18,7 +18,18 @@ AS $function$
 --   CREATE TEMP TABLE tmp_a AS
 --   SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
 --              (SELECT commessa_id FROM tmp_c));
+--   Con un articolo costruito prima (coi suoi flag) e il listino:
+--   SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+--              p_commessa_id         => ...,
+--              p_articolo_id         => ...,
+--              p_listino_versione_id => ...,
+--              p_listino_riga_id     => ...);
 -- ⛔ L'emissione NON la fa: e' il caso del test.
+-- ⛔ La coerenza articolo / riga / versione la tiene la tabella.
+-- ⚠️ Una riga di listino INVISIBILE (di un'altra azienda, sotto la
+--   RLS di chi agisce) non ferma il builder se il chiamante da'
+--   articolo e versione, come fa il backend: l'unita' di misura
+--   viene dall'articolo, e giudica il guard (rev 2026-10-16).
 -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
 DECLARE
     v_ba_id    vendite.commesse.billing_account_id%TYPE;
@@ -27,7 +38,11 @@ DECLARE
     v_ist_id   anagrafiche.billing_account.istanza_utility_id%TYPE;
     v_articolo vendite.commesse_attivita.articolo_id%TYPE;
     v_uom      vendite.commesse_attivita.uom_id%TYPE;
+    v_versione vendite.commesse_attivita.listino_versione_id%TYPE;
     v_attivita vendite.commesse_attivita.id%TYPE;
+    v_riga_articolo vendite.listini_righe.articolo_id%TYPE;
+    v_riga_uom      vendite.listini_righe.uom_id%TYPE;
+    v_riga_versione vendite.listini_righe.listino_versione_id%TYPE;
 BEGIN
     SELECT c.billing_account_id,
            COALESCE(c.competenza_dal, date_trunc('month', (SELECT script.fn_data_operativa()))::date),
@@ -49,14 +64,56 @@ BEGIN
       FROM anagrafiche.billing_account ba
      WHERE ba.id = v_ba_id;
 
-    -- L'articolo si costruisce: il catalogo, da zero, e' vuoto.
-    v_articolo := dbops.fn_pgtap_crea_articolo(
-        ('PGT-ATT-' || substr(md5(clock_timestamp()::text || p_commessa_id::text), 1, 12))::varchar,
-        false);
+    v_versione := p_listino_versione_id;
 
-    SELECT a.uom_id INTO v_uom
-      FROM catalogo.articoli a
-     WHERE a.id = v_articolo;
+    -- La riga di listino, se c'e': da lei l'unita' di misura e,
+    --   se il chiamante non li da', articolo e versione.
+    IF p_listino_riga_id IS NOT NULL THEN
+        SELECT lr.articolo_id, lr.uom_id, lr.listino_versione_id
+          INTO v_riga_articolo, v_riga_uom, v_riga_versione
+          FROM vendite.listini_righe lr
+         WHERE lr.id = p_listino_riga_id;
+
+        IF FOUND THEN
+            v_articolo := COALESCE(p_articolo_id, v_riga_articolo);
+            v_uom      := v_riga_uom;
+            v_versione := COALESCE(v_versione, v_riga_versione);
+        ELSIF p_articolo_id IS NOT NULL AND p_listino_versione_id IS NOT NULL THEN
+            -- ⭐ Rev 2026-10-16: la riga non si vede sotto la RLS di
+            --   chi agisce (listino di un'altra azienda). Il backend
+            --   in quel caso passa articolo, unita' di misura e
+            --   versione, e il guard (DEFINER) giudica: qui l'unita'
+            --   di misura viene dall'articolo (catalogo unico,
+            --   visibile), sotto. Prima il builder si fermava qui e
+            --   il guard non veniva mai raggiunto.
+            v_articolo := p_articolo_id;
+        ELSE
+            RAISE EXCEPTION
+                'fn_pgtap_crea_commessa_attivita: nessuna riga di listino con id = % visibile a chi agisce (se e'' di un''altra azienda, si passano anche p_articolo_id e p_listino_versione_id)',
+                p_listino_riga_id;
+        END IF;
+    ELSIF p_articolo_id IS NOT NULL THEN
+        v_articolo := p_articolo_id;
+    ELSE
+        -- L'articolo si costruisce: il catalogo, da zero, e' vuoto.
+        v_articolo := dbops.fn_pgtap_crea_articolo(
+            ('PGT-ATT-' || substr(md5(clock_timestamp()::text || p_commessa_id::text), 1, 12))::varchar,
+            false);
+    END IF;
+
+    IF v_uom IS NULL THEN
+        SELECT a.uom_id INTO v_uom
+          FROM catalogo.articoli a
+         WHERE a.id = v_articolo;
+
+        -- ⚠️ Guard sul parametro: un articolo che non esiste
+        --   farebbe morire la madre su uom_id, senza nominarlo.
+        IF NOT FOUND THEN
+            RAISE EXCEPTION
+                'fn_pgtap_crea_commessa_attivita: nessun articolo con id = %',
+                v_articolo;
+        END IF;
+    END IF;
 
     SELECT r.attivita_id INTO v_attivita
       FROM vendite.fn_upsert_commessa_attivita(
@@ -79,6 +136,8 @@ BEGIN
         p_contratto_id                  => NULL,
         p_categoria_cliente_id_snapshot => NULL,
         p_classe_utenza_id_snapshot     => NULL,
+        p_listino_versione_id           => v_versione,
+        p_listino_riga_id               => p_listino_riga_id,
         p_stato_approvazione            => 'APPROVATA',
         p_stato_emissione               => 'NON_EMESSA',
         p_sorgente_tipo_id              => (SELECT s.id FROM config.sorgenti s
@@ -95,8 +154,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric)
-IS 'Fixture pgTAP: un''ATTIVITA'' su una commessa gia'' costruita (dbops.fn_pgtap_crea_commessa), scritta dalla madre vendite.fn_upsert_commessa_attivita: APPROVATA e NON_EMESSA, con la commessa come sorgente, quantita'' 1 e prezzo snapshot FIXED (secondo parametro, default 10). L''articolo lo costruisce (dbops.fn_pgtap_crea_articolo, non gestito): da zero il catalogo e'' vuoto. Istanza dal billing account della commessa, competenza dalla commessa (o il mese corrente). ⛔ NON emette e non lega a una fattura: e'' il caso del test. ⚠️ Una commessa inesistente parla. Esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti.';
+COMMENT ON FUNCTION dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric, p_articolo_id uuid, p_listino_versione_id bigint, p_listino_riga_id bigint)
+IS 'Fixture pgTAP: un''ATTIVITA'' su una commessa gia'' costruita (dbops.fn_pgtap_crea_commessa), scritta dalla madre vendite.fn_upsert_commessa_attivita: APPROVATA e NON_EMESSA, con la commessa come sorgente, quantita'' 1 e prezzo snapshot FIXED (secondo parametro, default 10). Il builder decide il CONTESTO (istanza dal billing account della commessa, competenza dalla commessa o il mese corrente, sorgente, stati, segment key); il chiamante sceglie l''OGGETTO e la PROVENIENZA del prezzo: p_articolo_id (un articolo gia'' costruito coi suoi flag: dal guard A-10 un articolo usato non li cambia piu''; assente, lo costruisce dbops.fn_pgtap_crea_articolo, non gestito), p_listino_versione_id (la versione sotto cui la riga e'' registrata), p_listino_riga_id (la riga di listino del prezzo: da lei l''unita'' di misura e, se mancano, articolo e versione). Tutto il resto passa dalla madre. ⛔ La coerenza fra articolo, riga e versione la tiene la tabella (vendite.trgfn_attivita_guard_listino_riga). ⛔ NON emette e non lega a una fattura: e'' il caso del test. ⚠️ Una commessa, un articolo o una riga di listino inesistenti parlano. Esce con i vincoli IMMEDIATE. rev 2026-10-15: i tre parametri in coda (richiesta del team BE), DROP + CREATE. rev 2026-10-16: le colonne della riga di listino in variabili %TYPE, non in un record. rev 2026-10-16 (20261016-33): una riga di listino INVISIBILE sotto la RLS di chi agisce (di un''altra azienda) non ferma il builder se il chiamante da'' anche p_articolo_id e p_listino_versione_id: l''unita'' di misura viene dall''articolo e giudica il guard, come nel percorso del backend. Prima il builder si fermava su «nessuna riga» e il guard non veniva raggiunto (test 11 di vendite/test-guard-listino-riga-coerente-v1 verde da owner, rosso come app).';
 ```
 
 ---

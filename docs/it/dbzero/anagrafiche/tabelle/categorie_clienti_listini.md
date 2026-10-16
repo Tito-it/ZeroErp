@@ -53,12 +53,14 @@
 |------|--------|--------|--------|
 | trg_categorie_clienti_listini_a10_categorie_clienti_requ_3a447d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
 | trg_categorie_clienti_listini_a10_categorie_clienti_requ_3a447d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'categorie_clienti', 'attivo', 'categoria_cliente_id', 'id')` |
-| trg_categorie_clienti_listini_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_categorie_clienti_listini_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
-| trg_categorie_clienti_listini_a10_guard_utility_tipo_ruo_46ad65 | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_utility_tipo_ruolo_by_cols('utility_id', 'emittente_soggetto_ruolo_id')` |
+| trg_categorie_clienti_listini_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
+| trg_categorie_clienti_listini_a10_guard_listino_ins | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_categorie_clienti_listini_guard_listino()` |
+| trg_categorie_clienti_listini_a10_guard_listino_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_categorie_clienti_listini_guard_listino()` |
 | trg_categorie_clienti_listini_a10_guard_utility_tipo_ruo_46ad65 | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_utility_tipo_ruolo_by_cols('utility_id', 'emittente_soggetto_ruolo_id')` |
-| trg_categorie_clienti_listini_a10_listini_require_attivo_8048dc | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
+| trg_categorie_clienti_listini_a10_guard_utility_tipo_ruo_46ad65 | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_utility_tipo_ruolo_by_cols('utility_id', 'emittente_soggetto_ruolo_id')` |
 | trg_categorie_clienti_listini_a10_listini_require_attivo_8048dc | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
+| trg_categorie_clienti_listini_a10_listini_require_attivo_8048dc | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
 | trg_categorie_clienti_listini_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_categorie_clienti_listini_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_categorie_clienti_listini_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

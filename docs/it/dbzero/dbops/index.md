@@ -94,7 +94,7 @@
 - [fn_pgtap_crea_cliente](funzioni/fn_pgtap_crea_cliente.md)
 - [fn_pgtap_crea_cliente_ba](funzioni/fn_pgtap_crea_cliente_ba.md)
 - [fn_pgtap_crea_commessa](funzioni/fn_pgtap_crea_commessa.md) — (rev 2026-10-07)
-- [fn_pgtap_crea_commessa_attivita](funzioni/fn_pgtap_crea_commessa_attivita.md) — (rev 2026-10-07)
+- [fn_pgtap_crea_commessa_attivita](funzioni/fn_pgtap_crea_commessa_attivita.md) — (rev 2026-10-07; rev 2026-10-15: articolo e listino dal chiamante)
 - [fn_pgtap_crea_ddt](funzioni/fn_pgtap_crea_ddt.md)
 - [fn_pgtap_crea_emittente](funzioni/fn_pgtap_crea_emittente.md)
 - [fn_pgtap_crea_emittente_operatore](funzioni/fn_pgtap_crea_emittente_operatore.md)
