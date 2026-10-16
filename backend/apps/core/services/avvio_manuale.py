@@ -39,7 +39,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from apps.core.services.service_errors import ServiceError
+from apps.core.services.service_errors import E_CONFIG_MANCANTE, ServiceError
 from apps.core.services.sveglie import Sveglia
 
 # Il tipo di coda seminato in `dbops.coda_lavori_tipi` (brief §4.2) e il suo
@@ -76,13 +76,21 @@ def chiave_idempotenza(unit: str) -> str:
     return f"esegui:{unit}"
 
 
-# I tre motivi del predicato (a catalogo dal 2026-09-15, brief §9.2) e i due
+# I motivi del predicato (a catalogo dal 2026-09-15, brief §9.2) e i due
 # esiti dell'handler. Le CLASSI stanno nel file generato dal catalogo, non
 # qui: il 2 e' `NON_DISPONIBILE` (501) per decisione del DB — «esiste ma e'
 # spenta», la famiglia di `E_JOB_TYPE_NON_ATTIVO` — e il 1 `NON_ESEGUIBILE`
 # (422): non e' spenta, e' per natura non candidata.
+# ⭐ Dal 2026-10-16 il 2 vuol dire «il PROCESSO e' spento su questa
+#    installazione» (brief-db-processi-accensione-per-ambiente P-2): fino ad
+#    allora era `abilita = false` di `sveglie.json`. Il codice resta, il
+#    significato e' lo stesso gesto — non parte ne' dal timer ne' a mano.
+#    Il 2-bis e' l'accensione NON decidibile (ambiente non dichiarato):
+#    `E_CONFIG_MANCANTE`, lo stesso codice con cui il DB la rifiuta alla
+#    sveglia (`maintenance.fn_sveglia_accesa`).
 E_SVEGLIA_NON_AVVIABILE_A_MANO = "E_PROCESSO_SVEGLIA_NON_AVVIABILE_A_MANO"
-E_SVEGLIA_NON_ABILITATA = "E_PROCESSO_SVEGLIA_NON_ABILITATA"
+E_PROCESSO_SPENTO = "E_PROCESSO_SVEGLIA_NON_ABILITATA"
+E_ACCENSIONE_NON_DECIDIBILE = E_CONFIG_MANCANTE
 E_AVVIO_GIA_IN_CODA = "E_PROCESSO_AVVIO_GIA_IN_CODA"
 E_AVVIO_TROPPO_LUNGO = "E_PROCESSO_AVVIO_TROPPO_LUNGO"
 E_AVVIO_FALLITO = "E_PROCESSO_AVVIO_FALLITO"
@@ -96,7 +104,8 @@ E_AVVIO_FALLITO = "E_PROCESSO_AVVIO_FALLITO"
 _PREFISSO_REASON_KEY = "amministrazione.processi.esegui_ora_blocco."
 REASON_KEY_PER_CODICE: dict[str, str] = {
     E_SVEGLIA_NON_AVVIABILE_A_MANO: _PREFISSO_REASON_KEY + "non_avviabile_a_mano",
-    E_SVEGLIA_NON_ABILITATA: _PREFISSO_REASON_KEY + "non_abilitata",
+    E_PROCESSO_SPENTO: _PREFISSO_REASON_KEY + "non_abilitata",
+    E_ACCENSIONE_NON_DECIDIBILE: _PREFISSO_REASON_KEY + "non_decidibile",
     E_AVVIO_GIA_IN_CODA: _PREFISSO_REASON_KEY + "gia_in_coda",
 }
 
@@ -150,16 +159,26 @@ class MotivoEseguiOra:
 #             lanciare; il comando lungo terrebbe fermo il drenatore, decisione
 #             2a di Tid). Sul servizio il client non mostra nemmeno il pulsante;
 #             sul timer non candidato lo mostra spento con questa frase;
-#          2. `abilita = false` su questa installazione — la sveglia c'e', il
-#             comando c'e', ma nessuno lo serve: si accende dal deploy;
+#          2. il PROCESSO e' spento su questa installazione (`acceso` False,
+#             dal DB: la scelta a mano o il default per ambiente) — P-2 di
+#             Tid: spento vuol dire spento anche a mano, prima lo si
+#             riaccende. `acceso` None (ambiente non dichiarato) e' il 2-bis:
+#             non si sa, e non si lancia;
 #          3. c'e' GIA' un lavoro vivo con la stessa chiave — ricevuto come
 #             parametro (`{"id", "stato"}` da `lavori_vivi_per_chiave`, o
 #             `None` per «non lo so / non lo guardo»).
 # ⚠️ Un servizio e' anche `avvio_manuale = false` per costruzione (lo impone
 #    `carica_sveglie`): la disgiunzione e' scritta per intero lo stesso, perche'
 #    il predicato non deve dipendere da cio' che il caricatore impone oggi.
+# ⭐ `acceso` lo legge il CHIAMANTE dal DB, sempre da
+#    `dbops.fn_processo_acceso_dichiarato` (`ProcessiRepository.acceso_processo`
+#    per rifiuto e ricontrollo, `accensione_processo` per il dettaglio che lo
+#    descrive), con la stessa risposta per i tre consumatori: il
+#    predicato resta puro, e tooltip, rifiuto e ricontrollo non divergono.
+#    E' obbligatorio e senza default: un chiamante che lo dimentica non deve
+#    far passare un processo spento.
 def motivi_esegui_ora(
-    sveglia: Sveglia, *, lavoro_vivo: dict[str, Any] | None,
+    sveglia: Sveglia, *, acceso: bool | None, lavoro_vivo: dict[str, Any] | None,
 ) -> list[MotivoEseguiOra]:
     motivi: list[MotivoEseguiOra] = []
     if not sveglia.e_timer or not sveglia.avvio_manuale:
@@ -171,13 +190,24 @@ def motivi_esegui_ora(
                 f"candidato a «Esegui ora»."
             ),
         ))
-    if not sveglia.abilita:
+    if acceso is False:
         motivi.append(MotivoEseguiOra(
-            codice=E_SVEGLIA_NON_ABILITATA,
+            codice=E_PROCESSO_SPENTO,
             messaggio=(
-                f"La sveglia {sveglia.unit} non e' abilitata su questa "
-                f"installazione: il comando non parte ne' dal timer ne' a mano."
+                f"Il processo {sveglia.processo_codice} e' spento su questa "
+                f"installazione: il comando non parte ne' dalla sveglia ne' a "
+                f"mano. Riaccendilo prima di eseguirlo."
             ),
+            dettaglio={"processo": sveglia.processo_codice},
+        ))
+    elif acceso is None:
+        motivi.append(MotivoEseguiOra(
+            codice=E_ACCENSIONE_NON_DECIDIBILE,
+            messaggio=(
+                f"Non si sa se il processo {sveglia.processo_codice} sia acceso: "
+                f"l'ambiente di questa installazione non e' dichiarato."
+            ),
+            dettaglio={"processo": sveglia.processo_codice},
         ))
     if lavoro_vivo is not None:
         job_id = int(lavoro_vivo["id"])
@@ -198,9 +228,9 @@ def motivi_esegui_ora(
 #        calcolato a parte: e' la regola di `api.md`, ed e' cio' che rende
 #        impossibile un pulsante acceso su un gesto che l'endpoint rifiuta.
 def capability_esegui_ora(
-    sveglia: Sveglia, *, lavoro_vivo: dict[str, Any] | None,
+    sveglia: Sveglia, *, acceso: bool | None, lavoro_vivo: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    motivi = motivi_esegui_ora(sveglia, lavoro_vivo=lavoro_vivo)
+    motivi = motivi_esegui_ora(sveglia, acceso=acceso, lavoro_vivo=lavoro_vivo)
     primo = motivi[0] if motivi else None
     return {
         CAPABILITY_FLAG: primo is None,
@@ -228,7 +258,7 @@ def _dovuto_per_il_client(sveglia: Sveglia) -> dict[str, Any] | None:
 #    spazio, ma la forma vera e' l'argv, e un client che volesse
 #    evidenziare il primo token (il management command) lo puo' fare.
 def riga_sveglia(
-    sveglia: Sveglia, *, lavoro_vivo: dict[str, Any] | None,
+    sveglia: Sveglia, *, acceso: bool | None, lavoro_vivo: dict[str, Any] | None,
 ) -> dict[str, Any]:
     return {
         "unit": sveglia.unit,
@@ -240,8 +270,9 @@ def riga_sveglia(
         #    dell'azienda (brief un-solo-fuso-aziendale T-9). Mostrare il solo
         #    `oncalendar` direbbe «ogni ora» a un digest settimanale.
         "dovuto": _dovuto_per_il_client(sveglia),
-        "abilita": sveglia.abilita,
+        # ⛔ Niente `abilita` (ritirato il 2026-10-16): l'accensione e' del
+        #    PROCESSO, e viaggia una volta nel dettaglio (`accensione`).
         "avvio_manuale": sveglia.avvio_manuale,
         "nota": sveglia.nota,
-        **capability_esegui_ora(sveglia, lavoro_vivo=lavoro_vivo),
+        **capability_esegui_ora(sveglia, acceso=acceso, lavoro_vivo=lavoro_vivo),
     }

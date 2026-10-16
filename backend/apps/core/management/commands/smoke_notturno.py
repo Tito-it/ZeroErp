@@ -19,8 +19,9 @@
 #        rientrati, tempi e la cartella con l'output dei rossi.
 #
 #        ⛔ SOLO SVILUPPO. Gli smoke scrivono documenti di prova sul database.
-#        Tre difese, indipendenti: la sveglia e' spenta di default
-#        (`sveglie.json`, `abilita: false`), non ha «Esegui ora»
+#        Tre difese, indipendenti: il processo e' spento in PRODUZIONE (default
+#        a catalogo, `dbops.processi`, letto dall'`ExecCondition` dal
+#        2026-10-16; prima `abilita: false` in `sveglie.json`), non ha «Esegui ora»
 #        (`avvio_manuale: false`), e questo comando rifiuta di partire senza
 #        `SMOKE_NOTTURNO_CONSENTITO=1` nell'ambiente — PRIMA di aprire la corsa,
 #        cosi' un rifiuto non sporca il giornale.

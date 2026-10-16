@@ -9,7 +9,7 @@
 #        stesso selettore stava in tre file di test — predicato/service,
 #        handler, API — e tre copie della stessa condizione divergono alla
 #        prima che si tocca. ⚠️ La condizione e' scritta PER ESTESO qui
-#        (timer, candidato, acceso) e non delegata al predicato
+#        (timer, candidato) e non delegata al predicato
 #        `motivi_esegui_ora`: il predicato e' cio' che quei test provano, e un
 #        fixture scelto dal predicato renderebbe tautologico il caso
 #        «senza motivi -> ammesso».
@@ -22,14 +22,15 @@ from apps.core.services.sveglie import Sveglia, sveglie_di_processo
 
 
 # Scopo: la prima sveglia del processo che e' un TIMER, dichiarata candidata a
-#        «Esegui ora» e accesa su questa installazione — il caso buono. Il
-#        digest ne ha due, entrambe cosi'. AssertionError se il dichiarato non
+#        «Esegui ora» — il caso buono. Il digest ne ha due, entrambe cosi'.
+#        Che il PROCESSO sia acceso non e' piu' del dichiarato (dal
+#        2026-10-16 e' del DB): il test lo passa al predicato come `acceso`. AssertionError se il dichiarato non
 #        ne ha nessuna: un test che partisse da un fixture assente passerebbe
 #        a vuoto.
 def prima_sveglia_candidata(processo_codice: str = PROCESSO_DIGEST_PRESIDI) -> Sveglia:
     for sveglia in sveglie_di_processo(processo_codice):
-        if sveglia.e_timer and sveglia.avvio_manuale and sveglia.abilita:
+        if sveglia.e_timer and sveglia.avvio_manuale:
             return sveglia
     raise AssertionError(
-        f"nessuna sveglia candidata e accesa per {processo_codice} in sveglie.json"
+        f"nessuna sveglia candidata per {processo_codice} in sveglie.json"
     )

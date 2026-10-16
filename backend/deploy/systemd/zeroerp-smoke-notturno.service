@@ -11,10 +11,12 @@
 # sola nel digest delle 07:00 (corsa `ok=false` su maintenance.job_run_log,
 # presidio maintenance.vw_job_run_da_guardare).
 #
-# ⛔ SOLO SVILUPPO: gli smoke scrivono documenti di prova sul database. La
-# sveglia è spenta di default (`abilita: false`) e il comando rifiuta di partire
-# senza SMOKE_NOTTURNO_CONSENTITO=1 in .env.systemd: in produzione quella riga
-# non c'è, e il giro non parte nemmeno se qualcuno accende il timer.
+# ⛔ SOLO SVILUPPO: gli smoke scrivono documenti di prova sul database. Il
+# processo è acceso in SVILUPPO e spento in PRODUZIONE (default a catalogo,
+# dbops.processi, dal 2026-10-16: l'`ExecCondition` lo chiede al DB). In più il
+# comando rifiuta di partire senza SMOKE_NOTTURNO_CONSENTITO=1 in .env.systemd:
+# in produzione quella riga non c'è, e il giro non parte nemmeno se qualcuno
+# accende il processo a mano.
 #
 # ⚠️ TimeoutStartSec esplicito: una corsa aperta da più di un'ora esce come
 # «presa e mai chiusa». Il comando ha già un suo limite (50 minuti) sotto

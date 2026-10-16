@@ -19,6 +19,12 @@ from apps.core.services.db_error_fields import Bersaglio
 #    2026-09-27 stava in due costanti locali e in una dozzina di letterali.
 E_VALIDATION_INPUT = "E_VALIDATION_INPUT"
 
+# Scopo: la configurazione dell'installazione che manca (ambiente non
+#        dichiarato, wrapper dei comandi assente sull'host, parametro senza
+#        valore): `TECNICO`, il rimedio e' di chi installa. In un posto solo,
+#        come `E_VALIDATION_INPUT`.
+E_CONFIG_MANCANTE = "E_CONFIG_MANCANTE"
+
 
 class ServiceError(Exception):
     """Errore applicativo standard con metadati utili per API/UI."""

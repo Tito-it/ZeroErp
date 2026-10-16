@@ -77,6 +77,29 @@ def _cte_corse(conditions: list[str]) -> str:
 class MaintenanceRepository:
     """Repository per job_run_log e funzioni maintenance."""
 
+    # Scopo: la sveglia del processo deve far partire il lavoro, su questa
+    #        installazione? Lo chiede `e_dovuto`, l'`ExecCondition` di ogni
+    #        sveglia, PRIMA del periodo aziendale: un processo spento non e'
+    #        dovuto (brief-db-processi-accensione-per-ambiente §6.0 punto 2).
+    # ⭐ La regola non e' qui: e' `maintenance.fn_sveglia_accesa` (la scelta a
+    #    mano, poi il default per ambiente; un non spegnibile e' sempre acceso).
+    # ⛔ Mai NULL: la funzione SOLLEVA (`E_CONFIG_MANCANTE` sull'ambiente non
+    #    dichiarato, `E_PROCESSO_NON_TROVATO`, `E_PROCESSO_SENZA_SVEGLIA`), e
+    #    l'eccezione arriva a `e_dovuto` com'e', che la rende un'unit FALLITA.
+    #    Un ripiego a «acceso» o «spento» deciderebbe al posto del DB.
+    def sveglia_accesa(self, processo_codice: str) -> bool:
+        with connection.cursor() as cur:
+            cur.execute("SELECT maintenance.fn_sveglia_accesa(%s)", [processo_codice])
+            row = cur.fetchone()
+        # ⛔ Non un `assert`: con `python -O` sparirebbe, e `bool(None)` farebbe
+        #    uscire 1 («spento», systemd salta in silenzio) invece di 255.
+        if row is None or row[0] is None:
+            raise RuntimeError(
+                f"maintenance.fn_sveglia_accesa({processo_codice!r}) ha risposto NULL: "
+                f"il contratto dice mai NULL"
+            )
+        return bool(row[0])
+
     # Scopo: vero se la corsia `jobname` ha una corsa RIUSCITA (`ok`) partita
     #        da `dal` in poi: il lavoro del periodo che comincia a `dal` e' fatto.
     #        Lo chiede `e_dovuto`, l'`ExecCondition` delle sveglie calendariali

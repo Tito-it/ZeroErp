@@ -681,6 +681,44 @@ class ProcessiEseguiOraView(AdminAPIView):
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
 
+class ProcessiAccensioneView(AdminAPIView):
+    """POST la scelta a mano sull'ACCENSIONE di un processo, su questa
+    installazione: `{"acceso": true|false|null, "motivo": "..."}`. `true`
+    accende, `false` spegne, `null` toglie la scelta e torna il default per
+    ambiente del catalogo. Risposta: l'accensione rinfrescata, nella forma di
+    `accensione` del dettaglio.
+
+    I limiti (processo non spegnibile, senza sveglia, motivo) li dice il guard
+    di `dbops.processi_accensione`; il service li traduce
+    (brief-db-processi-accensione-per-ambiente §6.0 punto 5).
+    ⚠️ La sede della fiducia e' `AdminAPIView`, come per «Esegui ora» («il
+    permesso e' vostro, come per Esegui ora», dal brief DB): v1 solo
+    SUPER_ADMIN.
+    """
+
+    @extend_schema(
+        parameters=[_IDEMPOTENCY_HEADER_PARAM],
+        request=inline_serializer(
+            name="ProcessiAccensioneReq",
+            fields={
+                "acceso": serializers.BooleanField(allow_null=True),
+                "motivo": serializers.CharField(),
+            },
+        ),
+        responses={200: inline_serializer(
+            name="ProcessiAccensioneResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Accende, spegne o riporta al default il processo, col motivo.
+    def post(self, request: Request, codice: str) -> JsonResponse:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            return ProcessiService().imposta_accensione(
+                codice, payload, attore=request.user.get_username(),
+            )
+
+        return handle_post_json(request, handler=_handler, require_idempotency_key=True)
+
+
 class AuditLogView(AdminAPIView):
     """GET audit log globale modifiche permessi."""
 

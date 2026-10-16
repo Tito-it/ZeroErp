@@ -17,10 +17,15 @@
 # `brief-db-quattro-processi-senza-presidio.md` D5). Qui resta la CADENZA, che e'
 # come il deploy onora quel contratto — e questo script non la legge nemmeno.
 #
-# ⚠️ CHI ACCENDE E CHI NO lo dice il campo `abilita` del file, con la ragione
-# scritta nella `nota` accanto. Le due corsie della fatturazione restano spente
-# (emettono documenti — decisione di Tid, 2026-08-16). I drainer e il listener
-# si accendono: a coda vuota non fanno niente.
+# ⭐ SI ACCENDE OGNI SVEGLIA (dal 2026-10-16). Fino ad allora lo decideva il
+# campo `abilita` del file, un booleano uguale su ogni host. Se un processo
+# lavora e' un fatto del processo e dell'installazione, e sta nel database
+# (brief-db-processi-accensione-per-ambiente): il default per ambiente e i
+# processi che non si spengono in `dbops.processi`, la scelta a mano in
+# `dbops.processi_accensione`. Ogni `.service` porta
+# `ExecCondition=… e_dovuto <unit>`, che lo chiede al DB a ogni sveglia: uno
+# spento salta senza errore. Le due corsie della fatturazione, per esempio,
+# sono installate e accese qui, e saltano finche' il processo e' spento.
 # ⛔ `sync-auth-user-active` NON c'e' piu' (2026-09-07): il suo processo di
 # catalogo e' ritirato a favore del gemello pgAgent `sync_auth_user_expired_daily`,
 # e unit, voce e costante sono spariti INSIEME — vedi `_ritirate` in sveglie.json.
@@ -135,7 +140,7 @@ echo "APP_DIR=$APP_DIR  APP_USER=$APP_USER  DEST=$DEST_DIR  render_only=$RENDER_
 SEP=$'\x1f'
 
 # Scopo: ESTRAE da `sveglie.json` una riga per sveglia
-# (unit, forma, comando, oncalendar, abilita, nota). Solo stdlib: gira anche su
+# (unit, forma, comando, oncalendar, nota). Solo stdlib: gira anche su
 # un host senza venv e sul runner della CI.
 #
 # ⛔ NON VALIDA IL DICHIARATO, ed è una scelta corretta il 2026-09-06 dopo averlo
@@ -174,7 +179,6 @@ for s in righe:
         str(s.get("forma") or ""),
         comando,
         str(s.get("oncalendar") or ""),
-        "1" if s.get("abilita") is True else "0",
         nota,
     ]))
 PY
@@ -234,23 +238,18 @@ SVEGLIE_RIGHE="$(leggi_sveglie)"
 [ -n "$SVEGLIE_RIGHE" ] || { echo "Nessuna sveglia dichiarata in $SVEGLIE" >&2; exit 1; }
 
 DA_ACCENDERE=()
-DA_LASCIARE_SPENTI=()
 # I FILE che il dichiarato produce (`.service`, più il `.timer` dei timer): è
 # l'insieme contro cui si cercano gli orfani sull'host, qui sotto.
 DICHIARATI=" "
-while IFS="$SEP" read -r unit forma comando oncalendar abilita nota; do
+while IFS="$SEP" read -r unit forma comando oncalendar nota; do
   [ -n "$unit" ] || continue
   render_unit "$unit" "$forma" "$comando" "$oncalendar"
   DICHIARATI+="${unit}.service "
   [ "$forma" = "timer" ] && DICHIARATI+="${unit}.timer "
-  # Si abilita il .timer dove c'è, il .service dove il processo è sempre acceso.
+  # Si abilita il .timer dove c'è, il .service dove la sveglia è un servizio.
   if [ "$forma" = "timer" ]; then target="${unit}.timer"; else target="${unit}.service"; fi
-  if [ "$abilita" = "1" ]; then
-    DA_ACCENDERE+=("$target")
-  else
-    # La ragione dello spento viaggia CON l'unit: vedi il blocco finale.
-    DA_LASCIARE_SPENTI+=("${target}${SEP}${nota}")
-  fi
+  # Ogni sveglia si accende: se lavora lo decide l'`ExecCondition` col DB.
+  DA_ACCENDERE+=("$target")
 done <<< "$SVEGLIE_RIGHE"
 
 # Scopo: dice se un `.service` installato è una SVEGLIA di questo checkout: il
@@ -322,10 +321,6 @@ echo "Piano (dal dichiarato):"
 for u in ${DA_ACCENDERE[@]+"${DA_ACCENDERE[@]}"}; do
   echo "  ACCENDI  $u"
 done
-for riga in ${DA_LASCIARE_SPENTI[@]+"${DA_LASCIARE_SPENTI[@]}"}; do
-  IFS="$SEP" read -r u _nota <<< "$riga"
-  echo "  SPENTO   $u"
-done
 for u in ${DA_RITIRARE[@]+"${DA_RITIRARE[@]}"}; do
   echo "  RITIRA   $u (installato, non più dichiarato)"
 done
@@ -355,9 +350,8 @@ fi
 
 systemctl daemon-reload
 
-# Si accende ciò che il dichiarato marca `abilita: true`. Un host nuovo deve
-# partire con lo stesso assetto di quello in esercizio, non con metà worker da
-# accendere a mano.
+# Si accende ogni sveglia dichiarata. Un host nuovo parte con lo stesso
+# assetto di quello in esercizio; quali processi lavorano lo dice il DB.
 if [ ${#DA_ACCENDERE[@]} -gt 0 ]; then
   for u in "${DA_ACCENDERE[@]}"; do
     systemctl enable --now "$u"
@@ -366,21 +360,7 @@ if [ ${#DA_ACCENDERE[@]} -gt 0 ]; then
   echo "OK, abilitati: ${DA_ACCENDERE[*]}"
 fi
 
-# ⛔ Ciò che resta spento si DICE, con la SUA ragione accanto.
-# ⚠️ Fino al 2026-09-06 qui c'era una riga fissa sul prerequisito
-#    `DB_SYSTEM_FATTURAZIONE_*`, stampata per OGNI unit spento — anche per
-#    `sync-auth-user-active`, che con la fatturazione non c'entra niente. Un
-#    messaggio operativo che vale per un caso e viene mostrato per tutti manda a
-#    cercare la cosa sbagliata. ⇒ Ogni spento porta la propria `nota`, che è già
-#    scritta una volta sola in `sveglie.json`.
-if [ ${#DA_LASCIARE_SPENTI[@]} -gt 0 ]; then
-  echo
-  echo "Installati ma NON attivi:"
-  for riga in "${DA_LASCIARE_SPENTI[@]}"; do
-    IFS="$SEP" read -r u nota <<< "$riga"
-    echo "  systemctl enable --now $u"
-    [ -n "$nota" ] && echo "      ↳ $nota"
-  done
-fi
+# ⭐ Chi è spento non si stampa qui: non lo sa l'installer. Lo dice il drawer
+#    dei processi (stato effettivo e da dove viene) e il panorama (`SPENTO`).
 echo
 systemctl list-timers 'zeroerp-*' --all --no-pager || true

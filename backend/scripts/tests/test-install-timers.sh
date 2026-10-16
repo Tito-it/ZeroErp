@@ -40,8 +40,10 @@
 #   potrebbero eseguire due cose diverse — in silenzio, perché entrambe girano.
 #
 # Indice test (0..8):
-#   0. il piano accende ESATTAMENTE gli unit dichiarati `abilita: true`
-#   1. gli unit dichiarati `abilita: false` non vengono accesi
+#   0. il piano accende OGNI sveglia dichiarata, e niente altro (dal 2026-10-16
+#      se un processo lavora lo decide il DB, non l'installer)
+#   1. ogni `.service` reso porta l'`ExecCondition` della sua unit: e' il
+#      cancello che chiede al DB se il processo e' acceso
 #   2. si accende il `.timer` dei timer e il `.service` dei servizi sempre accesi
 #   3. `daemon-reload` precede gli `enable`
 #   4. REGRESSIONE: un campo vuoto non fa slittare i campi (il difetto del 06-09)
@@ -114,31 +116,29 @@ esegui_installer() {
   echo "$registro"
 }
 
-# Scopo: gli unit che il dichiarato marca `abilita`, con il suffisso giusto —
-#        letti dalla STESSA fonte dello script, non riscritti qui.
+# Scopo: gli unit che l'installer accende — ogni sveglia dichiarata, col
+#        suffisso giusto — letti dalla STESSA fonte dello script, non riscritti
+#        qui.
 # ⛔ Un elenco atteso scritto a mano sarebbe una seconda copia del dichiarato, e
 #    proverebbe che due copie coincidono invece che il comportamento.
 attesi() {
-  local vogliamo="$1"   # true | false
-  python3 - "$SVEGLIE" "$vogliamo" <<'PY'
+  python3 - "$SVEGLIE" <<'PY'
 import json, sys
-vogliamo = sys.argv[2] == "true"
 for s in json.load(open(sys.argv[1], encoding="utf-8"))["sveglie"]:
-    if bool(s.get("abilita")) is vogliamo:
-        kind = "timer" if s.get("forma") == "timer" else "service"
-        print(f"{s['unit']}.{kind}")
+    kind = "timer" if s.get("forma") == "timer" else "service"
+    print(f"{s['unit']}.{kind}")
 PY
 }
 
-# Scopo: i servizi sempre accesi dichiarati `abilita: true` (forma `servizio`,
-#        `oncalendar` vuoto), letti dalla stessa fonte — vale la nota di
-#        `attesi()`. Dal 2026-10-05: prima il nome del listener era scritto qui,
-#        e il suo rinomino (`listen_permessi`) lo ha reso una seconda copia.
+# Scopo: le sveglie di forma `servizio` (`oncalendar` vuoto), lette dalla
+#        stessa fonte — vale la nota di `attesi()`. Dal 2026-10-05: prima il
+#        nome del listener era scritto qui, e il suo rinomino
+#        (`listen_permessi`) lo ha reso una seconda copia.
 servizi_accesi() {
   python3 - "$SVEGLIE" <<'PY'
 import json, sys
 for s in json.load(open(sys.argv[1], encoding="utf-8"))["sveglie"]:
-    if s.get("forma") == "servizio" and s.get("abilita") is True:
+    if s.get("forma") == "servizio":
         print(s["unit"])
 PY
 }
@@ -162,26 +162,31 @@ prepara_stub
 REGISTRO="$(esegui_installer principale)"
 UNITS_RESI="$TMP/principale/units"
 
-# ── 0. accende esattamente i dichiarati `abilita: true` ──────────────────
+# ── 0. accende ogni sveglia dichiarata, e niente altro ───────────────────
 ACCESI="$(grep '^enable --now ' "$REGISTRO" | sed 's/^enable --now //' | sort)"
-ATTESI="$(attesi true | sort)"
+ATTESI="$(attesi | sort)"
 if [ "$ACCESI" = "$ATTESI" ]; then
-  ok "accesi esattamente gli unit dichiarati (${ATTESI//$'\n'/, })"
+  ok "accese tutte e sole le sveglie dichiarate (${ATTESI//$'\n'/, })"
 else
   ko "accesi != dichiarati"
   diff <(echo "$ATTESI") <(echo "$ACCESI") | sed 's/^/       /' || true
 fi
 
-# ── 1. i dichiarati `abilita: false` restano spenti ──────────────────────
-SPENTI_ACCESI=""
+# ── 1. ogni .service reso porta il cancello della SUA unit ───────────────
+# ⭐ Dal 2026-10-16 l'installer accende tutto, e uno spento salta solo perche'
+#    l'`ExecCondition` lo chiede al DB. Una sveglia senza cancello lavorerebbe
+#    anche a processo spento: in silenzio, perche' girerebbe e basta.
+SENZA_CANCELLO=""
 while read -r u; do
   [ -n "$u" ] || continue
-  grep -Fxq "enable --now $u" "$REGISTRO" && SPENTI_ACCESI="$SPENTI_ACCESI $u"
-done <<< "$(attesi false)"
-if [ -z "$SPENTI_ACCESI" ]; then
-  ok "nessun unit dichiarato spento è stato acceso"
+  u="${u%.*}"
+  grep -Fxq "ExecCondition=${APP_DIR}/bin/run-command.sh e_dovuto ${u}" "$UNITS_RESI/${u}.service" \
+    || SENZA_CANCELLO="$SENZA_CANCELLO $u"
+done <<< "$(attesi)"
+if [ -z "$SENZA_CANCELLO" ]; then
+  ok "ogni sveglia resa chiede al DB se il processo e' acceso (ExecCondition e_dovuto <unit>)"
 else
-  ko "acceso un unit che doveva restare spento:$SPENTI_ACCESI"
+  ko "sveglie senza il cancello dell'accensione:$SENZA_CANCELLO"
 fi
 
 # ── 2. suffisso giusto per forma ─────────────────────────────────────────
@@ -217,10 +222,12 @@ else
 fi
 
 # ── 4. REGRESSIONE: il campo vuoto non fa slittare i campi ───────────────
-# ⭐ È il test che vale: i servizi sempre accesi sono le voci con `oncalendar`
-#    vuoto, e con la vecchia lettura a TAB `abilita` diventava il testo della
-#    nota — quindi il servizio finiva fra gli spenti. Se un giorno il
-#    separatore tornasse a essere IFS-whitespace, questo diventa rosso.
+# ⭐ I servizi sono le voci con `oncalendar` vuoto, e con la vecchia lettura a
+#    TAB il campo dopo slittava: fino al 2026-10-16 era `abilita`, e il servizio
+#    finiva fra gli spenti. Oggi `abilita` non c'e' piu', ma il separatore resta
+#    la regola dell'estrattore: se tornasse IFS-whitespace i campi dopo un
+#    vuoto scalerebbero di nuovo, e questa prova resta il suo presidio sul ramo
+#    che accende.
 SPENTI_PER_SLITTAMENTO=""
 while read -r u; do
   [ -n "$u" ] || continue

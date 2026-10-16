@@ -109,6 +109,8 @@ class ProcessiEseguiOraApiTests(JwtMockedApiTest):
     def test_ok_accoda(self, coda_cls, repo_cls, resolver, _extract, _extract_ef, _auth) -> None:
         resolver.get_emittenti_pk_ids.return_value = None  # admin globale
         repo_cls.return_value.get_processo.return_value = {"codice": PROCESSO_DIGEST_PRESIDI}
+        # Acceso, detto: un MagicMock al posto della lettura passerebbe per caso.
+        repo_cls.return_value.acceso_processo.return_value = True
         coda = coda_cls.return_value
         coda.lavori_vivi_per_chiave.return_value = {}
         coda.accoda.return_value = 777

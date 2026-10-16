@@ -25,7 +25,8 @@
 #    1. senza motivi -> ammesso (lista vuota) su un timer candidato e acceso
 #    2. servizio -> motivo 1, anche se `avvio_manuale` fosse true (natura)
 #    3. timer con `avvio_manuale = false` -> motivo 1
-#    4. `abilita = false` -> motivo 2
+#    4. processo spento (`acceso` False, dal DB) -> motivo 2; non decidibile
+#       (`acceso` None, ambiente non dichiarato) -> motivo 2-bis
 #    5. lavoro vivo -> motivo 3 con `dettaglio = {job_id}`
 #    6. tutti e tre insieme -> nell'ORDINE 1, 2, 3 (il primo si mostra)
 #    7. `come_errore` porta codice, frase con la unit dentro e `context`
@@ -42,10 +43,13 @@
 #   14. gia' in coda -> E_PROCESSO_AVVIO_GIA_IN_CODA con job_id, niente accoda
 #   15. ok -> `accoda` con job_type, run_as OPERATORE, chiave per unit, scope,
 #       payload {processo_codice, unit}; risposta {job_id, stato, unit}
-#   16. il dettaglio porta `sveglie[]` con la capability, UNA query per i vivi
+#   16. il dettaglio porta `sveglie[]` con la capability, UNA query per i vivi,
+#       e `accensione` letta UNA volta e passata a ogni sveglia
+#   16-bis. processo spento -> rifiuto E_PROCESSO_SVEGLIA_NON_ABILITATA PRIMA
+#       di accodare (P-2)
 #   Contratto FE/BE
 #   17. i quattro nomi della capability sono quelli che il drawer legge
-#   18. le tre reason_key esistono in it.json E in en.json
+#   18. ogni reason_key esiste in it.json E in en.json
 #   19. la copia di FORMA_TIMER nel drawer e' la costante del backend
 # ------------------------------------------------------------
 
@@ -90,7 +94,7 @@ _SCOPE = {
 def _sveglia(**override) -> Sveglia:
     base = {
         "unit": "zeroerp-test", "processo_codice": "test", "forma": FORMA_TIMER,
-        "comando": ("test_cmd",), "oncalendar": "*:0/5", "abilita": True,
+        "comando": ("test_cmd",), "oncalendar": "*:0/5",
         "avvio_manuale": True, "nota": "",
     }
     base.update(override)
@@ -98,9 +102,13 @@ def _sveglia(**override) -> Sveglia:
 
 
 # Scopo: il service con i tre repository finti; `coda` risponde «nessun vivo».
-def _service(*, get_processo=None, vivi=None):
+def _service(*, get_processo=None, vivi=None, acceso=True):
     repo = MagicMock()
     repo.get_processo.return_value = get_processo
+    # Le due letture dello stesso stato: chi decide (`acceso_processo`) e
+    # chi descrive (`accensione_processo`, il dettaglio).
+    repo.acceso_processo.return_value = acceso
+    repo.accensione_processo.return_value = {"acceso": acceso}
     repo.emittenti_non_serviti.return_value = []
     coda = MagicMock()
     coda.lavori_vivi_per_chiave.return_value = vivi or {}
@@ -111,31 +119,35 @@ def _service(*, get_processo=None, vivi=None):
 class PredicatoTests(SimpleTestCase):
     # 1. Un timer candidato, acceso, senza lavoro vivo: si puo'.
     def test_senza_motivi_e_ammesso(self) -> None:
-        self.assertEqual(motivi_esegui_ora(prima_sveglia_candidata(), lavoro_vivo=None), [])
+        self.assertEqual(motivi_esegui_ora(prima_sveglia_candidata(), acceso=True, lavoro_vivo=None), [])
 
     # 2. Il servizio non e' un candidato per NATURA: anche con `avvio_manuale`
     #    a true (che il caricatore rifiuta, ma il predicato non deve contarci).
     def test_servizio_e_motivo_1(self) -> None:
         s = _sveglia(forma=FORMA_SERVIZIO, oncalendar=None, avvio_manuale=True)
-        motivi = motivi_esegui_ora(s, lavoro_vivo=None)
+        motivi = motivi_esegui_ora(s, acceso=True, lavoro_vivo=None)
         self.assertEqual([m.codice for m in motivi], [am.E_SVEGLIA_NON_AVVIABILE_A_MANO])
 
     # 3. Il timer dichiarato non candidato (il drenatore): motivo 1.
     def test_timer_non_candidato_e_motivo_1(self) -> None:
         drenatore = sveglie_di_processo(PROCESSO_DRAINA_CODA_LAVORI)
         self.assertTrue(drenatore, "il drenatore non e' in sveglie.json")
-        motivi = motivi_esegui_ora(drenatore[0], lavoro_vivo=None)
+        motivi = motivi_esegui_ora(drenatore[0], acceso=True, lavoro_vivo=None)
         self.assertEqual([m.codice for m in motivi], [am.E_SVEGLIA_NON_AVVIABILE_A_MANO])
 
-    # 4. Spenta su questa installazione: motivo 2, e SOLO quello.
+    # 4. Processo spento su questa installazione: motivo 2, e SOLO quello.
+    #    Non decidibile (ambiente non dichiarato): il 2-bis, mai «acceso».
     def test_spenta_e_motivo_2(self) -> None:
-        motivi = motivi_esegui_ora(_sveglia(abilita=False), lavoro_vivo=None)
-        self.assertEqual([m.codice for m in motivi], [am.E_SVEGLIA_NON_ABILITATA])
+        motivi = motivi_esegui_ora(_sveglia(), acceso=False, lavoro_vivo=None)
+        self.assertEqual([m.codice for m in motivi], [am.E_PROCESSO_SPENTO])
+        self.assertEqual(motivi[0].dettaglio, {"processo": "test"})
+        motivi = motivi_esegui_ora(_sveglia(), acceso=None, lavoro_vivo=None)
+        self.assertEqual([m.codice for m in motivi], [am.E_ACCENSIONE_NON_DECIDIBILE])
 
     # 5. Gia' in coda: motivo 3, con l'id del lavoro nel dettaglio (e' il
     #    parametro `{job_id}` della chiave i18n) e nella frase.
     def test_gia_in_coda_e_motivo_3_con_job_id(self) -> None:
-        motivi = motivi_esegui_ora(_sveglia(), lavoro_vivo={"id": 77, "stato": "PENDING"})
+        motivi = motivi_esegui_ora(_sveglia(), acceso=True, lavoro_vivo={"id": 77, "stato": "PENDING"})
         self.assertEqual(len(motivi), 1)
         self.assertEqual(motivi[0].codice, am.E_AVVIO_GIA_IN_CODA)
         self.assertEqual(motivi[0].dettaglio, {"job_id": 77})
@@ -143,35 +155,35 @@ class PredicatoTests(SimpleTestCase):
 
     # 6. L'ordine e' quello del piano §2.2: il primo e' quello che si mostra.
     def test_ordine_dei_motivi(self) -> None:
-        s = _sveglia(avvio_manuale=False, abilita=False)
-        motivi = motivi_esegui_ora(s, lavoro_vivo={"id": 1, "stato": "IN_CORSO"})
+        s = _sveglia(avvio_manuale=False)
+        motivi = motivi_esegui_ora(s, acceso=False, lavoro_vivo={"id": 1, "stato": "IN_CORSO"})
         self.assertEqual(
             [m.codice for m in motivi],
-            [am.E_SVEGLIA_NON_AVVIABILE_A_MANO, am.E_SVEGLIA_NON_ABILITATA, am.E_AVVIO_GIA_IN_CODA],
+            [am.E_SVEGLIA_NON_AVVIABILE_A_MANO, am.E_PROCESSO_SPENTO, am.E_AVVIO_GIA_IN_CODA],
         )
 
-    # 7. Il rifiuto: codice, frase con la UNIT dentro (mai il nome di un
+    # 7. Il rifiuto: codice, frase col PROCESSO dentro (mai il nome di un
     #    parametro), context = dettaglio + extra del chiamante.
     def test_come_errore(self) -> None:
-        s = _sveglia(unit="zeroerp-x", abilita=False)
-        err = motivi_esegui_ora(s, lavoro_vivo=None)[0].come_errore(unit="zeroerp-x")
+        s = _sveglia(unit="zeroerp-x", processo_codice="proc_x")
+        err = motivi_esegui_ora(s, acceso=False, lavoro_vivo=None)[0].come_errore(unit="zeroerp-x")
         self.assertIsInstance(err, ServiceError)
-        self.assertEqual(err.code, am.E_SVEGLIA_NON_ABILITATA)
-        self.assertIn("zeroerp-x", err.message)
-        self.assertNotIn("p_unit", err.message)
-        self.assertEqual(err.context, {"unit": "zeroerp-x"})
+        self.assertEqual(err.code, am.E_PROCESSO_SPENTO)
+        self.assertIn("proc_x", err.message)
+        self.assertNotIn("p_processo", err.message)
+        self.assertEqual(err.context, {"processo": "proc_x", "unit": "zeroerp-x"})
 
 
 class CapabilityTests(SimpleTestCase):
     # 8. Il flag si DERIVA dal motivo: e' l'unica cosa che rende impossibile
     #    un pulsante acceso su un gesto che l'endpoint rifiuta.
     def test_flag_derivato_dal_motivo(self) -> None:
-        ok = capability_esegui_ora(_sveglia(), lavoro_vivo=None)
+        ok = capability_esegui_ora(_sveglia(), acceso=True, lavoro_vivo=None)
         self.assertEqual(ok, {
             CAPABILITY_FLAG: True, CAPABILITY_REASON: None,
             CAPABILITY_REASON_KEY: None, CAPABILITY_DETTAGLIO: None,
         })
-        ko = capability_esegui_ora(_sveglia(), lavoro_vivo={"id": 5, "stato": "PENDING"})
+        ko = capability_esegui_ora(_sveglia(), acceso=True, lavoro_vivo={"id": 5, "stato": "PENDING"})
         self.assertEqual(ko, {
             CAPABILITY_FLAG: False,
             CAPABILITY_REASON: am.E_AVVIO_GIA_IN_CODA,
@@ -187,19 +199,19 @@ class CapabilityTests(SimpleTestCase):
         from apps.core.services.sveglie import Dovuto
 
         s = _sveglia(oncalendar="*:00", dovuto=Dovuto("settimana", time(7, 30), 0, "p:c"))
-        riga = riga_sveglia(s, lavoro_vivo=None)
+        riga = riga_sveglia(s, acceso=True, lavoro_vivo=None)
         self.assertEqual(riga["dovuto"], {"ogni": "settimana", "giorno": 0, "dalle": "07:30"})
 
     # 9. La riga: il dichiarato (da mostrare) + la capability (su cui decidere).
     def test_riga_sveglia(self) -> None:
         s = _sveglia(unit="zeroerp-r", comando=("cmd", "--a", "b"), nota="n")
-        riga = riga_sveglia(s, lavoro_vivo=None)
+        riga = riga_sveglia(s, acceso=True, lavoro_vivo=None)
         self.assertEqual(riga["unit"], "zeroerp-r")
         self.assertEqual(riga["forma"], FORMA_TIMER)
         self.assertEqual(riga["comando"], ["cmd", "--a", "b"])
         self.assertEqual(riga["oncalendar"], "*:0/5")
         self.assertIsNone(riga["dovuto"])
-        self.assertTrue(riga["abilita"])
+        self.assertNotIn("abilita", riga)
         self.assertTrue(riga["avvio_manuale"])
         self.assertEqual(riga["nota"], "n")
         self.assertTrue(riga[CAPABILITY_FLAG])
@@ -280,6 +292,17 @@ class EseguiOraServiceTests(SimpleTestCase):
         self.assertEqual(kwargs["payload"], {"processo_codice": PROCESSO_DIGEST_PRESIDI, "unit": s.unit})
         self.assertEqual(kwargs["origine"], "API")
 
+    # 16-bis. ⭐ P-2: su un processo spento «Esegui ora» e' rifiutato PRIMA di
+    #         accodare, col codice del motivo 2 — la stessa lettura del DB con
+    #         cui il dettaglio spegne il pulsante.
+    def test_processo_spento_rifiuta_prima_di_accodare(self) -> None:
+        s = prima_sveglia_candidata()
+        svc, coda = _service(get_processo={"codice": PROCESSO_DIGEST_PRESIDI}, acceso=False)
+        with self.assertRaises(ServiceError) as cm:
+            svc.esegui_ora(PROCESSO_DIGEST_PRESIDI, unit=s.unit, scope=_SCOPE)
+        self.assertEqual(cm.exception.code, am.E_PROCESSO_SPENTO)
+        coda.accoda.assert_not_called()
+
     # 16. Il dettaglio porta `sveglie[]` con la capability per riga, e i vivi
     #     si leggono con UNA query per tutte le unit del processo.
     def test_dettaglio_porta_le_sveglie_con_capability(self) -> None:
@@ -298,6 +321,8 @@ class EseguiOraServiceTests(SimpleTestCase):
         coda.lavori_vivi_per_chiave.assert_called_once()
         chiavi = coda.lavori_vivi_per_chiave.call_args.kwargs["chiavi"]
         self.assertEqual(sorted(chiavi), sorted(chiave_idempotenza(s.unit) for s in sveglie))
+        # L'accensione: letta UNA volta e passata al dettaglio com'e'.
+        self.assertIs(dettaglio["accensione"]["acceso"], True)
         # Un processo senza sveglie (pgAgent): lista vuota, nessuna query.
         svc2, coda2 = _service(get_processo={"codice": "x", "bersagli": [], "identita": []})
         self.assertEqual(svc2.get_processo("x")["sveglie"], [])

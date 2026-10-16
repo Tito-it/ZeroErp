@@ -2,29 +2,32 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-16
 
-**Riparte: il team DB col giro di `brief-db-processi-accensione-per-ambiente` (§5), poi Tid con
-l'apply e la dichiarazione di SVILUPPO su dbdev. Il BE aspetta: nessuna riga di codice prima.**
+**Riparte: il team DB col giro 2 del
+[brief-db-processi-accensione-per-ambiente](brief-db-processi-accensione-per-ambiente.md) (§5-ter),
+che aspettava l'elenco del §7 (decisioni del §7.4 prese). Il BE scrive T-1 quando il giro 2 è applicato.**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ **Tid + team DB** | Il modello: ambiente immutabile, etichetta sulle radici, verbo che rifiuta in PRODUZIONE | §2 | — |
-| 2 | **team DB** | Risposta alla domanda D-1 (i command headless del backend sono «spegnibili»?) | §6 | niente |
-| 3 | **team DB** | Il giro DB: nome del verbo di provisioning, forma dell'etichetta, colonna nella lettura della lista Operatori | §3 | — |
-| 4 | **Tid** | Apply su dbdev e fase post di `provision_zeroerp.sql` con `-v ambiente=SVILUPPO` | §3 | 3 |
-| 5 | **BE** | T-1 … T-4 (di T-2 è già fatto il ritiro del ripiego `tid`) | §4 | 4 |
-| 6 | **Tid** | Collaudo: il provisioning da capo su dbdev, il giro degli smoke con `dev.smoke`, poi la disattivazione di `smoke` | §4, T-5 | 5 |
-| 7 | **FE** | T-6: il filtro e il badge nella lista Operatori | §4 | 5 |
+| 2 | ✅ **team DB** | Giro 1 applicato su dbdev (`SVILUPPO` dichiarato, 2026-10-16 14:20): ambiente e accensione dei processi. Risponde anche a D-1 (§6) | brief DB §5-bis | — |
+| 3 | ✅ **BE** | L'elenco di che cosa crea il verbo, chiesto dal brief DB §5-ter | §7 | — |
+| 4 | ✅ **Tid** | Le tre decisioni del §7.4: emittenti nuovi dal verbo, `dev.shop` dopo, portale senza contratto (2026-10-16) | §7.4 | — |
+| 5 | **team DB** | Giro 2: etichette, verbo del provisioning di sviluppo, presidio, colonna nella lista Operatori | brief DB §5-ter | 4 |
+| 6 | **Tid** | Apply del giro 2 su dbdev | — | 5 |
+| 7 | **BE** | T-1 … T-4 (di T-2 è già fatto il ritiro del ripiego `tid`) | §4 | 6 |
+| 8 | **Tid** | Collaudo: il provisioning da capo su dbdev, il giro degli smoke con `dev.smoke`, poi la disattivazione di `smoke` | §4, T-5 | 7 |
+| 9 | **FE** | T-6: il filtro e il badge nella lista Operatori | §4 | 7 |
 
-**Decisioni aperte di Tid: nessuna.** Domande aperte al team DB: D-1 (§6).
+**Decisioni aperte di Tid: nessuna** (§7.4 deciso il 2026-10-16). Domande aperte al team DB: nessuna (D-1 risposta dal giro 1).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-16. **A chi:** il team BE/FE; la §6 al
 > team DB.
 > **Origine:** proposta di Tid (2026-10-15) di dare agli utenti degli smoke e dello sviluppo una
 > nomenclatura standard, sul modello dei ruoli di sistema
 > ([brief-db-ruoli-di-sistema](brief-db-ruoli-di-sistema.md) §1). Il modello è stato chiuso con
-> il team DB in `brief-db-processi-accensione-per-ambiente` §4-ter (R-2, R-4), decisioni di Tid del
+> il team DB in [brief-db-processi-accensione-per-ambiente](brief-db-processi-accensione-per-ambiente.md) §4-ter (R-2, R-4), decisioni di Tid del
 > 2026-10-16.
-> **Stato:** ⏸️ in attesa del giro DB.
+> **Stato:** 📝 elenco per il giro 2 consegnato e deciso (§7); in attesa del giro 2 DB.
 
 ## 1. La regola
 
@@ -56,7 +59,7 @@ scartata (Tid, 2026-10-15):
 
 ## 2. Il modello (deciso, lato DB)
 
-Fatti presi dalle risposte del team DB (`brief-db-processi-accensione-per-ambiente` §4-ter, 2026-10-16).
+Fatti presi dalle risposte del team DB ([brief-db-processi-accensione-per-ambiente](brief-db-processi-accensione-per-ambiente.md) §4-ter, 2026-10-16).
 
 | Pezzo | Com'è |
 | --- | --- |
@@ -101,7 +104,7 @@ Fatti presi dalle risposte del team DB (`brief-db-processi-accensione-per-ambien
 | `dev.emittente` | OPERATORE, un solo emittente in whitelist | RLS: 404 sul dettaglio di un altro emittente |
 | `dev.portale1` / `dev.portale2` | CLIENTE_PORTALE su due clienti di prova diversi | gli smoke portale e il controllo che un utente non veda i dati dell'altro: ne servono due |
 | `dev.fornitore` | FORNITORE_PORTALE | smoke del portale fornitori |
-| `dev.shop` | cliente B2C dello shop | il giro dello shop |
+| ~~`dev.shop`~~ | cliente B2C dello shop | il giro dello shop — **rinviato** (§7.4 D-B) |
 | `dev.multiveste` | una credenziale con veste OPERATORE e CLIENTE_PORTALE | token multi-veste, invito su un'altra veste |
 
 Secondo fattore: obbligatorio per `dev.smoke` (SUPER_ADMIN). Per gli altri profili lo si decide
@@ -123,9 +126,90 @@ secondo passo.
 
 ## 6. Domande al team DB
 
-* **D-1 — I command headless del backend sono «spegnibili»?** Il brief DB parla di accensione dei
-  processi per ambiente e di «job spegnibili». Se il perimetro comprende anche i command lanciati da
-  cron o systemd (`send_pending_emails`, `run_fatturazione_batch`, `smoke_notturno`, … quelli che
-  passano da `registered_job`) e non solo i job pgAgent, è lavoro BE (leggere l'ambiente in
-  `registered_job` o nel singolo command) e va scritto nel brief DB come ricaduta sul BE, con quali
-  command e quale comportamento in ciascun ambiente.
+* ✅ **D-1 — I command headless del backend sono «spegnibili»?** Sì, risposta dal giro 1
+  ([brief DB §6.0](brief-db-processi-accensione-per-ambiente.md)): la sveglia systemd chiede al DB
+  con un `ExecCondition` su `maintenance.fn_sveglia_accesa('<processo_codice>')`, «Esegui ora» legge
+  la stessa funzione, `abilita` si ritira da `sveglie.json`. È lavoro BE, ma **non di questo brief**:
+  sta nel §6 del brief DB, con gli altri sei punti del giro 1.
+
+## 7. Che cosa crea il verbo — l'elenco per il giro 2
+
+> Risponde al [brief DB §5-ter](brief-db-processi-accensione-per-ambiente.md): «serve dal BE
+> l'elenco di che cosa crea». Fatti datati 2026-10-16, letti dalla doc `dbzero` e dal backend.
+
+### 7.1 Le regole del verbo
+
+* **Idempotente per chiave.** La chiave di ogni radice è il suo codice di prova (lo username per le
+  credenziali, la sigla o un codice per i soggetti). Una seconda corsa non duplica: trova la radice
+  etichettata e la **riallinea** (vesti accese, profili, whitelist, emittente attivo). Un'omonima
+  **senza** etichetta (per esempio un `dev.smoke` creato a mano) è un errore, non un'adozione: solo
+  il verbo mette l'etichetta.
+* **Il profilo di sola lettura si riallinea a ogni corsa:** LETTURA su **tutte** le righe di
+  `aree_funzionali` presenti in quel momento. Un'area nuova entra alla corsa successiva, senza
+  toccare il verbo.
+* **Le vesti nascono accese.** Niente giro dell'invito: `fn_crea_operatore_v2` le crea spente, il
+  verbo le accende come fa oggi il builder pgTAP. L'invito si prova creando un utente apposta, non
+  con questi (§1: identità stabili, non stati).
+* **Password:** il verbo riceve l'**hash** per username, come `fn_crea_operatore_v2`
+  (`p_password_hash`); l'hash Django lo calcola il command. Hash NULL = la password resta quella
+  che c'è (una seconda corsa non cambia le password, se non lo si chiede).
+* **Il secondo fattore lo fa il BE, dopo il verbo.** Il DB non verifica codici: riceve il segreto
+  cifrato (`fn_totp_registra_device`) e il passo di un codice già verificato
+  (`fn_totp_conferma_device`). Il command passa da `secondo_fattore_service`, come una persona dalla
+  pagina Sicurezza. Il verbo non tocca il secondo fattore.
+* **Restituisce** una riga per radice: tipo (credenziale / soggetto), chiave, id, `creata` o
+  `riallineata`, e per le credenziali chi deve avere il secondo fattore. Il command la stampa.
+* **Riusa i builder dove ci sono** (`dbops.fn_pgtap_crea_emittente`, `fn_pgtap_crea_cliente_ba`,
+  `fn_pgtap_cf_libero`, `fn_pgtap_piva_libera`, …), o la loro logica: la scelta è del team DB. Il
+  verbo però non è un builder pgTAP: vive dove vive un verbo, e il suo nome non dice `pgtap`.
+
+### 7.2 I soggetti di prova (radici)
+
+| Chiave | Che cos'è | Dati | Perché |
+| --- | --- | --- | --- |
+| emittente A | soggetto PG + ruolo emittente fiscale, con i registri che nascono da sé | ragione sociale «Emittente di prova A», P.IVA libera, valuta EUR, un magazzino predefinito | l'emittente attivo di `dev.smoke`; la whitelist di `dev.emittente`; i clienti di prova. Sigla: §7.4 D-A |
+| emittente B | come A | «Emittente di prova B» | **il secondo serve**: `dev.emittente` deve ricevere 404 sul dettaglio di un dato di B. Con un emittente solo la prova RLS non ha niente da non vedere |
+| cliente 1 | soggetto PG + cliente + BA su A | «Cliente di prova 1», P.IVA libera, stato attivo | la veste portale di `dev.portale1` e di `dev.multiveste` |
+| cliente 2 | come 1 | «Cliente di prova 2» | la veste portale di `dev.portale2`: il controllo che il portale 1 non veda il 2 |
+| cliente B | soggetto PG + cliente + BA su **B** | «Cliente di prova B» | il dato che `dev.emittente` non deve vedere |
+| fornitore 1 | soggetto PG con ruolo fornitore | «Fornitore di prova 1» | la veste di `dev.fornitore` |
+| le persone | un soggetto PF per credenziale | nome «Dev», cognome = la parte dopo `dev.` (es. «Dev Smoke»), CF libero | «una persona, una credenziale» (D-6) |
+
+### 7.3 Le credenziali (radici)
+
+| Username | Vesti | Profilo e permessi | Emittente | Secondo fattore |
+| --- | --- | --- | --- | --- |
+| `dev.smoke` | OPERATORE | SUPER_ADMIN (`p_is_super_admin`) | nessuna whitelist (admin globale); **emittente attivo** A | sì (obbligatorio) |
+| `dev.lettura` | OPERATORE | profilo `DEV_LETTURA` (AD_HOC, legato all'identità): LETTURA su tutte le aree | whitelist A; attivo A | no |
+| `dev.bloccato` | OPERATORE | profilo `DEV_LETTURA` + `user_override_oggetti` `vendite.contratto` = BLOCCATO | whitelist A; attivo A | no |
+| `dev.emittente` | OPERATORE | profilo `DEV_OPERATIVO` (AD_HOC): TUTTO su tutte le aree | whitelist **solo A** (`fn_change_user_emittenti_scope`); attivo A | no |
+| `dev.portale1` | CLIENTE_PORTALE su cliente 1 | `CLIENTE_PORTALE_STANDARD` (9001, dal ruolo) | — | no |
+| `dev.portale2` | CLIENTE_PORTALE su cliente 2 | come sopra | — | no |
+| `dev.fornitore` | FORNITORE_PORTALE su fornitore 1 | `FORNITORE_PORTALE_STANDARD` (9002) | — | no |
+| `dev.multiveste` | OPERATORE + CLIENTE_PORTALE su cliente 1 | `DEV_LETTURA` sulla veste operatore; 9001 sul portale | whitelist A; attivo A | no |
+
+* I due profili `DEV_*` sono **radici anche loro**? Sono configurazione, non soggetti né
+  credenziali: il team DB dica se li etichetta o se li riconosce dal legame con le sole identità
+  etichettate.
+* Nessun profilo REPARTO o di sola lettura esiste nel seed (fatto del 2026-10-16): per questo il
+  verbo li crea suoi, invece di appoggiarsi a un profilo dell'azienda.
+* `dev.lettura` e `dev.bloccato` hanno il secondo fattore **spento** apposta: è il giro di login
+  senza secondo passo che oggi nessuno smoke prova.
+
+### 7.4 Decisioni di Tid
+
+* ✅ **D-A — L'emittente di prova: nuovo dal verbo, o si adotta `EMITEST`?** **Deciso (Tid, 2026-10-16): due emittenti nuovi dal verbo, `EMITEST` non si adotta.** `EMITEST` (id 44) è nato
+  a mano dalla UI e non ha l'etichetta, come `smoke`. Propongo **la stessa strada di `smoke`**: il
+  verbo crea i suoi due emittenti (sigle per esempio `DEVA` e `DEVB`) ed `EMITEST` resta com'è, non
+  più usato dagli smoke. Motivo di modello, non di comodità: su un'installazione di sviluppo nuova
+  (CI, scratch) `EMITEST` non esiste, quindi il verbo deve saperlo creare da zero comunque; adottarlo
+  su dbdev sarebbe un secondo percorso che vive solo lì. ⚠️ Effetto da sapere: gli smoke che
+  contano su dati già presenti su `EMITEST` (listini, articoli, registri configurati a mano) li
+  troveranno vuoti su A, e il collaudo T-5 lo farà vedere.
+* ✅ **D-B — `dev.shop` adesso o dopo?** **Deciso (Tid, 2026-10-16): dopo, quando lo shop esiste.** L'app shop è uno stub (gli endpoint di registrazione
+  rispondono 501, 2026-10-16). Propongo di **non crearlo ora**: le regole del §7.1 lo accolgono senza
+  cambiare forma quando lo shop esiste (una riga in più nell'elenco del verbo).
+* ✅ **D-C — I clienti dei portale hanno bisogno di un contratto?** **Deciso (Tid, 2026-10-16): cliente + BA, senza contratto.** Non esiste un builder di contratto.
+  Un contratto serve solo se il portale lo mostra già; se no, cliente + BA bastano e il contratto
+  entra quando entra la pagina del portale che lo legge. Propongo **cliente + BA, senza contratto**,
+  salvo che tu sappia di una pagina del portale che li elenca già.

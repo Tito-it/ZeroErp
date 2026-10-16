@@ -24,9 +24,12 @@
    Un processo con `segno_di_vita = SESSIONE` ha SOLO sveglie di forma
    `servizio`, e un `servizio` sempre acceso ha SOLO contratti `SESSIONE`: il
    segno di vita di chi non ha una cadenza non puo' essere il giornale.
-3. test_ogni_command_con_contratto_ha_almeno_una_sveglia_accesa
-   Un contratto senza nessuna sveglia `abilita: true` e' una promessa che
-   nessun host onora: il panorama direbbe `MAI_PARTITO` su ogni installazione.
+3. test_ogni_command_con_contratto_ha_almeno_una_sveglia
+   Un contratto senza nessuna sveglia e' una promessa che nessun host onora:
+   il panorama direbbe `MAI_PARTITO` su ogni installazione. (Fino al
+   2026-10-16 si chiedeva una sveglia `abilita: true`; oggi l'installer
+   accende ogni sveglia, e se il processo lavora lo dice il DB — un processo
+   spento il panorama lo chiama `SPENTO`, non `MAI_PARTITO`.)
 4. test_il_parser_conosce_ogni_oncalendar_del_dichiarato
    Ogni `OnCalendar` in uso e' una forma che il parser sa leggere — se il
    test 1 salta una sveglia perche' non la capisce, e' qui che si vede.
@@ -107,19 +110,16 @@ class ContrattoLivenessVsDeployTests(SimpleTestCase):
                     f"timer non ha una sessione da tenere aperta",
                 )
 
-    # 3. Un contratto che nessuna sveglia accesa onora e' `MAI_PARTITO` ovunque.
-    def test_ogni_command_con_contratto_ha_almeno_una_sveglia_accesa(self) -> None:
+    # 3. Un contratto che nessuna sveglia onora e' `MAI_PARTITO` ovunque.
+    def test_ogni_command_con_contratto_ha_almeno_una_sveglia(self) -> None:
         for codice, contratto in self.contratti.items():
             if contratto["canale"] != CANALE_COMMAND or contratto["tolleranza_minuti"] is None:
                 continue
             with self.subTest(processo=codice):
-                accese = [
-                    s for s in sveglie.sveglie_di_processo(codice) if s.abilita
-                ]
                 self.assertTrue(
-                    accese,
+                    sveglie.sveglie_di_processo(codice),
                     f"{codice} ha un contratto di {contratto['tolleranza_minuti']} "
-                    f"minuti ma nessuna sveglia con abilita: true in sveglie.json",
+                    f"minuti ma nessuna sveglia in sveglie.json",
                 )
 
     # 4. Ogni cadenza in uso e' leggibile: il parser solleva su cio' che non

@@ -402,6 +402,99 @@ class ProcessiRepository:
             "identita": self.roster_processo(codice),
         }
 
+    # Scopo: L'ACCENSIONE di un processo su questa installazione, per chi
+    #        DESCRIVE (il drawer) e per il predicato di «Esegui ora»:
+    #          - `acceso`: lo stato effettivo, da
+    #            `dbops.fn_processo_acceso_dichiarato` — NULL se non decidibile
+    #            (ambiente non dichiarato) o senza sveglia (CODA, ritirato);
+    #          - `spegnibile` e il default per i due ambienti, dal catalogo;
+    #          - `ambiente`: `script.fn_ambiente_dichiarato()`, NULL se non
+    #            dichiarato;
+    #          - `scelta_a_mano`: la riga di `dbops.processi_accensione` (acceso,
+    #            motivo, chi e quando) o None se vale il default.
+    #        `None` se il codice non esiste.
+    # ⛔ La regola NON si ricalcola qui: `acceso` e' la risposta del DB. Il
+    #    default e la scelta viaggiano per dire DA DOVE viene, non per decidere.
+    # ⚠️ Lettori «che descrivono»: non sollevano su un'installazione non
+    #    dichiarata (la pagina dei processi deve aprirsi proprio allora). Chi
+    #    DECIDE e' `maintenance.fn_sveglia_accesa` (la sveglia systemd); il
+    #    predicato di «Esegui ora» tratta il NULL come motivo, non come acceso.
+    def accensione_processo(self, codice: str) -> dict[str, Any] | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT dbops.fn_processo_acceso_dichiarato(p.codice) AS acceso,
+                       p.spegnibile,
+                       p.acceso_in_sviluppo,
+                       p.acceso_in_produzione,
+                       script.fn_ambiente_dichiarato() AS ambiente,
+                       a.acceso       AS scelta_acceso,
+                       a.motivo       AS scelta_motivo,
+                       a.user_update  AS scelta_utente,
+                       a.data_update  AS scelta_data
+                  FROM dbops.processi p
+                  LEFT JOIN dbops.processi_accensione a ON a.processo_id = p.id
+                 WHERE p.codice = %s
+                """,
+                [codice],
+            )
+            riga = row_to_dict(cursor)
+        if riga is None:
+            return None
+        scelta = None
+        if riga["scelta_acceso"] is not None:
+            scelta = {
+                "acceso": riga["scelta_acceso"],
+                "motivo": riga["scelta_motivo"],
+                "utente": riga["scelta_utente"],
+                "data": riga["scelta_data"],
+            }
+        return {
+            "acceso": riga["acceso"],
+            "spegnibile": riga["spegnibile"],
+            "acceso_in_sviluppo": riga["acceso_in_sviluppo"],
+            "acceso_in_produzione": riga["acceso_in_produzione"],
+            "ambiente": riga["ambiente"],
+            "scelta_a_mano": scelta,
+        }
+
+    # Scopo: lo STATO EFFETTIVO del processo su questa installazione, e basta
+    #        — la domanda di chi DECIDE se lanciarlo a mano (il rifiuto di
+    #        «Esegui ora» e il ricontrollo dell'handler). True / False, o None se
+    #        non decidibile (ambiente non dichiarato) o senza sveglia.
+    #        `accensione_processo` resta la lettura di chi DESCRIVE (il drawer).
+    # ⛔ Un processo che non c'e' NON e' None: sarebbe letto «ambiente non
+    #    dichiarato» e manderebbe a cercare nel posto sbagliato. Solleva
+    #    `LookupError`, e il chiamante lo traduce nel 404 di dominio.
+    def acceso_processo(self, codice: str) -> bool | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT dbops.fn_processo_acceso_dichiarato(p.codice)"
+                "  FROM dbops.processi p WHERE p.codice = %s",
+                [codice],
+            )
+            row = cursor.fetchone()
+        if row is None:
+            raise LookupError(f"processo {codice!r} non e' in dbops.processi")
+        return row[0]
+
+    # Scopo: Il verbo della scelta a mano: accende (`True`), spegne (`False`)
+    #        o toglie la scelta (`None`: torna il default per ambiente).
+    #        Ritorna lo stato effettivo dopo il gesto (NULL se non decidibile).
+    # ⛔ I limiti (processo senza sveglia, non spegnibile, motivo obbligatorio)
+    #    li dice il guard della tabella: qui non si ripetono, si traducono.
+    def imposta_accensione(
+        self, codice: str, *, acceso: bool | None, motivo: str | None,
+    ) -> bool | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT dbops.fn_imposta_accensione_processo(%s, %s, %s)",
+                [codice, acceso, motivo],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return row[0]
+
     # Scopo: Le ultime corse di un processo — la sua storia recente, per il tab
     #        «Ultimi run» del drawer.
     def list_run_processo(

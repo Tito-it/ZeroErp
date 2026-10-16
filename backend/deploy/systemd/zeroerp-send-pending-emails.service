@@ -37,4 +37,9 @@ User=__APP_USER__
 Group=www-data
 WorkingDirectory=__APP_DIR__
 EnvironmentFile=__APP_DIR__/.env.systemd
+# ⭐ Il processo e' ACCESO su questa installazione? Lo chiede `e_dovuto` al DB
+# (`maintenance.fn_sveglia_accesa`, dal 2026-10-16): spento esce 1 e systemd
+# salta senza errore; ambiente non dichiarato esce 255 e l'unit fallisce.
+# Su ogni sveglia, anche su chi oggi non si spegne mai: e' il catalogo a dirlo.
+ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto zeroerp-send-pending-emails
 ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__
