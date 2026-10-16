@@ -106,7 +106,12 @@ La causa si decide **in quest'ordine**:
 
 1. la corsa è appesa (morta senza chiudersi) → `AMBIENTE`, qualunque lavoro sia;
 2. l'errore è passato dal database con un codice di guasto dell'ambiente
-   (connessione, spazio o memoria, arresto, errore di sistema) → `AMBIENTE`;
+   (connessione, spazio o memoria, arresto, errore di sistema, permesso mancante,
+   tabella occupata) → `AMBIENTE`. La lista sta in
+   [`script.fn_sqlstate_di_ambiente`](/dbzero/script/manual/fn_sqlstate_di_ambiente).
+   ⭐ *(rev 2026-10-16)* Anche le automazioni rilanciano questi errori così come sono,
+   invece di coprirli col loro codice: un permesso mancante in un'automazione arriva
+   al sistemista, non allo sviluppo;
 3. il codice d'errore dichiara la sua causa
    ([`config.codici_errore`](/dbzero/config/manual/codici_errore)) → quella;
 4. altrimenti decide il processo, che dichiara la natura dei suoi fallimenti

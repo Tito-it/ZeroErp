@@ -217,6 +217,7 @@
 - [fn_snapshot_indirizzo_soggetto](manual/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
 - [fn_sorgente_chiave_id](manual/fn_sorgente_chiave_id.md) — (scritta il 05-10-2026)
 - [fn_sorgente_chiave_uuid](manual/fn_sorgente_chiave_uuid.md) — (scritta il 05-10-2026)
+- [fn_sqlstate_di_ambiente](manual/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
 - [fn_stato_veste](manual/fn_stato_veste.md)
 - [fn_subentro_cliente](manual/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_totp_conferma_device](manual/fn_totp_conferma_device.md) — (scritta il 29-09-2026)

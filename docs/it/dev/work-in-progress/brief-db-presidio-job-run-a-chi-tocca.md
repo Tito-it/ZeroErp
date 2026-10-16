@@ -2,8 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-16
 
-**Riparte: Tid**: fa confermare al BE il censimento (§9) e la richiesta del §4.2.
-✅ Il giro DB del §8 è applicato da Tid il 2026-10-16, pgTAP senza regressioni.
+**Riparte: team BE** (tramite Tid): §4.2 e D9 (§10.3). Lato DB resta solo il codice di
+D9, che aspetta il nome dal BE. ✅ Giro 1 (§8) e giro 2 (§11) applicati, pgTAP senza
+regressioni.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -12,10 +13,18 @@
 | 3 | Tid | ✅ provision-post e migrate applicati, pgTAP senza regressioni (2026-10-16) | §8.3, §8.4 | — |
 | 4 | team BE | `registered_job`: SQLSTATE al nono argomento e codice `E_` dei P0001 in `error_code` | §4.2 | — |
 | 5 | team DB | ✅ censimento D7 scritto (2026-10-16); Tid lo fa confermare al BE | §9 | — |
-| 5b | Tid | decide D8 (gli involucri `WHEN others`) e D9 (fallimenti isolati) | §9.4 | 5 |
+| 5b | Tid | ✅ D8 in questo brief, D9 proposta accettata (2026-10-16) | §9.4 | — |
+| 7 | Tid | ✅ via allo sviluppo del giro 2 (2026-10-16) | §10 | — |
+| 8 | team DB | ✅ giro 2 D8 scritto e provato (`20261016-44…53`); codice di D9 in attesa del nome dal BE | §11 | — |
+| 8b | Tid | ✅ migrate del giro 2 applicato, pgTAP senza regressioni (2026-10-16) | §11 | — |
+| 10 | team DB | codice di D9 nel registro (+ messaggio), col nome concordato col BE | §10.3 | 9 |
+| 11 | Tid | ✅ collaudo lato DB (2026-10-17); resta il digest stampato e le fasi dopo BE; poi archiviazione | §5 | 4, 9, 10 |
+| 9 | team BE | D9: una corsa con elementi falliti senza registro chiude rossa | §10.3 | 8 |
 | 6 | Tid | collaudo: digest `--secco` con un rosso per causa | §5 | 3, 4 |
 
-Decisioni aperte di Tid: **D8, D9** (§9.4), nessuna urgente. Lavoro fatto: tutto
+Decisioni aperte di Tid: nessuna. Lavoro da committare: il giro 2 (§11) e il §10-§11
+di questo brief.
+Debito noto, non in questo brief: il `%TYPE` mancato del giro 1 (§10.1-bis). Lavoro fatto: tutto
 committato (`2793096a6`, 2026-10-16).
 
 ---
@@ -295,8 +304,33 @@ vanno in `90_end`. Stessa forma di `chk_processi_accensione`
 ## 5. Collaudo
 
 Digest `--secco` con un rosso per causa: una corsa lasciata aperta, un rosso con
-SQLSTATE `53100`, un rosso applicativo di `smoke_notturno`. Ognuno deve finire nel
-gruppo del suo destinatario e con il suo testo.
+SQLSTATE `53100`, un rosso applicativo, un rosso con un codice che dichiara
+`CONFIGURAZIONE`. Ognuno deve finire nel gruppo del suo destinatario e col suo testo.
+
+**Script (2026-10-17)**, in `allegati/`:
+1. `collaudo-presidio-job-run-prepara.sql`: mette le quattro corse
+   (`COLLAUDO-CAUSA-*`), un processo `COLLAUDO-CAUSA` di canale CODA (non tocca il
+   pannello dei processi) e un codice `E_COLLAUDO_CAUSA_CONFIGURAZIONE`. Controlla
+   nel database causa e destinatario; se uno non torna si ferma senza lasciare
+   niente. Provato sullo scratch con `ROLLBACK`: quattro su quattro.
+2. `source backend/.venv/bin/activate` e `python backend/manage.py digest_presidi --cadenza giornaliera --secco` (dalla radice): i gruppi attesi sono sistemista
+   (APPESA, DISCO), sviluppo (PROGRAMMA), amministratore (CONFIGURAZIONE).
+3. `collaudo-presidio-job-run-pulisci.sql`: toglie tutto. ⚠️ Va lanciato lo stesso
+   giorno: il digest delle 7 vedrebbe le corse di prova.
+
+✅ **Esito su dbdev, lato DB (Tid, 2026-10-17).** Con le quattro corse di collaudo,
+`dbops.fn_conta_presidio_per_variante('maintenance.vw_job_run_da_guardare')` (la
+funzione da cui il digest prende i conteggi) dà `AMBIENTE` 2 → SISTEMISTA,
+`PROGRAMMA` 2 → SVILUPPO (la corsa di collaudo più quella vera di
+`smoke_notturno:completo`, `SMOKE_REGRESSIONI` del 14 e 15 ottobre: un caso reale
+instradato giusto), `CONFIGURAZIONE` 1 → AMMINISTRATORE. Ognuna col suo testo. Il
+digest stampato dal backend (`--secco`) resta da vedere: è del BE.
+⚠️ Prima prova persa: il paginatore di `psql` teneva aperta la transazione, e
+uscendone si annullava prima del `COMMIT`. Ora gli script hanno `\pset pager off`.
+
+**Fasi:** ora quello che è applicato (i quattro casi qui sopra). Dopo il §4.2 del BE,
+un errore del database dentro un command (va al sistemista) e un `P0001` col suo
+codice `E_`. Dopo D9, un'azienda non accodata che chiude rossa la corsa.
 
 ## 6. Decisioni aperte di Tid
 
@@ -523,4 +557,161 @@ per un'impostazione dell'app. Il pgTAP la prova già con un codice fabbricato.
   `meta` della fatturazione e dei badge) deve avere un presidio a catalogo. Quello
   che non ce l'ha è il buco da chiudere. Il `meta` della fatturazione e dei badge
   oggi non ha presidio: è il primo candidato.
+
+* ✅ **Decisioni di Tid (2026-10-16):** D8 si fa **in questo brief** (giro 2, §10);
+  D9: proposta accettata, cioè la verifica sulla struttura, il cui esito è al §10.3.
+
+## 10. Giro 2 — D8 e D9 (ricognizione del 2026-10-16, niente scritto)
+
+### 10.1 D8: i nove gestori `WHEN others`
+
+Letti dal doc auto-generato: `fn_run_automations_attivo` (due, `E_ATTIVO_REQUIRE` ed
+`E_ATTIVO_BLOCK`), `_audit_update` (`E_AUDIT_UPDATE`), `_tx_id` (`E_TX_ID`), `_storico`
+(`E_STORICO_UD`), `fn_ensure_storico_table` (`E_STORICO_PROVISION`), `_lock_columns`
+(`E_LOCK_COLUMNS`, ramo DDL), `_date_validita` (`E_DATE_VALIDITA`) e `_delete_block`
+(`E_DELETE_BLOCK`). Tutti hanno la stessa forma: `EXCEPTION WHEN others THEN PERFORM
+script.fn_log_and_raise_error(…, 'E_…', jsonb_build_object(…, 'error', SQLERRM), …)`.
+Lo SQLSTATE originale si perde e il giornale riceve `P0001`.
+
+**La forma proposta:** in ogni gestore, prima dell'involucro,
+`IF <lo SQLSTATE è dell'ambiente> THEN RAISE; END IF;`. `RAISE;` senza argomenti
+rilancia l'eccezione originale, col suo SQLSTATE: `fn_run_and_log` la scrive in
+`sqlstate`, e la vista la classifica `AMBIENTE`. Il resto, cioè i difetti di
+struttura, continua a uscire col codice dell'involucro (`PROGRAMMA`).
+
+⭐ **Regola del 2: «quali SQLSTATE sono dell'ambiente» diventa una funzione sola.**
+Oggi la lista `08`/`53`/`57`/`58` sta nel CASE della vista (`-41`). Con i nove
+gestori sarebbero dieci copie. Si estrae un predicato (nome da decidere, es.
+`dbops.fn_sqlstate_di_ambiente(text) RETURNS boolean`, IMMUTABLE). Lo chiamano la
+vista e i nove gestori, e la vista si riscrive per usarlo nello stesso giro.
+
+**La lista, sul modello:** quello che rimedia chi gestisce il server o il database.
+* `08` connessione, `53` risorse, `57` intervento dell'operatore, `58` sistema: già oggi;
+* **`42501` (privilegio mancante)**: un diritto al ruolo è provisioning, come
+  `E_STATISTICHE_MANCANTI`. Le altre `42xxx` (sintassi, oggetto inesistente)
+  restano `PROGRAMMA`;
+* **`55P03` (lock non ottenuto entro `lock_timeout`)**: contesa con un'altra
+  sessione, è un fatto d'esercizio. Vedi D10.
+
+⚠️ Un `42501` in un job DB **senza** involucro oggi esce `PROGRAMMA`; con la lista
+nuova esce `AMBIENTE`. È lo stesso difetto visto dal lato diretto, e si chiude
+insieme.
+
+⚠️ **Il registro degli errori.** L'involucro, oltre a sollevare, scrive in
+`dbops.error_log` (via `fn_log_and_raise_error`). Col `RAISE;` diretto quella riga
+non si scrive più per i casi d'ambiente. Il giornale dei job resta (codice,
+SQLSTATE, messaggio), ma il contesto (tabella, trigger) sta solo nel messaggio
+originale. Vedi D11.
+
+Dove si prova: pgTAP che provoca un `42501` dentro un'automazione. Si fa
+**costruendo** un ruolo senza diritto, se lo scratch lo consente; altrimenti un
+presidio sul testo dei nove corpi, dichiarato tale.
+
+### 10.1-bis ⛔ Il `%TYPE` mancato nel giro 1: debito noto, non si riscrive (Tid, 2026-10-16)
+
+Regola: `%TYPE` nella **firma**, nel `RETURNS TABLE` e nel `DECLARE`, e anche nelle
+firme di `COMMENT ON FUNCTION`, `DROP FUNCTION`, `GRANT`/`REVOKE EXECUTE`. Il tipo
+nudo si mette solo dove non c'è una colonna di cui il valore è il riflesso, e
+allora si scrive perché.
+
+Nel giro 1, già applicato e committato:
+* `p_sqlstate text` in `script.fn_job_run_end` (`-40`) e in
+  `maintenance.fn_job_run_log_failure` (`-39`), con le firme di `COMMENT`, `DROP`,
+  `REVOKE`/`GRANT`: andava `maintenance.job_run_log.sqlstate%TYPE`;
+* `v_vincolo text` in `fn_run_and_log` (`-38`): qui il tipo nudo è giusto, perché
+  `CONSTRAINT_NAME` è un dato diagnostico senza colonna di cui sia riflesso. Il
+  valore finisce in `error_code` solo attraverso `v_codice`, che è ancorato. Manca
+  però il commento che lo dice.
+
+**Decisione di Tid (2026-10-16): le funzioni già scritte non si riscrivono per il
+`%TYPE`.** Si sistemeranno in futuro, insieme ad altre modifiche a quelle
+funzioni. Il giro 2 applica la regola solo al codice **nuovo**: il predicato del
+§10.1 nasce `p_sqlstate maintenance.job_run_log.sqlstate%TYPE`, e ogni variabile o
+parametro nuovo nei corpi toccati per D8 è ancorato.
+
+### 10.2 Costo stimato
+
+Un changeSet per il predicato, otto per le funzioni (una per file, corpo dal doc
+auto-generato), uno per la vista, i pgTAP. Nessuna firma cambia. Le automazioni
+girano in `ci_apply`: in CI un fallimento d'ambiente lì mostrerà il messaggio
+originale invece di quello dell'involucro.
+
+### 10.3 D9: l'esito della verifica sulla struttura
+
+| Dove un command isola i fallimenti per elemento | Registro con presidio? |
+| --- | --- |
+| email (`send_pending_emails`) | ✅ `config.email_log` → `dbops.vw_email_da_guardare` |
+| item della coda lavori (`draina_coda_lavori`) | ✅ `dbops.coda_lavori` → `dbops.vw_coda_lavori_da_guardare` |
+| emittenti della coda stampa (`draina_coda_stampa`) | ✅ `vendite.fatture_stampa_coda` → `dbops.vw_fatture_stampa_coda_da_guardare` |
+| aziende non accodate da `run_fatturazione_batch` (`meta.falliti`) | ⛔ **nessun registro**: il lavoro non è mai entrato in coda |
+| badge falliti di `send_pending_emails` (`meta.badge_falliti`) | ⛔ **nessun registro** |
+
+**I due buchi hanno la stessa forma:** l'elemento fallito non lascia una riga da
+nessuna parte, salvo il `meta` della corsa. **Proposta:** quando un elemento senza
+registro fallisce, la corsa chiude **rossa** dopo aver finito gli altri, con un
+codice registrato. Il lavoro sugli altri elementi resta fatto. La corsa rossa la
+vede questo presidio, e la causa la decide il codice o il processo come per ogni
+altro rosso.
+* Lato DB: il codice nel registro (nome da decidere, es.
+  `E_JOB_ELEMENTI_NON_COMPLETATI`, classe TECNICO, `causa_fallimento` NULL perché
+  decide il processo) e il suo messaggio.
+* Lato BE: i due command sollevano quel codice in fondo, quando `falliti` o
+  `badge_falliti` non è vuoto.
+
+⛔ Scartato: un presidio che legge il `meta` delle corse. Il `meta` non ha una
+forma comune (`falliti`, `badge_falliti`, `emittenti_falliti`, `fallite`), e un
+presidio su chiavi libere si spegne in silenzio al primo nome nuovo.
+
+### 10.4 Decisioni per il giro 2
+
+* ✅ **D10 — `55P03` (lock non ottenuto) è `AMBIENTE`: sì, proposta accettata da Tid (2026-10-16).** Sì se lo si legge come
+  contesa d'esercizio (un'altra sessione tiene la tabella); no se lo si legge come
+  difetto di ordine dei lavori. **Proposta: sì.** Il deadlock (`40P01`) resta
+  fuori: lì due lavori si contendono in un ordine sbagliato, ed è programma.
+* ✅ **D11 — (a), proposta accettata da Tid (2026-10-16).** Per i casi d'ambiente l'involucro deve ancora scrivere in
+  `dbops.error_log` prima di rilanciare?** (a) Sì: `fn_log_error_only` col contesto,
+  poi `RAISE;`. (b) No: basta il giornale. **Proposta: (a)**. Il contesto (quale
+  tabella, quale trigger) serve a chi rimedia, e il messaggio originale non sempre
+  lo dice.
+
+## 11. Consegna DB del giro 2 — D8 (2026-10-16) — ✅ applicata, pgTAP senza regressioni
+
+### 11.1 Che cosa è stato scritto
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20_code/script/20261016-44` | `script.fn_sqlstate_di_ambiente(p_sqlstate maintenance.job_run_log.sqlstate%TYPE)`: `08`, `53`, `57`, `58`, `42501`, `55P03` (D10). `LANGUAGE sql`, IMMUTABLE, NULL → false |
+| `20_code/dbops/20261016-45…-52` | i nove gestori `WHEN others` in otto funzioni (`fn_run_automations_attivo` ×2, `_audit_update`, `_tx_id`, `_storico`, `fn_ensure_storico_table`, `_lock_columns`, `_date_validita`, `_delete_block`). Per un guasto d'ambiente: `fn_log_error_only` con lo stesso codice e contesto (D11), poi `RAISE;` dell'originale. Altrimenti l'involucro di prima. Il contesto si costruisce una volta in `v_ctx_errore dbops.error_log.context%TYPE` |
+| `20_code/maintenance/20261016-53` | la vista: il ramo `AMBIENTE` della causa chiama il predicato (regola del 2). Effetto anche sui job senza involucro: un `42501` diretto ora è `AMBIENTE` |
+
+**pgTAP:** nuovo `dbops/test-automazioni-guasto-ambiente-rilanciato-v1.sql` (6). I test
+1-3 sono la tabella di verità del predicato; i 4-6 sono presidi sul testo,
+dichiarati: provocare un `42501` o un `55P03` dentro un'automazione non è
+costruibile dall'owner in una transazione di prova. `test-vw-job-run-da-guardare-causa-v1`
+cresce a 15 (caso `42501`).
+
+**Doc `manual/`:** `script/fn_sqlstate_di_ambiente` (nuova), `vw_job_run_da_guardare`.
+
+⚠️ **Il rilancio non si estrae**: `RAISE;` vive solo dentro il gestore. La decisione
+sì, ed è il predicato. Le nove copie del blocco le tiene allineate il test 5-6.
+
+⚠️ **Il codice di D9 non è scritto.** Il nome del codice registrato
+(es. `E_JOB_ELEMENTI_NON_COMPLETATI`) va concordato col BE, che lo solleva. Un
+codice a registro senza nessuno che lo sollevi sarebbe un riferimento morto.
+
+### 11.2 Prova (sessione DB, 2026-10-16, scratch `zeroerp_ruoli`, transazione annullata)
+
+* SQL estratto `-44…-53`: passa. Scratch verificato intatto dopo.
+* `test-automazioni-guasto-ambiente-rilanciato-v1`: **6/6**. Mutazione (predicato
+  presente, gestori vecchi): il test 4 è rosso e nomina tutte le otto funzioni.
+* `test-vw-job-run-da-guardare-causa-v1`: **15/15**.
+* Regressione sui pgTAP che chiamano le otto funzioni (`test-lock-columns-convergenza`
+  22, `test-storico-automazione-colonna-fk-v1` 7, `test-trgfn-guard-date-validita-v1` 12,
+  `test-storico-scope-congelato-v1` 23) e sui presidi trasversali
+  (`test-catalogo-messaggi-errore-completo` 7, `test-riferimenti-morti-v1` 9, che
+  compila ogni plpgsql, `test-vw-codici-errore-motivo-nominato` 8): tutti verdi.
+* Guardrail statici: verdi.
+
+**Apply:** solo migrate, nessun provision-post (nessuna funzione del registro dei
+superuser).
 

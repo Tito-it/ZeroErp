@@ -11,9 +11,10 @@
 --   quindi a chi tocca
 -- ChangeSet: 00_schema/dbops/20261016-34 · 20261016-35 · 20261016-36 · 20261016-37
 --   · 20_code/maintenance/20261016-41 · 80_data/20261016-42 · 90_end/20261016-43
+--   · 20_code/script/20261016-44 · 20_code/maintenance/20261016-53
 -- Brief: brief-db-presidio-job-run-a-chi-tocca
 --
--- Elenco test (plan 14):
+-- Elenco test (plan 15):
 --  1) ⭐ le cause del presidio sono ESATTAMENTE il vocabolario dbops.cause_fallimento
 --  2) il catalogo dei presidi dichiara la colonna della causa
 --  3) le tre colonne nuove stanno IN CODA, nell'ordine
@@ -29,6 +30,8 @@
 --     chiusa», e non diventa AMBIENTE
 -- 13) nessuna riga della vista senza causa
 -- 14) ogni causa che la vista produce ha chi la spegne in dbops.presidi_cause
+-- 15) ⭐ (rev 2026-10-16, D8) SQLSTATE 42501 (privilegio mancante) → AMBIENTE:
+--     la lista sta in script.fn_sqlstate_di_ambiente (20261016-44, -53)
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ I CASI SI COSTRUISCONO, non si pescano dal giornale (regola zero,
@@ -49,7 +52,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(15);
 
 -- ============================================================
 -- Fixture
@@ -77,6 +80,12 @@ BEGIN
         (jobname, stepname, processo_codice, origine, started_at, ended_at, ok, message, error_code, sqlstate)
     VALUES ('PGTAP-CAUSA-DISCO', 's', c_prog, 'PGAGENT',
             now() - interval '10 minutes', now(), false, 'disco pieno', '53100', '53100');
+
+    -- 15) privilegio mancante (rev 2026-10-16, D8)
+    INSERT INTO maintenance.job_run_log
+        (jobname, stepname, processo_codice, origine, started_at, ended_at, ok, message, error_code, sqlstate)
+    VALUES ('PGTAP-CAUSA-PRIVILEGIO', 's', c_prog, 'PGAGENT',
+            now() - interval '10 minutes', now(), false, 'permesso negato', '42501', '42501');
 
     -- 6) connessione caduta, con un codice che direbbe CONFIGURAZIONE
     INSERT INTO maintenance.job_run_log
@@ -246,6 +255,16 @@ SELECT is(
                            AND pc.causa = v.causa)),
     0::bigint,
     '14. ogni causa che la vista produce ha chi la spegne in dbops.presidi_cause'
+);
+
+-- ============================================================
+-- 15. ⭐ Il privilegio mancante e' dell'ambiente (rev 2026-10-16, D8)
+-- ============================================================
+SELECT is(
+    (SELECT causa FROM maintenance.vw_job_run_da_guardare
+      WHERE jobname = 'PGTAP-CAUSA-PRIVILEGIO'),
+    'AMBIENTE',
+    '15. SQLSTATE 42501 (privilegio mancante): AMBIENTE, anche se il processo dice PROGRAMMA'
 );
 
 SELECT * FROM finish();

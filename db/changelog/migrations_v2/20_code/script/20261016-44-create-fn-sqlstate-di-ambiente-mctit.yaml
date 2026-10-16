@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ «QUESTO SQLSTATE E' UN GUASTO DELL'AMBIENTE?» — UNA FUNZIONE SOLA.
+#   script.fn_sqlstate_di_ambiente(p_sqlstate)
+#   Brief: brief-db-presidio-job-run-a-chi-tocca (§10.1, D8, D10)
+#
+# -- PERCHE' UNA FUNZIONE (regola del 2) ------------------------------
+#   La domanda la fanno in dieci posti: il CASE della causa di
+#   maintenance.vw_job_run_da_guardare (20261016-41, poi -53) e i nove gestori
+#   `WHEN others` del framework automazioni (20261016-45…-52), che da oggi
+#   rilanciano l'errore originale quando e' dell'ambiente. Dieci copie della
+#   lista prima o poi rispondono in modi diversi.
+#
+# -- LA LISTA, SUL MODELLO --------------------------------------------
+#   Cio' che rimedia chi gestisce il server o il database:
+#   * classe 08 (connessione), 53 (risorse: disco, memoria), 57 (intervento
+#     dell'operatore: arresto, cancellazione), 58 (errore di sistema);
+#   * 42501 (privilegio mancante): un diritto al ruolo e' provisioning. Le altre
+#     42xxx (sintassi, oggetto inesistente) restano programma;
+#   * 55P03 (lock non ottenuto entro lock_timeout): contesa d'esercizio con
+#     un'altra sessione (D10, Tid 2026-10-16). Il deadlock 40P01 resta fuori:
+#     due lavori che si contendono in un ordine sbagliato sono programma.
+#   NULL -> false: senza SQLSTATE non si afferma un guasto dell'ambiente.
+#
+# ⚠️ LANGUAGE sql con corpo $$...$$, non BEGIN ATOMIC: non legge tabelle, quindi
+#   non c'e' dipendenza da far entrare in pg_depend, e un BEGIN ATOMIC seguito dal
+#   COMMENT nello stesso change rompe nel driver JDBC.
+# ⚠️ Firma ancorata: il valore e' il riflesso di maintenance.job_run_log.sqlstate.
+#   RETURNS boolean nudo: una risposta si'/no non e' il riflesso di nessuna colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261016-44-create-fn-sqlstate-di-ambiente-mctit.yaml
+
+  - changeSet:
+      id: 20261016-44-create-fn-sqlstate-di-ambiente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_sqlstate_di_ambiente: la lista unica degli SQLSTATE che sono un guasto
+        dell'ambiente (08, 53, 57, 58, 42501, 55P03). La usano la vista dei job da guardare e
+        i gestori del framework automazioni. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D10.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: maintenance
+            tableName: job_run_log
+            columnName: sqlstate
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_sqlstate_di_ambiente(
+                  p_sqlstate maintenance.job_run_log.sqlstate%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               IMMUTABLE PARALLEL SAFE
+              AS $function$
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire se un SQLSTATE e' un guasto dell'AMBIENTE, cioe' una
+                  --   cosa che rimedia chi gestisce il server o il database, e
+                  --   non lo sviluppo. NULL -> false.
+                  -- =========================================================
+                  SELECT COALESCE(
+                             left(p_sqlstate, 2) IN ('08', '53', '57', '58')
+                             OR p_sqlstate IN ('42501', '55P03'),
+                             false);
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_sqlstate_di_ambiente(maintenance.job_run_log.sqlstate%TYPE) IS
+                  'Se uno SQLSTATE e'' un guasto dell''AMBIENTE, cioe'' una cosa che rimedia chi gestisce il server o il database: classe 08 (connessione), 53 (risorse), 57 (intervento dell''operatore), 58 (sistema), piu'' 42501 (privilegio mancante: un diritto al ruolo e'' provisioning) e 55P03 (lock non ottenuto: contesa d''esercizio, D10). Il deadlock 40P01 e le altre 42xxx restano fuori: sono programma. NULL -> false. ⭐ Sede UNICA della lista (regola del 2): la usano la causa di maintenance.vw_job_run_da_guardare e i gestori WHEN others del framework automazioni, che rilanciano l''errore originale quando questa funzione dice si''. Brief: brief-db-presidio-job-run-a-chi-tocca (D8, D10).';
+
+              GRANT EXECUTE ON FUNCTION script.fn_sqlstate_di_ambiente(maintenance.job_run_log.sqlstate%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_sqlstate_di_ambiente(maintenance.job_run_log.sqlstate%TYPE);
