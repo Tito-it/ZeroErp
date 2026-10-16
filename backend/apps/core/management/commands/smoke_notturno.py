@@ -27,19 +27,28 @@
 #
 #        ⚠️ Il giro deve chiudere entro l'ora: una corsa aperta da piu' di un'ora
 #        esce come «presa e mai chiusa». Il timeout e' sotto quel limite.
+#
+#        ⭐ L'OUTPUT DEI ROSSI sta in `backend/var/smoke-notturno/<data-ora>`, non
+#        nel `/tmp` di default dello script: `/tmp` e' un tmpfs svuotato a ogni
+#        avvio, e il 2026-10-16 un riavvio ha cancellato le cartelle delle corse
+#        rosse mentre il digest le mostrava ancora, col `log_dir` che puntava al
+#        vuoto. Si conservano quanto la vista mostra la corsa (`CONSERVA_GIORNI`).
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
 import subprocess
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from django.conf import settings
 from django.core.management.base import CommandError
+from django.utils import timezone
 
 from apps.core.management.comando_aziendale import ComandoAziendale
 from apps.core.services.job_run import ORIGINE_CRON, registered_job
@@ -56,6 +65,19 @@ SCRIPT = Path(settings.BASE_DIR).parent / "scripts" / "smoke-baseline.sh"
 CORSIA = "completo"
 BASH = shutil.which("bash") or "/bin/bash"   # percorso assoluto, non «bash» dal PATH
 JOB_NAME = f"{PROCESSO_SMOKE_NOTTURNO}:{CORSIA}"
+# Dove restano gli output dei rossi: `backend/var/` e' fuori da git
+# (backend/.gitignore) e, a differenza di `/tmp`, sopravvive al riavvio.
+LOG_ROOT = Path(settings.BASE_DIR) / "var" / "smoke-notturno"
+# ⚠️ Gli stessi sette giorni di `maintenance.vw_job_run_da_guardare`, che mostra
+#    un job finche' ha un rosso negli ultimi sette giorni: finche' la corsa e'
+#    nel digest, la sua cartella deve esserci. Se la finestra della vista cambia,
+#    cambia anche qui.
+CONSERVA_GIORNI = 7
+# Il nome di una cartella di corsa: lo stesso formato di `date +%Y%m%d-%H%M%S`
+# che lo script usa per il suo default.
+FORMATO_CARTELLA = "%Y%m%d-%H%M%S"
+
+logger = logging.getLogger(__name__)
 
 
 class GiroSmokeFallito(Exception):
@@ -104,6 +126,33 @@ def riassumi(output: str, codice_uscita: int) -> dict[str, Any]:
     return esito
 
 
+# Scopo: Toglie da `radice` le cartelle di corsa piu' vecchie di
+#        `CONSERVA_GIORNI` e ne restituisce il numero.
+# ⛔ Tocca SOLO le cartelle il cui nome e' una data-ora nel formato del giro: un
+#    file o una cartella messi li' a mano non si cancellano mai.
+# ⭐ L'eta' si legge dal NOME, non dalla data di modifica: e' l'ora della corsa,
+#    quella che la vista confronta, e un `touch` non la sposta. Il nome e' scritto
+#    nell'ora di `adesso` (`timezone.localtime`), e si rilegge in quel fuso.
+def pulisci_cartelle_vecchie(radice: Path, adesso: datetime) -> int:
+    if not radice.is_dir():
+        return 0
+    limite = adesso - timedelta(days=CONSERVA_GIORNI)
+    tolte = 0
+    for cartella in radice.iterdir():
+        if not cartella.is_dir() or cartella.is_symlink():
+            continue
+        try:
+            ora_corsa = datetime.strptime(
+                cartella.name, FORMATO_CARTELLA,
+            ).replace(tzinfo=adesso.tzinfo)
+        except ValueError:
+            continue
+        if ora_corsa < limite:
+            shutil.rmtree(cartella)
+            tolte += 1
+    return tolte
+
+
 class Command(ComandoAziendale):
     help = (
         "Giro notturno degli smoke (solo sviluppo): lancia scripts/smoke-baseline.sh "
@@ -125,11 +174,21 @@ class Command(ComandoAziendale):
         ) as job:
             if not job.acquired:   # un giro gia' in corso: questa corsa salta
                 return
+            adesso = timezone.localtime()
+            # ⚠️ La pulizia non decide l'esito del giro: un rmtree fallito lascia
+            #    una cartella in piu', non uno smoke rosso. Resta nel log.
+            try:
+                tolte = pulisci_cartelle_vecchie(LOG_ROOT, adesso)
+            except OSError as exc:
+                logger.warning("smoke_notturno.pulizia_log_fallita errore=%s", exc, exc_info=True)
+                tolte = 0
+            log_dir = LOG_ROOT / adesso.strftime(FORMATO_CARTELLA)
             try:
                 # BB `lancia_con_tetto`: sul tetto muore il GRUPPO, cioe' anche gli
                 # smoke che lo script ha avviato, non solo lo script.
                 fatto = lancia_con_tetto(
                     [BASH, str(SCRIPT)], TIMEOUT_GIRO_S, cwd=SCRIPT.parent.parent,
+                    env={**os.environ, "SMOKE_LOG_DIR": str(log_dir)},
                 )
             except subprocess.TimeoutExpired as exc:
                 raise GiroSmokeFallito(
@@ -137,6 +196,7 @@ class Command(ComandoAziendale):
                 ) from exc
 
             esito = riassumi(fatto.stdout + fatto.stderr, fatto.returncode)
+            esito["log_rimossi"] = tolte
             job.set_meta(esito)
             job.set_rows_affected(int(esito.get("non_verdi") or 0))
             job.set_message(

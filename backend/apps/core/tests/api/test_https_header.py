@@ -316,19 +316,26 @@ curl() {
         self.assertGreater(controllati, 0)
 
     # Scopo: Gli smoke girano con l'utente di SMOKE_USER (un utente dedicato):
-    #        nessuno username scritto nel login, nelle query o nelle GUC. L'unico
-    #        ripiego (`tid`, storico) sta nel BB.
+    #        nessuno username scritto nel login, nelle query o nelle GUC, e
+    #        nessun ripiego su un utente personale, nemmeno nel BB (fino al
+    #        2026-10-16 `_smoke_auth.sh` ripiegava su `tid`). Vale anche per gli
+    #        smoke Python, che leggono la stessa variabile.
     def test_nessuno_username_cablato_negli_smoke(self):
         cartella = Path(settings.BASE_DIR) / "scripts" / "tests"
         nel_login = re.compile(r'username\\?"\s*:\s*\\?"(?!\$)')
         letterale = re.compile(r'''(["'])tid\1''')
+        ripiego_bash = re.compile(r"SMOKE_USER:-[^}]")
+        ripiego_py = re.compile(r'''["']SMOKE_USER["']\s*,\s*["'][^"']''')
         for script in sorted(cartella.glob("*.sh")):
             testo = script.read_text(encoding="utf-8")
             with self.subTest(script=script.name):
                 self.assertNotRegex(testo, nel_login)
                 self.assertNotRegex(testo, letterale)
-                if script.name != "_smoke_auth.sh":
-                    self.assertNotIn("SMOKE_USER:-tid", testo)
+                self.assertNotRegex(testo, ripiego_bash)
+        for script in sorted(cartella.glob("*.py")):
+            testo = script.read_text(encoding="utf-8")
+            with self.subTest(script=script.name):
+                self.assertNotRegex(testo, ripiego_py)
 
     # Esegue `smoke_login` in bash con `curl` finto: `/core/me/` risponde lo
     # username ME_USER, il login il token NUOVO (status LOGIN_STATUS). Torna
@@ -398,8 +405,8 @@ curl() {
                 self.assertIn(perche, esito.stdout)
                 self.assertIn(login, chiamati)
 
-    # Scopo: ⛔ sotto `set -e` mai un'uscita silenziosa: un login rifiutato o
-    #        una password mancante stampano la causa ed escono col codice scelto
+    # Scopo: ⛔ sotto `set -e` mai un'uscita silenziosa: un login rifiutato,
+    #        una password o un utente mancanti stampano la causa ed escono col codice scelto
     #        dallo smoke (`--uscita`), senza arrivare al primo passo.
     def test_smoke_login_fallito_lo_dice_ed_esce(self):
         esito, _ = self._smoke_login("--uscita 2", LOGIN_STATUS="401")
@@ -410,4 +417,10 @@ curl() {
         esito, chiamati = self._smoke_login("--senza-prompt", SMOKE_PASSWORD="")
         self.assertEqual(esito.returncode, 1)
         self.assertIn("Password mancante", esito.stdout)
+        self.assertEqual(chiamati, [])
+
+        # Senza SMOKE_USER nessun ripiego su un utente personale: si ferma.
+        esito, chiamati = self._smoke_login("--uscita 3", SMOKE_USER="")
+        self.assertEqual(esito.returncode, 3)
+        self.assertIn("utente degli smoke non impostato (SMOKE_USER)", esito.stdout)
         self.assertEqual(chiamati, [])
