@@ -2,7 +2,7 @@
 -- ============================================================================
 -- ZeroErp — Provisioning dei RUOLI DI SISTEMA (modello unico)
 -- ----------------------------------------------------------------------------
--- Brief: docs/it/dev/work-in-progress/brief-db-ruoli-di-sistema.md §3, §4
+-- Brief: docs/it/dev/work-done/brief-db-ruoli-di-sistema.md §3, §4
 --
 -- I nomi dei ruoli sono di SISTEMA e non si configurano: il database li nomina
 -- (grant, policy, presidi). Chi installa e vuole un utente suo lo AGGIUNGE come
@@ -15,8 +15,12 @@
 --   zeroerp_job    il demone pgAgent. Non possiede niente: puo' SOLO chiamare
 --                  le procedure dei job (maintenance.proc_*_job), che sono
 --                  SECURITY DEFINER di zeroerp_owner (20261014-55).
---   zeroerp_app    il backend. La sua postura la da' la fase post (era
---                  scripts/sql/provision_db_roles.sql, unificato qui).
+--   zeroerp_app    il backend. La sua postura la da' la fase post.
+--   zeroerp_log    il canale dei registri fuori transazione (dblink). Nasce
+--                  qui, PRIMA delle migrazioni: 90_end/20260905-38 gli da' il
+--                  giornale dei job solo se il ruolo c'e' gia'. I suoi diritti
+--                  su dbops.error_log e i parametri del canale li da'
+--                  scripts/sql/provision_dblink_log_channel.sql, dopo.
 --
 -- ── Le tre fasi (variabile `fase`), da SUPERUSER ─────────────────────────────
 --   ruoli  sul database `postgres`: crea i ruoli che mancano e il database
@@ -26,20 +30,32 @@
 --          zeroerp_owner; da' i diritti su `pgagent`.
 --   post   sul database del progetto, alla fine (dopo Liquibase, provision-post,
 --          ci_apply, `manage.py migrate`): la postura di zeroerp_app, EXECUTE di
---          zeroerp_job sulle procedure dei job, ripassa la proprieta', e
---          VERIFICA che l'owner sia uno solo — se no si ferma, nominando gli
+--          zeroerp_job sulle procedure dei job, l'AMBIENTE dell'installazione
+--          (-v ambiente=SVILUPPO|PRODUZIONE, vedi sotto), ripassa la proprieta',
+--          e VERIFICA che l'owner sia uno solo — se no si ferma, nominando gli
 --          oggetti.
+--
+-- ── ⛔ L'ambiente (dal 2026-10-16) ───────────────────────────────────────────
+--   Si sceglie all'installazione, come le password: -v ambiente=SVILUPPO oppure
+--   -v ambiente=PRODUZIONE alla fase post. Nessun default (decisione di Tid,
+--   brief-db-processi-accensione-per-ambiente R-2): la prima volta, se manca, lo
+--   script si ferma e chiede di scegliere. Poi e' IMMUTABILE: il parametro
+--   diventa facoltativo, ma se c'e' deve coincidere col valore scritto.
 --
 -- ── ⛔ Le password (D-3) ──────────────────────────────────────────────────────
 --   Nessun default. Si passano con -v owner_password=… -v job_password=…
---   -v app_password=…, e servono SOLO per creare un ruolo che manca: se manca il
---   ruolo e manca la sua password, lo script si ferma.
+--   -v app_password=… -v log_password=…, e servono SOLO per creare un ruolo che
+--   manca: se manca il ruolo e manca la sua password, lo script si ferma.
 --   ⚠️ Di un ruolo che ESISTE la password non si tocca mai: i ruoli sono di
 --   CLUSTER, e lo stesso ruolo puo' servire un altro database (lo sviluppo).
 --
 -- Esempio (fase ruoli):
 --   sudo -u postgres psql -d postgres -v fase=ruoli -v db_name=zeroerp_ruoli \
 --        -v owner_password=… -v job_password=… -v app_password=… \
+--        -v log_password=… \
+--        < scripts/sql/provision_zeroerp.sql
+-- Esempio (fase post, prima volta):
+--   sudo -u postgres psql -d zeroerp_ruoli -v fase=post -v ambiente=SVILUPPO \
 --        < scripts/sql/provision_zeroerp.sql
 -- ============================================================================
 
@@ -74,6 +90,9 @@ SELECT set_config('zeroerp.prov_job_password', :'job_password', false) \gset _x_
 \if :{?app_password}
 SELECT set_config('zeroerp.prov_app_password', :'app_password', false) \gset _x_
 \endif
+\if :{?log_password}
+SELECT set_config('zeroerp.prov_log_password', :'log_password', false) \gset _x_
+\endif
 
 -- ============================================================================
 -- FASE ruoli
@@ -93,7 +112,9 @@ BEGIN
         ('zeroerp_job',   'zeroerp.prov_job_password',
          'Il demone pgAgent di ZeroERP. Non possiede niente: chiama soltanto le procedure dei job (maintenance.proc_*_job), che girano come zeroerp_owner. Ruolo di sistema: il nome non si cambia.'),
         ('zeroerp_app',   'zeroerp.prov_app_password',
-         'Il backend di ZeroERP: NOBYPASSRLS, non proprietario, la RLS lo filtra. Ruolo di sistema: il nome non si cambia.')
+         'Il backend di ZeroERP: NOBYPASSRLS, non proprietario, la RLS lo filtra. Ruolo di sistema: il nome non si cambia.'),
+        ('zeroerp_log',   'zeroerp.prov_log_password',
+         'Il canale dei registri di ZeroERP: scrive dbops.error_log e il giornale dei job su una connessione separata (dblink), cosi'' il verbale di un errore sopravvive al rollback. Solo INSERT. Ruolo di sistema: il nome non si cambia.')
     ) AS t(ruolo, guc, commento)
     LOOP
         IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r.ruolo) THEN
@@ -132,7 +153,7 @@ SELECT format('CREATE DATABASE %I OWNER zeroerp_owner', :'db_name')
 \gexec
 SELECT format('ALTER DATABASE %I OWNER TO zeroerp_owner', :'db_name')
 \gexec
-SELECT format('GRANT CONNECT ON DATABASE %I TO zeroerp_job, zeroerp_app', :'db_name')
+SELECT format('GRANT CONNECT ON DATABASE %I TO zeroerp_job, zeroerp_app, zeroerp_log', :'db_name')
 \gexec
 \endif
 
@@ -528,6 +549,19 @@ FROM (VALUES ('anagrafiche.dati_societari')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ L'AMBIENTE DELL'INSTALLAZIONE (dal 2026-10-16): brief
+--   brief-db-processi-accensione-per-ambiente, R-3. `dbops.installazione` e' in
+--   SOLA LETTURA per l'applicazione: lo scrive solo questa fase, una volta
+--   (blocco «L'ambiente» piu' sotto). Se l'app lo potesse cambiare, il
+--   provisioning di sviluppo si accenderebbe in produzione con un giro di
+--   UPDATE. Stesso elenco di `v_tabelle_sola_lettura_app` nel loop 20260205-41
+--   e del forward 90_end/20261016-32;
+--   `db/pgtap/dbops/test-installazione-ambiente-v1.sql` lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('dbops.installazione')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
 --   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
 --   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'
@@ -680,6 +714,50 @@ BEGIN
     END LOOP;
 END
 $job$;
+
+\echo [ZeroErp] fase post: l'ambiente dell'installazione
+-- ⛔ Si sceglie qui, una volta: -v ambiente=SVILUPPO|PRODUZIONE. Nessun default
+--   (brief-db-processi-accensione-per-ambiente, R-2): un valore scritto da solo
+--   dichiarerebbe un database al posto di chi lo conosce — dbdev, nato prima di
+--   questa regola, sarebbe diventato PRODUZIONE per sempre. Poi e' immutabile:
+--   il parametro diventa facoltativo, e se c'e' deve coincidere.
+-- ⚠️ La riga la scrive zeroerp_owner (SET ROLE), proprietario della tabella:
+--   l'audit dice chi l'ha scritta, e non e' un superuser.
+SELECT set_config('zeroerp.prov_ambiente', '', false) \gset _x_
+\if :{?ambiente}
+SELECT set_config('zeroerp.prov_ambiente', :'ambiente', false) \gset _x_
+\endif
+SET ROLE zeroerp_owner;
+DO $ambiente$
+DECLARE
+    v_chiesto  text := NULLIF(btrim(current_setting('zeroerp.prov_ambiente', true)), '');
+    v_scritto  text;
+BEGIN
+    IF to_regclass('dbops.installazione') IS NULL THEN
+        RAISE EXCEPTION 'dbops.installazione non c''e'': la fase post va dopo le migrazioni.';
+    END IF;
+
+    IF v_chiesto IS NOT NULL AND v_chiesto NOT IN ('SVILUPPO', 'PRODUZIONE') THEN
+        RAISE EXCEPTION 'ambiente «%» non valido: -v ambiente=SVILUPPO oppure -v ambiente=PRODUZIONE.', v_chiesto;
+    END IF;
+
+    SELECT i.ambiente INTO v_scritto FROM dbops.installazione i WHERE i.id = 1;
+
+    IF v_scritto IS NULL THEN
+        IF v_chiesto IS NULL THEN
+            RAISE EXCEPTION 'L''ambiente di questa installazione non e'' dichiarato: rilancia la fase post con -v ambiente=SVILUPPO oppure -v ambiente=PRODUZIONE. Si sceglie una volta e non si cambia piu''.';
+        END IF;
+        INSERT INTO dbops.installazione (ambiente) VALUES (v_chiesto);
+        RAISE NOTICE 'ambiente dichiarato: %', v_chiesto;
+    ELSIF v_chiesto IS NOT NULL AND v_chiesto <> v_scritto THEN
+        RAISE EXCEPTION 'L''ambiente di questa installazione e'' % e non si cambia (chiesto: %).',
+                        v_scritto, v_chiesto;
+    ELSE
+        RAISE NOTICE 'ambiente: % (gia'' dichiarato)', v_scritto;
+    END IF;
+END
+$ambiente$;
+RESET ROLE;
 
 \echo [ZeroErp] fase post: verifica «un owner solo»
 -- ⛔ Non si corregge: si nomina. Le funzioni di un altro proprietario sono ammesse

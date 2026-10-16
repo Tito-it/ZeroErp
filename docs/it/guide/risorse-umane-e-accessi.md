@@ -773,7 +773,7 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 
 ### Il problema
 
-Alcuni trigger PostgreSQL hanno bisogno di sapere **chi** sta eseguendo la transazione corrente. Serve per due cose: scrivere l'audit trail con lo username JWT reale — e non con il ruolo DB `zeroerp_app`/`titodb` — e applicare a livello DB le regole di sicurezza che il backend potrebbe aver dimenticato, come il perimetro degli emittenti fiscali.
+Alcuni trigger PostgreSQL hanno bisogno di sapere **chi** sta eseguendo la transazione corrente. Serve per due cose: scrivere l'audit trail con lo username JWT reale — e non con l'utente tecnico `zeroerp_app` con cui l'applicazione si collega al database — e applicare a livello DB le regole di sicurezza che il backend potrebbe aver dimenticato, come il perimetro degli emittenti fiscali.
 
 L'identita viene propagata alla sessione PostgreSQL con **sei parametri di sessione** (GUC, *Grand Unified Configuration*):
 

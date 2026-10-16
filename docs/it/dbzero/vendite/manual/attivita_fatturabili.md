@@ -216,6 +216,17 @@ CHECK sui domini di `origine_prezzo` e `tipo_variazione_applicata`. Indice dedic
 
 ---
 
+### Riga di listino coerente (15-10-2026)
+
+`listino_riga_id` (copiata dall'emissione, aggiornata dal riallineamento del prezzo) deve essere
+una riga di listino dello stesso articolo e della stessa unità di misura dell'attività, di un
+listino dell'azienda della commessa e di una versione non in bozza (dal 16-10-2026). Questa
+tabella non porta la versione: conta quella della riga di listino. Lo tiene
+[vendite.trgfn_attivita_guard_listino_riga](/dbzero/vendite/manual/trgfn_attivita_guard_listino_riga)
+(`E_ATTIVITA_LISTINO_RIGA_INCOERENTE`), lo stesso guard della commessa.
+
+---
+
 ### Registro della riga: `tipo_movimento` (17-07-2026)
 
 Insieme alle 8 colonne dello snapshot pricing, l'emissione propaga 1:1 anche

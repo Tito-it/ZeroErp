@@ -1,27 +1,23 @@
 # Brief DB — Un cliente manuale per soggetto e utility
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-15
+## ✅ Chiuso il 2026-10-15
 
-**Riparte: il team DB**, coi residui (§7) e l'archivio. Il giro BE è fatto e lo smoke è verde
-(2026-10-15).
+| # | Chi | Che cosa | Dove |
+| --- | --- | --- | --- |
+| 1 | ✅ Tid | decisioni C-1…C-9 (C-1…C-5 il 2026-10-13, C-6…C-9 il 2026-10-14) | §4, §4-bis |
+| 2 | ✅ team DB | changeSet `20261014-08` … `-20`, CSV, pgTAP e doc, provati sullo scratch il 2026-10-14 | §5-bis |
+| 3 | ✅ Tid | bonifica a mano del doppione 115/121; apply e pgTAP senza regressioni (2026-10-14) | §5-bis.3, §5-bis.4 |
+| 4 | ✅ BE | il rifiuto al COMMIT della creazione manuale, `ha_ba_attivo` sul periodo, i codici (2026-10-15) | §6-bis |
+| 5 | ✅ BE | `smoke-test-clienti.sh` verde (16 OK, 2026-10-15), fuori da `baseline-smoke.tsv` | §6-bis |
+| 6 | ✅ team DB | l'archivio; i residui passano allo sviluppo delle utility (Tid, 2026-10-15) | §7, §8 |
 
-| # | Chi | Che cosa | Dove | Aspetta |
-| --- | --- | --- | --- | --- |
-| 1 | Tid | ✅ decisioni C-1…C-9 (C-1…C-5 il 2026-10-13, C-6…C-9 il 2026-10-14) | §4, §4-bis | — |
-| 2 | DB | ✅ changeSet, CSV, pgTAP e doc scritti e provati sullo scratch il 2026-10-14 | §5-bis | — |
-| 3 | Tid | ✅ bonifica a mano del doppione 115/121 (115 chiuso al 2026-03-20); ✅ apply di `20261014-08` … `-20` e pgTAP senza regressioni (2026-10-14) | §5-bis.3, §5-bis.4 | — |
-| 4 | BE | ✅ il rifiuto al COMMIT della creazione manuale, `ha_ba_attivo` sul periodo, i codici (2026-10-15); l'avviso del pre-contrattuale passa ai residui (§7, decisione di Tid) | §6-bis | — |
-| 5 | BE | ✅ `smoke-test-clienti.sh` verde (16 OK, 2026-10-15), fuori da `baseline-smoke.tsv` | §6-bis | — |
-| 6 | DB | i residui (§7) in un brief loro, poi l'archivio | §7 | — |
-
-Decisioni aperte di Tid: nessuna (la data di attivazione di un chiuso, §7, si decide col brief dei
-residui). Lavoro DB committato il 2026-10-14; lavoro BE del 2026-10-15 da committare.
+Residui (§7): fanno parte dello sviluppo delle utility (Tid, 2026-10-15); la catena sul PDP resta in [brief-db-catena-istanze-pdp](../work-in-progress/brief-db-catena-istanze-pdp.md) (D18).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-13. **A chi:** Tid, poi il team DB.
 > **Origine:** lo smoke `smoke-test-clienti.sh` del giro notturno (commit BE `b3e35f899`), il passo
 > lasciato rosso come «DOMANDA APERTA» (registro `backend/scripts/tests/baseline-smoke.tsv`). Tid,
 > 2026-10-13: **va impedito**. Registro: **D33** di
-> [migliorie-generali-da-test-valutazione](migliorie-generali-da-test-valutazione.md).
+> [migliorie-generali-da-test-valutazione](../work-in-progress/migliorie-generali-da-test-valutazione.md).
 
 ## 1. Il caso
 
@@ -131,7 +127,7 @@ Con la decisione C-5 (strada c) nessuno di questi lettori cambia: un BA resta co
   apre una **catena nuova**: istanza nuova (collegata alla precedente con `parent_istanza_id`), BA
   nuovo, cliente nuovo, come nel subentro sul PDP. Scartate: (a) riaccendere lo stesso cliente; (b) un
   cliente nuovo sullo stesso BA, che avrebbe tolto «un BA, un cliente» (R-8 di
-  [brief-db-istanza-nasce-col-ba](../work-done/brief-db-istanza-nasce-col-ba.md)) e costretto ogni
+  [brief-db-istanza-nasce-col-ba](brief-db-istanza-nasce-col-ba.md)) e costretto ogni
   lettore del §3-bis a scegliere fra più clienti. Conseguenze:
   * `uq_clienti_billing_account` resta com'è; il vecchio BA vive per fatture finali e conguagli;
   * **chiuso è uno stato finale**: da `CH`/`CW` non si esce, e `data_chiusura` di un chiuso non si
@@ -222,7 +218,7 @@ oggi per il PDP (`ex_clienti_no_overlap_stesso_pdp`). Si chiude in questo cantie
 * ✅ **C-9 — la catena delle fittizie** (Tid, 2026-10-14, proposta del team DB). Il predecessore di
   un'istanza fittizia è l'istanza dell'ultimo cliente con la **stessa chiave** (C-1), letta dalla
   stessa funzione del guard e dell'avviso; `set_parent_istanza` si riscrive in questo cantiere, e
-  [brief-db-catena-istanze-pdp](brief-db-catena-istanze-pdp.md) (D18, che riscrive lo stesso
+  [brief-db-catena-istanze-pdp](../work-in-progress/brief-db-catena-istanze-pdp.md) (D18, che riscrive lo stesso
   trigger per il PDP) lo eredita. Rettifica del fatto del §4-bis: il trigger non **azzerava** il
   parent delle fittizie, **non scattava** (`WHEN pdp_id IS NOT NULL`): l'effetto era lo stesso,
   nessuna catena.
@@ -409,7 +405,7 @@ rifiutato, che è l'esito atteso.
 * test: `apps.anagrafiche`, `apps.pratiche`, `apps.core` con `ZEROERP_TEST_DB_E2E=1`, 2731 verdi
   (1 skip); ruff pulito; mypy senza rilievi nuovi.
 
-## 7. Residui (da portare in un brief loro alla chiusura)
+## 7. Residui — parte dello sviluppo delle utility (Tid, 2026-10-15)
 
 * **l'avviso del pre-contrattuale (C-4)** nasce col percorso che prepara un cliente `PR`, che
   arriverà con le pratiche (Tid, 2026-10-15). Il BE chiamerà `anagrafiche.fn_clienti_stessa_chiave`
@@ -421,7 +417,15 @@ rifiutato, che è l'esito atteso.
   per data (job notturno o estensione del framework delle chiusure per scadenza);
 * **un pgTAP per il PDP sul periodo** (C-8): vuole una utility con PDP e il suo punto;
 * **la catena sul PDP** resta con i difetti di D18 (l'annullo non ricalcola, un anello solo, la
-  lettura sotto RLS): [brief-db-catena-istanze-pdp](brief-db-catena-istanze-pdp.md) eredita anche
+  lettura sotto RLS): [brief-db-catena-istanze-pdp](../work-in-progress/brief-db-catena-istanze-pdp.md) eredita anche
   il ramo delle fittizie;
 * **la data di attivazione di un chiuso** non è ferma (C-5 ha fermato la chiusura): cambiandola si
   sposta l'inizio del periodo di un cliente storico. Da decidere, di Tid.
+
+## 8. Archiviazione (2026-10-15)
+
+Archiviato dal team DB dopo il giro BE (§6-bis, commit `8aaf95296`). I residui del §7 non hanno un
+brief loro: per decisione di Tid del 2026-10-15 fanno parte dello sviluppo delle utility, e lì si
+riprendono. La catena sul PDP resta in
+[brief-db-catena-istanze-pdp](../work-in-progress/brief-db-catena-istanze-pdp.md) (D18) col ramo delle
+fittizie. D33 chiusa in [migliorie-generali-da-test-valutazione](../work-in-progress/migliorie-generali-da-test-valutazione.md) §7.

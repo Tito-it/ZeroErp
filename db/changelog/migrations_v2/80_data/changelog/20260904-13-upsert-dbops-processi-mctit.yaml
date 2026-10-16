@@ -57,6 +57,12 @@ databaseChangeLog:
               - column: { name: canale, type: STRING }
               - column: { name: attivo, type: BOOLEAN }
               - column: { name: obsoleto_dal, type: DATE }
+              # ⭐ Dal 2026-10-16 il default di accensione per ambiente e i non
+              #   spegnibili (brief-db-processi-accensione-per-ambiente, A-2, A-5):
+              #   colonne in coda al CSV, NULL per i processi senza sveglia.
+              - column: { name: acceso_in_sviluppo, type: BOOLEAN }
+              - column: { name: acceso_in_produzione, type: BOOLEAN }
+              - column: { name: spegnibile, type: BOOLEAN }
       rollback:
         - sql:
             splitStatements: false

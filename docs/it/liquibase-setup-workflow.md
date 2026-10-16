@@ -35,70 +35,34 @@ Descrivere configurazione e workflow di **Liquibase** per **ZeroErp (struttura v
 
 > ⭐ **I ruoli e i loro diritti li dà uno script solo**, `scripts/sql/provision_zeroerp.sql`
 > (ruoli di sistema `zeroerp_owner`, `zeroerp_job`, `zeroerp_app`): modello, regole e
-> ordine dei passi in [Provisioning ruoli DB](/dev/backend/provisioning-db-roles). I due paragrafi qui sotto restano perché
-> raccontano **perché** quei diritti servono; il «come» è lo script.
+> ordine dei passi in [Provisioning ruoli DB](/dev/backend/provisioning-db-roles) e in
+> [Installazione](/installazione). Qui sotto, il perché di due diritti che si notano
+> solo quando mancano.
 
-### 🔴 Il ruolo che lancia Liquibase deve avere `USAGE` sullo schema `pgagent`
+### Il migratore scrive nello schema `pgagent`
 
-La fase `85_pgagent` crea i **job schedulati** (storicizzazione, automazioni,
-sync). Lo schema `pgagent` appartiene a `postgres`, perché lo crea l'estensione;
-il migratore ci scrive dentro, quindi gli servono:
+La fase `85_pgagent` crea i **lavori a orario** (storicizzazione, automazioni,
+sincronizzazioni). Lo schema `pgagent` appartiene a `postgres`, perché lo crea
+l'estensione, e il migratore ci scrive dentro. I diritti glieli dà la fase `pre` di
+`provision_zeroerp.sql`, a `zeroerp_owner` e a `zeroerp_job` (il demone).
 
-```sql
-GRANT USAGE ON SCHEMA pgagent TO <ruolo_migratore>;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA pgagent TO <ruolo_migratore>;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA pgagent TO <ruolo_migratore>;
-```
+⚠️ **Perché è facile accorgersene tardi.** I changeSet di `85_pgagent` girano solo
+dove l'estensione c'è (`onFail: MARK_RAN`): sull'immagine della CI non c'è, e
+vengono saltati in silenzio. Il primo ambiente in cui girano davvero è
+un'installazione vera, ed è lì che un diritto mancante li fermerebbe. I lavori
+**devono** esserci in un'installazione vera: non è una fase opzionale.
 
-⚠️ **Perché è facile scoprirlo tardi.** I nove changeSet di `85_pgagent` sono
-protetti da `onFail: MARK_RAN` su «esiste l'estensione `pgagent`». Dove
-l'estensione non c'è — l'immagine della CI non ce l'ha — vengono **saltati
-tutti, in silenzio**. Quindi:
+### Il lavoro delle statistiche deve poter analizzare ogni tabella
 
-| ambiente | cosa succede | perché |
-| --- | --- | --- |
-| **dbdev** | passano | il migratore è `titodb`, che su `pgagent` ha i diritti (l'estensione fu installata a mano dallo stesso utente) |
-| **CI** | 9 × `MARK_RAN` | l'estensione non è disponibile sull'immagine |
-| **produzione** | 🔴 falliscono, se il migratore non ha `USAGE` | è il primo ambiente in cui l'estensione c'è e il migratore è un altro |
-
-⇒ Quella fase **non è mai stata eseguita** né su CI né, nella forma in cui girerà
-in produzione, su dbdev. Misurato il 2026-09-02 costruendo un database da zero
-con `scripts/ci-local.sh`: `has_schema_privilege('zeroerp','pgagent','USAGE')`
-risponde `false`, `titodb` risponde `true`.
-
-ℹ️ I job **devono** esserci in produzione (decisione di Tid, 2026-09-02): non è
-una fase opzionale da lasciare a `MARK_RAN`.
-
-⭐ Col modello dei ruoli di sistema questi diritti li dà la fase `pre` di
-`provision_zeroerp.sql`, a `zeroerp_owner` (il migratore) e a `zeroerp_job` (il
-demone pgAgent).
-
-### 🔴 Il ruolo che esegue `analyze_statistiche` deve poter analizzare ogni tabella
-
-Il job notturno delle statistiche
+Il lavoro notturno delle statistiche
 ([fn_analyze_statistiche](dbzero/maintenance/manual/fn_analyze_statistiche.md))
 lancia `ANALYZE` e poi **verifica** di esserci riuscito: `ANALYZE` salta in
-silenzio una tabella su cui il ruolo non ha `MAINTAIN`, e l'autoverifica in quel
-caso solleva `E_STATISTICHE_MANCANTI`. Il ruolo che lo esegue deve quindi essere
-superuser, proprietario di tutte le tabelle, oppure membro di `pg_maintain`:
-
-```sql
-GRANT pg_maintain TO <ruolo>;
-```
-
-⭐ **Col modello dei ruoli di sistema il grant non serve.** La procedura del job è
-`SECURITY DEFINER` del proprietario, e il proprietario (`zeroerp_owner`) possiede
-tutte le tabelle: le tabelle che il provision-pre crea come `postgres`
-(`databasechangelog`, `databasechangeloglock`, `internal.project_metadata`) gliele
-passa la fase `pre` di `provision_zeroerp.sql`.
-
-| ambiente | chi esegue | serve il grant? |
-| --- | --- | --- |
-| database di prova (`scripts/ci-local.sh`, `zeroerp_ruoli`) e CI col modello | `zeroerp_owner` (`ci_apply`, e la procedura `DEFINER`) | no: possiede tutto |
-| **dbdev** (convertito al modello il 2026-10-15) | pgAgent come `zeroerp_job`, la procedura gira come `zeroerp_owner` | no: possiede tutto |
-
-⚠️ `pg_maintain` è un **ruolo** del cluster, non un privilegio del database. ⛔ Mai
-in un changeSet (linee-guida-sql §11.6).
+silenzio una tabella che non può analizzare, e l'autoverifica in quel caso
+solleva `E_STATISTICHE_MANCANTI`. Per analizzare una tabella bisogna esserne il
+proprietario: la procedura del lavoro gira come `zeroerp_owner`, che possiede tutte
+le tabelle, comprese quelle che il primo passo di Liquibase crea da superuser
+(`databasechangelog`, `databasechangeloglock`, `internal.project_metadata`), perché
+gliele passa la fase `pre`. Nessun diritto in più.
 
 ---
 

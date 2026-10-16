@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 4 ottobre 2026
+> **Ultimo aggiornamento**: 15 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -609,17 +609,17 @@ repository nella query: il building block `add_emittente_scope_condition` (`apps
 intersecato con l'emittente attivo della sessione). Semantica del BB: `None` =
 nessuna restrizione (super admin), lista vuota = **fail-closed**. Se
 l'operatore non ha righe non passa **niente**, e la riga mancante e' un errore
-di configurazione (§4.9). ⚠️ Fino al 2026-10-07 qui si nominava
-`EmittenteFiscaleScopeMixin`, un mixin per queryset ORM che nessuna view usava
-(il progetto non ha view su queryset ORM): ritirato.
+di configurazione (§4.9).
 
 **Sul lato DB la stessa regola e' una policy RLS.** Per lo scope emittente degli
 operatori le tabelle del perimetro hanno la RLS **attiva** (`ENABLE`, senza `FORCE`:
-il proprietario delle tabelle e i batch restano fuori). Le policy sono **`FOR ALL`
-con `WITH CHECK`**, non solo `FOR SELECT`: con la RLS attiva una scrittura che
-nessuna policy permette viene negata, quindi senza `WITH CHECK` ogni INSERT o UPDATE
-di un operatore sarebbe finito in deny-all. I batch girano come utente `postgres` e
-sono esenti per costruzione. Su `billing_account` la policy di inserimento e'
+ne resta fuori solo il proprietario delle tabelle, cioe' le migrazioni e i lavori
+di manutenzione, §7.6). Le policy sono **`FOR ALL` con `WITH CHECK`**, non solo
+`FOR SELECT`: con la RLS attiva una scrittura che nessuna policy permette viene
+negata, quindi senza `WITH CHECK` ogni INSERT o UPDATE di un operatore finirebbe in
+deny-all. I lavori automatici che toccano i dati di un'azienda non sono esenti:
+girano come l'applicazione, con un utente tecnico di quell'azienda, dentro il suo
+perimetro. Su `billing_account` la policy di inserimento e'
 **gate-only**: verifica i permessi, senza decidere il contenuto della riga.
 
 **Un nome da non confondere.** `BA_OWNERSHIP` e `SELF_OWNERSHIP` sono la stessa
@@ -719,13 +719,16 @@ lettura, quindi correggerla qui la propaga a entrambi i lati.
 
 I rami, nell'ordine:
 
-1. **`p_auth_user_id` NULL** → `TRUE`: e' il caso dei job batch, che non agiscono
-   per conto di un utente.
-2. **Emittente non attivo** → `FALSE`.
+1. **Nessun utente** → `FALSE`: chi non dice per conto di chi agisce non vede
+   e non scrive niente. Anche un lavoro automatico ha un utente, quello tecnico
+   della sua azienda.
+2. **Un emittente diverso da quello scelto nella sessione** → `FALSE`: se
+   l'utente ha selezionato un'azienda, lavora solo su quella.
 3. **`SUPER_ADMIN`** → `TRUE`: e' l'unico punto in cui la selezione puo'
    restringere chi vede tutto.
-4. **Nessuna riga** in `user_emittenti_fiscali` → `FALSE` (fail-closed, §4.9).
-5. **Almeno una riga** → `TRUE` solo se l'emittente e' fra quelle elencate.
+4. **Utente senza una veste di operatore attiva** → `FALSE`.
+5. **Nessuna riga** in `user_emittenti_fiscali` → `FALSE` (fail-closed, §4.9).
+6. **Almeno una riga** → `TRUE` solo se l'emittente e' fra quelle elencate.
 
 **Esempio di uso:** chiamando la funzione con l'identificativo dell'utente e quello
 dell'emittente si ottiene `TRUE` o `FALSE` secondo i rami qui sopra. Il check e'
@@ -758,6 +761,14 @@ applicativo. Al momento della scrittura su `vendite.fatture`:
 
 L'operazione viene quindi negata anche se il backend avesse un bug che
 l'ha lasciata passare ai livelli superiori.
+
+**E se nella sessione non c'e' nessun utente?** La scrittura si ferma, con un
+messaggio che dice proprio questo: *il processo non dichiara chi agisce*. Passa
+solo chi la RLS lascerebbe passare comunque, cioe' il proprietario delle tabelle
+quando lavora in prima persona. Se la scrittura arriva da una funzione che gira
+con i diritti del proprietario (`SECURITY DEFINER`) ma per conto di qualcun altro,
+quella eccezione non vale: senza un utente, una riga che appartiene a un'azienda
+non si scrive.
 
 ### 7.3 Funzioni di risoluzione permessi lato DB
 
@@ -873,6 +884,35 @@ diversi con un solo form. Scrive con un verbo generico,
   codice. Un pannello che li scrivesse sarebbe una seconda strada che salta
   il cancello della prima — nel caso dei profili, un modo per alzarsi i
   privilegi.
+
+### 7.6 Chi si collega al database
+
+Tutto cio' che questa guida descrive — profili, perimetri, verbi — vale per le
+persone e per i processi che passano dall'applicazione. Sotto, il database ha
+pochi **utenti tecnici**, sempre gli stessi in ogni installazione, ognuno con un
+compito solo:
+
+| Utente del database | Chi lo usa | Che cosa puo' fare |
+| --- | --- | --- |
+| `zeroerp_app` | l'applicazione, per ogni richiesta e per i lavori automatici | solo cio' che profili, perimetro e RLS permettono all'utente in sessione |
+| `zeroerp_owner` | le migrazioni e i lavori di manutenzione | e' il proprietario di tutto; la RLS non lo filtra |
+| `zeroerp_job` | il programmatore dei lavori notturni (pgAgent) | solo avviare i lavori previsti, che girano come proprietario |
+| `zeroerp_log` | il canale che scrive i registri degli errori | solo aggiungere righe ai registri |
+
+Due conseguenze per i permessi:
+
+* **Nessun utente del database scavalca il perimetro.** Non esiste un utente
+  «passepartout» per i lavori notturni: un lavoro che tocca i dati di un'azienda
+  gira come l'applicazione, con l'utente tecnico di quell'azienda
+  ([I lavori automatici](/guide/processi-automatici-classe-e-identita)). Il
+  controllo `dbops.vw_processi_che_bypassano` resta vuoto finche' e' cosi'.
+* **Il proprietario non lavora per conto di nessuno.** E' l'unico che la RLS
+  non filtra, e per questo fa solo migrazioni e manutenzione. Il controllo
+  `maintenance.vw_job_run_da_superuser` segnala un lavoro notturno eseguito da un
+  amministratore del server invece che da `zeroerp_job`.
+
+I nomi, le regole e la loro installazione: [Provisioning ruoli DB](/dev/backend/provisioning-db-roles)
+e [Installazione](/installazione).
 
 ---
 
@@ -1222,6 +1262,7 @@ erDiagram
 * **Permission class API** → `ZeroERPPermission` (admin) / `PortaleBasePermission` (portale) / `ShopPermission` (shop), una per namespace
 * **Ambito dati operatore** → condizione di scope nei repository (`add_emittente_scope_condition`, applica EF_WHITELIST) + RLS sulle tabelle del perimetro
 * **Defense-in-depth** → trigger DB + RLS policy + scope functions `script.fn_scope_*`; fail-closed su tripla GUC incoerente
+* **Utenti del database** → quattro utenti tecnici fissi (§7.6), nessuno dei quali scavalca la RLS lavorando per conto di un'azienda
 * **Permesso nella scrittura** → verbi DB con `fn_guard_azione` / `fn_guard_livello` / `fn_guard_super_admin` nella prima riga; tabelle protette in sola lettura per l'app (loop dei grant); il pannello di configurazione scrive col verbo generico `config.fn_pannello_scrivi`
 
 ---

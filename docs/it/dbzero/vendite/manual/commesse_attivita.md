@@ -109,6 +109,22 @@ Le stesse 8 colonne vengono propagate su [`vendite.attivita_fatturabili`](/dbzer
 
 ---
 
+### Riga di listino e versione: coerenti (15-10-2026)
+
+La riga porta la **versione** del listino sotto cui è registrata (`listino_versione_id`) e la
+**riga di listino** da cui viene il prezzo (`listino_riga_id`). Le due non possono dire cose
+diverse: la riga di listino deve essere dello stesso articolo e della stessa unità di misura
+della riga di commessa e, se la versione c'è, di quella versione. La versione senza riga di
+listino è lecita (il push la scrive così); la riga di listino senza versione no
+(`chk_commesse_attivita_listino_riga_con_versione`, dal 16-10-2026). Dal 16-10-2026 il listino
+dev'essere **dell'azienda della commessa** e la versione **non in bozza**: mai un prezzo da una
+bozza. Lo tiene
+[vendite.trgfn_attivita_guard_listino_riga](/dbzero/vendite/manual/trgfn_attivita_guard_listino_riga)
+(`E_ATTIVITA_LISTINO_RIGA_INCOERENTE`, `E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO`,
+`E_ATTIVITA_LISTINO_VERSIONE_BOZZA`), decisioni di Tid.
+
+---
+
 ### Registro della riga: `tipo_movimento` (17-07-2026)
 
 La commessa e' un **libro giornale**: una riga nata dal push e' un *fatto* — lo specchio della

@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'AMBIENTE DICHIARATO, SENZA RIFIUTO
+#   script.fn_ambiente_dichiarato(): il valore di dbops.installazione.ambiente,
+#   oppure NULL se l'installazione non l'ha ancora dichiarato.
+#   Brief: brief-db-processi-accensione-per-ambiente (R-1, R-2)
+#
+# -- PERCHE' DUE LETTORI ---------------------------------------------
+#   Chi DECIDE in base all'ambiente (il verbo di provisioning di sviluppo, la
+#   sveglia di un processo) usa script.fn_ambiente_installazione(), che
+#   fallisce con E_CONFIG_MANCANTE se il valore manca: nessun ripiego (R-1).
+#   Chi DESCRIVE (il panorama dei processi, il presidio
+#   dbops.vw_ambiente_non_dichiarato) non deve morire su un'installazione
+#   non ancora dichiarata: quella e' proprio la cosa da mostrare. NULL qui non
+#   e' un valore di ripiego, e' «non dichiarato».
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261016-18-create-fn-ambiente-dichiarato-mctit.yaml
+
+  - changeSet:
+      id: 20261016-18-create-fn-ambiente-dichiarato
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea script.fn_ambiente_dichiarato(): l'ambiente dell'installazione o NULL se non e'
+        dichiarato, per chi descrive senza decidere. Brief: brief-db-processi-accensione-per-ambiente.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_ambiente_dichiarato()
+              RETURNS dbops.installazione.ambiente%TYPE
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Scopo: l'ambiente di questa installazione, NULL se non e'
+                  --   ancora dichiarato. Per chi DESCRIVE (panorami,
+                  --   presidi); chi DECIDE usa script.fn_ambiente_installazione().
+                  SELECT i.ambiente
+                    FROM dbops.installazione i
+                   WHERE i.id = 1;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_ambiente_dichiarato()
+              IS 'L''ambiente di questa installazione (SVILUPPO o PRODUZIONE) letto da dbops.installazione, oppure NULL se la fase post del provisioning non l''ha ancora dichiarato. Per chi DESCRIVE senza decidere (il panorama dei processi, il presidio dbops.vw_ambiente_non_dichiarato): un''installazione non dichiarata e'' proprio la cosa da mostrare, non un motivo per morire. NULL non e'' un valore di ripiego: chi DECIDE in base all''ambiente usa script.fn_ambiente_installazione(), che fallisce con E_CONFIG_MANCANTE. Brief: brief-db-processi-accensione-per-ambiente (R-1).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_ambiente_dichiarato();

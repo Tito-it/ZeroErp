@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I LIMITI DELLA SCELTA A MANO
+#   dbops.trgfn_processi_accensione_guard: su dbops.processi_accensione
+#   rifiuta (in quest'ordine)
+#     1. un processo senza sveglia, CODA o ritirato (E_PROCESSO_SENZA_SVEGLIA);
+#     2. lo spegnimento di un processo non spegnibile (E_PROCESSO_NON_SPEGNIBILE);
+#     3. un motivo vuoto (E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO).
+#   Brief: brief-db-processi-accensione-per-ambiente (A-5, §5.2)
+#
+# -- PERCHE' IL GUARD E NON SOLO IL VERBO ---------------------------
+#   La regola e' del dato, non di chi lo scrive: una INSERT a mano (o un
+#   verbo futuro) non deve poter spegnere listen_permessi. Il verbo
+#   dbops.fn_imposta_accensione_processo (20261016-27) non ripete i controlli:
+#   scrive, e il guard parla.
+#
+# -- ⚠️ IL MOTIVO E IL CHECK ------------------------------------------
+#   chk_processi_accensione_motivo resta come vincolo del dato. Il guard,
+#   BEFORE ROW, parla prima del CHECK e da' il codice registrato con la frase
+#   per l'operatore: e' voluto (memoria «guard BEFORE ROW oscura CHECK»: qui
+#   dicono la stessa cosa, e il CHECK copre chi disattivasse il trigger).
+#
+# -- ⚠️ SE IL CATALOGO CAMBIA DOPO ------------------------------------
+#   Un processo che diventa non spegnibile mentre una riga lo dice spento
+#   non resta spento: lo stato effettivo (dbops.fn_processo_acceso_su_valori)
+#   ignora la scelta a mano su un non spegnibile. Nessun guard su
+#   dbops.processi: la regola regge per costruzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261016-22-create-trgfn-processi-accensione-guard-mctit.yaml
+
+  - changeSet:
+      id: 20261016-22-create-trgfn-processi-accensione-guard
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea dbops.trgfn_processi_accensione_guard: niente scelta a mano su un processo senza
+        sveglia, niente spegnimento di un non spegnibile, motivo obbligatorio.
+        Brief: brief-db-processi-accensione-per-ambiente (A-5).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.trgfn_processi_accensione_guard()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_codice       dbops.processi.codice%TYPE;
+                  v_canale       dbops.processi.canale%TYPE;
+                  v_obsoleto_dal dbops.processi.obsoleto_dal%TYPE;
+                  v_spegnibile   dbops.processi.spegnibile%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La scelta a mano vale solo dove c'e' una sveglia da
+                  --   accendere o spegnere, e non spegne mai un processo
+                  --   non spegnibile (A-5).
+                  --
+                  -- Ordine dei rifiuti (il primo che parla e' quello che
+                  -- l'operatore legge):
+                  --   1. senza sveglia: non c'e' niente da scegliere;
+                  --   2. non spegnibile: la scelta e' vietata;
+                  --   3. motivo vuoto: la scelta e' incompleta.
+                  -- =========================================================
+                  SELECT p.codice, p.canale, p.obsoleto_dal, p.spegnibile
+                    INTO v_codice, v_canale, v_obsoleto_dal, v_spegnibile
+                    FROM dbops.processi p
+                   WHERE p.id = NEW.processo_id;
+
+                  -- Un processo inesistente lo rifiuta la FK: qui non si
+                  -- anticipa.
+                  IF NOT FOUND THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 1. Senza sveglia: CODA (li avvia una persona) o ritirato.
+                  IF v_canale = 'CODA' OR v_obsoleto_dal IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'trgfn_processi_accensione_guard', 'E_PROCESSO_SENZA_SVEGLIA',
+                          jsonb_build_object('processo_codice', v_codice,
+                                             'canale',          v_canale,
+                                             'obsoleto_dal',    v_obsoleto_dal),
+                          NULL::uuid,
+                          v_codice);
+                  END IF;
+
+                  -- 2. Non spegnibile: si puo' solo confermare acceso.
+                  --    ⚠️ IS FALSE e non NOT: spegnibile NULL su un processo
+                  --    con sveglia e' un catalogo incompleto, e lo rifiuta
+                  --    chk_processi_accensione quando e' convalidato.
+                  IF NOT NEW.acceso AND v_spegnibile IS FALSE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'trgfn_processi_accensione_guard', 'E_PROCESSO_NON_SPEGNIBILE',
+                          jsonb_build_object('processo_codice', v_codice,
+                                             'campo',           'acceso'),
+                          NULL::uuid,
+                          v_codice);
+                  END IF;
+
+                  -- 3. Il motivo: chi viene dopo deve capire perche'.
+                  IF NEW.motivo IS NULL OR btrim(NEW.motivo) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'trgfn_processi_accensione_guard', 'E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO',
+                          jsonb_build_object('processo_codice', v_codice,
+                                             'campo',           'motivo'),
+                          NULL::uuid,
+                          v_codice);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.trgfn_processi_accensione_guard()
+              IS 'Guard BEFORE INSERT OR UPDATE su dbops.processi_accensione. In ordine: un processo senza sveglia (canale CODA o ritirato) non ha scelta a mano (E_PROCESSO_SENZA_SVEGLIA); un processo non spegnibile non si spegne (E_PROCESSO_NON_SPEGNIBILE, A-5); il motivo e'' obbligatorio (E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO). La regola e'' del dato: il verbo dbops.fn_imposta_accensione_processo non la ripete. Se il catalogo rende un processo non spegnibile dopo che una riga l''ha spento, lo stato effettivo (dbops.fn_processo_acceso_su_valori) ignora la riga. Brief: brief-db-processi-accensione-per-ambiente.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.trgfn_processi_accensione_guard();

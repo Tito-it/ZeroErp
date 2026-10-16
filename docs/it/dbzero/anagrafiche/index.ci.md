@@ -82,6 +82,7 @@
 - [trgfn_billing_account_guard_soggetto_coerenza_istanza](manual/trgfn_billing_account_guard_soggetto_coerenza_istanza.md) — (latest review 02-05-2026)
 - [trgfn_billing_account_link_ef](manual/trgfn_billing_account_link_ef.md)
 - [trgfn_billing_account_require_istanza_ha_ba](manual/trgfn_billing_account_require_istanza_ha_ba.md) — (latest review 08-10-26)
+- [trgfn_categorie_clienti_listini_guard_listino](manual/trgfn_categorie_clienti_listini_guard_listino.md) — (rev 2026-10-16, brief `brief-db-coerenza-listino-della-riga-di-commessa` §7.4, opzione B di Tid)
 - [trgfn_clienti_guard_ruolo_cliente](manual/trgfn_clienti_guard_ruolo_cliente.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “cliente”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_clienti_guard_stato_date](manual/trgfn_clienti_guard_stato_date.md) — (latest review 14-10-26)
 - [trgfn_clienti_set_parent_istanza](manual/trgfn_clienti_set_parent_istanza.md) — (latest update 09-12-25) La funzione `anagrafiche.trgfn_clienti_set_parent_istanza()` ha il compito di **mantenere la catena lineare delle istanze** (`istanze_utilities.parent_istanza_id`) per ciascun **PDP** quando viene inserito o attivato un nuovo cliente.

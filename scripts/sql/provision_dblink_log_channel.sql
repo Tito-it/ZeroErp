@@ -1,16 +1,15 @@
 \set ON_ERROR_STOP on
 
 \echo [ZeroErp] Provisioning dblink log channel (service + .pgpass, no password in GUC)
-\echo [ZeroErp] Optional vars: log_service (default: zeroerp_log), log_password (solo se zeroerp_log manca)
+\echo [ZeroErp] Optional var: log_service (default: zeroerp_log)
 
 -- ⭐ I nomi dei ruoli sono di SISTEMA (brief-db-ruoli-di-sistema, fase 4,
 --   2026-10-15): zeroerp_log, e il parametro del canale per zeroerp_owner,
 --   zeroerp_app, zeroerp_job. Prima erano variabili, col migratore di default
 --   `titodb`. Resta variabile solo il nome del service, che e' dell'ambiente.
--- ⛔ La password di zeroerp_log serve SOLO a crearlo: di un ruolo che esiste
---   non si tocca (i ruoli sono di cluster: lo stesso canale serve lo sviluppo e
---   la sua password sta in .pgpass dell'utente di sistema `postgres`). Prima lo
---   script la riscriveva a ogni corsa (D-3).
+-- ⛔ Il ruolo zeroerp_log NON lo crea questo script: lo crea la fase `ruoli` di
+--   provision_zeroerp.sql, prima delle migrazioni. Qui si danno i suoi diritti
+--   su dbops.error_log e i parametri del canale, che vogliono lo schema.
 --
 -- ⛔ Un fermo e' un ERRORE VERO: `\quit 1` esce con 0 (psql ignora il codice),
 --   quindi chi lancia lo script da una pipeline lo crederebbe riuscito.
@@ -18,10 +17,6 @@
 \set log_role zeroerp_log
 \set migrator_role zeroerp_owner
 \set app_role zeroerp_app
-
-\if :{?log_password}
-SELECT set_config('zeroerp.prov_log_password', :'log_password', false) \gset _x_
-\endif
 
 \if :{?log_service}
 \else
@@ -38,15 +33,11 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 
 -- 1) Ruolo tecnico di logging (privilegi minimi)
 DO $log$
-DECLARE
-    v_pwd text := nullif(current_setting('zeroerp.prov_log_password', true), '');
 BEGIN
+    -- Il ruolo lo crea la fase `ruoli` di provision_zeroerp.sql, PRIMA delle
+    -- migrazioni (90_end/20260905-38 gli da' il giornale dei job solo se c'e').
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'zeroerp_log') THEN
-        IF v_pwd IS NULL THEN
-            RAISE EXCEPTION 'Il ruolo zeroerp_log manca e non e'' stata passata -v log_password: nessun default (D-3).';
-        END IF;
-        EXECUTE format('CREATE ROLE zeroerp_log LOGIN PASSWORD %L', v_pwd);
-        RAISE NOTICE 'creato il ruolo zeroerp_log';
+        RAISE EXCEPTION 'Il ruolo zeroerp_log manca: lo crea la fase ruoli di provision_zeroerp.sql (-v log_password=…), prima delle migrazioni.';
     END IF;
 END
 $log$;

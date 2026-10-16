@@ -120,13 +120,11 @@ state azzerate al passo 1. Quindi il DB legge valori vuoti: la tripla è `NULL`,
 `fn_current_identita_context()` non restituisce niente e le policy RLS fail-closed. Il valore
 che rende vera questa frase non è il `COMMIT` — è il reset.
 
-**Processi di sistema headless (canale batch).** I management command e i cron che operano via
-un ruolo `zeroerp_batch_<job>` (`BYPASSRLS` — vedi
-[provisioning-db-roles](/dev/backend/provisioning-db-roles)) **non settano i GUC d'identità**:
-non hanno una veste applicativa, e la RLS è bypassata **a livello di ruolo**, non via GUC.
-Possono settare il solo `app.jwt_user` (es. `BATCH_FATTURAZIONE`) per dare un attore
-riconoscibile ai trigger audit. Questo canale è riservato ai processi headless: **mai** usarlo
-per servire richieste web.
+**Processi di sistema headless.** I management command e i cron non hanno un canale a parte:
+si collegano come l'applicazione e, se toccano i dati di un'azienda, impostano gli stessi GUC
+d'identità di una richiesta web, con l'**utente tecnico** di quell'azienda
+([I lavori automatici](/guide/processi-automatici-classe-e-identita)). Nessun utente del
+database scavalca la RLS al posto loro ([provisioning-db-roles](/dev/backend/provisioning-db-roles)).
 
 **Canale della coda.** Il worker della coda di lavoro
 (`apps/core/services/coda_lavori/context.py`) usa **lo stesso** `JWT_GUC_RESET_SQL` del

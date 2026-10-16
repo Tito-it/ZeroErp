@@ -27,10 +27,14 @@
 | ci_ordine | integer | YES |  |
 | ci_procedura | text | YES |  |
 | ci_esclusione | text | YES |  |
+| acceso_in_sviluppo | boolean | YES |  |
+| acceso_in_produzione | boolean | YES |  |
+| spegnibile | boolean | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_processi_accensione |  |
 | CHECK | chk_processi_canale |  |
 | CHECK | chk_processi_classe |  |
 | CHECK | chk_processi_contratto_solo_command |  |

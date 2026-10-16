@@ -132,18 +132,18 @@ pomeriggio, che la notte sistemerà: un allarme che dipende dall'orologio.
 
 ## 5. Chi esegue, e con quali diritti
 
-Per analizzare una tabella bisogna esserne proprietari, essere superuser, oppure
-avere il ruolo predefinito `pg_maintain`. Il diritto si dà **una volta per
-cluster**, nel provisioning, e mai in un changeSet.
+Per analizzare una tabella bisogna esserne il proprietario. Il lavoro lo è: pgAgent
+si collega come `zeroerp_job` e chiama la procedura del lavoro, che gira come il
+**proprietario** del database (`zeroerp_owner`). E siccome il proprietario è uno
+solo e possiede tutte le tabelle, nessuna resta fuori. Sulla CI e sul database di
+prova il lavoro lo chiama direttamente il proprietario, nel passaggio delle
+automazioni.
 
-| Ambiente | Chi esegue il lavoro | Diritto |
-| --- | --- | --- |
-| Server di sviluppo | pgAgent chiama la procedura, che gira come il **proprietario** del database (procedura `SECURITY DEFINER`) | già sufficiente: il proprietario possiede tutte le tabelle |
-| Database di prova (`scripts/ci-local.sh`) e CI, col modello dei ruoli | `zeroerp_owner`, il proprietario (passaggio `ci_apply`) | già sufficiente: un owner solo possiede tutto |
+Restano fuori solo i cataloghi condivisi del server PostgreSQL, che può analizzare
+soltanto un amministratore: non sono tabelle del programma, e il controllo non li
+conta.
 
-Il modello dei ruoli di sistema (un proprietario solo, `zeroerp_owner`) è descritto in
-[Provisioning ruoli DB](/dev/backend/provisioning-db-roles); il dettaglio sul
-diritto è in [Setup Liquibase](/liquibase-setup-workflow), §2.
+Gli utenti del database e le loro regole: [Provisioning ruoli DB](/dev/backend/provisioning-db-roles).
 
 ### In CI e sul database di prova
 

@@ -102,11 +102,10 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -v fase=ruoli -v db_name=zeroerp \
             -v owner_password=secret-owner -v job_password=secret-job -v app_password=secret-app \
+            -v log_password=secret-log \
             -f scripts/sql/provision_zeroerp.sql
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
             "ALTER ROLE zeroerp_owner IN DATABASE zeroerp SET myapp.user_language = 'it';"
-          psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
-            "CREATE ROLE zeroerp_log LOGIN PASSWORD 'secret-log';"
           # ⛔ CORRETTO il 2026-09-05. La riga precedente diceva
           #   `user=zeroerp password=postgres`: la password di `zeroerp` in
           #   questo workflow e' `secret` (riga sopra), quindi quel DSN non si
@@ -226,8 +225,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
+          # ⭐ L'ambiente della CI e' SVILUPPO (brief-db-processi-accensione-per-ambiente,
+          #   R-2): si dichiara qui, una volta, e non cambia.
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
-            -v fase=post -f scripts/sql/provision_zeroerp.sql
+            -v fase=post -v ambiente=SVILUPPO -f scripts/sql/provision_zeroerp.sql
 
       - name: Genera doc DB
         # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio

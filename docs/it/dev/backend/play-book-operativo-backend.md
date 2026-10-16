@@ -23,7 +23,7 @@ export DB_NAME=zeroerp
 export DB_USER=zeroerp_app                          # ruolo runtime, MAI owner né BYPASSRLS
 export DB_PASS=⚠️StrongPassword
 export DB_MIGRATOR=zeroerp_owner                    # owner degli oggetti: Liquibase e manage.py migrate
-                                                     # (ruolo di sistema; sullo sviluppo `titodb`, che ne
+                                                     # (ruolo di sistema; sullo sviluppo un utente personale che ne
                                                      #  è membro e lavora come lui)
 export DB_HOST=⚠️dbdev
 export DB_PORT=5432
@@ -168,14 +168,13 @@ psql "host=${DB_HOST} port=5432 dbname=${DB_NAME} user=<ADMIN_DB_USER>" \
   -v fase=post -f scripts/sql/provision_zeroerp.sql
 
 psql "host=${DB_HOST} port=5432 dbname=${DB_NAME} user=<ADMIN_DB_USER>" \
-  -v log_password='⚠️PasswordLog' \
   -f scripts/sql/provision_dblink_log_channel.sql
 ```
 
 ⛔ **Nessun ruolo `BYPASSRLS`** su un host nuovo: i processi automatici girano
 come `zeroerp_app` con un utente tecnico per azienda
-([Processi automatici](/guide/processi-automatici-classe-e-identita)). Il
-ruolo `zeroerp_batch_fatturazione` è stato ritirato il 2026-10-15 e non va creato.
+([Processi automatici](/guide/processi-automatici-classe-e-identita)), e la
+RLS li filtra come un operatore.
 
 > ✅ **Come so che è andata bene**: la sezione «Verifiche» di
 > [provisioning-db-roles.md](provisioning-db-roles.md).

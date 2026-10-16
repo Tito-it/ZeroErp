@@ -78,13 +78,15 @@ DO $fixture$
 DECLARE
     v_profilo config.profili_accesso.codice%TYPE;
 BEGIN
-    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile)
     VALUES (9401, 'PGTAP-FABBRICA-OK',
             'processo di dominio headless per il collaudo della fabbrica',
-            'DOMINIO', 'COMMAND'),
+            'DOMINIO', 'COMMAND', true, true, true),
            (9402, 'PGTAP-FABBRICA-CODA',
             'processo di dominio accodato da un operatore',
-            'DOMINIO', 'CODA');
+            'DOMINIO', 'CODA', NULL, NULL, NULL);
 
     -- Un emittente ATTIVO su cui creare l'utente. ORDER BY esplicito, mai un
     -- LIMIT 1 nudo: quale riga esca dipenderebbe dal piano del planner, e il

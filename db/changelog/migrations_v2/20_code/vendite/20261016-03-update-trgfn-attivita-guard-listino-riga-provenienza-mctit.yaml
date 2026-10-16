@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_attivita_guard_listino_riga: LE TRE REGOLE DELLA PROVENIENZA
+#   Brief: brief-db-coerenza-listino-della-riga-di-commessa (§6, secondo giro)
+#
+# -- CHE COSA CAMBIA ------------------------------------------------------
+#   * Il predicato e' vendite.fn_check_listino_provenienza (20261016-02), che
+#     restituisce il codice del primo motivo: riga di listino incoerente
+#     (primo giro), listino di un altro emittente (D-3), versione in BOZZA
+#     (D-4). Il guard solleva il codice che riceve.
+#   * Si giudica anche la riga con la sola VERSIONE (il push la scrive senza
+#     la riga di listino): emittente e bozza valgono anche li'. Prima il guard
+#     usciva su riga di listino NULL.
+#   * In UPDATE si giudica se cambia la riga di listino, l'articolo, l'unita'
+#     di misura, la versione o la commessa.
+#   * vendite.fn_listino_riga_coerente (20261015-20) si RITIRA: aveva un solo
+#     lettore, questo guard. Si cancella anche la sua pagina manual/.
+#
+# -- I VALORI DEL MESSAGGIO -------------------------------------------------
+#   E_ATTIVITA_LISTINO_RIGA_INCOERENTE ha un segnaposto (l'id della riga di
+#   listino); gli altri due sono frasi chiuse: il listino puo' essere di
+#   un'azienda che l'operatore non vede, e il dettaglio sta nel contesto.
+#
+#   Firma, AFTER e montaggio (20261015-22) invariati: CREATE OR REPLACE.
+#   Corpo dal 20261015-21, l'unico changeSet precedente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261016-03-update-trgfn-attivita-guard-listino-riga-provenienza-mctit.yaml
+
+  - changeSet:
+      id: 20261016-03-update-trgfn-attivita-guard-listino-riga-provenienza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_attivita_guard_listino_riga legge vendite.fn_check_listino_provenienza e
+        solleva il primo motivo (riga di listino incoerente, listino di un altro emittente,
+        versione in BOZZA), anche sulle righe con la sola versione. Ritira
+        vendite.fn_listino_riga_coerente. Brief: brief-db-coerenza-listino-della-riga-di-commessa (§6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_guard_listino_riga()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- attivita_fatturabili non ha la colonna: NULL, non si confronta.
+                  v_versione_new vendite.listini_righe.listino_versione_id%TYPE :=
+                      (to_jsonb(NEW) ->> 'listino_versione_id')::bigint;
+                  v_versione_old vendite.listini_righe.listino_versione_id%TYPE;
+                  -- Il codice del primo motivo, dalla check.
+                  v_codice       config.codici_errore.codice%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   AFTER INSERT OR UPDATE su commesse_attivita e
+                  --   attivita_fatturabili: la provenienza del prezzo (versione
+                  --   e riga di listino) e' ammessa
+                  --   (vendite.fn_check_listino_provenienza).
+                  -- =========================================================
+                  IF NEW.listino_riga_id IS NULL AND v_versione_new IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF TG_OP = 'UPDATE' THEN
+                      v_versione_old := (to_jsonb(OLD) ->> 'listino_versione_id')::bigint;
+                      IF  NEW.listino_riga_id IS NOT DISTINCT FROM OLD.listino_riga_id
+                      AND NEW.articolo_id     IS NOT DISTINCT FROM OLD.articolo_id
+                      AND NEW.uom_id          IS NOT DISTINCT FROM OLD.uom_id
+                      AND NEW.commessa_id     IS NOT DISTINCT FROM OLD.commessa_id
+                      AND v_versione_new      IS NOT DISTINCT FROM v_versione_old THEN
+                          RETURN NULL;
+                      END IF;
+                  END IF;
+
+                  v_codice := vendite.fn_check_listino_provenienza(
+                      NEW.commessa_id, NEW.articolo_id, NEW.uom_id,
+                      v_versione_new, NEW.listino_riga_id);
+
+                  IF v_codice IS NULL THEN
+                      RETURN NULL;   -- trigger AFTER: il valore di ritorno e' ignorato
+                  END IF;
+
+                  IF v_codice = 'E_ATTIVITA_LISTINO_RIGA_INCOERENTE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, v_codice,
+                          jsonb_build_object(
+                              'campo',               'listino_riga_id',
+                              'tabella',             TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',                  NEW.id,
+                              'commessa_id',         NEW.commessa_id,
+                              'listino_riga_id',     NEW.listino_riga_id,
+                              'articolo_id',         NEW.articolo_id,
+                              'uom_id',              NEW.uom_id,
+                              'listino_versione_id', v_versione_new),
+                          NEW.tx_id,
+                          NEW.listino_riga_id::text);
+                  ELSE
+                      -- Frase chiusa: il listino puo' essere di un'azienda che
+                      -- l'operatore non vede.
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, v_codice,
+                          jsonb_build_object(
+                              'campo',               CASE WHEN v_versione_new IS NULL
+                                                          THEN 'listino_riga_id'
+                                                          ELSE 'listino_versione_id' END,
+                              'tabella',             TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',                  NEW.id,
+                              'commessa_id',         NEW.commessa_id,
+                              'listino_riga_id',     NEW.listino_riga_id,
+                              'listino_versione_id', v_versione_new),
+                          NEW.tx_id,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_attivita_guard_listino_riga()
+              IS 'Guard AFTER INSERT OR UPDATE su vendite.commesse_attivita e vendite.attivita_fatturabili (brief-db-coerenza-listino-della-riga-di-commessa: D-1 2026-10-15, §6 2026-10-16): la provenienza del prezzo e'' ammessa. Solleva il codice del primo motivo di vendite.fn_check_listino_provenienza: E_ATTIVITA_LISTINO_RIGA_INCOERENTE (la riga di listino non e'' dell''articolo, dell''unita'' di misura o della versione della riga; valori: id della riga di listino), E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO (listino di un altro emittente rispetto alla commessa), E_ATTIVITA_LISTINO_VERSIONE_BOZZA (versione in BOZZA); gli ultimi due a frase chiusa. Tutti TECNICO: la provenienza la scrive il programma dal risolutore. Giudica anche la riga con la sola versione. La versione si legge per nome da to_jsonb(NEW): attivita_fatturabili non la porta (li'' conta quella della riga di listino). AFTER: giudica la riga finale. Ne'' riga ne'' versione -> passa; in UPDATE giudica solo se cambia riga di listino, articolo, unita'' di misura, versione o commessa. Il lato della riga di listino (articolo, unita'' di misura e versione immutabili) lo tiene il lock di colonna, E_LISTINO_RIGA_IDENTITA_IMMUTABILE.';
+
+              -- Il predicato del primo giro: un solo lettore, questo guard.
+              DROP FUNCTION IF EXISTS vendite.fn_listino_riga_coerente(bigint, uuid, bigint, bigint);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il rollback NON ricrea la versione precedente: vanno ri-applicati
+              --    20261015-20 e 20261015-21.
+              SELECT 1;

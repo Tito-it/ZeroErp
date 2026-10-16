@@ -6,6 +6,8 @@
 >
 • [dbops.processi_bersagli](/dbzero/dbops/manual/processi_bersagli)
 > • [dbops.processi_identita](/dbzero/dbops/manual/processi_identita)
+> • [dbops.processi_accensione](/dbzero/dbops/manual/processi_accensione)
+> • [dbops.installazione](/dbzero/dbops/manual/installazione)
 > • [dbops.coda_lavori_tipi](/dbzero/dbops/manual/coda_lavori_tipi)
 > • [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log)
 >
@@ -199,12 +201,65 @@ Presidio: pgTAP `dbops/test-processi-convergenza-ci`. Brief:
 
 ---
 
+### ⭐ Acceso o spento: il default per ambiente e i processi che non si spengono *(dal 2026-10-16)*
+
+Ogni processo **con una sveglia** (canali `PGAGENT`, `COMMAND`,
+`CODA_AUTOMATICA`, non ritirato) dichiara tre cose:
+
+| Colonna | Che cosa dice |
+| --- | --- |
+| `acceso_in_sviluppo` | se la sveglia è accesa di default in un'installazione di sviluppo |
+| `acceso_in_produzione` | se la sveglia è accesa di default in un'installazione di produzione |
+| `spegnibile` | se la sveglia si può spegnere a mano |
+
+L'ambiente dell'installazione sta in [dbops.installazione](/dbzero/dbops/manual/installazione).
+Una macchina può scavalcare il default con una scelta a mano,
+[dbops.processi_accensione](/dbzero/dbops/manual/processi_accensione).
+
+⭐ **Non spegnibile** è un processo che, spento, romperebbe la sicurezza o la
+correttezza dei dati senza che nessuno se ne accorga: i permessi tolti
+resterebbero validi (`listen_permessi`), gli utenti scaduti resterebbero attivi
+(`sync_auth_user_expired_daily`), gli stati per scadenza resterebbero aperti
+(`chiusura_scadenze_daily`), la coda dei lavori si fermerebbe
+(`draina_coda_lavori`), nessuno guarderebbe più i guasti (`digest_presidi`,
+`guardiano_digest`), le email non partirebbero (`send_pending_emails`). Un non
+spegnibile è acceso di default in tutti e due gli ambienti (CHECK
+`chk_processi_accensione`), la scelta a mano non lo spegne, e il suo stato non
+dipende dall'ambiente.
+
+I processi `CODA` (li avvia una persona) e quelli ritirati non hanno una
+sveglia: le tre colonne sono `NULL`.
+
+**Chi decide se una sveglia è accesa** (una regola, scritta una volta sola):
+
+| Domanda | Chi risponde |
+| --- | --- |
+| la regola | `dbops.fn_processo_acceso_su_valori` (pura, sui valori: si prova senza costruire niente) |
+| lo stato su questa installazione, per chi descrive | `dbops.fn_processo_acceso_dichiarato` (non solleva: `NULL` se l'ambiente non è dichiarato) |
+| la sveglia deve partire? | `maintenance.fn_sveglia_accesa` (`true`/`false` o un errore; la chiedono i passi pgAgent e le sveglie systemd) |
+
+⚠️ **Spegnere ferma la sveglia, non l'aggiornamento.** La convergenza del
+rilascio (sezione sopra) chiama le procedure strutturali sempre, anche su un
+processo spento: un rilascio lascia il database completo.
+
+Il panorama [vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione)
+mostra un processo spento come `SPENTO`, che non è un guasto. Presidi pgTAP:
+`dbops/test-processi-accensione-v1`, `dbops/test-installazione-ambiente-v1`.
+Brief: `brief-db-processi-accensione-per-ambiente`.
+
+---
+
 ### Come si registra un processo nuovo
 
 1. Una riga nel **seed** `80_data/sql/dbops/processi.csv` — è catalogo, non
    dato di macchina: si cambia dal CSV, mai con una `UPDATE` diretta.
    Se ha un **job pgAgent**, la riga dichiara `ci_ordine` + `ci_procedura`
    oppure `ci_esclusione` (sezione sopra): senza, il CHECK la rifiuta.
+   Se ha una **sveglia**, la riga dichiara anche `acceso_in_sviluppo`,
+   `acceso_in_produzione` e `spegnibile` (sezione «Acceso o spento»): senza,
+   `chk_processi_accensione` la rifiuta. E se il job è pgAgent, il suo passo
+   nasce già avvolto nel cancello `maintenance.fn_sveglia_accesa('<codice>')`
+   (forma in `85_pgagent/20261016-30`).
 2. Se è di **dominio**, una riga in
    [processi_bersagli](/dbzero/dbops/manual/processi_bersagli) per ogni tabella
    che tocca, con il percorso che porta all'emittente.

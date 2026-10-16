@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_listino_riga_coerente(riga, articolo, uom, versione)
+#   La riga di listino citata per il prezzo e' quella dell'articolo, della
+#   unita' di misura e (se c'e') della versione della riga che la cita.
+#
+# -- PERCHE' (decisione di Tid, 2026-10-15) ------------------------------
+#   Una riga di commessa (e la sua attivita' fatturabile) porta la riga di
+#   listino che ha dato il prezzo (listino_riga_id) e, la commessa, la
+#   versione sotto cui e' registrata (listino_versione_id). Una riga di
+#   listino appartiene a UNA versione, e' di UN articolo e di UNA unita' di
+#   misura: le due informazioni non possono dire cose diverse. Il risolutore
+#   (vendite.fn_resolve_prezzo_listino_v2_esito) le produce coerenti per
+#   costruzione, ma la madre e l'UPDATE diretto del riallineamento (backend)
+#   scrivono quello che ricevono, e nessuno lo controllava.
+#   Domanda a Tid: «possono divergere di proposito?» -> «no».
+#
+# -- LA REGOLA -----------------------------------------------------------
+#   * riga di listino NULL: niente da confrontare -> true (il prezzo dal kit,
+#     LISTINO_BUNDLE, non cita una riga di listino; una riga «registrata
+#     sotto la versione» senza riga di prezzo e' lecita);
+#   * articolo e unita' di misura: uguali a quelli della riga di listino
+#     (il risolutore la cerca con articolo_id e uom_id della riga);
+#   * versione NULL: non si confronta (attivita_fatturabili non la porta, e
+#     la commessa puo' non averla); altrimenti uguale a quella della riga.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   ⚠️ SECURITY DEFINER: vendite.listini_righe ha la RLS per emittente
+#   (rls_listini_righe_ef_whitelist). Letta con la RLS di chi scrive, una
+#   riga fuori perimetro tornerebbe a vuoto e il guard giudicherebbe
+#   un'assenza invece di un valore. Ritorna solo un boolean: non rivela
+#   niente della riga. search_path bloccato, nomi qualificati.
+#   Lo legge vendite.trgfn_attivita_guard_listino_riga (20261015-21).
+#   Brief: brief-db-coerenza-listino-della-riga-di-commessa (§5, primo giro).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261015-20-create-fn-listino-riga-coerente-mctit.yaml
+
+  - changeSet:
+      id: 20261015-20-create-fn-listino-riga-coerente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo predicato vendite.fn_listino_riga_coerente: la riga di listino citata per il prezzo e'
+        dello stesso articolo, della stessa unita' di misura e (se data) della stessa versione della
+        riga che la cita. SECURITY DEFINER: listini_righe ha la RLS per emittente. Decisione di Tid,
+        2026-10-15.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_listino_riga_coerente(
+                  p_listino_riga_id     vendite.listini_righe.id%TYPE,
+                  p_articolo_id         vendite.listini_righe.articolo_id%TYPE,
+                  p_uom_id              vendite.listini_righe.uom_id%TYPE,
+                  p_listino_versione_id vendite.listini_righe.listino_versione_id%TYPE)
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   true se la riga di listino e' dell'articolo e della
+                  --   unita' di misura dati e, quando la versione e' data, di
+                  --   quella versione. Riga NULL -> true (niente da
+                  --   confrontare). Versione NULL -> non si confronta.
+                  -- =========================================================
+                  IF p_listino_riga_id IS NULL THEN
+                      RETURN true;
+                  END IF;
+
+                  RETURN EXISTS (
+                      SELECT 1
+                        FROM vendite.listini_righe lr
+                       WHERE lr.id          = p_listino_riga_id
+                         AND lr.articolo_id = p_articolo_id
+                         AND lr.uom_id      = p_uom_id
+                         AND (p_listino_versione_id IS NULL
+                              OR lr.listino_versione_id = p_listino_versione_id));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_listino_riga_coerente(bigint, uuid, bigint, bigint)
+              IS 'Predicato (decisione di Tid, 2026-10-15): true se la riga di listino citata per il prezzo e'' dell''articolo e dell''unita'' di misura dati e, quando la versione e'' data, di quella versione. Riga NULL -> true (il prezzo dal kit non cita una riga di listino; una riga di commessa puo'' portare la versione senza la riga). Versione NULL -> non si confronta (vendite.attivita_fatturabili non la porta). Articolo o unita'' di misura NULL con una riga data -> false. SECURITY DEFINER: vendite.listini_righe ha la RLS per emittente, e letta con la RLS di chi scrive una riga fuori perimetro tornerebbe a vuoto. Ritorna solo un boolean. Lo legge vendite.trgfn_attivita_guard_listino_riga.';
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_listino_riga_coerente(bigint, uuid, bigint, bigint) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_listino_riga_coerente(bigint, uuid, bigint, bigint) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_listino_riga_coerente(bigint, uuid, bigint, bigint);

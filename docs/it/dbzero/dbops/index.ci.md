@@ -21,6 +21,7 @@
 - [error_log](manual/error_log.md) — * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore. * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
 - [fk_index_policy](manual/fk_index_policy.md) — (latest review 27-07-26) La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli indici sulle foreign key: una riga per vincolo, un flag che dice se l'indice deve esistere, e il comando che lo crea.
 - [idempotency_keys](manual/idempotency_keys.md) — (latest review 06-02-26) * Prevenire doppie esecuzioni in caso di retry o chiamate duplicate. * Restituire **la stessa risposta** quando arriva la stessa `idempotency_key`. * Collegare operazioni applicative alla **tracciabilità transazionale** tramite `tx_id`.
+- [installazione](manual/installazione.md) — (16-10-2026 — brief `brief-db-processi-accensione-per-ambiente`)
 - [lock_columns_conditional](manual/lock_columns_conditional.md)
 - [messaggi_errore_codici_legacy](manual/messaggi_errore_codici_legacy.md) — (rev 2026-08-21)
 - [pipeline_task_registry](manual/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
@@ -29,6 +30,7 @@
 - [presidi_cause](manual/presidi_cause.md) — (latest review 09-10-2026)
 - [presidi_testi](manual/presidi_testi.md) — (latest review 09-10-2026)
 - [processi](manual/processi.md) — (latest review 14-09-2026)
+- [processi_accensione](manual/processi_accensione.md) — (16-10-2026 — brief `brief-db-processi-accensione-per-ambiente`)
 - [processi_bersagli](manual/processi_bersagli.md) — (latest review 04-09-2026)
 - [processi_identita](manual/processi_identita.md) — (latest review 04-09-2026)
 - [request_log](manual/request_log.md) — (latest review 05-03-2026)
@@ -72,6 +74,7 @@
 - [fn_get_override_col](manual/fn_get_override_col.md) — (latest review 10-01-26) La funzione **`dbops.fn_get_override_col(p_schema, p_table, p_role, p_default)`** permette di ottenere in modo centralizzato il nome di una colonna “override” per un ruolo specifico, qualora sia stato definito nella tabella di configurazione `dbops.automation_overrides_cols`. Se non esiste un override registrato, viene restituito il valore di default passato come parametro.
 - [fn_get_pipeline_task_implementation](manual/fn_get_pipeline_task_implementation.md) — (latest review 08-02-2026) Risoluzione controllata dell'implementazione di un task: usa la variante richiesta se valida, altrimenti il **default**.
 - [fn_guardiano_digest](manual/fn_guardiano_digest.md) — (latest review 11-09-2026)
+- [fn_imposta_accensione_processo](manual/fn_imposta_accensione_processo.md)
 - [fn_list_indices](manual/fn_list_indices.md) — (rev 2026-08-21)
 - [fn_lock_columns_divergenze](manual/fn_lock_columns_divergenze.md) — (latest review 26-09-26)
 - [fn_name_from_template](manual/fn_name_from_template.md) — La funzione **`fn_name_from_template`** genera in modo consistente un **nome normalizzato** (per trigger, constraint, indici, ecc.) a partire da un **template testuale** con *placeholder* e da un set di parametri (schema, tabella, parent/child, nome FK, operazione).
@@ -82,7 +85,7 @@
 - [fn_pgtap_concedi_azione](manual/fn_pgtap_concedi_azione.md) — (scritta il 2026-09-24)
 - [fn_pgtap_crea_articolo](manual/fn_pgtap_crea_articolo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_pgtap_crea_commessa](manual/fn_pgtap_crea_commessa.md) — (rev 2026-10-07)
-- [fn_pgtap_crea_commessa_attivita](manual/fn_pgtap_crea_commessa_attivita.md) — (rev 2026-10-07)
+- [fn_pgtap_crea_commessa_attivita](manual/fn_pgtap_crea_commessa_attivita.md) — (rev 2026-10-07; rev 2026-10-15: articolo e listino dal chiamante)
 - [fn_pgtap_crea_fattura](manual/fn_pgtap_crea_fattura.md) — (rev 2026-09-23 — D7, lotto 1)
 - [fn_pgtap_crea_filiale_bancaria](manual/fn_pgtap_crea_filiale_bancaria.md) — (rev 2026-09-23 — D7, lotto 1)
 - [fn_pgtap_crea_gestore](manual/fn_pgtap_crea_gestore.md) — (rev 2026-09-23 — D7, lotto 2)
@@ -138,6 +141,7 @@
 
 ## 🔍 Views (manuale)
 - [vw_af_senza_giro](manual/vw_af_senza_giro.md) — (latest review 04-09-2026)
+- [vw_ambiente_non_dichiarato](manual/vw_ambiente_non_dichiarato.md)
 - [vw_articoli_a_magazzino_prontezza](manual/vw_articoli_a_magazzino_prontezza.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_audit_log_scrittori_fuori_perimetro](manual/vw_audit_log_scrittori_fuori_perimetro.md) — (latest review 12-09-2026)
 - [vw_catalogo_oggetti](manual/vw_catalogo_oggetti.md) — * Offrire una vista unificata degli oggetti PostgreSQL definiti nei due schemi principali di amministrazione. * Agevolare operazioni di discovery e auditing, bypassando query dirette sulle catalog tables.

@@ -71,9 +71,9 @@ Il ruolo, i suoi diritti su `pgagent` e l'`EXECUTE` sulle procedure li dà
 `scripts/sql/provision_zeroerp.sql`: modello e regole in
 [Provisioning ruoli DB](/dev/backend/provisioning-db-roles). Il servizio si configura con `user=zeroerp_job` nella stringa di
 connessione e la password in `.pgpass`.
-
-⚠️ Sul server di sviluppo il demone gira ancora come `postgres`, finché lo
-sviluppo non si allinea al modello (fase 3 di `brief-db-ruoli-di-sistema`).
+La connessione va su `127.0.0.1` e non sul socket locale: sul socket PostgreSQL
+accetta solo l'utente di sistema con lo stesso nome, e il demone gira come utente di
+sistema `postgres`.
 
 ---
 

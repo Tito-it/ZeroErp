@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ IL CANCELLO STA NEL PASSO DEL JOB
+#   Ogni passo SQL di un job pgAgent che sveglia un processo del catalogo
+#   viene avvolto in:
+#
+#       DO $sveglia$
+#       BEGIN
+#           IF maintenance.fn_sveglia_accesa('<codice>') THEN
+#               <il passo di prima>
+#           END IF;
+#       END
+#       $sveglia$;
+#
+#   Brief: brief-db-processi-accensione-per-ambiente (§5.3, P-3)
+#
+# ── PERCHE' QUI E NON NELLA PROCEDURA ────────────────────────────────
+#   La convergenza del rilascio (90_end/ci_apply/20260926-10) chiama le STESSE
+#   procedure dei job strutturali, e deve chiamarle sempre, anche su un
+#   processo spento (P-3: spegnere ferma la sveglia, non l'aggiornamento).
+#   Un cancello in maintenance.proc_*_job o in maintenance.fn_run_and_log
+#   fermerebbe anche lei — e il migrate, che pretende una riga di giornale per
+#   ogni procedura. Il passo pgAgent e' l'unico punto che e' solo «sveglia».
+#
+# ── LA FORMA ─────────────────────────────────────────────────────────
+#   · si AVVOLGE il passo, non lo si riscrive: il lavoro resta quello che e'
+#     (stessa lezione del 20260906-07: «cambia solo chi viene chiamato»);
+#   · il legame job -> processo e' dbops.processi.jobname_pgagent (due job
+#     si chiamano diversamente dal processo);
+#   · idempotente: un passo che nomina gia' maintenance.fn_sveglia_accesa non
+#     si riavvolge. runOnChange per poter correggere la forma, come gli altri
+#     changeSet di 85_pgagent; nessun `dbms:` sui change (linee-guida §11.1);
+#   · da spento il passo finisce senza lavoro e senza riga nel giornale: il
+#     panorama dice SPENTO dal catalogo, non dal giornale.
+#   · zeroerp_job puo': EXECUTE su ogni funzione e' di PUBLIC, USAGE su
+#     maintenance dal provisioning; la funzione e' DEFINER.
+#
+# ── ⚠️ I JOB CHE NASCERANNO DOPO ─────────────────────────────────────
+#   Questo changeSet avvolge i job che ci sono. Un changeSet nuovo di
+#   85_pgagent che crea il job di un processo scrive il passo GIA' avvolto. Lo
+#   presidia db/pgtap/dbops/test-processi-accensione-v1 (ogni passo di un job
+#   di processo chiama il cancello; skip dove pgAgent non c'e').
+#
+# ── ⚠️ IL DEBITO DI SEMPRE: `85_pgagent` in CI e' `MARK_RAN` ────────
+#   In CI pgAgent non c'e' e questo changeSet si segna senza girare. La
+#   decisione si prova in CI sulle funzioni (fn_processo_acceso_su_valori,
+#   fn_sveglia_accesa); il cablaggio dei passi lo prova il pgTAP su dbdev.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/85_pgagent/20261016-30-update-step-job-cancello-sveglia-mctit.yaml
+
+  - changeSet:
+      id: 20261016-30-update-step-job-cancello-sveglia
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Avvolge il passo SQL di ogni job pgAgent di un processo nel cancello
+        maintenance.fn_sveglia_accesa: da spento il passo non lancia la procedura. La
+        convergenza del rilascio chiama le procedure direttamente e non passa di qui (P-3).
+        Brief: brief-db-processi-accensione-per-ambiente.
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_extension WHERE extname = 'pgagent'
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'maintenance'
+                     AND p.proname = 'fn_sveglia_accesa'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE pgagent.pga_jobstep s
+                 SET jstcode = format(
+                         E'DO $sveglia$\nBEGIN\n    -- Cancello della sveglia (85_pgagent/20261016-30): da spento\n    -- il lavoro non parte e il giornale non scrive niente.\n    IF maintenance.fn_sveglia_accesa(%L) THEN\n        %s\n    END IF;\nEND\n$sveglia$;',
+                         p.codice,
+                         -- ⚠️ btrim con gli a capo: un passo che finisce con un
+                         --   «;» seguito da un a capo prenderebbe un secondo «;»,
+                         --   e in PL/pgSQL una istruzione vuota non compila.
+                         CASE WHEN right(btrim(s.jstcode, E' \t\r\n'), 1) = ';'
+                              THEN btrim(s.jstcode, E' \t\r\n')
+                              ELSE btrim(s.jstcode, E' \t\r\n') || ';' END)
+                FROM pgagent.pga_job j
+                JOIN dbops.processi p
+                  ON p.jobname_pgagent = j.jobname
+               WHERE s.jstjobid = j.jobid
+                 AND s.jstkind = 's'
+                 AND p.obsoleto_dal IS NULL
+                 AND p.canale <> 'CODA'
+                 AND s.jstcode NOT LIKE '%maintenance.fn_sveglia_accesa(%';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Il passo di prima e' dentro il blocco: il verso di ritiro e' un
+              -- changeSet nuovo che lo estrae. Qui un no-op dichiarato.
+              SELECT 1;

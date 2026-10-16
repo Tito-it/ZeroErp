@@ -311,16 +311,29 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (al 2026-10-11: resi curati con `20261011-42`, pannello e liste chiusi nel brief della lineage; D-2, il
   lister dei DDT senza filtri, chiusa con `20261012-03`, 1135 → 154 ms; resta D-3b, il verbo dell'accredito,
   ~115 ms — da profilare).
-- ⬜ **I ruoli di sistema — aperto il 2026-10-14** (`work-in-progress/brief-db-ruoli-di-sistema.md`): nomi
-  fissi (`zeroerp_owner`, `zeroerp_app`, `zeroerp_log`), password senza default, un provisioning unico per CI,
-  scratch e installazione; un owner solo anche su dbdev (oggi `titodb` su dev, `zeroerp` in CI); pgAgent come
-  `zeroerp_job`, che chiama solo le procedure dei job, `DEFINER` di `zeroerp_owner` (D-2). Decisioni tutte prese (14-10). Fase 1-bis scritta e provata: le 16 procedure dei job `DEFINER` (`20261014-55`), da applicare dopo aver tolto a mano su dbdev la firma orfana `proc_apply_fk_index_policy_job()`. Fasi 1, 1-bis e 2 fatte (PR #1861 e la PR della CI sul modello); scratch `zeroerp_ruoli`, default di `ci-local.sh`. D-5 scritta e provata (`20261015-01…-04`: ruolo di ogni corsa nel giornale, presidio `vw_job_run_da_superuser`; il `-03` va col provision-post da superuser). Prossimi: apply D-5, fase 3 (dbdev sul modello, da superuser).
-- ⬜ **Le statistiche delle tabelle: un job notturno (D15) — aperto il 2026-10-14**
-  (`work-in-progress/brief-db-statistiche-tabelle-job-notturno.md`): nessuno lancia `ANALYZE`, l'autovacuum
-  non arriva alle tabelle piccole né alle madri partizionate, e in CI i pgTAP partono senza statistiche. Disegno:
-  verbo in `maintenance` con autoverifica (`reltuples < 0`, `MAINTAIN`), procedura dal giornale, riga in
-  `dbops.processi` con `ci_ordine` ultimo, job in `85_pgagent` alle 02:30 (`20261014-50…-53`). Lato DB scritto e
-  provato il 2026-10-14; serve `GRANT pg_maintain TO zeroerp` (bootstrap CI e cluster di sviluppo), poi apply e pgTAP.
+- ✅ **I ruoli di sistema: chiuso il 2026-10-15** (`work-done/brief-db-ruoli-di-sistema.md`): nomi fissi
+  (`zeroerp_owner` proprietario di tutto, `zeroerp_job` per pgAgent, `zeroerp_app`, `zeroerp_log`),
+  password senza default, un provisioning solo (`scripts/sql/provision_zeroerp.sql`, fasi `ruoli`/`pre`/`post`)
+  per CI, scratch e installazione. dbdev convertito (`converti_db_al_modello_ruoli.sql`: `titodb` lavora
+  come `zeroerp_owner` con `SET role`), pgAgent come `zeroerp_job` sulle procedure dei job `DEFINER`, il
+  giornale registra il ruolo di ogni corsa (presidio `vw_job_run_da_superuser`). Ritirati `zeroerp_batch_fatturazione`,
+  `pgagent`, `zeroerp` e `zeroerp_ci` (`scripts/ritira_ruoli_dismessi.sh`). Guida: `installazione.md`, «Il database».
+  Il debito residuo (D35: `zeroerp_log` nella fase `ruoli`) è chiuso lo stesso giorno
+  (`work-done/brief-db-zeroerp-log-nella-fase-ruoli.md`).
+- ✅ **Le statistiche delle tabelle: un job notturno (D15) — chiuso il 2026-10-15**
+  (`work-done/brief-db-statistiche-tabelle-job-notturno.md`): verbo `maintenance.fn_analyze_statistiche` con
+  autoverifica (`reltuples < 0`, `MAINTAIN`, errore `E_STATISTICHE_MANCANTI`), procedura dal giornale, riga in
+  `dbops.processi` con `ci_ordine` ultimo (in CI gira nella convergenza di `ci_apply`), job pgAgent alle 02:30
+  (`20261014-50…-54`). Provato su dbdev il 15-10: corsa notturna riuscita e corsa di pgAgent come `zeroerp_job`
+  riuscita. Guida: `guide/statistiche-del-planner.md`.
+- ✅ **Un cliente manuale per soggetto, utility e azienda (D33) — chiuso il 2026-10-15**
+  (`work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md`): fra le istanze fittizie un cliente solo
+  per soggetto + utility + azienda emittente nello stesso periodo, controllato al COMMIT (`E_CLIENTE_STESSA_CHIAVE`,
+  predicato unico `anagrafiche.fn_clienti_stessa_chiave`); grafo degli stati in `config.transizioni_stati_cliente`
+  (un chiuso non si riapre, ogni stato pretende la sua data, `data_chiusura` di un chiuso ferma); «attivo» = il
+  periodo anche per il PDP, la disdetta e `ha_ba_attivo` (`20261014-08…-20`). BE: rifiuto al COMMIT, smoke clienti
+  verde il 15-10. I residui (§7 del brief: avviso del pre-contrattuale, PDP libero il giorno della chiusura, pgTAP
+  del PDP sul periodo, data di attivazione di un chiuso) fanno parte dello sviluppo delle utility (Tid, 15-10).
 - ✅ **La lineage dei documenti si costruisce per il documento: chiuso il 2026-10-11**
   (`work-done/brief-db-lineage-seminata-per-chiave.md`): grafo seminato per chiave (`fn_documento_lineage_nodi`,
   `_archi`, `_sintesi`), le sette viste di lista senza il grafo e `vw_documento_lineage` ritirata
@@ -437,6 +450,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   il 2026-10-10 (§9) e collaudati in-app il 2026-10-11, con due difetti trovati e corretti: il lookup delle forme
   falliva sempre (colonna inesistente) e il cambio di natura in modifica non arrivava al DB. Archiviato il
   2026-10-14: la data di costituzione in creazione è nel brief qui sopra, gli altri residui in § «Aperto — Media priorità».
+- 📝 **Quali processi sono accesi: per ambiente, a mano, i non spegnibili**
+  (`work-in-progress/brief-db-processi-accensione-per-ambiente.md`, 2026-10-15/16): l'ambiente dell'installazione
+  in `dbops.installazione` (scelto alla fase `post` del provisioning con `-v ambiente=`, nessun default, immutabile;
+  lettori `script.fn_ambiente_installazione()` / `fn_ambiente_dichiarato()`); default per ambiente e «spegnibile» in
+  `dbops.processi` (sette mai spegnibili), scelta a mano in `dbops.processi_accensione`, la sveglia
+  `maintenance.fn_sveglia_accesa` nel passo di ogni job pgAgent, stato `SPENTO` nel panorama. Giro 1
+  (`20261016-15…-32`) applicato e verde il 16-10, dbdev e scratch dichiarati `SVILUPPO`; tocca al BE/FE (§6). Giro 2 (R-4: etichette sulle radici dei dati di sviluppo, verbo del provisioning di
+  sviluppo, `smoke` → `dev.smoke`) aspetta dal BE l'elenco di ciò che crea.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

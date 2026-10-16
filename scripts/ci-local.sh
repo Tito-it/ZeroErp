@@ -437,8 +437,11 @@ fi
 #    proprieta' ripassata a zeroerp_owner (cio' che e' nato dopo la fase pre), e
 #    la VERIFICA «un owner solo»: se un oggetto del progetto non e' suo — fuori
 #    da dbops.sec_functions_owner — lo script si ferma e lo nomina.
-echo "── ruoli di sistema: fase post — postura di zeroerp_app, zeroerp_job, «un owner solo» (provision_zeroerp.sql)"
-psql_admin -d "$CI_DB" -v fase=post < scripts/sql/provision_zeroerp.sql
+#    ⭐ E l'AMBIENTE (dal 2026-10-16, brief-db-processi-accensione-per-ambiente
+#    R-2): lo scratch e' SVILUPPO. Si scrive una volta e non cambia; nelle
+#    corse dopo la prima il parametro deve solo coincidere.
+echo "── ruoli di sistema: fase post — postura di zeroerp_app, zeroerp_job, ambiente SVILUPPO, «un owner solo» (provision_zeroerp.sql)"
+psql_admin -d "$CI_DB" -v fase=post -v ambiente=SVILUPPO < scripts/sql/provision_zeroerp.sql
 
 DEV_DOPO="$(testimone_dev)"
 echo "── testimone su $DEV_DB (dopo):  $DEV_DOPO"

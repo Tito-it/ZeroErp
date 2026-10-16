@@ -1,17 +1,16 @@
 # Guida — Processi pgAgent funzionali
 
-> (latest review 06-09-2026)
+> (latest review 15-10-2026)
 >
 > Destinatari: sviluppatori database, backend, analisti funzionali
 >
 > Questa guida è l'**elenco dei lavori a orario**: quali esistono, quando
 > partono, che cosa fanno, come se ne aggiunge uno.
 >
-> 🔴 **Dal 06-09-2026 non è più qui che si decide la natura di un lavoro.**
-> La divisione «funzionale / infrastrutturale» che questa guida usava è stata
-> sostituita da tre nature dichiarate in un registro, e da una regola che cambia
-> il mestiere dell'orologio: **un lavoro che tocca i dati di un'azienda non viene
-> più eseguito dentro pgAgent — viene messo in coda.**
+> 🔴 **Non è qui che si decide la natura di un lavoro.** Ogni lavoro ha una
+> natura dichiarata in un registro, e c'è una regola che vale per tutti: **un
+> lavoro che tocca i dati di un'azienda non viene eseguito dentro pgAgent, viene
+> messo in coda.** L'orologio si limita a svegliarlo.
 > ⇒ [I lavori automatici: che natura hanno e per conto di chi girano](/guide/processi-automatici-classe-e-identita)
 >
 > Vedi anche:
@@ -23,17 +22,13 @@
 
 ---
 
-## Funzionale vs infrastrutturale — ⛔ superata
+## Che natura ha un lavoro
 
-> La divisione a **due** che stava qui non si usa più: metteva nello stesso
-> mucchio la pulizia del database e la chiusura dei contratti di un'azienda.
-> Oggi le nature sono **tre** (manutenzione, amministrazione, dominio) e si
-> scelgono rispondendo a una domanda sola: *«questo lavoro scrive dati che
-> appartengono a un'azienda in particolare?»*.
->
-> ⇒ [I lavori automatici — capitolo 3](/guide/processi-automatici-classe-e-identita)
+Le nature sono **tre**: manutenzione, amministrazione e dominio. Si sceglie
+rispondendo a una domanda sola: *«questo lavoro scrive dati che appartengono a
+un'azienda in particolare?»* ⇒ [I lavori automatici — capitolo 3](/guide/processi-automatici-classe-e-identita)
 
-Resta valido, e vale per tutti, il principio **"fonte di verita' =
+Per tutti vale il principio **"fonte di verita' =
 dato operativo, job sincronizza flag derivati"**: il job non decide
 la logica, applica il workflow gia' codificato nei trigger/funzioni.
 Se il job non scatta (DB down, disabilitato), la logica operativa
@@ -49,8 +44,6 @@ corretta.
 | `sync_auth_user_expired_daily` | daily 06:00 | Disattiva `auth_user` per risorse umane con finestra temporale scaduta | anagrafiche | `85_pgagent/20260302-04-...` |
 | `chiusura_scadenze_daily` | daily 00:05 | 🔴 **Non chiude più niente da sé: ACCODA.** Mette in coda un lavoro per ogni azienda, che poi viene eseguito con l'identità di quell'azienda. Vedi [fn_accoda_chiusura_scadenze](/dbzero/dbops/manual/fn_accoda_chiusura_scadenze) | vendite (per azienda) | `85_pgagent/20260905-25-...` |
 
-> **Nota storica (26-04-2026)**: il job `listini_versioni_close_scadute_daily` (creato il 24-04-2026 per chiudere le sole versioni listino) e' stato sostituito dal job parametrico `chiusura_scadenze_daily`. La funzione specifica `vendite.fn_listini_versioni_close_scadute()` e' stata droppata. Aggiungere nuove tabelle al pattern non richiede piu' nuovo codice DB: basta una INSERT seed in `dbops.automazione_chiusura_scadenze`.
-
 ---
 
 ## Schede dettaglio
@@ -58,7 +51,7 @@ corretta.
 ### `sync_auth_user_expired_daily`
 
 * **Scopo**: sincronizzare `django.auth_user.is_active = false` per risorse umane con finestra `valido_dal/valido_al` scaduta (decommissionamento automatico).
-* **Funzione chiamata**: `anagrafiche.fn_sync_auth_user_expired()`.
+* **Che cosa esegue**: lo step chiama la procedura `maintenance.proc_sync_auth_user_expired_job()`, che esegue `anagrafiche.fn_sync_auth_user_expired()` e ne registra la corsa nel giornale.
 * **Schedule**: tutti i giorni alle `06:00`.
 * **Classe job**: `Routine Maintenance`.
 * **Idempotenza**: la funzione processa tutti gli `auth_user` con finestra scaduta; rieseguirla non produce effetti se gia' applicata.
@@ -68,7 +61,7 @@ corretta.
 ### `chiusura_scadenze_daily` (framework parametrico)
 
 * **Scopo**: motore unico per la chiusura automatica dello stato gestionale su tabelle con pattern "ciclo stato + finestra di validita'" (vedi [linee-guida-sql §7c](/linee-guida-sql)). Itera sulle righe `attivo=true` di `dbops.automazione_chiusura_scadenze` e applica UPDATE dinamici.
-* **Funzione chiamata**: `dbops.fn_apply_chiusura_scadenze()` — ritorna JSONB con conteggio righe chiuse per tabella + meta-info esecuzione (`{"vendite.listini_versioni": 3, "vendite.contratti": 12, "_total": 15, "_executed_at": "..."}`).
+* **Che cosa esegue**: lo step chiama la procedura `maintenance.proc_accoda_chiusura_scadenze_job()`, che mette in coda un lavoro per ogni azienda ([fn_accoda_chiusura_scadenze](/dbzero/dbops/manual/fn_accoda_chiusura_scadenze)). Il lavoro vero lo fa poi la coda, con l'identità di quell'azienda, applicando `dbops.fn_apply_chiusura_scadenze()`, che ritorna JSONB con conteggio righe chiuse per tabella + meta-info esecuzione (`{"vendite.listini_versioni": 3, "vendite.contratti": 12, "_total": 15, "_executed_at": "..."}`).
 * **Schedule**: tutti i giorni alle `00:05` (subito dopo il cambio data; semantica `valido_al` = ultimo giorno **incluso**, quindi 00:05 del giorno successivo e' il primo momento utile per chiudere).
 * **Classe job**: `Routine Maintenance`.
 * **Tabelle attualmente configurate**:
@@ -103,6 +96,46 @@ corretta.
 
 ---
 
+## Con che utente girano i lavori
+
+pgAgent non entra nel database come amministratore. Si collega con un utente
+dedicato, **`zeroerp_job`**, che ha un solo permesso: **avviare i lavori
+previsti**. Non può leggere né scrivere tabelle, e non può eseguire SQL qualsiasi.
+
+Ogni lavoro è una **procedura** con un nome fisso, `maintenance.proc_<nome>_job()`,
+e lo step di pgAgent contiene solo la sua chiamata:
+
+```sql
+CALL maintenance.proc_sync_auth_user_expired_job();
+```
+
+La procedura lavora come il **proprietario** del database (`SECURITY DEFINER`):
+così ciò che il lavoro crea (tabelle di storico, indici) appartiene al
+proprietario come tutto il resto, e `zeroerp_job` da solo non può fare niente fuori
+da quella procedura. Uno step scritto a mano con un comando qualsiasi viene
+rifiutato.
+
+**Per un lavoro nuovo** quindi servono due cose:
+
+* la procedura `maintenance.proc_<nome>_job()`, `SECURITY DEFINER`, con il
+  `search_path` fissato e l'esecuzione tolta a tutti. A `zeroerp_job` la dà il
+  provisioning, da solo, per ogni procedura con quel nome. Il controllo
+  `maintenance/test-proc-job-definer-v1` verifica ogni procedura con quel nome,
+  quindi se ne manca un pezzo lo segnala;
+* lo step pgAgent che la chiama, e niente altro.
+
+**Come sapere che nessun lavoro gira da amministratore.** Il giornale delle
+esecuzioni registra per ogni corsa l'utente che si è collegato. Il controllo
+`maintenance.vw_job_run_da_superuser` resta vuoto finché i lavori girano come
+devono, e segnala al gestore del server ogni processo la cui ultima corsa è stata
+fatta da un amministratore.
+
+Come si installa pgAgent con questo utente: [Installazione](/installazione), passo 10,
+e [Estensione pgAgent](/postgresql/pgAgent). I ruoli del database e le loro regole:
+[Provisioning ruoli DB](/dev/backend/provisioning-db-roles).
+
+---
+
 ## Pattern raccomandato per nuovi job funzionali
 
 > 🔴 **Prima di seguirlo, una domanda: questo lavoro tocca i dati di
@@ -116,8 +149,8 @@ corretta.
 > **amministrazione**, e per il job-sveglia di un lavoro di dominio (che è un
 > job pgAgent a tutti gli effetti: si limita ad accodare).
 
-1. **Funzione incapsulata in `20_code/<schema>/`**: il job non deve contenere SQL business inline. Creare `schema.fn_<operazione>()` che ritorna un conteggio o un JSON di risultato, richiamabile anche manualmente per test e recovery fuori schedulazione.
-2. **Logica nel trigger, non nel job**: le regole (quali righe modificare, a quale condizione) vivono nei trigger/funzioni di dominio. Il job esegue UPDATE/SELECT che **attraversa** i guard e li soddisfa per costruzione. Evitare bypass via GUC o SECURITY DEFINER salvo necessita' dimostrata.
+1. **Funzione incapsulata in `20_code/<schema>/`**: il job non deve contenere SQL business inline. Creare `schema.fn_<operazione>()` che ritorna un conteggio o un JSON di risultato, richiamabile anche manualmente per test e recovery fuori schedulazione. La chiama la procedura del job (sezione qui sopra), che è l'unica cosa che lo step contiene.
+2. **Logica nel trigger, non nel job**: le regole (quali righe modificare, a quale condizione) vivono nei trigger/funzioni di dominio. Il job esegue UPDATE/SELECT che **attraversa** i guard e li soddisfa per costruzione. La procedura del job è `SECURITY DEFINER` per un motivo preciso (lavorare come proprietario); la funzione che chiama no, salvo necessità dimostrata, e nessun bypass via GUC.
 3. **Fonte di verita' = dato primario**: il flag sincronizzato (es. `stato`, `is_active`) **non** deve essere usato dalla logica operativa. Il resolver/consumer legge il dato primario (date, ranges, eventi) e lo stato resta "cosmetico" per UI/reportistica. Se il job salta, la logica operativa resta corretta.
 4. **Idempotenza**: la funzione deve essere sicura da eseguire N volte (selezioni condizionate, nessun side-effect duplicato).
 5. **Ordinaria: `Routine Maintenance`**. Nuove classi solo se serve separazione operativa (es. priorita' diverse).
@@ -131,20 +164,11 @@ corretta.
 
 * **pgAgent interno**: `pgagent.pga_joblog` (esito esecuzione job) e `pgagent.pga_jobsteplog` (esito singolo step).
 * **Log applicativo**: se la funzione chiamata esegue `script.fn_log_and_raise_error` o `script.fn_log_error_only` in caso di problemi, il log finisce in `dbops.error_log` via dblink.
-* **Giornale delle esecuzioni**: [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log) — ogni corsa lascia una riga con **chi era** (quale lavoro, con quale identità), non solo com'è andata.
+* **Giornale delle esecuzioni**: [maintenance.job_run_log](/dbzero/maintenance/manual/job_run_log) — è il tracciamento che conta. Ogni corsa lascia una riga con **chi era** (quale lavoro, per conto di chi, con quale utente si è collegato), non solo com'è andata:
+  * una corsa che non dice per conto di chi gira finisce in [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore);
+  * una corsa **fallita** resta nel giornale: il verbale viaggia su una connessione separata e non viene annullato insieme all'errore. Senza, un lavoro rotto potrebbe restarlo per mesi senza che nessuno lo sappia.
 
-> ⛔ **Aggiornato il 06-09-2026.** Qui c'era scritto che per questi job il
-> tracciamento primario era `pga_joblog` e che il giornale era «una best
-> practice futura». Non è più così, e la differenza non è formale:
->
-> * il giornale ora dice **chi** ha eseguito, e chi non lo dice finisce in
->   [vw_run_senza_attore](/dbzero/dbops/manual/vw_run_senza_attore);
-> * fino a settembre **un fallimento non lasciava traccia**: la riga «è andata
->   male» veniva annullata insieme all'errore. Oggi il verbale viaggia su una
->   linea separata e sopravvive. È il motivo per cui un lavoro è rimasto rotto
->   sei mesi senza che nessuno lo sapesse.
->
-> Il racconto per esteso: [I lavori automatici — capitolo 6](/guide/processi-automatici-classe-e-identita).
+  Il racconto per esteso: [I lavori automatici — capitolo 6](/guide/processi-automatici-classe-e-identita).
 
 ---
 

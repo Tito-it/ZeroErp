@@ -2,7 +2,7 @@
 -- ============================================================================
 -- ZeroErp — Conversione di un database ESISTENTE al modello dei ruoli di sistema
 -- ----------------------------------------------------------------------------
--- Brief: docs/it/dev/work-in-progress/brief-db-ruoli-di-sistema.md §6 (fase 3),
+-- Brief: docs/it/dev/work-done/brief-db-ruoli-di-sistema.md §6 (fase 3),
 --        §7 D-1, §16
 --
 -- Per un database nato prima del modello, i cui oggetti sono di un utente

@@ -35,10 +35,13 @@ Esempio contenuto:
 ```ini
 [zeroerp_log]
 dbname=zeroerp
-host=localhost
-user=titodb
-password=******
+host=127.0.0.1
+user=zeroerp_log
 ```
+
+La password non sta qui: sta in `/var/lib/postgresql/.pgpass`, nella riga
+`127.0.0.1:5432:zeroerp:zeroerp_log:<password>`. `dblink` si collega dal processo
+del server, quindi legge i file dell'utente di sistema `postgres`.
 
 Permessi suggeriti:
 
@@ -87,7 +90,7 @@ Per funzione fn_get_or_create_session_tx_id risultato atteso la generazione di u
 | Step | Azione                                      | Eseguito come      |
 | ---- | ------------------------------------------- | ------------------ |
 | 1    | Abilitare estensione dblink                 | postgres           |
-| 2    | Creare utente tecnico (es. `titodb`)        | postgres           |
+| 2    | Creare l'utente del canale, `zeroerp_log`   | postgres           |
 | 3    | Configurare `.pg_service.conf`              | root/postgres      |
 | 4    | Impostare GUC `myapp.dblink_log_connection` | postgres           |
 | 5    | Verifica con `fn_ensure_logconn()`          | utente tecnico/app |

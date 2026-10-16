@@ -270,7 +270,7 @@ Ogni job schedulato ha una procedura dedicata (es. `proc_automations_storico_job
 * [`script.fn_job_run_start(jobname, origine, stepname, lock_key, agent_host, processo_codice, auth_user_id)`](/dbzero/script/funzioni/fn_job_run_start) → `(id, run_uuid, acquired)`: apre la riga; advisory lock di sessione opzionale per `lock_key` (anti-overlap fra run dello stesso job, cross-connessione). Se il lock è occupato ritorna `acquired=false` con riga *skip* già loggata.
 * [`script.fn_job_run_end(id, ok, message, rows, error_code, error_detail, meta, lock_key)`](/dbzero/script/funzioni/fn_job_run_end): chiude la riga e rilascia il lock.
 
-Entrambe sono `SECURITY DEFINER` (i ruoli batch headless `zeroerp_batch_<job>` hanno solo `EXECUTE`, **nessun DML diretto** su `job_run_log`) con `search_path` fisso e `EXECUTE` revocato da PUBLIC. Lato BE le avvolge il context manager `registered_job` (vedi `apps/core/services/job_run.py`).
+Entrambe sono `SECURITY DEFINER` (chi le chiama, l'applicazione, ha solo `EXECUTE`: **nessuna scrittura diretta** su `job_run_log`) con `search_path` fisso e `EXECUTE` revocato da PUBLIC. Ogni riga registra anche l'utente del database con cui la corsa si è collegata (`ruolo_sessione`). Lato BE le avvolge il context manager `registered_job` (vedi `apps/core/services/job_run.py`).
 
 ---
 

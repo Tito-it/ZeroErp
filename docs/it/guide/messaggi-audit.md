@@ -210,7 +210,6 @@ cancellare, non svuotare. Lo stesso vale per il registro gemello degli errori,
 | ------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------ |
 | `zeroerp_app` (l'applicazione)                                | `SELECT`, `INSERT` | legge il registro dall'area di amministrazione e vi aggiunge righe con `fn_audit_log_once` |
 | chi possiede la tabella (il migratore, i job di manutenzione) | tutto              | è chi scrive le automazioni e chi, un giorno, farà la retention su `cleanup_at`            |
-| `zeroerp_batch_*`                                             | `SELECT`           | i ruoli batch leggono; il loro perimetro sta nel provisioning                              |
 
 **La modalità sessione è riservata.** Chiudere una sessione (`fn_audit_end`) è un
 `UPDATE` del registro: per questo la coppia `fn_audit_begin` / `fn_audit_end` **non
