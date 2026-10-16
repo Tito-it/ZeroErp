@@ -8,6 +8,7 @@
 - [fn_analyze_statistiche](funzioni/fn_analyze_statistiche.md) — (latest review 14-10-2026)
 - [fn_job_run_log_failure](funzioni/fn_job_run_log_failure.md) — (latest review 05-09-2026)
 - [fn_run_and_log](funzioni/fn_run_and_log.md) — (latest review 07-01-26) `maintenance.fn_run_and_log` esegue in modo sicuro uno *statement* SQL arbitrario e ne registra l’esecuzione su `maintenance.job_run_log`, gestendo in modo opzionale un **lock consulente** (advisory lock) per prevenire esecuzioni sovrapposte dello stesso job/step.
+- [fn_sveglia_accesa](funzioni/fn_sveglia_accesa.md)
 - [proc_accoda_chiusura_scadenze_job](funzioni/proc_accoda_chiusura_scadenze_job.md)
 - [proc_analyze_statistiche_job](funzioni/proc_analyze_statistiche_job.md) — (latest review 14-10-2026)
 - [proc_apply_fk_index_policy_job](funzioni/proc_apply_fk_index_policy_job.md) — (latest review 16-01-26) * **Eseguire in modo schedulato** l’applicazione della **policy indici FK** incapsulando la chiamata a `dbops.apply_fk_index_policy()` in un wrapper **robusto** con **lock anti-overlap** e **logging strutturato**.

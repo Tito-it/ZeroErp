@@ -30,9 +30,17 @@
 --          zeroerp_owner; da' i diritti su `pgagent`.
 --   post   sul database del progetto, alla fine (dopo Liquibase, provision-post,
 --          ci_apply, `manage.py migrate`): la postura di zeroerp_app, EXECUTE di
---          zeroerp_job sulle procedure dei job, ripassa la proprieta', e
---          VERIFICA che l'owner sia uno solo — se no si ferma, nominando gli
+--          zeroerp_job sulle procedure dei job, l'AMBIENTE dell'installazione
+--          (-v ambiente=SVILUPPO|PRODUZIONE, vedi sotto), ripassa la proprieta',
+--          e VERIFICA che l'owner sia uno solo — se no si ferma, nominando gli
 --          oggetti.
+--
+-- ── ⛔ L'ambiente (dal 2026-10-16) ───────────────────────────────────────────
+--   Si sceglie all'installazione, come le password: -v ambiente=SVILUPPO oppure
+--   -v ambiente=PRODUZIONE alla fase post. Nessun default (decisione di Tid,
+--   brief-db-processi-accensione-per-ambiente R-2): la prima volta, se manca, lo
+--   script si ferma e chiede di scegliere. Poi e' IMMUTABILE: il parametro
+--   diventa facoltativo, ma se c'e' deve coincidere col valore scritto.
 --
 -- ── ⛔ Le password (D-3) ──────────────────────────────────────────────────────
 --   Nessun default. Si passano con -v owner_password=… -v job_password=…
@@ -45,6 +53,9 @@
 --   sudo -u postgres psql -d postgres -v fase=ruoli -v db_name=zeroerp_ruoli \
 --        -v owner_password=… -v job_password=… -v app_password=… \
 --        -v log_password=… \
+--        < scripts/sql/provision_zeroerp.sql
+-- Esempio (fase post, prima volta):
+--   sudo -u postgres psql -d zeroerp_ruoli -v fase=post -v ambiente=SVILUPPO \
 --        < scripts/sql/provision_zeroerp.sql
 -- ============================================================================
 
@@ -538,6 +549,19 @@ FROM (VALUES ('anagrafiche.dati_societari')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ L'AMBIENTE DELL'INSTALLAZIONE (dal 2026-10-16): brief
+--   brief-db-processi-accensione-per-ambiente, R-3. `dbops.installazione` e' in
+--   SOLA LETTURA per l'applicazione: lo scrive solo questa fase, una volta
+--   (blocco «L'ambiente» piu' sotto). Se l'app lo potesse cambiare, il
+--   provisioning di sviluppo si accenderebbe in produzione con un giro di
+--   UPDATE. Stesso elenco di `v_tabelle_sola_lettura_app` nel loop 20260205-41
+--   e del forward 90_end/20261016-32;
+--   `db/pgtap/dbops/test-installazione-ambiente-v1.sql` lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('dbops.installazione')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
 --   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
 --   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'
@@ -690,6 +714,50 @@ BEGIN
     END LOOP;
 END
 $job$;
+
+\echo [ZeroErp] fase post: l'ambiente dell'installazione
+-- ⛔ Si sceglie qui, una volta: -v ambiente=SVILUPPO|PRODUZIONE. Nessun default
+--   (brief-db-processi-accensione-per-ambiente, R-2): un valore scritto da solo
+--   dichiarerebbe un database al posto di chi lo conosce — dbdev, nato prima di
+--   questa regola, sarebbe diventato PRODUZIONE per sempre. Poi e' immutabile:
+--   il parametro diventa facoltativo, e se c'e' deve coincidere.
+-- ⚠️ La riga la scrive zeroerp_owner (SET ROLE), proprietario della tabella:
+--   l'audit dice chi l'ha scritta, e non e' un superuser.
+SELECT set_config('zeroerp.prov_ambiente', '', false) \gset _x_
+\if :{?ambiente}
+SELECT set_config('zeroerp.prov_ambiente', :'ambiente', false) \gset _x_
+\endif
+SET ROLE zeroerp_owner;
+DO $ambiente$
+DECLARE
+    v_chiesto  text := NULLIF(btrim(current_setting('zeroerp.prov_ambiente', true)), '');
+    v_scritto  text;
+BEGIN
+    IF to_regclass('dbops.installazione') IS NULL THEN
+        RAISE EXCEPTION 'dbops.installazione non c''e'': la fase post va dopo le migrazioni.';
+    END IF;
+
+    IF v_chiesto IS NOT NULL AND v_chiesto NOT IN ('SVILUPPO', 'PRODUZIONE') THEN
+        RAISE EXCEPTION 'ambiente «%» non valido: -v ambiente=SVILUPPO oppure -v ambiente=PRODUZIONE.', v_chiesto;
+    END IF;
+
+    SELECT i.ambiente INTO v_scritto FROM dbops.installazione i WHERE i.id = 1;
+
+    IF v_scritto IS NULL THEN
+        IF v_chiesto IS NULL THEN
+            RAISE EXCEPTION 'L''ambiente di questa installazione non e'' dichiarato: rilancia la fase post con -v ambiente=SVILUPPO oppure -v ambiente=PRODUZIONE. Si sceglie una volta e non si cambia piu''.';
+        END IF;
+        INSERT INTO dbops.installazione (ambiente) VALUES (v_chiesto);
+        RAISE NOTICE 'ambiente dichiarato: %', v_chiesto;
+    ELSIF v_chiesto IS NOT NULL AND v_chiesto <> v_scritto THEN
+        RAISE EXCEPTION 'L''ambiente di questa installazione e'' % e non si cambia (chiesto: %).',
+                        v_scritto, v_chiesto;
+    ELSE
+        RAISE NOTICE 'ambiente: % (gia'' dichiarato)', v_scritto;
+    END IF;
+END
+$ambiente$;
+RESET ROLE;
 
 \echo [ZeroErp] fase post: verifica «un owner solo»
 -- ⛔ Non si corregge: si nomina. Le funzioni di un altro proprietario sono ammesse

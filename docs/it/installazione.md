@@ -76,7 +76,7 @@ di quelli prima.
 | 5 | Liquibase, `changelog-provision-post.yaml` | `postgres` | le poche funzioni che devono essere di un superuser |
 | 6 | Liquibase, contesto `ci_apply` | `zeroerp_owner` | le automazioni: storico, registri, trigger generati |
 | 7 | `manage.py migrate`, in quattro tempi | `zeroerp_owner` | le tabelle di Django |
-| 8 | `provision_zeroerp.sql`, fase `post` | `postgres` | i diritti di `zeroerp_app` e di `zeroerp_job`, e la verifica che il proprietario sia uno solo |
+| 8 | `provision_zeroerp.sql`, fase `post` | `postgres` | i diritti di `zeroerp_app` e di `zeroerp_job`, l'**ambiente** dell'installazione (sviluppo o produzione), e la verifica che il proprietario sia uno solo |
 | 9 | `provision_dblink_log_channel.sql` | `postgres` | il canale dei registri degli errori |
 | 10 | pgAgent come `zeroerp_job` | sistema | il demone dei lavori notturni |
 
@@ -122,8 +122,9 @@ python manage.py migrate token_blacklist --fake
 python manage.py migrate --noinput
 cd ..
 
-# 8. i diritti e la verifica finale
-psql -h <DB_HOST> -U postgres -d zeroerp -v fase=post -f scripts/sql/provision_zeroerp.sql
+# 8. i diritti, l'ambiente e la verifica finale
+psql -h <DB_HOST> -U postgres -d zeroerp -v fase=post -v ambiente=PRODUZIONE \
+  -f scripts/sql/provision_zeroerp.sql
 
 # 9. il canale dei registri degli errori
 psql -h <DB_HOST> -U postgres -d zeroerp -f scripts/sql/provision_dblink_log_channel.sql
@@ -146,6 +147,16 @@ come fatta (`--fake`) invece di rifarle.
 ⚠️ **Il passo 8 si rilancia** dopo ogni migrazione che crea uno schema o una
 tabella nuova: i diritti si danno su ciò che esiste in quel momento.
 
+⛔ **L'ambiente si sceglie al passo 8, la prima volta, e non si cambia più.**
+`-v ambiente=PRODUZIONE` per un'installazione vera, `-v ambiente=SVILUPPO` per
+un server di sviluppo. Nessun valore di default: se manca, il passo 8 si ferma
+e chiede di scegliere. Dalla seconda volta il parametro si può omettere; se c'è,
+deve dire la stessa cosa. Dall'ambiente dipende quali processi automatici sono
+accesi di default (lo smoke notturno, per esempio, gira solo in sviluppo) e se
+si possono creare i dati di prova. Una copia della produzione usata per fare
+prove resta produzione. Il perché è in
+[dbops.installazione](dbzero/dbops/manual/installazione.md).
+
 Il passo 9 imposta solo il nome di un *service*: indirizzo e password del canale
 stanno in `pg_service.conf` e `.pgpass` dell'utente di sistema `postgres`
 ([dblink](postgresql/dblink.md)).
@@ -165,7 +176,8 @@ fa tutto e poi annulla. I passi sono in
 
 ### Come so che è andata bene
 
-* il passo 8 finisce con «un owner solo: verificato»;
+* il passo 8 finisce con «un owner solo: verificato», e prima ha scritto
+  «ambiente dichiarato» (o «già dichiarato»);
 * le verifiche di [Provisioning ruoli DB](dev/backend/provisioning-db-roles.md)
   (privilegi, attributi dei ruoli, RLS);
 * il giorno dopo, il pannello dei presidi non segnala lavori notturni eseguiti da

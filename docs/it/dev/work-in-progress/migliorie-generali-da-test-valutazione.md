@@ -506,7 +506,7 @@ errore.
 
 > ✅ **Le voci chiuse non stanno qui**: sono in **§7 «Attività svolte»**, con la
 > data e il rimando al brief — chiuse **per intero** D1, D2, D3, D4, D5, D10,
-> D13, D14, D15, D19, D20, D21, D22, D23, D25, D26, D28, D29, D30; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
+> D13, D14, D15, D19, D20, D21, D22, D23, D25, D26, D28, D29, D30, D33; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
 > registri calati), D12 (la quantità), D17 (tutto tranne Q-2).
 >
 > ⭐ **D15 è nata dalla chiusura di D14** (2026-09-22) e **D16** da un test
@@ -522,7 +522,7 @@ errore.
 > di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
 > alla sua chiusura (2026-10-10), chiusa lo stesso giorno. **D26** (la testata dopo l'emissione) e
 > **D27** (gli indirizzi del documento seguono il cliente) da `brief-db-esecutivi-ba-coppia`
-> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11), chiusa lo stesso giorno. **D30** (tornare indietro: annullare a valle riapre a monte) dal collaudo di D29 (2026-10-11), chiusa il 2026-10-13. **D31** (canone, orario e consumo del contratto in commessa) dalla segnalazione BE sul push dei contratti (2026-10-13). **D32** (un documento nasce nel suo stato iniziale) dal giro del `20261013-53` (2026-10-13). **D33** (un cliente manuale per soggetto e utility) dallo smoke clienti del giro notturno (2026-10-13). **D34** (la creazione non scrive tutta la sezione dei dati societari) dalla chiusura di `brief-db-dati-fiscali-e-societari-del-soggetto` (2026-10-14). **D35** (`zeroerp_log` nasce con gli altri ruoli di sistema) dalla chiusura di `brief-db-ruoli-di-sistema` (2026-10-15), chiusa lo stesso giorno.
+> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11), chiusa lo stesso giorno. **D30** (tornare indietro: annullare a valle riapre a monte) dal collaudo di D29 (2026-10-11), chiusa il 2026-10-13. **D31** (canone, orario e consumo del contratto in commessa) dalla segnalazione BE sul push dei contratti (2026-10-13). **D32** (un documento nasce nel suo stato iniziale) dal giro del `20261013-53` (2026-10-13). **D33** (un cliente manuale per soggetto e utility) dallo smoke clienti del giro notturno (2026-10-13), chiusa il 2026-10-15. **D34** (la creazione non scrive tutta la sezione dei dati societari) dalla chiusura di `brief-db-dati-fiscali-e-societari-del-soggetto` (2026-10-14). **D35** (`zeroerp_log` nasce con gli altri ruoli di sistema) dalla chiusura di `brief-db-ruoli-di-sistema` (2026-10-15), chiusa lo stesso giorno.
 >
 > ⚠️ **Rinumerazione del 2026-10-10:** D23 e D25 erano stati dati due volte, a voci diverse. Il
 > numero è rimasto alla voce che l'aveva preso per prima (D23 alla ricerca universale, D25 ai
@@ -531,7 +531,7 @@ errore.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D16, D24, D26-2, D27, D31, D32, D33, D34.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D16, D24, D26-2, D27, D31, D32, D34.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -990,16 +990,6 @@ bolla: nasce EMESSA e numerata con zero righe, e dopo le righe non si aggiungono
 [brief-db-documento-nasce-nello-stato-iniziale.md](brief-db-documento-nasce-nello-stato-iniziale.md).
 📝 Aperto, non iniziato: decisioni N-1…N-3 di Tid.
 
-### 🟠 D33 — Due clienti manuali per lo stesso soggetto e la stessa utility
-
-Trovato il 2026-10-13 dallo smoke `smoke-test-clienti.sh` del giro notturno: la creazione manuale
-crea ogni volta un'istanza fittizia nuova, e con lo stesso soggetto e la stessa utility nasce un
-secondo cliente. Per il PDP c'è `ex_clienti_no_overlap_stesso_pdp`; per l'istanza fittizia nessuna
-regola. Tid: va impedito, non due attivi insieme; un chiuso non si riapre, si torna con istanza, BA e cliente nuovi. Sotto la regola, un
-cliente chiuso senza `data_chiusura` resta attivo per sempre (vale già per il PDP). Brief
-[brief-db-cliente-manuale-uno-per-soggetto-e-utility.md](brief-db-cliente-manuale-uno-per-soggetto-e-utility.md).
-📝 Decisioni prese (C-1…C-5, 2026-10-13); codice DB non iniziato.
-
 ### 🟠 D34 — La creazione non scrive tutta la sezione dei dati societari
 
 Trovato il 2026-10-14 chiudendo `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`. Il verbo
@@ -1237,8 +1227,9 @@ D6 e il registro dei rossi in CI.
       `brief-db-contratto-righe-periodiche-in-commessa` (aperto il 2026-10-13, non iniziato; decisioni G-1…G-4).
 * [ ] **D32** — un documento nasce nel suo stato iniziale: brief
       `brief-db-documento-nasce-nello-stato-iniziale` (aperto il 2026-10-13, non iniziato; decisioni N-1…N-3).
-* [ ] **D33** — un cliente manuale per soggetto e utility: brief
-      `brief-db-cliente-manuale-uno-per-soggetto-e-utility` (aperto il 2026-10-13, decisioni prese, codice DB non iniziato).
+* [x] **D33** — un cliente manuale per soggetto e utility: brief
+      `work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility` — chiuso e archiviato il 2026-10-15
+      (DB `20261014-08 … -20`; BE §6-bis; smoke clienti verde).
 * [ ] **D34** — dati societari in creazione: brief
       `brief-db-dati-societari-in-creazione` (aperto il 2026-10-14, non iniziato; decisione E-1).
 * [x] **D35** — `zeroerp_log` nella fase `ruoli`: brief
@@ -1802,6 +1793,19 @@ reali. Insieme, il panorama dei processi distingue il job nuovo in attesa dal jo
 (`IN_ATTESA`, `JOB_IN_RITARDO`). Provato su dbdev il 15-10, anche con pgAgent come `zeroerp_job`. Brief
 `work-done/brief-db-statistiche-tabelle-job-notturno.md`; guida `guide/statistiche-del-planner.md`.
 
+
+### ✅ D33 — Un cliente manuale per soggetto, utility e azienda — chiuso il 2026-10-15
+
+La creazione manuale del cliente creava ogni volta un'istanza fittizia nuova, e con lo stesso soggetto e
+la stessa utility nasceva un secondo cliente. Ora, fra le istanze fittizie, due clienti con lo stesso
+soggetto, utility e azienda emittente non si sovrappongono nel periodo: il controllo scatta al COMMIT
+(`E_CLIENTE_STESSA_CHIAVE`, col codice del BA esistente), anche quando cambia l'azienda del BA o
+un'istanza diventa fittizia, e legge un predicato solo (`anagrafiche.fn_clienti_stessa_chiave`). Con lei
+gli stati del cliente hanno un grafo (`config.transizioni_stati_cliente`): un chiuso non si riapre, si
+torna con istanza, BA e cliente nuovi; ogni stato pretende la sua data; la data di chiusura di un chiuso
+è ferma. «Attivo» si legge dal periodo anche per il PDP, la disdetta e il BE (`ha_ba_attivo`). Brief
+`work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md`; i residui (§7 del brief) passano allo
+sviluppo delle utility (Tid, 2026-10-15).
 
 *Valutazione 2026-09-08 — perimetro DB. Le misure sono letture di struttura sul
 database di sviluppo `zeroerp` (PostgreSQL 18.6) e sul repo al commit `89d36ad1b`,

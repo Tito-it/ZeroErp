@@ -225,8 +225,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
+          # ⭐ L'ambiente della CI e' SVILUPPO (brief-db-processi-accensione-per-ambiente,
+          #   R-2): si dichiara qui, una volta, e non cambia.
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
-            -v fase=post -f scripts/sql/provision_zeroerp.sql
+            -v fase=post -v ambiente=SVILUPPO -f scripts/sql/provision_zeroerp.sql
 
       - name: Genera doc DB
         # Qui sopra non serve più caricare i tuoi secrets, ma usiamo quelli del servizio

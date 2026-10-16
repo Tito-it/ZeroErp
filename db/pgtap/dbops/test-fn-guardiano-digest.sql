@@ -167,7 +167,14 @@ SELECT is(
 -- ============================================================
 -- ⚠️ obsoleto_dal e non attivo = false: il panorama filtra su entrambi, e il
 --   primo non sveglia nessun guard di disattivazione con figlie.
-UPDATE dbops.processi SET obsoleto_dal = script.fn_data_operativa() - 1 WHERE codice = 'digest_presidi';
+-- ⚠️ 20261016-20: un processo ritirato non ha sveglia, e chk_processi_accensione
+--   vuole le tre colonne dell'accensione a NULL.
+UPDATE dbops.processi
+   SET obsoleto_dal         = script.fn_data_operativa() - 1,
+       acceso_in_sviluppo   = NULL,
+       acceso_in_produzione = NULL,
+       spegnibile           = NULL
+ WHERE codice = 'digest_presidi';
 
 SELECT throws_like(
     $$SELECT dbops.fn_guardiano_digest()$$,

@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Monta dbops.trgfn_processi_accensione_guard (20261016-22) su
+#   dbops.processi_accensione, BEFORE INSERT OR UPDATE.
+#   Brief: brief-db-processi-accensione-per-ambiente (A-5, §5.2)
+#
+#   UPDATE senza OF: il guard legge acceso, motivo e processo_id, e nessun
+#   altro trigger BEFORE della tabella li scrive; ma la regola e' sulla riga
+#   intera, e un UPDATE di processo_id deve passare dagli stessi controlli.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261016-23-create-trigger-processi-accensione-guard-mctit.yaml
+
+  - changeSet:
+      id: 20261016-23-create-trigger-processi-accensione-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta su dbops.processi_accensione il guard della scelta a mano.
+        Brief: brief-db-processi-accensione-per-ambiente.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: dbops, tableName: processi_accensione }
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops'
+                     AND p.proname = 'trgfn_processi_accensione_guard'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_processi_accensione_a10_guard_ins_upd
+                  BEFORE INSERT OR UPDATE ON dbops.processi_accensione
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_processi_accensione_guard();
+
+              COMMENT ON TRIGGER trg_processi_accensione_a10_guard_ins_upd ON dbops.processi_accensione IS
+                  'Niente scelta a mano su un processo senza sveglia, niente spegnimento di un non spegnibile, motivo obbligatorio. Brief: brief-db-processi-accensione-per-ambiente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP TRIGGER IF EXISTS trg_processi_accensione_a10_guard_ins_upd ON dbops.processi_accensione;

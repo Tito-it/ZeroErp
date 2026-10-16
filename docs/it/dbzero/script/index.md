@@ -3,6 +3,8 @@
 ## 📚 Tabelle
 
 ## ⚙️ Funzioni
+- [fn_ambiente_dichiarato](funzioni/fn_ambiente_dichiarato.md)
+- [fn_ambiente_installazione](funzioni/fn_ambiente_installazione.md)
 - [fn_area_consente_azione](funzioni/fn_area_consente_azione.md) — (scritta il 04-10-2026)
 - [fn_area_di_oggetto](funzioni/fn_area_di_oggetto.md) — (scritta il 25-09-2026)
 - [fn_arrotonda_importo](funzioni/fn_arrotonda_importo.md) — Arrotondare un importo secondo i **decimali** e il **metodo** configurati, in **un punto solo** per tutto il database.

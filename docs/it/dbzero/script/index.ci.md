@@ -1,6 +1,7 @@
 # Schema `script`
 
 ## ⚙️ Funzioni (manuale)
+- [fn_ambiente_installazione](manual/fn_ambiente_installazione.md)
 - [fn_area_consente_azione](manual/fn_area_consente_azione.md) — (scritta il 04-10-2026)
 - [fn_area_di_oggetto](manual/fn_area_di_oggetto.md) — (scritta il 25-09-2026)
 - [fn_arrotonda_importo](manual/fn_arrotonda_importo.md) — Arrotondare un importo secondo i **decimali** e il **metodo** configurati, in **un punto solo** per tutto il database.

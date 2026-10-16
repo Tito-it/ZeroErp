@@ -94,11 +94,13 @@ DECLARE
     v_headless dbops.processi.id%TYPE := 9301;
     v_coda     dbops.processi.id%TYPE := 9302;
 BEGIN
-    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale)
+    -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
+    INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile)
     VALUES (v_headless, 'PGTAP-DOMINIO-HEADLESS',
-            'processo di dominio che parte da solo', 'DOMINIO', 'COMMAND'),
+            'processo di dominio che parte da solo', 'DOMINIO', 'COMMAND', true, true, true),
            (v_coda, 'PGTAP-DOMINIO-CODA',
-            'processo di dominio accodato da un operatore', 'DOMINIO', 'CODA');
+            'processo di dominio accodato da un operatore', 'DOMINIO', 'CODA', NULL, NULL, NULL);
 END
 $fixture$;
 

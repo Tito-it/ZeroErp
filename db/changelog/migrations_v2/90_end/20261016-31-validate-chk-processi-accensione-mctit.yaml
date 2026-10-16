@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Convalida di chk_processi_accensione, nato NOT VALID in
+#   00_schema/dbops/20261016-20. Brief: brief-db-processi-accensione-per-ambiente
+#
+#   Sta in 90_end perche' deve girare DOPO il CSV di 80_data (mirror
+#   20260904-13), che porta acceso_in_sviluppo, acceso_in_produzione e
+#   spegnibile sulle righe che su dbdev esistevano gia'. Se un processo con una
+#   sveglia non le dichiara tutte e tre, o un non spegnibile e' spento di
+#   default, la convalida fallisce e la migrazione si ferma: il catalogo
+#   incompleto detto al momento giusto. Stessa forma di 20260926-09.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261016-31-validate-chk-processi-accensione-mctit.yaml
+
+  - changeSet:
+      id: 20261016-31-validate-chk-processi-accensione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        VALIDATE CONSTRAINT chk_processi_accensione, dopo che il CSV dei processi ha portato
+        le colonne di accensione. Brief: brief-db-processi-accensione-per-ambiente.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conrelid = 'dbops.processi'::regclass
+                 AND conname = 'chk_processi_accensione'
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: ALTER TABLE dbops.processi VALIDATE CONSTRAINT chk_processi_accensione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Un vincolo convalidato non torna NOT VALID: il rollback e' un
+              -- no-op dichiarato (lo toglie il rollback di 20261016-20).
+              SELECT 1;

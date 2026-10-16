@@ -21,6 +21,7 @@
 - [error_log](tabelle/error_log.md) — * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore. * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
 - [fk_index_policy](tabelle/fk_index_policy.md) — (latest review 27-07-26) La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli indici sulle foreign key: una riga per vincolo, un flag che dice se l'indice deve esistere, e il comando che lo crea.
 - [idempotency_keys](tabelle/idempotency_keys.md) — (latest review 06-02-26) * Prevenire doppie esecuzioni in caso di retry o chiamate duplicate. * Restituire **la stessa risposta** quando arriva la stessa `idempotency_key`. * Collegare operazioni applicative alla **tracciabilità transazionale** tramite `tx_id`.
+- [installazione](tabelle/installazione.md) — (16-10-2026 — brief `brief-db-processi-accensione-per-ambiente`)
 - [lock_columns_conditional](tabelle/lock_columns_conditional.md)
 - [messaggi_errore_codici_legacy](tabelle/messaggi_errore_codici_legacy.md) — (rev 2026-08-21)
 - [pipeline_task_registry](tabelle/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
@@ -29,6 +30,7 @@
 - [presidi_cause](tabelle/presidi_cause.md) — (latest review 09-10-2026)
 - [presidi_testi](tabelle/presidi_testi.md) — (latest review 09-10-2026)
 - [processi](tabelle/processi.md) — (latest review 14-09-2026)
+- [processi_accensione](tabelle/processi_accensione.md) — (16-10-2026 — brief `brief-db-processi-accensione-per-ambiente`)
 - [processi_bersagli](tabelle/processi_bersagli.md) — (latest review 04-09-2026)
 - [processi_identita](tabelle/processi_identita.md) — (latest review 04-09-2026)
 - [request_log](tabelle/request_log.md) — (latest review 05-03-2026)
@@ -78,6 +80,7 @@
 - [fn_get_pipeline_task_implementation](funzioni/fn_get_pipeline_task_implementation.md) — (latest review 08-02-2026) Risoluzione controllata dell'implementazione di un task: usa la variante richiesta se valida, altrimenti il **default**.
 - [fn_grant_storico_shadows](funzioni/fn_grant_storico_shadows.md)
 - [fn_guardiano_digest](funzioni/fn_guardiano_digest.md) — (latest review 11-09-2026)
+- [fn_imposta_accensione_processo](funzioni/fn_imposta_accensione_processo.md)
 - [fn_list_indices](funzioni/fn_list_indices.md) — (rev 2026-08-21)
 - [fn_lock_columns_divergenze](funzioni/fn_lock_columns_divergenze.md) — (latest review 26-09-26)
 - [fn_migrate_add_indirizzo_normalizzato](funzioni/fn_migrate_add_indirizzo_normalizzato.md)
@@ -113,6 +116,8 @@
 - [fn_pgtap_piva_libera](funzioni/fn_pgtap_piva_libera.md) — (rev 2026-08-21)
 - [fn_pgtap_porta_a_stato](funzioni/fn_pgtap_porta_a_stato.md) — (rev 2026-10-08)
 - [fn_populate_fk_index_policy](funzioni/fn_populate_fk_index_policy.md) — (latest review 27-07-26)
+- [fn_processo_acceso_dichiarato](funzioni/fn_processo_acceso_dichiarato.md)
+- [fn_processo_acceso_su_valori](funzioni/fn_processo_acceso_su_valori.md)
 - [fn_purge_cleanup_expired](funzioni/fn_purge_cleanup_expired.md) — (latest review 07-02-26) La funzione **`dbops.fn_purge_cleanup_expired`** elimina i record con **`cleanup_at` scaduto** usando una strategia a **batch**, per ridurre lock e impatti sulle tabelle più grandi.
 - [fn_regexp_occorrenze](funzioni/fn_regexp_occorrenze.md)
 - [fn_rename_triggers_by_order](funzioni/fn_rename_triggers_by_order.md)
@@ -155,11 +160,14 @@
 - [trgfn_child_requires_non_obsolete_parent](funzioni/trgfn_child_requires_non_obsolete_parent.md) — *(rev 2026-06-30 — brief-db-obsoleto-dal-filtro-lookup-e-guard, Obiettivo 2)*
 - [trgfn_cleanup_at_alla_nascita](funzioni/trgfn_cleanup_at_alla_nascita.md) — (rev 2026-09-18 — Passo D di `analisi-osservabilita-log.md`)
 - [trgfn_coda_archiviazione](funzioni/trgfn_coda_archiviazione.md)
+- [trgfn_installazione_guard_immutabile](funzioni/trgfn_installazione_guard_immutabile.md)
 - [trgfn_prevent_deactivate_if_children](funzioni/trgfn_prevent_deactivate_if_children.md) — *(last review 13-11-26)* La funzione **`trgfn_prevent_deactivate_if_children`** è un **trigger function** che impedisce la disattivazione (`attivo = FALSE`) di un record padre se esistono record figli **attivi** associati tramite una FK. Se la tabella figlia **non** ha la colonna `attivo`, il blocco scatta alla semplice presenza di figli collegati. Garantisce integrità logica tra entità padre e figlio, preservando la coerenza dei dati.
+- [trgfn_processi_accensione_guard](funzioni/trgfn_processi_accensione_guard.md)
 - [trgfn_tx_id_managed](funzioni/trgfn_tx_id_managed.md) — (latest review 01-01-26) La trigger function **`dbops.trgfn_tx_id_managed()`** viene eseguita **`BEFORE INSERT OR UPDATE`** su ogni tabella che contiene la colonna `tx_id` e centralizza la **logica di validazione**, **generazione** e **assegnazione** dell’**UUID di transazione** per la riga in corso di inserimento/aggiornamento.
 
 ## 🔍 Views
 - [vw_af_senza_giro](views/vw_af_senza_giro.md) — (latest review 04-09-2026)
+- [vw_ambiente_non_dichiarato](views/vw_ambiente_non_dichiarato.md)
 - [vw_articoli_a_magazzino_prontezza](views/vw_articoli_a_magazzino_prontezza.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [vw_audit_log_scrittori_fuori_perimetro](views/vw_audit_log_scrittori_fuori_perimetro.md) — (latest review 12-09-2026)
 - [vw_bersagli_non_dichiarati](views/vw_bersagli_non_dichiarati.md)

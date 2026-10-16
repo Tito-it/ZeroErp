@@ -326,6 +326,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `dbops.processi` con `ci_ordine` ultimo (in CI gira nella convergenza di `ci_apply`), job pgAgent alle 02:30
   (`20261014-50…-54`). Provato su dbdev il 15-10: corsa notturna riuscita e corsa di pgAgent come `zeroerp_job`
   riuscita. Guida: `guide/statistiche-del-planner.md`.
+- ✅ **Un cliente manuale per soggetto, utility e azienda (D33) — chiuso il 2026-10-15**
+  (`work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md`): fra le istanze fittizie un cliente solo
+  per soggetto + utility + azienda emittente nello stesso periodo, controllato al COMMIT (`E_CLIENTE_STESSA_CHIAVE`,
+  predicato unico `anagrafiche.fn_clienti_stessa_chiave`); grafo degli stati in `config.transizioni_stati_cliente`
+  (un chiuso non si riapre, ogni stato pretende la sua data, `data_chiusura` di un chiuso ferma); «attivo» = il
+  periodo anche per il PDP, la disdetta e `ha_ba_attivo` (`20261014-08…-20`). BE: rifiuto al COMMIT, smoke clienti
+  verde il 15-10. I residui (§7 del brief: avviso del pre-contrattuale, PDP libero il giorno della chiusura, pgTAP
+  del PDP sul periodo, data di attivazione di un chiuso) fanno parte dello sviluppo delle utility (Tid, 15-10).
 - ✅ **La lineage dei documenti si costruisce per il documento: chiuso il 2026-10-11**
   (`work-done/brief-db-lineage-seminata-per-chiave.md`): grafo seminato per chiave (`fn_documento_lineage_nodi`,
   `_archi`, `_sintesi`), le sette viste di lista senza il grafo e `vw_documento_lineage` ritirata
@@ -442,6 +450,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   il 2026-10-10 (§9) e collaudati in-app il 2026-10-11, con due difetti trovati e corretti: il lookup delle forme
   falliva sempre (colonna inesistente) e il cambio di natura in modifica non arrivava al DB. Archiviato il
   2026-10-14: la data di costituzione in creazione è nel brief qui sopra, gli altri residui in § «Aperto — Media priorità».
+- 📝 **Quali processi sono accesi: per ambiente, a mano, i non spegnibili**
+  (`work-in-progress/brief-db-processi-accensione-per-ambiente.md`, 2026-10-15/16): l'ambiente dell'installazione
+  in `dbops.installazione` (scelto alla fase `post` del provisioning con `-v ambiente=`, nessun default, immutabile;
+  lettori `script.fn_ambiente_installazione()` / `fn_ambiente_dichiarato()`); default per ambiente e «spegnibile» in
+  `dbops.processi` (sette mai spegnibili), scelta a mano in `dbops.processi_accensione`, la sveglia
+  `maintenance.fn_sveglia_accesa` nel passo di ogni job pgAgent, stato `SPENTO` nel panorama. Giro 1
+  (`20261016-15…-32`) applicato e verde il 16-10, dbdev e scratch dichiarati `SVILUPPO`; tocca al BE/FE (§6). Giro 2 (R-4: etichette sulle radici dei dati di sviluppo, verbo del provisioning di
+  sviluppo, `smoke` → `dev.smoke`) aspetta dal BE l'elenco di ciò che crea.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato
