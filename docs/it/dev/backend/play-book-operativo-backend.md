@@ -404,7 +404,10 @@ server di sviluppo**, in due mosse: `abilita: true` per quella macchina (o `syst
 `.env.systemd`. Senza la seconda il comando rifiuta di partire, prima di aprire la corsa: è la
 difesa che tiene il giro fuori dalla produzione anche se qualcuno accende il timer. Con
 regressioni la corsa chiude `ok=false` (`SMOKE_REGRESSIONI`) e il digest delle 07:00 la riporta
-per 7 giorni; nel `meta` della corsa c'è la cartella con l'output dei rossi.
+per 7 giorni; nel `meta` della corsa c'è la cartella con l'output dei rossi,
+`backend/var/smoke-notturno/<data-ora>` (fuori da git). Non sta in `/tmp`, che è un tmpfs svuotato
+a ogni riavvio: il comando la conserva quanto il digest mostra la corsa, 7 giorni, e a ogni giro
+toglie le più vecchie. Il giro lanciato a mano con `scripts/smoke-baseline.sh` resta su `/tmp`.
 
 La fonte è il JSON: questa tabella lo descrive, non lo sostituisce.
 

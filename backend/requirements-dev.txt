@@ -8,7 +8,7 @@ asgiref==3.12.1
     # via
     #   -c ../requirements.txt
     #   django
-ast-serialize==0.12.1
+ast-serialize==0.13.0
     # via mypy
 django==6.1.2
     # via

@@ -270,9 +270,12 @@ def poll_job(job_id, label, timeout_s=240):
 
 
 # --- identità operatore (l'utente degli smoke, admin globale) ------------
-# Lo stesso utente degli smoke bash: SMOKE_USER (run-book §11), mai scritto a mano.
+# Lo stesso utente degli smoke bash: SMOKE_USER (run-book §11), mai scritto a
+# mano e senza ripiego, come `_smoke_auth.sh`.
 User = get_user_model()
-operatore = User.objects.get(username=os.environ.get("SMOKE_USER", "tid"))
+smoke_user = os.environ.get("SMOKE_USER", "").strip()
+assert smoke_user, "utente degli smoke non impostato (SMOKE_USER, run-book §11)"
+operatore = User.objects.get(username=smoke_user)
 rows = q(
     "SELECT id FROM anagrafiche.identita_digitali WHERE auth_user_id=%s AND attivo AND ruolo_applicativo='OPERATORE' ORDER BY id LIMIT 1",
     [operatore.id],

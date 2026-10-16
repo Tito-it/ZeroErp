@@ -493,8 +493,9 @@ solo building block, `smoke_login` di `_smoke_auth.sh`: credenziali da
 ### 11.1 L'utente `smoke`
 
 Dal 2026-10-02 gli smoke entrano con l'utente **`smoke`**, dedicato a loro
-(prima usavano l'utente personale `tid`, che resta il ripiego solo se
-`SMOKE_USER` manca). Perché non un utente personale:
+(prima usavano l'utente personale `tid`). Dal 2026-10-16 non c'è più
+ripiego: senza `SMOKE_USER` lo smoke si ferma e lo dice. Perché non un utente
+personale:
 
 * il **secondo fattore** è della credenziale: il DB accetta un codice per
   intervallo di 30 s (anti-replay), quindi il passo che usa lo smoke non lo

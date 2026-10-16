@@ -16,11 +16,17 @@ Indice test eseguiti:
 5) ComandoTests.test_regressioni_chiudono_ko_col_loro_codice
 6) ComandoTests.test_errore_dello_script_chiude_ko
 7) ComandoTests.test_timeout_chiude_ko
+8) ComandoTests.test_output_dei_rossi_va_nella_cartella_persistente
+9) PuliziaTests.test_toglie_solo_le_cartelle_di_corsa_oltre_la_finestra
+10) PuliziaTests.test_radice_assente_non_e_un_errore
 """
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from contextlib import contextmanager
+from datetime import UTC, datetime
+from pathlib import Path
 from unittest import mock
 
 from django.core.management import call_command
@@ -101,11 +107,15 @@ class ComandoTests(SimpleTestCase):
 
         self.enterContext(mock.patch.object(cmd, "registered_job", finto_registered_job))
         self.enterContext(mock.patch.dict("os.environ", {cmd.ENV_CONSENTITO: "1"}))
+        # ⛔ Mai la cartella vera: il comando ci fa pulizia.
+        self.radice = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.enterContext(mock.patch.object(cmd, "LOG_ROOT", self.radice))
 
     def _lancia(self, codice: int):
         fatto = subprocess.CompletedProcess(args=[], returncode=codice, stdout=_OUTPUT, stderr="")
-        with mock.patch.object(cmd, "lancia_con_tetto", return_value=fatto):
+        with mock.patch.object(cmd, "lancia_con_tetto", return_value=fatto) as lancio:
             call_command("smoke_notturno")
+        return lancio
 
     # 3. Fuori sviluppo (manca il permesso) il comando non parte e non apre la
     #    corsa: un rifiuto non sporca il giornale.
@@ -149,3 +159,45 @@ class ComandoTests(SimpleTestCase):
                 call_command("smoke_notturno")
         self.assertEqual(ctx.exception.code, "SMOKE_GIRO_FALLITO")
         self.assertIs(self.corsa.uscita_con, ctx.exception)
+
+    # 8. Lo script riceve SMOKE_LOG_DIR sotto la radice persistente, col nome
+    #    data-ora della corsa: il default `/tmp` non sopravvive a un riavvio.
+    #    Il resto dell'ambiente passa intero (SMOKE_NOTTURNO_CONSENTITO compreso).
+    def test_output_dei_rossi_va_nella_cartella_persistente(self):
+        lancio = self._lancia(0)
+        env = lancio.call_args.kwargs["env"]
+        log_dir = Path(env["SMOKE_LOG_DIR"])
+        self.assertEqual(log_dir.parent, self.radice)
+        datetime.strptime(log_dir.name, cmd.FORMATO_CARTELLA).replace(tzinfo=UTC)   # non solleva
+        self.assertEqual(env[cmd.ENV_CONSENTITO], "1")
+        assert self.corsa.meta is not None
+        self.assertEqual(self.corsa.meta["log_rimossi"], 0)
+
+
+class PuliziaTests(SimpleTestCase):
+
+    def setUp(self):
+        self.radice = Path(self.enterContext(tempfile.TemporaryDirectory()))
+
+    # 9. Via le cartelle di corsa piu' vecchie della finestra; restano quelle
+    #    dentro la finestra e tutto cio' che non ha il nome di una corsa.
+    def test_toglie_solo_le_cartelle_di_corsa_oltre_la_finestra(self):
+        adesso = datetime(2026, 10, 16, 3, 0, 0, tzinfo=UTC)
+        for nome in ("20261008-030000", "20261009-025959", "20261009-030001",
+                     "20261015-030000", "appunti"):
+            (self.radice / nome).mkdir()
+        (self.radice / "20261001-030000").write_text("un file, non una corsa")
+
+        tolte = cmd.pulisci_cartelle_vecchie(self.radice, adesso)
+
+        self.assertEqual(tolte, 2)
+        self.assertEqual(
+            sorted(p.name for p in self.radice.iterdir()),
+            ["20261001-030000", "20261009-030001", "20261015-030000", "appunti"],
+        )
+
+    # 10. Prima del primo rosso la radice non esiste: niente da pulire.
+    def test_radice_assente_non_e_un_errore(self):
+        self.assertEqual(
+            cmd.pulisci_cartelle_vecchie(self.radice / "manca", datetime(2026, 10, 16, tzinfo=UTC)), 0,
+        )
