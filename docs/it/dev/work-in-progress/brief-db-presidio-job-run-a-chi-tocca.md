@@ -15,8 +15,8 @@
 | 5b | Tid | decide D8 (gli involucri `WHEN others`) e D9 (fallimenti isolati) | §9.4 | 5 |
 | 6 | Tid | collaudo: digest `--secco` con un rosso per causa | §5 | 3, 4 |
 
-Decisioni aperte di Tid: **D8, D9** (§9.4), nessuna urgente. Lavoro fatto da
-committare: tutto il giro DB del §8 e questo brief.
+Decisioni aperte di Tid: **D8, D9** (§9.4), nessuna urgente. Lavoro fatto: tutto
+committato (`2793096a6`, 2026-10-16).
 
 ---
 
