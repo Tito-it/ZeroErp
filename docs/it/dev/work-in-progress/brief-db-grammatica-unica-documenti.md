@@ -2,9 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: la sessione FE** (le 25 chiavi i18n del §8.4: senza, `check_i18n_keys` è rosso in CI, quindi
-prima del merge del lotto 0). Il backend non ha lavoro nel lotto 0. Poi il team DB col lotto 1, al via e coi
-numeri di Tid.
+**Riparte: il team DB col lotto 1**, al via e coi numeri di Tid, insieme alla sessione BE/FE (stesso giro).
+Il lotto 0 è chiuso anche lato FE: le 25 chiavi del §8.4 ci sono, `check_i18n_keys` è verde.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -16,12 +15,15 @@ numeri di Tid.
 | 5 | ✅ team DB | Lotto 0 scritto e provato in transazione: `20261019-14`, `-15`, due CSV, pgTAP | §8 | — |
 | 5-bis | ✅ **Tid** | K-1 = (b1), la chiave resta doppia; nomi `DISTINTA_INCASSO` ed `EMAIL` confermati (2026-10-19) | §8.3 | — |
 | 5-ter | ✅ **Tid** | Apply del lotto 0, pgTAP 9/9 come app dopo la correzione del test 6 (2026-10-19) | §8.5 | 5 |
-| 5-quater | sessione FE | Le 25 chiavi `config.tipi_entita.*` in `it.json`/`en.json` | §8.4 | 5 |
+| 5-quater | ✅ sessione FE | Le 25 chiavi `config.tipi_entita.*` in `it.json`/`en.json`, `check_i18n_keys` verde (2026-10-19) | §8.4 | 5 |
 | 6 | team DB + sessione BE/FE | Lotti 1, 2, 3 (il 3 anticipabile): DB e backend nello stesso giro; col lotto 2 il SQL a mano delle chiavi (G-8) | §5 G-4, §3.2, §7.9 | 5-ter |
 | 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6 |
 
-**Decisioni aperte di Tid:** nessuna (K-1 e i nomi decisi il 2026-10-19, §8.3). Da committare: il lotto 0 (§8), la
-ricognizione dei cantieri del §6 e i rimandi negli altri due brief.
+**Decisioni aperte di Tid:** nessuna (K-1 e i nomi decisi il 2026-10-19, §8.3). Da committare: le 25 chiavi
+i18n del §8.4 (`dev/backend-tid`). ⚠️ Mancano ancora i rimandi del §6.1 in
+[brief-db-indirizzi-documento-seguono-il-cliente](brief-db-indirizzi-documento-seguono-il-cliente.md) (R-BE-1) e in
+[brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md): oggi rimanda qui solo
+quello degli articoli ammessi.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-18. **A chi:** il team DB, poi Tid.
 > **Origine:** l'A-8-ter di
