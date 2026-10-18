@@ -15,16 +15,23 @@
 #        `dbops.processi`). Con regressioni si chiude `ok=false` — sollevando
 #        `GiroSmokeFallito`, perche' e' cosi' che il BB segna un esito negativo —
 #        e `maintenance.vw_job_run_da_guardare`, presidio del digest giornaliero,
-#        la mostra per 7 giorni. Nel `meta` della corsa: non-verdi, regressioni,
+#        la mostra finche' un giro non torna verde (lo smoke e' un verdetto
+#        completo a catalogo, dal 2026-10-18; due tratti rossi in sette giorni
+#        lo dicono instabile). Nel `meta` della corsa: non-verdi, regressioni,
 #        rientrati, tempi e la cartella con l'output dei rossi.
 #
 #        ⛔ SOLO SVILUPPO. Gli smoke scrivono documenti di prova sul database.
-#        Tre difese, indipendenti: il processo e' spento in PRODUZIONE (default
-#        a catalogo, `dbops.processi`, letto dall'`ExecCondition` dal
-#        2026-10-16; prima `abilita: false` in `sveglie.json`), non ha «Esegui ora»
-#        (`avvio_manuale: false`), e questo comando rifiuta di partire senza
-#        `SMOKE_NOTTURNO_CONSENTITO=1` nell'ambiente — PRIMA di aprire la corsa,
-#        cosi' un rifiuto non sporca il giornale.
+#        Le difese stanno nel modello, non qui: il processo e' spento in
+#        PRODUZIONE (default a catalogo, `dbops.processi`, letto
+#        dall'`ExecCondition`), NON si accende a mano in PRODUZIONE (colonna
+#        `accendibile_in_produzione`, il guard di `dbops.processi_accensione` e
+#        la regola dello stato effettivo, R-BE-5 dal 2026-10-18), e non ha
+#        «Esegui ora» (`avvio_manuale: false`).
+#        ⚠️ Fino al 2026-10-18 il comando chiedeva anche
+#        `SMOKE_NOTTURNO_CONSENTITO=1` nell'ambiente: copriva proprio il divieto
+#        che il catalogo non sapeva dire. Entrato il divieto nel modello, il
+#        consenso si e' ritirato (Tid, brief-db-processi-accensione-per-ambiente
+#        §6.6): una serratura in un `.env` non si vede, non ha storia ne' autore.
 #
 #        ⚠️ Il giro deve chiudere entro l'ora: una corsa aperta da piu' di un'ora
 #        esce come «presa e mai chiusa». Il timeout e' sotto quel limite.
@@ -56,7 +63,6 @@ from apps.core.services.job_run import ORIGINE_CRON, registered_job
 from apps.core.services.processi import PROCESSO_SMOKE_NOTTURNO
 from apps.core.services.sottoprocesso import lancia_con_tetto
 
-ENV_CONSENTITO = "SMOKE_NOTTURNO_CONSENTITO"
 # Sotto l'ora dopo la quale la corsa risulta «presa e mai chiusa» (2026-10-13:
 # un giro completo durava 13 minuti, con meta' del tempo in attesa sui freni).
 TIMEOUT_GIRO_S = 50 * 60
@@ -161,11 +167,6 @@ class Command(ComandoAziendale):
     )
 
     def handle(self, *args: Any, **options: Any) -> None:
-        if os.environ.get(ENV_CONSENTITO) != "1":
-            raise CommandError(
-                f"{ENV_CONSENTITO}=1 mancante: il giro degli smoke scrive dati di "
-                "prova e gira solo in sviluppo. Nessuna corsa aperta."
-            )
         if not SCRIPT.is_file():
             raise CommandError(f"script degli smoke non trovato: {SCRIPT}")
 

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1095, di cui 120 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1096, di cui 120 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1274,6 +1274,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PROCESSO_AVVIO_GIA_IN_CODA": "CONFLITTO_STATO",
     # Sollevato in Python dall'handler esegui_processo_default (drenatore): il sottoprocesso run-command.sh <comando> ha superato il tetto dell'handler (TETTO_SOTTOPROCESSO_SECONDI, 300 s — brief sezione 8.5 decisione 2a: solo comandi brevi) ed e' stato ucciso. Non attraversa HTTP: finisce in coda_lavori.ultimo_errore, terminale (max_tentativi = 1), e si legge in vw_coda_lavori_da_guardare e nel pannello delle code. Il comando, se aveva aperto il proprio run, lo ha lasciato aperto nel giornale del processo eseguito. NON_ESEGUIBILE e non TECNICO: il comando non e' rotto, e' fuori dal perimetro dichiarato dell'attrezzo — il rimedio e' dichiararlo avvio_manuale: false, non riparare qualcosa. Brief: brief-db-avvio-manuale-di-un-processo, sezione 9.
     "E_PROCESSO_AVVIO_TROPPO_LUNGO": "NON_ESEGUIBILE",
+    # Guard dbops.trgfn_processi_accensione_guard (brief-db-processi-accensione-per-ambiente, R-BE-5): in un'installazione PRODUZIONE si e' chiesto di accendere a mano un processo che il catalogo dichiara non accendibile in produzione (dbops.processi.accendibile_in_produzione = false; il primo e' smoke_notturno, che scrive dati di prova). Il gemello di E_PROCESSO_NON_SPEGNIBILE. Predicato: dbops.fn_accensione_a_mano_ammessa_su_valori, lo stesso che il backend legge per la capability del drawer (pulsante Accendi disabilitato col motivo), quindi dal drawer arriva solo da una chiamata diretta. Il VARIADIC porta il codice del processo; contesto campo = acceso.
+    "E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE": "NON_ESEGUIBILE",
     # script.fn_crea_utente_tecnico: si e' chiesto un utente tecnico per un processo che non ne vuole uno. Eleggibili SOLO i processi di dbops.processi con classe DOMINIO, attivi, non obsoleti e su canale PGAGENT o COMMAND. ⛔ I processi su canale CODA sono esclusi di proposito: sono accodati da un OPERATORE e girano con lo scope catturato all'enqueue: hanno gia' un'identita', ed e' quella della persona che ha chiesto il lavoro. Dargliene una tecnica ne cancellerebbe il nome dall'audit. ⛔ TECNICO e non DATO_ERRATO: quella chiamata non la fa un operatore in un form, la fa una migrazione o l'amministrazione - quindi niente chiave campo. Brief: brief-db-processi-automatici-identita-e-perimetro §4.
     "E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO": "TECNICO",
     # Guard dbops.trgfn_processi_accensione_guard (brief-db-processi-accensione-per-ambiente, A-5): si e' chiesto di spegnere a mano un processo che il catalogo dichiara non spegnibile (dbops.processi.spegnibile = false). Lo raggiunge il verbo dbops.fn_imposta_accensione_processo dal drawer dei processi: il FE non mostra l'interruttore sui non spegnibili, quindi arriva solo da una chiamata diretta. Il VARIADIC porta il codice del processo; contesto campo = acceso.

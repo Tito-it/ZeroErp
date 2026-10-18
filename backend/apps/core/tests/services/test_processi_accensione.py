@@ -29,12 +29,13 @@ from django.test import SimpleTestCase
 from apps.core.services.processi_service import (
     E_MOTIVO_OBBLIGATORIO,
     E_NOT_FOUND,
+    E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE,
     E_PROCESSO_NON_SPEGNIBILE,
     E_PROCESSO_SENZA_SVEGLIA,
     ProcessiService,
     _con_capability_accensione,
 )
-from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
+from apps.core.services.service_errors import E_CONFIG_MANCANTE, E_VALIDATION_INPUT, ServiceError
 
 
 # Scopo: il service con il repository dei processi finto.
@@ -106,3 +107,53 @@ class CapabilityAccensioneTests(SimpleTestCase):
                 self.assertIs(riga["ha_sveglia"], spegnibile is not None)
                 self.assertEqual(riga["can_imposta_accensione_reason"], reason)
         self.assertIsNone(_con_capability_accensione(None))
+
+    # 6. ⭐ Il SOLO gesto «accendi» (R-BE-5): la terna `can_accendere*` e' la
+    #    risposta del predicato del guard, letta dal repository. Su un processo
+    #    che non ha l'interruttore vale il motivo dell'interruttore; il dato
+    #    grezzo (`accendere_ammesso`) non arriva al client.
+    def test_capability_accendere_dal_predicato(self) -> None:
+        casi = (
+            (True, True, True, None, None),
+            (True, False, False, E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE,
+             "amministrazione.processi.accendi_blocco.non_accendibile_in_produzione"),
+            (True, None, False, E_CONFIG_MANCANTE,
+             "amministrazione.processi.accendi_blocco.non_decidibile"),
+            (False, True, False, E_PROCESSO_NON_SPEGNIBILE, None),
+            (None, None, False, E_PROCESSO_SENZA_SVEGLIA, None),
+        )
+        for spegnibile, ammesso, flag, reason, chiave in casi:
+            with self.subTest(spegnibile=spegnibile, ammesso=ammesso):
+                riga = _con_capability_accensione(
+                    {"acceso": False, "spegnibile": spegnibile, "accendere_ammesso": ammesso},
+                )
+                assert riga is not None
+                self.assertIs(riga["can_accendere"], flag)
+                self.assertEqual(riga["can_accendere_reason"], reason)
+                self.assertEqual(riga["can_accendere_reason_key"], chiave)
+                self.assertNotIn("accendere_ammesso", riga)
+                # Spegnere e tornare al default non cambiano.
+                self.assertIs(riga["can_imposta_accensione"], spegnibile is True)
+
+    # 7. ⭐ Una scelta «accendi» che il divieto non ammette (scritta prima della
+    #    regola) arriva marcata: lo stato effettivo la ignora, e il drawer deve
+    #    poterlo dire invece di mostrarla come se valesse.
+    def test_scelta_a_mano_non_ammessa_e_marcata(self) -> None:
+        casi = (
+            (True, False, False),   # accesa a mano, in PRODUZIONE non accendibile
+            (True, True, True),
+            (True, None, True),     # ambiente non dichiarato: non si sa, non si accusa
+            (False, False, True),   # spegnere e' sempre ammesso
+        )
+        for scelta_acceso, ammesso, attesa in casi:
+            with self.subTest(scelta_acceso=scelta_acceso, ammesso=ammesso):
+                riga = _con_capability_accensione({
+                    "acceso": False, "spegnibile": True, "accendere_ammesso": ammesso,
+                    "scelta_a_mano": {"acceso": scelta_acceso, "motivo": "m"},
+                })
+                assert riga is not None
+                self.assertIs(riga["scelta_a_mano"]["ammessa"], attesa)
+        senza = _con_capability_accensione({"acceso": True, "spegnibile": True, "accendere_ammesso": True})
+        assert senza is not None
+        self.assertNotIn("scelta_a_mano", senza)
+

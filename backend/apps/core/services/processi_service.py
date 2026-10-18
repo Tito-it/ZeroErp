@@ -45,7 +45,7 @@ from apps.core.services.list_helpers import (
     validate_order_params,
 )
 from apps.core.services.payload_helpers import translate_db_errors
-from apps.core.services.service_errors import E_VALIDATION_INPUT
+from apps.core.services.service_errors import E_CONFIG_MANCANTE, E_VALIDATION_INPUT
 from apps.core.services.sveglie import sveglia_di_processo, sveglie_di_processo
 
 _FN = "core.processi_service"
@@ -68,6 +68,14 @@ E_NOT_FOUND = "E_PROCESSO_NON_TROVATO"
 # «torna al default», che a DB non passa dal guard (e' una DELETE).
 E_PROCESSO_NON_SPEGNIBILE = "E_PROCESSO_NON_SPEGNIBILE"
 E_PROCESSO_SENZA_SVEGLIA = "E_PROCESSO_SENZA_SVEGLIA"
+E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE = "E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE"
+# Le chiavi i18n del motivo per cui «Accendi» e' spento (il tooltip del drawer,
+# `bloccoAttivo(accensione, 'can_accendere', 'can_accendere')`).
+_PREFISSO_ACCENDI_BLOCCO = "amministrazione.processi.accendi_blocco."
+ACCENDI_REASON_KEY_PER_CODICE: dict[str, str] = {
+    E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE: _PREFISSO_ACCENDI_BLOCCO + "non_accendibile_in_produzione",
+    E_CONFIG_MANCANTE: _PREFISSO_ACCENDI_BLOCCO + "non_decidibile",
+}
 E_MOTIVO_OBBLIGATORIO = "E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO"
 
 # Vocabolari del registro: sono gli stessi `CHECK` di `dbops.processi`.
@@ -479,14 +487,39 @@ class ProcessiService:
 # ⭐ Il flag discende dal catalogo, come il guard che rifiuterebbe il gesto:
 #    `spegnibile` False -> il guard dice NON_SPEGNIBILE; NULL (CODA o
 #    ritirato, senza sveglia) -> il guard dice SENZA_SVEGLIA.
+# ⭐ Piu' la terna del SOLO gesto «accendi» (`can_accendere`, `_reason`,
+#    `_reason_key`, R-BE-5 di brief-db-processi-accensione-per-ambiente §6.7.3):
+#    in PRODUZIONE un processo non accendibile (lo smoke notturno) si spegne e
+#    torna al default, ma non si accende a mano. Il permesso e' la risposta del
+#    predicato del guard (`accendere_ammesso` dal repository), non una regola
+#    ricostruita qui: False -> NON_ACCENDIBILE_IN_PRODUZIONE, None (ambiente
+#    non dichiarato) -> CONFIG_MANCANTE, come il guard.
 def _con_capability_accensione(accensione: dict[str, Any] | None) -> dict[str, Any] | None:
     if accensione is None:
         return None
+    accensione = dict(accensione)
+    ammesso = accensione.pop("accendere_ammesso", None)
+    # ⭐ Una scelta «accendi» scritta PRIMA del divieto (o prima che l'ambiente
+    #    fosse dichiarato) resta nella riga, ma lo stato effettivo la ignora
+    #    (§6.6). Senza dirlo, il drawer mostrerebbe «Spento» sopra «Scelta a
+    #    mano: …», che si contraddicono. `ammessa` e' la risposta dello stesso
+    #    predicato: una scelta che non accende e' sempre ammessa.
+    scelta = accensione.get("scelta_a_mano")
+    if scelta is not None:
+        accensione["scelta_a_mano"] = {
+            **scelta, "ammessa": ammesso is not False if scelta.get("acceso") is True else True,
+        }
     spegnibile = accensione.get("spegnibile")
     reason = (
         None if spegnibile is True
         else E_PROCESSO_NON_SPEGNIBILE if spegnibile is False
         else E_PROCESSO_SENZA_SVEGLIA
+    )
+    reason_accendere = (
+        reason if reason is not None
+        else None if ammesso is True
+        else E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE if ammesso is False
+        else E_CONFIG_MANCANTE
     )
     return {
         **accensione,
@@ -497,4 +530,9 @@ def _con_capability_accensione(accensione: dict[str, Any] | None) -> dict[str, A
         "ha_sveglia": spegnibile is not None,
         "can_imposta_accensione": reason is None,
         "can_imposta_accensione_reason": reason,
+        "can_accendere": reason_accendere is None,
+        "can_accendere_reason": reason_accendere,
+        "can_accendere_reason_key": (
+            ACCENDI_REASON_KEY_PER_CODICE.get(reason_accendere) if reason_accendere else None
+        ),
     }

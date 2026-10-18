@@ -33,6 +33,12 @@
 4. test_acceso_processo_e_la_stessa_risposta
      la lettura di chi decide da' lo stesso `acceso` del dettaglio, e un
      codice inesistente solleva invece di rispondere None.
+5. test_accendere_legge_il_predicato_del_guard
+     ⭐ R-BE-5: la capability di «Accendi» e' la risposta di
+     `dbops.fn_accensione_a_mano_ammessa_su_valori`, chiamata per nome. In
+     SVILUPPO (la CI, dbdev) e' ammesso anche lo smoke notturno, che in
+     PRODUZIONE non lo e': il ramo PRODUZIONE lo prova il pgTAP sui valori
+     (`test-processi-accensione-v1`), qui si prova il binding e la lettura.
 """
 
 from __future__ import annotations
@@ -43,7 +49,11 @@ from django.db import transaction
 
 from apps.core.db.maintenance_repository import MaintenanceRepository
 from apps.core.db.processi_repository import ProcessiRepository
-from apps.core.services.processi_service import ProcessiService
+from apps.core.services.processi import PROCESSO_SMOKE_NOTTURNO
+from apps.core.services.processi_service import (
+    E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE,
+    ProcessiService,
+)
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
@@ -52,6 +62,8 @@ from apps.core.tests.db_e2e import richiedi_db_provvisto
 # - il listener dei permessi non si spegne mai (A-5).
 _SPEGNIBILE = "draina_coda_stampa"
 _NON_SPEGNIBILE = "listen_permessi"
+# - lo smoke notturno non si accende a mano in PRODUZIONE (R-BE-5).
+_NON_ACCENDIBILE_IN_PRODUZIONE = PROCESSO_SMOKE_NOTTURNO
 
 
 class AccensioneProcessiDbTests(TestCase):
@@ -81,7 +93,10 @@ class AccensioneProcessiDbTests(TestCase):
         ambiente = self._ambiente()
         with transaction.atomic():
             # Nessuna scelta a mano: si toglie quella che la macchina avesse.
-            self.repo.imposta_accensione(_SPEGNIBILE, acceso=None, motivo=None)
+            # ⚠️ Col motivo: dal giro 2a (2026-10-17) anche «torna al default»
+            #    lo vuole, e la riga resta con `acceso` NULL (chi, quando,
+            #    perche'), che la lettura tratta come «nessuna scelta».
+            self.repo.imposta_accensione(_SPEGNIBILE, acceso=None, motivo="pulizia del test")
             lettura = self.repo.accensione_processo(_SPEGNIBILE)
             assert lettura is not None
             self.assertTrue(lettura["spegnibile"])
@@ -148,3 +163,21 @@ class AccensioneProcessiDbTests(TestCase):
                 self.assertIs(self.repo.acceso_processo(codice), lettura["acceso"])
         with self.assertRaises(LookupError):
             self.repo.acceso_processo("processo_che_non_esiste")
+
+    # 5. ⭐ «Accendi» legge il predicato del guard, non una regola del backend.
+    def test_accendere_legge_il_predicato_del_guard(self) -> None:
+        ambiente = self._ambiente()
+        svc = ProcessiService()
+        for codice in (_SPEGNIBILE, _NON_ACCENDIBILE_IN_PRODUZIONE):
+            with self.subTest(codice=codice):
+                lettura = svc.get_processo(codice)["accensione"]
+                self.assertNotIn("accendere_ammesso", lettura)
+                if ambiente == "SVILUPPO" or codice == _SPEGNIBILE:
+                    self.assertTrue(lettura["can_accendere"])
+                    self.assertIsNone(lettura["can_accendere_reason"])
+                else:
+                    self.assertFalse(lettura["can_accendere"])
+                    self.assertEqual(
+                        lettura["can_accendere_reason"], E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE,
+                    )
+

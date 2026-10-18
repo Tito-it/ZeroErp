@@ -1718,10 +1718,15 @@
       "accensione_non_decidibile": "Accensione non decidibile",
       "accensione_mai_spento": "Non si spegne mai: spento, si romperebbe qualcosa senza che nessuno se ne accorga.",
       "accensione_a_mano": "Scelta a mano: {motivo} ({quando}, {chi})",
+      "accensione_a_mano_non_ammessa": "Scelta a mano non applicata: in produzione questo processo non si accende a mano ({motivo}, {quando}, {chi}). «Torna al default» la toglie.",
       "accensione_default": "Default del processo per l'ambiente {ambiente}",
       "accendi": "Accendi",
       "spegni": "Spegni",
       "torna_al_default": "Torna al default",
+      "accendi_blocco": {
+        "non_accendibile_in_produzione": "Questo processo non si accende a mano in un'installazione di produzione: serve solo in sviluppo (per esempio scrive dati di prova). Si può spegnere o riportare al default.",
+        "non_decidibile": "Non si sa se accenderlo a mano sia ammesso: l'ambiente di questa installazione non è dichiarato."
+      },
       "accendi_spiegazione": "Il processo ripartirà alla prossima sveglia, su questa installazione.",
       "spegni_spiegazione": "Il processo non partirà più, né dalla sveglia né con «Esegui ora», finché non lo riaccendi.",
       "torna_al_default_spiegazione": "Si toglie la scelta a mano: il processo torna acceso o spento come dice il suo default per l'ambiente.",

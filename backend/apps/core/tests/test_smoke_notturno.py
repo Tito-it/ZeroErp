@@ -30,12 +30,15 @@ from pathlib import Path
 from unittest import mock
 
 from django.core.management import call_command
-from django.core.management.base import CommandError
 from django.test import SimpleTestCase
 
 from apps.core.management.commands import smoke_notturno as cmd
+from apps.core.services.processi import PROCESSO_SMOKE_NOTTURNO
 
 # Un estratto VERO dell'output di smoke-baseline.sh (giro del 2026-10-13).
+# Una variabile qualsiasi: prova che lo script riceve l'ambiente intero.
+_VARIABILE_DI_PROVA = "ZEROERP_PROVA_SMOKE_AMBIENTE"
+
 _OUTPUT = """smoke baseline — 51 file (timeout 300s ciascuno)
 
 ⏱  Tempi — giro 774s, di cui attesa sul freno 447s. I piu' lenti:
@@ -106,7 +109,7 @@ class ComandoTests(SimpleTestCase):
                 raise
 
         self.enterContext(mock.patch.object(cmd, "registered_job", finto_registered_job))
-        self.enterContext(mock.patch.dict("os.environ", {cmd.ENV_CONSENTITO: "1"}))
+        self.enterContext(mock.patch.dict("os.environ", {_VARIABILE_DI_PROVA: "1"}))
         # ⛔ Mai la cartella vera: il comando ci fa pulizia.
         self.radice = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.enterContext(mock.patch.object(cmd, "LOG_ROOT", self.radice))
@@ -117,20 +120,15 @@ class ComandoTests(SimpleTestCase):
             call_command("smoke_notturno")
         return lancio
 
-    # 3. Fuori sviluppo (manca il permesso) il comando non parte e non apre la
-    #    corsa: un rifiuto non sporca il giornale.
-    def test_senza_permesso_rifiuta_senza_aprire_la_corsa(self):
-        with mock.patch.dict("os.environ", {cmd.ENV_CONSENTITO: ""}):
-            with self.assertRaises(CommandError):
-                call_command("smoke_notturno")
-        self.assertEqual(self.aperture, [])
+    # 3. (ritirato il 2026-10-18) Il rifiuto senza `SMOKE_NOTTURNO_CONSENTITO`:
+    #    il divieto in PRODUZIONE sta nel catalogo (R-BE-5), non nell'ambiente.
 
     # 4. Nessuna regressione: la corsa si chiude senza eccezione (ok=true), col
     #    riassunto nel meta, sulla corsia dichiarata nella sveglia.
     def test_giro_verde_chiude_la_corsa_ok(self):
         self._lancia(0)
         self.assertEqual(self.aperture[0][0], cmd.JOB_NAME)
-        self.assertEqual(self.aperture[0][1]["processo_codice"], "smoke_notturno")
+        self.assertEqual(self.aperture[0][1]["processo_codice"], PROCESSO_SMOKE_NOTTURNO)
         self.assertIsNone(self.corsa.uscita_con)
         assert self.corsa.meta is not None
         self.assertEqual(self.corsa.meta["non_verdi"], 12)
@@ -162,14 +160,14 @@ class ComandoTests(SimpleTestCase):
 
     # 8. Lo script riceve SMOKE_LOG_DIR sotto la radice persistente, col nome
     #    data-ora della corsa: il default `/tmp` non sopravvive a un riavvio.
-    #    Il resto dell'ambiente passa intero (SMOKE_NOTTURNO_CONSENTITO compreso).
+    #    Il resto dell'ambiente passa intero.
     def test_output_dei_rossi_va_nella_cartella_persistente(self):
         lancio = self._lancia(0)
         env = lancio.call_args.kwargs["env"]
         log_dir = Path(env["SMOKE_LOG_DIR"])
         self.assertEqual(log_dir.parent, self.radice)
         datetime.strptime(log_dir.name, cmd.FORMATO_CARTELLA).replace(tzinfo=UTC)   # non solleva
-        self.assertEqual(env[cmd.ENV_CONSENTITO], "1")
+        self.assertEqual(env[_VARIABILE_DI_PROVA], "1")
         assert self.corsa.meta is not None
         self.assertEqual(self.corsa.meta["log_rimossi"], 0)
 

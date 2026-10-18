@@ -1718,10 +1718,15 @@
       "accensione_non_decidibile": "On/off cannot be determined",
       "accensione_mai_spento": "Never switched off: if it were off, something would break without anyone noticing.",
       "accensione_a_mano": "Set by hand: {motivo} ({quando}, {chi})",
+      "accensione_a_mano_non_ammessa": "Manual choice not applied: in production this process cannot be switched on by hand ({motivo}, {quando}, {chi}). «Back to default» removes it.",
       "accensione_default": "Process default for the {ambiente} environment",
       "accendi": "Switch on",
       "spegni": "Switch off",
       "torna_al_default": "Back to default",
+      "accendi_blocco": {
+        "non_accendibile_in_produzione": "This process cannot be switched on by hand in a production installation: it is meant for development only (for example, it writes test data). It can be switched off or reset to the default.",
+        "non_decidibile": "It is not known whether switching it on by hand is allowed: the environment of this installation is not declared."
+      },
       "accendi_spiegazione": "The process will start again at its next schedule, on this installation.",
       "spegni_spiegazione": "The process will no longer start, neither from its schedule nor with «Run now», until you switch it back on.",
       "torna_al_default_spiegazione": "The manual choice is removed: the process goes back on or off as its default for the environment says.",

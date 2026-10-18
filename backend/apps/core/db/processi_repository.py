@@ -411,7 +411,13 @@ class ProcessiRepository:
     #          - `ambiente`: `script.fn_ambiente_dichiarato()`, NULL se non
     #            dichiarato;
     #          - `scelta_a_mano`: la riga di `dbops.processi_accensione` (acceso,
-    #            motivo, chi e quando) o None se vale il default.
+    #            motivo, chi e quando) o None se vale il default;
+    #          - `accendere_ammesso`: il gesto «accendi a mano» e' ammesso qui?
+    #            True / False (non accendibile in PRODUZIONE) / None (ambiente
+    #            non dichiarato). E' il predicato del guard
+    #            (`dbops.fn_accensione_a_mano_ammessa_su_valori`, R-BE-5), letto
+    #            con `acceso = true`: ⛔ non si ricalcola in Python
+    #            (linee-guida-sql §12.1), il service ne fa la capability.
     #        `None` se il codice non esiste.
     # ⛔ La regola NON si ricalcola qui: `acceso` e' la risposta del DB. Il
     #    default e la scelta viaggiano per dire DA DOVE viene, non per decidere.
@@ -427,12 +433,18 @@ class ProcessiRepository:
                        p.spegnibile,
                        p.acceso_in_sviluppo,
                        p.acceso_in_produzione,
-                       script.fn_ambiente_dichiarato() AS ambiente,
+                       amb.ambiente,
+                       dbops.fn_accensione_a_mano_ammessa_su_valori(
+                           true, p.accendibile_in_produzione, amb.ambiente
+                       ) AS accendere_ammesso,
                        a.acceso       AS scelta_acceso,
                        a.motivo       AS scelta_motivo,
                        a.user_update  AS scelta_utente,
                        a.data_update  AS scelta_data
                   FROM dbops.processi p
+                  -- ⚠️ L'ambiente si legge UNA volta: quello mostrato e quello
+                  --    con cui si decide «Accendi» sono lo stesso valore.
+                 CROSS JOIN LATERAL (SELECT script.fn_ambiente_dichiarato() AS ambiente) amb
                   LEFT JOIN dbops.processi_accensione a ON a.processo_id = p.id
                  WHERE p.codice = %s
                 """,
@@ -456,6 +468,7 @@ class ProcessiRepository:
             "acceso_in_produzione": riga["acceso_in_produzione"],
             "ambiente": riga["ambiente"],
             "scelta_a_mano": scelta,
+            "accendere_ammesso": riga["accendere_ammesso"],
         }
 
     # Scopo: lo STATO EFFETTIVO del processo su questa installazione, e basta
