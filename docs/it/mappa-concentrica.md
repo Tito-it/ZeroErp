@@ -623,7 +623,7 @@ operativo può prenderle al posto di una persona.
   quello sweep: il [`manual` di `sepa_mandati`](dbzero/pagamenti/manual/sepa_mandati.md)
   **esiste** ed è citato dalla sua guida (verificato il 20-09)
 - **Il planner**: due cose diverse, una fatta e una no.
-  ✅ **Le forme dei piani** (10–12 ottobre, **D26-2**, [brief plancache](dev/work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md)):
+  ✅ **Le forme dei piani** (10–12 ottobre, **D26-2**, [brief plancache](dev/work-done/brief-db-plancache-funzioni-con-query-incorporate.md)):
   `plan_cache_mode = force_generic_plan` **solo** dove la misura mostra la
   ripianificazione a ogni chiamata (capability e lister dei DDT, tetti di
   accredito dei resi — presidio `test-plan-cache-mode-piano-generico-v1`); la
@@ -633,7 +633,15 @@ operativo può prenderle al posto di una persona.
   `vw_documento_lineage` ritirata); le viste-presidio su `pg_proc` con la
   **cardinalità dichiarata** (`dbops.fn_regexp_occorrenze`, `20261012-25/-26`)
   invece di una stima che reggeva sull'ultimo autoanalyze del catalogo.
-  ⬜ Resta D-3b (il verbo dell'accredito, da profilare per istruzione).
+  ✅ **D-3b chiusa il 18-10** (il verbo dell'accredito): i filtri su
+  `segment_key` che sotto RLS non arrivavano all'indice, ora da `segment_base`;
+  il **perimetro dell'operatore calcolato una volta per istruzione** in tutte le
+  policy ef_whitelist (`fn_scope_ef_perimetro`, linee-guida-sql §10.3), con
+  l'emittente della riga dal risolutore DEFINER; il `tx_id` sulla connessione di
+  log persistente invece di una connessione per transazione. Brief archiviato.
+  ⬜ Resta **D36**: le famiglie di policy che calcolano ancora il perimetro per
+  riga (cliente, shop, fornitore, email, note, tre dell'operatore —
+  [brief](dev/work-in-progress/brief-db-perimetro-una-volta-famiglie-residue.md)).
   ✅ **Le statistiche delle tabelle** (**D15** in [migliorie-generali](dev/work-in-progress/migliorie-generali-da-test-valutazione.md)):
   **chiusa il 15-10**: job notturno `analyze_statistiche` con autoverifica, applicato e provato su dbdev ([brief](dev/work-done/brief-db-statistiche-tabelle-job-notturno.md)). Fatto datato 14-10 su dbdev, prima del job: mai analizzate
   69 tabelle su 89 in `vendite`, 25 su 25 in `magazzino`, 9 su 9 in `acquisti`;

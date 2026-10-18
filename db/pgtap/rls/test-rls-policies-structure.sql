@@ -139,11 +139,11 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'vendite' AND tablename = 'fatture'
-        AND policyname = 'rls_fatture_ef_whitelist') ~ 'fn_scope_ef_whitelist'
+        AND policyname = 'rls_fatture_ef_whitelist') ~ 'fn_scope_ef_perimetro'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'vendite' AND tablename = 'fatture'
             AND policyname = 'rls_fatture_ef_whitelist') ~ 'OPERATORE',
-    '8. rls_fatture_ef_whitelist: USING chiama fn_scope_ef_whitelist + gate OPERATORE'
+    '8. rls_fatture_ef_whitelist: USING chiama fn_scope_ef_perimetro (rev 2026-10-18) + gate OPERATORE'
 );
 
 -- =========================================================

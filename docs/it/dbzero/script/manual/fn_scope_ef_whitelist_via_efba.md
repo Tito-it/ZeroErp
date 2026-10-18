@@ -80,4 +80,12 @@ CREATE POLICY rls_billing_account_ef_whitelist ON anagrafiche.billing_account
 
 ---
 
+### ⭐ rev 2026-10-18 — non sta più nelle policy
+
+ChangeSet `20261018-49`: da plpgsql a sql, la stessa composizione delle sue policy: `fn_scope_ef_perimetro(fn_get_emittenti_scope_sr_ids(utente), fn_get_ba_emittente_sr_id(ba))`, in convenzione soggetto_ruolo. Stesse risposte. Le policy non la chiamano più (`20261018-50`):
+calcolano il perimetro una volta per istruzione con
+[`fn_scope_ef_perimetro`](fn_scope_ef_perimetro.md). Resta per la domanda su **un**
+emittente. Brief `brief-db-plancache-funzioni-con-query-incorporate` §5quinquies
+(ondata 2).
+
 {% include-markdown "signature-core.md" %}

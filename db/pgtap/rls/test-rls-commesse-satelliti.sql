@@ -269,13 +269,17 @@ SELECT is(
 --   sparisse o cambiasse nome — il join non troverebbe niente, e «nessuna
 --   riga cattiva» e' esattamente cio' che dice un presidio che non guarda piu'
 --   niente. Il denominatore e' scritto: quattro.
+-- ⭐ Rev 2026-10-18 (D-3b-2 giro 1b, 20261018-33): la rotta si legge nel modo di
+--   script.fn_resolve_emittente_fiscale_id, non piu' nel nome dell'adattatore.
+--   attivita_consumi (ondata 2, 20261018-50): il billing account, letto da
+--   script.fn_get_ba_emittente_sr_id col perimetro in convenzione SR.
 SELECT is(
     (SELECT count(*)::int
        FROM (VALUES
-              ('attivita_fatturabili',  'fn_scope_ef_whitelist_via_commessa('),
-              ('commesse_sorgenti',     'fn_scope_ef_whitelist_via_commessa('),
-              ('commesse_attivita_log', 'fn_scope_ef_whitelist_via_commessa_attivita('),
-              ('attivita_consumi',      'fn_scope_ef_whitelist_via_efba(')
+              ('attivita_fatturabili',  'fn_resolve_emittente_fiscale_id(''commessa''::text'),
+              ('commesse_sorgenti',     'fn_resolve_emittente_fiscale_id(''commessa''::text'),
+              ('commesse_attivita_log', 'fn_resolve_emittente_fiscale_id(''commessa_attivita''::text'),
+              ('attivita_consumi',      'fn_get_ba_emittente_sr_id(')
             ) AS a(tab, adattatore)
        JOIN pg_policies p
          ON p.schemaname = 'vendite'

@@ -3,7 +3,7 @@
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-10. **A chi:** Tid; poi
 > il team BE per le liste (§5.3), se la decisione D-2 lo coinvolge.
 > **Origine:** D-6 di
-> [brief-db-plancache-funzioni-con-query-incorporate](../work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md)
+> [brief-db-plancache-funzioni-con-query-incorporate](brief-db-plancache-funzioni-con-query-incorporate.md)
 > §5.3: dopo `20261010-44` il pannello «Passaggi» costa ~0,18 s, ed è il costo
 > di costruire il grafo intero. Censendo chi legge il grafo è emerso che lo
 > stesso costo lo paga **ogni pagina di sette liste** (§2), e che la D-5 dello

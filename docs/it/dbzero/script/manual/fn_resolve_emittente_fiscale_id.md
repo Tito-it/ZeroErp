@@ -55,17 +55,45 @@ Chiedere entrambe allo stesso lettore fa dare la risposta sbagliata alla prima.
 
 ---
 
-### I sette modi
+### I modi
 
 | Modo | La colonna contiene | Come si risolve |
 | --- | --- | --- |
 | `fiscale` | già `emittente_fiscale_id` | si verifica solo che esista |
 | `soggetto_ruolo` | `emittente_soggetto_ruolo_id` | via `anagrafiche.emittenti_fiscali` |
 | `fattura` | `fattura_id` | via `vendite.fatture` |
-| `listino` | `listino_id` | ⭐ *(dal 2026-09-05)* via `vendite.listini`, per le **versioni di listino** |
+| `listino` | `listino_id` | ⭐ *(dal 2026-09-05)* via `vendite.listini`: il valore è l'id del **listino** (la versione ha il suo modo, `listino_versione`) |
 | `ente_incasso` | `ente_incasso_id` | ⭐ via il **conto di incasso** (D5) |
 | `contabile` | `contabile_id` | ⭐ la distinta, che **sa di chi è** *(dal 2026-09-15: la colonna `emittente_soggetto_ruolo_id`; prima, il suo canale)* |
 | `magazzino` | `magazzino_id` | ⭐ *(dal 2026-09-18, Lotto 2 di magazzino)* via `magazzino.magazzini.emittente_fiscale_id`: un salto solo, come `fattura`. È il modo del guard di scope sul **ledger** (`movimenti`, `movimenti_attesi`, `valore_giacenza`), dove la primitiva `SECURITY DEFINER` scavalca la RLS e il perimetro va rimesso da una sede sola |
+
+⭐ **Rev 2026-10-18 — i documenti di vendita** (`20261018-31`, D-3b-2 giro 1b di
+`brief-db-plancache-funzioni-con-query-incorporate`). Diciotto modi, una lettura
+per chiave ciascuno (le colonne di collegamento sono tutte `NOT NULL`):
+
+| Modo | Il valore è l'id di | Come si risolve |
+| --- | --- | --- |
+| `ddt`, `ordine`, `preventivo`, `offerta`, `contratto`, `reso` | il documento | la sua colonna `emittente_fiscale_id` |
+| `ddt_riga`, `ordine_riga`, `preventivo_riga`, `offerta_eccezione`, `contratto_riga`, `reso_riga` | la riga | dal documento padre |
+| `commessa`, `lotto` | la commessa, il lotto di fatturazione | `emittente_soggetto_ruolo_id` → `anagrafiche.emittenti_fiscali` |
+| `commessa_attivita`, `attivita_fatturabile` | l'attività | dalla sua commessa |
+| `fattura_sdi` | la pratica SDI | dalla sua fattura |
+| `listino_versione` | la versione di listino | dal listino padre |
+
+⭐ **Rev 2026-10-18 bis — magazzino, pratiche, documenti** (`20261018-48`, ondata 2):
+`asset`, `documento_generato`, `pratica` (la colonna `emittente_fiscale_id`);
+`evento_asset` (dall'asset); `inventario`, `movimento`, `rettifica`, `trasferimento`
+(dal magazzino; il trasferimento dal magazzino di **partenza**); `flusso` (dalla
+pratica).
+
+Li chiedono, **per riga**, le policy ef_whitelist delle tabelle senza colonna
+emittente — col perimetro dell'operatore calcolato una volta per istruzione
+(vedi [`fn_scope_ef_perimetro`](fn_scope_ef_perimetro.md)) — e gli adattatori
+`fn_scope_ef_whitelist_via_*` di vendite, che da `20261018-32` chiedono qui invece
+di leggere il padre: la strada documento → emittente è scritta **una** volta.
+⚠️ Il prezzo, deciso da Tid (D-3b-2d): la funzione dice di che emittente è un
+documento anche a chi non lo vede — l'id dell'azienda, non il documento. Letta
+sotto la RLS del padre, ogni riga rieseguiva la policy del padre.
 
 ⭐ `ente_incasso` è **D5** in una riga: quando il denaro arriva in banca non ha
 ancora una fattura, e il suo padrone lo dice il **conto** su cui il cliente ha
@@ -116,5 +144,8 @@ leggendo e nascerebbe una **ricorsione**.
 * [trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — tutti e cinque i modi
 * [pagamenti.fn_get_emittente_distinta](/dbzero/pagamenti/funzioni/fn_get_emittente_distinta) — il modo `ente_incasso`
 * [fn_scope_ef_whitelist_via_contabile](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_contabile)
+* le policy ef_whitelist con adattatore (69, `20261018-33`): l'emittente della riga, per riga
+* i 21 adattatori `fn_scope_ef_whitelist_via_*` di vendite (`20261018-32`) e i 10 di magazzino, pratiche e documenti (`20261018-49`)
+* le policy dell'ondata 2 (`20261018-50`)
 
 {% include-markdown "signature-core.md" %}

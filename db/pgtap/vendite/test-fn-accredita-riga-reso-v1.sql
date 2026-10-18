@@ -4,7 +4,7 @@
 -- Test: vendite.fn_accredita_riga_reso — la madre del verbo «accredita»
 --       (brief-design-note-credito-resi, slice N8; changeset 20260818-39)
 -- ------------------------------------------------------------
--- Indice test (1..14):
+-- Indice test (1..16):
 --   1) fixture: la partita nasce in coda accrediti con accredito dovuto 3
 --   2) il verbo crea UNA rettifica (la partita ha una sola riga di fattura)
 --   3) la rettifica porta quantita' NEGATIVA (D-NC-2: il segno sta nel numero)
@@ -21,6 +21,10 @@
 --  13) guard sul parametro: id nullo -> E_PARAMETRO_INVALIDO
 --  14) ⭐ tetto del DOCUMENTO: un secondo reso non puo' accreditare piu' di
 --      quanto la riga di fattura abbia fatturato
+--  15) ⭐ corsia ORD: fatturato sull'ordine, la rettifica nasce sulla
+--      spedizione col prezzo della riga d'ordine (rev 2026-10-18)
+--  16) ⭐ pin di forma: ogni lettura di commesse_attivita del verbo entra da
+--      segment_base (rev 2026-10-18, 20261018-15)
 --
 -- Scopo:
 --  - collaudare il verbo PASSANDO DALLA MADRE, non inserendo le righe a mano:
@@ -49,7 +53,7 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP accredita reso');
 --   dichiara (e il guardrail del preambolo la cerca).
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_mondo_acc)); END $ctx$;
 
-SELECT plan(14);
+SELECT plan(16);
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -418,6 +422,64 @@ SELECT throws_like(
          (SELECT commessa_attivita_id FROM tmp_esito)),
   '%gia'' accreditati%',
   '14) tetto del DOCUMENTO: non si accredita piu'' di quanto la riga di fattura abbia fatturato'
+);
+
+-- ============================================================
+-- 15) ⭐ LA CORSIA ORD. Partita C: consegnati 8, fatturati 8 sul segmento
+--     dell'ORDINE (non della spedizione), resi 2 -> accredito dovuto 2.
+--     Il verbo legge il gruppo dal segmento ORD (v_seg_ord) e scrive la
+--     rettifica sulla SPEDIZIONE (D-NC-1), col prezzo della riga di fattura
+--     d'ordine. Rev 2026-10-18 (D-3b di brief-db-plancache-funzioni-con-query-
+--     incorporate): il verbo entra in commesse_attivita da segment_base, e la
+--     corsia ORD e' il ramo che nessun altro test costruiva.
+-- ============================================================
+CREATE TEMP TABLE tmp_pc AS SELECT * FROM pg_temp.acc_mk_partita(8, 30);
+
+CREATE TEMP TABLE tmp_pc_fattura AS
+SELECT pg_temp.acc_fattura(
+    ('ORD:' || (SELECT o.uid FROM vendite.ordini_righe orr
+                  JOIN vendite.ordini o ON o.id = orr.ordine_id
+                 WHERE orr.id = (SELECT ordine_riga_id FROM tmp_pc))::text
+     || ':R:' || (SELECT ordine_riga_id FROM tmp_pc)::text)::varchar,
+    8, 30) AS fattura_riga_id;
+
+CREATE TEMP TABLE tmp_pc_reso AS
+SELECT pg_temp.acc_mk_reso((SELECT ddt_riga_id FROM tmp_pc), (SELECT ddt_uid FROM tmp_pc), 2) AS resi_riga_id;
+
+CREATE TEMP TABLE tmp_esito_c AS
+SELECT * FROM vendite.fn_accredita_riga_reso((SELECT resi_riga_id FROM tmp_pc_reso));
+
+SELECT is(
+  (SELECT count(*)::text || '|' || max(ca.quantita)::text || '|' || max(ca.prezzo_snapshot)::numeric(12,2)::text
+          || '|' || bool_and(e.fattura_riga_rettificata_id = (SELECT fattura_riga_id FROM tmp_pc_fattura))::text
+          || '|' || max(ca.segment_key)
+     FROM tmp_esito_c e
+     JOIN vendite.commesse_attivita ca ON ca.id = e.commessa_attivita_id),
+  '1|-2.000000|30.00|true|DDT:' || (SELECT ddt_uid FROM tmp_pc)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_pc)::text || '#RET:1',
+  '15) corsia ORD: fatturato sull''ordine, la rettifica nasce sulla spedizione col prezzo della riga d''ordine'
+);
+
+-- ============================================================
+-- 16) ⭐ PIN DI FORMA (D-3b, 2026-10-18): ogni lettura di commesse_attivita
+--     nel verbo ENTRA da segment_base. Sotto la policy della tabella un LIKE
+--     o uno split_part su segment_key non arriva all'indice (non sono
+--     leakproof, linee-guida-sql §8.5-bis): la tabella si legge intera, con
+--     la policy pagata riga per riga, a ogni accredito. I risultati restano
+--     giusti — lo dicono i test qui sopra — e se ne accorge solo il tempo:
+--     per questo il presidio e' sul testo. Commenti esclusi.
+--     Se una lettura nuova di commesse_attivita entra nel verbo, deve entrare
+--     anch'essa da segment_base (o da un'altra uguaglianza leakproof: allora
+--     questo pin va riscritto, non spento).
+-- ============================================================
+SELECT is(
+  (SELECT (SELECT count(*) FROM regexp_matches(s.src, 'FROM\s+vendite\.commesse_attivita\s+ca\M', 'g'))::text
+          || '|' ||
+          (SELECT count(*) FROM regexp_matches(s.src, 'ca\.segment_base\s*(=|IN\M)', 'g'))::text
+     FROM (SELECT regexp_replace(p.prosrc, '--[^\n]*', '', 'g') AS src
+             FROM pg_proc p
+            WHERE p.oid = 'vendite.fn_accredita_riga_reso(bigint)'::regprocedure) s),
+  '3|3',
+  '16) pin di forma: le 3 letture di commesse_attivita del verbo entrano da segment_base'
 );
 
 SELECT * FROM finish();

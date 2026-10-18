@@ -1377,6 +1377,47 @@ CREATE POLICY rls_fatture_ba_ownership ON vendite.fatture
     );
 ```
 
+⭐ **Il perimetro dell'utente si calcola una volta per istruzione, non per riga**
+(rev 2026-10-18, `20261018-16…-21`). Ciò che dipende solo da **chi** guarda
+(super admin, veste, whitelist, emittente attivo) non va calcolato dentro la
+funzione chiamata per riga: una funzione di scope che lo fa lo ricalcola a ogni
+riga letta, perché una plpgsql è opaca e una SQL con una sottoquery nel corpo
+non si incorpora. Si passa alla funzione di scope **già calcolato**, in una
+sottoquery scalare **non correlata**: PostgreSQL la valuta una volta
+(`InitPlan`). La forma per lo scope emittente:
+
+```sql
+USING ((current_setting('app.ruolo_applicativo', true) = 'OPERATORE')
+       AND script.fn_scope_ef_perimetro(
+               (SELECT script.fn_get_emittenti_scope_pk_ids(
+                   NULLIF(current_setting('app.current_user_id', true), '')::integer)),
+               emittente_fiscale_id))
+```
+
+Resta una `fn_scope_*` (questa sezione) e i GUC li passa la policy (§10.4). Per
+riga resta la funzione di scope, pura (~1,5 µs).
+⛔ **Una sottoquery per il perimetro, non due.** Spezzarlo in due argomenti per
+far incorporare la funzione di scope (rev del mattino del 2026-10-18) lo
+calcola due volte per istruzione: le letture di una riga, la maggior parte nei
+verbi e nei trigger, pagano il doppio (0,24-0,27 contro 0,084-0,088 ms per una
+lettura per chiave). Il guadagno dell'incorporazione si vede solo sopra le ~40
+righe per istruzione (`20261018-24…-29`, D-3b-2c).
+Presidio: `script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` (dal
+piano). Pagina: [`fn_scope_ef_perimetro`](/dbzero/script/manual/fn_scope_ef_perimetro).
+Per le tabelle **senza** colonna emittente l'emittente della riga lo dà
+`script.fn_resolve_emittente_fiscale_id('<modo>', chiave)`, `SECURITY DEFINER`:
+una lettura per chiave, senza rieseguire la policy del padre (rev 2026-10-18,
+`20261018-31…-33`):
+`script.fn_scope_ef_perimetro((SELECT …perimetro…), script.fn_resolve_emittente_fiscale_id('ddt', ddt_id))`.
+Il billing account ha un emittente che **non** è un fatto della riga
+(`script.fn_get_ba_emittente_sr_id`: legame, altrimenti l'emittente dell'utente in
+sessione, altrimenti il default): lì il perimetro va in convenzione soggetto_ruolo,
+`fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_sr_ids(…)), script.fn_get_ba_emittente_sr_id(billing_account_id))`
+(ondata 2, `20261018-48…-51`).
+⚠️ Gli adattatori `fn_scope_ef_whitelist_via_*` restano per la domanda su **un**
+emittente (verbi, guard, backend), non nelle policy. Unico rimasto in una policy:
+`via_coppia` (chiave a due colonne), debito dichiarato nel presidio (test 5).
+
 #### 10.4 Input: sempre dai GUC `app.*`
 
 Le funzioni `fn_scope_*` non devono mai dedurre l'utente corrente da `session_user` o
@@ -1524,10 +1565,11 @@ Prima di attivare RLS su una tabella esistente:
 * Backend popola tutti i GUC necessari in tutte le auth class
 * La FK della colonna emittente ha una **decisione dichiarata** in
   `dbops.fk_index_policy` — un seed CSV con `true` o `false` **e il perché**
-  (§8.7). ⛔ **Il predicato RLS non rende la colonna indicizzabile**: la
-  canonica `script.fn_check_user_emittente_scope` è plpgsql, quindi la policy
-  è una **chiamata di funzione per riga**, opaca al planner, non un confronto.
-  Un indice sull'emittente si decide sulla **query dell'applicazione che entra
+  (§8.7). ⛔ **Il predicato RLS non rende la colonna indicizzabile**: fino al
+  2026-10-18 la policy era una **chiamata di funzione per riga** (la canonica
+  plpgsql); nella forma di §10.3 per riga resta un confronto
+  (`fn_scope_ef_perimetro` col perimetro già calcolato), ma l'indice non si decide sulla
+  policy. Un indice sull'emittente si decide sulla **query dell'applicazione che entra
   da quella colonna** (una lista per emittente + data, come
   `ix_fatture_emitt_data`), non sulla policy — è il criterio già scritto nei
   seed `20260822-39`, `20260822-41` e `20260829-33`.

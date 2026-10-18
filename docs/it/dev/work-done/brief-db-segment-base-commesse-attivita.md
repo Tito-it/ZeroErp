@@ -8,7 +8,7 @@
 > **Decisione di Tid (2026-10-10):** strada **A** (§3).
 > **Stato:** ✅ **chiuso e archiviato il 2026-10-10.** `20261010-80…-84` applicati da
 > Tid, pgTAP rilanciati, misure dopo l'apply in §5.2 e §6. Il debito residuo è il
-> brief [brief-db-plancache-funzioni-con-query-incorporate](../work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md)
+> brief [brief-db-plancache-funzioni-con-query-incorporate](brief-db-plancache-funzioni-con-query-incorporate.md)
 > (D26-2 del registro delle migliorie), §8.
 > **Ricadute BE/FE:** nessuna. Colonna nuova solo interna al DB; risultati delle
 > funzioni identici.
@@ -189,7 +189,7 @@ fuori da questo brief e nei loro changeSet: `COST 5000` sulle funzioni di policy
 
 Archiviato il 2026-10-10. Due punti aperti, che non si portano in archivio:
 stanno nel brief
-[brief-db-plancache-funzioni-con-query-incorporate](../work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md)
+[brief-db-plancache-funzioni-con-query-incorporate](brief-db-plancache-funzioni-con-query-incorporate.md)
 (D26-2):
 
 * il **censimento** delle altre funzioni plpgsql che chiamano con un parametro

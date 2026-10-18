@@ -36,7 +36,8 @@
 --    4  : gemello del 3: almeno una madre protetta con shadow
 --    5  : nessuna shadow armata se TUTTE le sue madri sono NESSUNO
 --    6  : la policy di lettura filtra su scope_emittente_fiscale_id, veste OPERATORE,
---         adapter fn_scope_ef_whitelist — la rotta, non un'altra
+--         fn_scope_ef_perimetro col perimetro in sottoquery — la rotta, non
+--         un'altra (rev 2026-10-18, D-3b-2: era fn_scope_ef_whitelist per riga)
 --    7  : le policy di scrittura sono INSERT/UPDATE con «true»
 --   COMPORTAMENTO — madri costruite
 --    8  : la shadow di prova NASCE armata: RLS, tre policy, origine_schema NOT NULL
@@ -128,16 +129,20 @@ SELECT is((SELECT count(*) FROM (SELECT DISTINCT sto_oid FROM _madri WHERE sto_o
           '5. nessuna shadow armata se tutte le sue madri sono NESSUNO: non si arma per sbaglio');
 
 -- ⛔ La ROTTA della policy, non solo la sua esistenza (lezione della slice
---   arrotondamenti): filtra sulla colonna congelata, con l'adapter EF, per la
---   veste OPERATORE.
+--   arrotondamenti): filtra sulla colonna congelata, con la funzione di scope
+--   EF, per la veste OPERATORE.
+-- ⭐ Rev 2026-10-18 (D-3b-2, 20261018-20/-21): la funzione di scope e'
+--   fn_scope_ef_perimetro e il perimetro le arriva in una sottoquery
+--   (`fn_scope_ef_perimetro((SELECT ...`): e' cio' che lo fa calcolare una
+--   volta per istruzione invece che per riga.
 SELECT is((SELECT count(*) FROM _protette pr
              JOIN pg_policy pol ON pol.polrelid = pr.sto_oid
                                AND pol.polname = left(format('rls_sto_%s_ef_whitelist', pr.tab), 63)
             WHERE pol.polcmd <> 'r'
-               OR pg_get_expr(pol.polqual, pol.polrelid) NOT LIKE '%fn_scope_ef_whitelist(%scope_emittente_fiscale_id)%'
+               OR pg_get_expr(pol.polqual, pol.polrelid) NOT LIKE '%fn_scope_ef_perimetro(( SELECT %scope_emittente_fiscale_id)%'
                OR pg_get_expr(pol.polqual, pol.polrelid) NOT LIKE '%''OPERATORE''%'),
           0::bigint,
-          '6. la policy di lettura e'' FOR SELECT, veste OPERATORE, fn_scope_ef_whitelist su scope_emittente_fiscale_id');
+          '6. la policy di lettura e'' FOR SELECT, veste OPERATORE, fn_scope_ef_perimetro col perimetro in sottoquery su scope_emittente_fiscale_id');
 
 SELECT is((SELECT count(*) FROM _protette pr
              JOIN pg_policy pol ON pol.polrelid = pr.sto_oid

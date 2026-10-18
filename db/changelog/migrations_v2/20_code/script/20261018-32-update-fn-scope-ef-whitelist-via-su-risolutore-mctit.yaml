@@ -1,0 +1,993 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI ADATTATORI DI VENDITA CHIEDONO L'EMITTENTE AL RISOLUTORE
+#   script.fn_scope_ef_whitelist_via_* — i 21 che toccano vendite
+#   (attivita_fatturabile, commessa, commessa_attivita, contratto,
+#   contratto_riga, ddt, ddt_riga, fattura, fattura_sdi, listino,
+#   listino_versione, lotto, offerta, offerta_eccezione, ordine, ordine_riga,
+#   preventivo, preventivo_riga, reso, reso_riga, sr)
+#   Brief: brief-db-plancache-funzioni-con-query-incorporate §5quinquies, D-3b-2 giro 1b (D-3b-2d).
+#
+# Restano: li chiamano i verbi di vendite (fn_annulla_*, fn_cambia_stato_ddt,
+# fn_conferma_reso, ...), fn_scope_note_ef_whitelist, il backend e i pgTAP.
+# Ognuno diventa canonica(utente, fn_resolve_emittente_fiscale_id('<modo>',
+# chiave)): la strada documento -> emittente vive nel modo del risolutore
+# (-31), non piu' qui (regola del 2), e una chiamata non riesegue la policy
+# del padre. Stesse risposte: per l'operatore il padre e' invisibile
+# esattamente quando il suo emittente e' fuori perimetro.
+# Firme ancorate %TYPE (stessi tipi), COST 5000, INVOKER, STABLE: invariati.
+# Senza sottoquery nel corpo, ora il pianificatore li incorpora.
+# Rollback: i corpi vivi (dbdev, 2026-10-18).
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261018-32-update-fn-scope-ef-whitelist-via-su-risolutore-mctit.yaml
+
+  - changeSet:
+      id: 20261018-32-update-fn-scope-ef-whitelist-via-su-risolutore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I 21 adattatori fn_scope_ef_whitelist_via_* di vendite chiedono l'emittente a fn_resolve_emittente_fiscale_id (-31): una strada sola, nessuna policy del padre per chiamata. Stesse risposte. D-3b-2 giro 1b.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 21
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE p.pronamespace = 'script'::regnamespace
+                 AND p.proname ~ '^fn_scope_ef_whitelist_via_(attivita_fatturabile|commessa|commessa_attivita|contratto|contratto_riga|ddt|ddt_riga|fattura|fattura_sdi|listino|listino_versione|lotto|offerta|offerta_eccezione|ordine|ordine_riga|preventivo|preventivo_riga|reso|reso_riga|sr)$'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.fn_resolve_emittente_fiscale_id(text,bigint)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_attivita_fatturabile(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_attivita_id vendite.attivita_fatturabili.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (attivita fatturabile)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('attivita_fatturabile', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('attivita_fatturabile', p_attivita_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_commessa(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_commessa_id vendite.commesse.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (commessa)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('commessa', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('commessa', p_commessa_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_commessa_attivita(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_commessa_attivita_id vendite.commesse_attivita.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (commessa attivita)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('commessa_attivita', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('commessa_attivita', p_commessa_attivita_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_contratto(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_contratto_id vendite.contratti.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (contratto)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('contratto', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('contratto', p_contratto_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_contratto_riga(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_riga_id vendite.contratti_righe.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (contratto riga)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('contratto_riga', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('contratto_riga', p_riga_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ddt(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_ddt_id vendite.ddt.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (ddt)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('ddt', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('ddt', p_ddt_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ddt_riga(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_riga_id vendite.ddt_righe.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (ddt riga)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('ddt_riga', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('ddt_riga', p_riga_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_fattura(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_fattura_id vendite.fatture.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (fattura)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('fattura', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('fattura', p_fattura_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_fattura_sdi(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_sdi_id vendite.fatture_sdi.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (fattura sdi)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('fattura_sdi', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('fattura_sdi', p_sdi_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_listino(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_listino_id vendite.listini.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (listino)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('listino', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('listino', p_listino_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_listino_versione(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (listino versione)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('listino_versione', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('listino_versione', p_versione_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_lotto(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_lotto_id vendite.fatturazione_lotti.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (lotto)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('lotto', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('lotto', p_lotto_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_offerta(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (offerta)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('offerta', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('offerta', p_offerta_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_offerta_eccezione(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_eccezione_id vendite.offerte_commerciali_eccezioni.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (offerta eccezione)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('offerta_eccezione', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('offerta_eccezione', p_eccezione_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ordine(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_ordine_id vendite.ordini.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (ordine)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('ordine', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('ordine', p_ordine_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ordine_riga(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_riga_id vendite.ordini_righe.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (ordine riga)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('ordine_riga', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('ordine_riga', p_riga_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_preventivo(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_preventivo_id vendite.preventivi.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (preventivo)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('preventivo', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('preventivo', p_preventivo_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_preventivo_riga(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_riga_id vendite.preventivi_righe.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (preventivo riga)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('preventivo_riga', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('preventivo_riga', p_riga_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_reso(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_reso_id vendite.resi.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (reso)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('reso', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('reso', p_reso_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_reso_riga(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_riga_id vendite.resi_righe.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (reso riga)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('reso_riga', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('reso_riga', p_riga_id))
+              $function$;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_sr(
+                  p_auth_user_id config.user_emittenti_fiscali.auth_user_id%TYPE,
+                  p_emittente_sr_id anagrafiche.soggetti_ruoli.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: l'utente vede l'emittente della chiave (sr)? La domanda
+                  --   su UN emittente, per chi non sta in una policy (verbi, guard,
+                  --   backend): la regola e' della canonica, l'emittente del risolutore.
+                  -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+                  --   script.fn_resolve_emittente_fiscale_id('soggetto_ruolo', ...), DEFINER, invece
+                  --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+                  --   emittente e' scritta UNA volta (il modo del risolutore), e una
+                  --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+                  --   l'operatore il padre e' invisibile esattamente quando il suo
+                  --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+                  --   Le policy non passano piu' di qui (20261018-33): calcolano il
+                  --   perimetro una volta per istruzione.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('soggetto_ruolo', p_emittente_sr_id))
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $c$
+              DECLARE
+                  f regprocedure;
+              BEGIN
+                  FOR f IN
+                      SELECT p.oid::regprocedure FROM pg_catalog.pg_proc p
+                       WHERE p.pronamespace = 'script'::regnamespace
+                         AND p.proname ~ '^fn_scope_ef_whitelist_via_(attivita_fatturabile|commessa|commessa_attivita|contratto|contratto_riga|ddt|ddt_riga|fattura|fattura_sdi|listino|listino_versione|lotto|offerta|offerta_eccezione|ordine|ordine_riga|preventivo|preventivo_riga|reso|reso_riga|sr)$'
+                  LOOP
+                      EXECUTE format('COMMENT ON FUNCTION %s IS %L', f,
+                          '⭐ rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l''emittente lo chiede a script.fn_resolve_emittente_fiscale_id (DEFINER), non lo legge sotto la RLS del padre: una strada sola, e nessuna policy del padre rieseguita a ogni chiamata. Stesse risposte. ' || coalesce(obj_description(f, 'pg_proc'), ''));
+                  END LOOP;
+              END
+              $c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_attivita_fatturabile(p_auth_user_id integer, p_attivita_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: perimetro emittente di un'attivita' fatturabile,
+                  --   risalendo alla COMMESSA.
+                  -- ⛔ `commessa_id` e non `billing_account_id`: la prima e'
+                  --   NOT NULL, la seconda no, e una policy costruita su una
+                  --   chiave nullable ha un buco esatto dove il NULL passa.
+                  --   Brief §6.1.
+                  SELECT script.fn_scope_ef_whitelist_via_commessa(
+                      p_auth_user_id,
+                      (SELECT af.commessa_id
+                         FROM vendite.attivita_fatturabili af
+                        WHERE af.id = p_attivita_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_commessa(p_auth_user_id integer, p_commessa_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Risolve commessa -> emittente_soggetto_ruolo_id e delega
+                  -- all'adapter SR. Commessa inesistente / emittente NULL -> SR
+                  -- NULL -> false (fail-closed se whitelist valorizzata).
+                  SELECT script.fn_scope_ef_whitelist_via_sr(
+                      p_auth_user_id,
+                      (SELECT c.emittente_soggetto_ruolo_id
+                         FROM vendite.commesse c
+                        WHERE c.id = p_commessa_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_commessa_attivita(p_auth_user_id integer, p_commessa_attivita_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente della commessa a cui la riga appartiene.
+                  -- ⭐ Delega alla sorella `_via_commessa`, che e' la stessa
+                  --   che protegge vendite.commesse_attivita: cosi' il diario
+                  --   e la riga che racconta non possono rispondere in due modi.
+                  -- ⚠️ Riga inesistente -> commessa NULL -> la sorella risponde
+                  --   false quando la whitelist e' valorizzata: fail-closed,
+                  --   come tutta la famiglia.
+                  SELECT script.fn_scope_ef_whitelist_via_commessa(
+                      p_auth_user_id,
+                      (SELECT ca.commessa_id
+                         FROM vendite.commesse_attivita ca
+                        WHERE ca.id = p_commessa_attivita_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_contratto(p_auth_user_id integer, p_contratto_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente del contratto indicato.
+                  -- ⚠️ Contratto inesistente -> emittente NULL -> la canonica
+                  --   risponde false a whitelist valorizzata: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT k.emittente_fiscale_id
+                         FROM vendite.contratti k
+                        WHERE k.id = p_contratto_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_contratto_riga(p_auth_user_id integer, p_riga_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: come sopra, ma partendo da una RIGA di contratto —
+                  --   e' la chiave che porta vendite.contratti_righe_componenti.
+                  -- ⭐ Delega alla sorella invece di ripetere la risalita: la
+                  --   regola «come un contratto nomina il proprio emittente»
+                  --   resta scritta in un posto solo.
+                  SELECT script.fn_scope_ef_whitelist_via_contratto(
+                      p_auth_user_id,
+                      (SELECT r.contratto_id
+                         FROM vendite.contratti_righe r
+                        WHERE r.id = p_riga_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ddt(p_auth_user_id integer, p_ddt_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente del DDT indicato.
+                  -- ⚠️ DDT inesistente -> emittente NULL -> la canonica
+                  --   risponde false quando la whitelist e' valorizzata:
+                  --   fail-closed, come per preventivi e ordini.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT d.emittente_fiscale_id
+                         FROM vendite.ddt d
+                        WHERE d.id = p_ddt_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ddt_riga(p_auth_user_id integer, p_riga_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: come sopra, ma partendo da una RIGA di DDT — e' la
+                  --   chiave che porta vendite.ddt_righe_componenti.
+                  -- ⭐ Delega alla sorella invece di ripetere la risalita: se un
+                  --   giorno cambia il modo in cui un DDT nomina il proprio
+                  --   emittente, si corregge in un posto solo.
+                  SELECT script.fn_scope_ef_whitelist_via_ddt(
+                      p_auth_user_id,
+                      (SELECT r.ddt_id
+                         FROM vendite.ddt_righe r
+                        WHERE r.id = p_riga_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_fattura(p_auth_user_id integer, p_fattura_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Risolve fattura -> emittente_soggetto_ruolo_id e delega
+                  -- all'adapter SR. Fattura inesistente -> SR NULL -> false
+                  -- (fail-closed se whitelist valorizzata).
+                  SELECT script.fn_scope_ef_whitelist_via_sr(
+                      p_auth_user_id,
+                      (SELECT f.emittente_soggetto_ruolo_id
+                         FROM vendite.fatture f
+                        WHERE f.id = p_fattura_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_fattura_sdi(p_auth_user_id integer, p_sdi_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: veste OPERATORE per gli eventi SDI, che portano la
+                  --   chiave della trasmissione e non quella della fattura.
+                  -- ⭐ Delega alla sorella di primo livello: la regola «come una
+                  --   fattura nomina il proprio emittente» resta in un posto solo.
+                  -- ⚠️ Trasmissione inesistente -> fattura NULL -> false a
+                  --   whitelist valorizzata: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist_via_fattura(
+                      p_auth_user_id,
+                      (SELECT s.fattura_id
+                         FROM vendite.fatture_sdi s
+                        WHERE s.id = p_sdi_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_listino(p_auth_user_id integer, p_listino_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Risolve listino -> emittente_soggetto_ruolo_id e delega
+                  -- all'adapter SR. Listino inesistente -> SR NULL -> false
+                  -- (fail-closed se whitelist valorizzata).
+                  SELECT script.fn_scope_ef_whitelist_via_sr(
+                      p_auth_user_id,
+                      (SELECT l.emittente_soggetto_ruolo_id
+                         FROM vendite.listini l
+                        WHERE l.id = p_listino_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_listino_versione(p_auth_user_id integer, p_versione_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente del listino a cui la versione appartiene.
+                  -- ⭐ Delega alla sorella `_via_listino`, che e' la stessa che
+                  --   protegge vendite.listini_versioni: cosi' la riga e la sua
+                  --   versione non possono rispondere in due modi.
+                  -- ⚠️ Versione inesistente -> listino NULL -> la sorella
+                  --   risponde false quando la whitelist e' valorizzata:
+                  --   fail-closed, come tutta la famiglia.
+                  SELECT script.fn_scope_ef_whitelist_via_listino(
+                      p_auth_user_id,
+                      (SELECT v.listino_id
+                         FROM vendite.listini_versioni v
+                        WHERE v.id = p_versione_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_lotto(p_auth_user_id integer, p_lotto_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente del lotto di fatturazione indicato.
+                  -- ⚠️ Si passa da `_via_sr` e NON dalla canonica: la testata
+                  --   porta emittente_soggetto_ruolo_id, non emittente_fiscale_id.
+                  --   Le due numerazioni sono diverse, quindi confonderle non
+                  --   da' errore — da' zero righe.
+                  -- ⚠️ Lotto inesistente -> emittente NULL -> la canonica
+                  --   risponde false quando la whitelist e' valorizzata:
+                  --   fail-closed, come per tutte le altre famiglie.
+                  SELECT script.fn_scope_ef_whitelist_via_sr(
+                      p_auth_user_id,
+                      (SELECT l.emittente_soggetto_ruolo_id
+                         FROM vendite.fatturazione_lotti l
+                        WHERE l.id = p_lotto_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_offerta(p_auth_user_id integer, p_offerta_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente dell'offerta indicata.
+                  -- ⚠️ Offerta inesistente -> emittente NULL -> la canonica
+                  --   risponde false a whitelist valorizzata: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT o.emittente_fiscale_id
+                         FROM vendite.offerte_commerciali o
+                        WHERE o.id = p_offerta_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_offerta_eccezione(p_auth_user_id integer, p_eccezione_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: come sopra, ma partendo da una ECCEZIONE di offerta —
+                  --   e' la chiave che porta
+                  --   vendite.offerte_commerciali_eccezioni_componenti.
+                  -- ⭐ Delega alla sorella invece di ripetere la risalita: la
+                  --   regola «come un'offerta nomina il proprio emittente»
+                  --   resta scritta in un posto solo.
+                  SELECT script.fn_scope_ef_whitelist_via_offerta(
+                      p_auth_user_id,
+                      (SELECT e.offerta_id
+                         FROM vendite.offerte_commerciali_eccezioni e
+                        WHERE e.id = p_eccezione_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ordine(p_auth_user_id integer, p_ordine_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- ⚠️ Ordine inesistente -> emittente NULL -> la canonica
+                  --   risponde false a whitelist valorizzata: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT o.emittente_fiscale_id
+                         FROM vendite.ordini o WHERE o.id = p_ordine_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ordine_riga(p_auth_user_id integer, p_riga_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  SELECT script.fn_scope_ef_whitelist_via_ordine(
+                      p_auth_user_id,
+                      (SELECT r.ordine_id
+                         FROM vendite.ordini_righe r WHERE r.id = p_riga_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_preventivo(p_auth_user_id integer, p_preventivo_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente del preventivo indicato.
+                  -- ⚠️ Preventivo inesistente -> emittente NULL -> la canonica
+                  --   risponde false quando la whitelist e' valorizzata:
+                  --   fail-closed, come per le fatture.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT p.emittente_fiscale_id
+                         FROM vendite.preventivi p
+                        WHERE p.id = p_preventivo_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_preventivo_riga(p_auth_user_id integer, p_riga_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: come sopra, ma partendo da una RIGA di preventivo —
+                  --   e' la chiave che portano i componenti.
+                  -- ⭐ Delega alla sorella invece di ripetere la risalita: la
+                  --   regola «come un preventivo nomina il suo emittente» resta
+                  --   scritta in un posto solo.
+                  SELECT script.fn_scope_ef_whitelist_via_preventivo(
+                      p_auth_user_id,
+                      (SELECT r.preventivo_id
+                         FROM vendite.preventivi_righe r
+                        WHERE r.id = p_riga_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_reso(p_auth_user_id integer, p_reso_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro
+                  --   l'emittente del reso indicato.
+                  -- ⚠️ Reso inesistente -> emittente NULL -> la canonica
+                  --   risponde false a whitelist valorizzata: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist(
+                      p_auth_user_id,
+                      (SELECT r.emittente_fiscale_id
+                         FROM vendite.resi r
+                        WHERE r.id = p_reso_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_reso_riga(p_auth_user_id integer, p_riga_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Scopo: come sopra, ma partendo da una RIGA di reso — e' la
+                  --   chiave che portano accrediti, riconsegne e rinunce.
+                  -- ⛔ Si risale dal RESO, non dal DDT: la riga appartiene al
+                  --   documento di reso. `resi_righe` ha due genitori
+                  --   `NOT NULL` e questa e' la scelta, non una svista.
+                  SELECT script.fn_scope_ef_whitelist_via_reso(
+                      p_auth_user_id,
+                      (SELECT rr.reso_id
+                         FROM vendite.resi_righe rr
+                        WHERE rr.id = p_riga_id)
+                  );
+              $function$
+              ;
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_sr(p_auth_user_id integer, p_emittente_sr_id bigint)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE COST 5000
+              AS $function$
+                  -- Risolve SR -> emittente_fiscale_id (1:1 via soggetto_ruolo_id)
+                  -- e delega alla canonica. SR non mappato / emittente NULL ->
+                  -- la canonica con emittente_fiscale_id NULL ritorna false se la
+                  -- whitelist e' valorizzata (fail-closed), true se vuota/super_admin.
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      (SELECT ef.id
+                         FROM anagrafiche.emittenti_fiscali ef
+                        WHERE ef.soggetto_ruolo_id = p_emittente_sr_id)
+                  );
+              $function$
+              ;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $c$
+              DECLARE
+                  f regprocedure;
+              BEGIN
+                  FOR f IN
+                      SELECT p.oid::regprocedure FROM pg_catalog.pg_proc p
+                       WHERE p.pronamespace = 'script'::regnamespace
+                         AND p.proname ~ '^fn_scope_ef_whitelist_via_(attivita_fatturabile|commessa|commessa_attivita|contratto|contratto_riga|ddt|ddt_riga|fattura|fattura_sdi|listino|listino_versione|lotto|offerta|offerta_eccezione|ordine|ordine_riga|preventivo|preventivo_riga|reso|reso_riga|sr)$'
+                  LOOP
+                      EXECUTE format('COMMENT ON FUNCTION %s IS %L', f,
+                          replace(coalesce(obj_description(f, 'pg_proc'), ''), '⭐ rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l''emittente lo chiede a script.fn_resolve_emittente_fiscale_id (DEFINER), non lo legge sotto la RLS del padre: una strada sola, e nessuna policy del padre rieseguita a ogni chiamata. Stesse risposte. ', ''));
+                  END LOOP;
+              END
+              $c$;

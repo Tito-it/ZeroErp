@@ -313,10 +313,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `commesse_attivita.segment_base` (uguaglianza indicizzabile sotto RLS anche nel piano generico) e
   `plan_cache_mode = force_generic_plan` sulla capability e sul lister dei DDT. Capability su tutti i DDT
   ~2,1 → ~0,6 s. Nello stesso giorno: `COST 5000` sulle funzioni di policy (`20261010-77`, `-79`,
-  linee-guida-sql §10.3). Debito residuo: ⬜ **D26-2**, `work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md`
-  (al 2026-10-11: resi curati con `20261011-42`, pannello e liste chiusi nel brief della lineage; D-2, il
-  lister dei DDT senza filtri, chiusa con `20261012-03`, 1135 → 154 ms; resta D-3b, il verbo dell'accredito,
-  ~115 ms — da profilare).
+  linee-guida-sql §10.3). Debito residuo: ✅ **D26-2, chiuso il 2026-10-18**
+  (`work-done/brief-db-plancache-funzioni-con-query-incorporate.md`): resi col piano generico
+  (`20261011-42`), lister dei DDT senza filtri (`20261012-03`, 1135 → 154 ms), pannello e liste nel brief
+  della lineage; il verbo dell'accredito ~115 → 50,6 ms con `segment_base` (`20261018-15`), il perimetro
+  dell'operatore calcolato **una volta per istruzione** in tutte le policy ef_whitelist
+  (`fn_scope_ef_perimetro` + `fn_get_emittenti_scope_pk_ids` in una sottoquery, emittente della riga da
+  `fn_resolve_emittente_fiscale_id` DEFINER; `20261018-16…-33`, `-48…-51`; regola in linee-guida-sql
+  §10.3) e il `tx_id` sulla connessione di log persistente (`20261018-52`, 12 → 1,3 ms a transazione).
+  Residuo in D36, sotto.
 - ✅ **I ruoli di sistema: chiuso il 2026-10-15** (`work-done/brief-db-ruoli-di-sistema.md`): nomi fissi
   (`zeroerp_owner` proprietario di tutto, `zeroerp_job` per pgAgent, `zeroerp_app`, `zeroerp_log`),
   password senza default, un provisioning solo (`scripts/sql/provision_zeroerp.sql`, fasi `ruoli`/`pre`/`post`)
@@ -443,6 +448,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   colonne `character(n)` a lunghezza variabile portate a `varchar` (`20261010-26…-40`), sigla di provincia con la
   sua regola, `destinatario_fe` diventato il canale FE (P/C) che pretende il suo recapito; BE/FE e collaudo a video
   superati. Regola nuova: §7e di `linee-guida-sql.md`, presidio `test-character-n-v1`. BB FE `InputMaiuscolo`.
+- 📝 **Il perimetro una volta per istruzione: le famiglie che restano** (`work-in-progress/brief-db-perimetro-una-volta-famiglie-residue.md`,
+  D36 del registro DB, 2026-10-18, residuo di D26-2): restano per riga le policy del cliente portale,
+  cliente, shop, fornitore, email e note, e tre dell'operatore (`fn_scope_note_ef_whitelist`,
+  `fn_scope_note_magazzino_ef_whitelist`, `via_coppia`). Aperto, non iniziato; attende P-1…P-3 di Tid.
 - 📝 **Dati societari in creazione** (`work-in-progress/brief-db-dati-societari-in-creazione.md`, D34 del registro
   DB, 2026-10-14): la creazione non scrive tutta la sezione. Una società perde la data di costituzione
   (`fn_crea_soggetto_pg` passa `NULL` al verbo), e una ditta individuale perde **tutta** la sezione

@@ -252,9 +252,9 @@ SELECT is_empty(
 SELECT is_empty(
     $$SELECT p.tablename FROM pg_policies p
        WHERE p.schemaname = 'pagamenti' AND p.tablename = 'vendite_contabili_lotti'
-         AND (   position('fn_scope_ef_whitelist_via_contabile' IN p.qual)       = 0
-              OR position('fn_scope_ef_whitelist_via_contabile' IN p.with_check) = 0)$$,
-    '4. e passa dall''adattatore gia'' in servizio, non da uno nuovo'
+         AND (   position('fn_resolve_emittente_fiscale_id(''contabile''::text' IN p.qual)       = 0
+              OR position('fn_resolve_emittente_fiscale_id(''contabile''::text' IN p.with_check) = 0)$$,
+    '4. e passa dalla strada gia'' in servizio (il modo contabile del risolutore), non da una nuova'
 );
 
 -- ============================================================
