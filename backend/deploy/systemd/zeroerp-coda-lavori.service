@@ -15,6 +15,14 @@ User=__APP_USER__
 Group=www-data
 WorkingDirectory=__APP_DIR__
 EnvironmentFile=__APP_DIR__/.env.systemd
+# ⛔ TimeoutStartSec, il TETTO della corsa (dal 2026-10-17): un `oneshot` senza
+# tetto resta «in avvio» per sempre se qualcosa si appende, e finche' non
+# finisce il timer non ne lancia un'altra — il 2026-10-16 due sveglie sono
+# rimaste ferme oltre un'ora su una connessione al DB caduta a meta'.
+# 8min: sotto la tolleranza del drenatore a catalogo (10 minuti) e sopra il
+#   tetto di «Esegui ora» (`TETTO_SOTTOPROCESSO_SECONDI`, 5 minuti), che il
+#   drenatore aspetta. Copre anche l'`ExecCondition`.
+TimeoutStartSec=8min
 # ⭐ Il processo e' ACCESO su questa installazione? Lo chiede `e_dovuto` al DB
 # (`maintenance.fn_sveglia_accesa`, dal 2026-10-16): spento esce 1 e systemd
 # salta senza errore; ambiente non dichiarato esce 255 e l'unit fallisce.

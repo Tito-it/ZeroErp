@@ -48,5 +48,12 @@ EnvironmentFile=__APP_DIR__/.env.systemd
 #    un-solo-fuso-aziendale T-4/T-9): exit 1 = salta senza errore (non ancora,
 #    o gia' fatto nel periodo), 255 = guasto e unit fallita. ⛔ Non sta in
 #    `__COMANDO__`: quella e' la riga di «Esegui ora», che esegue sempre.
+# ⛔ TimeoutStartSec, il TETTO della corsa (dal 2026-10-17): un `oneshot` senza
+# tetto resta «in avvio» per sempre se qualcosa si appende, e finche' non
+# finisce il timer non ne lancia un'altra — il 2026-10-16 due sveglie sono
+# rimaste ferme oltre un'ora su una connessione al DB caduta a meta'.
+# 30min: il digest dura secondi: e' una rete, sotto l'ora dopo cui la corsa
+#   risulta «presa e mai chiusa». Copre anche l'`ExecCondition`.
+TimeoutStartSec=30min
 ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto zeroerp-digest-presidi-giornaliero
 ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__

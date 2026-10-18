@@ -45,11 +45,9 @@ _META_R = {"test_scope": "be_create_listini_db", "livello": "riga", "annidato": 
 _FIXTURE: tuple[str, ...] = (
     "CREATE TEMP TABLE _mondo AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('create listini db')",
     "CREATE TEMP TABLE _lst AS SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _mondo), 'create listini db')",
-    "CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('LSART-' || %(sfx)s, false) AS articolo_id",
-    """
-    UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _lst)
-     WHERE id = (SELECT articolo_id FROM _art)
-    """,
+    # L'articolo nasce della tipologia del listino: e' struttura, si sceglie alla nascita.
+    "CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('LSART-' || %(sfx)s, false,"
+    " p_listino_tipologia_id => (SELECT tipologia_id FROM _lst)) AS articolo_id",
 )
 
 

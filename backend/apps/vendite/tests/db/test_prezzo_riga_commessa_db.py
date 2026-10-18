@@ -79,12 +79,11 @@ _FIXTURE = (
     # ⛔ L'articolo nasce GIA' della tipologia del listino, e solo dopo va sulla
     #    riga di commessa: un articolo usato non cambia la tipologia (guard
     #    `catalogo.trgfn_articoli_guard_struttura_se_usato`, A-10 del
-    #    2026-10-13). Per questo il builder lo riceve dal chiamante.
+    #    2026-10-13). Per questo la tipologia la sceglie il builder alla
+    #    nascita, e il builder della riga riceve l'articolo dal chiamante.
     "CREATE TEMP TABLE _art ON COMMIT DROP AS SELECT dbops.fn_pgtap_crea_articolo("
     " ('PGT-L0P-' || substr(md5(clock_timestamp()::text || random()::text), 1, 12))::varchar,"
-    " false) AS articolo_id",
-    "UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _l)"
-    " WHERE id = (SELECT articolo_id FROM _art)",
+    " false, p_listino_tipologia_id => (SELECT tipologia_id FROM _l)) AS articolo_id",
     # La riga «registrata sotto V1»: e' la riga di un push fatto quando V1 era
     # in vigore. La scrive il builder `dbops.fn_pgtap_crea_commessa_attivita`
     # (contesto dalla commessa), che passa dalla madre
@@ -106,9 +105,8 @@ _FIXTURE = (
     # Il kit P di cui l'articolo della riga e' componente: nel listino, il
     # componente dentro P costa diverso dal componente sciolto.
     "CREATE TEMP TABLE _p ON COMMIT DROP AS"
-    " SELECT dbops.fn_pgtap_crea_articolo('L0-KIT-' || substr(md5(random()::text), 1, 10), false) AS id",
-    "UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _l),"
-    " is_composito = TRUE WHERE id = (SELECT id FROM _p)",
+    " SELECT dbops.fn_pgtap_crea_articolo('L0-KIT-' || substr(md5(random()::text), 1, 10), false,"
+    " p_listino_tipologia_id => (SELECT tipologia_id FROM _l), p_is_composito => TRUE) AS id",
     "INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)"
     " SELECT (SELECT id FROM _p), (SELECT articolo_id FROM _a), 1, '2020-01-01'",
     "INSERT INTO vendite.listini_righe_componenti (listino_versione_id, articolo_componente_id,"

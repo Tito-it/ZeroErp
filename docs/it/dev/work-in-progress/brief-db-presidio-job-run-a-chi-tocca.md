@@ -1,29 +1,31 @@
 # Brief DB — Il presidio dei job falliti manda tutto al sistemista
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-16
+## ⏭️ Chi riparte — aggiornato al 2026-10-17
 
-**Riparte: team BE** (tramite Tid): §4.2 e D9 (§10.3). Lato DB il codice di D9 è nel
-registro (2026-10-17, §11.3): si applica col mirror dei due CSV, ed è da committare. ✅ Giro 1 (§8) e giro 2 (§11) applicati, pgTAP senza
-regressioni.
+**Riparte: Tid**: la fase di collaudo dopo D9 (§5) e l'archiviazione. ✅ D9 fatto lato DB
+(2026-10-17, §11.3) e lato BE (2026-10-17, §12). ✅ §4.2 fatto lato BE (2026-10-17). ✅ Giro 1
+(§8) e giro 2 (§11) applicati, pgTAP senza regressioni.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | Tid | ✅ via allo sviluppo e D1–D6 (2026-10-16) | §6 | — |
 | 2 | team DB | ✅ changeSet `20261016-34…43`, CSV, pgTAP, doc (2026-10-16) | §8 | — |
 | 3 | Tid | ✅ provision-post e migrate applicati, pgTAP senza regressioni (2026-10-16) | §8.3, §8.4 | — |
-| 4 | team BE | `registered_job`: SQLSTATE al nono argomento e codice `E_` dei P0001 in `error_code` | §4.2 | — |
+| 4 | team BE | ✅ `registered_job`: SQLSTATE al nono argomento e codice `E_` dei P0001 in `error_code` (2026-10-17) | §4.2, §12 | — |
 | 5 | team DB | ✅ censimento D7 scritto (2026-10-16); Tid lo fa confermare al BE | §9 | — |
 | 5b | Tid | ✅ D8 in questo brief, D9 proposta accettata (2026-10-16) | §9.4 | — |
 | 7 | Tid | ✅ via allo sviluppo del giro 2 (2026-10-16) | §10 | — |
 | 8 | team DB | ✅ giro 2 D8 scritto e provato (`20261016-44…53`); codice di D9 in attesa del nome dal BE | §11 | — |
 | 8b | Tid | ✅ migrate del giro 2 applicato, pgTAP senza regressioni (2026-10-16) | §11 | — |
-| 10 | team DB | ✅ codice di D9 nel registro (+ messaggio), nome dal BE: `E_JOB_ELEMENTI_NON_COMPLETATI` (2026-10-17) | §11.3 | — |
-| 11 | Tid | ✅ collaudo lato DB (2026-10-17); resta il digest stampato e le fasi dopo BE; poi archiviazione | §5 | 4, 9, 10 |
-| 9 | team BE | D9: una corsa con elementi falliti senza registro chiude rossa | §10.3 | 8 |
-| 6 | Tid | collaudo: digest `--secco` con un rosso per causa | §5 | 3, 4 |
+| 9a | Tid | ✅ nome confermato: `E_JOB_ELEMENTI_NON_COMPLETATI` (2026-10-17) | §12 | — |
+| 10 | team DB | ✅ codice di D9 nel registro (+ messaggio), nome dal BE: `E_JOB_ELEMENTI_NON_COMPLETATI` (2026-10-17), su `Tito-dev` (`7798ecddb`) | §11.3 | — |
+| 11 | Tid | ✅ collaudo lato DB e digest stampato (2026-10-17); resta la fase dopo D9; poi archiviazione | §5 | — |
+| 9 | team BE | ✅ D9: una corsa con elementi falliti senza registro chiude rossa (2026-10-17) | §10.3, §12 | — |
+| 6 | Tid | ✅ collaudo: digest `--secco` con un rosso per causa (2026-10-17) | §5 | — |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: il giro 2 (§11) e il §10-§11
-di questo brief.
+Decisioni aperte di Tid: nessuna. Committato: lato DB il codice di D9 (`7798ecddb`, su
+`Tito-dev`), lato BE il §4.2 e D9 (`295737a90`, §12). Il commit BE, che porta
+`error_policies_generated.py` rigenerato dal DB (ok Tid), arriva su `Tito-dev` dopo quello DB.
 Debito noto, non in questo brief: il `%TYPE` mancato del giro 1 (§10.1-bis). Lavoro fatto: tutto
 committato (`2793096a6`, 2026-10-16).
 
@@ -323,8 +325,7 @@ SQLSTATE `53100`, un rosso applicativo, un rosso con un codice che dichiara
 funzione da cui il digest prende i conteggi) dà `AMBIENTE` 2 → SISTEMISTA,
 `PROGRAMMA` 2 → SVILUPPO (la corsa di collaudo più quella vera di
 `smoke_notturno:completo`, `SMOKE_REGRESSIONI` del 14 e 15 ottobre: un caso reale
-instradato giusto), `CONFIGURAZIONE` 1 → AMMINISTRATORE. Ognuna col suo testo. Il
-digest stampato dal backend (`--secco`) resta da vedere: è del BE.
+instradato giusto), `CONFIGURAZIONE` 1 → AMMINISTRATORE. Ognuna col suo testo. Il digest stampato dal backend (`--secco`): ✅ ok (Tid, 2026-10-17).
 ⚠️ Prima prova persa: il paginatore di `psql` teneva aperta la transazione, e
 uscendone si annullava prima del `COMMIT`. Ora gli script hanno `\pset pager off`.
 
@@ -737,3 +738,52 @@ stanno dove li legge chi guarda: nel `message` della corsa (il BE li mette nella
 Provato sullo scratch (`zeroerp_ruoli`, transazione annullata): le due righe entrano nelle tabelle,
 coi loro vincoli. Per il BE: rigenerare `error_policies_generated.py` e, se serve, il ripiego in
 `error_messages_fallback.py`.
+
+## 12. Consegna BE del §4.2 (2026-10-17)
+
+* `registered_job` (`backend/apps/core/services/job_run.py`) chiama
+  `script.fn_job_run_end` a **nove** argomenti. `esito_errore(exc)` decide il codice
+  in quest'ordine: il `code` dell'eccezione, poi il codice `E_` di un `P0001` del
+  database, poi il nome della classe.
+* Lo SQLSTATE si cerca lungo le cause **esplicite** (`__cause__`), non solo sulla
+  prima. La strada più comune è un `ServiceError` tradotto da un errore Django, e lì
+  l'errore del driver sta due anelli sotto. Lo SQLSTATE viaggia anche quando il codice
+  è quello del backend: un `ServiceError` nato da un `53100` resta un disco pieno.
+  ⚠️ `__context__` non si legge: un errore nato *mentre* se ne gestiva un altro non
+  ne è la conseguenza.
+* Le letture a livello driver sono estratte in `db_error_fields`
+  (`sqlstate_del_driver`, `codice_strutturato_del_driver`), con `structured_db_error_code`
+  che ora ci si appoggia. È la stessa lettura, in una sede sola, non una copia.
+* **Prova sul DB vero** (dbdev, transazione annullata, giornale intatto dopo): una
+  corsa con `select 1/0` → `error_code = DataError`, `sqlstate = 22012`, causa
+  `PROGRAMMA`; una con `RAISE … USING CONSTRAINT = 'E_STATISTICHE_MANCANTI'` →
+  `error_code = E_STATISTICHE_MANCANTI`, `sqlstate = P0001`, causa `AMBIENTE`
+  (dichiarata dal codice). Test: `apps/core/tests/services/test_job_run.py` 10-14.
+
+**Restano aperti lato BE, non bloccanti:**
+
+* **Errori lato client senza SQLSTATE.** Una connessione che non si apre non riceve
+  uno SQLSTATE dal server: la corsa non si apre affatto (§9.3), oppure, se cade dopo,
+  arriva come `OperationalError` senza SQLSTATE e va a `PROGRAMMA`. Uno SQLSTATE non
+  si inventa. Se servirà, la strada è riconoscere la classe Python, che è la
+  tassonomia degli errori di sistema non-DB (`OSError`, `ConnectionError`) lasciata
+  al BE dal §4.2.
+* **`SMOKE_GIRO_FALLITO`** copre sia il tetto di tempo sia lo script uscito con 2
+  (§9.3). Si separa quando lo smoke notturno avrà un caso reale da instradare
+  diversamente.
+
+**D9 — ✅ fatto (2026-10-17).** BB `chiudi_se_elementi_non_completati` in `job_run.py`
+(regola del 2, ok Tid), chiamato in fondo da `run_fatturazione_batch` (`falliti`) e
+`send_pending_emails` (`badge_falliti`), dopo `set_meta`. Policy rigenerate (un codice
+in più, zero classi cambiate) e ripiego in `error_messages_fallback.py`. Test:
+`test_job_run` 15-17, `test_run_fatturazione_batch_command` 7,
+`test_send_pending_emails_badge_falliti`. ⚠️ Una corsa lanciata da «Esegui ora» che
+chiude rossa fa fallire anche il suo lavoro in coda (`E_AVVIO_FALLITO`): è il
+comportamento di ogni command uscito con errore, non una novità di D9.
+
+Nome concordato, `E_JOB_ELEMENTI_NON_COMPLETATI` (classe TECNICO,
+`causa_fallimento` NULL: decide il processo), cioè quello d'esempio del §10.3. Lo
+sollevano `run_fatturazione_batch` (`meta.falliti` non vuoto) e `send_pending_emails`
+(`meta.badge_falliti` non vuoto), in fondo alla corsa, dopo aver finito gli altri
+elementi. Il BE lo scrive quando il codice sarà a registro: un codice sollevato prima
+di esistere a catalogo non avrebbe né messaggio né ripiego.

@@ -43,6 +43,10 @@
 #      il controllo                                                         ⭐
 #  20. il `jobname` dichiarato è quello che il comando scrive
 #  21. almeno le tre sveglie calendariali dichiarano `dovuto` (anti vuoto)
+#  22. ogni sveglia `oneshot` ha il suo `TimeoutStartSec`: sotto la tolleranza
+#      del processo, se ha un contratto, e sotto l'ora dopo cui il giornale
+#      dice «presa e mai chiusa»; e sopra il tetto di «Esegui ora» per il
+#      drenatore che lo aspetta                                            ⭐
 #
 #  ⭐ Dal 2026-10-09 il JSON porta `dovuto` sulle sveglie calendariali (brief
 #     un-solo-fuso-aziendale T-4/T-9): il timer si sveglia ogni ora e
@@ -500,3 +504,37 @@ class SveglieDichiarateTests(SimpleTestCase):
     def test_le_sveglie_calendariali_dichiarano_dovuto(self) -> None:
         calendariali = {s.unit for s in sveglie.carica_sveglie() if s.dovuto is not None}
         self.assertGreaterEqual(len(calendariali), 3)
+
+    # 22. ⭐ Il TETTO della corsa (dal 2026-10-17). Un `oneshot` senza
+    #     `TimeoutStartSec` resta «in avvio» per sempre se si appende, e il
+    #     timer non ne lancia un'altra: il 2026-10-16 due sveglie sono rimaste
+    #     ferme oltre un'ora su una connessione al DB caduta a meta'. Il tetto
+    #     sta SOTTO la tolleranza del processo (la corsa appesa libera il timer
+    #     prima che il panorama dica MUTO) e sotto l'ora dopo cui la corsa
+    #     risulta «presa e mai chiusa» (lo stesso limite di
+    #     `smoke_notturno.TIMEOUT_GIRO_S`). Il drenatore della coda lavori
+    #     aspetta il sottoprocesso di «Esegui ora»: il suo tetto sta sopra.
+    def test_ogni_oneshot_ha_il_suo_tetto(self) -> None:
+        import re
+
+        from apps.core.services.avvio_manuale import TETTO_SOTTOPROCESSO_SECONDI
+
+        ora_della_corsa_aperta = 60
+        contratti = leggi_contratti_dal_seed()
+        controllate = 0
+        for s in sveglie.carica_sveglie():
+            testo = (_TEMPLATE_DIR / f"{s.unit}.service").read_text(encoding="utf-8")
+            if "Type=oneshot" not in testo.splitlines():
+                continue
+            controllate += 1
+            with self.subTest(unit=s.unit):
+                tetti = re.findall(r"^TimeoutStartSec=(\d+)min$", testo, re.MULTILINE)
+                self.assertEqual(len(tetti), 1, f"{s.unit}: un TimeoutStartSec=<N>min, uno solo")
+                minuti = int(tetti[0])
+                self.assertLess(minuti, ora_della_corsa_aperta)
+                contratto = contratti.get(s.processo_codice)
+                if contratto is not None and contratto["tolleranza_minuti"] is not None:
+                    self.assertLess(minuti, contratto["tolleranza_minuti"])
+                if s.processo_codice == processi.PROCESSO_DRAINA_CODA_LAVORI:
+                    self.assertGreater(minuti * 60, TETTO_SOTTOPROCESSO_SECONDI)
+        self.assertGreater(controllate, 0, "nessuna sveglia oneshot: la prova non prova niente")

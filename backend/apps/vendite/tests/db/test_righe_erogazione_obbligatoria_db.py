@@ -54,9 +54,8 @@ _FIXTURE = (
     " INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)"
     " SELECT listino_id, 'EROGOBB_V2', '2021-01-01'::date, 'BOZZA' FROM _l RETURNING id"
     ") SELECT id FROM ins",
-    "CREATE TEMP TABLE _a AS SELECT dbops.fn_pgtap_crea_articolo('EROGOBB-ART') AS id",
-    "UPDATE catalogo.articoli SET listino_tipologia_id = (SELECT tipologia_id FROM _l)"
-    " WHERE id = (SELECT id FROM _a)",
+    "CREATE TEMP TABLE _a AS SELECT dbops.fn_pgtap_crea_articolo('EROGOBB-ART',"
+    " p_listino_tipologia_id => (SELECT tipologia_id FROM _l)) AS id",
     "INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)"
     " SELECT (SELECT id FROM _v), ar.id, ar.uom_id, 100.00"
     " FROM catalogo.articoli ar WHERE ar.id = (SELECT id FROM _a)",

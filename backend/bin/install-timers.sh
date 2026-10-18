@@ -140,7 +140,7 @@ echo "APP_DIR=$APP_DIR  APP_USER=$APP_USER  DEST=$DEST_DIR  render_only=$RENDER_
 SEP=$'\x1f'
 
 # Scopo: ESTRAE da `sveglie.json` una riga per sveglia
-# (unit, forma, comando, oncalendar, nota). Solo stdlib: gira anche su
+# (unit, forma, comando, oncalendar). Solo stdlib: gira anche su
 # un host senza venv e sul runner della CI.
 #
 # ⛔ NON VALIDA IL DICHIARATO, ed è una scelta corretta il 2026-09-06 dopo averlo
@@ -164,10 +164,10 @@ righe = dati.get("sveglie")
 if not isinstance(righe, list) or not righe:
     sys.exit("sveglie.json: la chiave 'sveglie' manca o e' vuota")
 
+# ⛔ Niente `nota` (dal 2026-10-16): serviva a dire PERCHE' uno spento restava
+#    spento, e l'installer non sa piu' chi e' spento (lo dice il DB). Un campo
+#    estratto e mai letto e' una colonna in piu' da far slittare.
 for s in righe:
-    # Una nota che contenesse il separatore, o un a capo, spezzerebbe la riga e
-    # sposterebbe i campi: si normalizza a spazi prima di comporla.
-    nota = " ".join(str(s.get("nota") or "").replace(sep, " ").split())
     # Il comando è una LISTA di token; qui diventa la riga dell'`ExecStart`,
     # cioè i token separati da spazio. È un join sicuro perché i token non
     # possono contenere spazi né metacaratteri: lo impone `carica_sveglie`
@@ -179,7 +179,6 @@ for s in righe:
         str(s.get("forma") or ""),
         comando,
         str(s.get("oncalendar") or ""),
-        nota,
     ]))
 PY
 }
@@ -241,7 +240,7 @@ DA_ACCENDERE=()
 # I FILE che il dichiarato produce (`.service`, più il `.timer` dei timer): è
 # l'insieme contro cui si cercano gli orfani sull'host, qui sotto.
 DICHIARATI=" "
-while IFS="$SEP" read -r unit forma comando oncalendar nota; do
+while IFS="$SEP" read -r unit forma comando oncalendar; do
   [ -n "$unit" ] || continue
   render_unit "$unit" "$forma" "$comando" "$oncalendar"
   DICHIARATI+="${unit}.service "

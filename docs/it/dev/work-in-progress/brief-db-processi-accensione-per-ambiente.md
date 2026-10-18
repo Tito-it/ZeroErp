@@ -10,8 +10,9 @@ pgTAP verdi (2026-10-17).**
 | 1 | Tid | ✅ decisioni A-1…A-5, P-1…P-3, R-1…R-4 (2026-10-15/16) | §4, §4-bis, §4-ter | — |
 | 2 | team DB | ✅ giro 1 scritto e provato sullo scratch (2026-10-16): `20261016-15` … `-32` | §5-bis | — |
 | 3 | Tid | ✅ apply del giro 1, fase `post` su dbdev (`SVILUPPO`, 2026-10-16 14:20), pgTAP verdi | §5-bis.4 | — |
-| 4 | sessione BE/FE | ✅ punti 1-6 del §6.0, pushati (`f811719d1`, 2026-10-17); codici d'errore nel commit `843166c88` | §6.1 | — |
-| 4-ter | Tid | ✅ sveglie reinstallate su dbdev (`sudo backend/bin/install-timers.sh`, 2026-10-17) | §6.1 | — |
+| 4 | sessione BE/FE | ✅ punti 1-6 del §6.0, pushati (`f811719d1`, 2026-10-17); codici d'errore nel commit `843166c88`. ✅ Dopo l'incidente delle 23:45, i tetti di rete e delle sveglie (2026-10-17, `295737a90`) | §6.1, §6.4 | — |
+| 4-bis | team DB | le richieste del BE: ✅ R-BE-1 e R-BE-3 (giro 2a, §6.3), ✅ R-BE-2 sciolta da S-1 (§6.2); resta **R-BE-4**, la tolleranza di `smoke_notturno` in `processi.csv` (§6.5) | §6.2, §6.3, §6.5 | — |
+| 4-ter | Tid | ✅ sveglie reinstallate su dbdev (`sudo backend/bin/install-timers.sh`, 2026-10-17): le unit installate hanno i tetti `TimeoutStartSec` del §6.4 | §6.1, §6.4 | — |
 | 5 | sessione BE | ✅ che cosa crea il provisioning di sviluppo: l'elenco è in [brief-be-utenti-di-sviluppo §7](brief-be-utenti-di-sviluppo.md) (2026-10-16), decisioni di Tid del §7.4 prese (emittenti nuovi dal verbo, niente `dev.shop` per ora, portale senza contratto) | §5-ter | — |
 | 6 | Tid | ✅ decisioni S-1 (storia delle scelte, R-BE-2) e S-2 (smoke, §6.0 punto 7): proposte del team DB accolte (2026-10-17) | §6.2 | — |
 | 7 | Tid | ✅ il via allo sviluppo del giro DB 2 (2026-10-17) | — | — |
@@ -23,10 +24,11 @@ pgTAP verdi (2026-10-17).**
 | 9-sexies | Tid | ✅ apply dei lotti 2 e 3 (`-11` … `-17`), pgTAP verdi (2026-10-17) | §5-ter.2 | — |
 | 9-ter | sessione BE | 2b-2: il backend passa ai BB, le sue copie si ritirano | §5-ter.1 | 9 |
 | 9-quater | team DB | 2b-3: etichette, verbo di sviluppo, presidio (R-4) | §5-ter.1 | 9 |
-| 10 | sessione BE | con S-2: il valore della tolleranza di `smoke_notturno` in sviluppo; il ritiro di `SMOKE_NOTTURNO_CONSENTITO` dal command e dalla unit | §6.2 | — |
+| 10-bis | Tid | ⏳ **sciogliere la contraddizione su `SMOKE_NOTTURNO_CONSENTITO`**: S-2 (§6.2) dice «si ritira», il §6.5 dice «resta», tutte e due come decisione di Tid del 2026-10-17 | §6.2, §6.5 | — |
+| 10 | sessione BE | con S-2: il valore della tolleranza di `smoke_notturno` in sviluppo (dato: 1560, R-BE-4 al §6.5); il ritiro di `SMOKE_NOTTURNO_CONSENTITO` dal command e dalla unit, **solo se** 10-bis conferma il ritiro | §6.2, §6.5 | 10-bis |
 | 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10 |
 
-Decisioni aperte di Tid: nessuna. Da committare: i lotti 1-3 della 2b-1 (`20261017-05` … `-17`, i
+Decisioni aperte di Tid: **una**, la 10-bis (`SMOKE_NOTTURNO_CONSENTITO`: resta o si ritira). Da committare: i lotti 1-3 della 2b-1 (`20261017-05` … `-17`, i
 codici 1351-1354 nei due CSV, quattro pgTAP, cinque pagine manual), il giro 2a (tre changeSet,
 quattro CSV, un pgTAP, due pagine manual) e questo brief. ⚠️ `codici_errore.csv`,
 `messaggi_errore.csv` e `processi.csv` li tocca anche la sessione del brief del presidio dei job.
@@ -825,6 +827,9 @@ storicizzazione accanto a quella generica, cioè una copia della stessa regola.
 Ricaduta BE con S-1: nessuna sul verbo (stessa firma, stesso ritorno); il drawer, se vuole, legge
 lo storico. Il log applicativo del gesto diventa ridondante.
 
+> ⚠️ **In contraddizione col §6.5** (sessione BE, stessa data: «il consenso resta»), emersa al merge
+> del 2026-10-18. Si scioglie alla riga 10-bis del «Chi riparte».
+
 **S-2 — lo smoke (§6.0 punto 7).** ✅ **Deciso (Tid, 2026-10-17): proposta accolta**, il consenso
 `SMOKE_NOTTURNO_CONSENTITO` si ritira; il valore della tolleranza lo dà il BE e lo scrive il team DB
 nel catalogo. Ora che `SPENTO` non è morto: (a) una tolleranza
@@ -911,3 +916,61 @@ Poi i pgTAP: `dbops/test-processi-accensione-v1` e `dbops/test-storico-scope-pol
 * la riga di log applicativo del gesto (`processi_service.imposta_accensione`) è ora ridondante;
 * il ripiego di `E_PROCESSO_SVEGLIA_NON_ABILITATA` in `error_messages_fallback.py` dice già
   «spento»: il messaggio del DB ora porta il nome del processo (`%s`) e dice lo stesso.
+
+### 6.4 L'incidente del 2026-10-16 23:45, e le due reti aggiunte (sessione BE, 2026-10-17)
+
+**Fatto.** Il presidio `vw_processi_programmazione_da_guardare` ha detto `TIMER_FERMO` su
+`draina_coda_lavori` e `send_pending_emails`. Le due corse delle 23:45:08 erano «in avvio» da oltre
+un'ora: TCP aperto verso dbdev, nessuna sessione nel DB, nessuna CPU. Verso le 23:45 la rete fra il
+backend e dbdev (Tailscale) si era interrotta (il listener dei permessi ha riaperto la sessione alle
+23:46; alle 01:04 dbdev era di nuovo irraggiungibile per qualche minuto: porta 5432 e `tailscale
+ping` muti). Il cancello di questo brief non c'entrava: su dbdev giravano ancora i template vecchi.
+Sbloccate terminando i due processi (ok di Tid), le sveglie sono ripartite da sole.
+
+**Il difetto, che c'era gia'.** La connessione al DB del backend non aveva tetti di rete
+(`connect_timeout`, `tcp_user_timeout`, keepalive) e le unit `oneshot` non avevano
+`TimeoutStartSec` (lo smoke a parte): un'interruzione di rete durante l'apertura teneva il processo
+in attesa per sempre, e il timer non ripartiva. Il cancello `e_dovuto` su ogni sveglia raddoppia le
+connessioni aperte, e quindi le occasioni.
+
+**Le due reti** (BE, non tamponi: il guasto di rete resta possibile, cambia che diventa un errore):
+
+1. `settings.DATABASES["default"]["OPTIONS"]`: `connect_timeout` 10 s, `tcp_user_timeout` 30 s,
+   keepalive TCP (30 s di riposo, sonda ogni 10 s, 3 tentativi). Una connessione morta diventa un
+   errore in secondi. Vale per sveglie, gunicorn e comandi (gunicorn al prossimo riavvio).
+2. `TimeoutStartSec` su ogni sveglia `oneshot`, sotto la tolleranza del processo e sotto l'ora della
+   corsa «presa e mai chiusa»; il drenatore sopra il tetto di «Esegui ora» che aspetta. Presidio
+   `test_sveglie` 22.
+
+✅ **Regola del 2 (ok Tid, 2026-10-17).** Gli stessi tetti di rete li aveva gia' il listener dei
+permessi, in due costanti sue: ora la sede unica e' `settings.DB_TETTI_DI_RETE`, letta da
+`DATABASES` e dal listener (`notify_listener._get_conninfo`); le costanti del listener sono ritirate
+nello stesso giro.
+⚠️ Su dbdev le sveglie vanno reinstallate (`sudo backend/bin/install-timers.sh`) perche' i tetti
+entrino negli unit.
+
+### 6.5 Punto 7 — lo smoke notturno: decisioni di Tid (2026-10-17)
+
+* ✅ **Una tolleranza vera in sviluppo.** Il 2026-10-13 la tolleranza dello smoke era stata lasciata
+  NULL perche' il panorama non distingueva spento da morto: in produzione, dove lo smoke non gira,
+  avrebbe suonato ogni giorno. Con lo stato `SPENTO` quel motivo cade: in produzione lo smoke e'
+  spento (default a catalogo), non morto. Senza tolleranza, invece, un giro notturno che smette di
+  partire su sviluppo non lo vede nessuno.
+* ⚠️ **In contraddizione con S-2 al §6.2** (team DB, stessa data: «il consenso si ritira»), emersa
+  al merge del 2026-10-18. Si scioglie alla riga 10-bis del «Chi riparte».
+* ✅ **`SMOKE_NOTTURNO_CONSENTITO` resta** come seconda serratura: lo smoke e' spegnibile, quindi in
+  produzione si puo' accendere a mano dal drawer; la riga che manca in `.env.systemd` lo ferma
+  comunque. Due serrature indipendenti su un comando che scrive dati di prova.
+
+**R-BE-4 — al team DB:** in `80_data/sql/dbops/processi.csv`, riga `smoke_notturno`,
+`tolleranza_minuti` da NULL a **1560** (26 ore). Perche' 1560: la sveglia e' calendariale (ogni
+giorno dalle 02:30 aziendali, sveglia oraria), quindi fra due corse passano al massimo un giorno
+piu' il passo della sveglia, 25 ore (`test_contratto_liveness_vs_deploy` test 1, che con la
+tolleranza valorizzata lo controlla anche sullo smoke); un'ora di margine sopra. Il tetto della
+corsa (`TimeoutStartSec=55min`) sta gia' sotto.
+⚠️ La stessa riga del CSV la tocca anche `brief-db-presidio-job-run-a-chi-tocca` (colonna
+`causa_fallimento`, lavoro in corso nel working tree il 2026-10-17): coordinarsi per non
+sovrascriversi.
+Dopo il CSV, lato BE: la nota della voce in `backend/deploy/sveglie.json` («Tolleranza NULL a
+catalogo … nessuno se ne accorge») va riscritta. Nessun codice cambia.
+

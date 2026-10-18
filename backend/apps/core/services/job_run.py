@@ -16,10 +16,16 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 
 from django.db import DatabaseError, connection
+
+from apps.core.services.db_error_fields import (
+    codice_strutturato_del_driver,
+    sqlstate_del_driver,
+)
+from apps.core.services.service_errors import ServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +61,11 @@ _ORIGINI = (ORIGINE_PGAGENT, ORIGINE_CRON, ORIGINE_COMMAND)
 #    cui la regola risponde si'.
 ENV_JOB_ORIGINE = "ZEROERP_JOB_ORIGINE"
 ENV_JOB_AUTH_USER_ID = "ZEROERP_JOB_AUTH_USER_ID"
+
+# Il codice di una corsa finita con elementi falliti che non hanno un registro
+# loro (D9 di brief-db-presidio-job-run-a-chi-tocca). Vedi
+# `chiudi_se_elementi_non_completati`.
+E_JOB_ELEMENTI_NON_COMPLETATI = "E_JOB_ELEMENTI_NON_COMPLETATI"
 
 
 # Scopo: applica l'ambiente agli argomenti di `registered_job`: ritorna
@@ -92,6 +103,61 @@ def origine_e_attore_dall_ambiente(
         auth_user_id = valore_id
 
     return origine, auth_user_id
+
+
+# Quanti anelli di `__cause__` si risalgono al massimo: una catena reale ne ha
+# due o tre (ServiceError → errore Django → errore del driver). Il tetto e' la
+# difesa da una catena circolare, non una stima.
+_PROFONDITA_CAUSE = 10
+
+
+# Scopo: Il primo errore del DRIVER (quello che porta uno SQLSTATE) lungo le
+#        cause ESPLICITE di `exc`, compresa `exc` stessa; None se la catena non
+#        ne contiene uno.
+# ⭐ Si risale, e non ci si ferma alla prima `__cause__`: un command che passa da
+#    un service riceve un `ServiceError` tradotto da un errore Django, che a sua
+#    volta nasconde quello del driver. Fermarsi al primo anello perderebbe lo
+#    SQLSTATE proprio sulla strada piu' comune.
+# ⚠️ Solo `__cause__` (`raise … from …`), non `__context__`: un'eccezione nata
+#    MENTRE se ne gestiva un'altra non e' detto che ne sia la conseguenza, e
+#    lo SQLSTATE di quell'altra sarebbe il guasto sbagliato.
+def errore_del_driver(exc: BaseException) -> BaseException | None:
+    anello: BaseException | None = exc
+    for _ in range(_PROFONDITA_CAUSE):
+        if anello is None:
+            return None
+        if sqlstate_del_driver(anello) is not None:
+            return anello
+        anello = anello.__cause__
+    return None
+
+
+# Scopo: Cosa scrivere sul giornale per una corsa uscita con `exc`: il codice
+#        (`error_code`) e lo SQLSTATE (`sqlstate`, nono argomento di
+#        `script.fn_job_run_end`). brief-db-presidio-job-run-a-chi-tocca §4.2.
+#        Il codice, in quest'ordine:
+#          1. il `code` dell'eccezione (`ServiceError`, `GiroSmokeFallito`): e' il
+#             codice che il backend ha dato al proprio fallimento;
+#          2. il codice `E_` di un `P0001` sollevato dal database, invece del nome
+#             di classe `InternalError`: e' la regola che `fn_run_and_log`
+#             applica ai job pgAgent, e senza `config.codici_errore` non vede la
+#             causa che il codice dichiara;
+#          3. il nome della classe Python.
+# ⭐ Lo SQLSTATE e' quello che decide l'AMBIENTE nella vista
+#    (`script.fn_sqlstate_di_ambiente`): senza, un disco pieno o una connessione
+#    caduta dentro un command arrivavano come `OperationalError` e finivano allo
+#    sviluppo.
+# ⚠️ Lo SQLSTATE viaggia anche quando il codice e' il `code` dell'eccezione: un
+#    `ServiceError` tradotto da un `53100` resta un disco pieno.
+# ⚠️ Un errore lato client (la connessione che non si apre) non ha SQLSTATE: il
+#    driver non ne riceve uno dal server, e qui non se ne inventa uno.
+def esito_errore(exc: BaseException) -> tuple[str, str | None]:
+    driver = errore_del_driver(exc)
+    sqlstate = sqlstate_del_driver(driver) if driver is not None else None
+    codice = getattr(exc, "code", None)
+    if codice is None and driver is not None:
+        codice = codice_strutturato_del_driver(driver)
+    return str(codice if codice is not None else type(exc).__name__), sqlstate
 
 
 # Scopo: handle del run restituito da `registered_job`. Espone l'esito dello start
@@ -185,12 +251,12 @@ def registered_job(
     ok = True
     error_code: str | None = None
     error_detail: str | None = None
+    sqlstate: str | None = None
     try:
         yield handle
     except BaseException as exc:
         ok = False
-        # ServiceError espone `.code`; per le altre eccezioni il nome classe.
-        error_code = str(getattr(exc, "code", type(exc).__name__))
+        error_code, sqlstate = esito_errore(exc)
         error_detail = str(exc) or None
         raise
     finally:
@@ -202,10 +268,10 @@ def registered_job(
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT script.fn_job_run_end(%s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
+                    "SELECT script.fn_job_run_end(%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)",
                     [
                         handle.id, ok, handle.message, handle.rows_affected,
-                        error_code, error_detail, meta_json, lock_key,
+                        error_code, error_detail, meta_json, lock_key, sqlstate,
                     ],
                 )
         except DatabaseError:
@@ -213,3 +279,34 @@ def registered_job(
                 "job_run.fn_job_run_end_failed job=%s id=%s (run-log non chiuso)",
                 job_name, handle.id,
             )
+
+
+# Scopo: ⭐ Chiude ROSSA una corsa che ha finito il lavoro ma ha lasciato indietro
+#        elementi che non hanno un registro loro, solo il `meta` della corsa.
+#        Senza, un giro fallito su tutte le aziende chiudeva verde, e il presidio
+#        delle corse (`maintenance.vw_job_run_da_guardare`) non lo vedeva
+#        (D9 di brief-db-presidio-job-run-a-chi-tocca, §10.3).
+#        `elementi` sono i nomi da mettere nel dettaglio (per esempio i codici
+#        delle aziende), `cosa` dice che cosa sono, al plurale.
+# ⛔ Si chiama IN FONDO, dopo aver finito gli altri elementi e dopo `set_meta`:
+#    il lavoro sugli altri resta fatto, e il `meta` col dettaglio arriva al
+#    giornale insieme al rosso. Solleva dentro `registered_job`, che chiude la
+#    corsa con `ok = false` e questo codice.
+# ⚠️ Solo per fallimenti SENZA un registro loro. Un'email, un lavoro in coda, una
+#    stampa hanno ognuno il proprio presidio: chiudere rossa anche la corsa
+#    li direbbe due volte.
+# Regola del 2 (2026-10-17, ok Tid): la stessa chiusura serviva identica a
+#    `run_fatturazione_batch` (`falliti`) e a `send_pending_emails`
+#    (`badge_falliti`).
+def chiudi_se_elementi_non_completati(
+    job: JobRunHandle, elementi: Sequence[str], *, cosa: str,
+) -> None:
+    if not elementi:
+        return
+    riassunto = f"{cosa}: {len(elementi)}"
+    job.set_message(f"{job.message}; {riassunto}" if job.message else riassunto)
+    raise ServiceError(
+        code=E_JOB_ELEMENTI_NON_COMPLETATI,
+        message=riassunto,
+        detail=f"{riassunto} ({', '.join(elementi)})",
+    )
