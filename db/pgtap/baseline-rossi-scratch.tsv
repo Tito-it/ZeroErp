@@ -48,7 +48,6 @@ db/pgtap/vendite/test-fattura-guard-uscita-draft-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fattura-satelliti-lock-congelamento-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fattura-utils-critical-termini.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatturazione-draft.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fatturazione-pipeline-task-runtime.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatturazione-reset-lotto-draft.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatture-arrotondamenti-scope.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatture-atti-v1.sql	ERRORE_FIXTURE
@@ -66,7 +65,6 @@ db/pgtap/vendite/test-fn-crea-revisione-preventivo.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-create-contratto-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-emit-attivita-propaga-audit-pricing-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-genera-pratica-da-preventivo-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-get-or-create-lotto-emittente.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-get-valuta-id-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-commessa-attivita-provenienza-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-commessa-attivita-v1.sql	ERRORE_FIXTURE
@@ -76,7 +74,6 @@ db/pgtap/vendite/test-fn-list-ddt-da-pushare-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-emittibili-lane.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-lotto-segnalazioni-job.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-lotto-segnalazioni.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-list-lotto-task-runs-paginata.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-preventivi-da-pushare-competenza-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-preventivi-da-pushare-natura-aware-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-preventivi-da-pushare-righe-ids-v1.sql	ERRORE_FIXTURE
@@ -102,7 +99,7 @@ db/pgtap/vendite/test-guard-congelamento-fusione-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-guard-lotto-fatture-stato-coerente.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-guard-quantita-immutabile-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-guard-tipo-doc-emittibile-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-guard-uscita-commessa-v1.sql	ASSERZIONE
+db/pgtap/vendite/test-guard-uscita-commessa-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-lista-commessa-attivita-fatturata-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-listini-righe-guard-tipologia-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-listini-versioni-guard-transizione-stato-v1.sql	ASSERZIONE
