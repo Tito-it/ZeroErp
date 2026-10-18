@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA COPPIA NUOVA (TIPO DOCUMENTO O NATURA) SI COLLEGA DA SOLA
+#   vendite.trgfn_coppie_fattura_provision_registri()  (nuova)
+#   trg_tipi_doc_fiscale_z90_provision_registri_ins_upd   su config.tipi_doc_fiscale
+#   trg_nature_doc_fiscale_z90_provision_registri_ins_upd su config.nature_doc_fiscale
+#   R-BE-14 del BE, decisioni D-14a … D-14d di Tid (2026-10-18),
+#   brief-db-processi-accensione-per-ambiente §6.14, punto 2.
+#
+# -- IL BUCO CHE SI CHIUDE -------------------------------------------------------
+#   Il registro delle fatture si risolve per (tipo documento, natura). Quando
+#   nasce, o si riaccende, un tipo documento o una natura, ogni emittente ha una
+#   coppia nuova senza registro: il primo documento di quel tipo si
+#   fermerebbe su «registro non risolto». E' il gemello di cio' che
+#   vendite.fn_provision_registri_famiglia fa gia' per una famiglia nuova.
+#
+# -- COSA FA ------------------------------------------------------------------
+#   Chiama vendite.fn_provision_registri_famiglia('FATTURA'): la primitiva
+#   collega le coppie scoperte di ogni emittente attivo al suo registro
+#   standard, facendolo nascere se manca (20261019-08). Nessuna regola qui.
+#
+# -- QUANDO --------------------------------------------------------------------
+#   All'INSERT di una riga attiva, e all'UPDATE che la ACCENDE. ⚠️ Non a ogni
+#   UPDATE OF attivo: il loader dei CSV riscrive la colonna anche quando non
+#   cambia, e il provisioning di tutti gli emittenti ripartirebbe a ogni
+#   migrate. Sarebbe idempotente, ma ricollegherebbe in silenzio una coppia che
+#   chi amministra ha scollegato apposta, nel momento in cui nessuno guarda.
+#   Una riga spenta non provisiona niente: la coppia di una natura spenta non
+#   e' scoperta (vendite.fn_coppie_fattura_scoperte guarda solo le attive).
+#
+# -- SU UN DATABASE NUOVO -----------------------------------------------------------
+#   I due cataloghi si caricano in 80_data, quando di emittenti non ce ne sono:
+#   il trigger scatta e non trova niente da fare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-09-create-trgfn-coppie-fattura-provision-registri-mctit.yaml
+
+  - changeSet:
+      id: 20261019-09-create-trgfn-coppie-fattura-provision-registri
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Un tipo documento o una natura che nasce (o si riaccende) collega da solo la sua coppia
+        al registro delle fatture standard di ogni emittente: trigger su config.tipi_doc_fiscale
+        e config.nature_doc_fiscale che chiamano vendite.fn_provision_registri_famiglia('FATTURA').
+        R-BE-14, D-14a … D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_coppie_fattura_provision_registri()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Una riga di config.tipi_doc_fiscale o di
+                  --   config.nature_doc_fiscale che nasce attiva, o si
+                  --   accende, collega la sua coppia al registro delle
+                  --   fatture standard di ogni emittente attivo.
+                  --
+                  -- Regole:
+                  --   - solo INSERT attivo o passaggio a attivo: il loader dei
+                  --     CSV riscrive `attivo` anche quando non cambia;
+                  --   - la regola sta nella primitiva: qui solo la porta.
+                  -- =========================================================
+                  IF NEW.attivo IS NOT TRUE THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF TG_OP = 'UPDATE' AND OLD.attivo IS TRUE THEN
+                      RETURN NULL;
+                  END IF;
+
+                  PERFORM vendite.fn_provision_registri_famiglia('FATTURA');
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_coppie_fattura_provision_registri() IS
+                  'Trigger AFTER ROW su config.tipi_doc_fiscale e config.nature_doc_fiscale (2026-10-18): un tipo documento o una natura che nasce attivo, o si accende, collega la sua coppia (tipo documento, natura) al registro delle fatture standard di ogni emittente attivo, facendolo nascere se manca, via vendite.fn_provision_registri_famiglia(''FATTURA''). E'' il gemello di cio'' che la madre di una famiglia fa per i registri delle famiglie. Solo all''INSERT attivo e al passaggio da spento ad acceso: il loader dei CSV riscrive attivo anche quando non cambia, e ricollegare a ogni migrate una coppia scollegata apposta sarebbe un cambio silenzioso. Nessuna regola qui: sta nella primitiva vendite.fn_provision_registri. R-BE-14, D-14a … D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.';
+
+              DROP TRIGGER IF EXISTS trg_tipi_doc_fiscale_z90_provision_registri_ins_upd ON config.tipi_doc_fiscale;
+              CREATE TRIGGER trg_tipi_doc_fiscale_z90_provision_registri_ins_upd
+                  AFTER INSERT OR UPDATE OF attivo ON config.tipi_doc_fiscale
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_coppie_fattura_provision_registri();
+
+              DROP TRIGGER IF EXISTS trg_nature_doc_fiscale_z90_provision_registri_ins_upd ON config.nature_doc_fiscale;
+              CREATE TRIGGER trg_nature_doc_fiscale_z90_provision_registri_ins_upd
+                  AFTER INSERT OR UPDATE OF attivo ON config.nature_doc_fiscale
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_coppie_fattura_provision_registri();
+      rollback:
+        - sql:
+            sql: >
+              DROP TRIGGER IF EXISTS trg_nature_doc_fiscale_z90_provision_registri_ins_upd ON config.nature_doc_fiscale;
+              DROP TRIGGER IF EXISTS trg_tipi_doc_fiscale_z90_provision_registri_ins_upd ON config.tipi_doc_fiscale;
+              DROP FUNCTION IF EXISTS vendite.trgfn_coppie_fattura_provision_registri();

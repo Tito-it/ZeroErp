@@ -6,6 +6,7 @@
 > [config.parameter_overrides](/dbzero/config/tabelle/parameter_overrides)
 > [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
 > [script.fn_list_parameters_for_user](/dbzero/script/funzioni/fn_list_parameters_for_user)
+> [script.fn_get_parameter_di_sessione](/dbzero/script/manual/fn_get_parameter_di_sessione) — per chi legge dentro il database: il contesto dalla sessione
 
 ---
 

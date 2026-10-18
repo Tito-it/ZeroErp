@@ -132,6 +132,7 @@
 - [fn_cleanup_fatture_by_ids](funzioni/fn_cleanup_fatture_by_ids.md) — (latest review 03-08-2026)  
 - [fn_close_commessa_push_run](funzioni/fn_close_commessa_push_run.md) — `vendite.fn_close_commessa_push_run` **chiude** il giro aperto in testa alla corsa: gli scrive sopra l'esito, il risultato per handler e la durata.
 - [fn_close_giornaliero_lotto](funzioni/fn_close_giornaliero_lotto.md) — (latest review 03-02-2026) La funzione **`vendite.fn_close_giornaliero_lotto()`** chiude operativamente un lotto di tipo **GIORNALIERO** e allinea lo stato documentale delle fatture collegate al valore passato (tipicamente stato `INVIATA`).
+- [fn_codice_registro_provisionato](funzioni/fn_codice_registro_provisionato.md)
 - [fn_commessa_viva_di_sorgente](funzioni/fn_commessa_viva_di_sorgente.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-12 e D-14)
 - [fn_complete_lotto_task_run](funzioni/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
 - [fn_componi_numero_documento](funzioni/fn_componi_numero_documento.md) — (rev 2026-08-31, sera)
@@ -140,6 +141,7 @@
 - [fn_contratto_riga_componenti_preview](funzioni/fn_contratto_riga_componenti_preview.md)
 - [fn_contratto_righe_preview](funzioni/fn_contratto_righe_preview.md)
 - [fn_contratto_sovrapposto](funzioni/fn_contratto_sovrapposto.md) — `vendite.fn_contratto_sovrapposto(...)` risponde a una sola domanda, **senza modificare nulla**: *«per questo cliente/utility e in questo periodo esiste già un contratto attivo?»*. È il **rilevamento** del meccanismo generico di successione contratti (il "chiudi il vecchio e apri il nuovo").
+- [fn_coppie_fattura_scoperte](funzioni/fn_coppie_fattura_scoperte.md) — (18-10-2026 — R-BE-14, decisioni D-14a … D-14d di Tid, `brief-db-processi-accensione-per-ambiente` §6.14)
 - [fn_crea_famiglia_documento](funzioni/fn_crea_famiglia_documento.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_crea_revisione_offerta](funzioni/fn_crea_revisione_offerta.md) — (rev 2026-05-25)
 - [fn_crea_revisione_preventivo](funzioni/fn_crea_revisione_preventivo.md) — (latest review 14-09-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive, componenti BoM e indirizzi. L'attivazione della revisione non e' piu' gestita qui: il flag `is_revision_attiva` e' stato rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendite.vw_preventivi`.
@@ -267,6 +269,7 @@
 - [fn_push_offerta_a_contratto](funzioni/fn_push_offerta_a_contratto.md) — (rev6 2026-06-08 — guard **mutua esclusività** offerta→contratto/ordine; rev5 2026-06-01 — trasporto 1:1 stato approvazione prezzo anche sulle **righe**; rev4 2026-05-31 — successione contratti su overlap; rev3 2026-05-26 — copia `offerte_commerciali_eccezioni_componenti` → `contratti_righe_componenti`)
 - [fn_push_preventivo_a_ordine](funzioni/fn_push_preventivo_a_ordine.md) — (latest review 08-07-2026)
 - [fn_regime_fiscale_fattura](funzioni/fn_regime_fiscale_fattura.md)
+- [fn_registro_che_copre_coppia](funzioni/fn_registro_che_copre_coppia.md)
 - [fn_rendi_commessa_emittibile](funzioni/fn_rendi_commessa_emittibile.md) — (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte, D-10)
 - [fn_reset_fondi_fattura](funzioni/fn_reset_fondi_fattura.md) — (latest review 22-08-2026)
 - [fn_resi_da_accreditare](funzioni/fn_resi_da_accreditare.md) — (latest review 2026-09-21)
@@ -338,6 +341,7 @@
 - [trgfn_contratti_set_categoria_cliente_snapshot](funzioni/trgfn_contratti_set_categoria_cliente_snapshot.md) — (rev 2026-08-21)
 - [trgfn_contratti_snapshot_precontrattuali](funzioni/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 12/10/26)
 - [trgfn_contratti_utilities_guard_tipo_classe](funzioni/trgfn_contratti_utilities_guard_tipo_classe.md) — (rev 2026-08-21 — pricing v5)
+- [trgfn_coppie_fattura_provision_registri](funzioni/trgfn_coppie_fattura_provision_registri.md)
 - [trgfn_ddt_default_magazzino](funzioni/trgfn_ddt_default_magazzino.md)
 - [trgfn_ddt_gen_numero_emesso](funzioni/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-08-31, sera)
 - [trgfn_ddt_guard_causale_emissione](funzioni/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-08-28)
@@ -420,6 +424,7 @@
 - [trgfn_preventivi_righe_componenti_guard_pending](funzioni/trgfn_preventivi_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta che è stata proposta. Cambi a prezzo, quantita' o articolo durante la fase di approvazione renderebbero la decisione ambigua. - **Coerenza con il controllo di testata** — [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati), chiesto dal guard di transizione del preventivo, blocca le transizioni verso EMESSO e ACCETTATO se un componente attivo è PENDING o REJECTED (dal 2026-09-24; prima lo faceva il trigger ritirato `trgfn_preventivi_guard_transizione_approvazione`, solo verso ACCETTATO e solo sul PENDING). Insieme garantiscono che nessuna decisione commerciale avvenga con prezzi incerti sui componenti BoM CASO A. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura: se `preventivi_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_preventivi_righe_ricalcola_totali](funzioni/trgfn_preventivi_righe_ricalcola_totali.md) — (latest review 03-04-2026) `vendite.trgfn_preventivi_righe_ricalcola_totali()` e' la trigger function **STATEMENT-level** che mantiene i totali testata preventivo sempre coerenti con le righe. Invoca `vendite.fn_ricalcola_totali_preventivo()` **una sola volta per ogni preventivo_id coinvolto**, anche in caso di operazioni bulk (es. copia righe in revisione).
 - [trgfn_promo_articoli_guard_data_driven](funzioni/trgfn_promo_articoli_guard_data_driven.md) — (latest review 27-04-2026)
+- [trgfn_registri_fatturazione_guard_coppia_unica](funzioni/trgfn_registri_fatturazione_guard_coppia_unica.md)
 - [trgfn_registri_fatturazione_guard_forma_numero](funzioni/trgfn_registri_fatturazione_guard_forma_numero.md)
 - [trgfn_registri_fatturazione_guard_serie_ammessa](funzioni/trgfn_registri_fatturazione_guard_serie_ammessa.md)
 - [trgfn_registri_fatturazione_set_anno_nel_numero](funzioni/trgfn_registri_fatturazione_set_anno_nel_numero.md)
@@ -436,6 +441,7 @@
 - [trgfn_resi_righe_guard_quantita](funzioni/trgfn_resi_righe_guard_quantita.md) — (rev 2026-07-13)
 - [trgfn_resi_righe_rientri_guard](funzioni/trgfn_resi_righe_rientri_guard.md)
 - [trgfn_resi_rinunce_guard](funzioni/trgfn_resi_rinunce_guard.md) — (rev 2026-07-26)
+- [trgfn_tipi_doc_fiscale_registri_guard_coppia_unica](funzioni/trgfn_tipi_doc_fiscale_registri_guard_coppia_unica.md)
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md) — (rev 2026-07-11)
 - [trgfn_v_ddt_protect_num](funzioni/trgfn_v_ddt_protect_num.md) — (rev 2026-07-09)
 - [trgfn_v_resi_protect_num](funzioni/trgfn_v_resi_protect_num.md) — (rev 2026-07-13)

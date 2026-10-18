@@ -2,19 +2,20 @@
 # ⚙️ Funzione `fn_documento_righe_preview`
 
 ```sql
-CREATE FUNCTION fn_documento_righe_preview(p_documento text, p_documento_id bigint)
+CREATE FUNCTION fn_documento_righe_preview(p_documento character varying, p_documento_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_documento_righe_preview(p_documento text, p_documento_id bigint)
+CREATE OR REPLACE FUNCTION vendite.fn_documento_righe_preview(p_documento character varying, p_documento_id bigint)
  RETURNS TABLE(articolo_id uuid, articolo_codice character varying, articolo_descrizione character varying, is_composito boolean, uom_id bigint, uom_codice character varying, prezzo_listino numeric, tipo_variazione character varying, valore_variazione numeric, override_riga_id bigint, override_prezzo numeric, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, prezzo_finale numeric, componenti jsonb, quantita numeric, qta_operativa numeric, tipo_erogazione character varying, fonte_quantita_attesa character varying, riga_key text, azioni text[], escludi_blocco_codice text, ordine smallint, uom_operativa_id bigint)
  LANGUAGE plpgsql
  STABLE
 AS $function$
+
 -- Scopo: le righe di un contratto o di un'offerta per il drawer
---   (p_documento = CONTRATTO | OFFERTA), sorgente delle due liste.
+--   (p_documento = CONTRATTO | OFFERTA_COMMERCIALE), sorgente delle due liste.
 -- Parte 1: righe del listino (core fn_espandi_listino_versione,
 --   standalone e bundle) con l'overlay OVERRIDE/ESCLUSIONE.
 -- Parte 2: AGGIUNTA standalone (2a) e bundle (2b).
@@ -29,8 +30,9 @@ AS $function$
 -- L'UdM di una AGGIUNTA e' quella della RIGA; NULL = la base
 --   dell'articolo (lo stesso ripiego di script.trgfn_qta_from_operativa).
 -- ⚠️ Il blocco «fuori bozza» NON e' qui: e' di documento.
--- ⚠️ p_documento e p_documento_id nudi DICHIARATI (selettore, id
---   polimorfo); nude anche le colonne calcolate.
+-- ⚠️ p_documento ancorato a config.sorgenti.codice_interno (grammatica
+--   unica, lotto 1); p_documento_id nudo DICHIARATO (id polimorfo);
+--   nude anche le colonne calcolate.
 -- Nasce il 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende,
 --   R4) dal corpo di vendite.fn_contratto_righe_preview (20261004-14),
 --   che ora la chiama; la chiama anche vendite.fn_offerta_righe_preview.
@@ -166,7 +168,7 @@ BEGIN
                          occ.uom_operativa_id, occ.coeff_qta_snapshot,
                          occ.prezzo_unitario, occ.ordine
                     FROM vendite.offerte_commerciali_eccezioni_componenti occ
-                   WHERE p_documento              = 'OFFERTA'
+                   WHERE p_documento              = 'OFFERTA_COMMERCIALE'
                      AND occ.eccezione_offerta_id = e.id
                      AND occ.attivo               = TRUE
               ) c
@@ -188,8 +190,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_documento_righe_preview(p_documento text, p_documento_id bigint)
-IS 'Le righe di un contratto o di un''offerta come le vede il drawer (p_documento = CONTRATTO | OFFERTA): righe della versione operativa del listino (vendite.fn_documento_listino_operativo) con l''overlay OVERRIDE/ESCLUSIONE, piu'' le AGGIUNTA standalone e bundle (eccezioni da vendite.fn_documento_righe_eccezione). Colonne in coda: riga_key, azioni (DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI), escludi_blocco_codice (primo motivo di script.fn_check_esclusione_articolo_documento, lo stesso predicato del guard), ordine e uom_operativa_id della riga eccezione. Il blocco «fuori bozza» non e'' qui: e'' di documento. Documento assente o fuori perimetro (INVOKER): nessuna riga. Sorgente unica (regola del 2) di vendite.fn_contratto_righe_preview e vendite.fn_offerta_righe_preview, involucri di una riga. Nasce il 2026-10-04 dal corpo di fn_contratto_righe_preview (20261004-14), brief-db-righe-esclusione-solo-non-si-vende (R4).';
+COMMENT ON FUNCTION vendite.fn_documento_righe_preview(p_documento character varying, p_documento_id bigint)
+IS 'Le righe di un contratto o di un''offerta come le vede il drawer (p_documento = CONTRATTO | OFFERTA): righe della versione operativa del listino (vendite.fn_documento_listino_operativo) con l''overlay OVERRIDE/ESCLUSIONE, piu'' le AGGIUNTA standalone e bundle (eccezioni da vendite.fn_documento_righe_eccezione). Colonne in coda: riga_key, azioni (DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI), escludi_blocco_codice (primo motivo di script.fn_check_esclusione_articolo_documento, lo stesso predicato del guard), ordine e uom_operativa_id della riga eccezione. Il blocco «fuori bozza» non e'' qui: e'' di documento. Documento assente o fuori perimetro (INVOKER): nessuna riga. Sorgente unica (regola del 2) di vendite.fn_contratto_righe_preview e vendite.fn_offerta_righe_preview, involucri di una riga. Nasce il 2026-10-04 dal corpo di fn_contratto_righe_preview (20261004-14), brief-db-righe-esclusione-solo-non-si-vende (R4). ⭐ rev 2026-10-19 (20261019-23, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
 ```
 
 ---

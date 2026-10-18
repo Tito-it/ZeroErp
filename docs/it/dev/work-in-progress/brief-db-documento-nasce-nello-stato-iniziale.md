@@ -12,6 +12,11 @@
 
 Decisioni aperte di Tid: §4. Lavoro da committare: questo documento.
 
+📌 Il tipo di documento si nomina secondo
+[brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md) (§6.1): se questo
+cantiere introduce un registro o un parametro per tipo di documento, usa i codici di
+`config.sorgenti` (G-1) e parte **dopo il lotto 0** di quel brief (G-4, Tid 2026-10-18).
+
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-13. **A chi:** Tid, poi il team DB.
 > **Origine:** trovato verificando `trg_ddt_a10_gen_numero_emesso_upd` nel giro del `20261013-53`
 > (la bolla generata da un ordine nasceva senza magazzino). Registro: **D32** di

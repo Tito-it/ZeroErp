@@ -28,19 +28,15 @@ BEGIN
     --   - lo stato proposto e' un DATO (STATO_PROPOSTO_ISO2),
     --     mai una costante nel codice;
     --   - e' una PROPOSTA: si legge con la cascata degli
-    --     override (sessione, funzione, default), come faceva
-    --     fn_get_default_by_param;
+    --     override col contesto della SESSIONE (utente, gruppo,
+    --     emittente, sessione, funzione, default), da
+    --     script.fn_get_parameter_di_sessione: i lettori sono
+    --     trigger e madri, che il contesto non lo ricevono;
     --   - fail-loud su tre guasti: assente o vuoto, codice
     --     senza stato, codice che indica piu' stati
     --     (fn_stato_id_da_iso2). Mai un ripiego.
     -- =========================================================
-    v_iso2 := script.fn_get_parameter_full(
-        'STATO_PROPOSTO_ISO2',
-        NULL,
-        NULL,
-        NULL::integer[],
-        current_setting('app.session_key', true),
-        p_chi);
+    v_iso2 := script.fn_get_parameter_di_sessione('STATO_PROPOSTO_ISO2', p_chi);
 
     -- 1) Assente (fn_get_parameter_full ferma gia' la riga
     --    mancante) o vuoto.
@@ -77,7 +73,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_stato_proposto_id(p_chi text)
-IS 'BB (2026-10-18): l''id di config.stati che si propone quando chi scrive non dice lo stato. Legge config.parameters.STATO_PROPOSTO_ISO2 (codice ISO2) con la cascata degli override di script.fn_get_parameter_full (sessione da app.session_key, funzione da p_chi, default): e'' una PROPOSTA, l''override e'' legittimo. Valida e non ripiega: assente o vuoto E_CONFIG_MANCANTE, codice senza stato E_DEFAULT_ERRATO, codice che indica piu'' stati E_STATO_ISO2_AMBIGUO (da script.fn_stato_id_da_iso2). Lettori: i trigger normalize di indirizzi, indirizzi_soggetti, soggetti, regioni, iva_stati, toponomastica; anagrafiche.fn_crea_soggetto_pf e _pg; script.fn_crea_utente_tecnico. ⛔ Non decide le regole di un paese: CF e P.IVA, sigla di provincia e IVA restano scritte per ''IT'' dove la legge e'' italiana. Prende il posto di state_code_iso3 (script.fn_get_default_by_param, ritirata) e di soggetto_default_stato_iso2 (col ripiego silenzioso a ''IT''). D-1 di Tid, richiesta BE in brief-db-processi-accensione-per-ambiente §6.11.';
+IS 'BB (2026-10-18): l''id di config.stati che si propone quando chi scrive non dice lo stato. Legge config.parameters.STATO_PROPOSTO_ISO2 (codice ISO2) da script.fn_get_parameter_di_sessione, cioe'' con la cascata degli override e il contesto della SESSIONE: utente (app.current_user_id), gruppi (django.auth_user_groups, se leggibili), emittente attivo (app.current_emittente_id), sessione (app.session_key), funzione (p_chi), default. E'' una PROPOSTA, l''override e'' legittimo. Valida e non ripiega: assente o vuoto E_CONFIG_MANCANTE, codice senza stato E_DEFAULT_ERRATO, codice che indica piu'' stati E_STATO_ISO2_AMBIGUO (da script.fn_stato_id_da_iso2). Lettori: i trigger normalize di indirizzi, indirizzi_soggetti, soggetti, regioni, iva_stati, toponomastica; anagrafiche.fn_crea_soggetto_pf e _pg; script.fn_crea_utente_tecnico. ⛔ Non decide le regole di un paese: CF e P.IVA, sigla di provincia e IVA restano scritte per ''IT'' dove la legge e'' italiana. Prende il posto di state_code_iso3 (script.fn_get_default_by_param, ritirata) e di soggetto_default_stato_iso2 (col ripiego silenzioso a ''IT''). D-1 di Tid, richiesta BE in brief-db-processi-accensione-per-ambiente §6.11. Rev 2026-10-18 (20261019-06, R-BE-13 §6.12): fino ad allora utente, gruppi ed emittente arrivavano NULL e i loro override non scattavano mai.';
 ```
 
 ---

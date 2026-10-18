@@ -14,6 +14,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
  STABLE
 AS $function$
 
+
 -- Scopo: righe effettive ordine-ready di un'offerta (listino + variazione
 --   globale + eccezioni). Parte 1 dal core fn_espandi_listino_versione +
 --   overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle.
@@ -23,7 +24,7 @@ AS $function$
 --   quantita default 1 per righe da-listino senza eccezione.
 -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): la versione
 --   operativa e la variazione dalla sede unica vendite.fn_documento_listino_
---   operativo('OFFERTA', id), comune con la lista delle righe e coi guard di
+--   operativo('OFFERTA_COMMERCIALE', id), comune con la lista delle righe e coi guard di
 --   contratto e offerta. Stessa regola di prima (versione fissata, o in
 --   vigore oggi). Firma e colonne invariate, ora ancorate con %TYPE (iva_id e
 --   sconto_percentuale alla riga d'ordine, che e' la loro destinazione).
@@ -36,7 +37,7 @@ BEGIN
     SELECT true, lo.listino_versione_id,
            lo.tipo_variazione_globale, lo.valore_variazione_globale
       INTO v_trovato, v_listino_versione_id, v_tipo_var, v_valore_var
-      FROM vendite.fn_documento_listino_operativo('OFFERTA', p_offerta_id) lo;
+      FROM vendite.fn_documento_listino_operativo('OFFERTA_COMMERCIALE', p_offerta_id) lo;
 
     -- Offerta assente (o fuori perimetro): nessuna riga.
     IF NOT COALESCE(v_trovato, false) THEN
@@ -144,7 +145,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
-IS 'Righe effettive ordine-ready di un''offerta (listino + variazione globale + eccezioni) per la conversione offerta->ordine. Parte 1 dal core fn_espandi_listino_versione + overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle. iva_id da articolo (iva_perc non esiste su ordini_righe: si deriva da iva_id); sconto_percentuale NULL (prezzo gia'' netto); quantita default 1 per righe da-listino. Versione operativa e variazione da vendite.fn_documento_listino_operativo(''OFFERTA'', id) (rev 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende: sede unica con la lista delle righe e coi guard). Non e'' la lista del drawer: quella e'' vendite.fn_offerta_righe_preview.';
+IS 'Righe effettive ordine-ready di un''offerta (listino + variazione globale + eccezioni) per la conversione offerta->ordine. Parte 1 dal core fn_espandi_listino_versione + overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle. iva_id da articolo (iva_perc non esiste su ordini_righe: si deriva da iva_id); sconto_percentuale NULL (prezzo gia'' netto); quantita default 1 per righe da-listino. Versione operativa e variazione da vendite.fn_documento_listino_operativo(''OFFERTA'', id) (rev 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende: sede unica con la lista delle righe e coi guard). Non e'' la lista del drawer: quella e'' vendite.fn_offerta_righe_preview. ⭐ rev 2026-10-19 (20261019-25, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE.';
 ```
 
 ---

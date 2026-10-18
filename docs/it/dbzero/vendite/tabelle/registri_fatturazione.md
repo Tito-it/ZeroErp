@@ -64,21 +64,22 @@
 | trg_registri_fatturazione_a10_commesse_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'commesse', 'registro_id', 'id', 'attivo')` |
 | trg_registri_fatturazione_a10_ddt_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt', 'registro_id', 'id', 'attivo')` |
 | trg_registri_fatturazione_a10_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'registro_id', 'id', 'attivo')` |
+| trg_registri_fatturazione_a10_guard_coppia_unica_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_registri_fatturazione_guard_coppia_unica()` |
 | trg_registri_fatturazione_a10_guard_forma_numero_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_registri_fatturazione_guard_forma_numero()` |
-| trg_registri_fatturazione_a10_guard_serie_ammessa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_registri_fatturazione_guard_serie_ammessa()` |
 | trg_registri_fatturazione_a10_guard_serie_ammessa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_registri_fatturazione_guard_serie_ammessa()` |
+| trg_registri_fatturazione_a10_guard_serie_ammessa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_registri_fatturazione_guard_serie_ammessa()` |
 | trg_registri_fatturazione_a10_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ordini', 'registro_id', 'id', 'attivo')` |
 | trg_registri_fatturazione_a10_registri_fatturazione_prog_17cdc5 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'registri_fatturazione_progressivi', 'registro_id', 'id', 'attivo')` |
 | trg_registri_fatturazione_a10_resi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'resi', 'registro_id', 'id', 'attivo')` |
 | trg_registri_fatturazione_a10_set_anno_nel_numero_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_registri_fatturazione_set_anno_nel_numero()` |
 | trg_registri_fatturazione_a10_tipi_doc_fiscale_registri__d1c865 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'tipi_doc_fiscale_registri', 'registro_id', 'id', 'attivo')` |
 | trg_registri_fatturazione_a10_vendite_contabili_block_de_3e2bbe | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'vendite_contabili', 'registro_id', 'id', 'attivo')` |
-| trg_registri_fatturazione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_registri_fatturazione_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_registri_fatturazione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_registri_fatturazione_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_registri_fatturazione_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_registri_fatturazione_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('registri_fatturazione_id')` |
 | trg_registri_fatturazione_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('registri_fatturazione_id')` |
+| trg_registri_fatturazione_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('registri_fatturazione_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

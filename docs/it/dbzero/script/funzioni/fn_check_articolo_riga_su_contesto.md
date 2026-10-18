@@ -13,6 +13,7 @@ CREATE OR REPLACE FUNCTION script.fn_check_articolo_riga_su_contesto(p_contesto 
  LANGUAGE plpgsql
  STABLE
 AS $function$
+
 DECLARE
     v_motivi       jsonb := '[]'::jsonb;
     v_documento    config.tipi_entita.codice%TYPE := p_contesto ->> 'documento';
@@ -25,9 +26,6 @@ DECLARE
     v_natura_id    config.nature_vendita.id%TYPE;
     v_destinazione config.nature_vendita.destinazione_tipo%TYPE;
     v_natura_descr config.nature_vendita.descrizione%TYPE;
-    -- ⚠️ v_doc_listino nudo: la grammatica OFFERTA | CONTRATTO dei
-    --   lettori del listino (ponte A-8, vedi il COMMENT del contesto).
-    v_doc_listino  text := p_contesto ->> 'doc_listino';
     v_listino_id   vendite.listini.id%TYPE := (p_contesto ->> 'listino_id')::bigint;
     v_versione_id  vendite.listini_versioni.id%TYPE := (p_contesto ->> 'listino_versione_id')::bigint;
     v_etichetta    text := p_contesto ->> 'etichetta';
@@ -219,7 +217,7 @@ BEGIN
         IF v_tipo_ecc = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto THEN
             -- 1. Figlio di bundle: si esclude il bundle, non il componente.
             v_motivi := v_motivi || script.fn_check_esclusione_articolo_documento(
-                v_doc_listino, v_documento_id, p_articolo_id);
+                v_documento, v_documento_id, p_articolo_id);
         ELSE
             -- 1. Solo componente (D-3).
             IF v_solo_comp IS TRUE THEN
@@ -255,7 +253,7 @@ BEGIN
             -- 3. Tipologia fuori utility: la stessa domanda del form
             --    delle erogazioni, composta (erogazione e fonte NULL).
             v_motivi := v_motivi || script.fn_check_riga_erogazione(
-                v_doc_listino, v_documento_id, p_articolo_id,
+                v_documento, v_documento_id, p_articolo_id,
                 v_tipo_ecc, NULL, NULL);
 
             -- 4. Nessuna erogazione ammessa (§8.1).
@@ -395,7 +393,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint)
-IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; rev 2026-10-14 (20261014-06, D-7): KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI), un composito senza nessun legame attivo in catalogo.articoli_componenti, motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto (dopo il solo componente); il caso date-dipendente resta all''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). In piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4).';
+IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; rev 2026-10-14 (20261014-06, D-7): KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI), un composito senza nessun legame attivo in catalogo.articoli_componenti, motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto (dopo il solo componente); il caso date-dipendente resta all''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). In piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-32, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Le due check del listino (fn_check_esclusione_articolo_documento, fn_check_riga_erogazione) ricevono il documento del contesto com''e'': la chiave doc_listino non c''e'' piu'' (20261019-31).';
 ```
 
 ---

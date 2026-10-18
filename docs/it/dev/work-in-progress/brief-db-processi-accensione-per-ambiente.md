@@ -1,8 +1,8 @@
 # Brief DB — Quali processi sono accesi: per ambiente, a mano, e quelli che non si spengono
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-18
+## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: il team DB, con le richieste del BE della 2b-2 (R-BE-6, R-BE-7, R-BE-11, R-BE-12, §6.10) e dell'indirizzo libero (R-BE-8 … R-BE-10, §6.11).** ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
+**Riparte: Tid, con l'apply di R-BE-11 (`20261019-16`, `-17`, §6.15) e le decisioni su R-BE-6, R-BE-7, R-BE-12 (§6.10, non iniziate); poi il team DB; Tid, col commit di R-BE-13 e R-BE-14 (applicati su dbdev, pgTAP verdi, §6.13 e §6.14); la sessione BE, con R-DB-14a (il codice `E_REGISTRO_COPPIA_GIA_COPERTA`, §6.14) e, dopo l'apply, R-DB-11a (§6.15).** ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
 fatta (2026-10-18, §6.10): il backend crea emittente, fornitore, cliente, veste portale, magazzino, profilo,
 legame SUPER_ADMIN, override, emittente attivo e accende la veste dalle madri del DB; restano due scritture
 che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione è chiusa.
@@ -26,12 +26,15 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 9-quinquies | Tid | ✅ apply del lotto 1, pgTAP verdi (2026-10-17) | §5-ter.2 | — |
 | 9-sexies | Tid | ✅ apply dei lotti 2 e 3 (`-11` … `-17`), pgTAP verdi (2026-10-17) | §5-ter.2 | — |
 | 9-ter | sessione BE | ✅ (2026-10-18) 2b-2: il backend passa ai BB, le sue copie si ritirano | §6.10 | — |
-| 9-ter-bis | team DB | R-BE-6 (l'indirizzo di ruolo per istanza) e R-BE-7 (il legame di reparto): due scritture del backend che le madri non coprono; R-BE-11 (il profilo SUPER_ADMIN si risolve in una sede, regola del 2, ok Tid 2026-10-18) e R-BE-12 (la madre plurale degli indirizzi di soggetto, gemella di quella del ruolo) | §6.10 | — |
-| 9-ter-ter | team DB | l'indirizzo libero: R-BE-8 (lo stato di sistema), R-BE-9 (un guard col codice e il campo), R-BE-10 (la forma estera nella madre del soggetto); da valutare l'alleggerimento della regione | §6.11 | — |
+| 9-ter-bis-11 | team DB, poi Tid, poi BE | ✅ R-BE-11 scritto e provato sullo scratch (2026-10-18): `20261019-16` (lettore `config.fn_profilo_super_admin_id`) e `-17` (la madre lo usa). Resta: apply e pgTAP (Tid), poi R-DB-11a (BE ritira la sua query) | §6.15 | — |
+| 9-ter-bis | team DB | R-BE-6 (l'indirizzo di ruolo per istanza) e R-BE-7 (il legame di reparto): due scritture del backend che le madri non coprono; R-BE-12 (la madre plurale degli indirizzi di soggetto, gemella di quella del ruolo). Proposte del BE, servono le decisioni di Tid. R-BE-11 ha la sua riga (9-ter-bis-11) | §6.10 | — |
+| 9-ter-ter | team DB | ✅ (2026-10-18, D-1 … D-4 di Tid, `20261018-80` … `-99`, `20261019-01` … `-04`, applicati) l'indirizzo libero: R-BE-8 (lo stato proposto, `script.fn_stato_proposto_id`), R-BE-9 (il guard `trgfn_indirizzi_guard_forma_libera` col codice e il campo), R-BE-10 (la forma estera nella madre del soggetto, `fn_crea_indirizzo_soggetto(soggetto, jsonb)`); la regione alleggerita (`-82`: forma estera = località sola) | §6.11, §6.12 | — |
 | 9-ter-quater | sessione BE/FE | ✅ (2026-10-18) firma jsonb della madre del soggetto, `postal_code`, tendina degli stati, form in due forme, codici; provato sul DB vero dopo l'apply | §6.12 | — |
 | 9-ter-quinquies | Tid | ✅ apply di `20261018-80 … -99` e `20261019-01 … -04` su dbdev, pgTAP verdi (2026-10-18) | §6.12 | — |
-| 9-ter-sexies | team DB | R-BE-13: `fn_stato_proposto_id` non applica l'override per utente | §6.12 | — |
-| 9-ter-septies | team DB | R-BE-14: l'emittente di prova del provisioning non è attrezzato per lavorare (registri di fatturazione, template dei documenti): sette smoke si fermano lì | §6.12 | — |
+| 9-ter-sexies | team DB, poi Tid | ✅ R-BE-13: `fn_stato_proposto_id` non applicava l'override per utente (né per gruppo ed emittente). D-13a e D-13b di Tid; `20261019-05` (BB `fn_get_parameter_di_sessione`) e `-06` scritti e provati, applicati su dbdev (2026-10-18 22:45), pgTAP verdi; resta il commit | §6.12, §6.13 | — |
+| 9-ter-septies | team DB, poi Tid | R-BE-14: l'emittente di prova del provisioning non è attrezzato per lavorare. Tre pezzi (§6.12): ✅ **registri** in questo brief; **template di default** in [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md), D-1 … D-3 di Tid aperte; ✅ **giacenza** nello smoke (BE). Registri: ✅ (2026-10-18) D-14a … D-14d prese, via allo sviluppo dato; `20261019-07` … `-12`, codice `E_REGISTRO_COPPIA_GIA_COPERTA`, pgTAP nuovo e `test-registri-motore-trasloco` adeguato, scritti e provati sullo scratch | §6.12, §6.14 | — |
+| 9-ter-octies | Tid | ✅ apply di `20261019-07` … `-12` e dei due CSV dei codici su dbdev (2026-10-18 23:35), pgTAP verdi, compreso `test-numero-prefisso-registro-v1` corretto; resta il commit | §6.14 | — |
+| 9-ter-nonies | sessione BE | R-DB-14a: ripiego e policy del codice `E_REGISTRO_COPPIA_GIA_COPERTA` | §6.14 | — |
 | 9-quater | team DB | ✅ 2b-3 scritta e provata (2026-10-18): etichette, guard, verbo, presidio, `fn_accendi_veste` (`20261018-55` … `-64`) | §5-ter.3 | — |
 | 9-octies | Tid | ✅ (2026-10-18, pgTAP verdi) apply della 2b-3 (`20261018-55` … `-64`, i due CSV dei codici, `presidi.csv`, `presidi_testi.csv`, il loop `20260205-41`); pgTAP `dbops/test-etichette-di-prova-v1`, `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1`, chi usa `fn_pgtap_crea_operatore_umano`, i presidi trasversali | §5-ter.3 | — |
 | 9-novies | sessione BE | ✅ (2026-10-18) ricaduta della 2b-3: codici, command `provision_utenti_sviluppo`, lista Operatori (BE e FE), smoke e run-book | §6.9 | — |
@@ -43,10 +46,10 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 10-bis-env | Tid | ✅ tolta la riga `SMOKE_NOTTURNO_CONSENTITO` da `backend/.env.systemd` di backend-dev (2026-10-18) | §6.8 | — |
 | 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10, 10-quater |
 
-Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
+Decisioni aperte di Tid: nessuna (D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18, §6.14). La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
 2b-2 (§6.10) e le richieste R-BE-11, R-BE-12 sono committate su `dev/backend-tid` (`08cc15a61`, 2026-10-18,
-mergiato in `Tito-dev` con la PR #1881). Da committare: la ricaduta BE/FE delle due forme dell'indirizzo libero
-(§6.12). ✅ Il lavoro
+mergiato in `Tito-dev` con la PR #1881). ✅ La ricaduta BE/FE delle due forme dell'indirizzo libero (§6.12) è
+committata (`bd7946224`, mergiata in `Tito-dev` con la PR #1884). Da committare: R-BE-13 lato DB (§6.13), R-BE-14 (§6.14) e R-BE-11 (§6.15). ✅ Il lavoro
 DB del cantiere è committato e pushato su `dev/db-tid` (2026-10-18): 2b-1 lotti 1-9, 2b-3, giro 2a, R-BE-5,
 le copie del binding nei pgTAP e questo brief. ⚠️ `codici_errore.csv`, `messaggi_errore.csv` e
 `processi.csv` li tocca anche la sessione del brief del presidio dei job.
@@ -1513,6 +1516,18 @@ l'operatore (non oggetto, via nuova incompleta).
   difetto della saga: il primo dettaglio si riusava per ogni indirizzo successivo senza dettaglio, anche per
   una via diversa (lo stesso già trovato sul ruolo); ora ogni indirizzo risolve il suo.
 
+**Decisioni di Tid su R-BE-6, R-BE-7, R-BE-12 (2026-10-19), col via allo sviluppo** (risposta del team DB nel
+§6.16):
+
+* **D-16a — indirizzi, singolare + plurale per entrambi i livelli.** Ogni livello ha due madri: la singolare
+  crea UN indirizzo e restituisce l'id (quella del ruolo ammette anche l'istanza), la plurale ne crea più d'uno
+  con la copia automatica degli obbligatori e usa la singolare. Nascono `fn_crea_indirizzo_ruolo` (R-BE-6) e
+  `fn_crea_indirizzi_soggetto` (R-BE-12); il backend ritira la sua INSERT e la sua procedura.
+* **D-16b — il legame profilo → reparto in una madre gemella:** `fn_lega_profilo_reparto(profilo, unità
+  organizzativa)`, sulla forma di `fn_lega_profilo_identita`.
+* **D-16c — lo slegare in questo giro:** le madri che slegano un profilo dall'identità e dal reparto; il
+  backend non scrive più sui legami.
+
 **Trovato, da decidere (non toccato):** la forma «libera» dell'indirizzo nel frontend
 (`useIndirizzoSoggettoForm._buildPayload`) manda testo, stato e località; `chk_indirizzi_free_requirements` vuole
 anche comune + CAP, oppure casella postale e area/sottolocalità. Un indirizzo libero dal drawer non può nascere.
@@ -1656,8 +1671,18 @@ Proposta, in due pezzi diversi:
   `carica_merce_ddt` nello smoke (prima occorrenza: resta lì). Rieseguito: il carico passa (11 OK), poi lo smoke
   si dichiara non conclusivo sul template delle bolle di `DEVA`, cioè su R-BE-14.
 
-⚠️ Finché R-BE-14 non è fatta, `scripts/smoke-baseline.sh --update` non va lanciato: registrerebbe in baseline
-come «noti» i sette rossi dell'emittente di prova.
+➡️ **Dove va ciascun pezzo** (team DB, 2026-10-19):
+
+* **registri**: risposta e consegna nel §6.14, ✅ applicati su dbdev il 2026-10-18 (23:35). Lo smoke
+  `push-termine-documento-commessa` deve tornare a fatturare su `DEVA`: da confermare al prossimo giro di smoke;
+* **template di default**: non si apre una sede nuova. È il difetto di
+  [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) (un emittente nasce senza
+  modelli), che ha già la sua decisione aperta (D-1 … D-3 di Tid, §5) e la ricaduta sugli smoke (§7). I sei
+  smoke della tabella che si fermano su `E_DOCUMENTI_NOT_FOUND` aspettano quel brief;
+* **giacenza**: ✅ nello smoke, come sopra.
+
+⚠️ Finché il brief dei modelli standard non è fatto, `scripts/smoke-baseline.sh --update` non va lanciato:
+registrerebbe in baseline come «noti» i rossi dell'emittente di prova (sei, se il registro ha chiuso il settimo).
 
 **R-BE-13 — al team DB: l'override per utente dello stato proposto non scatta.** `script.fn_stato_proposto_id`
 chiama `fn_get_parameter_full('STATO_PROPOSTO_ISO2', NULL, NULL, NULL, session_key, p_chi)`: l'utente
@@ -1667,3 +1692,295 @@ l'override per sessione e per nome di funzione, non quello per utente o per grup
 (e i suoi gruppi), come gli altri lettori dei parametri; `p_chi` resta per il contesto dell'errore. Il backend
 legge già da quel lettore (la tendina degli stati), quindi corretto il DB vale anche per il form.
 
+### 6.13 Risposta del team DB a R-BE-13: lo stato proposto ignora l'utente (2026-10-18)
+
+**La segnalazione** è nel §6.12 (R-BE-13), arrivata prima in chat. Il lettore BE è
+`GeoRepository.list_stati_lookup` (la tendina degli stati), che chiama `fn_stato_proposto_id` con
+`p_chi = CHI_STATI_LOOKUP`: passa dal lettore del DB, quindi la correzione vale anche per il form.
+
+**Ricognizione del team DB (2026-10-18).**
+
+* **Il difetto è vero.** `20261018-83` chiama `script.fn_get_parameter_full('STATO_PROPOSTO_ISO2', NULL, NULL,
+  NULL::integer[], current_setting('app.session_key', true), p_chi)`. Dei sette livelli della cascata (utente,
+  categoria cliente, gruppo, emittente, sessione, funzione, default) restano vivi solo sessione, funzione e
+  default: **utente, gruppo ed emittente sono spenti**, non solo l'utente.
+* **Metà della segnalazione non è un difetto.** `p_chi` nel posto di `p_function_name` è voluto: è il livello
+  «function» della cascata (un override per il trigger o la funzione che chiede), detto nel commento e nella
+  COMMENT. Resta così (D-13a, sotto): la proposta del BE di usarlo solo per il contesto dell'errore non è
+  accolta. Conseguenza da sapere: un override per funzione su `anagrafiche.stati_lookup` vale per la
+  tendina e non per i trigger normalize, che chiedono col loro nome; è il senso di quel livello.
+* **Perché solo il DB.** Quando legge un parametro, il backend passa lui utente, gruppi ed emittente
+  (`ParameterRepository._SQL_RESOLVE`). I trigger normalize, che sono i lettori principali di
+  `fn_stato_proposto_id`, non ricevono nulla: il contesto lo devono ricavare dalla sessione. Nel DB oggi
+  **nessuno** lo fa: `fn_get_default_by_param`, l'unico altro lettore della cascata lato DB, passava gli stessi
+  NULL ed è stata ritirata con `-93`.
+* **Da dove si ricava il contesto:**
+  * **utente**: `app.current_user_id`, che contiene `auth_user.id`, cioè lo stesso id di
+    `parameter_overrides.django_user_id` (`jwt_audit_authentication.py`, `JWT_IDENTITY_GUCS`). Vuota nei job,
+    nel provisioning e nelle sessioni senza utente: lì il livello salta da solo, come oggi;
+  * **gruppi**: `django.auth_user_groups` dell'utente. Si possono leggere solo da `plpgsql`, mai con `%TYPE`
+    sulle colonne di `django` (precedente: `fn_crea_operatore_v2`). In CI e su un'installazione nuova la
+    tabella non esiste quando gira Liquibase: la lettura passa da `to_regclass` e, se la tabella manca, il
+    livello gruppo resta spento. Qui è giusto non fermarsi (fail-open), perché lo stato proposto è una
+    proposta e non apre nessun accesso;
+  * **emittente**: `app.current_emittente_id`, cioè l'emittente attivo scelto nel token. Vuota quando non c'è
+    una scelta: il livello salta;
+  * **categoria cliente**: non fa parte del contesto di sessione (dipende dal BA del documento), resta NULL per
+    natura.
+
+**Proposta.** Leggere un parametro con la cascata **del contesto della sessione** è un concetto generale, non
+dello stato proposto: si scrive come building block, e `fn_stato_proposto_id` è il suo primo lettore.
+
+* **BB nuovo `script.fn_get_parameter_di_sessione(p_code text, p_chi text DEFAULT NULL)`**, `plpgsql`,
+  `STABLE`, `SECURITY INVOKER`. Ricava utente, gruppi, emittente e session key come sopra e chiama
+  `fn_get_parameter_full` con `p_chi` come funzione. Ha gli stessi errori di `fn_get_parameter_full`, nessuna
+  validazione del valore: quella resta al lettore specifico.
+* **`fn_stato_proposto_id`** chiama il BB al posto di `fn_get_parameter_full`; la validazione (E_CONFIG_MANCANTE,
+  E_DEFAULT_ERRATO, E_STATO_ISO2_AMBIGUO) non cambia.
+* **Manual**: `fn_stato_proposto_id.md` dice quali livelli valgono e da dove arrivano; manual nuova del BB.
+* **pgTAP**: un override utente a `DE`, letto dal trigger normalize di un indirizzo, propone DE a quell'utente
+  e IT a un altro. Poi il gruppo (nel mondo con `django.auth_user_groups`; nel mondo CI il livello deve
+  risultare spento), l'emittente attivo, e una sessione senza utente che legge il default.
+
+**Decisioni di Tid (2026-10-18): accolta la proposta, col via allo sviluppo.**
+
+* **D-13a** ✅ BB generale, `fn_stato_proposto_id` è il suo primo lettore.
+* **D-13b** ✅ tutti e tre i livelli: utente, gruppo, emittente.
+
+**Fatto (team DB, 2026-10-18), da applicare:**
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261019-05-create-fn-get-parameter-di-sessione` | il BB `script.fn_get_parameter_di_sessione(p_code, p_chi)`: utente da `app.current_user_id`, gruppi da `django.auth_user_groups` (cercata per OID nel catalogo, letta solo se esiste e il ruolo ha `USAGE` + `SELECT`), emittente da `app.current_emittente_id`, session key da `app.session_key`, funzione da `p_chi` |
+| `20_code/script/20261019-06-update-fn-stato-proposto-id-contesto-di-sessione` | `fn_stato_proposto_id` legge dal BB; corpo, firma e validazione del `-83` invariati (md5 del corpo del `-83` = `prosrc` vivo su dbdev e sullo scratch, `a943999f…`) |
+
+* **pgTAP nuovo** `db/pgtap/script/test-fn-get-parameter-di-sessione-v1.sql` (plan 15): ogni livello costruito
+  (gli override di oggi si cancellano nella transazione), più il percorso del BE: override utente a `DE` → il
+  normalize di un indirizzo senza stato scrive la Germania (test 6).
+* **Doc**: manual nuova `script/manual/fn_get_parameter_di_sessione.md`; `fn_stato_proposto_id.md` (i livelli
+  e da dove arrivano); rimando da `fn_get_parameter_full.md`; la guida `gestione-degli-indirizzi` (R8: «per
+  utente, gruppo, azienda attiva o sessione»).
+
+**Prova prima dell'apply** (scratch `zeroerp_ruoli`, come `zeroerp_owner`, SQL estratto dagli YAML dentro
+`BEGIN … ROLLBACK`, `ON_ERROR_STOP`; dopo ogni corsa lo scratch è risultato intatto: BB assente, md5 di
+`fn_stato_proposto_id` invariato, nessun gruppo pgTAP rimasto):
+
+* pgTAP nuovo con i due changeSet: **15/15**;
+* controprova col solo `-05` (il `fn_stato_proposto_id` di oggi): **test 5 rosso**, cioè il test riconosce il
+  difetto R-BE-13;
+* `anagrafiche/test-indirizzo-libero-due-forme-v1` con i due changeSet: **28/28**;
+* `plpgsql_check`: `-05` pulito; `-06` solo i due warning «STABLE ma VOLATILE» su
+  `fn_log_and_raise_error`, che erano già nel `-83`;
+* il ramo «gruppi non leggibili»: con `django.auth_user_groups` rinominata nella transazione il BB risponde il
+  default, senza errore. Il ramo «ruolo senza privilegio» (`zeroerp_job`: niente `USAGE` su `django`,
+  verificato) non si prova da owner, che non è membro di `zeroerp_job`: passa dallo stesso controllo per OID
+  (`has_schema_privilege`/`has_table_privilege` su OID non sollevano). Il pgTAP lo dichiara in testa.
+
+**Applicato** (Tid, 2026-10-18 22:45, dbdev): `20261019-05` e `-06`, pgTAP verdi. Da committare.
+Ricaduta BE: nessuna da scrivere; alla sessione BE va riportato che il posto di `p_chi` era voluto.
+
+**Trovati strada facendo (non toccati, fuori perimetro):**
+
+* `fn_get_parameter_full` passa i due segnaposto di `E_ERRORE_PARAMETRI_TABELLA` invertiti: il messaggio dice
+  «Parametro: config.parameters non trovato nella tabella: `PGTAP_…`». Il test 15 asserisce solo il codice del
+  parametro, per non pinnare il difetto.
+* la manual `script/manual/fn_get_parameter_full.md` descrive ancora i due overload, ritirati il 2026-07-27.
+
+**Dopo il DB, BE:** niente da cambiare. La tendina legge da `fn_stato_proposto_id`, che ora sente utente,
+gruppo ed emittente attivo dalle GUC che il backend già scrive (`JwtAuditAuthentication`): tendina e
+trigger propongono lo stesso stato allo stesso utente, salvo un override per funzione voluto.
+
+### 6.14 Risposta del team DB a R-BE-14: un emittente nasce senza registro delle fatture (2026-10-18)
+
+> Questo paragrafo risponde al pezzo **registri** di R-BE-14. I template di default stanno in
+> [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) (§6.12, «Dove va ciascun pezzo»).
+
+**La richiesta** è nel §6.12 (R-BE-14): su `DEVA` `vendite.fn_get_registro_id(1, NULL, NULL, <sr>)` solleva
+`E_CONFIG_MANCANTE` «registro non risolto per tipo_doc 1 e natura 1». Il BE propone che il verbo del
+provisioning, oppure la madre dell'emittente, lasci l'emittente di prova completo per fatturare.
+
+**Il caso, sul modello.** Il difetto non è dell'emittente di prova: **nessun emittente nasce col registro delle
+fatture**, quello di un'installazione nuova compreso. È lo stesso difetto che
+[brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §2 descrive per i modelli («un
+emittente è un'identità completa solo se può emettere»), su un'altra configurazione. Quel brief chiede al team
+DB il censimento di ciò che serve per emettere: i registri sono questa voce.
+
+**Ricognizione (struttura, doc `dbzero`, 2026-10-18).**
+
+| Pezzo | Com'è | Che cosa c'entra |
+| --- | --- | --- |
+| `vendite.fn_get_registro_id` → `fn_lookup_registro_id` | cerca in `tipi_doc_fiscale_registri` per (tipo documento, natura), registro dell'emittente con `=` puro, utility esatta o NULL; nessun ripiego (dal 30-08 il registro «di nessuno» non esiste) | senza una riga per la coppia, l'emittente non fattura |
+| `vendite.fn_provision_registri` (primitiva) + `trg_emittenti_fiscali_z90_provision_registri_ins_upd` | all'INSERT (e alla riaccensione) di un emittente crea un registro per ogni famiglia attiva, **tranne `FATTURA`**, esclusa con un letterale: «il suo registro dipende da (tipo documento, natura)» | il meccanismo per far nascere i registri con l'emittente **c'è già**; manca la fattura |
+| `vendite.fn_provision_registri_famiglia` | una famiglia nuova crea il suo registro per ogni emittente | il gemello per le coppie nuove esiste per le famiglie, non per tipo documento e natura |
+| `vendite.tipi_doc_fiscale_registri` | UNIQUE su (tipo, natura, registro); **nessun vincolo per emittente** | due registri dello stesso emittente sulla stessa coppia sono ammessi, e il lookup sceglie il primo per `id` (`ORDER BY …, r.id LIMIT 1`): un'ambiguità del modello risolta da un id |
+| `config.tipi_doc_fiscale`, `config.nature_doc_fiscale` | due cataloghi: il tipo documento ha semantica aperta per azienda (front/back office è un esempio), le nature sono fattura, nota di credito, nota di debito | la riga che serve è per ogni coppia (tipo attivo × natura attiva) |
+| `vendite.registri_fatturazione` | default `famiglia_documento = 'FATTURA'`, `politica_data_documento = 'OGGI'`, `limite_emissione_giorni` NULL = il limite di default (non «nessun limite»); `famiglie_documento.FATTURA` porta `lunghezza_default = 7`, `prefisso_default` NULL | lo standard si costruisce coi default del catalogo, come le altre famiglie |
+| `fn_provisiona_dati_di_sviluppo` | non tocca i registri | il verbo non è la sede: il difetto c'è anche in produzione |
+
+Fatto datato, non motivo (2026-10-18, dbdev): l'emittente 32, configurato a mano, ha un registro per tipo
+documento sulla natura fattura e uno per le note di credito, condiviso dai due tipi; nessuna riga per la nota
+di debito.
+
+**Proposta.**
+
+1. **Il registro delle fatture nasce con l'emittente**, dallo stesso meccanismo degli altri: la primitiva
+   `fn_provision_registri` smette di escludere `FATTURA` e, per l'emittente, crea **un registro delle fatture
+   standard** (codice e descrizione con la regola della primitiva, i default della famiglia `FATTURA`) e una
+   riga di `tipi_doc_fiscale_registri` per **ogni coppia mancante** (tipo documento attivo × natura attiva) che
+   punta a quel registro. L'operatore lo divide poi dal CRUD dei registri, come fa oggi.
+2. **Le coppie nuove**: quando nasce (o si riaccende) un tipo documento o una natura, la coppia mancante di ogni
+   emittente si collega al suo registro standard, come `fn_provision_registri_famiglia` fa per le famiglie. Un
+   emittente configurato a mano senza registro standard riceve il registro standard solo per le coppie che non
+   ha: oggi l'emittente 32 lo riceverebbe per la nota di debito.
+3. **Gli emittenti di oggi**: un changeSet chiama la primitiva per tutti gli emittenti attivi (le coppie
+   mancanti, idempotente): copre `DEVA` e gli altri.
+4. **L'ambiguità del collegamento**: un guard su `tipi_doc_fiscale_registri` che rifiuta una seconda riga dello
+   stesso emittente sulla stessa coppia (e utility), con un codice suo. Il lookup smette di decidere per `id`.
+
+**Decisioni di Tid (2026-10-18): tutte come da proposta.** Il via allo sviluppo è dato (2026-10-18).
+
+* **D-14a** ✅ il registro delle fatture nasce **con l'emittente**, anche in produzione; non nel verbo di
+  sviluppo.
+* **D-14b** ✅ **un registro** standard per tutte le coppie; il CRUD dei registri lo divide quando serve.
+* **D-14c** ✅ le coppie mancanti di un emittente configurato a mano si collegano al registro standard.
+* **D-14d** ✅ il guard sull'ambiguità (punto 4) entra in questo giro.
+
+**Da censire nello sviluppo** (regole già note):
+
+* i 56 pgTAP che usano `script.fn_pgtap_registro_fattura`: il builder restituisce il primo registro `FATTURA`
+  dell'emittente. Su un emittente costruito dalla fixture troverebbe quello standard, col limite di emissione
+  **di default**, invece di crearne uno suo con `limite_emissione_giorni = 9999`; le fixture che datano i
+  documenti nel passato cadrebbero sul presidio del limite. Il builder diventa un involucro che restituisce
+  il registro standard e ne apre il limite, oppure resta com'è e cerca solo il suo: da decidere sul codice;
+* i pgTAP che contano i registri creati dalla primitiva (`vendite/test-registri-motore-trasloco-v1`,
+  `test-famiglie-documento-crud-v1`, `test-numero-prefisso-registro-v1`) e quelli che asseriscono «registro
+  non risolto» su un emittente nuovo;
+* il COMMENT e la manual della primitiva, che dichiarano l'esclusione della fattura.
+
+**Decisione di Tid durante lo sviluppo (2026-10-18): la nota di debito va sul registro standard.** Fino ad
+allora era volutamente senza registro («nessuno ha deciso su quale registro numerarla»,
+brief-design-note-credito-resi §20.5 punto 4, e la manual di `tipi_doc_fiscale_registri`). D-14b e D-14c,
+applicate alla lettera, la chiudevano; Tid conferma. Per un emittente nuovo è numerata con le fatture; agli
+emittenti già configurati a mano (su dbdev EMITEST e PGTAPEF202) lo standard nasce apposta.
+
+**Fatto (team DB, 2026-10-18), da applicare:**
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261019-07-create-fn-coppie-fattura-scoperte` | lettore `vendite.fn_coppie_fattura_scoperte(emittente)`: le coppie (tipo attivo × natura attiva) che `fn_lookup_registro_id` non risolve con utility NULL, per gli emittenti attivi. Chiama il lookup, non lo riscrive |
+| `20_code/vendite/20261019-08-update-fn-provision-registri-fattura-standard` | la primitiva non esclude più la FATTURA: **un solo `INSERT`** per tutte le famiglie (il registro standard `FAT-<sr>` nasce con la regola degli altri), poi i collegamenti delle coppie scoperte allo standard acceso. La regola del codice esce in `vendite.fn_codice_registro_provisionato` (serviva tre volte). Firma, DEFINER, `search_path` invariati; corpo di partenza = vivo = doc auto-generata |
+| `20_code/vendite/20261019-09-create-trgfn-coppie-fattura-provision-registri` | trigger su `config.tipi_doc_fiscale` e `config.nature_doc_fiscale`: all'INSERT attivo e al passaggio a attivo (non a ogni `UPDATE OF attivo`: il loader dei CSV riscrive la colonna) chiama `fn_provision_registri_famiglia('FATTURA')` |
+| `20_code/vendite/20261019-10-create-guard-coppia-registro-fattura-unica` | lettore `vendite.fn_registro_che_copre_coppia` e due guard (sul collegamento; sul registro, `UPDATE OF` emittente e utility), lock consultivo per emittente, codice nuovo `E_REGISTRO_COPPIA_GIA_COPERTA` (CONFLITTO_STATO, messaggio 1367, in coda ai due CSV) |
+| `80_data/changelog/20261019-11-seed-registro-fattura-standard-per-emittente` | la sistemazione degli emittenti esistenti: `fn_provision_registri_famiglia('FATTURA')`, idempotente, `runOnChange` come `20260915-34` |
+| `20_code/script/20261019-12-update-fn-pgtap-registro-fattura-ignora-standard` | il builder pgTAP salta lo standard: le 56 fixture tengono il loro registro col limite a 9999; sugli emittenti di oggi restituisce lo stesso registro di prima |
+
+* **pgTAP nuovo** `db/pgtap/vendite/test-registro-fattura-nasce-con-emittente-v1.sql` (plan 16): emittente che
+  nasce (standard, nessuna coppia scoperta, `fn_get_registro_id` risolve ogni coppia, registri delle famiglie
+  come prima), natura nuova e riaccesa, `UPDATE` che non accende, emittente configurato a mano, guard (stessa
+  utility rifiutato, utility diversa ammessa, registro portato a «tutte» rifiutato, no-op), builder, standard
+  spento, idempotenza.
+* **pgTAP adeguato** `vendite/test-registri-motore-trasloco-v1`: la fixture spegneva **tutti** i registri del
+  terzo emittente, ora c'è anche lo standard con i suoi collegamenti, che `trgfn_prevent_deactivate_if_children`
+  non lascia spegnere. Spegne solo il DDT, che è quello che i test 6 e 7 chiedono.
+* **Doc**: manual nuova `vendite/manual/fn_coppie_fattura_scoperte.md`; rev in `fn_provision_registri.md`,
+  `fn_provision_registri_emittente.md` (il «non crea registri per le fatture» superato), `tipi_doc_fiscale_registri.md`
+  (provisioning, guard, nota di debito).
+
+**Prova prima dell'apply** (scratch `zeroerp_ruoli`, ricostruito da zero: nessun emittente, nessun registro;
+come `zeroerp_owner`, SQL estratto dai sei YAML dentro `BEGIN … ROLLBACK`, il codice d'errore inserito nella
+transazione; dopo ogni corsa scratch intatto: md5 delle funzioni, zero registri, funzioni nuove assenti):
+
+* pgTAP nuovo: **16/16**. Controprova senza il `-10`: rossi il 10 e il 12;
+* regressione, ogni file senza e con l'estratto, esiti **identici**: `test-famiglie-documento-crud-v1` 28/28,
+  `test-registro-documento-previsto-v1` 11/11, `test-registri-progressivi` 14/14, `test-limite-emissione-v1`
+  19/19, `script/test-fn-check-registro-disattivabile-v1` 9/9, `test-registri-motore-trasloco-v1` 9/9 (dopo
+  l'adeguamento; prima della correzione 0, fermo sullo spegnimento). Rossi uguali nei due casi, quindi dello
+  scratch e non di questo giro: `test-numero-prefisso-registro-v1` (3 ko), `test-registri-per-emittente-v1`,
+  `test-fatture-guard-registro-emittente`, `test-fattura-guard-uscita-draft-v1`,
+  `test-snapshot-intestazione-fattura-v1`;
+* `plpgsql_check` sulle sette funzioni nuove o cambiate (tre trigger con la loro tabella): **nessun errore né
+  warning**;
+* **dbdev, come owner, in transazione annullata** (fatto datato, 2026-10-18): la sistemazione crea 4 registri
+  standard e 16 collegamenti; DEVA e DEVB ricevono le sei coppie, EMITEST e PGTAPEF202 la sola nota di debito;
+  nessuna coppia resta scoperta; DEVA risolve tipo 1 natura 1. Dopo, dbdev identico (26 registri, 8
+  collegamenti, md5 invariati).
+
+**Per Tid:** apply di `20261019-07` … `-12` e dei due CSV dei codici (`codici_errore.csv`,
+`messaggi_errore.csv`); pgTAP `vendite/test-registro-fattura-nasce-con-emittente-v1`,
+`vendite/test-registri-motore-trasloco-v1`, i file della regressione qui sopra, chi usa
+`script.fn_pgtap_registro_fattura`, e i presidi trasversali `dbops/test-riferimenti-morti-v1` (sette funzioni
+plpgsql nuove o cambiate) e `script/test-catalogo-messaggi-errore-completo` (codice nuovo). Da committare.
+⚠️ Nell'albero ci sono modifiche non di questo giro a `config/sorgenti.csv` e `config/tipi_entita.csv`.
+
+✅ **Applicato** da Tid su dbdev il 2026-10-18 alle 23:35 (`20261019-07` … `-12` e i due CSV dei codici),
+**pgTAP verdi**. Da committare.
+
+**Collaudo, rosso non di R-BE-14 (2026-10-18):** `vendite/test-numero-prefisso-registro-v1` test 4 su dbdev,
+«ORDINE/ORD-134419/2026: contatore 9 < max 20260000009». Il contatore è giusto (nove ordini di DEVA dagli
+smoke di `dev.smoke`, ORD2026-0000001 … -0000009): il test teneva **tutte** le cifre del numero, e su un
+registro con `anno_nel_numero` contava anche l'anno. Corretto il test: toglie dal numero prefisso, anno con
+trattino e suffisso che il registro dichiara, poi tiene le cifre; un numero senza il prefisso (il pregresso)
+si legge come prima. Provato come `SELECT` in sola lettura su dbdev: i cinque registri con documenti risultano
+allineati (ORD-134419 9 = 9; gli altri quattro con gli stessi valori di prima). ✅ Rilanciato da Tid: verde.
+
+**Dopo il DB, BE (richieste):**
+
+* **R-DB-14a** — il codice nuovo `E_REGISTRO_COPPIA_GIA_COPERTA` (CONFLITTO_STATO, 409): ripiego in
+  `error_messages_fallback.py` e rigenerazione di `error_policies_generated.py`. Contesto: `campo`
+  (`registro_id` sul collegamento, `utility_id` o `emittente_soggetto_ruolo_id` sul registro),
+  `registro_occupante_id`;
+* niente nel verbo di sviluppo; lo smoke `push-termine-documento-commessa` torna a fatturare su `DEVA` dopo
+  l'apply (la sistemazione `-11` copre gli emittenti già creati).
+
+### 6.15 Risposta del team DB a R-BE-11: il profilo SUPER_ADMIN si risolve in una sede (2026-10-18)
+
+**La richiesta** è nel §6.10 (R-BE-11, regola del 2, ok Tid 2026-10-18): la regola «per `tipo`, fra i profili
+**attivi**, esattamente uno, altrimenti `E_CONFIG_MANCANTE`» era scritta due volte, in
+`anagrafiche.fn_crea_risorsa_umana_v2` (dal `20260923-10`) e in `AmmSoftwareRepository._set_super_admin_binding`.
+Via allo sviluppo di Tid: 2026-10-18.
+
+**Censimento (2026-10-18).** Nel DB la regola la scriveva solo la madre della risorsa umana: il verbo di
+sviluppo le passa il flag; i guard «ultimo super admin» e `script.fn_is_super_admin*` usano il tipo per
+**controllare** un utente, non per scegliere un profilo. Nel backend il tipo compare anche in
+`count_admin_attivi`, che conta i super admin attivi: è un'altra regola, fuori da R-BE-11 (vedi sotto).
+
+**Fatto (team DB, 2026-10-18), da applicare:**
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/config/20261019-16-create-fn-profilo-super-admin-id` | lettore `config.fn_profilo_super_admin_id()`: l'id dell'unico profilo attivo di tipo SUPER_ADMIN, o `E_CONFIG_MANCANTE` con il numero dei profili trovati; `GRANT` all'app |
+| `20_code/anagrafiche/20261019-17-update-fn-crea-risorsa-umana-v2-profilo-dal-lettore` | la madre chiama il lettore al posto della sua ricerca, nello stesso punto (prima di ogni scrittura); la firma si ancora con `%TYPE` (ogni ancora risolve al tipo di prima: una versione sola, stessa firma, verificato). Corpo di partenza `20261018-45` = vivo (md5 `e21d2f29…`). ⚠️ Nessuna `preCondition` sul lettore: `20_code/anagrafiche` gira prima di `20_code/config` |
+
+* **pgTAP nuovo** `db/pgtap/config/test-fn-profilo-super-admin-id-v1.sql` (plan 5): firma, STABLE e INVOKER,
+  un secondo profilo SUPER_ADMIN spento non conta, due attivi → `E_CONFIG_MANCANTE` «trovati 2», la madre si
+  ferma sullo stesso codice prima di scrivere. Non provato: zero profili attivi (il profilo del seed non si
+  spegne finché ha legami); è lo stesso ramo del caso dei due.
+* **Doc**: manual nuova `config/manual/fn_profilo_super_admin_id.md`; `anagrafiche/manual/fn_crea_risorsa_umana_v2.md`
+  corretta anche nei passaggi rimasti al profilo cablato 9100 e all'`INSERT` del legame (stantii da due
+  revisioni).
+
+**Prova prima dell'apply** (scratch `zeroerp_ruoli`, come `zeroerp_owner`, SQL estratto dai due YAML dentro
+`BEGIN … ROLLBACK`; scratch intatto dopo ogni corsa):
+
+* pgTAP nuovo: **5/5**; senza il lettore il file si ferma al test 1;
+* nella transazione: la madre ha **una sola versione**, stessa firma e stesso ritorno, chiama il lettore, la
+  ricerca sua non c'è più;
+* `plpgsql_check`: madre pulita; il lettore ha il solo warning «STABLE ma VOLATILE» sul
+  `fn_log_and_raise_error`, come `script.fn_stato_proposto_id`;
+* regressione, senza e con l'estratto, esiti **identici**: `config/test-fn-scrivi-profilo-accesso-v1` 15/15,
+  `test-credenziale-blocco-admin-v1` 16/16, `test-totp-obbligo-v1` 15/15,
+  `anagrafiche/test-istanza-ba-gestore-globale-v1` 8/8, `test-fn-provisiona-dati-di-sviluppo-v1` 20/20,
+  `config/test-credenziali-porta-v1` 10 ok e 3 ko in tutti e due i casi (dello scratch, non di questo giro).
+
+**Per Tid:** apply di `20261019-16` e `-17`; pgTAP `config/test-fn-profilo-super-admin-id-v1`, i file della
+regressione, il presidio `dbops/test-riferimenti-morti-v1`. Da committare.
+
+**Dopo il DB, BE (richiesta):**
+
+* **R-DB-11a** — `AmmSoftwareRepository._set_super_admin_binding` chiama `config.fn_profilo_super_admin_id()` e
+  ritira la sua query (righe ~391-409): l'errore e il messaggio sono gli stessi (`E_CONFIG_MANCANTE`, «trovati
+  N»). Il presidio BE c'è già: `test_operatore_altre_vesti_db` 3b.
+
+**Trovato, da decidere (non toccato):** `AmmSoftwareRepository.count_admin_attivi` conta i super admin attivi con
+una query sua; nel DB c'è `script.fn_check_almeno_un_super_admin_attivo`. Se dicono la stessa cosa sono due
+copie (regola del 2); va confrontato il significato, non il testo.

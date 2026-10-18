@@ -44,8 +44,10 @@
 | trg_nature_doc_fiscale_a10_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'natura_doc_id', 'id', 'attivo')` |
 | trg_nature_doc_fiscale_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_nature_doc_fiscale_a10_tipi_doc_fiscale_registri_blo_3b231b | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'tipi_doc_fiscale_registri', 'natura_doc_id', 'id', 'attivo')` |
-| trg_nature_doc_fiscale_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_nature_doc_fiscale_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_nature_doc_fiscale_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_nature_doc_fiscale_z90_provision_registri_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_coppie_fattura_provision_registri()` |
+| trg_nature_doc_fiscale_z90_provision_registri_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_coppie_fattura_provision_registri()` |
 
 ---
 {% include-markdown "signature-core.md" %}

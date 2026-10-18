@@ -118,6 +118,7 @@
 - [fn_get_operatore_detail](manual/fn_get_operatore_detail.md)
 - [fn_get_or_create_soggetto_ruolo](manual/fn_get_or_create_soggetto_ruolo.md) — (latest review 09-12-25) La funzione **`script.fn_get_or_create_soggetto_ruolo`** è una **factory di dominio** per garantire l’esistenza di un legame tra:
 - [fn_get_override_scaduti](manual/fn_get_override_scaduti.md) — (latest review 08-03-2026) La funzione **`script.fn_get_override_scaduti`** restituisce tutti gli override utente la cui data `valido_al` e scaduta. Unisce le 3 tabelle override (aree, oggetti, azioni) in un unico risultato.
+- [fn_get_parameter_di_sessione](manual/fn_get_parameter_di_sessione.md) — (18-10-2026 — decisioni D-13a e D-13b di Tid, richiesta del backend R-BE-13 in `brief-db-processi-accensione-per-ambiente` §6.12)
 - [fn_get_parameter_full](manual/fn_get_parameter_full.md)
 - [fn_get_permessi_effettivi_azioni](manual/fn_get_permessi_effettivi_azioni.md) — (scritta il 04-10-2026)
 - [fn_get_permessi_effettivi_oggetti](manual/fn_get_permessi_effettivi_oggetti.md) — (scritta il 04-10-2026)

@@ -334,7 +334,7 @@ I trigger di normalizzazione (`trgfn_indirizzi_dettaglio_normalize` e `trgfn_ind
 * `via_norm`, `civico_norm`: forme normalizzate per confronti e deduplicazione
 * `indirizzo_normalizzato`: stringa leggibile completa
 * In modalità normalizzata, i campi fallback (comune, stato...) vengono azzerati
-* In modalità libera, i testi vuoti diventano NULL (una località di soli spazi non è una località) e lo `stato_id` non detto diventa lo **stato proposto**: il parametro `STATO_PROPOSTO_ISO2`, letto da [`script.fn_stato_proposto_id`](/dbzero/script/funzioni/fn_stato_proposto_id). È una proposta (si può cambiare per utente o per sessione); se manca, o indica più di uno stato, il sistema si ferma invece di indovinare
+* In modalità libera, i testi vuoti diventano NULL (una località di soli spazi non è una località) e lo `stato_id` non detto diventa lo **stato proposto**: il parametro `STATO_PROPOSTO_ISO2`, letto da [`script.fn_stato_proposto_id`](/dbzero/script/funzioni/fn_stato_proposto_id). È una proposta (si può cambiare per utente, per gruppo, per azienda attiva o per sessione); se manca, o indica più di uno stato, il sistema si ferma invece di indovinare
 
 ---
 
