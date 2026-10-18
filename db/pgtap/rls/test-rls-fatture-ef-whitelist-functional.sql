@@ -206,14 +206,9 @@ BEGIN
     -- Si usa l'operatore 'out' (whitelist = altro emittente): senza super_admin
     -- la fattura gli e' nascosta, e il caso 3 lo ha appena dimostrato.
     -- binding SUPER_ADMIN sulla sua identita OPERATORE.
-    INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id, attivo)
-    VALUES (
-        (SELECT id FROM config.profili_accesso
+    PERFORM config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso
           WHERE tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso AND attivo = true
-          ORDER BY id LIMIT 1),
-        (SELECT identita_id FROM _op WHERE tag = 'out'),
-        true
-    );
+          ORDER BY id LIMIT 1), (SELECT identita_id FROM _op WHERE tag = 'out'));
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
     PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op WHERE tag = 'out')::text, true);
     INSERT INTO _res SELECT 'c6', EXISTS (SELECT 1 FROM vendite.fatture WHERE id = (SELECT fattura_id FROM _refs));

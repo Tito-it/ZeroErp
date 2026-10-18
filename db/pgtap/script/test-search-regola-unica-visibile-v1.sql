@@ -178,11 +178,21 @@ UPDATE _sr
 UPDATE _sr
    SET sr_id = dbops.fn_pgtap_crea_soggetto_ruolo(soggetto_id, ruolo);
 
--- Il fornitore del soggetto FO_PIENO (codice dal trigger, stato AT).
-INSERT INTO anagrafiche.fornitori (soggetto_ruolo_id, stato_fornitore_id)
-SELECT s.sr_id, (SELECT sf.id FROM config.stati_fornitore sf WHERE sf.codice_interno = 'AT')
+-- Il fornitore del soggetto FO_PIENO, dalla madre (rev 2026-10-18, 2b-1 lotto
+-- 4 di brief-db-processi-accensione-per-ambiente): riusa il ruolo del builder,
+-- codice dal trigger, nasce VE. Poi lo stato AT, con un UPDATE come ogni
+-- passaggio di stato.
+DO $fo$
+BEGIN
+    PERFORM anagrafiche.fn_crea_fornitore(s.soggetto_id) FROM _sr s WHERE s.caso = 'FO_PIENO';
+END
+$fo$;
+
+UPDATE anagrafiche.fornitori f
+   SET stato_fornitore_id = (SELECT sf.id FROM config.stati_fornitore sf WHERE sf.codice_interno = 'AT')
   FROM _sr s
- WHERE s.caso = 'FO_PIENO';
+ WHERE s.caso = 'FO_PIENO'
+   AND f.soggetto_ruolo_id = s.sr_id;
 
 -- Il cliente CHIUSO (Q-3): stato CH, attivazione e chiusura dal builder.
 CREATE TEMP TABLE _cl_chiuso ON COMMIT DROP AS

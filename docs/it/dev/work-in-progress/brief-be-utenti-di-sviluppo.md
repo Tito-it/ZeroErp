@@ -1,10 +1,15 @@
 # Brief BE — Gli utenti di sviluppo: forniti da un verbo, etichettati, mai in produzione
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-16
+## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: il team DB col giro 2 del
-[brief-db-processi-accensione-per-ambiente](brief-db-processi-accensione-per-ambiente.md) (§5-ter),
-che aspettava l'elenco del §7 (decisioni del §7.4 prese). Il BE scrive T-1 quando il giro 2 è applicato.**
+**Riparte: il BE, con T-1 … T-4.** Il giro 2 DB è applicato su dbdev, pgTAP verdi (2026-10-18). Che cosa
+c'è e come si chiama: [brief DB §5-ter.3](brief-db-processi-accensione-per-ambiente.md) (verbo, etichette,
+codici, lista Operatori); i BB che sostituiscono le copie del backend (2b-2): §5-ter.2, la «Ricaduta BE»
+di ogni lotto.
+
+⚠️ Due scostamenti dal §7, imposti dal modello (brief DB §5-ter.3): `dev.multiveste` ha il portale sul
+**cliente 3** (un ruolo cliente ha una sola veste portale attiva, e il cliente 1 è di `dev.portale1`); gli
+utenti dei portali non hanno un PF loro (la veste sta sul ruolo del cliente o del fornitore).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -12,9 +17,9 @@ che aspettava l'elenco del §7 (decisioni del §7.4 prese). Il BE scrive T-1 qua
 | 2 | ✅ **team DB** | Giro 1 applicato su dbdev (`SVILUPPO` dichiarato, 2026-10-16 14:20): ambiente e accensione dei processi. Risponde anche a D-1 (§6) | brief DB §5-bis | — |
 | 3 | ✅ **BE** | L'elenco di che cosa crea il verbo, chiesto dal brief DB §5-ter | §7 | — |
 | 4 | ✅ **Tid** | Le tre decisioni del §7.4: emittenti nuovi dal verbo, `dev.shop` dopo, portale senza contratto (2026-10-16) | §7.4 | — |
-| 5 | **team DB** | Giro 2: etichette, verbo del provisioning di sviluppo, presidio, colonna nella lista Operatori | brief DB §5-ter | 4 |
-| 6 | **Tid** | Apply del giro 2 su dbdev | — | 5 |
-| 7 | **BE** | T-1 … T-4 (di T-2 è già fatto il ritiro del ripiego `tid`) | §4 | 6 |
+| 5 | ✅ **team DB** | Giro 2: i BB (2b-1), etichette, verbo `anagrafiche.fn_provisiona_dati_di_sviluppo`, presidio (2b-3). La colonna della lista Operatori: `LEFT JOIN dbops.credenziali_di_prova` (T-4) | brief DB §5-ter.2, §5-ter.3 | — |
+| 6 | ✅ **Tid** | Apply del giro 2 su dbdev, pgTAP verdi (2026-10-18) | — | — |
+| 7 | **BE** | T-1 … T-4 (di T-2 è già fatto il ritiro del ripiego `tid`), più la 2b-2: il backend passa ai BB e ritira le sue copie | §4; brief DB §5-ter.2 | — |
 | 8 | **Tid** | Collaudo: il provisioning da capo su dbdev, il giro degli smoke con `dev.smoke`, poi la disattivazione di `smoke` | §4, T-5 | 7 |
 | 9 | **FE** | T-6: il filtro e il badge nella lista Operatori | §4 | 7 |
 
@@ -27,7 +32,7 @@ che aspettava l'elenco del §7 (decisioni del §7.4 prese). Il BE scrive T-1 qua
 > ([brief-db-ruoli-di-sistema](brief-db-ruoli-di-sistema.md) §1). Il modello è stato chiuso con
 > il team DB in [brief-db-processi-accensione-per-ambiente](brief-db-processi-accensione-per-ambiente.md) §4-ter (R-2, R-4), decisioni di Tid del
 > 2026-10-16.
-> **Stato:** 📝 elenco per il giro 2 consegnato e deciso (§7); in attesa del giro 2 DB.
+> **Stato:** 🔨 giro 2 DB applicato (2026-10-18); tocca al BE (T-1 … T-4, 2b-2).
 
 ## 1. La regola
 

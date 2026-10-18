@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ETICHETTA DI UNA CREDENZIALE DI PROVA
+#   NASCE dbops.credenziali_di_prova: una riga per ogni credenziale creata
+#   dal verbo dei dati di sviluppo (anagrafiche.fn_provisiona_dati_di_sviluppo).
+#   Brief: brief-db-processi-accensione-per-ambiente, R-4 (§4-ter, §5-ter.2, 2b-3).
+#
+# -- PERCHE' --------------------------------------------------------
+#   Gli utenti di prova (dev.*) non devono esistere in un database PRODUZIONE.
+#   Il prefisso del nome si sbaglia a mano in tutti e due i versi: il presidio
+#   guarda l'etichetta, non il nome (R-4).
+#
+# -- LA SEDE: dbops, NON anagrafiche (scelta di forma, 2026-10-18) -----
+#   Il §5-ter.2 la voleva in anagrafiche. E' un dato di MACCHINA del
+#   provisioning, come dbops.installazione e dbops.processi_identita (la sua
+#   gemella: una riga per credenziale, senza FK verso django.auth_user, che in
+#   CI nasce dopo Liquibase). Le automazioni di ci_apply coprono anagrafiche
+#   per intero (audit, tx_id, storico): su una riga che non cambia mai
+#   sarebbero colonne e trigger inerti.
+#
+# -- LA FORMA -------------------------------------------------------
+#   auth_user_id chiave; `chiave` = lo username alla nascita, UNIQUE: un
+#   utente rinominato resta di prova, e la seconda corsa del verbo lo ritrova
+#   dall'etichetta, non dal nome. Solo l'audit di nascita. La riga non si
+#   toglie e non cambia (guard 20261018-58/-59); in PRODUZIONE non nasce.
+#   L'app la legge e non la scrive (loop 20260205-41, forward 90_end/20261018-62,
+#   blocco del provisioning).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261018-55-create-dbops-credenziali-di-prova-mctit.yaml
+
+  - changeSet:
+      id: 20261018-55-create-dbops-credenziali-di-prova
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea dbops.credenziali_di_prova: l'etichetta di una credenziale creata dal verbo dei dati di
+        sviluppo (una riga per credenziale, chiave = username alla nascita). Brief:
+        brief-db-processi-accensione-per-ambiente (R-4, 2b-3).
+      preConditions:
+        - onFail: HALT
+        - not:
+            - tableExists:
+                schemaName: dbops
+                tableName: credenziali_di_prova
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE dbops.credenziali_di_prova (
+                  auth_user_id integer     NOT NULL,
+                  chiave       text        NOT NULL,
+                  data_insert  timestamptz NOT NULL DEFAULT now(),
+                  user_insert  text        NOT NULL DEFAULT CURRENT_USER,
+                  CONSTRAINT pk_credenziali_di_prova PRIMARY KEY (auth_user_id),
+                  CONSTRAINT uq_credenziali_di_prova_chiave UNIQUE (chiave),
+                  CONSTRAINT chk_credenziali_di_prova_chiave CHECK (btrim(chiave) <> '')
+              );
+
+              COMMENT ON TABLE dbops.credenziali_di_prova IS
+                  'L''etichetta di una credenziale di prova: una riga per ogni credenziale creata dal verbo dei dati di sviluppo (anagrafiche.fn_provisiona_dati_di_sviluppo), nella stessa transazione. Dato di macchina, come dbops.processi_identita: niente FK verso django.auth_user (in CI nasce dopo Liquibase). Non cambia e non si toglie (togliendola si nasconderebbe l''utente al presidio); in un''installazione PRODUZIONE non nasce (guard dbops.trgfn_etichette_di_prova_guard). L''app la legge e non la scrive. Il presidio dbops.vw_radici_di_prova_in_produzione la guarda. Brief: brief-db-processi-accensione-per-ambiente (R-4).';
+              COMMENT ON COLUMN dbops.credenziali_di_prova.auth_user_id IS
+                  'La credenziale (django.auth_user.id). Chiave: una credenziale ha un''etichetta sola.';
+              COMMENT ON COLUMN dbops.credenziali_di_prova.chiave IS
+                  'La chiave di prova: lo username alla nascita (dev.smoke, dev.lettura...). UNIQUE: la seconda corsa del verbo ritrova la credenziale da qui, non dal nome; un utente rinominato resta di prova.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP TABLE IF EXISTS dbops.credenziali_di_prova;

@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: CREARE UNA VESTE DEI PORTALI
+#   anagrafiche.fn_crea_veste_portale(credenziale, ruolo, veste, attivo): la
+#   riga di anagrafiche.identita_digitali di una veste esterna (portale
+#   clienti, portale fornitori, shop), spenta o accesa. Ritorna l'id.
+#   Brief: brief-db-processi-accensione-per-ambiente, §5-ter.2 (2b-1, lotto 6).
+#
+# -- CHI ERA LA COPIA ---------------------------------------------------
+#   * il backend, PortaleRepository.create_identita_portale (INSERT diretto),
+#     chiamato dall'invito al portale (veste spenta) e dall'attivazione dello
+#     shop (veste accesa). Passa al BB nella 2b-2;
+#   * gli INSERT diretti delle vesti esterne nei pgTAP: passano al BB nello
+#     stesso giro.
+#
+# -- LE SCELTE ----------------------------------------------------------
+#   * solo le vesti esterne (CLIENTE_PORTALE, FORNITORE_PORTALE,
+#     SHOP_CUSTOMER). La veste OPERATORE ha le sue madri, che portano il
+#     perimetro e la risorsa umana (anagrafiche.fn_crea_operatore_v2,
+#     script.fn_crea_utente_tecnico): qui sarebbe una porta laterale. Le
+#     altre (API_CLIENT, DISABILITATO) non nascono da un invito.
+#     Fuori elenco: E_SCRIPT_CHIAMATA_NON_VALIDA;
+#   * attivo e' obbligatorio, senza default: l'invito crea la veste spenta
+#     (la accende il consumo del token), lo shop accesa. Il DEFAULT della
+#     colonna (true) e' la scelta sbagliata per l'invito;
+#   * la coerenza veste/ruolo, la natura della credenziale e l'unicita' le
+#     dicono i guard della tabella, come oggi.
+#
+# -- CHE COSA RESTA FUORI, apposta ---------------------------------------
+#   * il permesso e il flusso dell'invito (token, email, reinvio): backend.
+#     INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261018-39-create-fn-crea-veste-portale-mctit.yaml
+
+  - changeSet:
+      id: 20261018-39-create-fn-crea-veste-portale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea anagrafiche.fn_crea_veste_portale: la riga di identita_digitali di una veste esterna
+        (portale clienti, portale fornitori, shop), spenta o accesa. Prende il posto dell'INSERT
+        del backend e di quelli dei pgTAP. Brief: brief-db-processi-accensione-per-ambiente
+        (2b-1, lotto 6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_scrivi_riga_da_jsonb' AND p.pronargs = 4;
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_veste_portale(
+                  p_auth_user_id      anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  p_soggetto_ruolo_id anagrafiche.identita_digitali.soggetto_ruolo_id%TYPE,
+                  p_ruolo_applicativo anagrafiche.identita_digitali.ruolo_applicativo%TYPE,
+                  p_attivo            anagrafiche.identita_digitali.attivo%TYPE)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare la veste esterna di una credenziale su un ruolo
+                  --   (portale clienti, portale fornitori, shop), spenta o
+                  --   accesa. Ritorna l'id della riga di identita_digitali.
+                  --
+                  -- Regole:
+                  --   - una veste fuori dalle tre esterne, o un argomento
+                  --     NULL: E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - coerenza veste/ruolo, natura della credenziale,
+                  --     unicita': i guard della tabella.
+                  -- =========================================================
+                  IF p_auth_user_id IS NULL OR p_soggetto_ruolo_id IS NULL OR p_attivo IS NULL
+                     OR p_ruolo_applicativo IS NULL
+                     OR p_ruolo_applicativo NOT IN ('CLIENTE_PORTALE', 'FORNITORE_PORTALE', 'SHOP_CUSTOMER') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_veste_portale', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('auth_user_id',      p_auth_user_id,
+                                             'soggetto_ruolo_id', p_soggetto_ruolo_id,
+                                             'ruolo_applicativo', p_ruolo_applicativo,
+                                             'attivo',            p_attivo),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_veste_portale',
+                          'argomento mancante o veste che non e'' dei portali');
+                  END IF;
+
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'anagrafiche.identita_digitali'::regclass,
+                              jsonb_build_object('auth_user_id',      p_auth_user_id,
+                                                 'soggetto_ruolo_id', p_soggetto_ruolo_id,
+                                                 'ruolo_applicativo', p_ruolo_applicativo,
+                                                 'attivo',            p_attivo))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_veste_portale(
+                  anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  anagrafiche.identita_digitali.soggetto_ruolo_id%TYPE,
+                  anagrafiche.identita_digitali.ruolo_applicativo%TYPE,
+                  anagrafiche.identita_digitali.attivo%TYPE) IS
+                  'BB (2026-10-18): crea la veste esterna di una credenziale su un ruolo, cioe'' la riga di anagrafiche.identita_digitali con ruolo_applicativo CLIENTE_PORTALE, FORNITORE_PORTALE o SHOP_CUSTOMER, spenta o accesa (p_attivo obbligatorio: l''invito la crea spenta, lo shop accesa). Ritorna l''id. Un argomento NULL o un''altra veste: E_SCRIPT_CHIAMATA_NON_VALIDA (la veste OPERATORE nasce dalle sue madri, anagrafiche.fn_crea_operatore_v2 e script.fn_crea_utente_tecnico, che portano perimetro e risorsa umana). Coerenza veste/ruolo, natura della credenziale e unicita'' le dicono i guard della tabella. Scrive con script.fn_scrivi_riga_da_jsonb. Non controlla il permesso ne'' il flusso dell''invito (backend). INVOKER. Prende il posto di PortaleRepository.create_identita_portale (2b-2) e degli INSERT delle vesti esterne nei pgTAP. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 6).';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_veste_portale(integer, bigint, config.ruolo_applicativo, boolean);

@@ -132,10 +132,14 @@
 - [fn_get_aliquota_iva](manual/fn_get_aliquota_iva.md) — (latest review 10-02-2026)   La funzione **`config.fn_get_aliquota_iva()`** restituisce l’aliquota IVA applicando l’eventuale override definito in `config.iva_stati` per lo Stato specificato.
 - [fn_get_natura_doc_fiscale_id](manual/fn_get_natura_doc_fiscale_id.md) — (rev 2026-08-18)
 - [fn_get_stati_doc_fiscale](manual/fn_get_stati_doc_fiscale.md) — (latest review 24-01-2026) La funzione **`config.fn_get_stati_doc_fiscale`** restituisce gli stati validi per **LOTTO** o **FATTURA**, con eventuale filtro sulle **transizioni ammesse**.
+- [fn_imposta_emittente_attivo](manual/fn_imposta_emittente_attivo.md)
+- [fn_imposta_override_oggetti](manual/fn_imposta_override_oggetti.md)
+- [fn_lega_profilo_identita](manual/fn_lega_profilo_identita.md)
 - [fn_pannello_colonne_scrivibili](manual/fn_pannello_colonne_scrivibili.md) — (scritta il 27-09-2026)
 - [fn_pannello_scrivi](manual/fn_pannello_scrivi.md) — (scritta il 25-09-2026)
 - [fn_resolve_email_account](manual/fn_resolve_email_account.md) — Risolve l'account SMTP da utilizzare per l'invio di una email, dato il reparto (unita' organizzativa) del contesto. Implementa una catena di fallback a 2 livelli per garantire che ci sia sempre un account disponibile.
 - [fn_resolve_email_template](manual/fn_resolve_email_template.md) — Risolve il template email da utilizzare per un dato codice, reparto, tipo prestazione e lingua. Implementa una catena di fallback a 5 livelli che permette di specializzare i testi per reparto e tipo pratica mantenendo sempre un default di sistema.
+- [fn_scrivi_profilo_accesso](manual/fn_scrivi_profilo_accesso.md)
 - [trgfn_comuni_protect_update](manual/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
 - [trgfn_credenziali_guard_ultimo_super_admin](manual/trgfn_credenziali_guard_ultimo_super_admin.md) — (scritta il 25-09-2026)
 - [trgfn_iva_guard_conti_iva](manual/trgfn_iva_guard_conti_iva.md) — * **Validazione contestuale**: eseguire controlli sui campi contabili prima di inserire o aggiornare un record in `config.iva`. * **Coerenza dei dati**: evitare associazioni errate tra codici IVA e conti di tipo sbagliato.

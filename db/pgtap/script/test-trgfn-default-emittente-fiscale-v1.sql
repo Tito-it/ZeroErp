@@ -161,9 +161,11 @@ INSERT INTO _m SELECT 'Z', m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 -- il SA: l'operatore di S con binding al profilo SUPER_ADMIN (definizione di fn_is_super_admin).
 -- ⚠️ E un SECONDO SA (l'operatore di Z, mai attore): senza, sul database da zero S
 --   sarebbe l'ultimo SA e fn_change_user_emittenti_scope lo rifiuterebbe (vedi testa).
-INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id, attivo)
-SELECT (SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), m.identita_id, true
-  FROM _m m WHERE m.lato IN ('S', 'Z');
+DO $lega$
+BEGIN
+    PERFORM config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), m.identita_id) FROM _m m WHERE m.lato IN ('S', 'Z');
+END
+$lega$;
 
 CREATE TEMP TABLE _fix (
     ind bigint, ba bigint, ba_istanza bigint, ba_utility integer, ba_sr bigint,

@@ -120,10 +120,8 @@ BEGIN
 
     FOR m IN SELECT * FROM _mondi ORDER BY lato LOOP
         r.lato := m.lato;
-        INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id)
-        VALUES ('PGT-RLS-' || m.lato, 'rls ' || m.lato, v_ind, m.emittente_fiscale_id) RETURNING id INTO r.mag;
-        INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id)
-        VALUES ('PGT-RLS-' || m.lato || '2', 'rls ' || m.lato || ' 2', v_ind, m.emittente_fiscale_id) RETURNING id INTO v_mag2;
+        r.mag := magazzino.fn_crea_magazzino('PGT-RLS-' || m.lato, 'rls ' || m.lato, v_ind, '{}'::jsonb, m.emittente_fiscale_id);
+        v_mag2 := magazzino.fn_crea_magazzino('PGT-RLS-' || m.lato || '2', 'rls ' || m.lato || ' 2', v_ind, '{}'::jsonb, m.emittente_fiscale_id);
         INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (r.mag, 'U-' || m.lato, v_tubi) RETURNING id INTO r.ubi;
         INSERT INTO magazzino.inventari (magazzino_id) VALUES (r.mag) RETURNING id INTO r.inv;
         INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata) VALUES (r.inv, v_art, 5) RETURNING id INTO r.inv_riga;

@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: LEGARE UN PROFILO A UN'IDENTITA'
+#   config.fn_lega_profilo_identita(profilo, identita): il binding di
+#   un'identita' digitale a un profilo di accesso. Ritorna l'id del binding.
+#   Brief: brief-db-processi-accensione-per-ambiente, §5-ter.2 (2b-1, lotto 8).
+#
+# -- CHI ERA LA COPIA ---------------------------------------------------
+#   La stessa riga era scritta a mano in tre punti:
+#     * anagrafiche.fn_crea_risorsa_umana_v2 (il binding SUPER_ADMIN): passa
+#       al BB in 20261018-45;
+#     * script.fn_crea_utente_tecnico (il profilo chiesto): passa al BB in
+#       20261018-44;
+#     * il backend, AmmSoftwareRepository._set_super_admin_binding: passa al
+#       BB nella 2b-2.
+#   Il verbo dei dati di sviluppo (2b-3) e' la quarta.
+#
+# -- LE SCELTE ----------------------------------------------------------
+#   * un'identita' ha UN binding (uq_profili_accesso_bindings_identita). Lo
+#     stesso profilo gia' legato: la riga c'e', il BB la ritorna
+#     (idempotente). Un ALTRO profilo gia' legato: lo dice il vincolo, col
+#     suo nome. Il BB non sostituisce in silenzio;
+#   ⚠️ Un fatto da sapere, trovato censendo: _set_super_admin_binding del
+#     backend scrive con ON CONFLICT DO NOTHING. Se l'identita' ha gia' un
+#     altro profilo, il SUPER_ADMIN chiesto non arriva e nessuno lo dice.
+#     Col BB quel caso diventa un errore: e' la 2b-2 a decidere che cosa
+#     mostrare (brief §5-ter.2, lotto 8);
+#   * coerenza (veste, profilo attivo, super admin col secondo fattore) e
+#     notifica dei permessi: i trigger della tabella, come oggi.
+#
+# -- CHE COSA RESTA FUORI, apposta ---------------------------------------
+#   * i binding di un reparto o di una veste: altre colonne, altri scrittori;
+#   * il permesso: backend. INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261018-43-create-fn-lega-profilo-identita-mctit.yaml
+
+  - changeSet:
+      id: 20261018-43-create-fn-lega-profilo-identita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea config.fn_lega_profilo_identita: il binding di un'identita' a un profilo, idempotente
+        sullo stesso profilo. Prende il posto degli INSERT di fn_crea_risorsa_umana_v2,
+        fn_crea_utente_tecnico e del backend. Brief: brief-db-processi-accensione-per-ambiente
+        (2b-1, lotto 8).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_lega_profilo_identita(
+                  p_profilo_accesso_id   config.profili_accesso_bindings.profilo_accesso_id%TYPE,
+                  p_identita_digitale_id config.profili_accesso_bindings.identita_digitale_id%TYPE)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_id config.profili_accesso_bindings.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Legare un'identita' digitale a un profilo di accesso.
+                  --   Ritorna l'id del binding.
+                  --
+                  -- Regole:
+                  --   - lo stesso profilo gia' legato: ritorna quel binding;
+                  --   - un altro profilo gia' legato: lo dice il vincolo
+                  --     uq_profili_accesso_bindings_identita;
+                  --   - argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA.
+                  -- =========================================================
+                  IF p_profilo_accesso_id IS NULL OR p_identita_digitale_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_lega_profilo_identita', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('profilo_accesso_id',   p_profilo_accesso_id,
+                                             'identita_digitale_id', p_identita_digitale_id),
+                          NULL::uuid,
+                          'config.fn_lega_profilo_identita',
+                          'profilo o identita'' mancanti');
+                  END IF;
+
+                  SELECT pab.id
+                    INTO v_id
+                    FROM config.profili_accesso_bindings pab
+                   WHERE pab.identita_digitale_id = p_identita_digitale_id
+                     AND pab.profilo_accesso_id   = p_profilo_accesso_id;
+
+                  IF v_id IS NOT NULL THEN
+                      RETURN v_id;
+                  END IF;
+
+                  INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id)
+                  VALUES (p_profilo_accesso_id, p_identita_digitale_id)
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_lega_profilo_identita(
+                  config.profili_accesso_bindings.profilo_accesso_id%TYPE,
+                  config.profili_accesso_bindings.identita_digitale_id%TYPE) IS
+                  'BB (2026-10-18): lega un''identita'' digitale a un profilo di accesso (la riga di config.profili_accesso_bindings con identita_digitale_id). Un''identita'' ha un binding solo (uq_profili_accesso_bindings_identita): lo stesso profilo gia'' legato ritorna quel binding (idempotente), un altro profilo gia'' legato lo rifiuta il vincolo col suo nome (il BB non sostituisce in silenzio). Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Coerenza e notifica dei permessi: i trigger della tabella. Non controlla il permesso (backend). INVOKER. Ritorna l''id del binding. Regola del 2: sede unica dell''INSERT che era in anagrafiche.fn_crea_risorsa_umana_v2 (binding SUPER_ADMIN), script.fn_crea_utente_tecnico (profilo chiesto) e AmmSoftwareRepository._set_super_admin_binding (2b-2). Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 8).';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS config.fn_lega_profilo_identita(integer, bigint);

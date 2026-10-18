@@ -334,8 +334,11 @@ INSERT INTO config.profili_accesso_azioni (profilo_accesso_id, azione_id, abilit
 SELECT p.profilo_id, ap.id, true
   FROM _t_prof p, config.azioni_processo ap WHERE ap.permission_codename = 'pgtap_tetto_scrive';
 
-INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id, attivo)
-SELECT p.profilo_id, o.identita_id, true FROM _t_prof p, _t_op o WHERE o.sigla = 'B';
+DO $lega$
+BEGIN
+    PERFORM config.fn_lega_profilo_identita(p.profilo_id, o.identita_id) FROM _t_prof p, _t_op o WHERE o.sigla = 'B';
+END
+$lega$;
 
 SELECT pg_temp.area(pg_temp.op('B'), 'vendite', 'BLOCCATO');
 SELECT pg_temp.oggetto(pg_temp.op('B'), 'pgtap_tetto', 'TUTTO');

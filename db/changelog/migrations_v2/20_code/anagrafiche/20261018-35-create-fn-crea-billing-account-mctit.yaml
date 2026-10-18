@@ -1,0 +1,229 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: CREARE UN BILLING ACCOUNT (con la sua istanza, se serve)
+#   anagrafiche.fn_crea_billing_account(ruolo, utility, campi, istanza
+#   esistente, istanza nuova, emittente): l'istanza utility fittizia (se non
+#   se ne indica una), il billing account e, se chiesto, il legame del BA a un
+#   emittente. Ritorna (billing_account_id, istanza_utility_id).
+#   Brief: brief-db-processi-accensione-per-ambiente, §5-ter.2 (2b-1, lotto 5).
+#
+# -- CHI ERA LA COPIA ---------------------------------------------------
+#   * il backend, ClientiService._execute_creazione passi 2 e 3
+#     (create_istanza_fittizia, create_billing_account). Passa al BB, via la
+#     madre del cliente, nella 2b-2;
+#   * il builder dbops.fn_pgtap_crea_cliente_ba: INSERT dell'istanza, del BA
+#     e del legame. Passa al BB in 20261018-37.
+#   E' un BB a se', non un pezzo della madre del cliente: un BA senza cliente
+#   e' un mondo legittimo (l'istanza vuole un satellite: BA, dato
+#   precontrattuale o cliente), ed e' quello che il builder _ba costruisce
+#   per 133 pgTAP.
+#
+# -- LE SCELTE ----------------------------------------------------------
+#   * campi del BA: categoria_cliente_id, codice, fatturazione_ordini,
+#     parent_account_id, valuta_id. Quelli dell'istanza nuova: codice,
+#     indirizzo_dettaglio_id (fittizia = true sempre: un'istanza vera nasce dal
+#     motore delle pratiche). Una chiave estranea si RIFIUTA col suo nome; una
+#     chiave a null vale assente (DEFAULT, codice generato);
+#   * la categoria non ha default (Pricing v5: nessuna categoria implicita):
+#     se manca risponde il NOT NULL della colonna;
+#   * il BA si RILEGGE a istruzione finita (fn_scrivi_riga_da_jsonb con
+#     p_rileggi_per, 20261018-34) per (istanza_utility_id, utility_id),
+#     uq_billing_instance_utility: la policy di lettura passa dal legame che
+#     scrive il trigger AFTER z90_link_ef;
+#   * il legame all'emittente, se chiesto: con un operatore in sessione l'ha
+#     gia' scritto z90 verso l'emittente di chi agisce, e deve coincidere;
+#     senza sessione (owner, provisioning) lo scrive il BB. Un legame
+#     discorde e' una chiamata sbagliata: E_SCRIPT_CHIAMATA_NON_VALIDA;
+#   * i vincoli differiti (l'istanza vuole un satellite al commit) sono di chi
+#     chiama: il BB non cambia il modo dei vincoli della transazione.
+#   ⚠️ UN LIMITE DEL MODELLO DI OGGI, dichiarato: il guard z95 dell'istanza
+#     («un'istanza ha i BA di una sola azienda») e' un AFTER INSERT del BA, e
+#     scatta PRIMA che il BB scriva il legame chiesto. Con un operatore in
+#     sessione il legame lo scrive z90, che viene prima di z95: nessun
+#     problema. Senza sessione, un secondo BA su un'istanza esistente con un
+#     emittente esplicito diverso dal default muore sul guard. Il builder non
+#     lo faceva (un BA per istanza); il provisioning crea istanze nuove.
+#
+# -- CHE COSA RESTA FUORI, apposta ---------------------------------------
+#   * il permesso e il caso «amministratore globale con emittenti» li dicono
+#     i guard della tabella (trgfn_billing_account_guard_admin_globale) e il
+#     backend; INVOKER;
+#   * coerenza soggetto/istanza, albero, unicita': i guard e i vincoli della
+#     tabella, come oggi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261018-35-create-fn-crea-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20261018-35-create-fn-crea-billing-account
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea anagrafiche.fn_crea_billing_account: l'istanza utility fittizia (se non indicata), il
+        billing account riletto a istruzione finita e il legame a un emittente se chiesto. Prende
+        il posto dei passi 2 e 3 della saga del backend e degli INSERT del builder
+        fn_pgtap_crea_cliente_ba. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_scrivi_riga_da_jsonb' AND p.pronargs = 4;
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_billing_account(
+                  p_soggetto_ruolo_id           anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                  p_utility_id                  anagrafiche.billing_account.utility_id%TYPE,
+                  p_campi                       jsonb DEFAULT '{}'::jsonb,
+                  p_istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE DEFAULT NULL,
+                  p_istanza                     jsonb DEFAULT '{}'::jsonb,
+                  p_emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL)
+               RETURNS TABLE(billing_account_id anagrafiche.billing_account.id%TYPE,
+                             istanza_utility_id anagrafiche.billing_account.istanza_utility_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi       jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_istanza     jsonb := COALESCE(p_istanza, '{}'::jsonb);
+                  v_estranea    text;
+                  v_soggetto_id anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_ist_id      anagrafiche.billing_account.istanza_utility_id%TYPE := p_istanza_utility_id;
+                  v_ba_id       anagrafiche.billing_account.id%TYPE;
+                  v_link_sr     anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+                  c_ammesse_ba  CONSTANT text[] := ARRAY[
+                      'categoria_cliente_id', 'codice', 'fatturazione_ordini',
+                      'parent_account_id', 'valuta_id'];
+                  c_ammesse_ist CONSTANT text[] := ARRAY['codice', 'indirizzo_dettaglio_id'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare il billing account di un ruolo per una utility:
+                  --   l'istanza fittizia (se p_istanza_utility_id e' NULL, coi
+                  --   campi di p_istanza), il BA coi campi di p_campi (riletto
+                  --   a istruzione finita), il legame all'emittente se
+                  --   p_emittente_soggetto_ruolo_id e' indicato. Ritorna
+                  --   (billing_account_id, istanza_utility_id).
+                  --
+                  -- Regole:
+                  --   - chiave estranea: E_CAMPO_NON_AMMESSO; null = assente;
+                  --   - istanza esistente e campi di un'istanza nuova insieme,
+                  --     o un legame discorde: E_SCRIPT_CHIAMATA_NON_VALIDA;
+                  --   - il resto lo dicono i guard e i vincoli delle tabelle.
+                  -- =========================================================
+                  IF p_soggetto_ruolo_id IS NULL OR p_utility_id IS NULL
+                     OR jsonb_typeof(v_campi) <> 'object' OR jsonb_typeof(v_istanza) <> 'object'
+                     OR (p_istanza_utility_id IS NOT NULL AND v_istanza <> '{}'::jsonb) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_ruolo_id',  p_soggetto_ruolo_id,
+                                             'utility_id',         p_utility_id,
+                                             'istanza_utility_id', p_istanza_utility_id,
+                                             'tipo_campi',         jsonb_typeof(v_campi),
+                                             'tipo_istanza',       jsonb_typeof(v_istanza)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_billing_account',
+                          'ruolo o utility mancanti, campi non oggetti, o istanza esistente con i campi di una nuova');
+                  END IF;
+
+                  v_estranea := COALESCE(script.fn_prima_chiave_estranea(v_campi, c_ammesse_ba),
+                                         script.fn_prima_chiave_estranea(v_istanza, c_ammesse_ist));
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'soggetto_ruolo_id', p_soggetto_ruolo_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  SELECT sr.soggetto_id
+                    INTO v_soggetto_id
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = p_soggetto_ruolo_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_SOGGETTO_RUOLO_NON_TROVATO',
+                          jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id),
+                          NULL::uuid,
+                          p_soggetto_ruolo_id::text);
+                  END IF;
+
+                  -- 1. L'istanza fittizia, se non se ne indica una.
+                  IF v_ist_id IS NULL THEN
+                      v_ist_id := (script.fn_scrivi_riga_da_jsonb(
+                                       'anagrafiche.istanze_utilities'::regclass,
+                                       jsonb_strip_nulls(v_istanza)
+                                       || jsonb_build_object('soggetto_id', v_soggetto_id,
+                                                             'fittizia',    true))
+                                   ->> 'id')::bigint;
+                  END IF;
+
+                  -- 2. Il BA, riletto a istruzione finita per la coppia
+                  --    (uq_billing_instance_utility): sotto la RLS la riga si
+                  --    vede solo dopo il legame scritto dal trigger AFTER.
+                  v_ba_id := (script.fn_scrivi_riga_da_jsonb(
+                                  'anagrafiche.billing_account'::regclass,
+                                  jsonb_strip_nulls(v_campi)
+                                  || jsonb_build_object('istanza_utility_id', v_ist_id,
+                                                        'soggetto_ruolo_id',  p_soggetto_ruolo_id,
+                                                        'utility_id',         p_utility_id),
+                                  NULL,
+                                  ARRAY['istanza_utility_id', 'utility_id'])
+                              ->> 'id')::bigint;
+
+                  -- 3. Il legame all'emittente, se chiesto. is_default = false:
+                  --    e' il legame di QUESTO BA, non il default dell'installazione.
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL THEN
+                      SELECT efba.emittente_soggetto_ruolo_id
+                        INTO v_link_sr
+                        FROM anagrafiche.emittenti_fiscali_billing_account efba
+                       WHERE efba.billing_account_id = v_ba_id;
+
+                      IF v_link_sr IS NULL THEN
+                          INSERT INTO anagrafiche.emittenti_fiscali_billing_account
+                              (emittente_soggetto_ruolo_id, billing_account_id, is_default)
+                          VALUES (p_emittente_soggetto_ruolo_id, v_ba_id, false);
+                      ELSIF v_link_sr <> p_emittente_soggetto_ruolo_id THEN
+                          -- Con un operatore in sessione il trigger z90 l'ha gia'
+                          -- legato all'emittente di chi agisce.
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche', 'anagrafiche.fn_crea_billing_account', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                              jsonb_build_object('billing_account_id',       v_ba_id,
+                                                 'emittente_legato',         v_link_sr,
+                                                 'emittente_chiesto',        p_emittente_soggetto_ruolo_id),
+                              NULL::uuid,
+                              'anagrafiche.fn_crea_billing_account',
+                              'il BA e'' gia'' legato all''emittente di chi agisce, non a quello chiesto');
+                      END IF;
+                  END IF;
+
+                  RETURN QUERY SELECT v_ba_id, v_ist_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_billing_account(
+                  anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                  anagrafiche.billing_account.utility_id%TYPE,
+                  jsonb,
+                  anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  jsonb,
+                  anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE) IS
+                  'BB (2026-10-18): crea il billing account di un ruolo per una utility, in una sola istruzione. Se p_istanza_utility_id e'' NULL nasce l''istanza utility fittizia del soggetto del ruolo, coi campi di p_istanza (codice, indirizzo_dettaglio_id); con un''istanza indicata p_istanza deve essere vuoto. Il BA coi campi di p_campi (categoria_cliente_id, codice, fatturazione_ordini, parent_account_id, valuta_id; le assenti e le null al DEFAULT, il codice lo genera il trigger; la categoria non ha default: risponde il NOT NULL), riletto a istruzione finita per (istanza_utility_id, utility_id) con script.fn_scrivi_riga_da_jsonb(..., p_rileggi_per): sotto la RLS il BA si vede solo dopo il legame scritto dal trigger AFTER z90_link_ef. Se p_emittente_soggetto_ruolo_id e'' indicato il BA si lega a quell''emittente (is_default = false); se z90 lo ha gia'' legato a un altro (operatore in sessione): E_SCRIPT_CHIAMATA_NON_VALIDA. Chiave estranea: E_CAMPO_NON_AMMESSO; ruolo inesistente: E_SOGGETTO_RUOLO_NON_TROVATO; chiamata malformata: E_SCRIPT_CHIAMATA_NON_VALIDA. Il resto (amministratore globale, coerenza soggetto/istanza, albero, unicita'') lo dicono i guard e i vincoli. Non cambia il modo dei vincoli: l''istanza vuole un satellite al commit (vincolo differito), e la finestra e'' di chi chiama. Limite: il guard z95 (un''istanza ha i BA di una sola azienda) scatta all''INSERT, prima del legame chiesto; senza sessione un secondo BA con un emittente esplicito su un''istanza esistente non passa (con la sessione il legame lo scrive z90, prima di z95). INVOKER. Ritorna (billing_account_id, istanza_utility_id). Prende il posto dei passi 2 e 3 di ClientiService._execute_creazione (2b-2, via anagrafiche.fn_crea_cliente) e degli INSERT di dbops.fn_pgtap_crea_cliente_ba. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 5).';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_billing_account(bigint, integer, jsonb, bigint, jsonb, bigint);

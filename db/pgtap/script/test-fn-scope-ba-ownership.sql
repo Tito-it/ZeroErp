@@ -109,25 +109,13 @@ $$;
 -- Identita attiva per cliente 1 (rn=1)
 CREATE TEMP TABLE _t_id (idx int, identita_id bigint);
 WITH ins_a AS (
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT b.sr_id, (SELECT auth_user_id FROM _t_au WHERE idx = 1),
-           'CLIENTE_PORTALE', true
-      FROM _t_bas b WHERE b.rn = 1
-    RETURNING id
-)
+    SELECT anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au WHERE idx = 1), b.sr_id, 'CLIENTE_PORTALE', true) AS id FROM _t_bas b WHERE b.rn = 1)
 INSERT INTO _t_id (idx, identita_id)
 SELECT 1, id FROM ins_a;
 
 -- Identita inattiva per cliente 2 (rn=2)
 WITH ins_i AS (
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT b.sr_id, (SELECT auth_user_id FROM _t_au WHERE idx = 2),
-           'CLIENTE_PORTALE', false
-      FROM _t_bas b WHERE b.rn = 2
-    RETURNING id
-)
+    SELECT anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au WHERE idx = 2), b.sr_id, 'CLIENTE_PORTALE', false) AS id FROM _t_bas b WHERE b.rn = 2)
 INSERT INTO _t_id (idx, identita_id)
 SELECT 2, id FROM ins_i;
 

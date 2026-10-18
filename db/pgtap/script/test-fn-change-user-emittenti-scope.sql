@@ -77,13 +77,7 @@ BEGIN
       FROM _mondi m
      WHERE m.lato = 'SA';
 
-    INSERT INTO config.profili_accesso_bindings
-        (profilo_accesso_id, identita_digitale_id, attivo)
-    VALUES (
-        (SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
-        id_id, true
-    )
-    RETURNING id INTO bind_id;
+    bind_id := config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), id_id);
 END
 $$;
 

@@ -71,9 +71,7 @@ SELECT 'OP'  AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore()
 UNION ALL
 SELECT 'SA2' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
 
-INSERT INTO config.profili_accesso_bindings
-    (profilo_accesso_id, identita_digitale_id, attivo)
-VALUES (9100, (SELECT identita_id FROM _mondi WHERE lato = 'SA2'), true);
+DO $lega$ BEGIN PERFORM config.fn_lega_profilo_identita(9100, (SELECT identita_id FROM _mondi WHERE lato = 'SA2')); END $lega$;
 
 DO $ctx$
 BEGIN
@@ -166,10 +164,11 @@ SELECT is(
 -- 7) ADMIN → true per qualunque emittente.
 -- Pre-Fase 7: UPDATE rau SET ruolo_sistema='ADMIN'.
 -- Post-Fase 7: INSERT binding SUPER_ADMIN su identita esistente.
-INSERT INTO config.profili_accesso_bindings
-    (profilo_accesso_id, identita_digitale_id, attivo)
-SELECT 9100, ctx.identita_id, true
-  FROM tmp_refs_scope ctx;
+DO $lega$
+BEGIN
+    PERFORM config.fn_lega_profilo_identita(9100, ctx.identita_id) FROM tmp_refs_scope ctx;
+END
+$lega$;
 
 SELECT is(
     script.fn_check_user_emittente_scope(

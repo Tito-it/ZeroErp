@@ -111,10 +111,7 @@ DECLARE v_sr bigint; v_au int; v_new bigint;
 BEGIN
     SELECT sr_id INTO v_sr FROM _t_sr WHERE rn = 1;
     SELECT auth_user_id INTO v_au FROM _t_au WHERE idx = 1;
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr, v_au, 'CLIENTE_PORTALE', true)
-    RETURNING id INTO v_new;
+    v_new := anagrafiche.fn_crea_veste_portale(v_au, v_sr, 'CLIENTE_PORTALE', true);
 
     INSERT INTO _t_id VALUES (1, v_new);
 END
@@ -126,10 +123,7 @@ DECLARE v_sr bigint; v_au int; v_new bigint;
 BEGIN
     SELECT sr_id INTO v_sr FROM _t_sr WHERE rn = 2;
     SELECT auth_user_id INTO v_au FROM _t_au WHERE idx = 2;
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr, v_au, 'SHOP_CUSTOMER', true)
-    RETURNING id INTO v_new;
+    v_new := anagrafiche.fn_crea_veste_portale(v_au, v_sr, 'SHOP_CUSTOMER', true);
 
     INSERT INTO _t_id VALUES (2, v_new);
 END
@@ -142,10 +136,7 @@ DECLARE v_sr bigint; v_au int; v_new bigint;
 BEGIN
     SELECT sr_id INTO v_sr FROM _t_sr WHERE rn = 3;
     SELECT auth_user_id INTO v_au FROM _t_au WHERE idx = 3;
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr, v_au, 'CLIENTE_PORTALE', false)
-    RETURNING id INTO v_new;
+    v_new := anagrafiche.fn_crea_veste_portale(v_au, v_sr, 'CLIENTE_PORTALE', false);
 
     INSERT INTO _t_id VALUES (3, v_new);
 END

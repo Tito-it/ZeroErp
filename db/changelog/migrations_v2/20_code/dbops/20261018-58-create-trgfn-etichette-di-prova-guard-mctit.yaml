@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DELLE ETICHETTE DI PROVA
+#   dbops.trgfn_etichette_di_prova_guard(): sulle due tabelle delle etichette
+#   (dbops.credenziali_di_prova, dbops.soggetti_di_prova).
+#     * INSERT: solo in SVILUPPO (la regola 20261018-57 sull'ambiente vero);
+#     * UPDATE, DELETE, TRUNCATE: mai (un'etichetta non si toglie).
+#   Brief: brief-db-processi-accensione-per-ambiente, R-4.
+#
+# -- LE SCELTE ----------------------------------------------------------
+#   * impedire prima, non segnalare dopo (R-4): l'etichetta in PRODUZIONE
+#     non nasce. Ambiente non dichiarato: E_CONFIG_MANCANTE dal lettore;
+#   * un codice per la regola (E_DATI_DI_SVILUPPO_IN_PRODUZIONE), lo stesso
+#     del verbo: e' la stessa decisione;
+#   * un codice per il «non si toglie» (E_ETICHETTA_DI_PROVA_IMMUTABILE);
+#   * il proprietario puo' disattivare il trigger: la difesa contro un DBA
+#     malevolo sono i ruoli (l'app non scrive le tabelle), non un guard.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261018-58-create-trgfn-etichette-di-prova-guard-mctit.yaml
+
+  - changeSet:
+      id: 20261018-58-create-trgfn-etichette-di-prova-guard
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea dbops.trgfn_etichette_di_prova_guard: un'etichetta di prova nasce solo in SVILUPPO e non
+        si cambia ne' si toglie. Brief: brief-db-processi-accensione-per-ambiente (R-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname, p.proname) IN (('dbops', 'fn_dati_di_sviluppo_ammessi_su_valori'),
+                                                ('script', 'fn_ambiente_installazione'));
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.trgfn_etichette_di_prova_guard()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_ambiente dbops.installazione.ambiente%TYPE;
+                  v_chiave   dbops.credenziali_di_prova.chiave%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Un'etichetta di prova nasce solo in un'installazione
+                  --   SVILUPPO, e poi non cambia e non si toglie.
+                  --
+                  -- Regole:
+                  --   - INSERT: la regola pura sull'ambiente vero
+                  --     (dbops.fn_dati_di_sviluppo_ammessi_su_valori); ambiente
+                  --     non dichiarato: E_CONFIG_MANCANTE dal lettore;
+                  --   - UPDATE, DELETE (riga) e TRUNCATE (istruzione): sempre
+                  --     rifiutati.
+                  -- =========================================================
+                  IF TG_OP = 'INSERT' THEN
+                      v_ambiente := script.fn_ambiente_installazione();
+                      IF NOT dbops.fn_dati_di_sviluppo_ammessi_su_valori(v_ambiente) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'dbops', 'trgfn_etichette_di_prova_guard', 'E_DATI_DI_SVILUPPO_IN_PRODUZIONE',
+                              jsonb_build_object('tabella',  TG_TABLE_NAME,
+                                                 'chiave',   NEW.chiave,
+                                                 'ambiente', v_ambiente),
+                              NULL::uuid,
+                              v_ambiente);
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- Nel TRUNCATE (trigger di istruzione) OLD non c'e'.
+                  IF TG_LEVEL = 'ROW' THEN
+                      v_chiave := OLD.chiave;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'dbops', 'trgfn_etichette_di_prova_guard', 'E_ETICHETTA_DI_PROVA_IMMUTABILE',
+                      jsonb_build_object('tabella',    TG_TABLE_NAME,
+                                         'operazione', TG_OP,
+                                         'chiave',     v_chiave),
+                      NULL::uuid,
+                      COALESCE(v_chiave, TG_TABLE_NAME::text));
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.trgfn_etichette_di_prova_guard()
+              IS 'Guard delle etichette di prova (dbops.credenziali_di_prova, dbops.soggetti_di_prova). INSERT: ammesso solo se dbops.fn_dati_di_sviluppo_ammessi_su_valori(script.fn_ambiente_installazione()), altrimenti E_DATI_DI_SVILUPPO_IN_PRODUZIONE (lo stesso codice del verbo dei dati di sviluppo: e'' la stessa decisione); ambiente non dichiarato: E_CONFIG_MANCANTE. UPDATE, DELETE (trigger di riga) e TRUNCATE (trigger di istruzione): sempre rifiutati con E_ETICHETTA_DI_PROVA_IMMUTABILE, perche'' togliere un''etichetta nasconderebbe la radice al presidio. Il proprietario puo'' disattivare il trigger: la difesa contro un DBA malevolo sono i ruoli. Brief: brief-db-processi-accensione-per-ambiente (R-4).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.trgfn_etichette_di_prova_guard();

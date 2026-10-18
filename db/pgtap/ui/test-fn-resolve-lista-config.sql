@@ -224,20 +224,8 @@ CREATE TEMP TABLE _t_sr AS
 SELECT cliente_soggetto_ruolo_id AS sr_id FROM _t_mondo;
 -- Identita CLIENTE_PORTALE
 CREATE TEMP TABLE _t_id AS WITH ins AS (
-    INSERT INTO anagrafiche.identita_digitali (
-            soggetto_ruolo_id,
-            auth_user_id,
-            ruolo_applicativo,
-            attivo
-        )
-    SELECT s.sr_id,
-        a.auth_user_id,
-        'CLIENTE_PORTALE',
-        TRUE
-    FROM _t_sr s,
-        _t_au a
-    RETURNING id
-)
+    SELECT anagrafiche.fn_crea_veste_portale(a.auth_user_id, s.sr_id, 'CLIENTE_PORTALE', TRUE) AS id FROM _t_sr s,
+        _t_au a)
 SELECT id AS identita_id
 FROM ins;
 
@@ -260,16 +248,17 @@ CREATE TEMP TABLE _t_profilo AS WITH ins AS (
 SELECT id AS profilo_id
 FROM ins;
 -- Binding del profilo AD_HOC all'identita di test
-INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id, attivo)
-SELECT (
+DO $lega$
+BEGIN
+    PERFORM config.fn_lega_profilo_identita((
         SELECT profilo_id
         FROM _t_profilo
-    ),
-    (
+    ), (
         SELECT identita_id
         FROM _t_id
-    ),
-    TRUE;
+    ));
+END
+$lega$;
 SELECT ok(
         (
             SELECT count(*)

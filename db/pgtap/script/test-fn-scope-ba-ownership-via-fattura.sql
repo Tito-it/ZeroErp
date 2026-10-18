@@ -133,29 +133,20 @@ BEGIN
     RETURNING id INTO v_au_3;
 
     BEGIN
-        INSERT INTO anagrafiche.identita_digitali
-            (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-        VALUES (v_sr_fat, v_au_1, 'CLIENTE_PORTALE', true)
-        RETURNING id INTO v_id_1;
+        v_id_1 := anagrafiche.fn_crea_veste_portale(v_au_1, v_sr_fat, 'CLIENTE_PORTALE', true);
     EXCEPTION WHEN unique_violation THEN
         -- SR gia' ha una identita attiva: fallback inattiva e skip test 2
         v_id_1 := NULL;
     END;
 
     BEGIN
-        INSERT INTO anagrafiche.identita_digitali
-            (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-        VALUES (v_sr_alt, v_au_2, 'CLIENTE_PORTALE', true)
-        RETURNING id INTO v_id_2;
+        v_id_2 := anagrafiche.fn_crea_veste_portale(v_au_2, v_sr_alt, 'CLIENTE_PORTALE', true);
     EXCEPTION WHEN unique_violation THEN
         v_id_2 := NULL;
     END;
 
     BEGIN
-        INSERT INTO anagrafiche.identita_digitali
-            (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-        VALUES (v_sr_fat, v_au_3, 'CLIENTE_PORTALE', false)
-        RETURNING id INTO v_id_3;
+        v_id_3 := anagrafiche.fn_crea_veste_portale(v_au_3, v_sr_fat, 'CLIENTE_PORTALE', false);
     EXCEPTION WHEN unique_violation THEN
         v_id_3 := NULL;
     END;

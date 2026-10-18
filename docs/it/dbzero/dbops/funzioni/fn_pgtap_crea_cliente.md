@@ -17,6 +17,8 @@ AS $function$
 -- Uso:
 --   CREATE TEMP TABLE tmp_cli AS
 --   SELECT * FROM dbops.fn_pgtap_crea_cliente('RICERCA');
+-- ⭐ Rev 20261018-38: la riga la scrive la madre
+--   anagrafiche.fn_crea_cliente, sul BA della catena (regola del 2).
 DECLARE
     v_ba_id       anagrafiche.billing_account.id%TYPE;
     v_ist_id      anagrafiche.billing_account.istanza_utility_id%TYPE;
@@ -54,28 +56,22 @@ BEGIN
     -- (rev 2026-10-14): attivazione per attivi, sospesi e chiusi;
     -- sospensione per SF/SC; chiusura per i chiusi. PR, AN, AG
     -- senza date. Per codice_interno, non per l'etichetta `codice`.
-    -- ⚠️ Ruolo e istanza dal BA: sono le sue copie (FK composte),
-    --   la utility la mette il trigger dal BA.
-    INSERT INTO anagrafiche.clienti
-        (billing_account_id, istanza_utility_id, soggetto_ruolo_id,
-         stato_cliente_id, data_attivazione, data_sospensione, data_chiusura)
-    VALUES
-        (v_ba_id, v_ist_id, v_sr_id, v_stato_id,
-         CASE WHEN p_stato_codice_interno IN ('AT', 'RS', 'SF', 'SC', 'CH', 'CM', 'CW', 'CF')
-              THEN v_oggi END,
-         CASE WHEN p_stato_codice_interno IN ('SF', 'SC') THEN v_oggi END,
-         CASE WHEN p_stato_codice_interno IN ('CH', 'CM', 'CW', 'CF') THEN v_oggi END);
-
-    -- Senza RETURNING: sotto la RLS si rilegge a istruzione finita.
-    SELECT c.id INTO v_cliente_id
-      FROM anagrafiche.clienti c
-     WHERE c.billing_account_id = v_ba_id;
-
-    IF v_cliente_id IS NULL THEN
-        RAISE EXCEPTION
-            'fn_pgtap_crea_cliente: il cliente del billing account % e'' stato scritto ma non si legge: sotto la RLS serve un operatore dell''emittente del BA in sessione',
-            v_ba_id;
-    END IF;
+    -- Ruolo e istanza li prende la madre dal BA.
+    SELECT c.cliente_id
+      INTO v_cliente_id
+      FROM anagrafiche.fn_crea_cliente(
+               p_soggetto_id        := v_soggetto_id,
+               p_campi              := jsonb_build_object(
+                   'stato_cliente_id', v_stato_id,
+                   'data_attivazione',
+                       CASE WHEN p_stato_codice_interno IN ('AT', 'RS', 'SF', 'SC', 'CH', 'CM', 'CW', 'CF')
+                            THEN v_oggi END,
+                   'data_sospensione',
+                       CASE WHEN p_stato_codice_interno IN ('SF', 'SC') THEN v_oggi END,
+                   'data_chiusura',
+                       CASE WHEN p_stato_codice_interno IN ('CH', 'CM', 'CW', 'CF') THEN v_oggi END),
+               p_billing_account_id := v_ba_id,
+               p_istanza_utility_id := v_ist_id) c;
 
     RETURN QUERY
     SELECT v_cliente_id, v_ba_id, v_ist_id, v_sr_id, v_soggetto_id, v_utility_id;
@@ -83,7 +79,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_cliente(p_etichetta text, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_stato_codice_interno character varying)
-IS 'Fixture pgTAP: un cliente COMPLETO, cioe'' dbops.fn_pgtap_crea_cliente_ba (soggetto, ruolo CL, istanza, billing account; stessi primi tre parametri) piu'' la riga di anagrafiche.clienti sul BA appena nato, con ruolo e istanza del BA (la utility la copia il trigger). Stato dal quarto parametro (codice_interno, default AT); le date le pretende trgfn_clienti_set_periodo: attivazione = data operativa salvo pre-contratto e annullato (macro IS, AN), chiusura = data operativa per gli stati di macro CH. Utility di default: la prima che non richiede il PDP. Rende cliente_id e le colonne di fn_pgtap_crea_cliente_ba. Senza RETURNING (rilettura dal BA, uq_clienti_billing_account): usabile come zeroerp_app con un operatore in sessione, stesse regole d''ordine di fn_pgtap_crea_cliente_ba. Nasce il 2026-10-10 (brief-db-codici-non-trovato-email-e-permessi R-9): regola del 2 sulle copie a mano della riga clienti nelle fixture.';
+IS 'Fixture pgTAP: un cliente COMPLETO, cioe'' dbops.fn_pgtap_crea_cliente_ba (soggetto, ruolo CL, istanza, billing account; stessi primi tre parametri) piu'' la riga di anagrafiche.clienti sul BA appena nato. Rev 20261018-38: la riga la scrive la madre anagrafiche.fn_crea_cliente (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 5), che la rilegge a istruzione finita. Stato dal quarto parametro (codice_interno, default AT) e le date che quello stato pretende (trgfn_clienti_guard_stato_date), decise qui: attivazione = data operativa per attivi, sospesi e chiusi; sospensione per SF/SC; chiusura per i chiusi. Utility di default: la prima che non richiede il PDP. Rende cliente_id e le colonne di fn_pgtap_crea_cliente_ba. Usabile come zeroerp_app con un operatore dell''emittente del BA in sessione; altrimenti la rilettura risponde E_SCRIPT_CHIAMATA_NON_VALIDA.';
 ```
 
 ---

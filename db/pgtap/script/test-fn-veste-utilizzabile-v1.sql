@@ -98,11 +98,15 @@ SELECT t.* FROM dbops.fn_pgtap_crea_emittente_operatore() t;
 CREATE TEMP TABLE _cl AS
 SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('veste utilizzabile') c;
 
-INSERT INTO anagrafiche.identita_digitali
-       (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-SELECT _cl.soggetto_ruolo_id, _op.auth_user_id,
-       'CLIENTE_PORTALE'::config.ruolo_applicativo, true
-  FROM _cl, _op;
+-- La veste dal BB anagrafiche.fn_crea_veste_portale (rev 2026-10-18,
+-- brief-db-processi-accensione-per-ambiente 2b-1 lotto 6).
+DO $veste$
+BEGIN
+    PERFORM 1 FROM (
+        SELECT anagrafiche.fn_crea_veste_portale(_op.auth_user_id, _cl.soggetto_ruolo_id, 'CLIENTE_PORTALE'::config.ruolo_applicativo, true) FROM _cl, _op
+    ) AS v;
+END
+$veste$;
 
 ALTER TABLE _cl ADD COLUMN identita_id bigint;
 UPDATE _cl SET identita_id = idg.id
