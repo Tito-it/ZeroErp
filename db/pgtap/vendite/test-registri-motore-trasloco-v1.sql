@@ -113,11 +113,18 @@ SELECT r.id AS registro_id, r.emittente_soggetto_ruolo_id, e.n
 -- ⚠️ Il TERZO emittente deve restare senza registro DDT VISIBILE: qui si spegne
 --   e non si cancella, e va bene — il lettore filtra gia' su `attivo`, e lo
 --   slot occupato non da' fastidio perche' qui non si inserisce niente.
+-- ⚠️ Rev 2026-10-18 (R-BE-14, 20261019-08): SOLO il registro DDT, quello che il
+--   6)/7) chiedono. Dal provisioning del registro delle fatture standard
+--   l'emittente nasce anche col registro FAT-, collegato alle coppie (tipo
+--   documento, natura), e un registro con collegamenti non si spegne
+--   (dbops.trgfn_prevent_deactivate_if_children): spegnere «tutto» fermava la
+--   fixture su un registro che il test non guarda.
 UPDATE vendite.registri_fatturazione r
    SET attivo = false
   FROM tmp_mot_emittenti e
  WHERE e.n = 3
-   AND r.emittente_soggetto_ruolo_id = e.soggetto_ruolo_id;
+   AND r.emittente_soggetto_ruolo_id = e.soggetto_ruolo_id
+   AND r.famiglia_documento = 'DDT';
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_mot_registri),

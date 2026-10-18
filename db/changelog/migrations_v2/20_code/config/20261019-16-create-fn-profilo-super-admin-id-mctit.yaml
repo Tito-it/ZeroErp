@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LETTORE: IL PROFILO DI ACCESSO SUPER_ADMIN, IN UNA SEDE SOLA
+#   config.fn_profilo_super_admin_id(): l'id dell'UNICO profilo di accesso
+#   attivo di tipo SUPER_ADMIN; E_CONFIG_MANCANTE se non ce n'e' esattamente
+#   uno. R-BE-11 del BE (regola del 2, ok Tid 2026-10-18),
+#   brief-db-processi-accensione-per-ambiente §6.10 (richiesta) e §6.15
+#   (risposta).
+#
+# -- CHI ERA LA COPIA ------------------------------------------------------------
+#   La regola «per tipo, fra i profili ATTIVI, esattamente uno» era scritta in
+#   anagrafiche.fn_crea_risorsa_umana_v2 (dal 20260923-10) e, dal 2026-10-18,
+#   anche nel backend (AmmSoftwareRepository._set_super_admin_binding). Due
+#   copie della stessa regola: la madre passa al lettore nel 20261019-17, il
+#   backend nello stesso giro (R-DB-11a).
+#
+# -- PERCHE' LA CHIAVE E' IL TIPO -------------------------------------------------
+#   `tipo` (l'enum config.tipo_profilo_accesso) e' la chiave stabile: la stessa
+#   dei guard anti-lockout e di script.fn_is_super_admin. `codice` e'
+#   modificabile e non ha lock; l'id del seed (9100) e' vero solo finche' il
+#   CSV lo porta esplicito.
+#
+# -- PERCHE' «ESATTAMENTE UNO» -------------------------------------------------------
+#   Il modello non vieta due profili di tipo SUPER_ADMIN. Sceglierne uno per id
+#   sarebbe un'ambiguita', non una scelta; un profilo spento non si lega.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261019-16-create-fn-profilo-super-admin-id-mctit.yaml
+
+  - changeSet:
+      id: 20261019-16-create-fn-profilo-super-admin-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea config.fn_profilo_super_admin_id: l'unico profilo di accesso attivo di tipo
+        SUPER_ADMIN, o E_CONFIG_MANCANTE. Sede unica della regola che stava in
+        anagrafiche.fn_crea_risorsa_umana_v2 e nel backend. R-BE-11 (ok Tid 2026-10-18),
+        brief-db-processi-accensione-per-ambiente §6.15.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_profilo_super_admin_id()
+               RETURNS config.profili_accesso.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               STABLE
+              AS $function$
+              DECLARE
+                  v_profilo_id config.profili_accesso.id%TYPE;
+                  v_n          integer;  -- un conteggio: nessuna colonna di cui sia il riflesso
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   L'id dell'UNICO profilo di accesso attivo di tipo
+                  --   SUPER_ADMIN: quello che si lega a un operatore super
+                  --   admin.
+                  --
+                  -- Regole:
+                  --   - la chiave e' il TIPO (enum), non il codice ne' l'id
+                  --     del seed;
+                  --   - solo i profili attivi: uno spento non si lega;
+                  --   - esattamente uno, altrimenti E_CONFIG_MANCANTE: due
+                  --     profili non si scelgono per id.
+                  -- =========================================================
+                  SELECT count(*), min(pa.id)
+                    INTO v_n, v_profilo_id
+                    FROM config.profili_accesso pa
+                   WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                     AND pa.attivo;
+
+                  IF v_n <> 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'config.fn_profilo_super_admin_id',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('tipo_profilo_accesso', 'SUPER_ADMIN',
+                                             'profili_attivi', v_n),
+                          NULL::uuid,
+                          'un solo profilo di accesso SUPER_ADMIN attivo (trovati '
+                              || v_n::text || ')');
+                  END IF;
+
+                  RETURN v_profilo_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_profilo_super_admin_id() IS
+                  'LETTORE (2026-10-18): l''id dell''UNICO profilo di accesso attivo di tipo SUPER_ADMIN, quello che si lega a un operatore super admin; E_CONFIG_MANCANTE (con il numero dei profili attivi trovati) se non ce n''e'' esattamente uno. La chiave e'' il TIPO (enum config.tipo_profilo_accesso, la stessa dei guard anti-lockout e di script.fn_is_super_admin), non il codice (modificabile, senza lock) ne'' l''id del seed. Il modello non vieta due profili di quel tipo: sceglierne uno per id sarebbe un''ambiguita''; un profilo spento non si lega. ⭐ Sede unica (regola del 2): la regola era scritta in anagrafiche.fn_crea_risorsa_umana_v2 e nel backend (AmmSoftwareRepository._set_super_admin_binding). Lettori: anagrafiche.fn_crea_risorsa_umana_v2 (20261019-17), il backend. R-BE-11 (ok Tid 2026-10-18), brief-db-processi-accensione-per-ambiente §6.15.';
+
+              GRANT EXECUTE ON FUNCTION config.fn_profilo_super_admin_id() TO zeroerp_app;
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS config.fn_profilo_super_admin_id();

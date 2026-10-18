@@ -1,0 +1,278 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA COPPIA (TIPO DOCUMENTO, NATURA) HA UN REGISTRO SOLO PER EMITTENTE E UTILITY
+#   vendite.fn_registro_che_copre_coppia(...)                 (lettore, nuovo)
+#   vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica (guard, nuovo)
+#   vendite.trgfn_registri_fatturazione_guard_coppia_unica     (guard, nuovo)
+#   codice E_REGISTRO_COPPIA_GIA_COPERTA (CONFLITTO_STATO)
+#   R-BE-14 del BE, decisione D-14d di Tid (2026-10-18),
+#   brief-db-processi-accensione-per-ambiente §6.14, punto 4.
+#
+# -- L'AMBIGUITA' -----------------------------------------------------------------
+#   vendite.tipi_doc_fiscale_registri e' unica su (tipo, natura, registro), non
+#   su (tipo, natura, EMITTENTE del registro): due registri dello stesso
+#   emittente potevano coprire la stessa coppia, e vendite.fn_lookup_registro_id
+#   sceglieva il primo per id (`ORDER BY …, r.id LIMIT 1`). Una scelta decisa da
+#   un id e' un'ambiguita' del modello, non una regola. Per le famiglie a
+#   registro unico la stessa cosa la vieta gia'
+#   uq_registri_fatturazione_famiglia_emittente_utility (che esclude la
+#   FATTURA): questo e' il suo gemello al livello della coppia.
+#
+# -- PERCHE' UN GUARD E NON UN INDICE ----------------------------------------------
+#   L'emittente e l'utility stanno sul REGISTRO, non sulla riga del
+#   collegamento: un indice unico non attraversa due tabelle. Per lo stesso
+#   motivo i guard sono DUE: sul collegamento (INSERT, o UPDATE di tipo, natura,
+#   registro) e sul registro (UPDATE di emittente o utility, che sposta tutti i
+#   suoi collegamenti).
+#
+# -- LA CHIAVE ---------------------------------------------------------------------
+#   (tipo, natura, emittente, utility), con l'utility confrontata NULL = NULL:
+#   e' esattamente cio' che il lookup non saprebbe scegliere. Un registro di UNA
+#   utility accanto a quello di tutte NON e' ambiguo: il lookup preferisce il
+#   piu' specifico, ed e' una configurazione legittima. Il registro SPENTO
+#   conta: il lookup non guarda `attivo`.
+#
+# -- LA CONCORRENZA ---------------------------------------------------------------
+#   Due transazioni che collegano la stessa coppia passerebbero entrambe il
+#   controllo. I due guard prendono lo stesso lock consultivo, per emittente,
+#   prima di guardare (forma a due argomenti, namespace + chiave).
+#
+# -- I DATI DI OGGI -----------------------------------------------------------------
+#   Fatto datato (2026-10-18, dbdev): nessuna coppia coperta due volte. Il
+#   guard non bonifica: scatta sulle scritture.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-10-create-guard-coppia-registro-fattura-unica-mctit.yaml
+
+  - changeSet:
+      id: 20261019-10-create-guard-coppia-registro-fattura-unica
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Una coppia (tipo documento, natura) ha un registro delle fatture solo per emittente e
+        utility: lettore vendite.fn_registro_che_copre_coppia e due guard (sul collegamento e
+        sull'UPDATE di emittente o utility del registro), codice E_REGISTRO_COPPIA_GIA_COPERTA.
+        R-BE-14, D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_registro_che_copre_coppia(
+                  p_tipo_doc_fiscale_id         vendite.tipi_doc_fiscale_registri.tipo_doc_fiscale_id%TYPE,
+                  p_natura_doc_id               vendite.tipi_doc_fiscale_registri.natura_doc_id%TYPE,
+                  p_emittente_soggetto_ruolo_id vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE,
+                  p_utility_id                  vendite.registri_fatturazione.utility_id%TYPE,
+                  p_registro_escluso_id         vendite.registri_fatturazione.id%TYPE)
+               RETURNS vendite.registri_fatturazione.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               STABLE
+              AS $function$
+              DECLARE
+                  v_registro_id vendite.registri_fatturazione.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il registro (diverso da p_registro_escluso_id) che
+                  --   copre GIA' la coppia (tipo, natura) per questo
+                  --   emittente e questa utility; NULL se nessuno.
+                  --
+                  -- Regole:
+                  --   - utility confrontata NULL = NULL: e' cio' che il lookup
+                  --     non saprebbe scegliere;
+                  --   - anche i registri spenti: il lookup non guarda attivo.
+                  -- =========================================================
+                  SELECT r.id
+                    INTO v_registro_id
+                    FROM vendite.tipi_doc_fiscale_registri m
+                    JOIN vendite.registri_fatturazione r ON r.id = m.registro_id
+                   WHERE m.tipo_doc_fiscale_id         = p_tipo_doc_fiscale_id
+                     AND m.natura_doc_id               = p_natura_doc_id
+                     AND r.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                     AND r.utility_id IS NOT DISTINCT FROM p_utility_id
+                     AND r.id <> p_registro_escluso_id
+                   ORDER BY r.id
+                   LIMIT 1;
+
+                  RETURN v_registro_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_registro_che_copre_coppia(
+                      vendite.tipi_doc_fiscale_registri.tipo_doc_fiscale_id%TYPE,
+                      vendite.tipi_doc_fiscale_registri.natura_doc_id%TYPE,
+                      vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE,
+                      vendite.registri_fatturazione.utility_id%TYPE,
+                      vendite.registri_fatturazione.id%TYPE)
+              IS 'LETTORE (2026-10-18): il registro, diverso da quello escluso, che copre GIA'' la coppia (tipo documento, natura) per questo emittente e questa utility (NULL = NULL); NULL se nessuno. E'' la chiave che vendite.fn_lookup_registro_id non saprebbe scegliere: due registri cosi'' li ordinerebbe per id. Conta anche i registri spenti (il lookup non guarda attivo); un registro di UNA utility accanto a quello di tutte non e'' ambiguo. ⭐ L''ORDER BY r.id qui non sceglie fra due candidati validi: con i guard accesi il candidato e'' uno, e l''ordine rende stabile la risposta sui dati nati prima del guard. Lettori: i due guard vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica e vendite.trgfn_registri_fatturazione_guard_coppia_unica. R-BE-14, D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_emittente  vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE;
+                  v_utility    vendite.registri_fatturazione.utility_id%TYPE;
+                  v_occupante  vendite.registri_fatturazione.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Un collegamento (tipo, natura) → registro non puo'
+                  --   affiancare un altro registro dello stesso emittente e
+                  --   della stessa utility sulla stessa coppia.
+                  --
+                  -- Regole:
+                  --   - uscita sul no-op: un UPDATE che non cambia tipo,
+                  --     natura ne' registro non e' un collegamento nuovo;
+                  --   - lock consultivo per emittente, lo stesso del guard
+                  --     sul registro, prima di guardare.
+                  -- =========================================================
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.tipo_doc_fiscale_id = OLD.tipo_doc_fiscale_id
+                     AND NEW.natura_doc_id       = OLD.natura_doc_id
+                     AND NEW.registro_id         = OLD.registro_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT r.emittente_soggetto_ruolo_id, r.utility_id
+                    INTO v_emittente, v_utility
+                    FROM vendite.registri_fatturazione r
+                   WHERE r.id = NEW.registro_id;
+
+                  -- Registro inesistente: lo ferma la FK, non questo guard.
+                  IF NOT FOUND THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM pg_advisory_xact_lock(
+                      hashtext('vendite.coppia_registro_fattura'),
+                      hashtext(v_emittente::text));
+
+                  v_occupante := vendite.fn_registro_che_copre_coppia(
+                      NEW.tipo_doc_fiscale_id, NEW.natura_doc_id,
+                      v_emittente, v_utility, NEW.registro_id);
+
+                  IF v_occupante IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica',
+                          'E_REGISTRO_COPPIA_GIA_COPERTA',
+                          jsonb_build_object(
+                              'campo', 'registro_id',
+                              'tipo_doc_fiscale_id', NEW.tipo_doc_fiscale_id,
+                              'natura_doc_id', NEW.natura_doc_id,
+                              'registro_id', NEW.registro_id,
+                              'registro_occupante_id', v_occupante,
+                              'emittente_soggetto_ruolo_id', v_emittente,
+                              'utility_id', v_utility),
+                          NULL::uuid,
+                          (SELECT n.descrizione FROM config.nature_doc_fiscale n WHERE n.id = NEW.natura_doc_id),
+                          (SELECT t.descrizione FROM config.tipi_doc_fiscale t WHERE t.id = NEW.tipo_doc_fiscale_id),
+                          (SELECT r.codice FROM vendite.registri_fatturazione r WHERE r.id = v_occupante));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica() IS
+                  'Guard BEFORE INSERT OR UPDATE OF tipo_doc_fiscale_id, natura_doc_id, registro_id su vendite.tipi_doc_fiscale_registri (2026-10-18): rifiuta un collegamento che affianca, sulla stessa coppia (tipo documento, natura), un altro registro dello stesso emittente e della stessa utility (E_REGISTRO_COPPIA_GIA_COPERTA, campo registro_id). Senza, vendite.fn_lookup_registro_id sceglieva il primo per id. Il gemello sul registro e'' vendite.trgfn_registri_fatturazione_guard_coppia_unica; la chiave la dice vendite.fn_registro_che_copre_coppia. Lock consultivo per emittente (namespace vendite.coppia_registro_fattura) prima di guardare. Uscita sul no-op. R-BE-14, D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_registri_fatturazione_guard_coppia_unica()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_coppia     record;
+                  v_occupante  vendite.registri_fatturazione.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Spostare un registro su un altro emittente o un'altra
+                  --   utility sposta tutti i suoi collegamenti: nessuno di
+                  --   loro puo' finire accanto a un registro che copre gia'
+                  --   la stessa coppia.
+                  --
+                  -- Regole:
+                  --   - uscita sul no-op: emittente e utility invariati;
+                  --   - lock consultivo sul NUOVO emittente, lo stesso del
+                  --     guard sul collegamento.
+                  -- =========================================================
+                  IF NEW.emittente_soggetto_ruolo_id IS NOT DISTINCT FROM OLD.emittente_soggetto_ruolo_id
+                     AND NEW.utility_id IS NOT DISTINCT FROM OLD.utility_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  PERFORM pg_advisory_xact_lock(
+                      hashtext('vendite.coppia_registro_fattura'),
+                      hashtext(NEW.emittente_soggetto_ruolo_id::text));
+
+                  FOR v_coppia IN
+                      SELECT m.tipo_doc_fiscale_id, m.natura_doc_id
+                        FROM vendite.tipi_doc_fiscale_registri m
+                       WHERE m.registro_id = NEW.id
+                       ORDER BY m.tipo_doc_fiscale_id, m.natura_doc_id
+                  LOOP
+                      v_occupante := vendite.fn_registro_che_copre_coppia(
+                          v_coppia.tipo_doc_fiscale_id, v_coppia.natura_doc_id,
+                          NEW.emittente_soggetto_ruolo_id, NEW.utility_id, NEW.id);
+
+                      IF v_occupante IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'vendite.trgfn_registri_fatturazione_guard_coppia_unica',
+                              'E_REGISTRO_COPPIA_GIA_COPERTA',
+                              jsonb_build_object(
+                                  'campo', CASE
+                                               WHEN NEW.utility_id IS DISTINCT FROM OLD.utility_id
+                                               THEN 'utility_id'
+                                               ELSE 'emittente_soggetto_ruolo_id'
+                                           END,
+                                  'tipo_doc_fiscale_id', v_coppia.tipo_doc_fiscale_id,
+                                  'natura_doc_id', v_coppia.natura_doc_id,
+                                  'registro_id', NEW.id,
+                                  'registro_occupante_id', v_occupante,
+                                  'emittente_soggetto_ruolo_id', NEW.emittente_soggetto_ruolo_id,
+                                  'utility_id', NEW.utility_id),
+                              NULL::uuid,
+                              (SELECT n.descrizione FROM config.nature_doc_fiscale n WHERE n.id = v_coppia.natura_doc_id),
+                              (SELECT t.descrizione FROM config.tipi_doc_fiscale t WHERE t.id = v_coppia.tipo_doc_fiscale_id),
+                              (SELECT r.codice FROM vendite.registri_fatturazione r WHERE r.id = v_occupante));
+                      END IF;
+                  END LOOP;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_registri_fatturazione_guard_coppia_unica() IS
+                  'Guard BEFORE UPDATE OF emittente_soggetto_ruolo_id, utility_id su vendite.registri_fatturazione (2026-10-18): spostare un registro sposta tutti i suoi collegamenti (tipo documento, natura), e nessuno puo'' finire accanto a un registro dello stesso emittente e utility che copre gia'' la stessa coppia (E_REGISTRO_COPPIA_GIA_COPERTA, campo utility_id o emittente_soggetto_ruolo_id). Gemello di vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica, stessa chiave (vendite.fn_registro_che_copre_coppia), stesso lock consultivo per emittente. Uscita sul no-op. R-BE-14, D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.';
+
+              DROP TRIGGER IF EXISTS trg_tipi_doc_fiscale_registri_a10_guard_coppia_unica_ins_upd ON vendite.tipi_doc_fiscale_registri;
+              CREATE TRIGGER trg_tipi_doc_fiscale_registri_a10_guard_coppia_unica_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_doc_fiscale_id, natura_doc_id, registro_id
+                  ON vendite.tipi_doc_fiscale_registri
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica();
+
+              DROP TRIGGER IF EXISTS trg_registri_fatturazione_a10_guard_coppia_unica_upd ON vendite.registri_fatturazione;
+              CREATE TRIGGER trg_registri_fatturazione_a10_guard_coppia_unica_upd
+                  BEFORE UPDATE OF emittente_soggetto_ruolo_id, utility_id
+                  ON vendite.registri_fatturazione
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_registri_fatturazione_guard_coppia_unica();
+      rollback:
+        - sql:
+            sql: >
+              DROP TRIGGER IF EXISTS trg_registri_fatturazione_a10_guard_coppia_unica_upd ON vendite.registri_fatturazione;
+              DROP TRIGGER IF EXISTS trg_tipi_doc_fiscale_registri_a10_guard_coppia_unica_ins_upd ON vendite.tipi_doc_fiscale_registri;
+              DROP FUNCTION IF EXISTS vendite.trgfn_registri_fatturazione_guard_coppia_unica();
+              DROP FUNCTION IF EXISTS vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica();
+              DROP FUNCTION IF EXISTS vendite.fn_registro_che_copre_coppia(vendite.tipi_doc_fiscale_registri.tipo_doc_fiscale_id%TYPE, vendite.tipi_doc_fiscale_registri.natura_doc_id%TYPE, vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE, vendite.registri_fatturazione.utility_id%TYPE, vendite.registri_fatturazione.id%TYPE);
