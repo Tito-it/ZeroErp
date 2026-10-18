@@ -67,10 +67,10 @@ SELECT plan(6);
 SELECT lives_ok(
     -- 20261016-20: CODA_AUTOMATICA ha una sveglia, quindi dichiara l'accensione.
     $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
       VALUES (9801, 'PGTAP-CODA-AUTO',
               'processo di dominio che passa dalla coda ma lo accoda una macchina',
-              'DOMINIO', 'CODA_AUTOMATICA', true, true, true, 'PROGRAMMA')$$,
+              'DOMINIO', 'CODA_AUTOMATICA', true, true, true, 'PROGRAMMA', true)$$,
     '1. il CHECK ammette CODA_AUTOMATICA'
 );
 
@@ -82,9 +82,9 @@ SELECT throws_ok(
     --   verrebbe da chk_processi_accensione e il test sarebbe verde per il
     --   vincolo sbagliato.
     $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
       VALUES (9802, 'PGTAP-CODA-REFUSO', 'un refuso vicino al valore buono',
-              'DOMINIO', 'CODA_AUTOMATIC', true, true, true, 'PROGRAMMA')$$,
+              'DOMINIO', 'CODA_AUTOMATIC', true, true, true, 'PROGRAMMA', true)$$,
     '23514',
     NULL,
     '2. e respinge un refuso vicino: il vocabolario resta chiuso'

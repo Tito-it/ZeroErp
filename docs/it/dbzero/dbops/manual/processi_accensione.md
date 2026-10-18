@@ -45,11 +45,16 @@ l'operatore dal drawer dei processi, attraverso il verbo
 | una scelta su un processo senza sveglia (`CODA`, ritirato) | rifiutata: `E_PROCESSO_SENZA_SVEGLIA` |
 | spegnere un processo **non spegnibile** | rifiutato: `E_PROCESSO_NON_SPEGNIBILE` |
 | confermare acceso un non spegnibile | ammesso (non cambia niente) |
+| accendere, in un'installazione di **produzione**, un processo **non accendibile in produzione** (`smoke_notturno`) | rifiutato: `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE` (dal 18-10-2026) |
+| la stessa cosa con l'ambiente non dichiarato | rifiutata: `E_CONFIG_MANCANTE` (il divieto non sa decidere) |
 | una scelta senza motivo | rifiutata: `E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO` |
 
 ⚠️ Se il catalogo rende un processo non spegnibile **dopo** che una riga l'ha
 spento, il processo non resta spento: la regola ignora la scelta a mano su un
-non spegnibile.
+non spegnibile. Allo stesso modo (18-10-2026) una riga che accende un processo
+non accendibile in produzione, scritta prima della regola, non lo accende: in
+produzione vale il default, spento. La riga non si riscrive accesa (nemmeno
+ritoccando il solo motivo); si può spegnere o rimettere al default.
 
 ---
 

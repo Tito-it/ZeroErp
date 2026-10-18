@@ -181,23 +181,20 @@ BEGIN
     RETURNING id INTO v_soggetto_id;
 
     -- Step 2: Creazione contatto default con tipo_contatto_id
-    INSERT INTO anagrafiche.contatti (
-        soggetto_id, tipo_contatto_id, nominativo, email, is_default
-    )
-    VALUES (
-        v_soggetto_id,
-        v_tipo_contatto_id,
-        TRIM(p_cognome) || ' ' || TRIM(p_nome),
-        TRIM(p_email),
-        true
-    );
+    --         (BB anagrafiche.fn_crea_contatto, rev 2026-10-17)
+    PERFORM anagrafiche.fn_crea_contatto(
+        v_soggetto_id, NULL,
+        jsonb_build_object('tipo_contatto_id', v_tipo_contatto_id,
+                           'nominativo',       TRIM(p_cognome) || ' ' || TRIM(p_nome),
+                           'email',            TRIM(p_email),
+                           'is_default',       true));
 
     RETURN v_soggetto_id;
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text)
-IS 'Crea un soggetto PERSONA FISICA (natura base PF: privato PR o ditta individuale DI, scelta dal chiamante con p_tipo_soggetto_dettaglio_id, obbligatorio) + contatto default con tipo_contatto_id. Una natura che non e'' PF si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA (porta giusta: fn_crea_soggetto_pg). p_partita_iva per la DI (la pretende il guard su CF e P.IVA). Il sesso passa com''e'', senza default: quando serve lo decide config.tipi_soggetto_dettaglio.sesso_policy nel guard trgfn_soggetti_guard_sesso_policy (PR obbligatorio, DI facoltativo). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2 da config.parameters. Guard CF univoco. NON crea indirizzo. Rev 20261009-26, brief-db-sesso-senza-default.';
+IS 'Crea un soggetto PERSONA FISICA (natura base PF: privato PR o ditta individuale DI, scelta dal chiamante con p_tipo_soggetto_dettaglio_id, obbligatorio) + contatto default con tipo_contatto_id. Una natura che non e'' PF si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA (porta giusta: fn_crea_soggetto_pg). p_partita_iva per la DI (la pretende il guard su CF e P.IVA). Il sesso passa com''e'', senza default: quando serve lo decide config.tipi_soggetto_dettaglio.sesso_policy nel guard trgfn_soggetti_guard_sesso_policy (PR obbligatorio, DI facoltativo). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2 da config.parameters. Guard CF univoco. NON crea indirizzo. Rev 20261009-26, brief-db-sesso-senza-default. Rev 2026-10-17: il contatto lo scrive il BB anagrafiche.fn_crea_contatto (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 3); comportamento invariato.';
 ```
 
 ---

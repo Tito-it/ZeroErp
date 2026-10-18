@@ -45,6 +45,7 @@
 
 ## ⚙️ Funzioni
 - [apply_fk_index_policy](funzioni/apply_fk_index_policy.md) — (latest update 27-07-26) Applicare in modo automatico le regole di indicizzazione definite nella tabella `dbops.fk_index_policy`:  
+- [fn_accensione_a_mano_ammessa_su_valori](funzioni/fn_accensione_a_mano_ammessa_su_valori.md)
 - [fn_accoda_chiusura_scadenze](funzioni/fn_accoda_chiusura_scadenze.md) — (latest review 05-09-2026)
 - [fn_accoda_lavoro](funzioni/fn_accoda_lavoro.md) — (latest review 20-07-2026)
 - [fn_admin_merge_comune](funzioni/fn_admin_merge_comune.md) — (rev 2026-09-12)

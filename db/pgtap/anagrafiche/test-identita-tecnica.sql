@@ -96,11 +96,11 @@ DECLARE
 BEGIN
     -- 20261016-20: chi ha una sveglia dichiara l'accensione; un CODA no.
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES (v_headless, 'PGTAP-DOMINIO-HEADLESS',
-            'processo di dominio che parte da solo', 'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA'),
+            'processo di dominio che parte da solo', 'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA', true),
            (v_coda, 'PGTAP-DOMINIO-CODA',
-            'processo di dominio accodato da un operatore', 'DOMINIO', 'CODA', NULL, NULL, NULL, 'PROGRAMMA');
+            'processo di dominio accodato da un operatore', 'DOMINIO', 'CODA', NULL, NULL, NULL, 'PROGRAMMA', NULL);
 END
 $fixture$;
 

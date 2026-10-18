@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA REGOLA DELL'ACCENSIONE IGNORA LA SCELTA A MANO CHE IL DIVIETO NON AMMETTE
+#   dbops.fn_processo_acceso_su_valori prende p_accendibile_in_produzione in
+#   coda; dbops.fn_processo_acceso_dichiarato gliela passa.
+#   Corpi vivi di partenza: 20261016-24 e -25 (doc auto-gen
+#   dbops/funzioni/fn_processo_acceso_su_valori, fn_processo_acceso_dichiarato).
+#   Brief: brief-db-processi-accensione-per-ambiente (§6.6, R-BE-5)
+#
+# -- PERCHE' ANCHE QUI, NON SOLO NEL GUARD --------------------------------
+#   Il guard (20261018-13) rifiuta il gesto nuovo. Ma il divieto deve valere
+#   anche su una riga accesa scritta prima della regola, o prima che
+#   l'ambiente fosse dichiarato (§6.6): quella riga c'e' e il guard non la
+#   rivede. Lo stato effettivo la ignora, e il processo segue il default di
+#   produzione, che per un non accendibile e' spento (chk_processi_accensione).
+#   Il predicato e' uno: dbops.fn_accensione_a_mano_ammessa_su_valori.
+#
+# -- LA REGOLA, IN ORDINE (cambia solo il 3) ------------------------------
+#   1. senza sveglia                          -> NULL;
+#   2. non spegnibile                         -> true, sempre;
+#   3. scelta a mano presente E AMMESSA       -> la scelta. Non ammessa
+#      (PRODUZIONE) o non decidibile (ambiente non dichiarato): si scende;
+#   4. SVILUPPO / PRODUZIONE                  -> il default dell'ambiente;
+#   5. ambiente non dichiarato                -> NULL.
+#   ⚠️ Un effetto da sapere, sul ramo 3 con l'ambiente non dichiarato: una
+#   riga accesa su un non accendibile non decide piu' (NULL, come se la riga
+#   non ci fosse). Le altre scelte a mano decidono come prima.
+#
+# -- LA FIRMA -----------------------------------------------------------
+#   Parametro nuovo in coda e SENZA default: il default che riproduce il
+#   comportamento di prima (nessun divieto) e' il buco che questo giro chiude.
+#   Aggiungere un parametro crea un overload: DROP della firma a sette, CREATE
+#   di quella a otto. L'unico chiamante, fn_processo_acceso_dichiarato (SQL,
+#   senza dipendenza registrata), si riscrive nello stesso changeSet: fra il
+#   DROP e il suo CREATE OR REPLACE non c'e' un momento in cui e' rotto.
+#   Fuori dal DB nessuno la chiama (il backend usa fn_processo_acceso_dichiarato);
+#   il pgTAP che la verifica e' dbops/test-processi-accensione-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261018-12-update-fn-processo-acceso-su-valori-accendibile-mctit.yaml
+
+  - changeSet:
+      id: 20261018-12-update-fn-processo-acceso-su-valori-accendibile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        dbops.fn_processo_acceso_su_valori: la scelta a mano decide solo se il divieto di
+        accensione in PRODUZIONE la ammette (p_accendibile_in_produzione in coda);
+        dbops.fn_processo_acceso_dichiarato la chiama con la colonna del catalogo.
+        Brief: brief-db-processi-accensione-per-ambiente (R-BE-5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: dbops, tableName: processi, columnName: accendibile_in_produzione }
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'fn_accensione_a_mano_ammessa_su_valori'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION dbops.fn_processo_acceso_su_valori(
+                  dbops.processi.canale%TYPE,
+                  dbops.processi.obsoleto_dal%TYPE,
+                  dbops.processi.spegnibile%TYPE,
+                  dbops.processi.acceso_in_sviluppo%TYPE,
+                  dbops.processi.acceso_in_produzione%TYPE,
+                  dbops.processi_accensione.acceso%TYPE,
+                  dbops.installazione.ambiente%TYPE);
+
+              CREATE FUNCTION dbops.fn_processo_acceso_su_valori(
+                  p_canale                    dbops.processi.canale%TYPE,
+                  p_obsoleto_dal              dbops.processi.obsoleto_dal%TYPE,
+                  p_spegnibile                dbops.processi.spegnibile%TYPE,
+                  p_acceso_in_sviluppo        dbops.processi.acceso_in_sviluppo%TYPE,
+                  p_acceso_in_produzione      dbops.processi.acceso_in_produzione%TYPE,
+                  p_acceso_a_mano             dbops.processi_accensione.acceso%TYPE,
+                  p_ambiente                  dbops.installazione.ambiente%TYPE,
+                  p_accendibile_in_produzione dbops.processi.accendibile_in_produzione%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              IMMUTABLE
+              AS $function$
+                  -- Scopo: la sveglia del processo e' accesa? NULL = senza
+                  --   sveglia, oppure non decidibile (ambiente non dichiarato).
+                  --   L'ordine dei rami e' la regola (vedi intestazione).
+                  SELECT CASE
+                           WHEN p_canale = 'CODA' OR p_obsoleto_dal IS NOT NULL THEN NULL
+                           WHEN p_spegnibile IS FALSE                          THEN true
+                           -- La scelta a mano decide solo se il divieto di
+                           -- accensione in PRODUZIONE la ammette: una riga
+                           -- accesa scritta prima della regola si ignora.
+                           WHEN p_acceso_a_mano IS NOT NULL
+                            AND dbops.fn_accensione_a_mano_ammessa_su_valori(
+                                    p_acceso_a_mano,
+                                    p_accendibile_in_produzione,
+                                    p_ambiente)                            THEN p_acceso_a_mano
+                           WHEN p_ambiente = 'SVILUPPO'                        THEN p_acceso_in_sviluppo
+                           WHEN p_ambiente = 'PRODUZIONE'                      THEN p_acceso_in_produzione
+                           ELSE NULL
+                         END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_processo_acceso_su_valori(
+                  dbops.processi.canale%TYPE,
+                  dbops.processi.obsoleto_dal%TYPE,
+                  dbops.processi.spegnibile%TYPE,
+                  dbops.processi.acceso_in_sviluppo%TYPE,
+                  dbops.processi.acceso_in_produzione%TYPE,
+                  dbops.processi_accensione.acceso%TYPE,
+                  dbops.installazione.ambiente%TYPE,
+                  dbops.processi.accendibile_in_produzione%TYPE)
+              IS 'La regola dell''accensione della sveglia di un processo, pura sui valori: l''unico posto dove e'' scritta. In ordine: senza sveglia (CODA o ritirato) -> NULL; non spegnibile -> true sempre, senza leggere scelta a mano ne'' ambiente; scelta a mano presente e ammessa dal divieto di accensione in PRODUZIONE (dbops.fn_accensione_a_mano_ammessa_su_valori) -> la scelta, altrimenti la riga si ignora; ambiente SVILUPPO o PRODUZIONE -> il default di quell''ambiente dal catalogo; ambiente non dichiarato -> NULL (non decidibile: chi decide lo rende E_CONFIG_MANCANTE). IMMUTABLE e LANGUAGE sql (si inlinea), senza STRICT (i NULL sono casi normali). Sui valori perche'' l''ambiente e'' immutabile e la CI e'' SVILUPPO: i pgTAP provano il ramo PRODUZIONE passando il valore. La leggono dbops.fn_processo_acceso_dichiarato e, attraverso di lei, maintenance.fn_sveglia_accesa e il panorama dbops.vw_processi_programmazione. Brief: brief-db-processi-accensione-per-ambiente (A-2, A-5, R-1, R-BE-5).';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_processo_acceso_dichiarato(
+                  p_processo_codice dbops.processi.codice%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Scopo: la sveglia del processo e' accesa, su questa
+                  --   installazione? NULL = senza sveglia, inesistente, o
+                  --   ambiente non dichiarato. Non solleva: e' per chi
+                  --   descrive. La regola e' in fn_processo_acceso_su_valori.
+                  SELECT dbops.fn_processo_acceso_su_valori(
+                             p.canale,
+                             p.obsoleto_dal,
+                             p.spegnibile,
+                             p.acceso_in_sviluppo,
+                             p.acceso_in_produzione,
+                             a.acceso,
+                             script.fn_ambiente_dichiarato(),
+                             p.accendibile_in_produzione)
+                    FROM dbops.processi p
+                    LEFT JOIN dbops.processi_accensione a
+                      ON a.processo_id = p.id
+                   WHERE p.codice = p_processo_codice;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_processo_acceso_dichiarato(dbops.processi.codice%TYPE)
+              IS 'Lo stato della sveglia di un processo su questa installazione: legge dbops.processi (default per ambiente, spegnibile, accendibile in produzione), dbops.processi_accensione (la scelta a mano) e script.fn_ambiente_dichiarato(), e chiede la regola a dbops.fn_processo_acceso_su_valori. Non solleva: NULL per un processo senza sveglia (CODA, ritirato), inesistente, o con l''ambiente non dichiarato. E'' la lettura di chi descrive (il panorama dbops.vw_processi_programmazione); chi decide usa maintenance.fn_sveglia_accesa, che rende quei NULL errori. RETURNS boolean nudo: e'' una risposta, non il riflesso di una colonna. Brief: brief-db-processi-accensione-per-ambiente (§5.3, R-BE-5).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Forward-only: la firma a sette e' il buco che questo giro chiude.
+              SELECT 1;

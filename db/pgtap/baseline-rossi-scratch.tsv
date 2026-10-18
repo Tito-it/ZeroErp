@@ -1,7 +1,6 @@
 # pgtap-runner: app
 db/pgtap/anagrafiche/create-soggetto-gestori.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql	ERRORE_FIXTURE
-db/pgtap/anagrafiche/test-categorie-clienti-listini-v1.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-contatti-soggetto-cliente.sql	ASSERZIONE
 db/pgtap/anagrafiche/test-conto-incasso-un-solo-soggetto.sql	ERRORE_FIXTURE
 db/pgtap/anagrafiche/test-emittenti-fiscali-codice-forma.sql	ASSERZIONE

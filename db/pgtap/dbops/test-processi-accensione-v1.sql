@@ -15,8 +15,14 @@
 --   ⚠️ I test 33-34 leggono l'audit e lo storico GENERATI da ci_apply: su un
 --   database di sviluppo sono verdi dopo il giro dei job automations_* (brief
 --   §6.3), non subito dopo il migrate.
+--   Rev 2026-10-18 (R-BE-5, §6.6): 20261018-10 (accendibile_in_produzione e
+--   CHECK riscritto), -11 (il predicato del divieto), -12 (la regola ignora la
+--   scelta che il divieto non ammette), -13 (il guard), 90_end/20261018-14;
+--   processi.csv, codici_errore/messaggi_errore (1355). Il ramo PRODUZIONE
+--   del guard e della lettura, costruito, sta in
+--   dbops/test-processi-accensione-produzione-v1 (runner owner).
 --
--- Elenco test (plan 35):
+-- Elenco test (plan 47):
 --   forma
 --    1) la regola e' IMMUTABLE, LANGUAGE sql, senza STRICT (i NULL sono casi normali)
 --    2) la sveglia e' SECURITY DEFINER con search_path pinnato
@@ -59,6 +65,22 @@
 --   32) tornare al default senza motivo -> E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO
 --   33) chi ha fatto i gesti e' l'utente del backend (app.jwt_user), non il ruolo
 --   34) ogni gesto lascia una versione in storico.processi_accensione
+--   ⭐ il divieto di accensione in PRODUZIONE (R-BE-5), sui VALORI
+--   35) il predicato e' IMMUTABLE, LANGUAGE sql, senza STRICT
+--   36) spegnere e tornare al default sono sempre ammessi, anche in PRODUZIONE
+--   37) un processo accendibile, o senza sveglia, si accende in PRODUZIONE
+--   38) un non accendibile: SVILUPPO si', PRODUZIONE no, non dichiarato NULL
+--   39) la regola: non accendibile acceso a mano in PRODUZIONE -> la riga si
+--       ignora, vale il default di produzione (spento)
+--   40) la regola: non accendibile acceso a mano in SVILUPPO -> acceso
+--   41) la regola: non accendibile acceso a mano, ambiente non dichiarato -> NULL
+--   42) la regola: non accendibile spento a mano in PRODUZIONE -> spento
+--   il catalogo
+--   43) i non accendibili in produzione sono esattamente smoke_notturno
+--   44) un non accendibile acceso di default in produzione -> chk_processi_accensione
+--   45) un processo con sveglia senza accendibile_in_produzione -> chk_processi_accensione
+--   46) un CODA con accendibile_in_produzione valorizzato -> chk_processi_accensione
+--   ⚠️ In SVILUPPO il guard ammette l'accensione di smoke_notturno: e' il test 24.
 --
 --   ⚠️ Il cablaggio dei passi pgAgent (85_pgagent/20261016-30) e il caso
 --   «ambiente non dichiarato» costruito stanno in
@@ -71,7 +93,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(35);
+SELECT plan(47);
 
 -- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
 -- P0001 (fn_log_and_raise_error): si pinna il codice, non la frase.
@@ -93,7 +115,7 @@ SELECT is(
     (SELECT format('%s|%s|%s', p.provolatile, l.lanname, p.proisstrict)
        FROM pg_proc p
        JOIN pg_language l ON l.oid = p.prolang
-      WHERE p.oid = 'dbops.fn_processo_acceso_su_valori(text, date, boolean, boolean, boolean, boolean, text)'::regprocedure),
+      WHERE p.oid = 'dbops.fn_processo_acceso_su_valori(text, date, boolean, boolean, boolean, boolean, text, boolean)'::regprocedure),
     'i|sql|f',
     '1. la regola e'' IMMUTABLE, LANGUAGE sql, senza STRICT');
 
@@ -118,33 +140,34 @@ SELECT is(
 
 -- ============================================================
 -- ⭐ La regola, sui VALORI
---   (canale, obsoleto_dal, spegnibile, acceso_svil, acceso_prod, a_mano, ambiente)
+--   (canale, obsoleto_dal, spegnibile, acceso_svil, acceso_prod, a_mano, ambiente,
+--    accendibile_in_produzione)
 -- ============================================================
-SELECT is(dbops.fn_processo_acceso_su_valori('CODA', NULL, NULL, NULL, NULL, NULL, 'SVILUPPO'),
+SELECT is(dbops.fn_processo_acceso_su_valori('CODA', NULL, NULL, NULL, NULL, NULL, 'SVILUPPO', NULL),
           NULL::boolean, '5. CODA: senza sveglia, NULL');
 
-SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', DATE '2026-01-01', NULL, NULL, NULL, NULL, 'SVILUPPO'),
+SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', DATE '2026-01-01', NULL, NULL, NULL, NULL, 'SVILUPPO', NULL),
           NULL::boolean, '6. ritirato: senza sveglia, NULL');
 
-SELECT is(dbops.fn_processo_acceso_su_valori('PGAGENT', NULL, false, true, true, false, 'PRODUZIONE'),
+SELECT is(dbops.fn_processo_acceso_su_valori('PGAGENT', NULL, false, true, true, false, 'PRODUZIONE', true),
           true, '7. non spegnibile, spento a mano, PRODUZIONE: acceso comunque');
 
-SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, false, true, true, NULL, NULL),
+SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, false, true, true, NULL, NULL, true),
           true, '8. non spegnibile con l''ambiente non dichiarato: acceso (R-1, non legge l''ambiente)');
 
-SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, true, true, false, 'SVILUPPO'),
+SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, true, true, false, 'SVILUPPO', true),
           false, '9. spegnibile, spento a mano, default acceso: spento');
 
-SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, false, false, true, 'PRODUZIONE'),
+SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, false, false, true, 'PRODUZIONE', true),
           true, '10. spegnibile, acceso a mano, default spento: acceso');
 
-SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, true, false, NULL, 'SVILUPPO'),
+SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, true, false, NULL, 'SVILUPPO', true),
           true, '11. SVILUPPO senza scelta: il default di sviluppo');
 
-SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, true, false, NULL, 'PRODUZIONE'),
+SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, true, false, NULL, 'PRODUZIONE', true),
           false, '12. PRODUZIONE senza scelta: il default di produzione (la forma dello smoke)');
 
-SELECT is(dbops.fn_processo_acceso_su_valori('PGAGENT', NULL, true, true, true, NULL, NULL),
+SELECT is(dbops.fn_processo_acceso_su_valori('PGAGENT', NULL, true, true, true, NULL, NULL, true),
           NULL::boolean, '13. ambiente non dichiarato e nessuna scelta: non decidibile, NULL');
 
 -- ============================================================
@@ -309,6 +332,82 @@ SELECT is(
     pg_temp.versioni_smoke(),
     '3|1|1',
     '34. ogni gesto lascia una versione nello storico; l''ultima, aperta, e'' il ritorno al default');
+
+-- ============================================================
+-- ⭐ Il divieto di accensione in PRODUZIONE (R-BE-5), sui VALORI
+--   (acceso_a_mano, accendibile_in_produzione, ambiente)
+-- ============================================================
+SELECT is(
+    (SELECT format('%s|%s|%s', p.provolatile, l.lanname, p.proisstrict)
+       FROM pg_proc p
+       JOIN pg_language l ON l.oid = p.prolang
+      WHERE p.oid = 'dbops.fn_accensione_a_mano_ammessa_su_valori(boolean, boolean, text)'::regprocedure),
+    'i|sql|f',
+    '35. il predicato e'' IMMUTABLE, LANGUAGE sql, senza STRICT');
+
+SELECT is(
+    format('%s|%s',
+           dbops.fn_accensione_a_mano_ammessa_su_valori(false, false, 'PRODUZIONE'),
+           dbops.fn_accensione_a_mano_ammessa_su_valori(NULL,  false, 'PRODUZIONE')),
+    't|t',
+    '36. spegnere e tornare al default sono ammessi anche su un non accendibile in PRODUZIONE');
+
+SELECT is(
+    format('%s|%s',
+           dbops.fn_accensione_a_mano_ammessa_su_valori(true, true, 'PRODUZIONE'),
+           dbops.fn_accensione_a_mano_ammessa_su_valori(true, NULL, 'PRODUZIONE')),
+    't|t',
+    '37. un processo accendibile (o senza sveglia: lo rifiuta un''altra regola) si accende in PRODUZIONE');
+
+SELECT is(
+    format('%s|%s|%s',
+           dbops.fn_accensione_a_mano_ammessa_su_valori(true, false, 'SVILUPPO'),
+           dbops.fn_accensione_a_mano_ammessa_su_valori(true, false, 'PRODUZIONE'),
+           coalesce(dbops.fn_accensione_a_mano_ammessa_su_valori(true, false, NULL)::text, 'NULL')),
+    't|f|NULL',
+    '38. un non accendibile si accende a mano in SVILUPPO, non in PRODUZIONE; ambiente non dichiarato: non decidibile');
+
+SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, true, false, true, 'PRODUZIONE', false),
+          false, '39. la regola: non accendibile acceso a mano in PRODUZIONE, la riga si ignora e vale il default (spento)');
+
+SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, true, false, true, 'SVILUPPO', false),
+          true, '40. la regola: non accendibile acceso a mano in SVILUPPO, acceso');
+
+SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, true, false, true, NULL, false),
+          NULL::boolean, '41. la regola: non accendibile acceso a mano, ambiente non dichiarato: non decidibile');
+
+SELECT is(dbops.fn_processo_acceso_su_valori('COMMAND', NULL, true, true, false, false, 'PRODUZIONE', false),
+          false, '42. la regola: non accendibile spento a mano in PRODUZIONE, spento');
+
+-- ============================================================
+-- Il catalogo (R-BE-5)
+-- ============================================================
+SELECT is(
+    (SELECT string_agg(p.codice, ',' ORDER BY p.codice)
+       FROM dbops.processi p
+      WHERE p.accendibile_in_produzione IS FALSE),
+    'smoke_notturno',
+    '43. i non accendibili in produzione sono esattamente smoke_notturno (R-BE-5)');
+
+SELECT throws_like(
+    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
+      VALUES (9851, 'PGTAP-NON-ACCENDIBILE-ACCESO', 'prova', 'MANUTENZIONE', 'COMMAND', true, true, true, 'PROGRAMMA', false)$$,
+    '%chk_processi_accensione%',
+    '44. un non accendibile acceso di default in produzione: il divieto non vieterebbe niente, chk_processi_accensione');
+
+SELECT throws_like(
+    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
+                                  acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
+      VALUES (9852, 'PGTAP-SENZA-ACCENDIBILE', 'prova', 'MANUTENZIONE', 'COMMAND', true, true, true, 'PROGRAMMA')$$,
+    '%chk_processi_accensione%',
+    '45. un processo con sveglia dichiara accendibile_in_produzione: chk_processi_accensione');
+
+SELECT throws_like(
+    $$INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, causa_fallimento, accendibile_in_produzione)
+      VALUES (9853, 'PGTAP-CODA-ACCENDIBILE', 'prova', 'DOMINIO', 'CODA', 'PROGRAMMA', true)$$,
+    '%chk_processi_accensione%',
+    '46. un CODA non ha sveglia: accendibile_in_produzione NULL, chk_processi_accensione');
 
 SELECT * FROM finish();
 

@@ -118,6 +118,9 @@ il run che il comando lanciato scrive sotto il **proprio** processo (origine
   liveness** — sezione sotto. Solo sui `COMMAND`.
 * `ci_ordine` / `ci_procedura` / `ci_esclusione` (dal 2026-09-26): la
   **convergenza in CI** — sezione sotto. Solo sui processi con un job pgAgent.
+* `causa_fallimento` (dal 2026-10-16) e `corsa_verdetto_completo` (dal
+  2026-10-18): come il presidio dei job legge i fallimenti del processo —
+  sezioni sotto.
 
 ---
 
@@ -204,13 +207,14 @@ Presidio: pgTAP `dbops/test-processi-convergenza-ci`. Brief:
 ### ⭐ Acceso o spento: il default per ambiente e i processi che non si spengono *(dal 2026-10-16)*
 
 Ogni processo **con una sveglia** (canali `PGAGENT`, `COMMAND`,
-`CODA_AUTOMATICA`, non ritirato) dichiara tre cose:
+`CODA_AUTOMATICA`, non ritirato) dichiara quattro cose:
 
 | Colonna | Che cosa dice |
 | --- | --- |
 | `acceso_in_sviluppo` | se la sveglia è accesa di default in un'installazione di sviluppo |
 | `acceso_in_produzione` | se la sveglia è accesa di default in un'installazione di produzione |
 | `spegnibile` | se la sveglia si può spegnere a mano |
+| `accendibile_in_produzione` | se in un'installazione di produzione la sveglia si può accendere a mano *(dal 2026-10-18)* |
 
 L'ambiente dell'installazione sta in [dbops.installazione](/dbzero/dbops/manual/installazione).
 Una macchina può scavalcare il default con una scelta a mano,
@@ -227,14 +231,24 @@ spegnibile è acceso di default in tutti e due gli ambienti (CHECK
 `chk_processi_accensione`), la scelta a mano non lo spegne, e il suo stato non
 dipende dall'ambiente.
 
+⭐ **Non accendibile in produzione** *(dal 2026-10-18)* è il gemello: un processo
+che su una base vera non deve girare mai, perché scrive dati di prova
+(`smoke_notturno`, l'unico oggi). In produzione è spento di default (CHECK
+`chk_processi_accensione`), e la scelta a mano non lo accende
+(`E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE`). Se una riga accesa c'è già
+(scritta prima della regola), lo stato effettivo la ignora. In sviluppo non
+conta. Prima la stessa protezione stava solo in un consenso nel `.env` di una
+macchina (`SMOKE_NOTTURNO_CONSENTITO`), che nessuno vedeva dal drawer.
+
 I processi `CODA` (li avvia una persona) e quelli ritirati non hanno una
-sveglia: le tre colonne sono `NULL`.
+sveglia: le quattro colonne sono `NULL`.
 
 **Chi decide se una sveglia è accesa** (una regola, scritta una volta sola):
 
 | Domanda | Chi risponde |
 | --- | --- |
 | la regola | `dbops.fn_processo_acceso_su_valori` (pura, sui valori: si prova senza costruire niente) |
+| la scelta a mano è ammessa dal divieto di produzione? | `dbops.fn_accensione_a_mano_ammessa_su_valori` (pura; la leggono la regola, il guard della scelta a mano e il backend per il pulsante del drawer) |
 | lo stato su questa installazione, per chi descrive | `dbops.fn_processo_acceso_dichiarato` (non solleva: `NULL` se l'ambiente non è dichiarato) |
 | la sveglia deve partire? | `maintenance.fn_sveglia_accesa` (`true`/`false` o un errore; la chiedono i passi pgAgent e le sveglie systemd) |
 
@@ -244,7 +258,8 @@ processo spento: un rilascio lascia il database completo.
 
 Il panorama [vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione)
 mostra un processo spento come `SPENTO`, che non è un guasto. Presidi pgTAP:
-`dbops/test-processi-accensione-v1`, `dbops/test-installazione-ambiente-v1`.
+`dbops/test-processi-accensione-v1`, `dbops/test-installazione-ambiente-v1`,
+`dbops/test-processi-accensione-produzione-v1`.
 Brief: `brief-db-processi-accensione-per-ambiente`.
 
 ---
@@ -267,14 +282,42 @@ un fallimento nel giornale.
 
 ---
 
+### ⭐ Ogni corsa è un verdetto completo? *(dal 2026-10-18)*
+
+`corsa_verdetto_completo` dice se ogni corsa del processo **ricontrolla tutto il suo
+perimetro**, così che un verde chiude i rossi che lo precedono. Nasce `false`: chi
+non dichiara resta com'era.
+
+**Il criterio**: *dopo un verde, resta qualcosa che il rosso aveva lasciato e il
+verde non ha ricontrollato?* Se sì, `false`.
+
+| Sì (`true`) | No (`false`) |
+| --- | --- |
+| lo smoke notturno (rifà tutto il giro contro la baseline), le automazioni e la policy degli indici (convergono tutto il registro), il digest e il suo guardiano (rileggono tutte le viste), le statistiche (tutto il database), il riallineamento degli utenti scaduti, l'accodamento delle chiusure per scadenza | le code (un lavoro fallito resta fallito, la corsa dopo ne prende altri), l'invio delle email, la fatturazione batch; i `CODA` e il listener, che non scrivono corse giudicate |
+
+Lo legge [`maintenance.vw_job_run_da_guardare`](/dbzero/maintenance/manual/vw_job_run_da_guardare):
+per un verdetto completo il motivo «intermittente» scatta solo se il lavoro è
+**ricaduto** dopo essere tornato verde, e una corsa in corso da meno di un'ora non
+conta finché non chiude.
+
+⚠️ Vale per **ogni corsia** del processo (`jobname`, per esempio
+`smoke_notturno:completo` o le cadenze del digest): ognuna dev'essere completa sul
+proprio perimetro. Una corsia nuova che lavora una parte vuole un processo suo, o
+la colonna a `false`.
+
+---
+
 ### Come si registra un processo nuovo
 
 1. Una riga nel **seed** `80_data/sql/dbops/processi.csv` — è catalogo, non
    dato di macchina: si cambia dal CSV, mai con una `UPDATE` diretta.
    Se ha un **job pgAgent**, la riga dichiara `ci_ordine` + `ci_procedura`
    oppure `ci_esclusione` (sezione sopra): senza, il CHECK la rifiuta.
+   La riga dichiara `corsa_verdetto_completo` col criterio della sezione
+   «Ogni corsa è un verdetto completo?».
    Se ha una **sveglia**, la riga dichiara anche `acceso_in_sviluppo`,
-   `acceso_in_produzione` e `spegnibile` (sezione «Acceso o spento»): senza,
+   `acceso_in_produzione`, `spegnibile` e `accendibile_in_produzione` (sezione
+   «Acceso o spento»): senza,
    `chk_processi_accensione` la rifiuta. E se il job è pgAgent, il suo passo
    nasce già avvolto nel cancello `maintenance.fn_sveglia_accesa('<codice>')`
    (forma in `85_pgagent/20261016-30`).

@@ -13,7 +13,7 @@ installazione, oppure tornare al default del catalogo.
 
 | `p_acceso` | Effetto |
 | --- | --- |
-| `true` | la sveglia è accesa qui, qualunque cosa dica il default |
+| `true` | la sveglia è accesa qui, qualunque cosa dica il default; in un'installazione di produzione, non su un processo non accendibile in produzione (dal 18-10-2026) |
 | `false` | la sveglia è spenta qui |
 | `NULL` | la sveglia torna al default per ambiente; la riga resta, con `acceso` vuoto, chi e perché |
 
@@ -22,8 +22,9 @@ al default e l'ambiente non è dichiarato).
 
 ### Regole
 
-* I limiti (processo senza sveglia, non spegnibile, motivo vuoto) li dice il
-  guard della tabella: il verbo non li ripete.
+* I limiti (processo senza sveglia, non spegnibile, non accendibile in
+  produzione, motivo vuoto) li dice il guard della tabella: il verbo non li
+  ripete.
 * Codice inesistente: `E_PROCESSO_NON_TROVATO`.
 * `SECURITY INVOKER`: **chi** può farlo lo decide il backend, con la stessa
   autorizzazione del drawer dei processi.
@@ -35,7 +36,9 @@ al default e l'ambiente non è dichiarato).
 
 ### Test
 
-`db/pgtap/dbops/test-processi-accensione-v1.sql` (test 21–34).
+`db/pgtap/dbops/test-processi-accensione-v1.sql` (test 21–34);
+`db/pgtap/dbops/test-processi-accensione-produzione-v1.sql` (il divieto in
+un'installazione di produzione, costruita).
 
 ---
 

@@ -204,6 +204,7 @@
 - [fn_pgtap_registro_fattura](funzioni/fn_pgtap_registro_fattura.md)
 - [fn_pgtap_set_contesto_operatore](funzioni/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
 - [fn_predicato_soggetto_ruolo_visibile](funzioni/fn_predicato_soggetto_ruolo_visibile.md) — (latest review 10-10-2026)
+- [fn_prima_chiave_estranea](funzioni/fn_prima_chiave_estranea.md)
 - [fn_raise_primo_motivo_se_presente](funzioni/fn_raise_primo_motivo_se_presente.md)
 - [fn_regime_fiscale_documento](funzioni/fn_regime_fiscale_documento.md)
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md) — (riscritta il 25-09-2026)
@@ -268,6 +269,7 @@
 - [fn_scope_shop_via_ba](funzioni/fn_scope_shop_via_ba.md)
 - [fn_scope_shop_via_ordine](funzioni/fn_scope_shop_via_ordine.md)
 - [fn_scope_shop_via_ordine_riga](funzioni/fn_scope_shop_via_ordine_riga.md)
+- [fn_scrivi_riga_da_jsonb](funzioni/fn_scrivi_riga_da_jsonb.md)
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](funzioni/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](funzioni/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.

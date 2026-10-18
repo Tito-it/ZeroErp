@@ -135,13 +135,14 @@ BEGIN
          LIMIT 1;
     END IF;
 
-    INSERT INTO anagrafiche.contatti (
-        tipo_contatto_id, soggetto_id, nominativo, email,
-        is_default, default_context
-    )
-    VALUES (v_tipo_cont, v_soggetto_id,
-            'Referente ' || p_ragione_sociale,
-            'pgtap@example.com', TRUE, 'soggetto');
+    -- Rev 2026-10-17: dal BB anagrafiche.fn_crea_contatto (regola del 2).
+    PERFORM anagrafiche.fn_crea_contatto(
+        v_soggetto_id, NULL,
+        jsonb_build_object('tipo_contatto_id', v_tipo_cont,
+                           'nominativo',       'Referente ' || p_ragione_sociale,
+                           'email',            'pgtap@example.com',
+                           'is_default',       true,
+                           'default_context',  'soggetto'));
 
     -- Saga completa: i tre guard differiti scattano QUI, su un
     -- soggetto finito. E' esattamente la verifica che il modello vuole.
@@ -152,7 +153,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id integer, p_stato_id integer, p_piva text)
-IS 'Crea per una fixture pgTAP un soggetto PERSONA GIURIDICA gia'' valido: testata, dati societari, indirizzi obbligatori letti da config.tipi_soggetto_dettaglio_tipi_indirizzo, contatto. ⭐ Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti: e'' il punto che nessun test indovinava, perche'' il SET CONSTRAINTS ALL IMMEDIATE del preambolo obbligatorio li fa scattare prima che la saga possa esistere. Al ritorno i vincoli sono IMMEDIATE: un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Ritorna l''id del soggetto. Brief: brief-db-bonifica-baseline-pgtap-vendite.md Rev 20261009-29 (brief-db-sesso-senza-default): il sesso e'' NULL (era ''S'', fuori vocabolario); una natura PF qui viene rifiutata dal guard del sesso, perche'' il builder non ne ha uno da dare. Rev 20261010-40 (brief-db-character-n-spazi-di-riempimento D-6): i dati societari nascono senza canale FE (destinatario_fe NULL), non piu'' con il codice ''0000000''. Rev 20261011-02: i dati societari passano dal verbo anagrafiche.fn_scrivi_dati_societari; forma = la prima ammessa dalla natura, REA e capitale solo se la forma li prevede, niente dati societari se la natura li vieta. Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
+IS 'Crea per una fixture pgTAP un soggetto PERSONA GIURIDICA gia'' valido: testata, dati societari, indirizzi obbligatori letti da config.tipi_soggetto_dettaglio_tipi_indirizzo, contatto. ⭐ Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti: e'' il punto che nessun test indovinava, perche'' il SET CONSTRAINTS ALL IMMEDIATE del preambolo obbligatorio li fa scattare prima che la saga possa esistere. Al ritorno i vincoli sono IMMEDIATE: un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Ritorna l''id del soggetto. Brief: brief-db-bonifica-baseline-pgtap-vendite.md Rev 20261009-29 (brief-db-sesso-senza-default): il sesso e'' NULL (era ''S'', fuori vocabolario); una natura PF qui viene rifiutata dal guard del sesso, perche'' il builder non ne ha uno da dare. Rev 20261010-40 (brief-db-character-n-spazi-di-riempimento D-6): i dati societari nascono senza canale FE (destinatario_fe NULL), non piu'' con il codice ''0000000''. Rev 20261011-02: i dati societari passano dal verbo anagrafiche.fn_scrivi_dati_societari; forma = la prima ammessa dalla natura, REA e capitale solo se la forma li prevede, niente dati societari se la natura li vieta. Brief: brief-db-dati-fiscali-e-societari-del-soggetto. Rev 2026-10-17: il contatto lo scrive il BB anagrafiche.fn_crea_contatto (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 3); comportamento invariato.';
 ```
 
 ---
