@@ -50,11 +50,33 @@ Ritorna `boolean`.
 
 ### Regole di risoluzione
 
-1. **`p_auth_user_id` NULL** → `true` (job batch, nessun filtro utente)
-2. **Emittente non attivo** → `false`
+1. **`p_auth_user_id` NULL** → `false` (dal 2026-10-04, Q-1: era `true`, «job batch»)
+2. **Emittente attivo di sessione** (`app.current_emittente_id`) diverso da quello chiesto → `false`, anche per il super admin
 3. **SUPER_ADMIN** → `true` (accesso completo a tutti gli emittenti)
-4. **Whitelist vuota** (nessuna riga in `user_emittenti_fiscali`) → `false`: **fail-closed**, la riga mancante e' un errore di configurazione, non un permesso
-5. **Whitelist con righe** → `true` solo se l'emittente e presente nella whitelist
+4. **Nessuna veste OPERATORE utilizzabile** → `false`
+5. **Whitelist vuota** (nessuna riga in `user_emittenti_fiscali`) → `false`: **fail-closed**, la riga mancante e' un errore di configurazione, non un permesso
+6. **Whitelist con righe** → `true` solo se l'emittente e presente nella whitelist
+
+### ⭐ rev 2026-10-18 — una regola, due forme
+
+ChangeSet `20261018-18`. Le regole qui sopra stavano scritte **due volte**:
+qui (la domanda su un emittente) e in
+[`fn_get_emittenti_scope_pk_ids`](fn_get_emittenti_scope_pk_ids.md) (l'insieme
+degli emittenti visibili, per il backend). Ora la canonica chiede l'insieme a
+`_pk_ids` e lo interroga con
+[`fn_scope_ef_perimetro`](fn_scope_ef_perimetro.md), la stessa funzione delle
+policy. Stesse risposte: lo provano i pgTAP della canonica e il test di parità
+`script/test-fn-get-emittenti-scope-pk-ids-and-parity`.
+
+⚠️ **Rev 2026-10-18 bis (`20261018-23`)**: con un emittente attivo di sessione,
+per un emittente diverso risponde `false` **senza** calcolare il perimetro (è
+al più `{attivo}`). La canonica si chiama per riga (adattatori, guard): senza
+l'uscita anticipata costava fino a 4 volte tanto a chiamata.
+
+⚠️ Le policy ef_whitelist dirette **non passano più di qui**: calcolano il
+perimetro una volta per istruzione (vedi `fn_scope_ef_perimetro`). Questa
+funzione resta la sede per chi chiede su **un** emittente: write-guard, verbi
+DEFINER, adattatori `via_*`.
 
 ---
 

@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PERIMETRO IN CONVENZIONE SR E L'EMITTENTE DEL BA DICHIARANO IL COSTO
+#   script.fn_get_emittenti_scope_sr_ids(integer)
+#   script.fn_get_ba_emittente_sr_id(bigint)
+#   Brief: brief-db-plancache-funzioni-con-query-incorporate §5quinquies, D-3b-2 ondata 2.
+#
+# Da 20261018-50 le nominano le policy ef_whitelist del billing account: il
+# perimetro (una volta per istruzione) e l'emittente del BA (per riga, non
+# incorporata: ha sottoquery). Leggono tabelle: COST 5000 come ogni funzione
+# di policy che legge (linee-guida-sql §10.3, presidio
+# script/test-policy-funzioni-cost-v1). Corpi invariati. Rollback: COST 100.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261018-51-alter-fn-scope-sr-ids-e-ba-emittente-cost-mctit.yaml
+
+  - changeSet:
+      id: 20261018-51-alter-fn-scope-sr-ids-e-ba-emittente-cost
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COST 5000 su fn_get_emittenti_scope_sr_ids e fn_get_ba_emittente_sr_id, ora nominate dalle policy del billing account. D-3b-2 ondata 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.fn_get_emittenti_scope_sr_ids(integer)')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.fn_get_ba_emittente_sr_id(bigint)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER FUNCTION script.fn_get_emittenti_scope_sr_ids(integer) COST 5000;
+
+              DO $c$
+              BEGIN
+                  EXECUTE format('COMMENT ON FUNCTION script.fn_get_emittenti_scope_sr_ids(integer) IS %L',
+                      '⭐ rev 2026-10-18 (20261018-51, D-3b-2 ondata 2): COST 5000. Legge tabelle ed e'' nominata dalle policy ef_whitelist del billing account (20261018-50). ' || coalesce(obj_description('script.fn_get_emittenti_scope_sr_ids(integer)'::regprocedure, 'pg_proc'), ''));
+              END
+              $c$;
+
+              ALTER FUNCTION script.fn_get_ba_emittente_sr_id(bigint) COST 5000;
+
+              DO $c$
+              BEGIN
+                  EXECUTE format('COMMENT ON FUNCTION script.fn_get_ba_emittente_sr_id(bigint) IS %L',
+                      '⭐ rev 2026-10-18 (20261018-51, D-3b-2 ondata 2): COST 5000. Legge tabelle ed e'' nominata dalle policy ef_whitelist del billing account (20261018-50). ' || coalesce(obj_description('script.fn_get_ba_emittente_sr_id(bigint)'::regprocedure, 'pg_proc'), ''));
+              END
+              $c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER FUNCTION script.fn_get_emittenti_scope_sr_ids(integer) COST 100;
+
+              DO $c$
+              BEGIN
+                  EXECUTE format('COMMENT ON FUNCTION script.fn_get_emittenti_scope_sr_ids(integer) IS %L',
+                      replace(coalesce(obj_description('script.fn_get_emittenti_scope_sr_ids(integer)'::regprocedure, 'pg_proc'), ''), '⭐ rev 2026-10-18 (20261018-51, D-3b-2 ondata 2): COST 5000. Legge tabelle ed e'' nominata dalle policy ef_whitelist del billing account (20261018-50). ', ''));
+              END
+              $c$;
+
+              ALTER FUNCTION script.fn_get_ba_emittente_sr_id(bigint) COST 100;
+
+              DO $c$
+              BEGIN
+                  EXECUTE format('COMMENT ON FUNCTION script.fn_get_ba_emittente_sr_id(bigint) IS %L',
+                      replace(coalesce(obj_description('script.fn_get_ba_emittente_sr_id(bigint)'::regprocedure, 'pg_proc'), ''), '⭐ rev 2026-10-18 (20261018-51, D-3b-2 ondata 2): COST 5000. Legge tabelle ed e'' nominata dalle policy ef_whitelist del billing account (20261018-50). ', ''));
+              END
+              $c$;

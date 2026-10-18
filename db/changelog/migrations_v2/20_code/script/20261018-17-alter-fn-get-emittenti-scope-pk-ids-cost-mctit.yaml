@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PERIMETRO EMITTENTI DICHIARA IL SUO COSTO
+#   script.fn_get_emittenti_scope_pk_ids(integer)
+#   Brief: brief-db-plancache-funzioni-con-query-incorporate §5quinquies, D-3b-2 (ondata 1a).
+#
+# Questa funzione e' gia' il perimetro come INSIEME (NULL = tutti, '{}' =
+# nessuno, whitelist ∩ emittente attivo): la usa il backend per i filtri di
+# scope. Con D-3b-2 diventa la sede delle regole anche per la canonica (-18)
+# e le policy ef_whitelist dirette la chiamano (-19). Legge vesti, binding e
+# whitelist: COST 5000 come ogni funzione nominata da una policy che legge
+# tabelle (linee-guida-sql §10.3, presidio script/test-policy-funzioni-cost-v1).
+# Corpo invariato. Rollback: COST 100, il default di prima.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261018-17-alter-fn-get-emittenti-scope-pk-ids-cost-mctit.yaml
+
+  - changeSet:
+      id: 20261018-17-alter-fn-get-emittenti-scope-pk-ids-cost
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_emittenti_scope_pk_ids: COST 5000 (legge tabelle, ora la nominano le policy ef_whitelist dirette). Corpo invariato. D-3b-2 di brief-db-plancache-funzioni-con-query-incorporate.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc WHERE oid = to_regprocedure('script.fn_get_emittenti_scope_pk_ids(integer)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER FUNCTION script.fn_get_emittenti_scope_pk_ids(integer) COST 5000;
+
+              DO $c$
+              BEGIN
+                  EXECUTE format('COMMENT ON FUNCTION script.fn_get_emittenti_scope_pk_ids(integer) IS %L',
+                      '⭐ rev 2026-10-18 (20261018-17, D-3b-2): COST 5000. E'' la sede delle regole del perimetro (la canonica fn_check_user_emittente_scope si appoggia a lei) e le policy ef_whitelist dirette la chiamano una volta per istruzione. '
+                      || coalesce(obj_description('script.fn_get_emittenti_scope_pk_ids(integer)'::regprocedure, 'pg_proc'), ''));
+              END
+              $c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER FUNCTION script.fn_get_emittenti_scope_pk_ids(integer) COST 100;
+
+              DO $c$
+              BEGIN
+                  EXECUTE format('COMMENT ON FUNCTION script.fn_get_emittenti_scope_pk_ids(integer) IS %L',
+                      replace(coalesce(obj_description('script.fn_get_emittenti_scope_pk_ids(integer)'::regprocedure, 'pg_proc'), ''),
+                              '⭐ rev 2026-10-18 (20261018-17, D-3b-2): COST 5000. E'' la sede delle regole del perimetro (la canonica fn_check_user_emittente_scope si appoggia a lei) e le policy ef_whitelist dirette la chiamano una volta per istruzione. ', ''));
+              END
+              $c$;

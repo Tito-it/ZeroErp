@@ -85,10 +85,15 @@ SELECT m.cliente_soggetto_ruolo_id AS sr_id FROM _t_mondo m;
 
 -- Aggiungo all'operatore un'identita' CLIENTE_PORTALE (setup multi-veste).
 -- L'insert scatta il guard coerenza: il ruolo CL e' di un cliente vero.
-INSERT INTO anagrafiche.identita_digitali
-    (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-SELECT (SELECT sr_id FROM _t_sr_cl_libero), t.auth_user_id, 'CLIENTE_PORTALE', true
-  FROM _t_tid t;
+-- La veste dal BB anagrafiche.fn_crea_veste_portale (rev 2026-10-18,
+-- brief-db-processi-accensione-per-ambiente 2b-1 lotto 6).
+DO $veste$
+BEGIN
+    PERFORM 1 FROM (
+        SELECT anagrafiche.fn_crea_veste_portale(t.auth_user_id, (SELECT sr_id FROM _t_sr_cl_libero), 'CLIENTE_PORTALE', true) FROM _t_tid t
+    ) AS v;
+END
+$veste$;
 
 -- =========================================================
 -- 1) Multi-veste + GUC=CLIENTE_PORTALE -> top-level=CLIENTE_PORTALE
@@ -157,9 +162,7 @@ BEGIN
          '!', true, false, false, '', '', '', now())
     RETURNING id INTO v_au;
 
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr_cl, v_au, 'CLIENTE_PORTALE', true);
+    PERFORM anagrafiche.fn_crea_veste_portale(v_au, v_sr_cl, 'CLIENTE_PORTALE', true);
 
     INSERT INTO _t_au_portale_only (auth_user_id) VALUES (v_au);
 END

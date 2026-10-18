@@ -224,6 +224,7 @@
 - [fn_scope_cliente_ownership](funzioni/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
 - [fn_scope_cliente_ownership_via_ordine](funzioni/fn_scope_cliente_ownership_via_ordine.md)
 - [fn_scope_cliente_ownership_via_ordine_riga](funzioni/fn_scope_cliente_ownership_via_ordine_riga.md)
+- [fn_scope_ef_perimetro](funzioni/fn_scope_ef_perimetro.md) — (nata il 2026-10-18; firma attuale da `20261018-24`)
 - [fn_scope_ef_whitelist](funzioni/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
 - [fn_scope_ef_whitelist_via_asset](funzioni/fn_scope_ef_whitelist_via_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_attivita_fatturabile](funzioni/fn_scope_ef_whitelist_via_attivita_fatturabile.md)

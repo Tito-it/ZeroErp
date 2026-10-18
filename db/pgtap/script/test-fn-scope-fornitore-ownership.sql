@@ -94,25 +94,13 @@ $$;
 -- Identita FORNITORE_PORTALE attiva su fornitore 1 (rn=1)
 CREATE TEMP TABLE _t_id (idx int, identita_id bigint);
 WITH ins_fo AS (
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT (SELECT sr_id FROM _t_sr_fo WHERE rn = 1),
-           (SELECT auth_user_id FROM _t_au WHERE idx = 1),
-           'FORNITORE_PORTALE', true
-    RETURNING id
-)
+    SELECT anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au WHERE idx = 1), (SELECT sr_id FROM _t_sr_fo WHERE rn = 1), 'FORNITORE_PORTALE', true) AS id)
 INSERT INTO _t_id (idx, identita_id)
 SELECT 1, id FROM ins_fo;
 
 -- Identita CLIENTE_PORTALE attiva su cliente (ruolo "sbagliato" per test 6)
 WITH ins_cl AS (
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT (SELECT sr_id FROM _t_sr_cl),
-           (SELECT auth_user_id FROM _t_au WHERE idx = 2),
-           'CLIENTE_PORTALE', true
-    RETURNING id
-)
+    SELECT anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au WHERE idx = 2), (SELECT sr_id FROM _t_sr_cl), 'CLIENTE_PORTALE', true) AS id)
 INSERT INTO _t_id (idx, identita_id)
 SELECT 2, id FROM ins_cl;
 

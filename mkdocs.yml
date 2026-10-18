@@ -172,6 +172,7 @@ nav:
                             - Gestione code di lavoro: it/guide/gestione-code-di-lavoro.md
                             - Processi-pgagent: it/guide/processi-pgagent-funzionali.md
                             - Statistiche del planner: it/guide/statistiche-del-planner.md
+                            - Un database che resta veloce: it/guide/database-che-resta-veloce.md
                             - Log:
                                       - Messaggi di Errore: it/guide/Messaggi-di-Errore-e-Generazione-Log.md
                                       - Messaggi di Audit: it/guide/messaggi-audit.md

@@ -172,7 +172,15 @@ BEGIN
     SELECT COALESCE(MAX(NULLIF(substring(ca.segment_key, '#RET:([0-9]+)'), '')::integer), 0) + 1
       INTO v_progressivo
       FROM vendite.commesse_attivita ca
-     WHERE ca.segment_key LIKE v_seg_ddt || '#RET:%';
+     -- ⭐ rev 2026-10-18 (D-3b): si ENTRA dall'uguaglianza su segment_base,
+     --    il LIKE resta come residuo. Sotto la policy di commesse_attivita
+     --    un LIKE non arriva all'indice (textlike non e' leakproof,
+     --    linee-guida-sql §8.5-bis): la tabella si leggeva intera, con la
+     --    policy pagata riga per riga. Ogni chiave `v_seg_ddt#RET:...` ha
+     --    per base proprio v_seg_ddt (che non contiene '#'): l'uguaglianza
+     --    non toglie righe, e texteq e' leakproof.
+     WHERE ca.segment_base = v_seg_ddt
+       AND ca.segment_key LIKE v_seg_ddt || '#RET:%';
 
     v_residuo := v_coda.accredito_dovuto;
     v_data    := script.fn_data_operativa();
@@ -207,6 +215,12 @@ BEGIN
               LEFT JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
               LEFT JOIN vendite.fatture f ON f.id = fr.fattura_id
              WHERE ca.tipo_movimento::text = 'NORMALE'
+               -- ⭐ rev 2026-10-18 (D-3b): condizione d'ingresso, come il
+               --    progressivo qui sopra. Le chiavi che il predicato sotto
+               --    accetta (il segmento, o il segmento#CMP:...) hanno per
+               --    base il segmento stesso: con v_seg_ord NULL l'IN scarta
+               --    solo cio' che il predicato scartava gia'.
+               AND ca.segment_base IN (v_seg_ddt, v_seg_ord)
                AND ( ca.segment_key::text = v_seg_ddt::text
                      OR ca.segment_key::text LIKE v_seg_ddt::text || '#CMP:%'
                      OR ( v_seg_ord IS NOT NULL
@@ -327,6 +341,12 @@ BEGIN
               JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = ca.id
               JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
              WHERE ca.tipo_movimento::text = 'NORMALE'
+               -- ⭐ rev 2026-10-18 (D-3b): kit_key e' un segmento senza '#'
+               --    (v_seg_ddt o v_seg_ord, dal gruppo qui sopra), quindi
+               --    ogni chiave il cui split_part vale kit_key ha base
+               --    kit_key. split_part non e' leakproof: da solo leggeva
+               --    la tabella intera sotto la policy.
+               AND ca.segment_base = v_grp.kit_key
                AND split_part(ca.segment_key::text, '#CMP:', 1) = v_grp.kit_key
              ORDER BY ca.segment_key
         LOOP
@@ -549,7 +569,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_accredita_riga_reso(p_resi_riga_id bigint)
-IS 'MADRE del verbo «accredita»: dalla coda accrediti genera le righe di RETTIFICA in commessa e le registra sul ponte vendite.resi_righe_accrediti. Una sola unita'' atomica; il DOCUMENTO non nasce qui, nasce nel giro di fatturazione normale — nessuna seconda pipeline, ed e'' il motivo per cui un esito parziale del fan-out non lascia mai mezzo documento fiscale. UN PARAMETRO SOLO: con D-NC-6 (l''accredito e'' sempre pieno) la quantita'' non e'' un input ma accredito_dovuto della coda, e con D-NC-7 il massivo lo fa il backend con run_fan_out. ⭐ rev 2026-09-21 (D14 giro 2, D3): la coda si legge PER DOCUMENTO — vendite.fn_resi_da_accreditare(ARRAY[ddt della riga resa], NULL) — e non piu'' da vw_resi_da_accreditare, che e'' la coda di tutti; il numero e'' lo stesso (la vista e'' la proiezione della funzione), il costo e'' quello del DDT. ⭐ D-NC-1: la rettifica porta SEMPRE il segmento della SPEDIZIONE (DDT:<uid>:R:<riga>#RET:<n>), anche quando a fatturare e'' stata la corsia ORD — sul serbatoio d''ordine la greedy scaricherebbe l''accredito sull''ultima spedizione invece che su quella da cui la merce e'' tornata. Il ripiego «se il DDT non c''e'', prendi il primo» e'' diventato un guard fail-fast (E_ACCREDITO_SENZA_SPEDIZIONE) e non un COALESCE: la condizione e'' impossibile per costruzione, e un ramo morto sembra coperto senza esserlo. ⭐ N-1: il prezzo si COPIA da vendite.fatture_righe, mai ricalcolato e mai riletto dal listino. Sconto e IVA li copia il generatore righe lato backend (BE-4), leggendo la riga rettificata. D-NC-5: consumo LIFO delle unita'' fatturanti — non e'' una regola di calcolo (il prezzo si copia sempre) ma di CONSUMO. Kit: raggruppamento per kit_key e quantita'' in unita'' PADRE, max(quantita/coeff_qta) come vw_af_merce_per_riga; una rettifica per componente, ciascuna specchio della sua riga di fattura. Chiude con l''uguaglianza di D-NC-6 (E_ACCREDITO_QUOTA_NON_COPERTA): meglio non farlo che farlo a meta'', perche'' un residuo parziale e'' la riga che resta in coda a chiedere per sempre. Il presidio permessi vive sul BE (post_permission), non qui. ⭐ P-7 (2026-08-18): il meta della rettifica EREDITA quello della riga rettificata (`ca.meta || {coeff_qta, accredito_da, resi_riga_id}`) invece di enumerare le chiavi da copiare; E_ACCREDITO_KIT_SENZA_PADRE rifiuta AL VERBO il kit i cui componenti non portano componente_di, gemello di E_ACCREDITO_KIT_NON_MISURABILE. rev 2026-08-29: il `sorgente => NULL` e'' dichiarato nel corpo (RETTIFICA e'' sourceless per progetto). ⭐ rev 2026-10-03 (brief-db-bom-flag-quantita-e-kit-in-fattura, R-DB-B8): sui componenti di kit il meta della rettifica porta qta_padre = -quota (unita'' padre, negativa come la quantita'' del componente) a destra del ||: ereditata dalla riga rettificata sarebbe positiva, e il generatore righe la rifiuta per segno opposto.';
+IS '⭐ rev 2026-10-18 (20261018-15, D-3b): le tre letture di commesse_attivita (progressivo #RET, gruppi da accreditare, righe del gruppo) ENTRANO dall''uguaglianza su segment_base, col filtro di prima come residuo che la implica. Sotto la policy un LIKE o uno split_part su segment_key non arriva all''indice (non sono leakproof): la tabella si leggeva intera, policy pagata riga per riga, a ogni accredito. Stesse righe. MADRE del verbo «accredita»: dalla coda accrediti genera le righe di RETTIFICA in commessa e le registra sul ponte vendite.resi_righe_accrediti. Una sola unita'' atomica; il DOCUMENTO non nasce qui, nasce nel giro di fatturazione normale — nessuna seconda pipeline, ed e'' il motivo per cui un esito parziale del fan-out non lascia mai mezzo documento fiscale. UN PARAMETRO SOLO: con D-NC-6 (l''accredito e'' sempre pieno) la quantita'' non e'' un input ma accredito_dovuto della coda, e con D-NC-7 il massivo lo fa il backend con run_fan_out. ⭐ rev 2026-09-21 (D14 giro 2, D3): la coda si legge PER DOCUMENTO — vendite.fn_resi_da_accreditare(ARRAY[ddt della riga resa], NULL) — e non piu'' da vw_resi_da_accreditare, che e'' la coda di tutti; il numero e'' lo stesso (la vista e'' la proiezione della funzione), il costo e'' quello del DDT. ⭐ D-NC-1: la rettifica porta SEMPRE il segmento della SPEDIZIONE (DDT:<uid>:R:<riga>#RET:<n>), anche quando a fatturare e'' stata la corsia ORD — sul serbatoio d''ordine la greedy scaricherebbe l''accredito sull''ultima spedizione invece che su quella da cui la merce e'' tornata. Il ripiego «se il DDT non c''e'', prendi il primo» e'' diventato un guard fail-fast (E_ACCREDITO_SENZA_SPEDIZIONE) e non un COALESCE: la condizione e'' impossibile per costruzione, e un ramo morto sembra coperto senza esserlo. ⭐ N-1: il prezzo si COPIA da vendite.fatture_righe, mai ricalcolato e mai riletto dal listino. Sconto e IVA li copia il generatore righe lato backend (BE-4), leggendo la riga rettificata. D-NC-5: consumo LIFO delle unita'' fatturanti — non e'' una regola di calcolo (il prezzo si copia sempre) ma di CONSUMO. Kit: raggruppamento per kit_key e quantita'' in unita'' PADRE, max(quantita/coeff_qta) come vw_af_merce_per_riga; una rettifica per componente, ciascuna specchio della sua riga di fattura. Chiude con l''uguaglianza di D-NC-6 (E_ACCREDITO_QUOTA_NON_COPERTA): meglio non farlo che farlo a meta'', perche'' un residuo parziale e'' la riga che resta in coda a chiedere per sempre. Il presidio permessi vive sul BE (post_permission), non qui. ⭐ P-7 (2026-08-18): il meta della rettifica EREDITA quello della riga rettificata (`ca.meta || {coeff_qta, accredito_da, resi_riga_id}`) invece di enumerare le chiavi da copiare; E_ACCREDITO_KIT_SENZA_PADRE rifiuta AL VERBO il kit i cui componenti non portano componente_di, gemello di E_ACCREDITO_KIT_NON_MISURABILE. rev 2026-08-29: il `sorgente => NULL` e'' dichiarato nel corpo (RETTIFICA e'' sourceless per progetto). ⭐ rev 2026-10-03 (brief-db-bom-flag-quantita-e-kit-in-fattura, R-DB-B8): sui componenti di kit il meta della rettifica porta qta_padre = -quota (unita'' padre, negativa come la quantita'' del componente) a destra del ||: ereditata dalla riga rettificata sarebbe positiva, e il generatore righe la rifiuta per segno opposto.';
 ```
 
 ---

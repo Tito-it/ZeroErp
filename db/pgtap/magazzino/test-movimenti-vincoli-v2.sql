@@ -102,10 +102,8 @@ BEGIN
         RAISE EXCEPTION 'fixture: serve almeno un articolo attivo (seed di catalogo)';
     END IF;
 
-    INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id)
-    VALUES ('PGT-MV2-A', 'pgTAP movimenti v2 A', v_ind, v_ef) RETURNING id INTO v_ma;
-    INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id)
-    VALUES ('PGT-MV2-B', 'pgTAP movimenti v2 B', v_ind, v_ef) RETURNING id INTO v_mb;
+    v_ma := magazzino.fn_crea_magazzino('PGT-MV2-A', 'pgTAP movimenti v2 A', v_ind, '{}'::jsonb, v_ef);
+    v_mb := magazzino.fn_crea_magazzino('PGT-MV2-B', 'pgTAP movimenti v2 B', v_ind, '{}'::jsonb, v_ef);
 
     INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo)
     VALUES (v_art, 'PGT-L-1', script.fn_data_operativa()) RETURNING id INTO v_lot;

@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA REGOLA: I DATI DI SVILUPPO NASCONO SOLO IN SVILUPPO
+#   dbops.fn_dati_di_sviluppo_ammessi_su_valori(ambiente): pura sul valore
+#   dell'ambiente. La leggono il guard delle etichette (20261018-58) e il verbo
+#   dei dati di sviluppo (20261018-60): la stessa decisione, scritta una volta.
+#   Brief: brief-db-processi-accensione-per-ambiente, R-4 e §5.5.
+#
+# -- PERCHE' PURA ---------------------------------------------------------
+#   La CI e' SVILUPPO e l'ambiente non cambia nemmeno dentro un test (§5.5):
+#   il ramo PRODUZIONE si prova chiamando la regola con tutti e due i valori,
+#   e chi decide le passa quello vero (script.fn_ambiente_installazione()).
+#   NULL resta NULL: l'ambiente mancante lo dice il lettore (E_CONFIG_MANCANTE),
+#   non questa funzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261018-57-create-fn-dati-di-sviluppo-ammessi-su-valori-mctit.yaml
+
+  - changeSet:
+      id: 20261018-57-create-fn-dati-di-sviluppo-ammessi-su-valori
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea dbops.fn_dati_di_sviluppo_ammessi_su_valori: i dati di sviluppo (etichette, verbo) solo
+        in SVILUPPO, pura sul valore. Brief: brief-db-processi-accensione-per-ambiente (R-4, §5.5).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_dati_di_sviluppo_ammessi_su_valori(
+                  p_ambiente dbops.installazione.ambiente%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               IMMUTABLE
+              AS $function$
+                  -- I dati di sviluppo nascono solo in SVILUPPO; NULL resta NULL.
+                  SELECT p_ambiente = 'SVILUPPO'
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_dati_di_sviluppo_ammessi_su_valori(dbops.installazione.ambiente%TYPE) IS
+                  'La regola, pura sul valore (IMMUTABLE, sql): i dati di sviluppo (le etichette di prova, il verbo anagrafiche.fn_provisiona_dati_di_sviluppo) sono ammessi solo se l''ambiente e'' SVILUPPO. NULL resta NULL: l''ambiente mancante lo dice il lettore script.fn_ambiente_installazione (E_CONFIG_MANCANTE). La leggono il guard dbops.trgfn_etichette_di_prova_guard e il verbo, passando l''ambiente vero; i pgTAP la chiamano coi due valori (la CI e'' SVILUPPO e l''ambiente non cambia). Brief: brief-db-processi-accensione-per-ambiente (R-4, §5.5).';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS dbops.fn_dati_di_sviluppo_ammessi_su_valori(text);

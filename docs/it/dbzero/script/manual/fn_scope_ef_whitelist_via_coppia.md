@@ -61,3 +61,12 @@ chiuso nel dubbio. Il super amministratore vede tutto.
   segnalato i dati precontrattuali come figli del billing account (FK
   `fk_idp_billing_account_coppia`) senza RLS; decisione di Tid: la RLS segue il
   billing account. Brief: brief-db-istanza-nasce-col-ba (§6.13).
+
+### ⚠️ 2026-10-18 — l'unico adattatore rimasto in una policy
+
+Le altre policy ef_whitelist calcolano il perimetro una volta per istruzione
+(D-3b-2 di `brief-db-plancache-funzioni-con-query-incorporate`). Questa no: la
+chiave è una **coppia** di colonne (istanza, utility) e il risolutore
+`fn_resolve_emittente_fiscale_id` prende un valore solo. Debito dichiarato nel
+presidio `script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` (test 5).
+Chiama `via_efba`, che è già nella forma nuova.

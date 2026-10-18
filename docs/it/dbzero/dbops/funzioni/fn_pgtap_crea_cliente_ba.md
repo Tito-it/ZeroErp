@@ -17,13 +17,15 @@ AS $function$
 -- Uso:
 --   CREATE TEMP TABLE tmp_cli AS
 --   SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('RLS preventivi');
--- ⭐ Terzo parametro (2026-09-09): l'emittente a cui LEGARE il BA.
---   Serve alle testate con `billing_account_id` NOT NULL —
---   contratti e offerte_commerciali — il cui guard
---   `trgfn_<doc>_guard_emittente_ba` confronta l'emittente del
---   documento con `anagrafiche.fn_get_emittente_fiscale_pk(ba)`.
---   Senza legame quella funzione NON fallisce: ricade
---   sull'emittente di DEFAULT, cioe' risponde un'altra azienda.
+-- ⭐ Terzo parametro: l'emittente a cui LEGARE il BA. Serve alle
+--   testate con `billing_account_id` NOT NULL (contratti, offerte),
+--   il cui guard confronta l'emittente del documento con
+--   `anagrafiche.fn_get_emittente_fiscale_pk(ba)`. Senza legame
+--   quella funzione ricade sull'emittente di DEFAULT.
+-- ⭐ Rev 20261018-37: istanza, BA e legame li scrive il BB
+--   anagrafiche.fn_crea_billing_account (regola del 2). Qui restano
+--   le scelte della fixture: il codice, la categoria, la valuta e la
+--   finestra dei vincoli.
 DECLARE
     v_soggetto_id anagrafiche.soggetti.id%TYPE;
     v_sr_id       anagrafiche.soggetti_ruoli.id%TYPE;
@@ -31,7 +33,6 @@ DECLARE
     v_ba_id       anagrafiche.billing_account.id%TYPE;
     v_utility_id  anagrafiche.billing_account.utility_id%TYPE;
     v_codice      text;
-    v_link_sr     anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
 BEGIN
     v_utility_id := COALESCE(
         p_utility_id,
@@ -42,16 +43,12 @@ BEGIN
             'fn_pgtap_crea_cliente_ba: nessuna utility a catalogo';
     END IF;
 
-    -- Codice libero: `codice` e' UNIQUE e non filtra su nessuno
-    -- stato, quindi una sigla fissa farebbe collidere la seconda
-    -- chiamata con la prima — lo stesso motivo per cui esistono
-    -- fn_pgtap_piva_libera e la sigla PGTRnnnn dell'emittente.
+    -- Codice libero: `codice` e' UNIQUE, quindi una sigla fissa farebbe
+    -- collidere la seconda chiamata con la prima.
     -- ⛔ Il massimo si legge dalle ISTANZE, non dai BA (rev
-    --   20260923-07): billing_account e' in RLS, e sotto un
-    --   operatore mostra solo i BA della SUA azienda. Con due
-    --   aziende nella stessa transazione il secondo ripartiva da
-    --   PGTAPBA00001. istanze_utilities in RLS non e', e il
-    --   builder le scrive sempre con lo stesso codice del BA.
+    --   20260923-07): billing_account e' in RLS, e sotto un operatore
+    --   mostra solo i BA della SUA azienda. istanze_utilities in RLS non
+    --   e', e il builder le scrive con lo stesso codice del BA.
     SELECT 'PGTAPBA' || lpad((COALESCE(max(substring(iu.codice from 8)::bigint), 0) + 1)::text, 5, '0')
       INTO v_codice
       FROM anagrafiche.istanze_utilities iu
@@ -64,87 +61,29 @@ BEGIN
                          v_soggetto_id, 'CL'::character varying);
 
     -- ⛔ LA FINESTRA DIFFERITA. `trgfn_istanze_utilities_require_utility_dichiarata`
-    --   verifica al COMMIT che l'istanza abbia un satellite
-    --   (BA / dato precontrattuale / cliente). Con i vincoli
-    --   IMMEDIATE — come li mette il preambolo obbligatorio dei
-    --   pgTAP — scatterebbe sul primo INSERT, cioe' prima che il
-    --   billing account possa esistere.
+    --   verifica al COMMIT che l'istanza abbia un satellite (BA / dato
+    --   precontrattuale / cliente). Con i vincoli IMMEDIATE, come li
+    --   mette il preambolo dei pgTAP, scatterebbe sull'INSERT
+    --   dell'istanza, prima che il BA esista.
     SET CONSTRAINTS ALL DEFERRED;
 
-    -- ⚠️ `fittizia = true`: chk_istanza_fittizia_indirizzo vuole
-    --   O il flag O un indirizzo di dettaglio, e a una fixture
-    --   l'indirizzo non serve.
-    INSERT INTO anagrafiche.istanze_utilities (codice, soggetto_id, fittizia)
-    VALUES (v_codice, v_soggetto_id, TRUE)
-    RETURNING id INTO v_ist_id;
-
-    -- ⚠️ `validita` NON si nomina: e' GENERATED (PG18).
-    -- ⚠️ `valuta_id` VALORIZZATA, e non e' pignoleria.
-    --   La risoluzione della valuta di un documento e' una
-    --   catena «BA -> emittente -> gestore»: su dbdev regge
-    --   l'ultimo anello, perche' un gestore c'e'. Su un database
-    --   ricostruito dai changelog non c'e' nessuno dei tre, e il
-    --   primo documento muore con «Configurazione mancante:
-    --   valuta non risolta (BA/emittente/gestore)».
-    --   ⭐ Misurato il 2026-09-09: e' la causa di 11 dei 185 file
-    --   di vendite che sullo scratch morivano nel fixture.
-    --   Chiudendo l'anello piu' vicino al documento, la fixture
-    --   non dipende piu' da com'e' configurata la macchina.
-    -- ⛔ SENZA `RETURNING` (rev 20260912-38), ed e' il punto che rende
-    --   l'helper usabile anche come `zeroerp_app`. La policy di
-    --   lettura del BA risolve l'emittente dal legame in
-    --   emittenti_fiscali_billing_account, e quel legame lo scrive
-    --   il trigger AFTER `z90_link_ef` — cioe' DOPO che il
-    --   RETURNING ha gia' chiesto di vedere la riga: sotto la RLS il
-    --   BA non ancora mappato ricade sull'emittente di DEFAULT, e
-    --   se chi agisce non e' quello, l'INSERT muore con «la nuova
-    --   riga viola la regola di sicurezza». Riletto dal `codice`
-    --   (UNIQUE) a istruzione finita, il legame c'e' e la riga si
-    --   vede. Da owner non cambia niente.
-    INSERT INTO anagrafiche.billing_account
-        (istanza_utility_id, soggetto_ruolo_id, utility_id,
-         codice, categoria_cliente_id, valuta_id)
-    VALUES (v_ist_id, v_sr_id, v_utility_id, v_codice,
-            (SELECT cc.id FROM anagrafiche.categorie_clienti cc
-              ORDER BY cc.id LIMIT 1),
-            (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1));
-
-    SELECT b.id INTO v_ba_id
-      FROM anagrafiche.billing_account b
-     WHERE b.codice = v_codice;
-
-    IF v_ba_id IS NULL THEN
-        RAISE EXCEPTION
-            'fn_pgtap_crea_cliente_ba: il billing account % e'' stato scritto ma non si legge: sotto la RLS serve un operatore in sessione (il trigger z90 lo lega al SUO emittente), oppure il legame va chiesto col terzo parametro da owner',
-            v_codice;
-    END IF;
-
-    -- ⭐ IL LEGAME BA -> EMITTENTE, se il chiamante lo chiede.
-    --   `is_default = false`: e' un legame PER QUESTO BA, non
-    --   l'emittente di default dell'installazione — quello e' una
-    --   riga con `billing_account_id IS NULL` e non va toccata da
-    --   una fixture.
-    -- ⚠️ Con un operatore in sessione il legame lo ha GIA' scritto
-    --   il trigger z90, verso l'emittente di chi agisce: si
-    --   rispetta (uq_emittenti_fiscali_ba non ammette il secondo)
-    --   e si verifica che sia quello chiesto — un BA legato a
-    --   un'altra azienda per silenzio sarebbe la fixture sbagliata
-    --   contro cui questo parametro esiste.
-    IF p_emittente_soggetto_ruolo_id IS NOT NULL THEN
-        SELECT efba.emittente_soggetto_ruolo_id INTO v_link_sr
-          FROM anagrafiche.emittenti_fiscali_billing_account efba
-         WHERE efba.billing_account_id = v_ba_id;
-
-        IF v_link_sr IS NULL THEN
-            INSERT INTO anagrafiche.emittenti_fiscali_billing_account
-                (emittente_soggetto_ruolo_id, billing_account_id, is_default)
-            VALUES (p_emittente_soggetto_ruolo_id, v_ba_id, false);
-        ELSIF v_link_sr <> p_emittente_soggetto_ruolo_id THEN
-            RAISE EXCEPTION
-                'fn_pgtap_crea_cliente_ba: il billing account % e'' gia'' legato all''emittente % (trigger z90, operatore in sessione), non a % come chiesto: costruire il cliente PRIMA di aprire il contesto, o non passare il terzo parametro',
-                v_ba_id, v_link_sr, p_emittente_soggetto_ruolo_id;
-        END IF;
-    END IF;
+    -- ⚠️ `valuta_id` VALORIZZATA: la risoluzione della valuta di un
+    --   documento e' la catena «BA -> emittente -> gestore», e su un
+    --   database ricostruito dai changelog nessuno dei tre la porta.
+    --   Chiudendo l'anello piu' vicino al documento, la fixture non
+    --   dipende da com'e' configurata la macchina.
+    SELECT b.billing_account_id, b.istanza_utility_id
+      INTO v_ba_id, v_ist_id
+      FROM anagrafiche.fn_crea_billing_account(
+               p_soggetto_ruolo_id           := v_sr_id,
+               p_utility_id                  := v_utility_id,
+               p_campi                       := jsonb_build_object(
+                   'codice',               v_codice,
+                   'categoria_cliente_id', (SELECT cc.id FROM anagrafiche.categorie_clienti cc
+                                             ORDER BY cc.id LIMIT 1),
+                   'valuta_id',            (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)),
+               p_istanza                     := jsonb_build_object('codice', v_codice),
+               p_emittente_soggetto_ruolo_id := p_emittente_soggetto_ruolo_id) b;
 
     -- Saga completa: i guard differiti scattano QUI, su un mondo
     -- finito. ⚠️ Senza la richiusura il ROLLBACK del test se li
@@ -157,7 +96,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_cliente_ba(p_etichetta text, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint)
-IS 'Fixture pgTAP: crea la catena minima di un cliente fatturabile (soggetto -> ruolo CL -> istanza utility -> billing account). Il terzo parametro, opzionale, e'' il soggetto_ruolo dell''EMITTENTE a cui legare il billing account in anagrafiche.emittenti_fiscali_billing_account: serve alle testate con billing_account_id NOT NULL (contratti, offerte_commerciali), il cui guard confronta l''emittente del documento con anagrafiche.fn_get_emittente_fiscale_pk(ba). ⚠️ Senza legame quella funzione non fallisce: ricade sull''emittente di DEFAULT, cioe'' risponde un''altra azienda. ⭐ Rev 20260912-38: usabile anche come zeroerp_app CON un operatore in sessione — l''INSERT del BA non fa piu'' RETURNING (sotto la RLS la riga non ancora mappata non si vede) e il legame lo lascia scrivere al trigger z90 verso l''emittente di chi agisce, verificando che coincida con quello chiesto. Da owner: costruire il cliente PRIMA di aprire il contesto, o il trigger e il terzo parametro si scontrano. ⛔ Rev 20260923-07: il codice libero PGTAPBAnnnnn si calcola sulle istanze (fuori RLS), non sui BA — sotto la RLS il massimo dei BA e'' quello dell''azienda di chi agisce, e il cliente di una seconda azienda nella stessa transazione ripartiva da PGTAPBA00001. Brief: brief-db-perimetro-emittente-righe-documento.md, brief-db-fixture-che-costruiscono-giro-2.md';
+IS 'Fixture pgTAP: crea la catena minima di un cliente fatturabile (soggetto -> ruolo CL -> istanza utility -> billing account). Rev 20261018-37: istanza, BA e legame li scrive il BB anagrafiche.fn_crea_billing_account (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 5); il builder sceglie il codice libero PGTAPBAnnnnn (dalle istanze, fuori dalla RLS) per istanza e BA, la prima categoria cliente e la prima valuta, e apre e richiude la finestra dei vincoli differiti. Il terzo parametro, opzionale, e'' il soggetto_ruolo dell''EMITTENTE a cui legare il billing account: serve alle testate con billing_account_id NOT NULL (contratti, offerte_commerciali), il cui guard confronta l''emittente del documento con anagrafiche.fn_get_emittente_fiscale_pk(ba); senza legame quella funzione ricade sull''emittente di DEFAULT. Usabile anche come zeroerp_app CON un operatore in sessione: il BB rilegge il BA a istruzione finita, e il legame lo scrive il trigger z90 verso l''emittente di chi agisce; un terzo parametro discorde e'' E_SCRIPT_CHIAMATA_NON_VALIDA (costruire il cliente PRIMA di aprire il contesto, o non passarlo).';
 ```
 
 ---

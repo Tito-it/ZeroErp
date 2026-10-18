@@ -506,7 +506,7 @@ errore.
 
 > ✅ **Le voci chiuse non stanno qui**: sono in **§7 «Attività svolte»**, con la
 > data e il rimando al brief — chiuse **per intero** D1, D2, D3, D4, D5, D10,
-> D13, D14, D15, D19, D20, D21, D22, D23, D25, D26, D28, D29, D30, D33; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
+> D13, D14, D15, D19, D20, D21, D22, D23, D25, D26, D26-2, D28, D29, D30, D33, D35; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
 > registri calati), D12 (la quantità), D17 (tutto tranne Q-2).
 >
 > ⭐ **D15 è nata dalla chiusura di D14** (2026-09-22) e **D16** da un test
@@ -531,7 +531,7 @@ errore.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D16, D24, D26-2, D27, D31, D32, D34.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D16, D24, D27, D31, D32, D34, D36.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -942,20 +942,17 @@ per conto suo: per la vista quel sito non esiste.
 * **Come si chiude:** quando la vista vede il sito, la riga di `_ESENZIONI` va rossa da sola (verso
   di ritiro del presidio) e il BE la toglie.
 
-### 🟡 D26-2 — Le funzioni che ripianificano a ogni chiamata
+### 🟡 D36 — Il perimetro una volta per istruzione: le famiglie che restano
 
-Ereditato il 2026-10-10 dalla chiusura di `work-done/brief-db-segment-base-commesse-attivita`: una
-funzione plpgsql che chiama con un parametro una funzione SQL grande che si incorpora fa
-ripianificare la query a ogni chiamata (in modo `auto` la plancache preferisce i piani
-personalizzati). Curate e presidiate la capability del DDT e il lister dei DDT da spingere; il
-censimento delle altre e il lister senza filtri restano aperti.
+Ereditato il 2026-10-18 dalla chiusura di D26-2 (`work-done/brief-db-plancache-funzioni-con-query-incorporate`,
+D-3b-2): le policy ef_whitelist dell'operatore calcolano il perimetro una volta per istruzione; restano
+per riga le famiglie del cliente portale, cliente, shop, fornitore, email e note, più tre policy
+dell'operatore (`fn_scope_note_ef_whitelist`, `fn_scope_note_magazzino_ef_whitelist`, che il presidio
+non vede, e `via_coppia`, dichiarata).
 
-Dettaglio nel brief
-[brief-db-plancache-funzioni-con-query-incorporate.md](brief-db-plancache-funzioni-con-query-incorporate.md).
-Stato al 2026-10-11: censimento fatto (D-1); resi curati (`20261011-42`, D-3a); pannello «Passaggi» e
-liste chiusi nel brief figlio `work-done/brief-db-lineage-seminata-per-chiave` (D-4…D-6). D-2 (il lister
-dei DDT senza filtri) ✅ chiusa con `20261012-03` (1135 → 154 ms). ⬜ Resta **D-3b** (il verbo
-dell'accredito, ~115 ms a chiamata), da profilare.
+Dettaglio, censimento e decisioni P-1…P-3 nel brief
+[brief-db-perimetro-una-volta-famiglie-residue.md](brief-db-perimetro-una-volta-famiglie-residue.md).
+Aperto, non iniziato.
 
 ### 🟠 D27 — Gli indirizzi del documento non seguono il cliente
 
@@ -1213,9 +1210,10 @@ D6 e il registro dei rossi in CI.
       `work-done/brief-db-istanza-nasce-col-ba-residui` — chiuso e archiviato il 2026-10-10 (DB `20261010-50…-59`, FE/BE §4).
 * [ ] **D27** — gli indirizzi del documento seguono il cliente: brief
       `brief-db-indirizzi-documento-seguono-il-cliente` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
-* [ ] **D26-2** — le funzioni che ripianificano a ogni chiamata: brief
-      `brief-db-plancache-funzioni-con-query-incorporate` (aperto il 2026-10-10; al 2026-10-11 resta D-3b, il
-      verbo dell'accredito; D-2 chiusa con `20261012-03`).
+* [x] **D26-2** — le funzioni che ripianificano a ogni chiamata: brief
+      `work-done/brief-db-plancache-funzioni-con-query-incorporate` — chiuso e archiviato il 2026-10-18
+      (DB `20261010-44`, `20261011-42`, `20261012-03`, `20261018-15 … -33`, `-48 … -52`; verbo dell'accredito
+      ~115 → 50,6 ms; residuo in D36).
 * [x] **D28** — le righe evase di un DDT da ordine: brief `work-done/brief-db-ddt-righe-evase-dall-ordine` —
       chiuso e archiviato il 2026-10-11 (DB `20261011-05 … -20`, `-34`, `-35`; BE/FE §10; collaudo di Tid superato).
 * [x] **D29** — annullare un documento con legami: brief `work-done/brief-db-annullo-documento-con-legami` —
@@ -1234,6 +1232,8 @@ D6 e il registro dei rossi in CI.
       `brief-db-dati-societari-in-creazione` (aperto il 2026-10-14, non iniziato; decisione E-1).
 * [x] **D35** — `zeroerp_log` nella fase `ruoli`: brief
       `work-done/brief-db-zeroerp-log-nella-fase-ruoli` — aperto e chiuso il 2026-10-15.
+* [ ] **D36** — il perimetro una volta per istruzione, le famiglie che restano: brief
+      `brief-db-perimetro-una-volta-famiglie-residue` (aperto il 2026-10-18, non iniziato; decisioni P-1…P-3).
 
 ---
 
@@ -1248,6 +1248,23 @@ D6 e il registro dei rossi in CI.
 > Le date sono quelle dichiarate nei brief, e i brief restano la sede del
 > dettaglio: qui si dice **che cosa è cambiato nel sistema**, non come ci si è
 > arrivati.
+
+### ✅ D26-2 — Le funzioni che ripianificano a ogni chiamata — chiuso il 2026-10-18
+
+Il brief `work-done/brief-db-plancache-funzioni-con-query-incorporate.md`, aperto il 2026-10-10. Censite
+le funzioni con query incorporate (D-1); il lister dei DDT senza filtri (D-2, `20261012-03`: la CTE
+`src` si ricalcolava per ogni riga); i resi col piano generico (D-3a, `20261011-42`); pannello
+«Passaggi» e liste nel brief figlio della lineage seminata (D-4…D-6). Poi il verbo dell'accredito
+(D-3b), riga 15922, da ~115-120 ms a **50,6 ms** di mediana (dbdev come app, fatti datati):
+D-3b-1 (`20261018-15`) i tre filtri `LIKE`/`split_part` su `segment_key` che sotto RLS non arrivavano
+all'indice, ora da `segment_base`; D-3b-2 (`20261018-16…-33`, `-48…-51`) il perimetro dell'operatore
+calcolato una volta per istruzione in tutte le policy ef_whitelist — `fn_scope_ef_perimetro` col
+perimetro di `fn_get_emittenti_scope_pk_ids` in una sottoquery, l'emittente della riga da
+`fn_resolve_emittente_fiscale_id` (DEFINER, decisione di Tid), gli adattatori riscritti sul
+risolutore, presidio `script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` sul testo e sul
+piano; D-3b-3 (`20261018-52`) il `tx_id` generato sulla connessione di log persistente invece di
+aprirne una a ogni transazione (12-13 → 1,3-2,2 ms). Debito residuo: **D36** (le famiglie che
+restano per riga).
 
 ### ✅ D1 — Il cancello pgTAP in CI — chiuso il 2026-09-09
 

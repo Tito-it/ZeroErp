@@ -219,6 +219,28 @@ variabile in più.
 
 ---
 
+### ⛔ rev 2026-10-18 — in commessa si entra dalla base del segmento
+
+ChangeSet `20261018-15`. La madre legge `vendite.commesse_attivita` tre volte:
+il progressivo `#RET:`, i gruppi da accreditare e le righe di ciascun gruppo.
+Tutte e tre filtravano la chiave con `LIKE` o `split_part`, che sotto la policy
+della tabella **non arrivano all'indice** (non sono leakproof,
+linee-guida-sql §8.5-bis): la tabella si leggeva intera, con la policy pagata
+riga per riga, a ogni accredito.
+
+Ora ciascuna entra dall'**uguaglianza su `segment_base`** e tiene il filtro di
+prima come residuo. Le righe sono le stesse per costruzione: i segmenti della
+partita (`DDT:<uid>:R:<riga>`, `ORD:<uid>:R:<riga>`) non contengono `#`, quindi
+ogni chiave che il filtro accetta ha per base il segmento stesso.
+
+⚠️ Una lettura nuova di `commesse_attivita` in questa funzione deve entrare
+allo stesso modo: i risultati resterebbero giusti, e solo il tempo se ne
+accorgerebbe. Presidio: `db/pgtap/vendite/test-fn-accredita-riga-reso-v1.sql`
+test 16 (forma) e test 15 (la corsia ORD, costruita). Misura:
+`brief-db-plancache-funzioni-con-query-incorporate` §5quater.
+
+---
+
 ### I due tetti, e perché non stanno nello stesso posto
 
 ```text

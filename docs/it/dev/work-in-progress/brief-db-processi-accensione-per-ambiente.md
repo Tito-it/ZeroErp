@@ -2,8 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: il team DB, col lotto 4 della 2b-1 (il fornitore, §5-ter.2).** ✅ La riga 10 del BE è fatta
-(2026-10-18, §6.8), e il consenso è tolto anche da `.env.systemd`: l'accensione è chiusa, resta il giro 2b (R-4).
+**Riparte: la sessione BE, con la 2b-2 e la ricaduta della 2b-3 (§5-ter.3).** ✅ Lotti 4-9 della 2b-1 e 2b-3
+applicati, pgTAP verdi (Tid, 2026-10-18). Lato DB non resta altro da scrivere. ✅ La riga 10 del BE è fatta (2026-10-18, §6.8), e il consenso è tolto anche da `.env.systemd`:
+l'accensione è chiusa, resta il giro 2b (R-4).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -11,7 +12,7 @@
 | 2 | team DB | ✅ giro 1 scritto e provato sullo scratch (2026-10-16): `20261016-15` … `-32` | §5-bis | — |
 | 3 | Tid | ✅ apply del giro 1, fase `post` su dbdev (`SVILUPPO`, 2026-10-16 14:20), pgTAP verdi | §5-bis.4 | — |
 | 4 | sessione BE/FE | ✅ punti 1-6 del §6.0, pushati (`f811719d1`, 2026-10-17); codici d'errore nel commit `843166c88`. ✅ Dopo l'incidente delle 23:45, i tetti di rete e delle sveglie (2026-10-17, `295737a90`) | §6.1, §6.4 | — |
-| 4-bis | team DB | le richieste del BE: ✅ R-BE-1 e R-BE-3 (giro 2a, §6.3), ✅ R-BE-2 sciolta da S-1 (§6.2); resta **R-BE-4**, la tolleranza di `smoke_notturno` in `processi.csv` (§6.5) | §6.2, §6.3, §6.5 | — |
+| 4-bis | team DB | le richieste del BE: ✅ R-BE-1 e R-BE-3 (giro 2a, §6.3), ✅ R-BE-2 sciolta da S-1 (§6.2); ✅ R-BE-4, la tolleranza di `smoke_notturno` = 1560 in `processi.csv`, applicata (§6.0 punto 7) | §6.2, §6.3, §6.5 | — |
 | 4-ter | Tid | ✅ sveglie reinstallate su dbdev (`sudo backend/bin/install-timers.sh`, 2026-10-17): le unit installate hanno i tetti `TimeoutStartSec` del §6.4 | §6.1, §6.4 | — |
 | 5 | sessione BE | ✅ che cosa crea il provisioning di sviluppo: l'elenco è in [brief-be-utenti-di-sviluppo §7](brief-be-utenti-di-sviluppo.md) (2026-10-16), decisioni di Tid del §7.4 prese (emittenti nuovi dal verbo, niente `dev.shop` per ora, portale senza contratto) | §5-ter | — |
 | 6 | Tid | ✅ decisioni S-1 (storia delle scelte, R-BE-2) e S-2 (smoke, §6.0 punto 7): proposte del team DB accolte (2026-10-17) | §6.2 | — |
@@ -19,11 +20,14 @@
 | 8 | team DB | ✅ giro 2a scritto e provato sullo scratch: R-BE-1, R-BE-3, S-1 (`20261017-02` … `-04`) | §6.3 | — |
 | 8-ter | Tid | ✅ apply del giro 2a su dbdev, automazioni, pgTAP verdi (2026-10-17) | §6.3 | — |
 | 9-bis | Tid | ✅ strada (b), prima i building block (2026-10-17); resta **il via** alla 2b-1 | §5-ter.1 | — |
-| 9 | team DB | 🔨 2b-1: i sette BB nel DB e i builder pgTAP che diventano involucri. ✅ lotto 1 (emittente, più i due BB della scrittura da jsonb) scritto e provato: `20261017-05` … `-10`. ✅ lotti 2 (indirizzi del ruolo, `-11`, `-12`) e 3 (contatto, `-13` … `-17`) scritti, provati e applicati. Prossimo: lotto 4, il fornitore | §5-ter.2 | — |
+| 9 | team DB | 🔨 2b-1: i sette BB nel DB e i builder pgTAP che diventano involucri. ✅ lotto 1 (emittente, più i due BB della scrittura da jsonb) scritto e provato: `20261017-05` … `-10`. ✅ lotti 2 (indirizzi del ruolo, `-11`, `-12`) e 3 (contatto, `-13` … `-17`) scritti, provati e applicati. ✅ lotti 4-9 scritti (2026-10-18): fornitore `20261018-30`, BA e cliente `-34` … `-38`, veste dei portali `-39`, magazzino `-40`, `-41`, profilo e legame `-42` … `-45`, override ed emittente attivo `-46`, `-47`. ✅ anche le copie del binding d'identità nei pgTAP (lotto 8) | §5-ter.2 | — |
+| 9-septies | Tid | ✅ apply dei lotti 4-9 su dbdev e sullo scratch (2026-10-18 14:26), pgTAP verdi | §5-ter.2 | — |
 | 9-quinquies | Tid | ✅ apply del lotto 1, pgTAP verdi (2026-10-17) | §5-ter.2 | — |
 | 9-sexies | Tid | ✅ apply dei lotti 2 e 3 (`-11` … `-17`), pgTAP verdi (2026-10-17) | §5-ter.2 | — |
 | 9-ter | sessione BE | 2b-2: il backend passa ai BB, le sue copie si ritirano | §5-ter.1 | 9 |
-| 9-quater | team DB | 2b-3: etichette, verbo di sviluppo, presidio (R-4) | §5-ter.1 | 9 |
+| 9-quater | team DB | ✅ 2b-3 scritta e provata (2026-10-18): etichette, guard, verbo, presidio, `fn_accendi_veste` (`20261018-55` … `-64`) | §5-ter.3 | — |
+| 9-octies | Tid | ✅ (2026-10-18, pgTAP verdi) apply della 2b-3 (`20261018-55` … `-64`, i due CSV dei codici, `presidi.csv`, `presidi_testi.csv`, il loop `20260205-41`); pgTAP `dbops/test-etichette-di-prova-v1`, `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1`, chi usa `fn_pgtap_crea_operatore_umano`, i presidi trasversali | §5-ter.3 | — |
+| 9-novies | sessione BE | ricaduta della 2b-3 (codici, command, lista Operatori, smoke) | §5-ter.3 | 9-octies |
 | 10-bis | Tid | ✅ contraddizione su `SMOKE_NOTTURNO_CONSENTITO` sciolta (2026-10-18): il divieto entra nel modello, poi il consenso si ritira | §6.6 | — |
 | 10-ter | team DB | ✅ **R-BE-5** scritto e provato sullo scratch (2026-10-18): `accendibile_in_produzione` nel catalogo, il predicato, la regola e il guard, `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE` (1355) | §6.7 | — |
 | 10-quater | Tid | ✅ apply di R-BE-5 (`20261018-10` … `-14`) su dbdev, pgTAP senza regressioni (2026-10-18) | §6.7.4 | — |
@@ -31,12 +35,10 @@
 | 10-bis-env | Tid | ✅ tolta la riga `SMOKE_NOTTURNO_CONSENTITO` da `backend/.env.systemd` di backend-dev (2026-10-18) | §6.8 | — |
 | 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10, 10-quater |
 
-Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). Da committare: R-BE-5 (§6.7:
-cinque changeSet, `processi.csv` e mirror, i due CSV dei codici, un pgTAP nuovo, quattordici adeguati,
-tre pagine manual), i lotti 1-3 della 2b-1 (`20261017-05` … `-17`, i
-codici 1351-1354 nei due CSV, quattro pgTAP, cinque pagine manual), il giro 2a (tre changeSet,
-quattro CSV, un pgTAP, due pagine manual) e questo brief. ⚠️ `codici_errore.csv`,
-`messaggi_errore.csv` e `processi.csv` li tocca anche la sessione del brief del presidio dei job.
+Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). Da committare: niente. ✅ Il lavoro
+DB del cantiere è committato e pushato su `dev/db-tid` (2026-10-18): 2b-1 lotti 1-9, 2b-3, giro 2a, R-BE-5,
+le copie del binding nei pgTAP e questo brief. ⚠️ `codici_errore.csv`, `messaggi_errore.csv` e
+`processi.csv` li tocca anche la sessione del brief del presidio dei job.
 
 > ✅ **Giro 1 applicato** il 2026-10-16 su dbdev e sullo scratch, ambiente `SVILUPPO` dichiarato su
 > tutti e due; corsa pgTAP di Tid verde. In corsa si è corretto un difetto del test (§5-bis.5).
@@ -647,6 +649,212 @@ statici verdi.
 
 **Ricaduta BE (2b-2):** `SoggettiRepository.crea_contatto` diventa una chiamata al BB.
 
+#### Lotto 4 — il fornitore (scritto e provato, 2026-10-18)
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/anagrafiche/20261018-30` | **`anagrafiche.fn_crea_fornitore(soggetto, campi, contatto, indirizzi)`**: ruolo FO (get_or_create), riga di `fornitori` nello stato iniziale `VE`, contatto del ruolo (`fn_crea_contatto`, se c'è) e indirizzi del ruolo (`fn_crea_indirizzi_ruolo`); ritorna `(fornitore_id, soggetto_ruolo_id)` |
+| pgTAP | nuovo `anagrafiche/test-fn-crea-fornitore-v1` (16); `script/test-search-regola-unica-visibile-v1`: l'`INSERT` diretto del fornitore passa alla madre (poi un `UPDATE` allo stato `AT`) |
+| manual | `fn_crea_fornitore` |
+
+Scelte dichiarate:
+
+* **i campi sono quelli del backend** (`_CREATE_ALLOWED` meno ruolo e stato); una chiave a null vale
+  assente (`jsonb_strip_nulls`: è lo `skip_none` del backend), così il codice generato resta attivo;
+* **lo stato non è un campo**: un fornitore nasce `VE` («in verifica»), come nel backend; un altro stato
+  è un `UPDATE` dopo;
+* **contatto `NULL` = nessun contatto**: la classificazione EMPTY/PARTIAL/VALID resta del backend (decide
+  *se* chiamare), come al lotto 3;
+* nessun codice d'errore nuovo.
+
+**Prova** (scratch, SQL estratto, owner, transazione annullata): il pgTAP nuovo **16/16**;
+`test-search-regola-unica-visibile-v1` **17/17** prima e dopo; `riferimenti-morti`,
+`catalogo-messaggi-errore-completo`, `security-definer-search-path` verdi.
+
+**Ricaduta BE (2b-2):** `FornitoriService.crea_fornitore` diventa una chiamata a
+`anagrafiche.fn_crea_fornitore(soggetto, campi, contatto, indirizzi)`; si ritirano
+`transaction.atomic`, `get_or_create_ruolo_fornitore`, `create_fornitore` (e `_CREATE_ALLOWED`), il passo
+del contatto e quello degli indirizzi. Restano la traduzione dei vincoli per nome
+(`uq_fornitori_soggetto_ruolo_id`, `uq_fornitori_codice`) e la classificazione del contatto inline.
+
+#### Lotto 5 — il cliente con il BA (scritto e provato, 2026-10-18)
+
+Il censimento ha trovato **due BB, non uno**: il builder `fn_pgtap_crea_cliente_ba` (133 pgTAP, più
+`fn_pgtap_crea_mondo_cliente`) si ferma al billing account, senza la riga del cliente. Un BA senza
+cliente è un mondo legittimo (l'istanza vuole un satellite: BA, dato precontrattuale o cliente), quindi
+il BA è un BB a sé e la madre del cliente lo usa.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261018-34` | `script.fn_scrivi_riga_da_jsonb` prende **`p_rileggi_per`** (text[], in coda, default NULL): la INSERT senza `RETURNING` e la riga **riletta a istruzione finita** per quelle colonne. DROP della firma a tre + CREATE: i chiamanti di oggi restano identici |
+| `20_code/anagrafiche/20261018-35` | **`anagrafiche.fn_crea_billing_account(ruolo, utility, campi, istanza esistente, istanza nuova, emittente)`**: l'istanza fittizia se non indicata, il BA riletto per `(istanza_utility_id, utility_id)`, il legame all'emittente se chiesto |
+| `20_code/anagrafiche/20261018-36` | **`anagrafiche.fn_crea_cliente(soggetto, utility, campi, ba, contatto, indirizzi, ba esistente, istanza esistente, istanza nuova, emittente)`**: ruolo CL, BA (nuovo dal BB o esistente), riga di `clienti` riletta per `billing_account_id`, contatto e indirizzi |
+| `20_code/dbops/20261018-37` | il builder `fn_pgtap_crea_cliente_ba` passa al BB del BA (firma, ritorno e codice `PGTAPBAnnnnn` invariati) |
+| `20_code/dbops/20261018-38` | il builder `fn_pgtap_crea_cliente` passa alla madre (lo stato e le date restano scelte della fixture) |
+| pgTAP | nuovo `anagrafiche/test-fn-crea-cliente-v1` (25, runner owner); `script/test-fn-scrivi-riga-da-jsonb-v1` 22 → 27 (la firma nuova al test 1; la rilettura ai test 23-27, col caso costruito di una policy che non lascia vedere la riga) |
+| manual | `fn_crea_billing_account`, `fn_crea_cliente`, `fn_scrivi_riga_da_jsonb` |
+
+Scelte dichiarate:
+
+* **perché la rilettura.** BA e cliente sono in RLS e la policy di lettura passa dal legame BA → emittente,
+  che scrive un trigger AFTER (`z90_link_ef`): un `RETURNING` guarda la riga prima che quel legame esista.
+  I builder rileggevano a istruzione finita da `20260912-38`; i due BB nuovi sono la seconda copia, quindi
+  la forma va nel BB di scrittura. ⚠️ Fatto datato, non un motivo: il 2026-10-18 sullo scratch, con le
+  policy di quel giorno (che la sessione plancache sta riscrivendo), il `RETURNING` diretto passa anche con
+  un operatore di un'altra azienda sotto `FORCE ROW LEVEL SECURITY`;
+* **lo stato di nascita del cliente.** Senza stato nasce `AT` con la data operativa (la regola del backend);
+  con uno stato indicato le date sono di chi chiama, e le pretende `trgfn_clienti_guard_stato_date`. I
+  builder fanno nascere clienti anche `PR` e `CH`, e il grafo degli stati non ammette `AT → PR`: la madre
+  deve accettare lo stato. ⚠️ **Il modello non dice in quali stati un cliente può nascere**: è lo stesso
+  buco di D32 ([brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md),
+  decisione N aperta). La madre non lo allarga né lo chiude: lo rende visibile in un punto solo;
+* **il legame all'emittente**: con un operatore in sessione lo scrive `z90`; senza sessione (provisioning,
+  owner) lo scrive il BB. Un legame discorde è una chiamata sbagliata: `E_SCRIPT_CHIAMATA_NON_VALIDA`, nessun
+  codice nuovo;
+* ⚠️ **un limite del modello di oggi, trovato scrivendo**: il guard `z95` dell'istanza («un'istanza ha i BA
+  di una sola azienda») è un AFTER INSERT del BA e scatta *prima* che il BB scriva il legame chiesto. Con
+  la sessione il legame lo scrive `z90`, che viene prima: nessun problema. Senza sessione, un secondo BA su
+  un'istanza esistente con un emittente esplicito diverso dal default muore sul guard. Il builder non lo
+  faceva (un BA per istanza) e il provisioning crea istanze nuove: dichiarato nel BB, non corretto;
+* **la utility che richiede il PDP**: il backend la controlla come pre-check, ma il rifiuto c'è già nel DB
+  (`trgfn_clienti_sync_pdp`, trovato dal pgTAP). La madre non aggiunge niente;
+* restano al backend il permesso, il caso amministratore globale (lo dice anche il guard del BA) e le
+  validazioni read-only di BA e istanza esistenti (il rifiuto lo danno FK composte e guard).
+
+**Prova** (scratch, SQL estratto `-30` e `-34` … `-38`, owner, transazione annullata):
+
+* i pgTAP nuovi: `test-fn-crea-cliente-v1` **25/25**, `test-fn-scrivi-riga-da-jsonb-v1` **27/27**;
+* **370 pgTAP prima e dopo**: tutti quelli che passano dai builder del cliente, da `mondo_cliente`, dal
+  pannello, dalla madre del contratto o che leggono BA e clienti, più i presidi trasversali
+  (`riferimenti-morti`, `catalogo-messaggi-errore-completo`, `rubinetto-primo-motivo`,
+  `security-definer-search-path`). **Nessuna differenza** se non nei due file nuovi. Già rossi sullo
+  scratch, identici prima e dopo: una trentina di file di `vendite` che muoiono nella fixture su «l'azienda
+  indicata non è quella del cliente» (il codice casuale del documento cambia a ogni corsa, l'errore no);
+* sotto `FORCE ROW LEVEL SECURITY` su `billing_account` e `clienti`, con l'operatore pgTAP e con un
+  operatore di un'altra azienda in sessione: i due builder riscritti passano.
+
+⚠️ Non provato: la corsa come app (la prova gira da owner; la RLS è provata col `FORCE`).
+
+**Ricaduta BE (2b-2):** `ClientiService._execute_creazione` diventa una chiamata a
+`anagrafiche.fn_crea_cliente`: si ritirano `create_istanza_fittizia`, `create_billing_account`,
+`create_cliente` (e `_CLIENTE_CREATE_ALLOWED`), i passi del contatto e degli indirizzi. Restano i pre-check
+(`_guard_can_create_ba`, `_validate_istanza`, `_validate_billing_account`, la utility col PDP) per il
+messaggio, e la traduzione dei vincoli per nome (`uq_billing_instance_utility`, `uq_clienti_billing_account`).
+
+#### Lotto 6 — la veste dei portali (scritto e provato, 2026-10-18)
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/anagrafiche/20261018-39` | **`anagrafiche.fn_crea_veste_portale(credenziale, ruolo, veste, attivo)`**: la riga di `identita_digitali` di una veste esterna (`CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`), spenta o accesa; ritorna l'id |
+| pgTAP | nuovo `anagrafiche/test-fn-crea-veste-portale-v1` (9); **sedici file** con le fixture riscritte sul BB (sotto) |
+| manual | `fn_crea_veste_portale` |
+
+Scelte dichiarate:
+
+* **solo le tre vesti esterne**: la veste `OPERATORE` ha le sue madri (`fn_crea_operatore_v2`,
+  `fn_crea_utente_tecnico`), che portano perimetro e risorsa umana; `API_CLIENT` e `DISABILITATO` non nascono
+  da un invito. Fuori elenco: `E_SCRIPT_CHIAMATA_NON_VALIDA`;
+* **`attivo` obbligatorio, senza default**: l'invito crea la veste spenta, lo shop accesa; il DEFAULT della
+  colonna (`true`) è sbagliato per l'invito;
+* **le copie nei pgTAP, per significato** (regola del 2): sono copie le fixture che *creano una veste per
+  avere una veste*. Ventinove `INSERT` in sedici file passano al BB:
+  `test-fn-sync-auth-user-is-active-or`, `test-sync-auth-user-is-active-multi-role`,
+  `test-fn-scope-ba-ownership-ruolo-aware`, `test-rls-clienti`, `test-rls-fatture-residuo`,
+  `test-fn-get-permessi-ereditati-v1`, `test-fn-get-profili-accesso-applicabili`,
+  `test-fn-get-user-profile-guc-aware`, `test-fn-is-super-admin-operatore-only`,
+  `test-fn-scope-ba-ownership-via-fattura`, `test-fn-scope-ba-ownership`, `test-fn-scope-cliente-ownership`,
+  `test-fn-scope-fornitore-ownership`, `test-fn-veste-utilizzabile-v1`, `test-fn-resolve-dashboard-config`,
+  `test-fn-resolve-lista-config`. **Restano a mano**, apposta, le scritture il cui soggetto è la tabella:
+  i test dei guard di coerenza, unicità e natura della credenziale (`test-identita-digitali-guard-coerenza`,
+  `test-identita-digitali-unique-multi-veste`, i rifiuti di `test-area-accessi-v1`), le vesti `API_CLIENT`
+  e `DISABILITATO`, e le copie di righe `OPERATORE` storicizzate (`test-fn-check-operatore-invitabile`,
+  `test-fn-get-operatore-detail`). `test-area-accessi-v1` resta tutto: il suo helper crea anche una
+  `API_CLIENT`.
+
+**Prova** (scratch, SQL estratto fino al `-39`): il pgTAP nuovo **9/9**; i sedici file, **originale senza il
+BB contro riscritto col BB**: identici; i sei file dei guard rimasti a mano e `riferimenti-morti`: identici
+prima e dopo. Già rossi sullo scratch, identici: `test-fn-sync-auth-user-is-active-or` (1),
+`test-sync-auth-user-is-active-multi-role` (1), `test-identita-digitali-guard-coerenza` (5),
+`test-identita-digitali-unique-multi-veste` (1), fixture che pescano dai dati.
+
+**Ricaduta BE (2b-2):** `PortaleRepository.create_identita_portale` diventa una chiamata a
+`anagrafiche.fn_crea_veste_portale(auth_user, ruolo, veste, attivo)` (due chiamanti: l'invito e lo shop).
+
+✅ **Lotti 4-9 applicati su dbdev e sullo scratch (Tid, 2026-10-18 14:26-14:27), pgTAP verdi.**
+
+#### Lotto 7 — il magazzino (scritto, provato e applicato, 2026-10-18)
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/magazzino/20261018-40` | **`magazzino.fn_crea_magazzino(codice, descrizione, indirizzo, campi, emittente)`**: la riga di `magazzini`; campi `usa_ubicazioni`, `predefinito`, `meta`; emittente NULL = quello della sessione (lo mette `trgfn_default_emittente_fiscale('SOLLEVA')`) |
+| `20_code/dbops/20261018-41` | il builder `fn_pgtap_crea_magazzino` passa al BB (firma invariata) |
+| pgTAP | nuovo `magazzino/test-fn-crea-magazzino-v1` (9); sei `INSERT` delle fixture passano al BB in `test-movimenti-vincoli-v2`, `test-movimenti-attesi-forma-v1`, `test-valore-giacenza-forma-v1`, `rls/test-rls-magazzino-perimetro-v1`. Resta a mano, apposta, `script/test-trgfn-default-emittente-fiscale-v1`, che prova il trigger del default |
+| manual | `fn_crea_magazzino` |
+
+⚠️ **Trovato scrivendo, per la 2b-3**: il guard `trgfn_guard_emittente_scope` della tabella, dentro una
+SECURITY DEFINER senza un operatore in sessione, **ferma una riga che ha un padrone** (rev 2026-09-18). Il
+verbo di sviluppo, che il §5-ter.1 voleva DEFINER, non può quindi scrivere un magazzino (né, per lo stesso
+guard, le altre tabelle di dominio con l'emittente) senza agire per conto di un operatore dell'emittente di
+prova. È una scelta di forma del verbo: si risolve scrivendo la 2b-3.
+
+**Prova**: il pgTAP nuovo **9/9**; le quattro fixture, originale contro riscritta, identiche; i 28 pgTAP
+che usano il builder o la tabella, identici prima e dopo.
+
+**Ricaduta BE (2b-2):** `AnagraficheMagazzinoRepository.create_magazzino` diventa una chiamata al BB.
+
+#### Lotto 8 — il profilo di accesso e il suo legame (scritto e applicato, 2026-10-18)
+
+**Il censimento corregge la tabella del §5-ter.1.** Un profilo AD_HOC oggi non lo scrive nessuno: nel backend
+`put_profilo_*` esiste solo per il reparto, e `_set_super_admin_binding` è un binding, non un profilo. Le
+due cose che si ripetono davvero sono due BB:
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/config/20261018-42` | **`config.fn_scrivi_profilo_accesso(tipo, codice, descrizione, aree, azioni, campi)`**: il profilo per codice, creato o aggiornato; aree e azioni sostituite (NULL = invariate). Copia: i passi del profilo di `put_profilo_reparto` (backend); seconda occorrenza: i profili `DEV_*` del verbo |
+| `20_code/config/20261018-43` | **`config.fn_lega_profilo_identita(profilo, identità)`**: il binding di un'identità, idempotente sullo stesso profilo; un altro profilo già legato lo rifiuta `uq_profili_accesso_bindings_identita` |
+| `20_code/script/20261018-44`, `20_code/anagrafiche/20261018-45` | `fn_crea_utente_tecnico` (passo 6) e `fn_crea_risorsa_umana_v2` (binding SUPER_ADMIN) passano al BB del legame |
+| pgTAP | nuovo `config/test-fn-scrivi-profilo-accesso-v1` (15) |
+| manual | `fn_scrivi_profilo_accesso`, `fn_lega_profilo_identita` |
+
+⚠️ **Un fatto per la 2b-2**: `_set_super_admin_binding` scrive con `ON CONFLICT DO NOTHING`. Se l'identità ha
+già un altro profilo, il SUPER_ADMIN chiesto **non arriva e nessuno lo dice**. Col BB quel caso diventa
+l'errore del vincolo: il BE decide che cosa mostrare.
+
+✅ **Le copie del binding nei pgTAP (2026-10-18)**: ventitré `INSERT` di binding d'identità in ventun file
+passano a `config.fn_lega_profilo_identita`; originale contro riscritto, identici. Restano a mano,
+apposta: i test del guard di coerenza dei binding (`test-profili-accesso-bindings-guard-coerenza`), i
+binding di reparto e di veste, e `test-permessi-funzioni-risoluzione`, che scrive con `ON CONFLICT DO
+NOTHING` (la semantica di `_set_super_admin_binding`, non quella del BB).
+
+#### Lotto 9 — gli override e l'emittente attivo (scritto e applicato, 2026-10-18)
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/config/20261018-46` | **`config.fn_imposta_override_oggetti(utente, oggetti)`**: gli override sostituiti dall'elenco (vuoto = nessuno). Copia: `put_override_oggetti` |
+| `20_code/config/20261018-47` | **`config.fn_imposta_emittente_attivo(utente, emittente)`**: UPSERT della preferenza; l'UPDATE tocca la riga anche a valore invariato (la storia registra la conferma, come il backend). Copia: `set_preferenza` |
+| pgTAP | nuovo `config/test-fn-imposta-override-emittente-attivo-v1` (13) |
+| manual | `fn_imposta_override_oggetti`, `fn_imposta_emittente_attivo` |
+
+Scelte e debito dichiarati:
+
+* gli `INSERT` di override nei pgTAP (otto file) **non sono copie**: aggiungono una riga, il BB sostituisce
+  tutto. Restano;
+* ⚠️ **override, `valido_dal`**: una chiave assente prende il DEFAULT (la data operativa), una chiave a null
+  scrive NULL (senza inizio). Il backend oggi passa sempre la chiave: nella 2b-2 deve continuare a farlo
+  per tenere lo stesso significato;
+* ⚠️ **debito, come la partita IVA del lotto 1**: che l'utente possa lavorare nell'emittente attivo lo
+  controlla solo il backend (`is_scelta_valida`, sulla canonica `fn_check_user_emittente_scope`). Una regola
+  senza un guard sulla tabella.
+
+**Prova dei lotti 8-9** (scratch, prima dell'apply): i due pgTAP nuovi **15/15** e **13/13**; tutti i
+changeSet `-40` … `-47` compilano in una transazione annullata. La regressione dei pgTAP che creano
+operatori (`fn_crea_risorsa_umana_v2` e `fn_crea_utente_tecnico` riscritte) non è partita prima dell'apply:
+l'ha data la corsa di Tid, verde (2026-10-18).
+
+⚠️ **Le prove di tutti i lotti girano su uno scratch che aveva già i changeSet `-16` … `-29` della sessione
+plancache** (policy `ef_whitelist` e funzioni di scope). Nessun file di questi lotti dipende dai loro; le
+policy che i guard e la RLS chiamano a runtime erano le loro versioni nuove.
+
 **Il resto del disegno (team DB, nessuna decisione aperta), parte 2b-3:**
 
 * **Due etichette, due tabelle satellite in `anagrafiche`**:
@@ -680,6 +888,92 @@ statici verdi.
 * **La lista Operatori** è SQL in linea nel backend (`list_operatori`), non una vista DB. Il BE
   fa `LEFT JOIN anagrafiche.credenziali_di_prova`, oppure chiama una funzione
   `script.fn_credenziale_di_prova(auth_user_id)`: la sceglie il BE (T-4).
+
+### 5-ter.3 La 2b-3 scritta e provata (team DB, 2026-10-18)
+
+| changeSet / file | Che cosa |
+| --- | --- |
+| `00_schema/dbops/20261018-55`, `-56` | `dbops.credenziali_di_prova` (auth_user_id, chiave = username alla nascita) e `dbops.soggetti_di_prova` (soggetto_id, chiave = codice di prova), solo audit di nascita |
+| `20_code/dbops/20261018-57` | `dbops.fn_dati_di_sviluppo_ammessi_su_valori(ambiente)`: la regola, pura sul valore (§5.5) |
+| `20_code/dbops/20261018-58`, `-59` | il guard delle etichette: `INSERT` solo in SVILUPPO (`E_DATI_DI_SVILUPPO_IN_PRODUZIONE`), `UPDATE`/`DELETE`/`TRUNCATE` mai (`E_ETICHETTA_DI_PROVA_IMMUTABILE`) |
+| `20_code/anagrafiche/20261018-60` | **il verbo `anagrafiche.fn_provisiona_dati_di_sviluppo(p_password_hash jsonb)`**, SECURITY DEFINER |
+| `90_end/20261018-61` + loop `20260205-41` + fase `post` di `provision_zeroerp.sql` | le due tabelle in sola lettura per l'app (tre sedi, §11.8) |
+| `20_code/dbops/20261018-62` + `presidi.csv`, `presidi_testi.csv` | il presidio `dbops.vw_radici_di_prova_in_produzione` |
+| `20_code/anagrafiche/20261018-63` | BB **`anagrafiche.fn_accendi_veste(identità, credenziale, vesti)`** (regola del 2, sotto) |
+| `20_code/dbops/20261018-64` | il builder `fn_pgtap_crea_operatore_umano` accende la veste dal BB |
+| `codici_errore.csv`, `messaggi_errore.csv` | `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` (NON_ESEGUIBILE, 1356), `E_ETICHETTA_DI_PROVA_IMMUTABILE` (TECNICO, 1357), `E_RADICE_DI_PROVA_SENZA_ETICHETTA` (CONFLITTO_STATO, 1358) |
+| pgTAP | nuovi `dbops/test-etichette-di-prova-v1` (16, runner owner) e `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1` (20, runner owner) |
+| manual | le due tabelle, la regola, il presidio, il verbo, `fn_accendi_veste` |
+
+**Scelte di forma, dichiarate:**
+
+* **Le etichette in `dbops`, non in `anagrafiche`** (il disegno del §5-ter.2 diceva anagrafiche). Sono un
+  dato di macchina del provisioning, come `dbops.installazione` e `dbops.processi_identita`; le automazioni
+  di `ci_apply` coprono `anagrafiche` per intero e su righe che non cambiano mai monterebbero audit,
+  `tx_id` e storico inerti.
+* **Un codice per la regola**: il guard delle etichette e il verbo dicono la stessa cosa
+  (`E_DATI_DI_SVILUPPO_IN_PRODUZIONE`), e leggono la stessa funzione pura.
+* **Il verbo nasce solo sopra madri e BB** (strada b): `fn_crea_soggetto_pg`, `fn_crea_indirizzo_soggetto`,
+  `fn_create_indirizzo`, `fn_crea_emittente_fiscale`, `fn_crea_magazzino`, `fn_crea_cliente`,
+  `fn_crea_fornitore`, `fn_crea_operatore_v2`, `fn_crea_auth_user`, `fn_crea_veste_portale`,
+  `fn_accendi_veste`, `fn_scrivi_profilo_accesso`, `fn_lega_profilo_identita`,
+  `fn_change_user_emittenti_scope`, `fn_imposta_override_oggetti`, `fn_imposta_emittente_attivo`. Dai
+  builder pgTAP prende solo i generatori puri di CF e P.IVA (ammessi dal §7.1 del brief BE). Scrive da sé
+  solo le etichette (ne è l'unico scrittore) e la password di una credenziale riallineata (prima
+  occorrenza nel DB).
+* **Regola del 2, trovata scrivendo**: accendere una veste era un `UPDATE` in due punti (backend
+  `attiva_identita`, builder `fn_pgtap_crea_operatore_umano`); il verbo sarebbe stato il terzo. Nasce
+  `fn_accendi_veste`, il builder passa a lui nello stesso giro (`-64`), il backend nella 2b-2.
+* **Le GUC di sessione le governa il verbo**, e le rimette com'erano: vuote mentre nascono i BA (il legame
+  BA → emittente lo scrive il BB verso l'emittente chiesto, non `z90` verso quello di chi chiama);
+  `dev.smoke` dentro l'emittente del magazzino mentre nasce il magazzino (il guard di scope, dentro una
+  DEFINER senza operatore, ferma una riga che ha un padrone: lotto 7).
+* **I profili `DEV_*` non sono radici** (risposta al brief BE §7.3): configurazione legata alle sole
+  identità etichettate, riscritta a ogni corsa su tutte le aree presenti.
+* **Le persone**: per gli operatori il PF lo crea `fn_crea_operatore_v2` e il verbo lo etichetta
+  (`DEV-PERSONA-<NOME>`); le credenziali dei portali non hanno una persona, perché la loro veste sta sul ruolo
+  del cliente o del fornitore. Un PF senza legame sarebbe una radice senza scopo.
+* ⚠️ **Uno scostamento dall'elenco del brief BE, imposto dal modello**: un ruolo cliente ha una sola veste
+  portale attiva (`uq_identita_digitali_sr_ruolo_attivo`), quindi `dev.multiveste` non può stare sul
+  cliente 1 insieme a `dev.portale1`. Ha un cliente suo, **`DEV-CLIENTE-3`** su A (venti radici in tutto).
+* **Password**: hash Django per username; assente alla nascita = password inutilizzabile (`!…`), assente dopo
+  = invariata.
+* Restano fuori, apposta: il ritiro dell'utente `smoke` (lo disattiva il BE dopo aver spostato gli
+  smoke), il secondo fattore (il BE dopo il verbo; la colonna `secondo_fattore` dice chi), una funzione
+  `script.fn_credenziale_di_prova` (T-4: la lista Operatori fa `LEFT JOIN dbops.credenziali_di_prova`, una
+  funzione per una colonna non serve).
+
+**Prova** (scratch, SQL estratto `-55` … `-64` più le righe nuove dei CSV, owner, transazione annullata):
+
+* il verbo in due corse: **20 radici `creata`, poi 20 `riallineata`**, 8 credenziali e 12 soggetti
+  etichettati, nessuna etichetta nuova alla seconda; vincoli differiti rispettati; GUC rimesse com'erano;
+* `test-etichette-di-prova-v1` **16/16** (SVILUPPO, PRODUZIONE e non dichiarato costruiti);
+  `test-fn-provisiona-dati-di-sviluppo-v1` **20/20**; nel mondo CI simulato (senza `django.auth_user`) 2
+  verdi e 18 `skip()` motivati;
+* **62 pgTAP prima e dopo** (i presidi trasversali, `test-installazione-ambiente-v1`,
+  `test-processi-accensione-produzione-v1` e chi usa `fn_pgtap_crea_operatore_umano`): identici. Il
+  rubinetto del primo motivo era rosso per un falso positivo di forma (`->> 'codice'` dentro la chiamata
+  che solleva), corretto nel verbo prima della consegna.
+
+⚠️ Non provato: la corsa come app (il verbo è DEFINER; l'app lo chiama e basta); la fase `post` del
+provisioning con le due righe nuove (serve un superuser: alla prima corsa di `ci-local.sh` o in CI).
+
+✅ **Applicata su dbdev e sullo scratch, pgTAP verdi (Tid, 2026-10-18).** Il primo apply si era fermato
+sulla preCondition del `-60`, che contava anche `fn_accendi_veste` (nasce nel `-63`, dopo): il `-60` non era
+entrato, il file è stato corretto (la funzione esce dalla preCondition, il corpo plpgsql la risolve alla
+prima chiamata) e il migrate è ripartito.
+
+**Ricaduta BE (2b-3, T-1 … T-6 del brief BE):**
+
+1. **codici d'errore**: rigenerare la policy e i ripieghi per `E_DATI_DI_SVILUPPO_IN_PRODUZIONE`,
+   `E_ETICHETTA_DI_PROVA_IMMUTABILE`, `E_RADICE_DI_PROVA_SENZA_ETICHETTA`;
+2. **il command** chiama `SELECT * FROM anagrafiche.fn_provisiona_dati_di_sviluppo(%s::jsonb)` con
+   `{username: hash Django}` e stampa le righe; poi configura il secondo fattore per le righe con
+   `secondo_fattore = true` (oggi `dev.smoke`);
+3. **la lista Operatori**: `LEFT JOIN dbops.credenziali_di_prova cp ON cp.auth_user_id = …`, colonna
+   `cp.auth_user_id IS NOT NULL AS di_prova` (filtro di default e badge);
+4. **gli smoke** passano a `dev.smoke`, poi `smoke` si disattiva;
+5. ⚠️ **`dev.multiveste` è sul cliente 3**, non sul cliente 1 (sopra).
 
 ## 6. Ricaduta BE/FE
 

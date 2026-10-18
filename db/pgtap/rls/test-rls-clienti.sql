@@ -217,13 +217,7 @@ WITH u AS (
             '!', true, false, false, '', '', '', now())
     RETURNING id
 ), i AS (
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT b.soggetto_ruolo_id, u.id,
-           'SHOP_CUSTOMER'::config.ruolo_applicativo, true
-      FROM _ba_shop b CROSS JOIN u
-    RETURNING id
-)
+    SELECT anagrafiche.fn_crea_veste_portale(u.id, b.soggetto_ruolo_id, 'SHOP_CUSTOMER'::config.ruolo_applicativo, true) AS id FROM _ba_shop b CROSS JOIN u)
 SELECT id AS identita_id FROM i;
 
 -- ============================================================

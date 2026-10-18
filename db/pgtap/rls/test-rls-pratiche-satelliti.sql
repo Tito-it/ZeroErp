@@ -177,25 +177,27 @@ SELECT is(
 --   `_via_pratica` su una tabella che porta `flusso_id` compilerebbe, girerebbe
 --   e filtrerebbe sulla pratica sbagliata. Qui si pretende che ogni policy
 --   nomini l'adattatore della PROPRIA chiave.
+-- ⭐ Rev 2026-10-18 (D-3b-2 ondata 2, 20261018-50): la rotta si legge nel modo di
+--   script.fn_resolve_emittente_fiscale_id, non piu' nel nome dell'adattatore.
 SELECT is_empty(
     $$WITH atteso (tab, adattatore) AS (
           VALUES
-            ('allegati_pratiche','fn_scope_ef_whitelist_via_pratica'),
-            ('calcoli_tempo',    'fn_scope_ef_whitelist_via_pratica'),
-            ('flussi',           'fn_scope_ef_whitelist_via_pratica'),
-            ('giornale',         'fn_scope_ef_whitelist_via_pratica'),
-            ('note_pratiche',    'fn_scope_ef_whitelist_via_pratica'),
-            ('pratiche_sorgenti','fn_scope_ef_whitelist_via_pratica'),
-            ('sospensioni',      'fn_scope_ef_whitelist_via_pratica'),
-            ('allegati_flussi',  'fn_scope_ef_whitelist_via_flusso'),
-            ('note_flussi',      'fn_scope_ef_whitelist_via_flusso')
+            ('allegati_pratiche','fn_resolve_emittente_fiscale_id(''pratica''::text'),
+            ('calcoli_tempo',    'fn_resolve_emittente_fiscale_id(''pratica''::text'),
+            ('flussi',           'fn_resolve_emittente_fiscale_id(''pratica''::text'),
+            ('giornale',         'fn_resolve_emittente_fiscale_id(''pratica''::text'),
+            ('note_pratiche',    'fn_resolve_emittente_fiscale_id(''pratica''::text'),
+            ('pratiche_sorgenti','fn_resolve_emittente_fiscale_id(''pratica''::text'),
+            ('sospensioni',      'fn_resolve_emittente_fiscale_id(''pratica''::text'),
+            ('allegati_flussi',  'fn_resolve_emittente_fiscale_id(''flusso''::text'),
+            ('note_flussi',      'fn_resolve_emittente_fiscale_id(''flusso''::text')
       )
       SELECT a.tab
         FROM atteso a
         JOIN pg_policies p ON p.schemaname = 'pratiche' AND p.tablename = a.tab
        WHERE position(a.adattatore IN p.qual)       = 0
           OR position(a.adattatore IN p.with_check) = 0$$,
-    '3. ogni policy usa l''adattatore della propria chiave (pratica_id vs flusso_id)'
+    '3. ogni policy usa la rotta della propria chiave (modo pratica vs flusso del risolutore)'
 );
 
 -- ============================================================

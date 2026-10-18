@@ -134,7 +134,7 @@ sede al primo aggiornamento, e allora questo file diventa fuorviante.
 | Metodo di sviluppo (anelli, ordine di costruzione) | `docs/it/sviluppo-concentrico.md`, `docs/it/mappa-concentrica.md` |
 | Backend: view, service, repository, errori, **test Django e smoke** | [api.md](../docs/it/dev/api.md), [catalogo BB backend](../docs/it/dev/backend/catalogo-building-block-backend.md) |
 | Frontend: componenti, liste, CSS, i18n, build | [frontend-standards.md](../docs/it/dev/frontend/frontend-standards.md), [catalogo BB frontend](../docs/it/dev/frontend/catalogo-building-block-frontend.md) |
-| SQL: naming, chiavi, audit, indici, RLS, divieti dei changeSet (§11) | [linee-guida-sql.md](../docs/it/linee-guida-sql.md) |
+| SQL: naming, chiavi, audit, indici, RLS, divieti dei changeSet (§11), prestazioni (§13) | [linee-guida-sql.md](../docs/it/linee-guida-sql.md); il metodo in [Un database che resta veloce](../docs/it/guide/database-che-resta-veloce.md) |
 | Trigger | [linee-guida-trigger.md](../docs/it/linee-guida-trigger.md) |
 | Liquibase: struttura, master, naming dei file | [liquibase-setup-workflow.md](../docs/it/liquibase-setup-workflow.md) |
 | Sicurezza e qualità statica: strumenti (ruff, mypy, gitleaks, audit, `check --deploy`), segreti e `.env`, mappa dei presidi a runtime | [sicurezza-e-qualita-statica.md](../docs/it/dev/sicurezza-e-qualita-statica.md) |

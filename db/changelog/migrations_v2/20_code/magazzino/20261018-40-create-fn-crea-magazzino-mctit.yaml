@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: CREARE UN MAGAZZINO
+#   magazzino.fn_crea_magazzino(codice, descrizione, indirizzo, campi,
+#   emittente): la riga di magazzino.magazzini. Ritorna l'id.
+#   Brief: brief-db-processi-accensione-per-ambiente, §5-ter.2 (2b-1, lotto 7).
+#
+# -- CHI ERA LA COPIA ---------------------------------------------------
+#   * il backend, AnagraficheMagazzinoRepository.create_magazzino
+#     (execute_dynamic_insert). Passa al BB nella 2b-2;
+#   * il builder dbops.fn_pgtap_crea_magazzino: INSERT diretto. Passa al BB
+#     in 20261018-41;
+#   * gli INSERT delle fixture in quattro pgTAP del magazzino: passano al BB
+#     nello stesso giro.
+#
+# -- LE SCELTE ----------------------------------------------------------
+#   * codice, descrizione e indirizzo sono argomenti: li pretende la tabella
+#     (NOT NULL) e il backend li chiede obbligatori. Facoltativi in p_campi:
+#     usa_ubicazioni, predefinito, meta. Una chiave estranea si RIFIUTA col
+#     suo nome; una chiave a null vale assente;
+#   * attivo non e' un campo: un magazzino nasce attivo (la regola del
+#     backend, «non si sceglie alla nascita»);
+#   * l'emittente: NULL = quello della sessione, lo mette il trigger
+#     trgfn_default_emittente_fiscale('SOLLEVA'), come oggi dal backend.
+#     Indicato, lo controlla il guard di scope della tabella.
+#
+# -- CHE COSA RESTA FUORI, apposta ---------------------------------------
+#   * lo scope e il permesso: il guard trgfn_guard_emittente_scope della
+#     tabella e il backend. INVOKER. ⚠️ Dentro una SECURITY DEFINER senza un
+#     operatore in sessione quel guard ferma una riga che ha un padrone: e'
+#     il punto che il verbo di sviluppo (2b-3) deve risolvere, non questo BB;
+#   * unicita' del codice: uq_magazzini_codice.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261018-40-create-fn-crea-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20261018-40-create-fn-crea-magazzino
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea magazzino.fn_crea_magazzino: la riga di magazzino.magazzini, con l'emittente indicato
+        o quello della sessione. Prende il posto dell'INSERT del backend, del builder
+        fn_pgtap_crea_magazzino e delle fixture dei pgTAP del magazzino.
+        Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 7).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_scrivi_riga_da_jsonb' AND p.pronargs = 4;
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_crea_magazzino(
+                  p_codice                 magazzino.magazzini.codice%TYPE,
+                  p_descrizione            magazzino.magazzini.descrizione%TYPE,
+                  p_indirizzo_dettaglio_id magazzino.magazzini.indirizzo_dettaglio_id%TYPE,
+                  p_campi                  jsonb DEFAULT '{}'::jsonb,
+                  p_emittente_fiscale_id   magazzino.magazzini.emittente_fiscale_id%TYPE DEFAULT NULL)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_estranea text;
+                  c_ammesse  CONSTANT text[] := ARRAY['usa_ubicazioni', 'predefinito', 'meta'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare un magazzino: codice, descrizione, indirizzo, i
+                  --   campi facoltativi di p_campi (le assenti e le null al
+                  --   DEFAULT) e l'emittente (NULL = quello della sessione,
+                  --   dal trigger). Ritorna l'id.
+                  --
+                  -- Regole:
+                  --   - una chiave fuori elenco si rifiuta: E_CAMPO_NON_AMMESSO;
+                  --   - scope, unicita', indirizzo attivo: i guard della tabella.
+                  -- =========================================================
+                  IF jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_crea_magazzino', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('tipo_campi', jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'magazzino.fn_crea_magazzino',
+                          'i campi non sono un oggetto');
+                  END IF;
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_crea_magazzino', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'codice', p_codice),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  -- jsonb_strip_nulls: anche l'emittente NULL resta fuori, e lo
+                  -- mette il trigger dalla sessione.
+                  RETURN (script.fn_scrivi_riga_da_jsonb(
+                              'magazzino.magazzini'::regclass,
+                              jsonb_strip_nulls(
+                                  v_campi
+                                  || jsonb_build_object('codice',                 p_codice,
+                                                        'descrizione',            p_descrizione,
+                                                        'indirizzo_dettaglio_id', p_indirizzo_dettaglio_id,
+                                                        'emittente_fiscale_id',   p_emittente_fiscale_id)))
+                          ->> 'id')::bigint;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_crea_magazzino(
+                  magazzino.magazzini.codice%TYPE,
+                  magazzino.magazzini.descrizione%TYPE,
+                  magazzino.magazzini.indirizzo_dettaglio_id%TYPE,
+                  jsonb,
+                  magazzino.magazzini.emittente_fiscale_id%TYPE) IS
+                  'BB (2026-10-18): crea un magazzino, cioe'' la riga di magazzino.magazzini, in una sola istruzione. Codice, descrizione e indirizzo di dettaglio sono argomenti (NOT NULL della tabella, obbligatori nel backend); p_campi: usa_ubicazioni, predefinito, meta (le assenti e le null al DEFAULT; chiave estranea: E_CAMPO_NON_AMMESSO). attivo non e'' un campo: un magazzino nasce attivo. p_emittente_fiscale_id NULL = quello della sessione, che mette trgfn_default_emittente_fiscale(SOLLEVA); indicato, lo controlla trgfn_guard_emittente_scope. Scope, unicita'' del codice e indirizzo attivo li dicono i guard e i vincoli della tabella. Scrive con script.fn_scrivi_riga_da_jsonb. INVOKER: dentro una SECURITY DEFINER senza operatore in sessione il guard di scope ferma una riga con un padrone. Ritorna l''id. Prende il posto di AnagraficheMagazzinoRepository.create_magazzino (2b-2), dell''INSERT di dbops.fn_pgtap_crea_magazzino e delle fixture dei pgTAP del magazzino. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 7).';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS magazzino.fn_crea_magazzino(character varying, character varying, bigint, jsonb, bigint);

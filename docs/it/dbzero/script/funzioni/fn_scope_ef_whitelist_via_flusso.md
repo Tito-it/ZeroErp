@@ -12,21 +12,21 @@ CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_flusso(p_auth_user_i
  LANGUAGE sql
  STABLE COST 5000
 AS $function$
-    -- Scopo: come sopra, ma partendo da un FLUSSO — e' la chiave
-    --   che portano pratiche.allegati_flussi e pratiche.note_flussi.
-    -- ⭐ Delega alla sorella invece di ripetere la risalita: se un
-    --   giorno cambia il modo in cui una pratica nomina il proprio
-    --   emittente, si corregge in un posto solo.
-    SELECT script.fn_scope_ef_whitelist_via_pratica(
+    -- Scopo: l'utente vede l'emittente della chiave (flusso)? La
+    --   domanda su UN emittente, per chi non sta in una policy (verbi, guard,
+    --   backend): la regola e' della canonica, l'emittente del risolutore.
+    -- ⭐ Rev 2026-10-18 (20261018-49, D-3b-2 ondata 2): l'emittente si chiede a
+    --   script.fn_resolve_emittente_fiscale_id('flusso', ...), DEFINER, invece di
+    --   leggerlo sotto la RLS del padre: una strada sola, e nessuna policy del
+    --   padre rieseguita a ogni chiamata. Stesse risposte. Le policy non passano
+    --   piu' di qui (20261018-50).
+    SELECT script.fn_check_user_emittente_scope(
         p_auth_user_id,
-        (SELECT f.pratica_id
-           FROM pratiche.flussi f
-          WHERE f.id = p_flusso_id)
-    );
+        script.fn_resolve_emittente_fiscale_id('flusso', p_flusso_id))
 $function$
 
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_flusso(p_auth_user_id integer, p_flusso_id bigint)
-IS 'Come fn_scope_ef_whitelist_via_pratica ma a partire da un flusso: e'' la chiave che portano pratiche.allegati_flussi e pratiche.note_flussi. Delega alla sorella invece di ripetere la risalita alla testata.';
+IS '⭐ rev 2026-10-18 (20261018-49, D-3b-2 ondata 2): l''emittente dal risolutore DEFINER (via_efba: dalla composizione delle policy, in convenzione soggetto_ruolo); una strada sola, nessuna policy del padre per chiamata. Stesse risposte. Come fn_scope_ef_whitelist_via_pratica ma a partire da un flusso: e'' la chiave che portano pratiche.allegati_flussi e pratiche.note_flussi. Delega alla sorella invece di ripetere la risalita alla testata.';
 ```
 
 ---

@@ -168,23 +168,13 @@ DECLARE
     v_id_digi bigint;
 BEGIN
     IF (SELECT sr_cl_libero_id FROM _t_ctx) IS NOT NULL THEN
-        INSERT INTO anagrafiche.identita_digitali
-            (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-        VALUES (
-            (SELECT sr_cl_libero_id FROM _t_ctx),
-            (SELECT auth_user_id FROM _t_au_pool WHERE idx = 1),
-            'CLIENTE_PORTALE'::config.ruolo_applicativo,
-            true
-        )
-        RETURNING id INTO v_id_digi;
+        v_id_digi := anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au_pool WHERE idx = 1), (SELECT sr_cl_libero_id FROM _t_ctx), 'CLIENTE_PORTALE'::config.ruolo_applicativo, true);
 
         -- Binding patologico: SUPER_ADMIN (id 9100) su identita
         -- non-OPERATORE. Tecnicamente ammesso dal modello (no guard
         -- esplicito) — serve a verificare che la fn lo ignori grazie
         -- al filtro ruolo_applicativo = 'OPERATORE'.
-        INSERT INTO config.profili_accesso_bindings
-            (profilo_accesso_id, identita_digitale_id, attivo)
-        VALUES (9100, v_id_digi, true);
+        PERFORM config.fn_lega_profilo_identita(9100, v_id_digi);
     END IF;
 END
 $$;

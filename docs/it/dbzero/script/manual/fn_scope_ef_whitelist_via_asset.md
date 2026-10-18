@@ -56,4 +56,12 @@ Presidio: `db/pgtap/rls/test-rls-magazzino-perimetro-v1.sql`.
 
 ---
 
+### ⭐ rev 2026-10-18 — non sta più nelle policy
+
+ChangeSet `20261018-49`: l'emittente lo chiede a [`fn_resolve_emittente_fiscale_id`](fn_resolve_emittente_fiscale_id.md) (modo `asset`, `SECURITY DEFINER`), non lo legge sotto la RLS del padre. Le policy non la chiamano più (`20261018-50`):
+calcolano il perimetro una volta per istruzione con
+[`fn_scope_ef_perimetro`](fn_scope_ef_perimetro.md). Resta per la domanda su **un**
+emittente. Brief `brief-db-plancache-funzioni-con-query-incorporate` §5quinquies
+(ondata 2).
+
 {% include-markdown "signature-core.md" %}

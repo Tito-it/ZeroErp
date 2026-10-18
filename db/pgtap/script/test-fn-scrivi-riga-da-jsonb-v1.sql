@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 --
 -- I due BB della scrittura da payload jsonb:
---   script.fn_scrivi_riga_da_jsonb   (20261017-05)
+--   script.fn_scrivi_riga_da_jsonb   (20261017-05; rilettura 20261018-34)
 --   script.fn_prima_chiave_estranea  (20261017-06)
 -- e i tre punti che li usano al posto delle copie (regola del 2):
 --   config.fn_pannello_scrivi (20261017-07), vendite.fn_create_contratto
@@ -13,7 +13,7 @@
 -- ⭐ Il caso si COSTRUISCE: una tabella temporanea con un default, una
 --   colonna NOT NULL e una chiave diversa da id. Nessun dato pescato.
 --
--- Elenco test (plan 22):
+-- Elenco test (plan 27):
 --   forma
 --    1) fn_scrivi_riga_da_jsonb e' INVOKER
 --    2) fn_prima_chiave_estranea e' IMMUTABLE, LANGUAGE sql
@@ -42,6 +42,14 @@
 --   20) la madre del contratto chiama il BB e non compone piu' l'INSERT
 --   21) il verbo dell'emittente chiama i due BB
 --   22) nessuna di queste tre contiene piu' jsonb_populate_record
+--   la rilettura a istruzione finita (p_rileggi_per, 20261018-34)
+--   23) INSERT riletta per la chiave: la riga col DEFAULT e l'id
+--   24) una colonna della chiave assente dai dati: E_SCRIPT_CHIAMATA_NON_VALIDA
+--   25) rilettura con p_dove (un UPDATE): E_SCRIPT_CHIAMATA_NON_VALIDA
+--   26) il perche': sotto una policy che non lascia vedere la riga appena
+--       scritta, il RETURNING muore (42501)
+--   27) ... e la rilettura dice che la riga non si vede:
+--       E_SCRIPT_CHIAMATA_NON_VALIDA, non un NULL muto
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -50,7 +58,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(22);
+SELECT plan(27);
 
 CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
@@ -88,7 +96,7 @@ CREATE TEMP TABLE t_riga (
 -- ============================================================
 SELECT is(
     (SELECT p.prosecdef FROM pg_proc p
-      WHERE p.oid = 'script.fn_scrivi_riga_da_jsonb(regclass, jsonb, jsonb)'::regprocedure),
+      WHERE p.oid = 'script.fn_scrivi_riga_da_jsonb(regclass, jsonb, jsonb, text[])'::regprocedure),
     false,
     '1. fn_scrivi_riga_da_jsonb e'' INVOKER: scrive coi privilegi di chi chiama');
 
@@ -232,6 +240,50 @@ SELECT is(
       WHERE pg_temp.corpo(f) ~* 'jsonb_populate_record'),
     0,
     '22. nessuno dei tre compone piu'' jsonb_populate_record: la conversione ha una sede sola');
+
+-- ============================================================
+-- La rilettura a istruzione finita (p_rileggi_per)
+-- ============================================================
+SELECT is(
+    (SELECT format('%s|%s|%s', r ->> 'codice', r ->> 'stato', (r ->> 'id') IS NOT NULL)
+       FROM script.fn_scrivi_riga_da_jsonb('pg_temp.t_riga'::regclass,
+                                           '{"codice": "RILETTA"}'::jsonb, NULL,
+                                           ARRAY['codice']) AS r),
+    'RILETTA|BOZZA|t',   -- format() di un boolean: t
+    '23. INSERT riletta per la chiave: la riga col DEFAULT e l''id');
+
+SELECT is(
+    pg_temp.codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_riga'::regclass,
+        '{"codice": "SENZA_CHIAVE"}'::jsonb, NULL, ARRAY['qta'])$$),
+    'E_SCRIPT_CHIAMATA_NON_VALIDA',
+    '24. una colonna della chiave assente dai dati: E_SCRIPT_CHIAMATA_NON_VALIDA');
+
+SELECT is(
+    pg_temp.codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_riga'::regclass,
+        '{"nota": "x"}'::jsonb, '{"codice": "A"}'::jsonb, ARRAY['codice'])$$),
+    'E_SCRIPT_CHIAMATA_NON_VALIDA',
+    '25. rilettura con p_dove (un UPDATE): E_SCRIPT_CHIAMATA_NON_VALIDA');
+
+-- Il caso del billing account, costruito: una tabella sotto una policy che
+-- ammette la scrittura e non lascia vedere la riga (FORCE: vale anche per chi
+-- la possiede).
+CREATE TEMP TABLE t_cieca (codice text PRIMARY KEY, nota text);
+ALTER TABLE t_cieca ENABLE ROW LEVEL SECURITY;
+ALTER TABLE t_cieca FORCE ROW LEVEL SECURITY;
+CREATE POLICY p_scrive ON t_cieca FOR INSERT WITH CHECK (true);
+CREATE POLICY p_non_vede ON t_cieca FOR SELECT USING (false);
+
+SELECT is(
+    pg_temp.sqlstate_di($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_cieca'::regclass,
+        '{"codice": "R1"}'::jsonb)$$),
+    '42501',
+    '26. il perche'': sotto una policy che non lascia vedere la riga, il RETURNING muore (42501)');
+
+SELECT is(
+    pg_temp.codice_errore($$SELECT script.fn_scrivi_riga_da_jsonb('pg_temp.t_cieca'::regclass,
+        '{"codice": "R2"}'::jsonb, NULL, ARRAY['codice'])$$),
+    'E_SCRIPT_CHIAMATA_NON_VALIDA',
+    '27. ... e la rilettura dice che la riga non si vede, non un NULL muto');
 
 SELECT * FROM finish();
 

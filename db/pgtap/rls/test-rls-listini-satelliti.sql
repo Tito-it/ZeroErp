@@ -170,12 +170,14 @@ SELECT is(
 
 -- ⛔ Le due chiavi sono entrambe bigint e i due adattatori hanno la stessa
 --   firma: scambiarli compila, gira e filtra sul listino sbagliato.
+-- ⭐ Rev 2026-10-18 (D-3b-2 giro 1b, 20261018-33): la rotta si legge nel modo di
+--   script.fn_resolve_emittente_fiscale_id, non piu' nel nome dell'adattatore.
 SELECT is_empty(
     $$WITH atteso (sch, tab, adattatore) AS (
           VALUES
-            ('vendite','listini_righe',            'fn_scope_ef_whitelist_via_listino_versione'),
-            ('vendite','listini_righe_componenti', 'fn_scope_ef_whitelist_via_listino_versione'),
-            ('anagrafiche','categorie_clienti_listini', 'fn_scope_ef_whitelist_via_listino(')
+            ('vendite','listini_righe',            'fn_resolve_emittente_fiscale_id(''listino_versione''::text'),
+            ('vendite','listini_righe_componenti', 'fn_resolve_emittente_fiscale_id(''listino_versione''::text'),
+            ('anagrafiche','categorie_clienti_listini', 'fn_resolve_emittente_fiscale_id(''listino''::text')
       )
       SELECT a.sch || '.' || a.tab
         FROM atteso a

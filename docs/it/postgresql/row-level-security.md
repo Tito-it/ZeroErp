@@ -304,16 +304,13 @@ funzionale corrispondente. Per colonne scope tipiche (`billing_account_id`,
 `emittente_soggetto_ruolo_id`) basta un indice B-tree standard, gia' coperto dalla policy
 FK automatica ZeroErp (`dbops.fk_index_policy`).
 
-#### `EXPLAIN` pre/post attivazione
+#### Misurare l'effetto di una policy
 
-Prima di abilitare RLS in produzione, eseguire `EXPLAIN (ANALYZE, BUFFERS)` sulle query
-piu' frequenti con e senza policy. Tollerare degradazioni < 10%. Degradazioni maggiori
-richiedono indici dedicati o refactor della funzione di scope.
-
-#### `pg_stat_statements` e monitoring
-
-Dopo l'attivazione, monitorare la regressione delle query tramite `pg_stat_statements`
-confrontando `mean_exec_time` e `calls` sui query hash coinvolti.
+Una policy si paga a ogni riga letta, e cambia le strade che il planner può usare:
+sotto RLS entrano nell'indice solo le condizioni leakproof. Si misura **come
+applicazione**, mai da owner, e la cura si scrive sulla forma della query, non su
+una soglia di tempo. Regole: [linee-guida-sql §8.5-bis e §13](/linee-guida-sql#13-prestazioni-la-forma-di-funzioni-e-query);
+metodo: [Un database che resta veloce](/guide/database-che-resta-veloce).
 
 ---
 

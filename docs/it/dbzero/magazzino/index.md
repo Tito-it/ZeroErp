@@ -29,6 +29,7 @@
 
 ## ⚙️ Funzioni
 - [fn_apri_blocco](funzioni/fn_apri_blocco.md)
+- [fn_crea_magazzino](funzioni/fn_crea_magazzino.md)
 - [fn_documento_interno_transizioni](funzioni/fn_documento_interno_transizioni.md) — (scritta il 22-09-2026)
 - [fn_get_magazzino_note](funzioni/fn_get_magazzino_note.md) — (rev 2026-08-21)
 - [fn_inventario_piano](funzioni/fn_inventario_piano.md) — (rev 2026-09-18 — Lotto 2 del magazzino)

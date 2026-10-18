@@ -28,6 +28,7 @@
 - [valore_giacenza](manual/valore_giacenza.md) — (rev 2026-09-15 — Lotto 1 del magazzino; si chiamava `costo_medio`)
 
 ## ⚙️ Funzioni (manuale)
+- [fn_crea_magazzino](manual/fn_crea_magazzino.md)
 - [fn_documento_interno_transizioni](manual/fn_documento_interno_transizioni.md) — (scritta il 22-09-2026)
 - [fn_get_magazzino_note](manual/fn_get_magazzino_note.md) — (rev 2026-08-21)
 - [fn_inventario_piano](manual/fn_inventario_piano.md) — (rev 2026-09-18 — Lotto 2 del magazzino)

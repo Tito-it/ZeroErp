@@ -121,13 +121,7 @@ DO $$
 DECLARE
     v_id bigint;
 BEGIN
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (
-        (SELECT sr_cl_id FROM _t_ctx),
-        (SELECT auth_user_id FROM _t_au_pool WHERE idx = 1),
-        'CLIENTE_PORTALE', true
-    ) RETURNING id INTO v_id;
+    v_id := anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au_pool WHERE idx = 1), (SELECT sr_cl_id FROM _t_ctx), 'CLIENTE_PORTALE', true);
 
     PERFORM set_config('zeroerp.test_id_1', v_id::text, true);
 END
@@ -150,13 +144,7 @@ DO $$
 DECLARE
     v_id bigint;
 BEGIN
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (
-        (SELECT sr_cl_id FROM _t_ctx),
-        (SELECT auth_user_id FROM _t_au_pool WHERE idx = 2),
-        'SHOP_CUSTOMER', true
-    ) RETURNING id INTO v_id;
+    v_id := anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au_pool WHERE idx = 2), (SELECT sr_cl_id FROM _t_ctx), 'SHOP_CUSTOMER', true);
 
     PERFORM set_config('zeroerp.test_id_2', v_id::text, true);
 END
@@ -209,13 +197,7 @@ DO $$
 DECLARE
     v_id bigint;
 BEGIN
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (
-        (SELECT sr_cl_id FROM _t_ctx),
-        (SELECT auth_user_id FROM _t_au_pool WHERE idx = 4),
-        'CLIENTE_PORTALE', false
-    ) RETURNING id INTO v_id;
+    v_id := anagrafiche.fn_crea_veste_portale((SELECT auth_user_id FROM _t_au_pool WHERE idx = 4), (SELECT sr_cl_id FROM _t_ctx), 'CLIENTE_PORTALE', false);
 
     PERFORM set_config('zeroerp.test_id_4', v_id::text, true);
 END

@@ -161,10 +161,7 @@ BEGIN
          '!', true, false, false, '', '', '', now())
     RETURNING id INTO v_au;
 
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr, v_au, 'CLIENTE_PORTALE', true)
-    RETURNING id INTO v_id;
+    v_id := anagrafiche.fn_crea_veste_portale(v_au, v_sr, 'CLIENTE_PORTALE', true);
 
     UPDATE _t_setup
        SET case_cli_au = v_au, case_cli_sr = v_sr,
@@ -200,10 +197,7 @@ BEGIN
          '!', true, false, false, '', '', '', now())
     RETURNING id INTO v_au;
 
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr, v_au, 'FORNITORE_PORTALE', true)
-    RETURNING id INTO v_id;
+    v_id := anagrafiche.fn_crea_veste_portale(v_au, v_sr, 'FORNITORE_PORTALE', true);
 
     UPDATE _t_setup
        SET case_forn_au = v_au, case_forn_sr = v_sr,
@@ -243,10 +237,7 @@ BEGIN
          '!', true, false, false, '', '', '', now())
     RETURNING id INTO v_au;
 
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr, v_au, 'SHOP_CUSTOMER', true)
-    RETURNING id INTO v_id;
+    v_id := anagrafiche.fn_crea_veste_portale(v_au, v_sr, 'SHOP_CUSTOMER', true);
 
     UPDATE _t_setup
        SET case_shop_au = v_au, case_shop_sr = v_sr,

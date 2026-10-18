@@ -33,9 +33,26 @@ LANGUAGE plpgsql STABLE
 
 ## Logica (catena di controllo)
 
-1. **Identita' OPERATORE attiva?** — `script.fn_has_identita_attiva(p_auth_user_id, 'OPERATORE')`. Se no → ritorna `'{}'` (no access).
-2. **Super admin?** — `script.fn_is_super_admin(p_auth_user_id)`. Se si → ritorna `NULL` (no restriction).
-3. **Whitelist** — lookup diretto in `config.user_emittenti_fiscali` per recuperare le PK degli emittenti associati all'utente. `array_agg` su array vuoto ritorna `NULL`, che pass-through come "no restriction" (parita' semantica con `_sr_ids`).
+1. **Super admin?** — `script.fn_is_super_admin(p_auth_user_id)`. Se si → `NULL` (no restriction).
+2. **Veste OPERATORE utilizzabile?** — `script.fn_has_identita_attiva(p_auth_user_id, 'OPERATORE')`. Se no → ritorna `'{}'` (no access). ⭐ Dal 2026-10-18 (`20261018-22`) si chiede **dopo** il super admin: stesso esito (il super admin richiede gia' una veste OPERATORE utilizzabile), una verifica della veste invece di due.
+3. **Whitelist** — lookup diretto in `config.user_emittenti_fiscali` per recuperare le PK degli emittenti associati all'utente. Whitelist vuota → `'{}'` (dal 2026-08-18, P-2a: prima `array_agg` su zero righe dava `NULL`, cioè «vede tutto»).
+4. **Emittente attivo di sessione** (`app.current_emittente_id`) — l'insieme si interseca con `{attivo}`, anche quello del super admin (`NULL` ∩ `{X}` = `{X}`).
+
+### ⭐ rev 2026-10-18 — la sede delle regole del perimetro
+
+È diventata la **sede unica** delle regole del perimetro emittenti anche per il
+database (D-3b-2, `brief-db-plancache-funzioni-con-query-incorporate`
+§5quinquies):
+
+* la canonica [`fn_check_user_emittente_scope`](fn_check_user_emittente_scope.md)
+  le chiede a lei (`20261018-18`): prima le stesse regole erano scritte due
+  volte;
+* le policy ef_whitelist dirette la chiamano in una **sottoquery non correlata**,
+  quindi **una volta per istruzione**, e passano il risultato a
+  [`fn_scope_ef_perimetro`](fn_scope_ef_perimetro.md) (`20261018-19…-21`; una
+  sottoquery sola da `20261018-26…-28`);
+* `COST 5000` (`20261018-17`): legge vesti, binding e whitelist, ed è nominata
+  dalle policy (linee-guida-sql §10.3).
 
 ## Filtro `ef.attivo` — non applicato
 
@@ -71,8 +88,11 @@ cursor.execute(SQL, [auth_user_id, auth_user_id])
 ## Caratteristiche
 
 * **Single source of truth dei guard**: `_sr_ids` delega tutti i guard a questa fn (zero drift)
-* **STABLE**: cacheable nel piano di query
-* **Idempotente**: `runOnChange:true` permette ridefinizioni multiple
+* **STABLE**: dentro un'istruzione vede una sola fotografia. ⚠️ Non è una cache
+  fra le righe: una chiamata per riga resta una chiamata per riga. «Una volta
+  per istruzione» lo dà solo la sottoquery non correlata (InitPlan), come nelle
+  policy.
+* `COST 5000` (dal 2026-10-18).
 
 ## Dipendenze
 

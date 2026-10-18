@@ -250,7 +250,7 @@ più a 10.000 righe senza ordine, e il **type checker** del BE va a regime
 [brief-db-liste-documento-lineage-lenta.md](work-done/brief-db-liste-documento-lineage-lenta.md),
 [brief-db-lineage-seminata-per-chiave.md](work-done/brief-db-lineage-seminata-per-chiave.md),
 [brief-db-segment-base-commesse-attivita.md](work-done/brief-db-segment-base-commesse-attivita.md),
-[brief-db-plancache-funzioni-con-query-incorporate.md](work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md),
+[brief-db-plancache-funzioni-con-query-incorporate.md](work-done/brief-db-plancache-funzioni-con-query-incorporate.md),
 [brief-db-fixture-rls-documenti-costruiti.md](work-done/brief-db-fixture-rls-documenti-costruiti.md),
 [brief-db-codici-sfilati-e-lista-parametri.md](work-done/brief-db-codici-sfilati-e-lista-parametri.md),
 [brief-db-ricerca-universale-tetto-10000.md](work-done/brief-db-ricerca-universale-tetto-10000.md),

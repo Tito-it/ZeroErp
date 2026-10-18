@@ -54,10 +54,7 @@ SELECT 'SA2'    AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
 --   non e' l'ultimo SA», e su un database ricostruito dai changelog di super
 --   admin non ce n'e' nessuno — senza questa riga il caso «multi» non esiste e
 --   il test 5 misurerebbe il caso «single» con l'etichetta sbagliata.
-INSERT INTO config.profili_accesso_bindings
-    (profilo_accesso_id, identita_digitale_id, attivo)
-VALUES ((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
-        (SELECT identita_id FROM _mondi WHERE lato = 'SA2'), true);
+DO $lega$ BEGIN PERFORM config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), (SELECT identita_id FROM _mondi WHERE lato = 'SA2')); END $lega$;
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
@@ -82,13 +79,7 @@ BEGIN
       FROM _mondi m
      WHERE m.lato = 'SA';
 
-    INSERT INTO config.profili_accesso_bindings
-        (profilo_accesso_id, identita_digitale_id, attivo)
-    VALUES (
-        (SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
-        id_id, true
-    )
-    RETURNING id INTO bind_id;
+    bind_id := config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), id_id);
 END
 $$;
 

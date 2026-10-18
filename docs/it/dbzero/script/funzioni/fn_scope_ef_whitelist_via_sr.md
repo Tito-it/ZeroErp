@@ -13,20 +13,25 @@ CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_sr(p_auth_user_id in
  LANGUAGE sql
  STABLE COST 5000
 AS $function$
-    -- Risolve SR -> emittente_fiscale_id (1:1 via soggetto_ruolo_id)
-    -- e delega alla canonica. SR non mappato / emittente NULL ->
-    -- la canonica con emittente_fiscale_id NULL ritorna false se la
-    -- whitelist e' valorizzata (fail-closed), true se vuota/super_admin.
+    -- Scopo: l'utente vede l'emittente della chiave (sr)? La domanda
+    --   su UN emittente, per chi non sta in una policy (verbi, guard,
+    --   backend): la regola e' della canonica, l'emittente del risolutore.
+    -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+    --   script.fn_resolve_emittente_fiscale_id('soggetto_ruolo', ...), DEFINER, invece
+    --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+    --   emittente e' scritta UNA volta (il modo del risolutore), e una
+    --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+    --   l'operatore il padre e' invisibile esattamente quando il suo
+    --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+    --   Le policy non passano piu' di qui (20261018-33): calcolano il
+    --   perimetro una volta per istruzione.
     SELECT script.fn_check_user_emittente_scope(
         p_auth_user_id,
-        (SELECT ef.id
-           FROM anagrafiche.emittenti_fiscali ef
-          WHERE ef.soggetto_ruolo_id = p_emittente_sr_id)
-    );
+        script.fn_resolve_emittente_fiscale_id('soggetto_ruolo', p_emittente_sr_id))
 $function$
 
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_sr(p_auth_user_id integer, p_emittente_sr_id bigint)
-IS 'Adapter SR dello scope EF_WHITELIST: risolve emittente_soggetto_ruolo_id -> emittente_fiscale_id e delega a script.fn_check_user_emittente_scope (canonica auth_user_id/PK). Per tabelle convenzione SR (fatture, fatturazione_lotti). STABLE, inlineable. Nessuna logica whitelist duplicata.';
+IS '⭐ rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l''emittente lo chiede a script.fn_resolve_emittente_fiscale_id (DEFINER), non lo legge sotto la RLS del padre: una strada sola, e nessuna policy del padre rieseguita a ogni chiamata. Stesse risposte. Adapter SR dello scope EF_WHITELIST: risolve emittente_soggetto_ruolo_id -> emittente_fiscale_id e delega a script.fn_check_user_emittente_scope (canonica auth_user_id/PK). Per tabelle convenzione SR (fatture, fatturazione_lotti). STABLE, inlineable. Nessuna logica whitelist duplicata.';
 ```
 
 ---

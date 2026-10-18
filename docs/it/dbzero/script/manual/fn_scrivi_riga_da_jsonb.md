@@ -22,6 +22,20 @@ I valori li converte PostgreSQL sul tipo della colonna. Restituisce la riga
 scritta, o `NULL` se l'UPDATE non trova righe. I trigger della tabella
 scattano come sempre.
 
+### Rileggere la riga a istruzione finita
+(18-10-2026, lotto 5)
+
+Il quarto parametro, `p_rileggi_per`, serve alle tabelle protette dalla
+sicurezza per riga il cui legame lo scrive un trigger che parte **dopo** la
+scrittura: il billing account e il cliente, che chi agisce vede solo quando il
+BA è legato alla sua azienda. Una scrittura che chiede subito la riga
+(`RETURNING`) la chiede prima di quel legame, e muore.
+
+Con `p_rileggi_per` (le colonne del payload che individuano la riga, per
+esempio `{istanza_utility_id, utility_id}`) la riga si scrive senza chiederla e
+si rilegge dopo. Vale solo per l'inserimento. Se la riga, scritta, non si vede
+lo stesso, è un errore (`E_SCRIPT_CHIAMATA_NON_VALIDA`), non un `NULL` muto.
+
 ### Regole
 
 * **Le chiavi le sceglie chi chiama.** Il pannello rifiuta una chiave
@@ -35,8 +49,10 @@ scattano come sempre.
 ### Chi la usa
 
 `config.fn_pannello_scrivi`, `vendite.fn_create_contratto`,
-`anagrafiche.fn_crea_emittente_fiscale`. Prima ciascuno componeva la stessa
-scrittura a mano.
+`anagrafiche.fn_crea_emittente_fiscale`, `anagrafiche.fn_crea_contatto`,
+`anagrafiche.fn_crea_fornitore`; con la rilettura
+`anagrafiche.fn_crea_billing_account` e `anagrafiche.fn_crea_cliente`. Prima
+ciascuno componeva la stessa scrittura a mano.
 
 ### Test
 

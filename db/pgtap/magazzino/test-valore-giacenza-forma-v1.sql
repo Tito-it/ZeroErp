@@ -120,8 +120,7 @@ BEGIN
     END IF;
 
     -- usa_ubicazioni: i movimenti nominano U1 e U2 (D-L2-m).
-    INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id, usa_ubicazioni)
-    VALUES ('PGT-VG1', 'pgTAP valore', v_ind, v_ef, true) RETURNING id INTO v_mag;
+    v_mag := magazzino.fn_crea_magazzino('PGT-VG1', 'pgTAP valore', v_ind, jsonb_build_object('usa_ubicazioni', true), v_ef);
     INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_mag, 'PGT-U1', v_tipo_ubi) RETURNING id INTO v_u1;
     INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_mag, 'PGT-U2', v_tipo_ubi) RETURNING id INTO v_u2;
 

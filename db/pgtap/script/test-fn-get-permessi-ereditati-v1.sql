@@ -206,10 +206,12 @@ INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, unita_organizza
 SELECT pg_temp.prof('R_' || u.sigla), u.uo_id, true
   FROM _t_uo u;
 
-INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, identita_digitale_id, attivo)
-SELECT pg_temp.prof('H_B'), o.identita_id, true
-  FROM _t_op o
+DO $lega$
+BEGIN
+    PERFORM config.fn_lega_profilo_identita(pg_temp.prof('H_B'), o.identita_id) FROM _t_op o
  WHERE o.sigla = 'B';
+END
+$lega$;
 
 -- La fase 1 pretende che nessun profilo sia legato alla veste OPERATORE: se il
 -- catalogo ne avesse uno, si spegne qui (il ROLLBACK lo riaccende).
@@ -426,9 +428,15 @@ CREATE TEMP TABLE _t_cl_sr AS
 SELECT dbops.fn_pgtap_crea_soggetto_ruolo(t.soggetto_id, 'CL') AS sr_id
   FROM _t_cl_sog t;
 
-INSERT INTO anagrafiche.identita_digitali (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-SELECT s.sr_id, pg_temp.op('A'), 'SHOP_CUSTOMER'::config.ruolo_applicativo, true
-  FROM _t_cl_sr s;
+-- La veste dal BB anagrafiche.fn_crea_veste_portale (rev 2026-10-18,
+-- brief-db-processi-accensione-per-ambiente 2b-1 lotto 6).
+DO $veste$
+BEGIN
+    PERFORM 1 FROM (
+        SELECT anagrafiche.fn_crea_veste_portale(pg_temp.op('A'), s.sr_id, 'SHOP_CUSTOMER'::config.ruolo_applicativo, true) FROM _t_cl_sr s
+    ) AS v;
+END
+$veste$;
 
 -- ============================================================
 -- 17-21 D-1: i profili delle altre vesti non entrano

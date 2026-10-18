@@ -79,14 +79,7 @@ BEGIN
     SELECT ceo.identita_id INTO id_id
       FROM dbops.fn_pgtap_crea_emittente_operatore() ceo;
 
-    INSERT INTO config.profili_accesso_bindings
-        (profilo_accesso_id, identita_digitale_id, attivo)
-    VALUES (
-        (SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'),
-        id_id,
-        true
-    )
-    RETURNING id INTO bind_id;
+    bind_id := config.fn_lega_profilo_identita((SELECT id FROM config.profili_accesso WHERE codice = 'SUPER_ADMIN'), id_id);
 END
 $$;
 
