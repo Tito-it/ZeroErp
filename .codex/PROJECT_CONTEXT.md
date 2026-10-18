@@ -258,6 +258,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   manda a chi deve agire. Lato BE: `registered_job` scrive SQLSTATE e codice `E_` dei `P0001` (§4.2), e una corsa
   che lascia indietro elementi senza registro chiude rossa con `E_JOB_ELEMENTI_NON_COMPLETATI` (D9, BB
   `chiudi_se_elementi_non_completati`). Collaudo DB e BE di Tid superati. I residui sono in § «Aperto — Media priorità».
+- **Il verde di un verdetto completo spegne la spia: chiuso** (`work-done/brief-db-intermittente-e-verdetto-completo.md`,
+  archiviato il 2026-10-18): `dbops.processi.corsa_verdetto_completo` dichiara i processi il cui ogni giro ricontrolla
+  tutto il perimetro (lo smoke notturno, le automazioni, il digest). Per loro `maintenance.vw_job_run_da_guardare` dà
+  «intermittente» solo se il lavoro è ricaduto (due tratti rossi nei sette giorni, D4 = B): un solo tratto rosso esce
+  al primo verde, e una corsa in corso da meno di un'ora non è un verdetto. Per gli altri processi niente cambia.
+  Lato BE solo i commenti di `smoke_notturno.py`. Nessun residuo.
 - **Una credenziale senza veste si elimina dall'applicazione: chiuso** (`work-done/brief-db-elimina-credenziale-senza-veste.md`,
   archiviato il 2026-10-07): verbo `script.fn_elimina_credenziale` + check derivata da `pg_constraint` e fail-closed senza
   il ponte django, traccia in `config.credenziali_eliminate`, all'app tolto il `DELETE` su `django.auth_user`; BE/FE

@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: il BE**, con le due righe di commento del §7; poi l'archiviazione.
+✅ **Chiuso il 2026-10-18** e archiviato in `work-done/`: nessuno riparte.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -12,11 +12,10 @@
 | 4 | team DB | ✅ scritto e provato pre-apply (2026-10-18): colonna, CSV, vista, pgTAP, manual | §8 | — |
 | 5 | Tid | ✅ apply su dbdev, pgTAP senza regressioni (2026-10-18); verificato dal team DB: lo smoke è uscito dalla vista, che è vuota | §6, §8.2 | — |
 | 6 | Tid | ✅ tolte da dbdev le 7 righe di prova (2026-10-18) | §8.4 | — |
-| 7 | BE | due righe di commento in `smoke_notturno.py` | §7 | — |
-| 8 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 7 |
+| 7 | BE | ✅ (2026-10-18) commenti in `smoke_notturno.py`: l'intestazione e il motivo di `CONSERVA_GIORNI` dicono la regola del verdetto completo | §7 | — |
+| 8 | chi chiude | ✅ (2026-10-18) archiviazione in `work-done/`, riga di PROJECT_CONTEXT | — | — |
 
-Decisioni aperte di Tid: nessuna. Da committare: i file del §8.1 (non committati), insieme a quelli di
-`brief-db-processi-accensione-per-ambiente` (§8.3).
+Decisioni aperte di Tid: nessuna. I file del §8.1 sono committati in `d984ff0cc` (2026-10-18).
 
 ---
 
@@ -25,7 +24,7 @@ Decisioni aperte di Tid: nessuna. Da committare: i file del §8.1 (non committat
 > **Origine:** il 2026-10-18 la spia del digest è accesa sullo smoke notturno, dopo tre giri verdi.
 > **Filone:** `maintenance.vw_job_run_da_guardare`, vedi anche
 > `brief-db-presidio-job-run-a-chi-tocca` (la causa delle righe) e `brief-db-corsa-saltata-non-e-una-corsa`.
-> **Stato:** ✅ DB applicato e verde (2026-10-18, §8); resta il commento BE del §7.
+> **Stato:** ✅ chiuso (2026-10-18): DB applicato e verde (§8), commenti BE del §7 fatti, archiviato.
 
 ## 1. Il caso
 

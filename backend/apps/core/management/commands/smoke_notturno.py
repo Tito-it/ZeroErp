@@ -75,10 +75,12 @@ JOB_NAME = f"{PROCESSO_SMOKE_NOTTURNO}:{CORSIA}"
 # Dove restano gli output dei rossi: `backend/var/` e' fuori da git
 # (backend/.gitignore) e, a differenza di `/tmp`, sopravvive al riavvio.
 LOG_ROOT = Path(settings.BASE_DIR) / "var" / "smoke-notturno"
-# ⚠️ Gli stessi sette giorni di `maintenance.vw_job_run_da_guardare`, che mostra
-#    un job finche' ha un rosso negli ultimi sette giorni: finche' la corsa e'
-#    nel digest, la sua cartella deve esserci. Se la finestra della vista cambia,
-#    cambia anche qui.
+# ⚠️ Gli stessi sette giorni della finestra di `maintenance.vw_job_run_da_guardare`.
+#    Lo smoke e' un verdetto completo: la vista lo mostra finche' l'ultima corsa
+#    e' rossa, o finche' nei sette giorni e' ricaduto (due tratti rossi separati
+#    da un verde). Una corsa rossa puo' quindi restare nel digest fino a sette
+#    giorni, e finche' c'e' la sua cartella deve esserci. Se la finestra della
+#    vista cambia, cambia anche qui.
 CONSERVA_GIORNI = 7
 # Il nome di una cartella di corsa: lo stesso formato di `date +%Y%m%d-%H%M%S`
 # che lo script usa per il suo default.
