@@ -2,10 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: il BE, con T-1 … T-4.** Il giro 2 DB è applicato su dbdev, pgTAP verdi (2026-10-18). Che cosa
-c'è e come si chiama: [brief DB §5-ter.3](brief-db-processi-accensione-per-ambiente.md) (verbo, etichette,
-codici, lista Operatori); i BB che sostituiscono le copie del backend (2b-2): §5-ter.2, la «Ricaduta BE»
-di ogni lotto.
+**Riparte: Tid, col collaudo T-5 (riga 8), che fa alla fine.** T-1 … T-4 e T-6 sono fatti (2026-10-18, §8): il
+command `provision_utenti_sviluppo`, la lista Operatori col filtro e il badge, il run-book §11. Fatta anche la
+2b-2 (il backend crea dalle madri del DB): [brief DB §6.10](brief-db-processi-accensione-per-ambiente.md).
 
 ⚠️ Due scostamenti dal §7, imposti dal modello (brief DB §5-ter.3): `dev.multiveste` ha il portale sul
 **cliente 3** (un ruolo cliente ha una sola veste portale attiva, e il cliente 1 è di `dev.portale1`); gli
@@ -19,9 +18,9 @@ utenti dei portali non hanno un PF loro (la veste sta sul ruolo del cliente o de
 | 4 | ✅ **Tid** | Le tre decisioni del §7.4: emittenti nuovi dal verbo, `dev.shop` dopo, portale senza contratto (2026-10-16) | §7.4 | — |
 | 5 | ✅ **team DB** | Giro 2: i BB (2b-1), etichette, verbo `anagrafiche.fn_provisiona_dati_di_sviluppo`, presidio (2b-3). La colonna della lista Operatori: `LEFT JOIN dbops.credenziali_di_prova` (T-4) | brief DB §5-ter.2, §5-ter.3 | — |
 | 6 | ✅ **Tid** | Apply del giro 2 su dbdev, pgTAP verdi (2026-10-18) | — | — |
-| 7 | **BE** | T-1 … T-4 (di T-2 è già fatto il ritiro del ripiego `tid`), più la 2b-2: il backend passa ai BB e ritira le sue copie | §4; brief DB §5-ter.2 | — |
-| 8 | **Tid** | Collaudo: il provisioning da capo su dbdev, il giro degli smoke con `dev.smoke`, poi la disattivazione di `smoke` | §4, T-5 | 7 |
-| 9 | **FE** | T-6: il filtro e il badge nella lista Operatori | §4 | 7 |
+| 7 | ✅ **BE** | T-1 … T-4 (2026-10-18, §8) e la 2b-2: il backend crea dalle madri del DB e le sue copie sono ritirate (brief DB §6.10) | §8; brief DB §6.10 | — |
+| 8 | **Tid** | Collaudo: `./manage-env.sh provision_utenti_sviluppo` su dbdev, le righe stampate in `env.sh` (`SMOKE_USER='dev.smoke'` e le altre), il giro degli smoke con `dev.smoke`, poi la disattivazione di `smoke` | §8, T-5 | — |
+| 9 | ✅ **FE** | T-6: il filtro e il badge nella lista Operatori (2026-10-18) | §8 | — |
 
 **Decisioni aperte di Tid: nessuna** (§7.4 deciso il 2026-10-16). Domande aperte al team DB: nessuna (D-1 risposta dal giro 1).
 
@@ -218,3 +217,30 @@ secondo passo.
   Un contratto serve solo se il portale lo mostra già; se no, cliente + BA bastano e il contratto
   entra quando entra la pagina del portale che lo legge. Propongo **cliente + BA, senza contratto**,
   salvo che tu sappia di una pagina del portale che li elenca già.
+
+## 8. Fatto (sessione BE, 2026-10-18)
+
+| Lotto | Che cosa | Dove |
+| --- | --- | --- |
+| codici | `E_DATI_DI_SVILUPPO_IN_PRODUZIONE`, `E_ETICHETTA_DI_PROVA_IMMUTABILE`, `E_RADICE_DI_PROVA_SENZA_ETICHETTA`: policy rigenerata e ripieghi senza `%s` | `error_policies_generated.py`, `error_messages_fallback.py` |
+| T-1 | `manage.py provision_utenti_sviluppo [--nuove-password]`: legge l'ambiente a ogni corsa (non dichiarato o `PRODUZIONE` → si ferma e dice perché), chiama il verbo, genera la password per le credenziali appena create (per tutte con `--nuove-password`) e la passa al verbo come hash Django in una seconda chiamata nella stessa transazione, configura il secondo fattore già confermato di chi lo deve avere (`SecondoFattoreService.configura_confermato`, dentro il contesto della credenziale: il DB vuole che agisca lei), stampa le righe per `env.sh` (`SMOKE_*` per `dev.smoke`, `DEV_<NOME>_PASSWORD` per gli altri) | `anagrafiche/management/commands/provision_utenti_sviluppo.py`, `anagrafiche/db/dati_di_sviluppo_repository.py` |
+| T-2 | i commenti degli smoke e di `smoke-baseline.sh` nominano `dev.smoke`; lo smoke RLS si lancia con `dev.emittente`. `env.sh` resta di Tid (riga 8) | `_smoke_auth.sh`, `smoke-test-rls-emittente-operatore.sh` |
+| T-3 | run-book §11 riscritto: gli utenti di sviluppo, il command, le variabili | `comandi-utili-run-book.md` |
+| T-4 | lista Operatori: colonna `di_prova` (`LEFT JOIN dbops.credenziali_di_prova`) e parametro `includi_di_prova` (strict; assente = nascosti), prima della paginazione e del conteggio | `amm_software_repository.list_operatori`, `OperatoriListView` (BE) |
+| T-6 | interruttore «Mostra gli utenti di prova» dentro i filtri (acceso allarga, ed è ciò che il segno conta) e badge «Di prova» nella cella del ruolo | `OperatoriListView.vue`, store `operatori`, locales |
+
+Prove: test sul DB vero `anagrafiche/tests/db/test_provisioning_sviluppo_db` (il command intero in una
+transazione annullata: le password stampate aprono le credenziali, il secondo fattore di `dev.smoke` è attivo
+con la chiave stampata, la lista nasconde e mostra) e `test_obblighi_e_secondo_fattore_db` 14; unitari del
+command (8) e della view; backend `core` + `amm_software` + `anagrafiche` 2738 verdi, frontend 888, lint,
+guard, mypy a cricchetto (sanati nello stesso giro due rilievi già in HEAD: `notify_listener` e
+`processi_service`).
+
+* **Regola del 2 sulla lettura dell'ambiente (§5): non estratta.** Il command la legge dal lettore che
+  descrive (`fn_ambiente_dichiarato`, None se non dichiarato) per dire lui perché si ferma; il fuso usa il
+  lettore che solleva, con la cache di processo. Due letture con un significato diverso, non due copie.
+* ⚠️ L'emittente di prova A è vuoto: gli smoke che contavano su `EMITEST` lo diranno al collaudo.
+* Il secondo fattore di `dev.smoke` si conferma sul passo **precedente** a quello di adesso: nessun codice è
+  stato usato davvero, e così il primo login degli smoke, subito dopo, non trova il passo già preso
+  (`E_TOTP_PASSO_GIA_USATO`).
+

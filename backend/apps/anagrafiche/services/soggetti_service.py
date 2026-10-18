@@ -39,6 +39,7 @@ from apps.anagrafiche.services._validators import (
     update_with_dedup,
 )
 from apps.anagrafiche.services.cf_validator_it import genera_cf_it, valida_cf_congruenza_it
+from apps.anagrafiche.services.geo_service import GeoService, richiedi_via
 from apps.anagrafiche.services.contatti_service import (
     crea_contatto_validato,
     richiedi_contatto_valido,
@@ -96,6 +97,36 @@ _UPDATE_INDIRIZZO_RUOLO_KEYS: frozenset[str] = INDIRIZZO_RUOLO_UPDATE_COLS
 
 # Validator stateless del dominio (solo il codice errore): condivisibile.
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
+
+
+# Scopo: Gli indirizzi di un ruolo nella forma che le madri del DB ricevono
+#        (`fn_crea_indirizzi_ruolo`, e attraverso lei `fn_crea_fornitore` e
+#        `fn_crea_cliente`), coi pre-check per l'operatore: un elemento che
+#        non e' un oggetto, i campi di una via nuova (`richiedi_via`). Le
+#        stringhe vuote e i null valgono assenti (null_vs_empty). `None` o
+#        un elenco vuoto: nessun indirizzo.
+def indirizzi_per_madre(indirizzi_data: list[Any] | None) -> list[dict[str, Any]]:
+    ErrorManager.require(
+        indirizzi_data is None or isinstance(indirizzi_data, list),
+        code=E_ANAG_VALIDAZIONE,
+        message="Indirizzi non validi: attesa una lista.",
+        context={"field": "indirizzi"},
+    )
+    indirizzi: list[dict[str, Any]] = []
+    for ind in indirizzi_data or []:
+        ErrorManager.require(
+            isinstance(ind, dict),
+            code=E_ANAG_VALIDAZIONE,
+            message="Indirizzo non valido: atteso un oggetto.",
+        )
+        pulito = {
+            k: v for k, v in ind.items()
+            if v is not None and not (isinstance(v, str) and not v.strip())
+        }
+        if not pulito.get("indirizzo_libero") and not pulito.get("indirizzo_dettaglio_id"):
+            richiedi_via(pulito)
+        indirizzi.append(pulito)
+    return indirizzi
 
 
 class SoggettiService:
@@ -440,7 +471,7 @@ class SoggettiService:
         from django.db import transaction
         self._require_soggetto_exists(soggetto_id)
         with transaction.atomic():
-            sog_id, _ = self._create_indirizzo(soggetto_id, payload)
+            sog_id = self._create_indirizzo(soggetto_id, payload)
         return {"id": sog_id}
 
     # Scopo: Sostituisce un indirizzo soggetto: elimina il vecchio, crea il nuovo.
@@ -454,7 +485,7 @@ class SoggettiService:
         with transaction.atomic():
             deleted = self._repo.delete_indirizzo_soggetto(indirizzo_soggetto_id, soggetto_id)
             ErrorManager.require(deleted, code=E_ANAG_NOT_FOUND, message="Indirizzo soggetto non trovato.")
-            sog_id, _ = self._create_indirizzo(soggetto_id, payload)
+            sog_id = self._create_indirizzo(soggetto_id, payload)
         return {"id": sog_id}
 
     # Scopo: Elimina un indirizzo soggetto.
@@ -638,10 +669,7 @@ class SoggettiService:
                 "Ruolo gia' assegnato.",
             )
             if indirizzi:
-                assert codice_interno is not None  # il ruolo e' appena nato
-                self.create_indirizzi_ruolo(
-                    ruolo_id, indirizzi, tipo_ruolo_codice=codice_interno,
-                )
+                self.create_indirizzi_ruolo(ruolo_id, indirizzi)
         return {"id": ruolo_id}
 
     # =================================================================
@@ -888,28 +916,32 @@ class SoggettiService:
             if m["obbligatorio"] and m["codice"] not in tipi_presenti:
                 indirizzi.append({**primo, "tipo_indirizzo_codice": m["codice"]})
 
-    # Scopo: Crea indirizzi in batch con riuso dettaglio per clonati.
-    #        Il primo indirizzo normalizzato risolve il dettaglio, i successivi
-    #        (con stesso stradario+civico) riusano lo stesso indirizzo_dettaglio_id.
+    # Scopo: Crea gli indirizzi del soggetto, uno per elemento: ognuno risolve
+    #        il SUO dettaglio. Un clone porta lo stesso payload del primo, e la
+    #        madre `fn_create_indirizzo` (get_or_create) gli ritrova lo stesso
+    #        dettaglio da se'.
+    # ⛔ Fino al 2026-10-18 il primo dettaglio risolto si riusava per OGNI
+    #    indirizzo successivo senza dettaglio, non solo per i cloni: due vie
+    #    diverse finivano sullo stesso dettaglio (lo stesso difetto ritirato con
+    #    la saga degli indirizzi di ruolo, 2b-2).
+    # ⚠️ Auto-clone e batch restano una saga del backend finche' il DB non ha la
+    #    madre plurale degli indirizzi di SOGGETTO, gemella di
+    #    `fn_crea_indirizzi_ruolo` (R-BE-12 di
+    #    brief-db-processi-accensione-per-ambiente §6.10).
     def _create_indirizzi_batch(self, soggetto_id: str, indirizzi: list[dict[str, Any]]) -> None:
-        resolved_det_id: int | None = None
-        for i, ind in enumerate(indirizzi):
-            if resolved_det_id and not ind.get("indirizzo_libero") and not ind.get("indirizzo_dettaglio_id"):
-                indirizzi[i] = ind = dict(ind, indirizzo_dettaglio_id=resolved_det_id)
-            _, det_id = self._create_indirizzo(soggetto_id, ind)
-            if resolved_det_id is None and det_id is not None:
-                resolved_det_id = det_id
+        for ind in indirizzi:
+            self._create_indirizzo(soggetto_id, ind)
 
     # Scopo: Dispatch creazione indirizzo soggetto — il payload determina il path.
-    def _create_indirizzo(self, soggetto_id: str, payload: dict[str, Any]) -> tuple[int, int | None]:
+    def _create_indirizzo(self, soggetto_id: str, payload: dict[str, Any]) -> int:
         tipo_codice = require_str(payload, "tipo_indirizzo_codice",
                                   "Codice tipo indirizzo obbligatorio.")
 
         if optional_str(payload, "indirizzo_libero"):
-            return self._create_indirizzo_libero(soggetto_id, payload, tipo_codice), None
+            return self._create_indirizzo_libero(soggetto_id, payload, tipo_codice)
 
         det_id = self._resolve_indirizzo_dettaglio(payload)
-        sog_id = create_with_dedup(
+        return create_with_dedup(
             lambda: self._repo.crea_indirizzo_soggetto(
                 soggetto_id,
                 tipo_indirizzo_codice=tipo_codice,
@@ -917,9 +949,14 @@ class SoggettiService:
             ),
             "Indirizzo duplicato per questo soggetto.",
         )
-        return sog_id, det_id
 
-    # Scopo: Crea indirizzo libero (estero / libera forma).
+    # Scopo: Crea indirizzo libero (via fuori stradario, in forma libera).
+    # ⚠️ Comune e CAP viaggiano (2026-10-18): la madre
+    #    `anagrafiche.fn_crea_indirizzo_soggetto` li pretende per un indirizzo
+    #    libero, e fino a quel giorno il backend li buttava — un indirizzo
+    #    libero del soggetto non poteva nascere. La forma estera (localita',
+    #    codice postale, regione) la madre non la riceve ancora: richiesta al
+    #    team DB (brief-db-processi-accensione-per-ambiente §6.11).
     def _create_indirizzo_libero(self, soggetto_id: str, payload: dict[str, Any],
                                  tipo_codice: str) -> int:
         return create_with_dedup(
@@ -928,134 +965,43 @@ class SoggettiService:
                 tipo_indirizzo_codice=tipo_codice,
                 indirizzo_libero=optional_str(payload, "indirizzo_libero"),
                 stato_id=optional_int(payload, "stato_id"),
+                comune_id=optional_int(payload, "comune_id"),
+                codice_postale_id=optional_int(payload, "codice_postale_id"),
             ),
             "Indirizzo duplicato per questo soggetto.",
         )
 
-    # Scopo: Crea indirizzi a livello ruolo dal payload frontend.
-    #        Risolve tipo_indirizzo_codice → tipo_indirizzo_id; per indirizzi
-    #        normalizzati risolve stradario → indirizzo_dettaglio_id.
-    #        Auto-clone dei tipi obbligatori mancanti (matrice ruolo) e skip dei
-    #        tipi gia' presenti sul ruolo. Operazione di dominio soggetto_ruolo:
-    #        usata da crea_fornitore (tipo 'FO') e crea_cliente (tipo 'CL').
+    # Scopo: Crea gli indirizzi di un ruolo con la madre del DB
+    #        `anagrafiche.fn_crea_indirizzi_ruolo`: tipo per codice o id, forma
+    #        libera, dettaglio gia' risolto o via da risolvere. L'AUTO-CLONE dei
+    #        tipi obbligatori del ruolo (dal primo indirizzo) e il salto dei tipi
+    #        che il ruolo ha gia' sono regole del DB, che legge anche il tipo di
+    #        ruolo. Ritorna quanti indirizzi sono stati scritti.
+    #        Qui restano i pre-check per l'operatore (`indirizzi_per_madre`).
+    #        Una chiave estranea la rifiuta il DB (`E_CAMPO_NON_AMMESSO`).
+    # ⭐ Dal 2026-10-18 (2b-2, lotto 2): la saga Python (matrice, auto-clone,
+    #    skip, risoluzione della via, INSERT riga per riga) era la copia della
+    #    regola; con lei e' sparito anche un difetto — il primo dettaglio
+    #    risolto si riusava per OGNI indirizzo successivo senza dettaglio, non
+    #    solo per i cloni: due vie diverse finivano sullo stesso dettaglio.
+    #    Chiamanti: crea_fornitore, crea_cliente, assign_ruolo.
     def create_indirizzi_ruolo(
         self, soggetto_ruolo_id: int, indirizzi_data: list[dict[str, Any]],
-        tipo_ruolo_codice: str = "FO",
-    ) -> None:
-        if not indirizzi_data:
-            return
-        # Copia locale: l'auto-clone fa append, non mutare la lista del chiamante.
-        indirizzi_data = list(indirizzi_data)
+    ) -> int:
+        indirizzi = indirizzi_per_madre(indirizzi_data)
+        if not indirizzi:
+            return 0
+        return self._repo.crea_indirizzi_ruolo(soggetto_ruolo_id, indirizzi)
 
-        # Tipi indirizzo gia' presenti sul ruolo (skip duplicati)
-        existing_tipo_ids = self._repo.get_existing_tipo_indirizzo_ids(soggetto_ruolo_id)
-
-        # Auto-clone: clona il primo indirizzo per i tipi obbligatori mancanti
-        matrice = self._lookup.list_matrice_indirizzi_ruolo(tipo_ruolo_codice)
-        tipi_presenti = {ind.get("tipo_indirizzo_codice") for ind in indirizzi_data if isinstance(ind, dict)}
-        primo = indirizzi_data[0]
-        for m in matrice:
-            if m["obbligatorio"] and m["codice"] not in tipi_presenti:
-                indirizzi_data.append({**primo, "tipo_indirizzo_codice": m["codice"]})
-
-        # Risolvi e crea ogni indirizzo
-        resolved_det_id: int | None = None
-        for ind in indirizzi_data:
-            if not isinstance(ind, dict):
-                continue
-
-            # Risolvi tipo: codice → id
-            tipo_indirizzo_id = optional_int(ind, "tipo_indirizzo_id")
-            if tipo_indirizzo_id is None:
-                tipo_codice = optional_str(ind, "tipo_indirizzo_codice")
-                if tipo_codice:
-                    tipo_indirizzo_id = self._repo.resolve_tipo_indirizzo_id(tipo_codice)
-            if tipo_indirizzo_id is None:
-                ErrorManager.raise_error(code=E_ANAG_VALIDAZIONE,
-                                         message="Tipo indirizzo non risolto per indirizzo inline.")
-
-            # Risolvi indirizzo: libero o normalizzato (stradario → dettaglio)
-            indirizzo_libero = optional_str(ind, "indirizzo_libero")
-            indirizzo_dettaglio_id = None
-            if not indirizzo_libero:
-                det_from_payload = optional_int(ind, "indirizzo_dettaglio_id")
-                if det_from_payload:
-                    indirizzo_dettaglio_id = det_from_payload
-                elif resolved_det_id:
-                    # Clone: riusa dettaglio gia risolto (stesso stradario+civico)
-                    indirizzo_dettaglio_id = resolved_det_id
-                else:
-                    indirizzo_dettaglio_id = self._resolve_indirizzo_dettaglio(ind)
-                # Cache il primo dettaglio risolto per i cloni successivi
-                if resolved_det_id is None and indirizzo_dettaglio_id:
-                    resolved_det_id = indirizzo_dettaglio_id
-
-            # Skip se il tipo indirizzo esiste gia' sul ruolo
-            # (es. secondo cliente creato sullo stesso soggetto_ruolo CL)
-            if tipo_indirizzo_id in existing_tipo_ids:
-                continue
-
-            self._repo.crea_indirizzo_ruolo(
-                soggetto_ruolo_id,
-                tipo_indirizzo_id=tipo_indirizzo_id,
-                indirizzo_dettaglio_id=indirizzo_dettaglio_id,
-                indirizzo_libero=indirizzo_libero,
-                stato_id=optional_int(ind, "stato_id"),
-                comune_id=optional_int(ind, "comune_id"),
-                codice_postale_id=optional_int(ind, "codice_postale_id"),
-            )
-            # Aggiorna set per evitare duplicati nell'auto-clone
-            existing_tipo_ids.add(tipo_indirizzo_id)
-
-    # Scopo: Risolve indirizzo_dettaglio_id dal payload.
-    #        Se il payload ha gia' indirizzo_dettaglio_id, lo usa.
-    #        Altrimenti risolve stradario (esistente o nuovo) e crea dettaglio.
+    # Scopo: Il dettaglio di un indirizzo normalizzato: quello del payload, o
+    #        la via risolta dalla madre atomica (`GeoService`, pre-check
+    #        compreso). Per gli indirizzi di SOGGETTO e per quello singolo di
+    #        ruolo (`RuoloIndirizziView.post`).
     def _resolve_indirizzo_dettaglio(self, payload: dict[str, Any]) -> int:
         det_id = optional_int(payload, "indirizzo_dettaglio_id")
         if det_id is not None:
             return det_id
-
-        stradario_id = optional_int(payload, "stradario_id")
-        if stradario_id is None:
-            stradario_id = self._create_stradario_da_generale(payload)
-        assert stradario_id is not None
-
-        det_id = self._ind.create_indirizzo_dettaglio(
-            stradario_id=stradario_id,
-            civico=optional_int(payload, "civico"),
-            estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
-            palazzina=(payload.get("palazzina") or "").strip() or None,
-            scala=(payload.get("scala") or "").strip() or None,
-            piano=(payload.get("piano") or "").strip() or None,
-            interno=(payload.get("interno") or "").strip() or None,
-        )
-        assert det_id is not None
-        return det_id
-
-    # Scopo: Crea stradario locale da stradario_generale (via nuova).
-    #        Valida toponomastica, descrizione, comune, CAP.
-    def _create_stradario_da_generale(self, payload: dict[str, Any]) -> int:
-        toponomastica_id = optional_int(payload, "toponomastica_id")
-        descrizione_via = (payload.get("descrizione_via") or "").strip()
-        comune_id = optional_int(payload, "comune_id")
-        codice_postale_id = optional_int(payload, "codice_postale_id")
-
-        ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
-                             code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio.")
-        assert toponomastica_id is not None
-        ErrorManager.require(bool(descrizione_via),
-                             code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
-        ErrorManager.require(comune_id is not None and comune_id > 0,
-                             code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio.")
-        assert comune_id is not None
-        ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
-                             code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio.")
-        assert codice_postale_id is not None
-
-        return self._ind.get_or_create_stradario(
-            toponomastica_id=toponomastica_id, descrizione_via=descrizione_via,
-            comune_id=comune_id, codice_postale_id=codice_postale_id,
-        )
+        return GeoService().crea_dettaglio_indirizzo(payload)
 
     # Scopo: Validazione congruenza CF italiano con dati anagrafici (data, sesso, comune).
     #        Non blocca se i dati opzionali non sono forniti — valida solo quelli presenti.

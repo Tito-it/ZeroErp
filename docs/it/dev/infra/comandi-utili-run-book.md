@@ -12,7 +12,7 @@
 8. Checklist post‑riavvio
 9. Comandi veloci (appendice)
 10. Sblocco del secondo fattore (DBA)
-11. Smoke bash: l'utente `smoke`, secondo fattore, login unico
+11. Smoke bash: gli utenti di sviluppo, secondo fattore, login unico
 
 ---
 
@@ -483,19 +483,20 @@ SELECT data_insert, dettaglio
 
 ---
 
-## 11) Smoke bash: l'utente `smoke`, secondo fattore, login unico
+## 11) Smoke bash: gli utenti di sviluppo, secondo fattore, login unico
 
 Gli smoke bash (`backend/scripts/tests/smoke-test-*.sh`) fanno il login con un
 solo building block, `smoke_login` di `_smoke_auth.sh`: credenziali da
 `SMOKE_USER` / `SMOKE_PASSWORD` (o primo argomento), secondo fattore da
 `SMOKE_TOTP_SECRET`, e il riuso di `SMOKE_TOKEN` (§11.4).
 
-### 11.1 L'utente `smoke`
+### 11.1 Gli utenti di sviluppo e `dev.smoke`
 
-Dal 2026-10-02 gli smoke entrano con l'utente **`smoke`**, dedicato a loro
-(prima usavano l'utente personale `tid`). Dal 2026-10-16 non c'è più
-ripiego: senza `SMOKE_USER` lo smoke si ferma e lo dice. Perché non un utente
-personale:
+Dal 2026-10-18 gli smoke entrano con **`dev.smoke`**, uno degli utenti di
+sviluppo che crea il **provisioning di sviluppo** (prima: l'utente `smoke`,
+creato a mano il 2026-10-02; prima ancora l'utente personale `tid`). Dal
+2026-10-16 non c'è ripiego: senza `SMOKE_USER` lo smoke si ferma e lo dice.
+Perché un utente suo e non uno personale:
 
 * il **secondo fattore** è della credenziale: il DB accetta un codice per
   intervallo di 30 s (anti-replay), quindi il passo che usa lo smoke non lo
@@ -508,79 +509,67 @@ personale:
 * le scritture degli smoke (audit, `user_insert`, sessioni) non si confondono
   con quelle della persona.
 
-Com'è fatto (verificato il 2026-10-02, `smoke-test-core.sh` 25 OK):
+Gli utenti e i dati di prova li decide il database (il verbo
+`anagrafiche.fn_provisiona_dati_di_sviluppo`, pagina manual omonima): portano
+l'**etichetta di prova**, in un'installazione `PRODUZIONE` non si creano, e la
+lista Operatori li nasconde finché non si chiede di vederli.
 
-| | |
-| --- | --- |
-| Persona | un soggetto **fittizio** suo, non quello di una persona vera |
-| Email | `mc.titini+smoke@gmail.com` (arriva alla casella di Tid) |
-| Veste | OPERATORE attiva, profilo **`SUPER_ADMIN`**, nessun emittente (admin globale) |
-| Secondo fattore | obbligatorio (SUPER_ADMIN) e configurato: la chiave è in `SMOKE_TOTP_SECRET` |
-| Emittente attivo | **`EMITEST`** (id 44), una preferenza e non un permesso: resta admin globale (impostato il 2026-10-09) |
+| Utente | Che cos'è | Per provare |
+| --- | --- | --- |
+| `dev.smoke` | operatore SUPER_ADMIN, secondo fattore attivo, emittente attivo l'emittente di prova A (`DEVA`) | gli smoke |
+| `dev.lettura` | operatore, lettura su tutte le aree, solo A | sola lettura, login senza secondo passo |
+| `dev.bloccato` | come `dev.lettura`, contratti bloccati | il pannello dell'accesso bloccato |
+| `dev.emittente` | operatore, tutto su tutte le aree, **solo A** | la RLS (`smoke-test-rls-emittente-operatore.sh`) |
+| `dev.portale1`, `dev.portale2` | portale clienti sui clienti di prova 1 e 2 | che un cliente non veda l'altro |
+| `dev.fornitore` | portale fornitori sul fornitore di prova 1 | il portale fornitori |
+| `dev.multiveste` | operatore (come `dev.lettura`) e portale sul cliente di prova 3 | il token multi-veste |
 
-⚠️ **Senza emittente attivo le liste multi-emittente rispondono `422
-E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`** (cancello di perimetro), e gli smoke si
-fermano al primo `GET` di lista. Si sceglie una volta: è la preferenza
-`config.user_emittente_attivo`, che il login rilegge. La si imposta
-dall'applicazione (combo in topbar, entrando come `smoke`) oppure con
-`POST /api/v1/core/me/emittente-attivo/` `{"emittente_fiscale_id": <id>}`, che
-vuole il cookie del refresh (login con `smoke_login -D <file header>`, poi
-`curl_refresh`). Le opzioni le dà la `GET` sulla stessa rotta.
+Le email sono `<username>@sviluppo.invalid` (dominio riservato: nessuna email
+esce davvero); i portali entrano con l'email.
 
-### 11.2 Ricrearlo (su un'installazione nuova)
+### 11.2 Crearli, o rimetterli a posto
 
-1. **La persona: un soggetto NUOVO e fittizio**, per esempio «Smoke Test».
-   ⛔ Non quello di una persona che ha già un accesso: una persona è una risorsa
-   umana sola e ha una credenziale sola (D-6), e il secondo operatore sullo
-   stesso soggetto si rifiuta con `E_RISORSA_UMANA_GIA_PRESENTE` («… è già una
-   risorsa umana», dal 2026-10-02; prima arrivava come `E_DATABASE`). Il codice fiscale, valido e libero, lo
-   dà `SELECT dbops.fn_pgtap_cf_libero();` (una lettura).
-2. **Admin → Amm. Software → Operatori → «Nuovo»** su quel soggetto: nome
-   utente `smoke`, una qualifica, e un'**email nuova**. Un'email che ha già una
-   credenziale operatore si rifiuta (`E_CREDENZIALE_GIA_OPERATORE`): basta
-   l'indirizzo col `+` (`nome+smoke@dominio`), che il DB tratta come un'email
-   diversa (confronto `lower(trim(email))`) e che la casella riceve.
-3. **Invito**: «Invia invito» e, dal link, la scelta della password. ⚠️ Non
-   simile al nome utente (le regole di Django la rifiutano): la conferma col
-   link ha un suo limite di frequenza (`conferma_token`, 10 ogni 15 minuti),
-   la richiesta del link un altro più stretto (`password_reset`, 3 ogni 15).
-4. **Permessi**: gli smoke esercitano tutte le aree, anche in scrittura
-   (catalogo, vendite, anagrafiche, pratiche, definizioni di workflow,
-   amministrazione), e alcuni lo pretendono esplicitamente (SUPER_ADMIN,
-   «admin globale»). Quindi alla veste **OPERATORE** si lega il profilo
-   **`SUPER_ADMIN`**, **senza** emittente fiscale assegnato (admin globale:
-   `is_admin_globale = true` in `GET /api/v1/core/me/`). La veste OPERATORE
-   deve essere **attiva**: `smoke-test-guida-inversione-preventivi.sh` ne legge
-   l'identità per le GUC. Un utente degli smoke non SUPER_ADMIN, per evitare il
-   secondo fattore, è stato scartato (decisione 10 del brief sicurezza).
-5. **Secondo fattore**: col profilo SUPER_ADMIN è obbligatorio. Primo login col
-   nuovo utente in una finestra anonima → si apre da sola «Sicurezza
-   dell'accesso». «Configura», poi si copia la **chiave** mostrata sotto il QR
-   (32 caratteri, lettere A-Z e cifre 2-7, a gruppi di quattro: gli spazi non
-   contano; è lo stesso segreto del QR. ⛔ Non un codice di recupero), si
-   conservano i codici di recupero, e si **conferma** col primo codice, dall'app
-   sul telefono oppure calcolato dalla chiave:
-   `SMOKE_TOTP_SECRET='<chiave>' backend/.venv/bin/python backend/scripts/tests/_smoke_totp_codice.py`.
-   ⚠️ Finché non si preme «Attiva» col codice il device resta `DA_CONFERMARE` e
-   gli smoke ricevono 403.
+```bash
+cd backend
+./manage-env.sh provision_utenti_sviluppo                   # crea o riallinea
+./manage-env.sh provision_utenti_sviluppo --nuove-password  # e password nuove per tutti
+```
+
+* Si può rilanciare: ritrova gli utenti dalla loro etichetta e rimette a posto
+  vesti, profili (su tutte le aree che ci sono in quel momento), emittenti,
+  eccezioni ed emittente attivo.
+* Le **password** le genera il comando: per gli utenti appena creati, e per
+  tutti con `--nuove-password`. Gli altri tengono la loro.
+* Il **secondo fattore** di `dev.smoke` lo configura il comando, già
+  confermato. Se è già attivo non lo tocca: la chiave buona è quella in
+  `env.sh`. Per rifarlo, un amministratore lo disattiva dal drawer
+  dell'operatore («Secondo fattore»), poi si rilancia il comando.
+* Si ferma, dicendo perché, se l'ambiente dell'installazione non è dichiarato
+  o è `PRODUZIONE`. Si ferma anche se uno username o una sigla dell'elenco
+  esistono già senza etichetta (`E_RADICE_DI_PROVA_SENZA_ETICHETTA`): un
+  omonimo nato a mano non si adotta.
+* ⚠️ L'emittente di prova A è **vuoto** (listini, articoli, registri): gli
+  smoke che contavano sui dati di `EMITEST` lo faranno vedere al primo giro.
 
 ### 11.3 Le variabili, in `backend/env.sh`
 
-`env.sh` è fuori da git (`backend/.gitignore`) e con permessi `600`: ci stanno
-le tre variabili, come le altre del backend.
+`env.sh` è fuori da git (`backend/.gitignore`) e con permessi `600`. Il comando
+stampa in fondo le righe **nuove** (password e chiavi date in quella corsa), da
+mettere al posto di quelle con lo stesso nome:
 
 ```bash
-export SMOKE_USER='smoke'
-export SMOKE_PASSWORD='<password scelta al punto 1>'
-export SMOKE_TOTP_SECRET='<chiave del punto 3>'
+export SMOKE_USER='dev.smoke'
+export SMOKE_PASSWORD='<stampata dal comando>'
+export SMOKE_TOTP_SECRET='<stampata dal comando>'
+export DEV_LETTURA_PASSWORD='<stampata dal comando>'   # e cosi' per gli altri dev.*
 ```
 
+* I codici di recupero di `dev.smoke` escono una volta sola, come commento.
 * Opzionali: `SMOKE_TOKEN_MARGINE` (secondi, default 180, §11.4),
   `SMOKE_PYTHON` (il python che calcola il codice, default il venv del backend).
-* `smoke-test-rls-emittente-operatore.sh` vuole un **altro** utente (un
-  operatore ristretto, con riga in `config.user_emittenti_fiscali`): si lancia
-  con `SMOKE_USER`, `SMOKE_PASSWORD` e, se ha il secondo fattore, il suo
-  `SMOKE_TOTP_SECRET` sulla riga di comando.
+* `smoke-test-rls-emittente-operatore.sh` vuole l'operatore ristretto:
+  `SMOKE_USER=dev.emittente SMOKE_PASSWORD="$DEV_EMITTENTE_PASSWORD"` sulla riga
+  di comando.
 
 ### 11.4 Il login unico di una sessione di smoke
 

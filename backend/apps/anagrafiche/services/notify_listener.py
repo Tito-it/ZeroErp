@@ -131,6 +131,7 @@ class PermessiListener:
     def _get_conninfo() -> str:
         db = settings.DATABASES["default"]
         return psycopg.conninfo.make_conninfo(
+            "",
             host=db.get("HOST", ""),
             port=db.get("PORT", ""),
             dbname=db["NAME"],

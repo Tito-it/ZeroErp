@@ -141,27 +141,19 @@ class PortaleRepository:
         ruolo_applicativo: str,
         attivo: bool,
     ) -> int:
-        sql = """
-            INSERT INTO anagrafiche.identita_digitali
-                   (auth_user_id, soggetto_ruolo_id, ruolo_applicativo,
-                    attivo, storicizza)
-            VALUES (%s, %s, %s::config.ruolo_applicativo,
-                    %s, true)
-            RETURNING id
-        """
+        # ⭐ Dal 2026-10-18 (2b-2, lotto 6) la madre del DB
+        #    `anagrafiche.fn_crea_veste_portale`: solo le tre vesti esterne,
+        #    `attivo` senza default (l'invito la crea spenta, lo shop accesa).
+        #    La veste OPERATORE ha le sue madri.
         with connection.cursor() as cursor:
             cursor.execute(
-                sql,
-                [
-                    auth_user_id,
-                    soggetto_ruolo_id,
-                    ruolo_applicativo,
-                    attivo,
-                ],
+                "SELECT anagrafiche.fn_crea_veste_portale("
+                "%s::integer, %s::bigint, %s::config.ruolo_applicativo, %s::boolean)",
+                [auth_user_id, soggetto_ruolo_id, ruolo_applicativo, attivo],
             )
             row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        assert row is not None
+        return int(row[0])
 
     # Scopo: Disattiva un'identita senza eliminarla (soft revoke). Il verso
     # opposto e' `AuthRepository.attiva_identita`, al consumo di un nuovo

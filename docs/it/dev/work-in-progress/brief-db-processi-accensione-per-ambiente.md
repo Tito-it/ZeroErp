@@ -2,9 +2,11 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: la sessione BE, con la 2b-2 e la ricaduta della 2b-3 (§5-ter.3).** ✅ Lotti 4-9 della 2b-1 e 2b-3
-applicati, pgTAP verdi (Tid, 2026-10-18). Lato DB non resta altro da scrivere. ✅ La riga 10 del BE è fatta (2026-10-18, §6.8), e il consenso è tolto anche da `.env.systemd`:
-l'accensione è chiusa, resta il giro 2b (R-4).
+**Riparte: il team DB, con le richieste del BE della 2b-2 (R-BE-6, R-BE-7, R-BE-11, R-BE-12, §6.10) e dell'indirizzo libero (R-BE-8 … R-BE-10, §6.11); Tid, col collaudo
+finale (riga 9-decies) quando vuole.** ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
+fatta (2026-10-18, §6.10): il backend crea emittente, fornitore, cliente, veste portale, magazzino, profilo,
+legame SUPER_ADMIN, override, emittente attivo e accende la veste dalle madri del DB; restano due scritture
+che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione è chiusa.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -24,10 +26,14 @@ l'accensione è chiusa, resta il giro 2b (R-4).
 | 9-septies | Tid | ✅ apply dei lotti 4-9 su dbdev e sullo scratch (2026-10-18 14:26), pgTAP verdi | §5-ter.2 | — |
 | 9-quinquies | Tid | ✅ apply del lotto 1, pgTAP verdi (2026-10-17) | §5-ter.2 | — |
 | 9-sexies | Tid | ✅ apply dei lotti 2 e 3 (`-11` … `-17`), pgTAP verdi (2026-10-17) | §5-ter.2 | — |
-| 9-ter | sessione BE | 2b-2: il backend passa ai BB, le sue copie si ritirano | §5-ter.1 | 9 |
+| 9-ter | sessione BE | ✅ (2026-10-18) 2b-2: il backend passa ai BB, le sue copie si ritirano | §6.10 | — |
+| 9-ter-bis | team DB | R-BE-6 (l'indirizzo di ruolo per istanza) e R-BE-7 (il legame di reparto): due scritture del backend che le madri non coprono; R-BE-11 (il profilo SUPER_ADMIN si risolve in una sede, regola del 2, ok Tid 2026-10-18) e R-BE-12 (la madre plurale degli indirizzi di soggetto, gemella di quella del ruolo) | §6.10 | — |
+| 9-ter-ter | team DB | l'indirizzo libero: R-BE-8 (lo stato di sistema), R-BE-9 (un guard col codice e il campo), R-BE-10 (la forma estera nella madre del soggetto); da valutare l'alleggerimento della regione | §6.11 | — |
+| 9-ter-quater | sessione BE/FE | il form dell'indirizzo libero nelle due varianti (stato di sistema / estero) | §6.11 | 9-ter-ter |
 | 9-quater | team DB | ✅ 2b-3 scritta e provata (2026-10-18): etichette, guard, verbo, presidio, `fn_accendi_veste` (`20261018-55` … `-64`) | §5-ter.3 | — |
 | 9-octies | Tid | ✅ (2026-10-18, pgTAP verdi) apply della 2b-3 (`20261018-55` … `-64`, i due CSV dei codici, `presidi.csv`, `presidi_testi.csv`, il loop `20260205-41`); pgTAP `dbops/test-etichette-di-prova-v1`, `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1`, chi usa `fn_pgtap_crea_operatore_umano`, i presidi trasversali | §5-ter.3 | — |
-| 9-novies | sessione BE | ricaduta della 2b-3 (codici, command, lista Operatori, smoke) | §5-ter.3 | 9-octies |
+| 9-novies | sessione BE | ✅ (2026-10-18) ricaduta della 2b-3: codici, command `provision_utenti_sviluppo`, lista Operatori (BE e FE), smoke e run-book | §6.9 | — |
+| 9-decies | Tid | collaudo: il command su dbdev, `env.sh` a `dev.smoke`, il giro degli smoke, poi `smoke` disattivato | brief BE riga 8 | — |
 | 10-bis | Tid | ✅ contraddizione su `SMOKE_NOTTURNO_CONSENTITO` sciolta (2026-10-18): il divieto entra nel modello, poi il consenso si ritira | §6.6 | — |
 | 10-ter | team DB | ✅ **R-BE-5** scritto e provato sullo scratch (2026-10-18): `accendibile_in_produzione` nel catalogo, il predicato, la regola e il guard, `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE` (1355) | §6.7 | — |
 | 10-quater | Tid | ✅ apply di R-BE-5 (`20261018-10` … `-14`) su dbdev, pgTAP senza regressioni (2026-10-18) | §6.7.4 | — |
@@ -35,7 +41,8 @@ l'accensione è chiusa, resta il giro 2b (R-4).
 | 10-bis-env | Tid | ✅ tolta la riga `SMOKE_NOTTURNO_CONSENTITO` da `backend/.env.systemd` di backend-dev (2026-10-18) | §6.8 | — |
 | 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10, 10-quater |
 
-Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). Da committare: niente. ✅ Il lavoro
+Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). Da committare: la ricaduta BE/FE della
+2b-3 (§6.9) e la 2b-2 (§6.10), su `dev/backend-tid`. ✅ Il lavoro
 DB del cantiere è committato e pushato su `dev/db-tid` (2026-10-18): 2b-1 lotti 1-9, 2b-3, giro 2a, R-BE-5,
 le copie del binding nei pgTAP e questo brief. ⚠️ `codici_errore.csv`, `messaggi_errore.csv` e
 `processi.csv` li tocca anche la sessione del brief del presidio dei job.
@@ -1424,4 +1431,135 @@ non ancora applicato): il mirror carica le due colonne insieme, quindi i due gir
   il drawer dice «Scelta a mano non applicata … "Torna al default" la toglie». Test 7 del service.
 * ⚠️ Il ramo PRODUZIONE sul DB vero non si prova dal backend (l'ambiente è immutabile e la CI è
   SVILUPPO): lo prova il pgTAP sui valori; qui la terna è provata coi tre valori del predicato.
+
+### 6.9 Ricaduta della 2b-3 fatta (sessione BE, 2026-10-18)
+
+Il dettaglio sta nel [brief BE §8](brief-be-utenti-di-sviluppo.md). In breve:
+
+* **codici**: i tre della 2b-3 nella policy generata e nei ripieghi;
+* **il command** `manage.py provision_utenti_sviluppo [--nuove-password]` chiama
+  `anagrafiche.fn_provisiona_dati_di_sviluppo`: prima senza password, poi (stessa transazione) con l'hash
+  Django delle password nuove, per le credenziali appena create o per tutte. Il secondo fattore di chi lo deve
+  avere lo configura `SecondoFattoreService.configura_confermato` dentro il contesto della credenziale (i verbi
+  `fn_totp_*` chiedono `fn_guard_utente_stesso`). Ambiente letto a ogni corsa da `fn_ambiente_dichiarato`;
+* **la lista Operatori**: `LEFT JOIN dbops.credenziali_di_prova`, colonna `di_prova`, parametro
+  `includi_di_prova` (assente = nascosti); FE con l'interruttore e il badge;
+* **smoke e run-book**: commenti a `dev.smoke`, lo smoke RLS con `dev.emittente`, run-book §11 riscritto.
+
+Prova del binding sul DB vero: `anagrafiche/tests/db/test_provisioning_sviluppo_db` gira il command intero (il
+verbo crea o riallinea le venti radici) in una transazione annullata. ⚠️ Non provato: il command su dbdev
+fuori dai test (il collaudo di Tid).
+
+### 6.10 La 2b-2 fatta (sessione BE, 2026-10-18)
+
+Il backend crea dalle madri del DB, e le sue copie sono ritirate nello stesso giro:
+
+| Lotto | Il backend chiama | Ritirato |
+| --- | --- | --- |
+| 1 emittente | `fn_crea_emittente_fiscale` (`EmittentiFiscaliRepository.crea_emittente_fiscale`) | `transaction.atomic`, `get_or_create_ruolo_emittente`, `create_emittente`, `_CREATE_COLS`, l'UPDATE di conferma del regime |
+| 2 indirizzi del ruolo | `fn_crea_indirizzi_ruolo` (`SoggettiService.create_indirizzi_ruolo`, i tre chiamanti) | la saga Python (matrice, auto-clone, skip), `get_existing_tipo_indirizzo_ids`, `_create_stradario_da_generale`, `IndirizziRepository.get_or_create_stradario` e `create_indirizzo_dettaglio`: la via la risolve `fn_create_indirizzo`, anche per gli indirizzi di soggetto (`GeoService.crea_dettaglio_indirizzo`) |
+| 3 contatto | `fn_crea_contatto` (`SoggettiRepository.crea_contatto`) | l'INSERT |
+| 4 fornitore | `fn_crea_fornitore` | i quattro passi del service, `get_or_create_ruolo_fornitore`, `create_fornitore`, `_CREATE_ALLOWED` |
+| 5 cliente | `fn_crea_cliente` (istanza e BA nuovi, o quelli indicati) | i sei passi, `get_or_create_ruolo_cliente`, `create_istanza_fittizia`, `create_billing_account`, `create_cliente`, `_CLIENTE_CREATE_ALLOWED` |
+| 6 veste portale | `fn_crea_veste_portale` (`PortaleRepository.create_identita_portale`) | l'INSERT |
+| 7 magazzino | `magazzino.fn_crea_magazzino` | l'INSERT del BB di scrittura |
+| 8 profilo e legame | `fn_scrivi_profilo_accesso` (profilo di reparto), `fn_lega_profilo_identita` (SUPER_ADMIN) | UPSERT del profilo, DELETE+INSERT di aree e azioni, la INSERT `ON CONFLICT DO NOTHING` del legame |
+| 9 override, emittente attivo | `fn_imposta_override_oggetti` (le sei chiavi sempre: `valido_dal` null = senza inizio), `fn_imposta_emittente_attivo` | DELETE+INSERT, UPSERT |
+| accensione della veste | `fn_accendi_veste` (`AuthRepository.attiva_identita`) | l'UPDATE |
+
+Con loro escono anche il BB `get_or_create_soggetto_ruolo` (senza più chiamanti) e
+`crea_contatto_inline_se_valido`: il contatto inline lo classifica `contatto_inline_per_madre` (decide SE c'è un
+contatto), lo scrive la madre. Gli indirizzi arrivano alle madri da `indirizzi_per_madre`, coi pre-check per
+l'operatore (non oggetto, via nuova incompleta).
+
+**Due comportamenti cambiano, ed è il modello:**
+
+* SUPER_ADMIN chiesto su un accesso che ha già un altro profilo: prima la richiesta spariva (`ON CONFLICT DO
+  NOTHING`, il salvataggio rispondeva ok), ora `uq_profili_accesso_bindings_identita` lo rifiuta e il service
+  risponde 400 `E_AMM_VALIDAZIONE` sul campo `is_super_admin`;
+* un indirizzo di ruolo in forma libera porta anche `locality`, `postal_box`, `administrative_area`,
+  `sublocality`: il backend li scartava.
+
+**Richieste al team DB** (due scritture che le madri non coprono, oggi del backend):
+
+* **R-BE-6 — l'indirizzo di ruolo per istanza.** `POST …/ruoli/<id>/indirizzi/` crea UN indirizzo, anche per
+  un'istanza (`istanza_utility_id`), e ne restituisce l'id. `fn_crea_indirizzi_ruolo` non conosce l'istanza e
+  torna un conteggio: `SoggettiRepository.crea_indirizzo_ruolo` resta una INSERT del backend (la via passa già
+  dalla madre `fn_create_indirizzo`). Proposta: l'istanza fra le chiavi ammesse, o un BB dell'indirizzo singolo
+  che la madre degli indirizzi usa.
+* **R-BE-7 — il legame di reparto.** `put_profilo_reparto` scrive il profilo dalla madre, ma il legame
+  profilo → unità organizzativa resta un UPSERT del backend: `fn_lega_profilo_identita` lega identità. Proposta:
+  il legame di reparto nella stessa forma (o il ramo del reparto nella madre del legame). Anche lo slegare
+  SUPER_ADMIN (DELETE) è del backend: non ha una madre.
+* **R-BE-11 — il profilo SUPER_ADMIN si risolve in una sede** (regola del 2, ok Tid 2026-10-18). La regola
+  «per `tipo`, fra i profili **attivi**, esattamente uno, altrimenti `E_CONFIG_MANCANTE`» è scritta dentro
+  `fn_crea_risorsa_umana_v2` e, dal 2026-10-18, anche in `AmmSoftwareRepository._set_super_admin_binding`. Fino a
+  quel giorno il backend cercava il profilo con una sottoquery per il solo `tipo`: con due profili di quel tipo (il
+  modello non lo vieta) era un 500, e legava anche un profilo spento. Proposta: un lettore
+  `config.fn_profilo_super_admin()` (o nome a scelta del team) che risolve o solleva, usato dalla madre della
+  risorsa umana e dal backend; il backend ritira la sua copia nello stesso giro. Presidio BE già scritto:
+  `test_operatore_altre_vesti_db` 3b (due profili attivi → `E_CONFIG_MANCANTE`, nessun legame).
+* **R-BE-12 — la madre plurale degli indirizzi di SOGGETTO.** `fn_crea_indirizzi_ruolo` scrive gli indirizzi
+  di un ruolo con l'auto-clone dei tipi obbligatori; per il soggetto c'è solo la madre singolare
+  `fn_crea_indirizzo_soggetto`, e l'auto-clone dalla matrice `tipi_soggetto_dettaglio` (col flag `auto_clone`
+  del payload) resta una saga del backend: `SoggettiService._apply_auto_clone` + `_create_indirizzi_batch`. È
+  un'asimmetria fra i due livelli. Proposta: `fn_crea_indirizzi_soggetto(p_soggetto_id, p_indirizzi,
+  p_auto_clone)` gemella di quella del ruolo (le stesse tre forme dell'indirizzo, la forma estera di R-BE-10
+  compresa); il backend ritira la saga nello stesso giro. Nel frattempo (2026-10-18) è sanato lato BE il
+  difetto della saga: il primo dettaglio si riusava per ogni indirizzo successivo senza dettaglio, anche per
+  una via diversa (lo stesso già trovato sul ruolo); ora ogni indirizzo risolve il suo.
+
+**Trovato, da decidere (non toccato):** la forma «libera» dell'indirizzo nel frontend
+(`useIndirizzoSoggettoForm._buildPayload`) manda testo, stato e località; `chk_indirizzi_free_requirements` vuole
+anche comune + CAP, oppure casella postale e area/sottolocalità. Un indirizzo libero dal drawer non può nascere.
+
+**Prova:** sul DB vero, in transazione annullata, `anagrafiche/tests/db/test_creazioni_dalle_madri_db` (6:
+emittente e duplicati tradotti per nome attraverso la madre, indirizzi del ruolo con l'auto-clone e il guard
+differito, veste portale, emittente attivo, override con `valido_dal` null), `test_clienti_fornitori_scrittura_db`
+riscritto sui service, `test_regime_fiscale_conferma_db`, `test_contatti_creazione_db`,
+`test_anagrafiche_magazzino_db`, `test_operatore_altre_vesti_db` (con il nuovo rifiuto del legame),
+`test_profilo_reparto_secondo_fattore_db`. Il test della divergenza dei codici era rosso su dbdev perché il
+catalogo era avanti rispetto al branch (`E_DOC_EMITTENTE_IMMUTABILE`, `E_DOC_UTILITY_IMMUTABILE`,
+`E_ARTICOLO_STRUTTURA_RIGHE_APERTE`, di altri cantieri). ✅ Rigenerato il 2026-10-18, dopo aver verificato che i tre
+codici sono a catalogo in git (`Tito-dev`, PR #1880) e che la differenza era solo quella; ripieghi senza `%s`.
+
+### 6.11 L'indirizzo libero non può nascere (sessione BE, 2026-10-18)
+
+**Il caso.** Nei drawer di soggetto, cliente e fornitore l'indirizzo «libero» (testo e stato, per le vie fuori
+stradario e per l'estero) non si salva mai. I vincoli gemelli `chk_indirizzi_free_requirements` (ruolo) e
+`chk_indirizzi_soggetti_free_requirements` (soggetto) vogliono, oltre a testo e stato, **comune + CAP** oppure
+**località + codice postale + regione o sotto-località**; il form chiede testo, stato e località facoltativa.
+L'operatore riceve `E_DATABASE`, «Errore durante l'operazione database», senza sapere quale campo manca.
+
+**Chi ha ragione: il modello** (Tid, 2026-10-18). Il form si allinea, in due varianti: lo stato di sistema con
+comune e CAP, l'estero con località, codice postale e regione.
+
+**Fatto lato BE (2026-10-18):** l'indirizzo libero del soggetto passa alla madre `fn_crea_indirizzo_soggetto`
+anche comune e CAP, che lei pretende e il backend buttava (prima nemmeno la forma italiana poteva nascere). Gli
+indirizzi di ruolo li portavano già tutti dalla 2b-2 (`indirizzi_per_madre`). Prova sul DB vero:
+`test_creazioni_dalle_madri_db` 7.
+
+**Richieste al team DB:**
+
+* **R-BE-8 — lo stato di sistema.** Il form sceglie la variante dallo stato: serve sapere qual è lo stato
+  dell'installazione, come il fuso (`SYSTEM_FUSO_ORARIO` + `script.fn_fuso_operativo()`: un valore di sistema,
+  senza override, letto da un lettore che valida e non ripiega, `E_CONFIG_MANCANTE`). Oggi c'è
+  `soggetto_default_stato_iso2 = IT`, che però dice «lo stato proposto creando un soggetto»: decidere se è la
+  stessa cosa (un parametro solo, regola del 2) o due. Da censire anche le `'IT'` scritte nel corpo delle
+  funzioni: `config.fn_sigla_provincia_ammessa` e il ripiego di `vendite.fn_resolve_iva_riga` parlano dello stato
+  di casa; il dispatch di CF e P.IVA (`trgfn_soggetti_valida_cf_piva_dispatch`) applica regole italiane e
+  resta `'IT'`.
+* **R-BE-9 — il rifiuto col codice e il campo.** Oggi l'indirizzo libero incompleto è solo un CHECK, che arriva
+  come `E_DATABASE`. Un guard sulle due tabelle con un codice suo (per esempio `E_INDIRIZZO_LIBERO_INCOMPLETO`,
+  DATO_ERRATO) e il primo campo mancante nel canale `COLUMN`; il CHECK resta come rete.
+* **R-BE-10 — la forma estera nella madre del soggetto.** `fn_crea_indirizzo_soggetto` pretende comune e CAP
+  per ogni indirizzo libero e non ha i parametri `locality`, `postal_box`, `administrative_area`,
+  `sublocality`: la forma estera, che la tabella ammette, non passa. È un'asimmetria con
+  `fn_crea_indirizzi_ruolo`, che la scrive. I suoi rifiuti usano `E_ADMIN_VALIDAZIONE` col solo `parametro`.
+* **Da valutare (Tid d'accordo):** alleggerire la regione nella forma estera (oggi regione **o** sotto-località
+  obbligatoria): località e codice postale sono ciò che serve a spedire e alla fattura elettronica.
+
+**Dopo il DB, BE/FE (riga 9-ter-quater):** il form dell'indirizzo libero in due varianti scelte dallo stato
+(stato di sistema dal lettore R-BE-8), la validazione del form sulla stessa regola, e il backend che passa la
+forma estera anche per il soggetto.
 

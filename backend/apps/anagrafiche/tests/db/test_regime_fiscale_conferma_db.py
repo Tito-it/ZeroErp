@@ -130,8 +130,9 @@ class RegimeFiscaleConfermaDbTests(unittest.TestCase):
     def _codice() -> str:
         return "RC" + uuid.uuid4().hex[:8].upper()
 
-    # 4. Creare dichiarando il regime = nascere confermati. Passa dal SERVICE:
-    #    e' lui che fa seguire alla INSERT la UPDATE del regime.
+    # 4. Creare dichiarando il regime = nascere confermati. Passa dal SERVICE,
+    #    che chiama la madre `fn_crea_emittente_fiscale` (dal 2026-10-18 e' lei
+    #    a far seguire alla INSERT la UPDATE del regime).
     def test_create_col_regime_nasce_confermato(self):
         from apps.anagrafiche.services.emittenti_fiscali_service import (
             EmittentiFiscaliService,
@@ -145,10 +146,15 @@ class RegimeFiscaleConfermaDbTests(unittest.TestCase):
 
     # 5. Senza regime vale il default del DB, e nessuno l'ha confermato.
     def test_create_senza_regime_nasce_rf01_non_confermato(self):
-        emittente_id = self._repo().create_emittente(
-            soggetto_ruolo_id=self._soggetto_ruolo_ef(), codice=self._codice(),
+        from apps.anagrafiche.services.emittenti_fiscali_service import (
+            EmittentiFiscaliService,
         )
-        self.assertEqual(("RF01", False, None), self._stato(emittente_id))
+
+        risultato = EmittentiFiscaliService().crea_emittente({
+            "soggetto_id": self._soggetto_pg("Emittente e2e senza regime"),
+            "codice": self._codice(),
+        })
+        self.assertEqual(("RF01", False, None), self._stato(risultato["id"]))
 
     # 6. Un codice fuori catalogo e' la FK: il service lo da' come 400 sul
     #    campo, non come 500. Savepoint: la FK abortisce la sola sotto-transazione.
@@ -204,10 +210,16 @@ class RegimeFiscaleConfermaDbTests(unittest.TestCase):
 
     # 9. La INSERT non conferma mai, nemmeno con un regime esplicito: un RF01
     #    scelto e uno di default sono indistinguibili. La conferma in
-    #    creazione e' solo quella della UPDATE che il service fa seguire (4).
+    #    creazione e' solo quella della UPDATE che la madre fa seguire (4).
+    #    Il backend non ha piu' una INSERT sua (2026-10-18): si scrive in SQL,
+    #    come farebbe un altro scrittore.
     def test_insert_col_regime_non_conferma(self):
-        emittente_id = self._repo().create_emittente(
-            soggetto_ruolo_id=self._soggetto_ruolo_ef(), codice=self._codice(),
-            regime_fiscale_rf="RF17",
-        )
+        with connection.cursor() as cur:
+            cur.execute(
+                "INSERT INTO anagrafiche.emittenti_fiscali"
+                "  (soggetto_ruolo_id, codice, regime_fiscale_rf)"
+                " VALUES (%s, %s, 'RF17') RETURNING id",
+                [self._soggetto_ruolo_ef(), self._codice()],
+            )
+            emittente_id = int(cur.fetchone()[0])
         self.assertEqual(("RF17", False, None), self._stato(emittente_id))

@@ -380,16 +380,18 @@ class AuthRepository:
         auth_user_id: int,
         ruoli_applicativi: Sequence[str],
     ) -> bool:
-        sql = """
-            UPDATE anagrafiche.identita_digitali
-               SET attivo = true, data_update = now()
-             WHERE id = %s
-               AND auth_user_id = %s
-               AND ruolo_applicativo::text = ANY(%s)
-        """
+        # Dal 2026-10-18 (2b-2) la madre del DB `anagrafiche.fn_accendi_veste`:
+        # stesso filtro (credenziale e vesti ammesse), una veste gia' accesa
+        # resta com'e', l'audit lo scrivono i trigger. Era la terza copia
+        # dell'UPDATE, con il builder pgTAP e il provisioning di sviluppo.
         with connection.cursor() as cursor:
-            cursor.execute(sql, [identita_id, auth_user_id, list(ruoli_applicativi)])
-            return cursor.rowcount > 0
+            cursor.execute(
+                "SELECT anagrafiche.fn_accendi_veste("
+                "%s::bigint, %s::integer, %s::config.ruolo_applicativo[])",
+                [identita_id, auth_user_id, list(ruoli_applicativi)],
+            )
+            row = cursor.fetchone()
+        return bool(row and row[0])
 
     # Scopo: Imposta l'obbligo di cambio password della CREDENZIALE (D-7).
     # Chiamanti: cambio/reset/attivazione (False).

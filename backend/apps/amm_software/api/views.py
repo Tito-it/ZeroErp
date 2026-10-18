@@ -70,6 +70,13 @@ class OperatoriListView(AdminAPIView):
             OpenApiParameter(name="is_super_admin", type=bool, required=False),
             OpenApiParameter(name="unita_organizzativa_id", type=int, required=False),
             OpenApiParameter(name="is_active", type=bool, required=False),
+            OpenApiParameter(
+                name="includi_di_prova", type=bool, required=False,
+                description=(
+                    "Mostra anche gli utenti di prova (etichetta del provisioning di "
+                    "sviluppo). Assente o false: nascosti. Ogni riga dice `di_prova`."
+                ),
+            ),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
             OpenApiParameter(name="order_by", type=str, required=False),
@@ -82,6 +89,9 @@ class OperatoriListView(AdminAPIView):
         qp = request.query_params
         is_active = _parse_optional_bool(qp.get("is_active"))
         is_super_admin = _parse_optional_bool(qp.get("is_super_admin"))
+        # ⛔ Strict: `?includi_di_prova=banana` e' un 400, non un «no» in silenzio.
+        #    Assente = gli utenti di prova restano nascosti (il default del tab).
+        includi_di_prova = qp_bool_optional(qp.get("includi_di_prova"), "includi_di_prova")
 
         repo = AmmSoftwareService()
         results, total_count = repo.list_operatori(
@@ -89,6 +99,7 @@ class OperatoriListView(AdminAPIView):
             is_super_admin=is_super_admin,
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             is_active=is_active,
+            includi_di_prova=includi_di_prova is True,
             limit=optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT,  # clamp nel repository
             offset=optional_int({"v": qp.get("offset")}, "v") or 0,
             order_by=qp.get("order_by") or None,

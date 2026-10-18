@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-
-from django.db import connection
-
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND
 
@@ -31,18 +28,3 @@ def resolve_soggetto_id(cursor, soggetto_ruolo_id: int) -> str:
     )
     assert row is not None
     return str(row[0])
-
-
-def get_or_create_soggetto_ruolo(soggetto_id: str, ruolo_codice: str) -> int:
-    """Ottiene o crea il soggetto_ruolo per (soggetto, codice ruolo).
-
-    Delega alla funzione DB script.fn_get_or_create_soggetto_ruolo. Riusato dai
-    repository clienti/fornitori/emittenti (regola del 2): il codice ruolo
-    ('CL'/'FO'/'EF'/...) e' l'unica variabile, passato come parametro %s.
-    """
-    sql = "SELECT script.fn_get_or_create_soggetto_ruolo(%s, %s) AS ruolo_id"
-    with connection.cursor() as cursor:
-        cursor.execute(sql, [soggetto_id, ruolo_codice])
-        row = cursor.fetchone()
-        assert row is not None
-        return row[0]

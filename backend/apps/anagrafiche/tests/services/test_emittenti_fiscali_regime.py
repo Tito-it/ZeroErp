@@ -7,7 +7,8 @@
 #        e' confermarlo, il vuoto e' un 400 sul campo, chi non lo manda non
 #        conferma niente. Dal §10 (2026-10-02) data e autore della conferma li
 #        deriva il database da ogni UPDATE che nomina il regime: il service
-#        deve solo nominarlo, anche in creazione (la INSERT non conferma mai).
+#        deve solo nominarlo. In creazione, dal 2026-10-18, lo conferma la
+#        madre `anagrafiche.fn_crea_emittente_fiscale` (la INSERT non conferma mai).
 #        Mock repo, no DB (il binding reale e' in
 #        `tests/db/test_regime_fiscale_conferma_db.py`).
 # ------------------------------------------------------------
@@ -18,12 +19,12 @@ Indice test eseguiti:
 2) UpdateRegimeTests.test_regime_assente_non_nominato
 3) UpdateRegimeTests.test_regime_vuoto_o_null_400_sul_campo
 4) UpdateRegimeTests.test_fk_ignota_non_diventa_errore_di_regime
-5) CreaRegimeTests.test_regime_presente_insert_poi_update_del_regime
-6) CreaRegimeTests.test_regime_assente_nessuna_update
+5) CreaRegimeTests.test_regime_presente_va_alla_madre
+6) CreaRegimeTests.test_regime_assente_non_va_alla_madre
 7) CreaRegimeTests.test_regime_vuoto_400_prima_di_scrivere
-7-bis) CreaRegimeTests.test_update_del_regime_a_vuoto_non_passa_in_silenzio
-8) ConfermaNonScrivibileTests.test_create_rifiuta_la_conferma_come_valore
-9) ConfermaNonScrivibileTests.test_update_rifiuta_la_conferma_come_valore
+8) ConfermaNonScrivibileTests.test_update_rifiuta_la_conferma_come_valore
+   (in creazione la conferma come valore la rifiuta la madre del DB,
+   E_CAMPO_NON_AMMESSO: pgTAP test-fn-crea-emittente-fiscale-v1)
 """
 
 from unittest.mock import patch
@@ -82,7 +83,6 @@ class UpdateRegimeTests(SimpleTestCase):
             svc.update_emittente(1, {"regime_fiscale_rf": "RF01", "valuta_id": 999})
 
 
-@patch(f"{SVC_MOD}.transaction")
 @patch(f"{SVC_MOD}.EmittentiFiscaliRepository")
 class CreaRegimeTests(SimpleTestCase):
 
@@ -92,43 +92,33 @@ class CreaRegimeTests(SimpleTestCase):
         )
         repo = mock_repo_cls.return_value
         repo.get_soggetto_partita_iva.return_value = "01234567890"
-        repo.get_or_create_ruolo_emittente.return_value = 11
-        repo.create_emittente.return_value = 5
-        repo.update_emittente.return_value = True
+        repo.crea_emittente_fiscale.return_value = (5, 11)
         return EmittentiFiscaliService(), repo
 
-    # La INSERT porta il regime (la FK lo controlla li'), ma la dichiarazione
-    # e' la UPDATE che segue, sull'id appena nato.
-    def test_regime_presente_insert_poi_update_del_regime(self, mock_repo_cls, _tx):
+    # Il regime viaggia nei campi della madre: e' lei che, dopo la INSERT,
+    # lo conferma con la UPDATE (dal 2026-10-18, 2b-2). Il service non ne fa
+    # una sua.
+    def test_regime_presente_va_alla_madre(self, mock_repo_cls):
         svc, repo = self._svc(mock_repo_cls)
-        svc.crea_emittente({"soggetto_id": _SOGGETTO, "codice": "AB", "regime_fiscale_rf": "RF17"})
-        self.assertEqual("RF17", repo.create_emittente.call_args.kwargs["regime_fiscale_rf"])
-        repo.update_emittente.assert_called_once_with(5, {"regime_fiscale_rf": "RF17"})
+        esito = svc.crea_emittente({"soggetto_id": _SOGGETTO, "codice": "AB", "regime_fiscale_rf": "RF17"})
+        repo.crea_emittente_fiscale.assert_called_once_with(_SOGGETTO, "AB", {"regime_fiscale_rf": "RF17"})
+        repo.update_emittente.assert_not_called()
+        self.assertEqual({"id": 5, "soggetto_ruolo_id": 11}, esito)
 
     # Senza regime vale il default del DB, e nessuno lo dichiara.
-    def test_regime_assente_nessuna_update(self, mock_repo_cls, _tx):
+    def test_regime_assente_non_va_alla_madre(self, mock_repo_cls):
         svc, repo = self._svc(mock_repo_cls)
         svc.crea_emittente({"soggetto_id": _SOGGETTO, "codice": "AB"})
-        self.assertNotIn("regime_fiscale_rf", repo.create_emittente.call_args.kwargs)
-        repo.update_emittente.assert_not_called()
+        self.assertNotIn("regime_fiscale_rf", repo.crea_emittente_fiscale.call_args.args[2])
 
     # ⛔ Prima del 2026-10-01 il vuoto veniva omesso in silenzio: l'emittente
     #    nasceva RF01 come se nessuno avesse scritto niente.
-    def test_regime_vuoto_400_prima_di_scrivere(self, mock_repo_cls, _tx):
+    def test_regime_vuoto_400_prima_di_scrivere(self, mock_repo_cls):
         svc, repo = self._svc(mock_repo_cls)
         with self.assertRaises(ServiceError) as ctx:
             svc.crea_emittente({"soggetto_id": _SOGGETTO, "codice": "AB", "regime_fiscale_rf": ""})
         self.assertEqual("regime_fiscale_rf", ctx.exception.context.get("field"))
-        repo.create_emittente.assert_not_called()
-
-    # 7-bis. Una UPDATE del regime che non tocca righe lascerebbe l'emittente
-    #        creato e NON confermato senza errore: e' un errore, non un esito.
-    def test_update_del_regime_a_vuoto_non_passa_in_silenzio(self, mock_repo_cls, _tx):
-        svc, repo = self._svc(mock_repo_cls)
-        repo.update_emittente.return_value = False
-        with self.assertRaises(ServiceError) as ctx:
-            svc.crea_emittente({"soggetto_id": _SOGGETTO, "codice": "AB", "regime_fiscale_rf": "RF17"})
-        self.assertEqual("E_ANAG_NOT_FOUND", ctx.exception.code)
+        repo.crea_emittente_fiscale.assert_not_called()
 
 
 # Le colonne della conferma non si scrivono da Python: le deriva il trigger, e
@@ -142,12 +132,6 @@ class ConfermaNonScrivibileTests(SimpleTestCase):
             EmittentiFiscaliRepository,
         )
         return EmittentiFiscaliRepository()
-
-    def test_create_rifiuta_la_conferma_come_valore(self):
-        with self.assertRaises(RuntimeError):
-            self._repo().create_emittente(
-                soggetto_ruolo_id=1, codice="AB", regime_fiscale_confermato_da="qualcuno",
-            )
 
     def test_update_rifiuta_la_conferma_come_valore(self):
         with self.assertRaises(RuntimeError):

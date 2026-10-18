@@ -9,16 +9,13 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
-from apps.core.db.sql_write_helpers import (
-    execute_dynamic_insert,
-    execute_dynamic_update,
-)
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
@@ -71,25 +68,6 @@ FORNITORE_UPDATE_ALLOWED: frozenset[str] = frozenset({
 })
 
 
-# Colonne scrivibili in creazione. Whitelist RIGIDA del BB
-# `execute_dynamic_insert` (2026-09-26).
-# ⚠️ `stato_fornitore_id` c'e' perche' il BB fa passare la whitelist anche alle
-#    colonne delle `espressioni`: lo scrive l'espressione VE di
-#    `create_fornitore`, e se arrivasse ANCHE fra i valori il BB rifiuterebbe
-#    (due risposte alla stessa domanda) — non puo' sceglierlo il chiamante.
-_CREATE_ALLOWED: frozenset[str] = frozenset({
-    "soggetto_ruolo_id", "stato_fornitore_id",
-    "codice",
-    "valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
-    "giorni_pagamento", "fine_mese",
-    "split_payment", "ritenuta_acconto", "ritenuta_aliquota",
-    "regime_fiscale", "bollo_esente",
-    "canale_fe", "pec_email",
-    "rating", "qualifica_scadenza",
-    "note",
-})
-
-
 class FornitoriRepository:
     """Accesso DB per fornitori."""
 
@@ -97,35 +75,37 @@ class FornitoriRepository:
     # Creazione
     # =================================================================
 
-    # Scopo: Ottiene o crea il ruolo FORNITORE per un soggetto.
-    #        Delega alla funzione DB script.fn_get_or_create_soggetto_ruolo.
-    def get_or_create_ruolo_fornitore(self, soggetto_id: str) -> int:
-        return get_or_create_soggetto_ruolo(soggetto_id, 'FO')
-
-    # Scopo: Crea record fornitore.
-    #        I trigger DB gestiscono: guard ruolo, normalize, audit, tx_id, storicizzazione.
-    #        Il codice viene generato dal meccanismo centralizzato config.sistema_codici.
-    #        ⭐ BB core `execute_dynamic_insert` (2026-09-26): lo stato iniziale
-    #        (VE) e' un'`espressione` letterale — una sottoquery su un codice
-    #        fisso, mai input — e le colonne opzionali passano la whitelist
-    #        RIGIDA `_CREATE_ALLOWED` (fuori lista = `RuntimeError`, prima era
-    #        uno scarto silenzioso). Le chiavi le sceglie il service
-    #        (`_extract_fornitore_data`: nomi letterali), non il client.
-    #        `skip_none=True`: un opzionale None si OMETTE, cosi' il DEFAULT del
-    #        DB e il `sistema_codici` restano attivi (come prima).
-    def create_fornitore(self, **kwargs: Any) -> int:
-        riga = execute_dynamic_insert(
-            "anagrafiche.fornitori",
-            kwargs,
-            allowed=_CREATE_ALLOWED,
-            skip_none=True,
-            espressioni={
-                "stato_fornitore_id": (
-                    "(SELECT id FROM config.stati_fornitore WHERE codice_interno = 'VE')"
-                ),
-            },
-        )
-        return riga["id"]
+    # Scopo: Crea il fornitore con la madre del DB `anagrafiche.fn_crea_fornitore`:
+    #        ruolo FO (get_or_create), riga nello stato iniziale VE con i
+    #        `campi` (assenti e null al DEFAULT: il codice lo genera
+    #        `sistema_codici`), il contatto del ruolo se c'e' e gli indirizzi
+    #        del ruolo (auto-clone degli obbligatori). Una chiave estranea la
+    #        rifiuta il DB. Ritorna `(fornitore_id, soggetto_ruolo_id)`.
+    # ⭐ Dal 2026-10-18 (2b-2, lotto 4): fino ad allora la saga stava nel
+    #    service in quattro passi.
+    def crea_fornitore(
+        self,
+        soggetto_id: str,
+        campi: dict[str, Any],
+        contatto: dict[str, Any] | None,
+        indirizzi: list[dict[str, Any]],
+    ) -> tuple[int, int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT fornitore_id, soggetto_ruolo_id
+                  FROM anagrafiche.fn_crea_fornitore(%s::uuid, %s::jsonb, %s::jsonb, %s::jsonb)
+                """,
+                [
+                    soggetto_id,
+                    json.dumps(campi, default=str),
+                    json.dumps(contatto) if contatto is not None else None,
+                    json.dumps(indirizzi, default=str),
+                ],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0]), int(row[1])
 
     # =================================================================
     # Lista e dettaglio

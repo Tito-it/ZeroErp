@@ -38,6 +38,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, cast
 
 from django.db import connection
@@ -137,6 +138,10 @@ LOTTI_COLONNE: frozenset[str] = frozenset({"codice", "data_arrivo", "data_scaden
 # scrittura — un dict va da solo, una STRINGA e' testo JSON (regola jsonb di
 # Tid del 2026-09-26). Il `None` su `meta` (NOT NULL) lo sistema `meta_mai_null`.
 _JSONB_COLS = ("meta",)
+# I campi opzionali che la madre `fn_crea_magazzino` riceve in `p_campi`:
+# codice, descrizione e indirizzo sono suoi argomenti, `attivo` non si sceglie
+# alla nascita.
+_CAMPI_MADRE_MAGAZZINO = ("usa_ubicazioni", "predefinito", "meta")
 # L'uuid dell'articolo del lotto viaggia come stringa (`str(articolo_id)`):
 # cast esplicito nel segnaposto dell'INSERT.
 _CASTS_LOTTO: dict[str, str] = {"articolo_id": "uuid"}
@@ -257,13 +262,28 @@ class AnagraficheMagazzinoRepository:
             rows = rows_to_list(cursor)
         return self._shape(rows[0]) if rows else None  # type: ignore[return-value]
 
-    # Scopo: Crea il magazzino. `emittente_fiscale_id` NON viaggia: lo mette il
-    #        DB dalla GUC (`trgfn_default_emittente_fiscale('SOLLEVA')`).
+    # Scopo: Crea il magazzino con la madre del DB `magazzino.fn_crea_magazzino`:
+    #        `codice`, `descrizione`, `indirizzo_dettaglio_id` e i campi
+    #        opzionali (`usa_ubicazioni`, `predefinito`, `meta`; gli assenti al
+    #        DEFAULT). `emittente_fiscale_id` NON viaggia: lo mette il DB dalla
+    #        GUC (`trgfn_default_emittente_fiscale('SOLLEVA')`).
+    # ⭐ Dal 2026-10-18 (2b-2, lotto 7): era una INSERT del BB di scrittura.
     def create_magazzino(self, valori: dict[str, Any]) -> int:
-        riga = execute_dynamic_insert(
-            "magazzino.magazzini", meta_mai_null(valori), allowed=MAGAZZINI_COLONNE, jsonb=_JSONB_COLS,
-        )
-        return int(riga["id"])
+        # ⛔ Una chiave che la creazione non conosce e' un allarme tecnico (500),
+        #    mai uno scarto: il service sceglie le chiavi per nome.
+        estranee = set(valori) - {"codice", "descrizione", "indirizzo_dettaglio_id", *_CAMPI_MADRE_MAGAZZINO}
+        if estranee:
+            raise RuntimeError(f"create_magazzino: chiavi non ammesse {sorted(estranee)}")
+        campi = {k: v for k, v in meta_mai_null(valori).items() if k in _CAMPI_MADRE_MAGAZZINO}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT magazzino.fn_crea_magazzino(%s, %s, %s::bigint, %s::jsonb)",
+                [valori["codice"], valori["descrizione"], valori["indirizzo_dettaglio_id"],
+                 json.dumps(campi, default=str)],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
 
     # Scopo: Aggiorna il magazzino per delta. Il lock su `codice` e i guard
     #        (`usa_ubicazioni` a registro vuoto, disattivazione con figli) sono
