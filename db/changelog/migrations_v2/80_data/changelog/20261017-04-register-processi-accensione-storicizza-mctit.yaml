@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.processi_accensione entra nel registro dello storico: storicizzazione
+#   PERMANENTE. Senza la riga il trigger generico azzera il flag dopo il primo
+#   UPDATE e la storia delle scelte a mano terrebbe un gesto solo per processo.
+#   Stessa forma di 20260804-16 (config.user_emittente_attivo): il registro non
+#   ha un mirror CSV, e proc_sync_storico_set_storicizza la aggiungerebbe solo
+#   al giro del fine settimana (insert_manuale = false).
+#   Brief: brief-db-processi-accensione-per-ambiente, §6.2 (S-1).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261017-04-register-processi-accensione-storicizza-mctit.yaml
+
+  - changeSet:
+      id: 20261017-04-register-processi-accensione-storicizza
+      author: mctit
+      comment: >
+        Registra dbops.processi_accensione in config.storico_set_storicizza: ogni gesto della
+        scelta a mano lascia una versione. Brief: brief-db-processi-accensione-per-ambiente (S-1).
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: dbops
+                tableName: processi_accensione
+                columnName: storicizza
+            - tableExists:
+                schemaName: config
+                tableName: storico_set_storicizza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              INSERT INTO config.storico_set_storicizza (table_name, insert_manuale)
+              VALUES ('dbops.processi_accensione', true)
+              ON CONFLICT (table_name) DO NOTHING;
+
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM config.storico_set_storicizza
+               WHERE table_name = 'dbops.processi_accensione';

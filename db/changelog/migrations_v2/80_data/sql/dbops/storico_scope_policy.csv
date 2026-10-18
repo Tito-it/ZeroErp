@@ -121,3 +121,4 @@ id,schema_tabella,nome_tabella,modo,colonna,padre_schema,padre_tabella,ragione,d
 122,magazzino,lotti,NESSUNO,NULL,NULL,NULL,"Definizione senza magazzino_id ne' emittente: fuori dal perimetro RLS per costruzione (brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.3). La storia di un lotto e' la stessa per tutti gli emittenti, come quella di un articolo.",2026-09-14
 123,vendite,ddt_righe_prelievi,PADRE,ddt_riga_id,vendite,ddt_righe,NULL,2026-09-29
 124,vendite,resi_righe_rientri,PADRE,resi_riga_id,vendite,resi_righe,NULL,2026-09-29
+125,dbops,processi_accensione,NESSUNO,NULL,NULL,NULL,"La scelta a mano di un'installazione sulla sveglia di un processo: dato di macchina senza emittente e senza row level security (letto il 2026-10-17). La storia dei gesti e' la stessa per tutti, come la riga (brief-db-processi-accensione-per-ambiente, S-1).",2026-10-17

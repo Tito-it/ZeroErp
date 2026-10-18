@@ -15,10 +15,10 @@ installazione, oppure tornare al default del catalogo.
 | --- | --- |
 | `true` | la sveglia è accesa qui, qualunque cosa dica il default |
 | `false` | la sveglia è spenta qui |
-| `NULL` | la scelta a mano si toglie: vale di nuovo il default per ambiente |
+| `NULL` | la sveglia torna al default per ambiente; la riga resta, con `acceso` vuoto, chi e perché |
 
-Restituisce lo **stato effettivo** dopo il gesto (`NULL` solo se si è tolta la
-scelta e l'ambiente non è dichiarato).
+Restituisce lo **stato effettivo** dopo il gesto (`NULL` solo se si è tornati
+al default e l'ambiente non è dichiarato).
 
 ### Regole
 
@@ -27,12 +27,15 @@ scelta e l'ambiente non è dichiarato).
 * Codice inesistente: `E_PROCESSO_NON_TROVATO`.
 * `SECURITY INVOKER`: **chi** può farlo lo decide il backend, con la stessa
   autorizzazione del drawer dei processi.
-* La scelta tolta (`NULL`) non lascia traccia nella tabella: la tiene il
-  registro delle operazioni del backend.
+* Il motivo è obbligatorio per tutti e tre i gesti, anche per tornare al
+  default (17-10-2026).
+* Tutti e tre scrivono la riga: la storia dei gesti sta in
+  `storico.processi_accensione`. **Chi** e **quando** li scrive l'audit
+  automatico (l'utente collegato al backend), non il verbo.
 
 ### Test
 
-`db/pgtap/dbops/test-processi-accensione-v1.sql` (test 21–30).
+`db/pgtap/dbops/test-processi-accensione-v1.sql` (test 21–34).
 
 ---
 

@@ -1,22 +1,37 @@
 # Brief DB — Quali processi sono accesi: per ambiente, a mano, e quelli che non si spengono
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-16
+## ⏭️ Chi riparte — aggiornato al 2026-10-17
 
-**Riparte: la sessione BE/FE (§6). Il giro 1 è applicato e verde (2026-10-16). Il giro 2 (R-4, i
-dati di sviluppo) aspetta che il BE dica che cosa crea il provisioning di sviluppo.**
+**Riparte: il team DB, col lotto 4 della 2b-1 (il fornitore, §5-ter.2). Lotti 1-3 applicati su dbdev,
+pgTAP verdi (2026-10-17).**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | Tid | ✅ decisioni A-1…A-5, P-1…P-3, R-1…R-4 (2026-10-15/16) | §4, §4-bis, §4-ter | — |
 | 2 | team DB | ✅ giro 1 scritto e provato sullo scratch (2026-10-16): `20261016-15` … `-32` | §5-bis | — |
 | 3 | Tid | ✅ apply del giro 1, fase `post` su dbdev (`SVILUPPO`, 2026-10-16 14:20), pgTAP verdi | §5-bis.4 | — |
-| 4 | sessione BE/FE | 🔨 punti 1-6 del §6.0 fatti e verdi (2026-10-16, §6.1); dopo l'incidente delle 23:45 i tetti di rete e delle sveglie (2026-10-17, §6.2). Punto 7 deciso (§6.3): resta la richiesta R-BE-4 al team DB, e la reinstallazione delle sveglie su dbdev | §6.1, §6.2 | — |
-| 4-bis | team DB | le richieste del BE (R-BE-1 … R-BE-3 al §6.1, R-BE-4 al §6.3) | §6.1, §6.3 | — |
+| 4 | sessione BE/FE | ✅ punti 1-6 del §6.0, pushati (`f811719d1`, 2026-10-17); codici d'errore nel commit `843166c88`. ✅ Dopo l'incidente delle 23:45, i tetti di rete e delle sveglie (2026-10-17, `295737a90`) | §6.1, §6.4 | — |
+| 4-bis | team DB | le richieste del BE: ✅ R-BE-1 e R-BE-3 (giro 2a, §6.3), ✅ R-BE-2 sciolta da S-1 (§6.2); resta **R-BE-4**, la tolleranza di `smoke_notturno` in `processi.csv` (§6.5) | §6.2, §6.3, §6.5 | — |
+| 4-ter | Tid | ✅ sveglie reinstallate su dbdev (`sudo backend/bin/install-timers.sh`, 2026-10-17): le unit installate hanno i tetti `TimeoutStartSec` del §6.4 | §6.1, §6.4 | — |
 | 5 | sessione BE | ✅ che cosa crea il provisioning di sviluppo: l'elenco è in [brief-be-utenti-di-sviluppo §7](brief-be-utenti-di-sviluppo.md) (2026-10-16), decisioni di Tid del §7.4 prese (emittenti nuovi dal verbo, niente `dev.shop` per ora, portale senza contratto) | §5-ter | — |
-| 6 | team DB | giro 2 (R-4): etichette, verbo del provisioning di sviluppo, presidio | §5-ter | 5 |
-| 7 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 4, 6 |
+| 6 | Tid | ✅ decisioni S-1 (storia delle scelte, R-BE-2) e S-2 (smoke, §6.0 punto 7): proposte del team DB accolte (2026-10-17) | §6.2 | — |
+| 7 | Tid | ✅ il via allo sviluppo del giro DB 2 (2026-10-17) | — | — |
+| 8 | team DB | ✅ giro 2a scritto e provato sullo scratch: R-BE-1, R-BE-3, S-1 (`20261017-02` … `-04`) | §6.3 | — |
+| 8-ter | Tid | ✅ apply del giro 2a su dbdev, automazioni, pgTAP verdi (2026-10-17) | §6.3 | — |
+| 9-bis | Tid | ✅ strada (b), prima i building block (2026-10-17); resta **il via** alla 2b-1 | §5-ter.1 | — |
+| 9 | team DB | 🔨 2b-1: i sette BB nel DB e i builder pgTAP che diventano involucri. ✅ lotto 1 (emittente, più i due BB della scrittura da jsonb) scritto e provato: `20261017-05` … `-10`. ✅ lotti 2 (indirizzi del ruolo, `-11`, `-12`) e 3 (contatto, `-13` … `-17`) scritti, provati e applicati. Prossimo: lotto 4, il fornitore | §5-ter.2 | — |
+| 9-quinquies | Tid | ✅ apply del lotto 1, pgTAP verdi (2026-10-17) | §5-ter.2 | — |
+| 9-sexies | Tid | ✅ apply dei lotti 2 e 3 (`-11` … `-17`), pgTAP verdi (2026-10-17) | §5-ter.2 | — |
+| 9-ter | sessione BE | 2b-2: il backend passa ai BB, le sue copie si ritirano | §5-ter.1 | 9 |
+| 9-quater | team DB | 2b-3: etichette, verbo di sviluppo, presidio (R-4) | §5-ter.1 | 9 |
+| 10-bis | Tid | ⏳ **sciogliere la contraddizione su `SMOKE_NOTTURNO_CONSENTITO`**: S-2 (§6.2) dice «si ritira», il §6.5 dice «resta», tutte e due come decisione di Tid del 2026-10-17 | §6.2, §6.5 | — |
+| 10 | sessione BE | con S-2: il valore della tolleranza di `smoke_notturno` in sviluppo (dato: 1560, R-BE-4 al §6.5); il ritiro di `SMOKE_NOTTURNO_CONSENTITO` dal command e dalla unit, **solo se** 10-bis conferma il ritiro | §6.2, §6.5 | 10-bis |
+| 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10 |
 
-Decisioni aperte di Tid: nessuna. Lavoro DB del giro 1 da committare.
+Decisioni aperte di Tid: **una**, la 10-bis (`SMOKE_NOTTURNO_CONSENTITO`: resta o si ritira). Da committare: i lotti 1-3 della 2b-1 (`20261017-05` … `-17`, i
+codici 1351-1354 nei due CSV, quattro pgTAP, cinque pagine manual), il giro 2a (tre changeSet,
+quattro CSV, un pgTAP, due pagine manual) e questo brief. ⚠️ `codici_errore.csv`,
+`messaggi_errore.csv` e `processi.csv` li tocca anche la sessione del brief del presidio dei job.
 
 > ✅ **Giro 1 applicato** il 2026-10-16 su dbdev e sullo scratch, ambiente `SVILUPPO` dichiarato su
 > tutti e due; corsa pgTAP di Tid verde. In corsa si è corretto un difetto del test (§5-bis.5).
@@ -382,6 +397,285 @@ disegnando: **serve dal BE l'elenco** di che cosa crea (gli utenti `dev.*` e le 
 i clienti di prova degli utenti portale con i loro contratti, `EMITEST`, `dev.smoke`), con quali dati.
 Prima di quell'elenco il verbo sarebbe una forma vuota.
 
+### 5-ter.1 Disegno del giro 2b (team DB, 2026-10-17) — ⏳ una decisione di Tid prima del codice
+
+> L'elenco è arrivato ([brief-be-utenti-di-sviluppo §7](brief-be-utenti-di-sviluppo.md)). Ricognizione
+> dei building block fatta il 2026-10-17 sulla doc auto-gen e sul backend.
+
+**Il nodo: sette pezzi su dieci non hanno un verbo DB.** Il verbo deve creare questi pezzi:
+
+| Pezzo | Verbo DB di produzione | Chi lo scrive oggi |
+| --- | --- | --- |
+| credenziale + persona + veste OPERATORE (anche SUPER_ADMIN) | ✅ `anagrafiche.fn_crea_operatore_v2` (crea la veste spenta: l'accensione è un `UPDATE`, come il builder) | — |
+| soggetto PF / PG | ✅ `fn_crea_soggetto_pf`, `fn_crea_soggetto_pg` | — |
+| emittente (ruolo EF + `emittenti_fiscali`; i registri nascono da sé) | ❌ | builder `fn_pgtap_crea_emittente` (SQL diretto); la UI |
+| magazzino predefinito dell'emittente | ❌ | backend; builder `fn_pgtap_crea_magazzino` (vuole un contesto operatore) |
+| cliente + BA (`anagrafiche.clienti`, istanza utility, billing account) | ❌ | backend; builder `fn_pgtap_crea_cliente` |
+| fornitore | ❌ | backend; nei pgTAP SQL diretto (nessun builder) |
+| veste portale (CLIENTE_PORTALE, FORNITORE_PORTALE) | ❌ | backend, `portale_repository.create_identita_portale` (SQL diretto) |
+| profilo AD_HOC + aree + binding all'identità | ❌ (solo dentro `fn_crea_utente_tecnico`) | backend, `amm_software_repository.put_profilo_*` |
+| `user_override_oggetti` (BLOCCATO su `vendite.contratto`) | ❌ | backend, `put_override_oggetti` |
+| emittente attivo (`config.user_emittente_attivo`) | ❌ | backend, `EmittenteAttivoRepository.set_preferenza` |
+| whitelist emittente | ✅ `script.fn_change_user_emittenti_scope` | — |
+
+Un verbo che scrive quei sette pezzi con `INSERT` diretti diventa la terza copia di ciascuno, dopo il
+backend e i builder pgTAP. Le tre copie prima o poi divergono: un guard nuovo sul cliente lo vede
+il backend, e il verbo di sviluppo resta indietro senza che nessun test se ne accorga. Le strade:
+
+* **(a) Il verbo scrive tutto da sé.** È il giro più corto, ma sono sette copie nuove; si dichiarano
+  come debito.
+* **(b) Prima i building block.** Un verbo DB per ognuno dei sette pezzi; i builder pgTAP e il
+  verbo di sviluppo li chiamano; le copie del backend si ritirano nello stesso giro. È il cantiere
+  giusto sul modello, ma è grande e tocca il BE in cinque punti.
+* **(c) A metà, proposta del team DB.** Il giro 2b estrae nel DB **solo** i building block che hanno
+  già una copia DB, cioè la logica dei builder pgTAP: emittente, cliente+BA, fornitore e veste
+  portale. I builder diventano involucri sottili sopra quei BB, e il verbo di sviluppo li chiama.
+  Per profilo AD_HOC, override ed emittente attivo, che oggi hanno una sola sede (il backend), il
+  verbo scrive le righe e il debito si dichiara (`Dnn` in un brief nuovo): il ritiro delle copie
+  del backend su tutti e sette i pezzi è un cantiere a parte.
+
+✅ **Deciso (Tid, 2026-10-17): strada (b), prima i building block.** Il giro 2b si divide in tre parti,
+in quest'ordine. Il verbo di sviluppo nasce **solo** sopra i BB; nessun suo pezzo scrive tabelle di
+dominio con `INSERT` diretti.
+
+| Parte | Chi | Che cosa |
+| --- | --- | --- |
+| **2b-1** | team DB | i sette BB nel DB (tabella sotto), ognuno col suo pgTAP; i builder pgTAP che ne hanno una copia (`fn_pgtap_crea_emittente`, `fn_pgtap_crea_cliente`/`_cliente_ba`, `fn_pgtap_crea_magazzino`, e gli `INSERT` diretti di fornitore e veste portale nei pgTAP che li ripetono) diventano involucri sopra il BB **nello stesso giro**. Registrati nella doc del catalogo DB |
+| **2b-2** | sessione BE | il backend chiama i BB al posto delle sue copie, che si ritirano nello stesso cantiere (regola del 2): cinque punti, elencati sotto. Senza questa parte la (b) diventa la (a) con un BB in più |
+| **2b-3** | team DB | etichette, verbo di sviluppo, presidio (il disegno qui sotto) |
+
+**I sette BB** (nomi e forma da confermare scrivendo, sul corpo vivo dei builder e del backend):
+
+| BB | Sostituisce | Copie da ritirare |
+| --- | --- | --- |
+| `anagrafiche.fn_crea_emittente_fiscale` (ruolo EF + `emittenti_fiscali`, sigla, valuta) | `fn_pgtap_crea_emittente` (SQL diretto) | builder; la creazione dalla UI, se il BE scrive SQL suo |
+| `magazzino.fn_crea_magazzino` (con `predefinito`, emittente esplicito, senza contesto operatore) | `fn_pgtap_crea_magazzino` | builder; il backend del magazzino |
+| `anagrafiche.fn_crea_cliente` (ruolo CL, `clienti`, istanza utility, billing account, legame all'emittente) | `fn_pgtap_crea_cliente`, `fn_pgtap_crea_cliente_ba` | due builder; il backend dei clienti |
+| `anagrafiche.fn_crea_fornitore` (ruolo FO, `fornitori`) | `INSERT` diretti nei pgTAP | i pgTAP che lo ripetono; il backend dei fornitori |
+| `anagrafiche.fn_crea_veste_portale` (identità CLIENTE_PORTALE / FORNITORE_PORTALE, spenta o accesa) | — | `portale_repository.create_identita_portale` |
+| `config.fn_imposta_profilo_ad_hoc` (profilo, aree, binding all'identità) | dentro `fn_crea_utente_tecnico` | `amm_software_repository.put_profilo_*`, `_set_super_admin_binding`; il ramo AD_HOC di `fn_crea_utente_tecnico` |
+| `config.fn_imposta_override_oggetti`, `config.fn_imposta_emittente_attivo` | — | `put_override_oggetti`, `EmittenteAttivoRepository.set_preferenza` |
+
+⚠️ Da sapere prima di cominciare:
+
+* il BE va **censito** punto per punto all'inizio della 2b-1: l'elenco qui sopra viene dalla
+  ricognizione del 2026-10-17, non da un censimento completo dei chiamanti;
+* i BB nascono **INVOKER**, come le madri: RLS e scope restano quelli di chi chiama. Fanno
+  eccezione i pezzi che il verbo di sviluppo deve scrivere da **DEFINER**, e lì l'interazione con
+  i guard che leggono il contesto di sessione si prova scrivendo;
+* la 2b-2 è lavoro BE in un perimetro che il team DB non tocca: lo scrive il brief BE, su questa
+  tabella.
+
+### 5-ter.2 La 2b-1, lotto per lotto (team DB, dal 2026-10-17)
+
+La 2b-1 si consegna **un BB per lotto**, ciascuno applicabile da solo. Ordine: 1 emittente,
+2 fornitore, 3 cliente con BA, 4 veste portale, 5 magazzino, 6 profilo AD_HOC, 7 override ed
+emittente attivo.
+
+**Due scelte che valgono per tutti i lotti** (team DB):
+
+* **I BB di `anagrafiche` sono madri INVOKER senza guard di permesso**, come `fn_crea_operatore_v2`
+  e `fn_crea_soggetto_pg`. Il dominio `anagrafiche` lascia il permesso al backend: è il
+  precedente B-5 deciso da Tid (brief-db-dati-fiscali-e-societari-del-soggetto). Con un
+  `fn_guard_livello` ogni builder pgTAP morirebbe su `E_PERMESSO_NEGATO`, perché l'operatore
+  pgTAP è BLOCCATO su anagrafiche;
+* **i campi facoltativi viaggiano come oggetto jsonb**, come nelle madri di casa
+  (`fn_update_cliente`, `fn_create_contratto`). Una chiave estranea si **rifiuta** col suo nome
+  (`E_CAMPO_NON_AMMESSO`, sul canale `COLUMN`), non si scarta.
+
+#### Lotto 1 — l'emittente (scritto e provato, 2026-10-17)
+
+Il censimento ha trovato una **regola del 2 a monte**. La scrittura «solo le colonne del payload,
+convertite da `jsonb_populate_record`» era scritta a mano in tre punti: `config.fn_pannello_scrivi`
+(passo 3) e due volte in `vendite.fn_create_contratto` (testata e fornitura). I BB di questa
+2b-1 l'avrebbero ripetuta altre quattro volte. Si estrae prima lei.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261017-05` | BB `script.fn_scrivi_riga_da_jsonb(tabella, dati, dove)`: INSERT o UPDATE delle sole chiavi; INVOKER. Le chiavi le sceglie chi chiama |
+| `20_code/script/20261017-06` | BB `script.fn_prima_chiave_estranea(dati, ammesse)`: pura, la regola «la chiave estranea si rifiuta» del pannello |
+| `20_code/config/20261017-07` | il pannello passa ai due BB (passi 2 e 3); firma, codici e comportamento invariati |
+| `20_code/vendite/20261017-08` | la madre del contratto passa al BB per testata e fornitura; il **filtro** delle chiavi (che scarta, non rifiuta) resta suo |
+| `20_code/anagrafiche/20261017-09` | **`anagrafiche.fn_crea_emittente_fiscale(soggetto, codice, campi)`**: ruolo EF + riga; un regime indicato è confermato; ritorna `(emittente_fiscale_id, soggetto_ruolo_id)` |
+| `20_code/dbops/20261017-10` | il builder `fn_pgtap_crea_emittente` passa dal verbo (firma invariata) |
+| `codici_errore.csv` / `messaggi_errore.csv` | `E_SCRIPT_CHIAMATA_NON_VALIDA` (TECNICO, 1351), `E_CAMPO_NON_AMMESSO` (DATO_ERRATO, 1352) |
+| pgTAP | `script/test-fn-scrivi-riga-da-jsonb-v1` (22), `anagrafiche/test-fn-crea-emittente-fiscale-v1` (14) |
+| manual | le tre funzioni nuove |
+
+**Prova** (scratch `zeroerp_ruoli`, come `zeroerp_owner`, transazione annullata, SQL estratto più
+l'upsert completo dei CSV dei codici):
+
+* i due pgTAP nuovi: **22/22** e **14/14**;
+* **38 pgTAP identici prima e dopo**. Sono quelli che usano pannello, madre del contratto o builder
+  dell'emittente, più 15 file a campione fra i 205 che passano dai builder `mondo_cliente` /
+  `emittente_operatore`, più i presidi trasversali (`riferimenti-morti` con `plpgsql_check`,
+  `catalogo-messaggi-errore-completo`, `rubinetto-primo-motivo`, `vw-codici-errore-*`,
+  `security-definer-search-path`). Tre di loro sono già rossi sullo scratch, identici prima e dopo:
+  `test-fn-create-contratto-v1` si ferma al test 6 sul vincolo di esclusione dei contratti (il
+  file costruisce un secondo contratto sovrapposto al primo); `test-fatture-atti-v1` e
+  `test-registri-per-emittente-v1` muoiono nella fixture. Il ramo riscritto della fornitura del
+  contratto (UPDATE della scheda) è esercitato da `test-fornitura-documento-segue-cliente-v1`,
+  17/17;
+* cancelli statici verdi, compreso il preambolo pgTAP per i due file nuovi.
+
+⚠️ Non provato: la corsa come app.
+
+**Debito dichiarato dal lotto 1:**
+
+* **la partita IVA dell'emittente** la controlla solo il backend, come pre-check (§5b). È una regola
+  di dominio senza un guard sulla tabella: ogni altro chiamante del verbo la salta. Il posto
+  giusto è un guard su `emittenti_fiscali`, come `trgfn_gestori_guard` per i gestori. È un
+  cantiere suo, che va censito sui dati prima di scriverlo;
+* `E_RUOLO_RICHIEDE_PIVA`, il codice che quel guard userebbe, ha un messaggio con gli id dentro
+  (`Soggetto_id %s , Soggetto_ruolo_id %s`): va riscritto quando si scrive il guard.
+
+**Ricaduta BE (2b-2, per il lotto 1)**:
+
+* `EmittentiFiscaliService.crea_emittente` chiama `anagrafiche.fn_crea_emittente_fiscale(soggetto,
+  codice, campi)` con i campi facoltativi. Si ritirano `transaction.atomic`,
+  `get_or_create_ruolo_emittente`, `create_emittente`, l'UPDATE di conferma del regime e
+  `_CREATE_COLS`. Restano il pre-check della partita IVA e la traduzione dei vincoli per nome
+  (`uq_emittenti_fiscali_ruolo`, `uq:codice`, FK del regime): escono identici;
+* rigenerare la policy dei codici e i ripieghi per `E_SCRIPT_CHIAMATA_NON_VALIDA` ed
+  `E_CAMPO_NON_AMMESSO`. Finché non si fa, il guardrail dei codici del backend è rosso.
+
+✅ **Lotto 1 applicato su dbdev, pgTAP verdi (Tid, 2026-10-17).**
+
+#### Lotto 2 — il fornitore: il censimento allarga il lotto (2026-10-17)
+
+✅ **Deciso (Tid, 2026-10-17): proposta accettata.** La 2b-1 si allarga ai due BB; ordine dei lotti
+qui sotto.
+
+`FornitoriService.crea_fornitore`, e allo stesso modo `ClientiService` per il cliente, non è «ruolo
+più una riga». È una **saga di quattro passi** dentro `transaction.atomic`: il ruolo, la riga, il
+contatto del ruolo (validato EMPTY / PARTIAL / VALID) e gli indirizzi del ruolo. Gli indirizzi
+sono obbligatori: per FO servono FATT e SEDELEG, e il guard differito li pretende al commit.
+Gli indirizzi del ruolo li scrive `SoggettiService.create_indirizzi_ruolo`, che porta due cose da
+sapere:
+
+* **una regola di dominio in Python, l'auto-clone**: i tipi obbligatori della matrice del ruolo che
+  il payload non porta si clonano dal primo indirizzo; i tipi già presenti sul ruolo si saltano.
+  La usano fornitore, cliente e il ramo ruoli della creazione del soggetto (tre chiamanti);
+* **una copia Python di una madre DB che c'è già.** `_resolve_indirizzo_dettaglio` e
+  `_create_stradario_da_generale` rifanno a mano `anagrafiche.fn_create_indirizzo` (stradario
+  get_or_create più dettaglio, «fix #13», che `geo_service` usa già). È la regola del 2 violata
+  oggi, nel backend.
+
+Il gemello DB per il livello soggetto esiste (`anagrafiche.fn_crea_indirizzo_soggetto`), quello per
+il ruolo no: il backend fa un `INSERT` diretto. Anche il contatto è un `INSERT` diretto
+(`SoggettiRepository.crea_contatto`).
+
+**Che cosa vuol dire per la (b).** Una madre DB del fornitore che non porti indirizzi e contatto non
+sostituisce la saga del backend: la lascerebbe in Python con un passo in meno, e il verbo di
+sviluppo dovrebbe scrivere gli indirizzi del ruolo con `INSERT` diretti, cioè una copia nuova. Per
+avere madri vere servono **due BB in più** prima del fornitore:
+
+| BB | Che cosa | Copie da ritirare |
+| --- | --- | --- |
+| `anagrafiche.fn_crea_indirizzi_ruolo(soggetto_ruolo, indirizzi jsonb)` | gli indirizzi di un ruolo, con l'auto-clone dei tipi obbligatori e lo skip dei tipi presenti; ogni indirizzo normalizzato passa da `fn_create_indirizzo` | `SoggettiService.create_indirizzi_ruolo` (tre chiamanti), `_resolve_indirizzo_dettaglio`, `_create_stradario_da_generale`, `crea_indirizzo_ruolo`; nel DB l'`INSERT` di `fn_pgtap_crea_soggetto_ruolo` |
+| `anagrafiche.fn_crea_contatto(soggetto, ruolo, campi jsonb)` | un contatto di soggetto o di ruolo, con la regola «nominativo + tipo, o niente» | `crea_contatto`, la classificazione EMPTY/PARTIAL/VALID di `contatti_service` (resta il pre-check del messaggio, il rifiuto lo dà il DB); nel DB gli `INSERT` dei builder |
+
+Poi il fornitore (lotto 4) e il cliente (lotto 5) sono madri sottili sopra questi due BB e sopra il
+ruolo.
+
+**La proposta del team DB:** allargare la 2b-1 con i due BB, in quest'ordine: **lotto 2**
+indirizzi del ruolo, **lotto 3** contatto, **lotto 4** fornitore, **lotto 5** cliente con BA, poi
+veste portale, magazzino, profilo, override ed emittente attivo. È la stessa strada (b) applicata
+fino in fondo. Il costo è più BE nella 2b-2: tre chiamanti degli indirizzi e due del contatto.
+
+L'alternativa è tenere il perimetro di prima: fornitore e cliente come «ruolo più riga», e la saga
+resta in Python. Il verbo di sviluppo scriverebbe allora indirizzi e contatti con `INSERT`
+diretti, dichiarati come debito, cioè la strada (a) sui due pezzi.
+
+#### Lotto 2 — gli indirizzi del ruolo (applicato, pgTAP verdi, 2026-10-17)
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/anagrafiche/20261017-11` | **`anagrafiche.fn_crea_indirizzi_ruolo(soggetto_ruolo, indirizzi jsonb)`**: array di indirizzi (tipo per id o codice interno; forma libera, dettaglio risolto o via da risolvere con `fn_create_indirizzo`); **auto-clone** dei tipi obbligatori dal primo; skip dei tipi presenti; ritorna quanti ne scrive |
+| `20_code/dbops/20261017-12` | il builder `fn_pgtap_crea_soggetto_ruolo` passa al BB: gli passa il primo tipo obbligatorio, gli altri li clona il verbo |
+| codici | `E_TIPO_INDIRIZZO_NON_TROVATO` (DATO_ERRATO, 1353), `E_SOGGETTO_RUOLO_NON_TROVATO` (NON_TROVATO, 1354) |
+| pgTAP, manual | `anagrafiche/test-fn-crea-indirizzi-ruolo-v1` (18); manual del BB |
+
+Differenze dal backend, dichiarate (sono il modello, non un adattamento):
+
+* **un difetto del backend non si porta nel DB**: `create_indirizzi_ruolo` riusava il primo
+  dettaglio risolto per *ogni* indirizzo successivo senza dettaglio, non solo per i cloni. Due
+  indirizzi nuovi su vie diverse finivano sullo stesso dettaglio. Qui ognuno si risolve da sé
+  (`fn_create_indirizzo` è idempotente: il clone ritrova lo stesso dettaglio). Lo prova il test 9;
+* il tipo del ruolo si legge dal ruolo, non da un parametro (il backend lo riceveva, default `FO`);
+* un elemento che non è un oggetto si rifiuta (il backend lo saltava), una chiave estranea pure;
+* i campi di una via nuova restano pre-check del backend, come per `fn_create_indirizzo`.
+
+**Prova** (scratch, SQL estratto `-05` … `-12`): il pgTAP nuovo **18/18**; **178 pgTAP identici
+prima e dopo**. Sono tutti quelli che toccano il builder del ruolo, `anagrafiche.indirizzi` e i
+builder dei clienti, più un campione dei builder `mondo_cliente` / `emittente_operatore` e i presidi
+trasversali. Due sono già rossi, con lo stesso errore prima e dopo:
+`test-soggetti-ruoli-indirizzi-required` (codice fiscale duplicato nella fixture) e
+`test-proiezione-stato-sorgente` (chiave sorgente mancante).
+
+**Ricaduta BE (2b-2):** `SoggettiService.create_indirizzi_ruolo` (fornitore, cliente, ruoli del
+soggetto) diventa una chiamata al BB, e si ritirano `_resolve_indirizzo_dettaglio`,
+`_create_stradario_da_generale`, `crea_indirizzo_ruolo` e `get_existing_tipo_indirizzo_ids`. Resta il
+pre-check dei campi della via nuova. Il payload va filtrato sulle chiavi del BB: una chiave in più
+ora è un rifiuto.
+
+#### Lotto 3 — il contatto (applicato, pgTAP verdi, 2026-10-17)
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/anagrafiche/20261017-13` | **`anagrafiche.fn_crea_contatto(soggetto, ruolo, campi jsonb)`**: contatto di soggetto o di ruolo, nominativo e tipo obbligatori (`E_CONTATTO_INCOMPLETO`, già a catalogo, col campo); scrive con `fn_scrivi_riga_da_jsonb` |
+| `-14`, `-15`, `-16`, `-17` | le quattro copie DB passano al BB: `fn_crea_soggetto_pf`, `fn_crea_soggetto_pg`, `script.fn_crea_utente_tecnico`, il builder `fn_pgtap_crea_soggetto_pg` |
+| pgTAP, manual | `anagrafiche/test-fn-crea-contatto-v1` (13); manual del BB |
+
+La classificazione «vuoto / parziale / valido» di un contatto **facoltativo** in un form
+(`contatti_service`, gemella del composable frontend) resta dov'è: decide *se* chiamare, il DB decide
+*come* si scrive.
+
+**Prova** (scratch, SQL estratto `-05` … `-17`): il pgTAP nuovo **13/13**. **106 pgTAP identici prima
+e dopo**: tutti quelli che toccano le quattro funzioni riscritte, `anagrafiche.contatti`,
+`fn_crea_operatore_v2` e il builder dell'operatore, più i presidi trasversali. Il 107° è
+`test-fn-crea-indirizzi-ruolo-v1` del lotto 2, che prima non poteva girare. Già rossi sullo
+scratch, con lo stesso errore prima e dopo: `test-identita-tecnica` e `test-fn-crea-utente-tecnico`
+(«il soggetto non ha contatti validi»), `test-identita-digitali-guard-coerenza`,
+`test-soggetti-indirizzi-required`, `test-soggetti-ruoli-indirizzi-required` (fixture). Cancelli
+statici verdi.
+
+**Ricaduta BE (2b-2):** `SoggettiRepository.crea_contatto` diventa una chiamata al BB.
+
+**Il resto del disegno (team DB, nessuna decisione aperta), parte 2b-3:**
+
+* **Due etichette, due tabelle satellite in `anagrafiche`**:
+  * `credenziali_di_prova`: una riga per `auth_user_id`, con la chiave di prova (lo username alla
+    nascita) `UNIQUE`; un utente rinominato resta di prova;
+  * `soggetti_di_prova`: una riga per `soggetto_id`, con la chiave (`DEVA`, `DEV-CLIENTE-1`…)
+    `UNIQUE`.
+  * Le chiavi servono anche all'idempotenza: una seconda corsa ritrova le radici dall'etichetta,
+    non dal nome. Niente FK verso `django.auth_user`, come `processi_identita`: in CI lo schema
+    `django` nasce dopo Liquibase.
+* **«Solo dal verbo»**: le due tabelle sono in sola lettura per l'app (tre sedi:
+  `v_tabelle_sola_lettura_app`, fase `post` del provisioning, `90_end` forward, col pgTAP di
+  postura), come `dbops.installazione`. Il verbo è **SECURITY DEFINER**, perché è l'unico che le
+  scrive. Guard sulle tabelle: rifiutano `INSERT` in `PRODUZIONE` (decisione pura sul valore,
+  provata con tutti e due i valori), `UPDATE` e `DELETE` sempre ("non si toglie").
+* **Il verbo**: `anagrafiche.fn_provisiona_dati_di_sviluppo(p_password_hash jsonb)` (username →
+  hash Django; una chiave assente o NULL = password invariata). Per prima cosa
+  `fn_ambiente_installazione()`, poi un rifiuto se l'ambiente non è `SVILUPPO` (codice nuovo).
+  Crea o riallinea l'elenco del §7, e un omonimo senza etichetta è un errore (codice nuovo).
+  Restituisce una riga per radice (tipo, chiave, id, `creata`/`riallineata`, secondo fattore
+  sì/no). L'elenco è scritto nel corpo del verbo, perché è il contratto del software, non un dato
+  di macchina.
+* **I profili `DEV_LETTURA` / `DEV_OPERATIVO`** non sono radici (risposta al brief BE §7.3). Sono
+  configurazione legata alle sole identità etichettate da un binding AD_HOC per identità; si
+  ritrovano da lì.
+* **Email**: `<username>@sviluppo.invalid` (dominio riservato, RFC 2606): nessuna email esce
+  davvero.
+* **Il presidio** `dbops.vw_radici_di_prova_in_produzione`: le righe dei due registri quando
+  l'ambiente dichiarato è `PRODUZIONE`. Legge solo le tabelle di `anagrafiche`, quindi in CI non è
+  rotta.
+* **La lista Operatori** è SQL in linea nel backend (`list_operatori`), non una vista DB. Il BE
+  fa `LEFT JOIN anagrafiche.credenziali_di_prova`, oppure chiama una funzione
+  `script.fn_credenziale_di_prova(auth_user_id)`: la sceglie il BE (T-4).
+
 ## 6. Ricaduta BE/FE
 
 ### 6.0 ⭐ Al BE, dal giro 1 applicato (team DB, 2026-10-16)
@@ -400,6 +694,7 @@ Prima di quell'elenco il verbo sarebbe una forma vuota.
 | 5 | **Il drawer dei processi**: lo stato effettivo e da dove viene (default dell'ambiente o scelta a mano: chi, quando, perché); l'interruttore, assente sui non spegnibili; «Esegui ora» disabilitato su un processo spento; l'ambiente dell'installazione in testa | verbo `dbops.fn_imposta_accensione_processo(codice, acceso, motivo)` (`acceso` NULL = torna al default; restituisce lo stato effettivo); la scelta in `dbops.processi_accensione`; l'ambiente da `script.fn_ambiente_dichiarato()`. Il permesso è vostro, come per «Esegui ora». Togliere una scelta non lascia traccia nella tabella: registratela nel vostro registro delle operazioni |
 | 6 | **Il panorama ha lo stato `SPENTO`** (non da guardare) e la colonna `acceso` in coda: un'etichetta nel FE | `dbops.vw_processi_programmazione` |
 | 7 | **Lo smoke**: decidere la tolleranza in sviluppo (ora che spento non è morto) e se il consenso `SMOKE_NOTTURNO_CONSENTITO` resta come seconda serratura | la tolleranza la scriviamo noi nel catalogo, su vostra indicazione |
+| 7 ✅ | **BE-4, 2026-10-17: tolleranza di `smoke_notturno` = 1560 minuti** (26 ore: sveglia ogni ora, lavoro una volta al giorno, quindi al massimo 25 ore fra due corse, più un'ora di margine). Scritta dal team DB in `processi.csv` (riga 47, con la descrizione aggiornata); si applica col mirror. Provato il 2026-10-17: su dbdev il panorama dice `OK`, sullo scratch `MAI_PARTITO`/`TIMER_NON_INSTALLATO` come ogni comando con contratto dove non ci sono timer | `test_contratto_liveness_vs_deploy` ora controlla anche lo smoke |
 
 ⭐ **E una domanda, che apre il giro 2 (R-4, §5-ter).** Il verbo del provisioning di sviluppo crea
 ciò che state disegnando, e prima di scriverlo ci serve **l'elenco di che cosa crea**, con i dati di
@@ -486,7 +781,143 @@ Prove: backend `apps.core` + `apps.amm_software` 1860 test verdi; `test_processi
   «`abilita = false` in `sveglie.json`», ma «il processo è spento su questa installazione
   (`dbops.fn_processo_acceso_dichiarato`)». Il ripiego nel backend è già aggiornato.
 
-### 6.2 L'incidente del 2026-10-16 23:45, e le due reti aggiunte (sessione BE, 2026-10-17)
+> ✅ Aggiornamento del 2026-10-17 (team DB): il push del BE è `f811719d1`; il ⚠️ del punto 1 è
+> chiuso, i quattro codici sono nel modulo generato e nei ripieghi dal commit `843166c88`.
+
+### 6.2 Risposta del team DB alle richieste del BE (2026-10-17)
+
+* ✅ **R-BE-1 — accolta, ed è un difetto del giro 1.** Verificato sul corpo vivo (doc auto-gen):
+  `fn_imposta_accensione_processo` scrive `user_update = CURRENT_USER` e la tabella ha
+  `user_insert`/`user_update` a `DEFAULT CURRENT_USER`, quindi dal backend è sempre `zeroerp_app`.
+  La regola «chi è l'utente» esiste già, una volta sola: `script.trgfn_audit_data_user_generic`
+  (`app.jwt_user`, ripiego su `CURRENT_USER`). Non si ricopia nel verbo (regola del 2): la tabella
+  prende quel trigger e il verbo smette di scrivere `data_update`/`user_update`. Come lo prende
+  dipende da S-1.
+* ✅ **R-BE-3 — accolta**: la nota di `E_PROCESSO_SVEGLIA_NON_ABILITATA` in `codici_errore.csv` si
+  riscrive nel giro 2 (motivo 2 = processo spento su questa installazione, letto da
+  `dbops.fn_processo_acceso_dichiarato`; il rimedio non è più una release ma un click nel drawer, o
+  il default del catalogo). Va rivista anche la frase sul gemello
+  `E_PROCESSO_SVEGLIA_NON_AVVIABILE_A_MANO`, che oppone i due rimedi «release contro decisione di
+  progetto».
+* **R-BE-2 — da decidere (S-1).** Il BE ha ragione: il registro a cui il giro 1 rimandava non
+  esiste, e «torna al default» cancella la riga, cioè cancella chi e perché. È un buco del modello,
+  non del BE: chiunque guardi il drawer dopo un «torna al default» non sa più che cosa è successo.
+
+**S-1 — la storia delle scelte a mano.** ✅ **Deciso (Tid, 2026-10-17): proposta accolta.** In due
+pezzi:
+
+1. **«Torna al default» non cancella la riga**: la riscrive con `acceso = NULL` e il motivo. La
+   riga dice sempre l'ultimo gesto (chi, quando, perché); `acceso` NULL = «segue il default
+   dell'ambiente». Assenza della riga = nessuno l'ha mai toccata. Il guard ammette NULL anche sui non
+   spegnibili (tornare al default non spegne niente); `fn_processo_acceso_dichiarato` legge NULL
+   come assenza.
+2. **La storia la tiene la macchina che c'è già**: `dbops.processi_accensione` entra in
+   `automation_scope.csv` (audit con `app.jwt_user` e `tx_id`, che chiude anche R-BE-1 senza un
+   trigger scritto a mano) e in `storico_set_storicizza.csv` (gemella `storico.processi_accensione`,
+   una versione per ogni gesto). Più la riga di `storico_scope_policy.csv` (modo `NESSUNO`: la tabella
+   non ha RLS né asse emittente).
+
+   Da verificare scrivendo, non a priori: che le automazioni di `ci_apply` sulla tabella non
+   urtino il guard della scelta a mano (ordine dei BEFORE ROW) e che il verbo, INVOKER, regga sotto
+   la gemella con i grant del loop.
+
+Alternativa scartata: una tabella di storia scritta a mano da un trigger AFTER. Sarebbe una seconda
+storicizzazione accanto a quella generica, cioè una copia della stessa regola.
+
+Ricaduta BE con S-1: nessuna sul verbo (stessa firma, stesso ritorno); il drawer, se vuole, legge
+lo storico. Il log applicativo del gesto diventa ridondante.
+
+> ⚠️ **In contraddizione col §6.5** (sessione BE, stessa data: «il consenso resta»), emersa al merge
+> del 2026-10-18. Si scioglie alla riga 10-bis del «Chi riparte».
+
+**S-2 — lo smoke (§6.0 punto 7).** ✅ **Deciso (Tid, 2026-10-17): proposta accolta**, il consenso
+`SMOKE_NOTTURNO_CONSENTITO` si ritira; il valore della tolleranza lo dà il BE e lo scrive il team DB
+nel catalogo. Ora che `SPENTO` non è morto: (a) una tolleranza
+vera per `smoke_notturno` in sviluppo, che il team DB scrive nel catalogo sul valore che dà il BE;
+(b) se `SMOKE_NOTTURNO_CONSENTITO` resta. Proposta del team DB per (b): **si ritira**. Lo smoke
+in produzione è già spento di default e non si accende per sbaglio (lo dice il catalogo, e la
+scelta a mano ha motivo e autore); quando R-4 arriva, gli smoke girano con `dev.smoke`, che in
+`PRODUZIONE` non esiste. Una seconda serratura che dice la stessa cosa del DB è un doppione con il
+rischio di divergere.
+
+**Per il giro 2, dal brief BE §7.3:** la domanda «i profili `DEV_LETTURA` / `DEV_OPERATIVO` sono
+radici?» la scioglie il team DB scrivendo il giro 2, e la risposta torna nel brief BE.
+
+### 6.3 Giro 2a scritto (team DB, 2026-10-17): R-BE-1, R-BE-3, S-1
+
+Il giro 2 si consegna in due parti: **2a** (questa: la storia della scelta a mano e la nota del
+codice) e **2b** (R-4, i dati di sviluppo, §5-ter). La 2a si applica da sola.
+
+| changeSet / file | Che cosa |
+| --- | --- |
+| `00_schema/dbops/20261017-02` | `dbops.processi_accensione`: `acceso` nullable (NULL = tornato al default), `storicizza`, `tx_id` |
+| `20_code/dbops/20261017-03` | il verbo: «torna al default» scrive la riga con `acceso` NULL e il motivo (niente `DELETE`); non scrive più `data_update`/`user_update`. Firma e ritorno invariati |
+| `80_data/changelog/20261017-04` | la tabella in `config.storico_set_storicizza` (storico permanente; forma di `20260804-16`) |
+| `automation_scope.csv` | `dbops,processi_accensione`: audit (`app.jwt_user`), `tx_id`, storico da `ci_apply` |
+| `storico_scope_policy.csv` | riga 125, `NESSUNO` (niente RLS né emittente) |
+| `codici_errore.csv`, `messaggi_errore.csv` | R-BE-3: nota, messaggio, causa e rimedio di `E_PROCESSO_SVEGLIA_NON_ABILITATA` = «spento su questa installazione», rimedio un gesto dal drawer; ritoccata la frase del gemello `E_PROCESSO_SVEGLIA_NON_AVVIABILE_A_MANO` |
+| `test-processi-accensione-v1` | plan 31 → 35: il 25 passa il motivo, il 25-bis vede la riga con `acceso` NULL; nuovi 31 (nullable), 32 (motivo anche per il default), 33 (chi = `app.jwt_user`), 34 (tre gesti, tre versioni) |
+| manual | `processi_accensione`, `fn_imposta_accensione_processo` |
+
+Scelte dichiarate:
+
+* **Il guard non cambia**: `NOT NEW.acceso` con `acceso` NULL è NULL, quindi il ramo «non
+  spegnibile» non scatta; il motivo resta obbligatorio per tutti e tre i gesti (il drawer lo
+  chiede già). Neanche la regola cambia: `fn_processo_acceso_su_valori` legge già NULL come
+  «nessuna scelta».
+* **Il verbo smette di scrivere l'audit** invece di copiare la regola di
+  `trgfn_audit_data_user_generic` (regola del 2). Il prezzo: fino al primo giro delle automazioni su
+  un database, l'UPDATE non tocca `data_update`/`user_update`.
+* **Il registro dello storico per SQL**, non per CSV: `storico_set_storicizza.csv` non ha un mirror
+  (il CSV esiste ma nessun changeSet lo carica). Precedente: `20260804-16`.
+
+**La prova** (scratch `zeroerp_ruoli`, come `zeroerp_owner`, transazione annullata): SQL estratto
+dei tre changeSet + upsert **completo** dei quattro CSV (1090 codici, 1086 messaggi, 123 righe della
+mappa: nessuna rifiutata) + le sette automazioni di `ci_apply` ristrette a `dbops`, nell'ordine di
+`20250627-31` (nascono `…_audit_data_user_upd`, `…_gen_tx_id_ins_upd`, `…_z90_storico_upd_dlt` e
+`storico.processi_accensione`):
+
+* `test-processi-accensione-v1` **35/35**; senza automazioni (lo stato di dbdev subito dopo il
+  migrate) rossi puliti **solo** il 33 e il 34, il file arriva in fondo;
+* identici prima e dopo, tutti verdi: i dodici pgTAP che leggono gli oggetti toccati (processi,
+  registro, coda automatica, convergenza, panorama, guardiano, installazione, cleanup, storico
+  colonna FK, scope congelato, potatura dello storico, legacy risorse umane, documenti schema
+  base) e i presidi trasversali (`storico-scope-policy`, `riferimenti-morti`, `vw-codici-errore-*`,
+  `security-definer-search-path`, `catalogo-presidi`, `stati-check-scrittori`,
+  `catalogo-messaggi-errore-completo`, `rubinetto-primo-motivo`);
+* `test-storico-scope-policy-v1` senza automazioni: rossi il 5 e il 33 (riga della mappa senza
+  trigger), che si chiudono col giro delle automazioni;
+* cancelli statici (runOnChange, letterali, preCondition, DDL su trigger generati, GRANT batch,
+  timestamp, v1): verdi.
+
+⚠️ Non provato: la corsa **come app** (la prova gira da owner; l'app ha i grant sulla gemella dal
+loop dei grant e da `fn_grant_storico_shadows`, in CI).
+
+**Per Tid, dopo l'apply su dbdev**: le automazioni di dbdev sono i job notturni, e lo storico ne
+vuole due passate. Per chiudere subito la finestra, nell'ordine della CI:
+
+```sql
+CALL maintenance.proc_automations_audit_update_job();
+CALL maintenance.proc_automations_storico_provision_job();
+CALL maintenance.proc_automations_storico_job();
+CALL maintenance.proc_automations_tx_id_job();
+CALL maintenance.proc_automations_attivo_job();
+CALL maintenance.proc_automations_lock_columns_job();
+CALL maintenance.proc_automations_delete_block_job();
+```
+
+Poi i pgTAP: `dbops/test-processi-accensione-v1` e `dbops/test-storico-scope-policy-v1`.
+
+**Ricaduta BE** (nessuna obbligatoria):
+
+* il lettore del drawer (`ProcessiRepository.accensione_processo`) tratta già `acceso` NULL come
+  «nessuna scelta» e mostra il default: invariato. Se vuole, può dire «rimesso al default da X il …»
+  leggendo la riga, e mostrare la storia da `storico.processi_accensione`;
+* la riga di log applicativo del gesto (`processi_service.imposta_accensione`) è ora ridondante;
+* il ripiego di `E_PROCESSO_SVEGLIA_NON_ABILITATA` in `error_messages_fallback.py` dice già
+  «spento»: il messaggio del DB ora porta il nome del processo (`%s`) e dice lo stesso.
+
+### 6.4 L'incidente del 2026-10-16 23:45, e le due reti aggiunte (sessione BE, 2026-10-17)
 
 **Fatto.** Il presidio `vw_processi_programmazione_da_guardare` ha detto `TIMER_FERMO` su
 `draina_coda_lavori` e `send_pending_emails`. Le due corse delle 23:45:08 erano «in avvio» da oltre
@@ -518,13 +949,15 @@ nello stesso giro.
 ⚠️ Su dbdev le sveglie vanno reinstallate (`sudo backend/bin/install-timers.sh`) perche' i tetti
 entrino negli unit.
 
-### 6.3 Punto 7 — lo smoke notturno: decisioni di Tid (2026-10-17)
+### 6.5 Punto 7 — lo smoke notturno: decisioni di Tid (2026-10-17)
 
 * ✅ **Una tolleranza vera in sviluppo.** Il 2026-10-13 la tolleranza dello smoke era stata lasciata
   NULL perche' il panorama non distingueva spento da morto: in produzione, dove lo smoke non gira,
   avrebbe suonato ogni giorno. Con lo stato `SPENTO` quel motivo cade: in produzione lo smoke e'
   spento (default a catalogo), non morto. Senza tolleranza, invece, un giro notturno che smette di
   partire su sviluppo non lo vede nessuno.
+* ⚠️ **In contraddizione con S-2 al §6.2** (team DB, stessa data: «il consenso si ritira»), emersa
+  al merge del 2026-10-18. Si scioglie alla riga 10-bis del «Chi riparte».
 * ✅ **`SMOKE_NOTTURNO_CONSENTITO` resta** come seconda serratura: lo smoke e' spegnibile, quindi in
   produzione si puo' accendere a mano dal drawer; la riga che manca in `.env.systemd` lo ferma
   comunque. Due serrature indipendenti su un comando che scrive dati di prova.

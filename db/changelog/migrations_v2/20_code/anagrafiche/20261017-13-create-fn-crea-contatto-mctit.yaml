@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: CREARE UN CONTATTO
+#   anagrafiche.fn_crea_contatto(soggetto, ruolo, campi): un contatto di
+#   soggetto (ruolo NULL) o di ruolo, con le chiavi di p_campi. Nominativo e
+#   tipo di contatto sono obbligatori: «nominativo + tipo, o niente».
+#   Brief: brief-db-processi-accensione-per-ambiente, §5-ter.2 (2b-1, lotto 3).
+#
+# -- REGOLA DEL 2: CINQUE COPIE ---------------------------------------------
+#   L'INSERT del contatto era scritto in cinque punti:
+#     * il backend, SoggettiRepository.crea_contatto (ritiro nella 2b-2);
+#     * anagrafiche.fn_crea_soggetto_pf e fn_crea_soggetto_pg (il contatto
+#       di default del soggetto): 20261017-14, -15;
+#     * script.fn_crea_utente_tecnico (il contatto del processo): -16;
+#     * il builder dbops.fn_pgtap_crea_soggetto_pg: -17.
+#
+# -- LA REGOLA DEI DUE CAMPI ----------------------------------------------
+#   Le colonne sono gia' NOT NULL: senza il controllo qui il rifiuto
+#   sarebbe un 23502 col nome di colonna e nessun codice. Qui diventa
+#   E_CONTATTO_INCOMPLETO col campo da accendere (canale COLUMN), il codice
+#   che il backend usa gia'. La classificazione «vuoto / parziale / valido»
+#   di un contatto FACOLTATIVO dentro un form (contatti_service, gemella del
+#   composable frontend) resta dov'e': decide se chiamare, non come si scrive.
+#
+# -- CHE COSA RESTA FUORI -----------------------------------------------
+#   * il permesso: dominio anagrafiche, al backend (B-5). INVOKER;
+#   * la coerenza ruolo <-> soggetto e il contatto di default: i guard della
+#     tabella, come prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261017-13-create-fn-crea-contatto-mctit.yaml
+
+  - changeSet:
+      id: 20261017-13-create-fn-crea-contatto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea anagrafiche.fn_crea_contatto: un contatto di soggetto o di ruolo, nominativo e tipo
+        obbligatori (E_CONTATTO_INCOMPLETO col campo). Sede unica delle cinque copie dell'INSERT.
+        Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 3).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_contatto(
+                  p_soggetto_id       anagrafiche.contatti.soggetto_id%TYPE,
+                  p_soggetto_ruolo_id anagrafiche.contatti.soggetto_ruolo_id%TYPE,
+                  p_campi             jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_estranea text;
+                  v_manca    text;
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'tipo_contatto_id', 'nominativo', 'email', 'telefono', 'cellulare',
+                      'pec', 'note', 'is_default', 'default_context', 'titolo_cortesia_id',
+                      'unita_organizzativa_id', 'istanza_utility_id'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Creare un contatto del soggetto (p_soggetto_ruolo_id
+                  --   NULL) o di un suo ruolo, con le chiavi di p_campi (le
+                  --   assenti al DEFAULT). Ritorna la riga creata.
+                  --
+                  -- Regole:
+                  --   - nominativo e tipo di contatto obbligatori, non vuoti:
+                  --     E_CONTATTO_INCOMPLETO col primo campo che manca;
+                  --   - una chiave estranea si rifiuta: E_CAMPO_NON_AMMESSO.
+                  -- =========================================================
+                  IF p_soggetto_id IS NULL OR jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_contatto', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_id', p_soggetto_id,
+                                             'tipo_campi',  jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_contatto',
+                          'soggetto mancante o campi che non sono un oggetto');
+                  END IF;
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_contatto', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'soggetto_id', p_soggetto_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  v_manca := CASE
+                                 WHEN NULLIF(btrim(v_campi ->> 'nominativo'), '') IS NULL THEN 'nominativo'
+                                 WHEN COALESCE((v_campi ->> 'tipo_contatto_id')::integer, 0) <= 0 THEN 'tipo_contatto_id'
+                             END;
+                  IF v_manca IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_contatto', 'E_CONTATTO_INCOMPLETO',
+                          jsonb_build_object('campo', v_manca, 'soggetto_id', p_soggetto_id),
+                          NULL::uuid,
+                          v_manca);
+                  END IF;
+
+                  RETURN script.fn_scrivi_riga_da_jsonb(
+                             'anagrafiche.contatti'::regclass,
+                             v_campi || jsonb_build_object('soggetto_id',       p_soggetto_id,
+                                                           'soggetto_ruolo_id', p_soggetto_ruolo_id));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_contatto(
+                  anagrafiche.contatti.soggetto_id%TYPE,
+                  anagrafiche.contatti.soggetto_ruolo_id%TYPE,
+                  jsonb) IS
+                  'BB (2026-10-17): crea un contatto del soggetto (p_soggetto_ruolo_id NULL) o di un suo ruolo, con le chiavi di p_campi: tipo_contatto_id, nominativo, email, telefono, cellulare, pec, note, is_default, default_context, titolo_cortesia_id, unita_organizzativa_id, istanza_utility_id (le assenti al DEFAULT). Nominativo e tipo di contatto obbligatori e non vuoti: E_CONTATTO_INCOMPLETO col campo sul canale COLUMN. Chiave estranea: E_CAMPO_NON_AMMESSO. Soggetto mancante o campi non oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA. Ritorna la riga creata (jsonb). Scrive con script.fn_scrivi_riga_da_jsonb; i guard della tabella (coerenza col ruolo, contatto di default) scattano come sempre. Non controlla il permesso (dominio anagrafiche, B-5). INVOKER. Regola del 2: sede unica dell''INSERT che era in SoggettiRepository.crea_contatto (2b-2), anagrafiche.fn_crea_soggetto_pf, fn_crea_soggetto_pg, script.fn_crea_utente_tecnico e dbops.fn_pgtap_crea_soggetto_pg. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 3).';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_contatto(uuid, bigint, jsonb);

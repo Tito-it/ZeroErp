@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-17
 
-**Riparte: Tid**: commit (il BE dopo il push del codice DB, o insieme), poi la fase di
-collaudo dopo D9 (§5) e l'archiviazione. ✅ D9 fatto lato DB e BE (2026-10-17, §12). ✅ §4.2 fatto lato BE (2026-10-17). ✅ Giro 1
+**Riparte: Tid**: la fase di collaudo dopo D9 (§5) e l'archiviazione. ✅ D9 fatto lato DB
+(2026-10-17, §11.3) e lato BE (2026-10-17, §12). ✅ §4.2 fatto lato BE (2026-10-17). ✅ Giro 1
 (§8) e giro 2 (§11) applicati, pgTAP senza regressioni.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -18,14 +18,14 @@ collaudo dopo D9 (§5) e l'archiviazione. ✅ D9 fatto lato DB e BE (2026-10-17,
 | 8 | team DB | ✅ giro 2 D8 scritto e provato (`20261016-44…53`); codice di D9 in attesa del nome dal BE | §11 | — |
 | 8b | Tid | ✅ migrate del giro 2 applicato, pgTAP senza regressioni (2026-10-16) | §11 | — |
 | 9a | Tid | ✅ nome confermato: `E_JOB_ELEMENTI_NON_COMPLETATI` (2026-10-17) | §12 | — |
-| 10 | team DB | ✅ codice di D9 nel registro (+ messaggio), su dbdev (2026-10-17); ⚠️ da pushare | §10.3 | — |
+| 10 | team DB | ✅ codice di D9 nel registro (+ messaggio), nome dal BE: `E_JOB_ELEMENTI_NON_COMPLETATI` (2026-10-17), su `Tito-dev` (`7798ecddb`) | §11.3 | — |
 | 11 | Tid | ✅ collaudo lato DB e digest stampato (2026-10-17); resta la fase dopo D9; poi archiviazione | §5 | — |
 | 9 | team BE | ✅ D9: una corsa con elementi falliti senza registro chiude rossa (2026-10-17) | §10.3, §12 | — |
 | 6 | Tid | ✅ collaudo: digest `--secco` con un rosso per causa (2026-10-17) | §5 | — |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: lato BE il §4.2 e D9
-(§12), lato DB il codice di D9. ⚠️ Il BE ha rigenerato `error_policies_generated.py`
-dal DB (ok Tid): il suo commit non va su `Tito-dev` prima del codice DB.
+Decisioni aperte di Tid: nessuna. Committato: lato DB il codice di D9 (`7798ecddb`, su
+`Tito-dev`), lato BE il §4.2 e D9 (`295737a90`, §12). Il commit BE, che porta
+`error_policies_generated.py` rigenerato dal DB (ok Tid), arriva su `Tito-dev` dopo quello DB.
 Debito noto, non in questo brief: il `%TYPE` mancato del giro 1 (§10.1-bis). Lavoro fatto: tutto
 committato (`2793096a6`, 2026-10-16).
 
@@ -699,6 +699,7 @@ sì, ed è il predicato. Le nove copie del blocco le tiene allineate il test 5-6
 ⚠️ **Il codice di D9 non è scritto.** Il nome del codice registrato
 (es. `E_JOB_ELEMENTI_NON_COMPLETATI`) va concordato col BE, che lo solleva. Un
 codice a registro senza nessuno che lo sollevi sarebbe un riferimento morto.
+✅ Scritto il 2026-10-17, col nome dato dal BE: §11.3.
 
 ### 11.2 Prova (sessione DB, 2026-10-16, scratch `zeroerp_ruoli`, transazione annullata)
 
@@ -715,6 +716,28 @@ codice a registro senza nessuno che lo sollevi sarebbe un riferimento morto.
 
 **Apply:** solo migrate, nessun provision-post (nessuna funzione del registro dei
 superuser).
+
+### 11.3 Il codice di D9 (2026-10-17)
+
+Nome dal BE: **`E_JOB_ELEMENTI_NON_COMPLETATI`**. Due righe, nessun changeSet: le carica il mirror
+dei due CSV, come `E_JOB_RUN_SALTATA_NON_CHIUDIBILE`, il precedente citato dal BE.
+
+| CSV | Riga |
+| --- | --- |
+| `codici_errore.csv` | classe `TECNICO`, `causa_fallimento` NULL (la causa la decide il processo, oggi `PROGRAMMA`) |
+| `messaggi_errore.csv` (id 1350) | «Il lavoro automatico è finito, ma alcuni elementi non sono stati completati.» |
+
+⚠️ **La frase è chiusa, senza `%s`: uno scostamento dalla proposta del BE, voluto.** Il BE
+proponeva di passarle `jobname` e `falliti`. Ma il codice lo solleva il **backend**, che scrive la
+sua frase in `maintenance.job_run_log.message` e non riempie i segnaposto del catalogo: un `%s` a
+catalogo uscirebbe grezzo dovunque la frase del catalogo venga mostrata. È la forma dei diciannove
+`*_VALIDATION`, tutti chiusi perché li solleva il BE. La corsa e il numero di elementi falliti
+stanno dove li legge chi guarda: nel `message` della corsa (il BE li mette nella sua frase) e nel
+`meta` (`falliti`, `badge_falliti`). Causa e soluzione a catalogo dicono dove guardarli.
+
+Provato sullo scratch (`zeroerp_ruoli`, transazione annullata): le due righe entrano nelle tabelle,
+coi loro vincoli. Per il BE: rigenerare `error_policies_generated.py` e, se serve, il ripiego in
+`error_messages_fallback.py`.
 
 ## 12. Consegna BE del §4.2 (2026-10-17)
 

@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO DELLA SCELTA A MANO NON CANCELLA E NON SCRIVE L'AUDIT
+#   Corpo vivo di partenza: 20261016-27 (doc auto-gen
+#   dbops/funzioni/fn_imposta_accensione_processo). Due cambi, stessa firma e
+#   stesso ritorno (il backend non cambia):
+#
+#   1. «Torna al default» (acceso NULL) non fa piu' DELETE: scrive la riga
+#      con acceso NULL e il motivo, come gli altri due gesti. La riga dice
+#      sempre l'ultimo gesto; la storia la tiene storico.processi_accensione
+#      (20261017-02). Brief §6.2, S-1.
+#   2. data_update/user_update non si scrivono piu' qui. Il verbo scriveva
+#      user_update = CURRENT_USER, cioe' zeroerp_app dal backend: il drawer
+#      non sapeva chi aveva spento (R-BE-1). La regola «chi e' l'utente» ha
+#      gia' una sede, script.trgfn_audit_data_user_generic (app.jwt_user,
+#      ripiego CURRENT_USER), montata da ci_apply ora che la tabella e' in
+#      automation_scope: ricopiarla qui sarebbe una seconda copia.
+#      ⚠️ Fino al primo giro delle automazioni su un database (dbdev: i job
+#      automations_*) l'UPDATE non tocca data_update/user_update: restano
+#      quelli dell'INSERT. Brief §6.3.
+#
+#   Il motivo resta obbligatorio anche per «torna al default»: lo rifiuta il
+#   guard della tabella (E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO), come per
+#   gli altri gesti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261017-03-update-fn-imposta-accensione-processo-storia-mctit.yaml
+
+  - changeSet:
+      id: 20261017-03-update-fn-imposta-accensione-processo-storia
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        dbops.fn_imposta_accensione_processo: «torna al default» scrive la riga con acceso NULL
+        invece di cancellarla, e l'audit lo scrive il trigger generato (app.jwt_user), non il
+        verbo. Brief: brief-db-processi-accensione-per-ambiente (S-1, R-BE-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'fn_imposta_accensione_processo'
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_attribute a
+                   WHERE a.attrelid = 'dbops.processi_accensione'::regclass
+                     AND a.attname = 'acceso' AND NOT a.attnotnull AND NOT a.attisdropped
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_imposta_accensione_processo(
+                  p_processo_codice dbops.processi.codice%TYPE,
+                  p_acceso          dbops.processi_accensione.acceso%TYPE,
+                  p_motivo          dbops.processi_accensione.motivo%TYPE)
+               RETURNS boolean
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_processo_id dbops.processi.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La scelta a mano di questa installazione sulla
+                  --   sveglia di un processo: acceso true/false, oppure
+                  --   NULL (torna il default per ambiente). Tutti e tre
+                  --   scrivono la riga col motivo: la riga e' l'ultimo
+                  --   gesto, la storia sta in storico.processi_accensione.
+                  --   Restituisce lo stato effettivo dopo il gesto (NULL se
+                  --   l'ambiente non e' dichiarato e la scelta e' il default).
+                  --
+                  -- Regole:
+                  --   - i limiti (senza sveglia, non spegnibile, motivo) li
+                  --     dice il guard della tabella: qui non si ripetono;
+                  --   - chi e quando li scrive l'audit generato (app.jwt_user),
+                  --     non il verbo;
+                  --   - il permesso e' del backend.
+                  -- =========================================================
+                  SELECT p.id
+                    INTO v_processo_id
+                    FROM dbops.processi p
+                   WHERE p.codice = p_processo_codice;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'fn_imposta_accensione_processo', 'E_PROCESSO_NON_TROVATO',
+                          jsonb_build_object('processo_codice', p_processo_codice),
+                          NULL::uuid,
+                          COALESCE(p_processo_codice, '-'));
+                  END IF;
+
+                  INSERT INTO dbops.processi_accensione (processo_id, acceso, motivo)
+                  VALUES (v_processo_id, p_acceso, p_motivo)
+                  ON CONFLICT (processo_id) DO UPDATE
+                     SET acceso = EXCLUDED.acceso,
+                         motivo = EXCLUDED.motivo;
+
+                  RETURN dbops.fn_processo_acceso_dichiarato(p_processo_codice);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_imposta_accensione_processo(
+                  dbops.processi.codice%TYPE,
+                  dbops.processi_accensione.acceso%TYPE,
+                  dbops.processi_accensione.motivo%TYPE) IS
+                  'Il verbo della scelta a mano: accende (true), spegne (false) o rimette al default per ambiente (NULL) la sveglia di un processo su questa installazione, col motivo, obbligatorio anche per il default. Tutti e tre i gesti scrivono la riga di dbops.processi_accensione (acceso NULL = segue il default): la riga e'' l''ultimo gesto, la storia sta in storico.processi_accensione. Chi e quando li scrive l''audit generato da ci_apply (script.trgfn_audit_data_user_generic, app.jwt_user), non il verbo. Restituisce lo stato effettivo dopo il gesto (dbops.fn_processo_acceso_dichiarato). I limiti li dice il guard della tabella (E_PROCESSO_SENZA_SVEGLIA, E_PROCESSO_NON_SPEGNIBILE, E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO); codice inesistente: E_PROCESSO_NON_TROVATO. INVOKER: il permesso e'' del backend, come per Esegui ora. Brief: brief-db-processi-accensione-per-ambiente (A-2, S-1, R-BE-1).';
+      rollback:
+        - sql:
+            sql: SELECT 1;
