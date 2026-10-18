@@ -89,10 +89,11 @@ SELECT anagrafiche.fn_crea_soggetto_pf(
            p_sesso := 'M',
            p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')) AS id;
 
+-- rev 2026-10-18: la madre prende l'indirizzo in jsonb (20261018-96)
 SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-           p_soggetto_id            := (SELECT id FROM tmp_soggetto_test),
-           p_tipo_indirizzo_codice  := t.codice,
-           p_indirizzo_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('risorse umane'))
+           (SELECT id FROM tmp_soggetto_test),
+           jsonb_build_object('tipo_indirizzo_codice',  t.codice,
+                              'indirizzo_dettaglio_id', dbops.fn_pgtap_crea_indirizzo_dettaglio('risorse umane')))
   FROM (VALUES ('RES'), ('DOMFISC')) AS t(codice);
 
 SET CONSTRAINTS ALL IMMEDIATE;

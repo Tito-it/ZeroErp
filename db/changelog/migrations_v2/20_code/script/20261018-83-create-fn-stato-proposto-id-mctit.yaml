@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DUE BB: LO STATO DA UN CODICE ISO2, E LO STATO PROPOSTO
+#   * script.fn_stato_id_da_iso2(p_iso2, p_chi): l'id dell'UNICO stato di
+#     config.stati con quel codice ISO2; NULL se nessuno; rifiuto
+#     E_STATO_ISO2_AMBIGUO se piu' d'uno. Il «nessuno» lo giudica il
+#     chiamante, perche' non e' lo stesso errore: un codice scelto
+#     dall'operatore che non esiste (E_CODICE) non e' un parametro
+#     configurato male (E_DEFAULT_ERRATO);
+#   * script.fn_stato_proposto_id(p_chi): l'id dello stato che si propone
+#     quando chi scrive non lo dice. Legge STATO_PROPOSTO_ISO2
+#     (parameters.csv, id 61) con la cascata degli override, valida e non
+#     ripiega.
+#   D-1 di Tid (2026-10-18), richiesta BE in
+#   brief-db-processi-accensione-per-ambiente §6.11 (la R-BE-8 del BE).
+#
+# -- CHI ERA LA COPIA ------------------------------------------------------------
+#   Due parametri per la stessa cosa, ritirati nello stesso giro:
+#   * state_code_iso3 (ISO3), letto con script.fn_get_default_by_param dai
+#     cinque trigger normalize di indirizzi, soggetti, regioni, IVA per stato
+#     e toponomastica (20261018-84 … -88). fn_get_default_by_param non aveva
+#     altri chiamanti e si ritira (-93): cercava con LIMIT 1 senza ORDER BY,
+#     cioe' una riga a caso quando il codice ne indica piu' d'una;
+#   * soggetto_default_stato_iso2 (ISO2), letto a mano da fn_crea_soggetto_pf
+#     e _pg con un ripiego silenzioso a 'IT' (-89, -91). Il ripiego si toglie,
+#     e lo stato ESPLICITO passa da fn_stato_id_da_iso2: lo cercavano con un
+#     SELECT INTO, che su un codice doppio prende una riga a caso.
+#   Anche fn_crea_utente_tecnico scriveva 'IT' nel corpo (-92).
+#
+# -- PERCHE' ISO2 ---------------------------------------------------------------
+#   Il resto del sistema parla ISO2: il dispatch di CF e P.IVA,
+#   script.fn_get_indirizzo (stato_iso2), il backend, la fattura elettronica
+#   (IdPaese, Nazione).
+#
+# -- PERCHE' CONTA LE RIGHE --------------------------------------------------------
+#   codice_iso2 non e' univoco, e non deve esserlo: il catalogo ISTAT tiene
+#   righe storiche dello stesso paese con codici catastali diversi (Armenia
+#   Z137 e Z252, Azerbaigian Z141 e Z253). Un codice che indica due righe non
+#   sceglie: lo si dice, invece di lasciare la scelta al planner.
+#
+# -- QUELLO CHE NON FA --------------------------------------------------------------
+#   Non decide le regole di un paese: CF e P.IVA, sigla di provincia e IVA
+#   restano scritte per 'IT' dove la legge e' italiana.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261018-83-create-fn-stato-proposto-id-mctit.yaml
+
+  - changeSet:
+      id: 20261018-83-create-fn-stato-proposto-id
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea script.fn_stato_id_da_iso2 (l'unico stato con quel codice ISO2, rifiuto se piu'
+        d'uno) e script.fn_stato_proposto_id (parametro STATO_PROPOSTO_ISO2, con override,
+        validato e senza ripiego). Prendono il posto di state_code_iso3 con
+        fn_get_default_by_param e di soggetto_default_stato_iso2 col ripiego a 'IT'. D-1 di
+        Tid (2026-10-18), richiesta BE in brief-db-processi-accensione-per-ambiente §6.11.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_stato_id_da_iso2(
+                  -- text e non config.stati.codice_iso2%TYPE: la colonna e'
+                  -- character(2), che tronca e riempie di spazi in silenzio
+                  -- (linee-guida-sql §7e); il codice arriva da un parametro
+                  -- (config.parameters.default_value, text) o da un form.
+                  p_iso2 text,
+                  p_chi  text DEFAULT NULL)
+               RETURNS config.stati.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               STABLE
+              AS $function$
+              DECLARE
+                  v_iso2  text := upper(btrim(p_iso2));
+                  v_id    config.stati.id%TYPE;
+                  v_n     integer;   -- un conteggio: niente da ancorare
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   L'id dell'UNICO stato con questo codice ISO2.
+                  --   NULL se il codice e' vuoto o nessuno stato lo porta:
+                  --   quel caso lo giudica il chiamante, col suo codice.
+                  --
+                  -- Regole:
+                  --   - codice_iso2 non e' univoco (righe storiche del
+                  --     catalogo ISTAT): piu' righe = E_STATO_ISO2_AMBIGUO,
+                  --     mai una riga a caso.
+                  -- =========================================================
+                  IF v_iso2 IS NULL OR v_iso2 = '' THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT count(*), min(s.id)
+                    INTO v_n, v_id
+                    FROM config.stati s
+                   WHERE s.codice_iso2 = v_iso2;
+
+                  IF v_n > 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'script.fn_stato_id_da_iso2', 'E_STATO_ISO2_AMBIGUO',
+                          jsonb_build_object('codice_iso2', v_iso2,
+                                             'stati', v_n,
+                                             'chi', p_chi),
+                          NULL::uuid,
+                          v_iso2, v_n::text);
+                  END IF;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_stato_id_da_iso2(text, text) IS
+                  'BB (2026-10-18): l''id dell''UNICO stato di config.stati con questo codice ISO2 (maiuscole, spazi tolti). NULL se il codice e'' vuoto o nessuno stato lo porta: il «non trovato» lo giudica il chiamante, perche'' non e'' lo stesso errore (un codice scelto dall''operatore, E_CODICE, non e'' un parametro configurato male, E_DEFAULT_ERRATO). Piu'' righe: E_STATO_ISO2_AMBIGUO, mai una riga a caso: codice_iso2 non e'' univoco, il catalogo ISTAT tiene righe storiche dello stesso paese con codici catastali diversi. Chiamanti: script.fn_stato_proposto_id, anagrafiche.fn_crea_soggetto_pf e _pg. D-1 di Tid, richiesta BE in brief-db-processi-accensione-per-ambiente §6.11.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_stato_id_da_iso2(text, text) TO zeroerp_app;
+
+              CREATE OR REPLACE FUNCTION script.fn_stato_proposto_id(
+                  p_chi text DEFAULT NULL)
+               RETURNS config.stati.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               STABLE
+              AS $function$
+              DECLARE
+                  v_iso2  config.parameters.default_value%TYPE;
+                  v_id    config.stati.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   L'id dello stato che si propone quando chi scrive non
+                  --   lo dice. p_chi: chi lo chiede (il nome del trigger o
+                  --   della funzione), per il livello «function» della
+                  --   cascata e per il log.
+                  --
+                  -- Regole:
+                  --   - lo stato proposto e' un DATO (STATO_PROPOSTO_ISO2),
+                  --     mai una costante nel codice;
+                  --   - e' una PROPOSTA: si legge con la cascata degli
+                  --     override (sessione, funzione, default), come faceva
+                  --     fn_get_default_by_param;
+                  --   - fail-loud su tre guasti: assente o vuoto, codice
+                  --     senza stato, codice che indica piu' stati
+                  --     (fn_stato_id_da_iso2). Mai un ripiego.
+                  -- =========================================================
+                  v_iso2 := script.fn_get_parameter_full(
+                      'STATO_PROPOSTO_ISO2',
+                      NULL,
+                      NULL,
+                      NULL::integer[],
+                      current_setting('app.session_key', true),
+                      p_chi);
+
+                  -- 1) Assente (fn_get_parameter_full ferma gia' la riga
+                  --    mancante) o vuoto.
+                  IF v_iso2 IS NULL OR btrim(v_iso2) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'script.fn_stato_proposto_id', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('code', 'STATO_PROPOSTO_ISO2',
+                                             'valore', v_iso2,
+                                             'chi', p_chi),
+                          NULL::uuid,
+                          'STATO_PROPOSTO_ISO2');
+                  END IF;
+
+                  -- 2) Piu' stati: lo ferma il BB (E_STATO_ISO2_AMBIGUO).
+                  v_id := script.fn_stato_id_da_iso2(v_iso2, p_chi);
+
+                  -- 3) Nessuno stato. ⭐ Rete: il registro
+                  --    config.parameter_fk_surrogate (riga 8) lo rifiuta gia'
+                  --    alla scrittura; qui arriva un codice scritto col
+                  --    registro spento, o uno stato tolto dopo.
+                  IF v_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'script.fn_stato_proposto_id', 'E_DEFAULT_ERRATO',
+                          jsonb_build_object('tabella', 'config.stati',
+                                             'parametro', 'STATO_PROPOSTO_ISO2',
+                                             'valore', v_iso2,
+                                             'chi', p_chi),
+                          NULL::uuid,
+                          'config.stati', 'STATO_PROPOSTO_ISO2', v_iso2);
+                  END IF;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_stato_proposto_id(text) IS
+                  'BB (2026-10-18): l''id di config.stati che si propone quando chi scrive non dice lo stato. Legge config.parameters.STATO_PROPOSTO_ISO2 (codice ISO2) con la cascata degli override di script.fn_get_parameter_full (sessione da app.session_key, funzione da p_chi, default): e'' una PROPOSTA, l''override e'' legittimo. Valida e non ripiega: assente o vuoto E_CONFIG_MANCANTE, codice senza stato E_DEFAULT_ERRATO, codice che indica piu'' stati E_STATO_ISO2_AMBIGUO (da script.fn_stato_id_da_iso2). Lettori: i trigger normalize di indirizzi, indirizzi_soggetti, soggetti, regioni, iva_stati, toponomastica; anagrafiche.fn_crea_soggetto_pf e _pg; script.fn_crea_utente_tecnico. ⛔ Non decide le regole di un paese: CF e P.IVA, sigla di provincia e IVA restano scritte per ''IT'' dove la legge e'' italiana. Prende il posto di state_code_iso3 (script.fn_get_default_by_param, ritirata) e di soggetto_default_stato_iso2 (col ripiego silenzioso a ''IT''). D-1 di Tid, richiesta BE in brief-db-processi-accensione-per-ambiente §6.11.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_stato_proposto_id(text) TO zeroerp_app;
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS script.fn_stato_proposto_id(text);
+              DROP FUNCTION IF EXISTS script.fn_stato_id_da_iso2(text, text);

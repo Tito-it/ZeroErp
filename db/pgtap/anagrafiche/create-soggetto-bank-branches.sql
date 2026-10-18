@@ -156,13 +156,13 @@ SELECT anagrafiche.fn_scrivi_dati_societari(
            p_data_costituzione  := NULL)
   FROM tmp_soggetto_banca s;
 
--- Indirizzi obbligatori del SOGGETTO. Forma libera completa: il CHECK
--- chk_indirizzi_free_requirements vuole indirizzo_libero + stato_id +
--- (locality, postal_box, administrative_area). Stessa forma di
--- create-cliente.sql, che e' verde.
+-- Indirizzi obbligatori del SOGGETTO, in forma libera: la forma la sceglie
+-- dallo stato il guard anagrafiche.trgfn_indirizzi_guard_forma_libera (rev
+-- 2026-10-18: l'Italia vuole comune e CAP del catalogo; li da'
+-- dbops.fn_pgtap_indirizzo_libero_forma). Stessa forma di create-cliente.sql.
 INSERT INTO anagrafiche.indirizzi_soggetti (
     soggetto_id, tipo_indirizzo_id,
-    indirizzo_libero, stato_id, locality, postal_box, administrative_area
+    indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code
 )
 -- ⚠️ I tipi ammessi li decide config.tipi_soggetto_dettaglio_tipi_indirizzo
 --   per il tipo_soggetto_dettaglio del soggetto (qui 3 = PG IT), NON la
@@ -170,8 +170,9 @@ INSERT INTO anagrafiche.indirizzi_soggetti (
 --   respinto. Si legge la matrice invece di elencare i codici a mano, cosi'
 --   il test segue la configurazione se cambia.
 SELECT s.id, m.tipo_indirizzo_id,
-       'Via pgTAP Banca Zero 1', 1, 'Roma', '00100', 'RM'
+       'Via pgTAP Banca Zero 1', 1, f.comune_id, f.codice_postale_id, f.locality, f.postal_code
   FROM tmp_soggetto_banca s
+ CROSS JOIN dbops.fn_pgtap_indirizzo_libero_forma(1) f
   JOIN config.tipi_soggetto_dettaglio_tipi_indirizzo m
     ON m.tipo_soggetto_dettaglio_id = 3 AND m.attivo
   JOIN config.tipi_indirizzi ti ON ti.id = m.tipo_indirizzo_id

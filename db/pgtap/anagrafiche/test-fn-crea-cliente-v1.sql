@@ -163,10 +163,9 @@ SELECT c.*
            p_indirizzi       := jsonb_build_array(jsonb_build_object(
                'tipo_indirizzo_id',   (SELECT min(o.tipo_indirizzo_id) FROM t_obbl o),
                'indirizzo_libero',    'Via Clienti pgTAP 9',
-               'stato_id',            1,
-               'locality',            'Roma',
-               'postal_box',          '00100',
-               'administrative_area', 'RM'))) c;
+               'stato_id',            1)
+               -- rev 2026-10-18: la forma che il guard vuole per lo stato (Italia: comune e CAP)
+               || (SELECT jsonb_strip_nulls(to_jsonb(frm)) FROM dbops.fn_pgtap_indirizzo_libero_forma(1) frm))) c;
 
 -- La madre su un BA esistente (il secondo, che non ha cliente), stato PR.
 CREATE TEMP TABLE t_c2 AS

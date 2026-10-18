@@ -9,7 +9,7 @@ CREATE FUNCTION fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice chara
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice character varying, p_istanza_utility_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry, indirizzo_id bigint, soggetto_ruolo_id bigint, istanza_utility_id bigint, tipo_indirizzo_id integer, indirizzo_dettaglio_id bigint, indirizzo_libero text, is_normalizzato boolean, stato_id integer, stato_descrizione character varying, stato_iso2 character, regione_id integer, regione_descrizione character varying, provincia_id integer, provincia_sigla character varying, provincia_descrizione character varying, comune_id integer, comune_descrizione character varying, codice_postale_id integer, cap_codice character varying, locality character varying, administrative_area character varying, sublocality character varying, postal_box character varying)
+ RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry, indirizzo_id bigint, soggetto_ruolo_id bigint, istanza_utility_id bigint, tipo_indirizzo_id integer, indirizzo_dettaglio_id bigint, indirizzo_libero text, is_normalizzato boolean, stato_id integer, stato_descrizione character varying, stato_iso2 character, regione_id integer, regione_descrizione character varying, provincia_id integer, provincia_sigla character varying, provincia_descrizione character varying, comune_id integer, comune_descrizione character varying, codice_postale_id integer, cap_codice character varying, locality character varying, administrative_area character varying, sublocality character varying, postal_code character varying)
  LANGUAGE plpgsql
  STABLE ROWS 10
 AS $function$
@@ -61,7 +61,7 @@ BEGIN
                 f.provincia_id, f.provincia_sigla, f.provincia_descrizione,
                 f.comune_id, f.comune_descrizione,
                 f.codice_postale_id, f.cap_codice,
-                f.locality, f.administrative_area, f.sublocality, f.postal_box
+                f.locality, f.administrative_area, f.sublocality, f.postal_code
             FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id, p_istanza_utility_id) f
             WHERE f.tipo_indirizzo_id = v_current_tipo_id
               AND f.istanza_utility_id = p_istanza_utility_id;
@@ -108,7 +108,7 @@ BEGIN
             f.provincia_id, f.provincia_sigla, f.provincia_descrizione,
             f.comune_id, f.comune_descrizione,
             f.codice_postale_id, f.cap_codice,
-            f.locality, f.administrative_area, f.sublocality, f.postal_box
+            f.locality, f.administrative_area, f.sublocality, f.postal_code
         FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id) f
         WHERE f.tipo_indirizzo_id = v_current_tipo_id
           AND f.istanza_utility_id IS NULL;
@@ -163,7 +163,7 @@ BEGIN
         r.locality,
         r.administrative_area,
         r.sublocality,
-        r.postal_box
+        r.postal_code
     FROM script.fn_get_indirizzo_by_soggetto(v_soggetto_id, p_tipo_codice) r;
 
     RETURN;

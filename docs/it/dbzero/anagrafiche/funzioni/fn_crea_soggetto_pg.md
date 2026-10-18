@@ -99,18 +99,18 @@ BEGIN
         );
     END IF;
 
-    -- Risoluzione default da config.parameters
-    -- Stato (nazionalita)
-    v_stato_iso2_resolved := COALESCE(
-        p_stato_iso2,
-        (SELECT default_value FROM config.parameters
-          WHERE code = 'soggetto_default_stato_iso2'),
-        'IT'
-    );
-
-    SELECT id INTO v_stato_id
-      FROM config.stati
-     WHERE codice_iso2 = v_stato_iso2_resolved;
+    -- Stato (nazionalita). Rev 2026-10-18 (D-1 di Tid): quello detto dal
+    -- chiamante, cercato dal BB che rifiuta un codice con piu' stati
+    -- (E_STATO_ISO2_AMBIGUO; prima un SELECT INTO ne prendeva uno a caso);
+    -- altrimenti quello proposto, che valida e non ripiega. ⛔ Il ripiego
+    -- silenzioso a 'IT' e il parametro soggetto_default_stato_iso2 sono
+    -- ritirati.
+    IF NULLIF(btrim(p_stato_iso2), '') IS NOT NULL THEN
+        v_stato_iso2_resolved := upper(btrim(p_stato_iso2));
+        v_stato_id := script.fn_stato_id_da_iso2(v_stato_iso2_resolved, 'anagrafiche.fn_crea_soggetto_pg');
+    ELSE
+        v_stato_id := script.fn_stato_proposto_id('anagrafiche.fn_crea_soggetto_pg');
+    END IF;
 
     IF v_stato_id IS NULL THEN
         -- Fix: E_GENERICO → E_CODICE
@@ -222,7 +222,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer)
-IS 'Crea soggetto PG o ENC + contatto default con tipo_contatto_id + dati societari (se policy). Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf (rev 20261009-28, brief-db-sesso-senza-default). Il sesso non si scrive: per PG ed ENC e'' NULL (sesso_policy NONE). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2, socio_unico, liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli. Rev 20261011-01: i dati societari si scrivono con anagrafiche.fn_scrivi_dati_societari (B-4); REA, capitale e canale FE non si pretendono piu'' qui (li governano la forma giuridica e il canale, B-6/B-7). Brief: brief-db-dati-fiscali-e-societari-del-soggetto. Rev 2026-10-17: il contatto lo scrive il BB anagrafiche.fn_crea_contatto (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 3); comportamento invariato.';
+IS 'Crea soggetto PG o ENC + contatto default con tipo_contatto_id + dati societari (se policy). Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf (rev 20261009-28, brief-db-sesso-senza-default). Il sesso non si scrive: per PG ed ENC e'' NULL (sesso_policy NONE). Fallback tipo contatto: primo da config.tipi_contatti. Stato: p_stato_iso2 se detto (script.fn_stato_id_da_iso2, E_STATO_ISO2_AMBIGUO se indica piu'' stati, E_CODICE se nessuno), altrimenti lo stato proposto (script.fn_stato_proposto_id, rev 2026-10-18: via il ripiego a ''IT'' e il parametro soggetto_default_stato_iso2). Default socio_unico e liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli. Rev 20261011-01: i dati societari si scrivono con anagrafiche.fn_scrivi_dati_societari (B-4); REA, capitale e canale FE non si pretendono piu'' qui (li governano la forma giuridica e il canale, B-6/B-7). Brief: brief-db-dati-fiscali-e-societari-del-soggetto. Rev 2026-10-17: il contatto lo scrive il BB anagrafiche.fn_crea_contatto (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 3); comportamento invariato.';
 ```
 
 ---

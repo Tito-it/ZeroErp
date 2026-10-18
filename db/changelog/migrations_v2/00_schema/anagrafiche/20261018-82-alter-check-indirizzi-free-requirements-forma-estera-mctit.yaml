@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FORMA ESTERA DELL'INDIRIZZO LIBERO SI ALLEGGERISCE: BASTA LA LOCALITA'
+#   chk_indirizzi_free_requirements e chk_indirizzi_soggetti_free_requirements
+#   (20251223-06) volevano, per la forma estera, localita' + codice postale +
+#   (regione o sotto-localita'). Da qui: localita' sola. Decisione di Tid
+#   (2026-10-18, D-3), sulla richiesta del BE in
+#   brief-db-processi-accensione-per-ambiente §6.11.
+#
+# -- PERCHE' -------------------------------------------------------------------
+#   * il codice postale e' facoltativo: ci sono paesi che non ne hanno, e il
+#     modello li ammette. Chi ne ha bisogno (l'export della fattura
+#     elettronica) lo pretende nel suo processo, non nella tabella;
+#   * regione e sotto-localita' non servono a spedire ne' a fatturare.
+#
+# -- IL CHECK RESTA LA RETE, IL GUARD PARLA ------------------------------------
+#   Il rifiuto con codice e campo lo da' anagrafiche.trgfn_indirizzi_guard_forma_libera
+#   (20261018-90), che gira dopo il normalize e sa scegliere la forma dallo
+#   stato. Il CHECK presidia le strade che il trigger non percorre (COPY con
+#   trigger spenti): resta, con la forma minima comune alle due varianti.
+#   Allentarlo non invalida nessuna riga: chi passava il vecchio passa il nuovo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261018-82-alter-check-indirizzi-free-requirements-forma-estera-mctit.yaml
+
+  - changeSet:
+      id: 20261018-82-alter-check-indirizzi-free-requirements-forma-estera
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Forma estera dell'indirizzo libero: basta la localita' (codice postale, regione e
+        sotto-localita' facoltativi) in chk_indirizzi_free_requirements e
+        chk_indirizzi_soggetti_free_requirements. Il CHECK resta la rete; il rifiuto parlante
+        e' del guard 20261018-90. D-3 di Tid (2026-10-18).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi
+                DROP CONSTRAINT IF EXISTS chk_indirizzi_free_requirements;
+              ALTER TABLE anagrafiche.indirizzi
+                ADD CONSTRAINT chk_indirizzi_free_requirements
+                CHECK (
+                  indirizzo_dettaglio_id IS NOT NULL
+                  OR (
+                    indirizzo_libero IS NOT NULL
+                    AND stato_id IS NOT NULL
+                    AND (
+                      (comune_id IS NOT NULL AND codice_postale_id IS NOT NULL)
+                      OR locality IS NOT NULL
+                    )
+                  )
+                );
+
+              ALTER TABLE anagrafiche.indirizzi_soggetti
+                DROP CONSTRAINT IF EXISTS chk_indirizzi_soggetti_free_requirements;
+              ALTER TABLE anagrafiche.indirizzi_soggetti
+                ADD CONSTRAINT chk_indirizzi_soggetti_free_requirements
+                CHECK (
+                  indirizzo_dettaglio_id IS NOT NULL
+                  OR (
+                    indirizzo_libero IS NOT NULL
+                    AND stato_id IS NOT NULL
+                    AND (
+                      (comune_id IS NOT NULL AND codice_postale_id IS NOT NULL)
+                      OR locality IS NOT NULL
+                    )
+                  )
+                );
+
+              COMMENT ON CONSTRAINT chk_indirizzi_free_requirements ON anagrafiche.indirizzi IS
+                'Rete della completezza dell''indirizzo libero: testo e stato, poi comune e CAP del catalogo oppure la localita'' (forma estera). Il rifiuto con codice e campo lo da'' anagrafiche.trgfn_indirizzi_guard_forma_libera, che sceglie la forma dallo stato (config.stati.catalogo_comuni_completo); questo vincolo presidia le scritture che non passano dai trigger. Rev 2026-10-18: la forma estera non pretende piu'' codice postale e regione o sotto-localita'' (D-3 di Tid).';
+              COMMENT ON CONSTRAINT chk_indirizzi_soggetti_free_requirements ON anagrafiche.indirizzi_soggetti IS
+                'Rete della completezza dell''indirizzo libero: testo e stato, poi comune e CAP del catalogo oppure la localita'' (forma estera). Il rifiuto con codice e campo lo da'' anagrafiche.trgfn_indirizzi_guard_forma_libera, che sceglie la forma dallo stato (config.stati.catalogo_comuni_completo); questo vincolo presidia le scritture che non passano dai trigger. Rev 2026-10-18: la forma estera non pretende piu'' codice postale e regione o sotto-localita'' (D-3 di Tid).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La forma di 20251223-06 (postal_code era postal_box).
+              ALTER TABLE anagrafiche.indirizzi DROP CONSTRAINT IF EXISTS chk_indirizzi_free_requirements;
+              ALTER TABLE anagrafiche.indirizzi ADD CONSTRAINT chk_indirizzi_free_requirements CHECK (
+                indirizzo_dettaglio_id IS NOT NULL OR (indirizzo_libero IS NOT NULL AND stato_id IS NOT NULL AND (
+                  (comune_id IS NOT NULL AND codice_postale_id IS NOT NULL)
+                  OR (locality IS NOT NULL AND postal_code IS NOT NULL AND (administrative_area IS NOT NULL OR sublocality IS NOT NULL)))));
+              ALTER TABLE anagrafiche.indirizzi_soggetti DROP CONSTRAINT IF EXISTS chk_indirizzi_soggetti_free_requirements;
+              ALTER TABLE anagrafiche.indirizzi_soggetti ADD CONSTRAINT chk_indirizzi_soggetti_free_requirements CHECK (
+                indirizzo_dettaglio_id IS NOT NULL OR (indirizzo_libero IS NOT NULL AND stato_id IS NOT NULL AND (
+                  (comune_id IS NOT NULL AND codice_postale_id IS NOT NULL)
+                  OR (locality IS NOT NULL AND postal_code IS NOT NULL AND (administrative_area IS NOT NULL OR sublocality IS NOT NULL)))));

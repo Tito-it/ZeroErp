@@ -3,7 +3,9 @@
 > 👀 **Vedi anche**
 >
 > [anagrafiche.indirizzi](/dbzero/anagrafiche/manual/indirizzi) ·
-> [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto)
+> [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto) ·
+> [anagrafiche.fn_indirizzo_elemento](/dbzero/anagrafiche/manual/fn_indirizzo_elemento) ·
+> [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/manual/trgfn_indirizzi_guard_forma_libera)
 
 ### 🎯 Scopo
 (17-10-2026 — brief `brief-db-processi-accensione-per-ambiente`, 2b-1 lotto 2)
@@ -28,13 +30,19 @@ gli altri obbligatori si **copiano dal primo**: stesso indirizzo, tipo diverso.
 
 | Forma | Che cosa si indica |
 | --- | --- |
-| libero | `indirizzo_libero`, con stato, comune, CAP (o località) |
+| libero | `indirizzo_libero` con lo stato e, secondo lo stato, comune e CAP del catalogo oppure la località (`locality`, con `postal_code` facoltativo) |
 | dettaglio già risolto | `indirizzo_dettaglio_id` |
 | via da risolvere | `stradario_id`, oppure una via nuova (tipo strada, nome, comune, CAP), più il civico: la risolve `fn_create_indirizzo` |
 
 Il tipo si indica per id o per codice interno. Un campo che non appartiene a un
 indirizzo è rifiutato col suo nome (`E_CAMPO_NON_AMMESSO`), un tipo
 inesistente con `E_TIPO_INDIRIZZO_NON_TROVATO`.
+
+⭐ Dal 18-10-2026 la lettura dell'elemento (le chiavi ammesse, il tipo) e la
+risoluzione della via stanno nei building block
+[`fn_indirizzo_elemento`](/dbzero/anagrafiche/manual/fn_indirizzo_elemento) e
+`fn_indirizzo_elemento_dettaglio`, che usa anche la madre del soggetto: una
+grammatica sola per i due livelli.
 
 ⚠️ Due indirizzi diversi restano diversi: ognuno si risolve da sé. Fino al
 16-10-2026 il backend riusava il primo dettaglio per tutti quelli che venivano
@@ -45,8 +53,9 @@ dopo.
 * I campi di una via nuova (tipo strada, nome, comune, CAP): li controlla il
   backend prima di chiamare, come per `fn_create_indirizzo`.
 * Il permesso: nel dominio anagrafiche lo decide il backend.
-* Il tipo ammesso per il ruolo e la completezza: li dicono i guard della
-  tabella, come sempre.
+* Il tipo ammesso per il ruolo e la forma dell'indirizzo libero: li dicono i
+  guard della tabella (`trgfn_indirizzi_guard_forma_libera` per la forma, con
+  codice e campo).
 
 ### Test
 

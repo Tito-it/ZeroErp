@@ -208,10 +208,11 @@ ind_det AS (
     ) AS indirizzo_dettaglio_id
 ),
 indirizzi AS (
+    -- rev 2026-10-18: la madre prende l'indirizzo in jsonb (20261018-96)
     SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-        p_soggetto_id := s.soggetto_id,
-        p_tipo_indirizzo_codice := ti.codice_interno,
-        p_indirizzo_dettaglio_id := d.indirizzo_dettaglio_id
+        s.soggetto_id,
+        jsonb_build_object('tipo_indirizzo_codice',  ti.codice_interno,
+                           'indirizzo_dettaglio_id', d.indirizzo_dettaglio_id)
     )
     FROM sogg s
     CROSS JOIN ind_det d
@@ -257,10 +258,11 @@ ind_det AS (
     ) AS indirizzo_dettaglio_id
 ),
 indirizzi AS (
+    -- rev 2026-10-18: la madre prende l'indirizzo in jsonb (20261018-96)
     SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-        p_soggetto_id := s.soggetto_id,
-        p_tipo_indirizzo_codice := ti.codice_interno,
-        p_indirizzo_dettaglio_id := d.indirizzo_dettaglio_id
+        s.soggetto_id,
+        jsonb_build_object('tipo_indirizzo_codice',  ti.codice_interno,
+                           'indirizzo_dettaglio_id', d.indirizzo_dettaglio_id)
     )
     FROM sogg s
     CROSS JOIN ind_det d

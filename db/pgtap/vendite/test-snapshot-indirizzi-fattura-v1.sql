@@ -45,9 +45,10 @@
 --   (a) CON non e' inseribile sul ruolo cliente (ammesso al solo tipo_ruolo 8):
 --       infatti il test 14 lo mette sul layer SOGGETTO, che e' l'unico modo in
 --       cui una fattura puo' vederlo;
---   (b) un indirizzo non normalizzato deve soddisfare chk_indirizzi_free_requirements:
---       indirizzo_libero + stato_id + la terna (locality, postal_box,
---       administrative_area). Le INSERT qui sotto la portano tutta.
+--   (b) un indirizzo non normalizzato deve avere la forma che lo stato vuole
+--       (guard anagrafiche.trgfn_indirizzi_guard_forma_libera, rev 2026-10-18):
+--       per l'Italia comune e CAP del catalogo. Le INSERT qui sotto la prendono
+--       da dbops.fn_pgtap_indirizzo_libero_forma.
 -- ------------------------------------------------------------
 BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -201,14 +202,14 @@ END;
 
 -- ============================================================
 -- Indirizzo FATT GENERICO (istanza_utility_id NULL).
--- Forma libera completa: indirizzo_libero + stato_id + terna (BE §4-ter b).
+-- Forma libera: indirizzo_libero + stato_id + la forma dello stato (helper).
 -- ============================================================
 INSERT INTO anagrafiche.indirizzi (
   soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-  indirizzo_libero, stato_id, locality, postal_box, administrative_area
+  indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code
 )
 SELECT r.soggetto_ruolo_id, ti.fatt_id, NULL,
-       'Via Generica pgTAP 1', r.stato_id, 'Roma', '00100', 'RM'
+       'Via Generica pgTAP 1', r.stato_id, (dbops.fn_pgtap_indirizzo_libero_forma(r.stato_id)).*  -- rev 2026-10-18: la forma dello stato
   FROM tmp_refs_sif r CROSS JOIN tmp_ti_sif ti;
 
 CREATE TEMP TABLE tmp_run1_sif AS
@@ -259,10 +260,10 @@ END;
 -- ============================================================
 INSERT INTO anagrafiche.indirizzi (
   soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-  indirizzo_libero, stato_id, locality, postal_box, administrative_area
+  indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code
 )
 SELECT r.soggetto_ruolo_id, ti.fatt_id, r.istanza_utility_id,
-       'Via Istanza pgTAP 2', r.stato_id, 'Milano', '20100', 'MI'
+       'Via Istanza pgTAP 2', r.stato_id, (dbops.fn_pgtap_indirizzo_libero_forma(r.stato_id)).*  -- rev 2026-10-18: la forma dello stato
   FROM tmp_refs_sif r CROSS JOIN tmp_ti_sif ti;
 
 CREATE TEMP TABLE tmp_run2_sif AS
@@ -320,10 +321,10 @@ END;
 -- ============================================================
 INSERT INTO anagrafiche.indirizzi (
   soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-  indirizzo_libero, stato_id, locality, postal_box, administrative_area
+  indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code
 )
 SELECT r.soggetto_ruolo_id, ti.domfisc_id, NULL,
-       'Via Domicilio pgTAP 3', r.stato_id, 'Torino', '10100', 'TO'
+       'Via Domicilio pgTAP 3', r.stato_id, (dbops.fn_pgtap_indirizzo_libero_forma(r.stato_id)).*  -- rev 2026-10-18: la forma dello stato
   FROM tmp_refs_sif r CROSS JOIN tmp_ti_sif ti;
 
 -- ============================================================
@@ -334,10 +335,10 @@ SELECT r.soggetto_ruolo_id, ti.domfisc_id, NULL,
 -- ============================================================
 INSERT INTO anagrafiche.indirizzi_soggetti (
   soggetto_id, tipo_indirizzo_id,
-  indirizzo_libero, stato_id, locality, postal_box, administrative_area
+  indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code
 )
 SELECT r.soggetto_id, ti.con_id,
-       'Via Consegna Soggetto pgTAP 4', r.stato_id, 'Napoli', '80100', 'NA'
+       'Via Consegna Soggetto pgTAP 4', r.stato_id, (dbops.fn_pgtap_indirizzo_libero_forma(r.stato_id)).*  -- rev 2026-10-18: la forma dello stato
   FROM tmp_refs_sif r CROSS JOIN tmp_ti_sif ti;
 
 -- ⚠️ I due indirizzi appena inseriti entrano in gioco solo al giro

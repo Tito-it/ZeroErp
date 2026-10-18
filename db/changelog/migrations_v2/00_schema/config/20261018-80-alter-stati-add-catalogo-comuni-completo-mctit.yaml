@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO DICHIARA SE IL SUO CATALOGO DI COMUNI E CAP E' COMPLETO
+#   config.stati.catalogo_comuni_completo (boolean NOT NULL, default false).
+#   Decisione D-2 di Tid (2026-10-18), sulla richiesta del BE in
+#   brief-db-processi-accensione-per-ambiente §6.11 (riga 9-ter-ter).
+#
+# -- CHE COSA DECIDE ------------------------------------------------------
+#   La forma di un indirizzo libero (anagrafiche.indirizzi e
+#   indirizzi_soggetti, colonna indirizzo_libero):
+#     * stato col catalogo completo (acceso): comune e CAP dal catalogo,
+#       obbligatori; locality, postal_code e administrative_area vuoti;
+#     * stato senza catalogo completo (spento): la forma estera, localita'
+#       obbligatoria e codice postale libero facoltativo. Se il chiamante
+#       sceglie comunque comune e CAP (un catalogo caricato a meta'), vale
+#       la forma del catalogo, coerente.
+#   Lo applica il guard anagrafiche.trgfn_indirizzi_guard_forma_libera
+#   (20261018-90). Il form legge lo stesso flag per scegliere la variante.
+#
+# -- PERCHE' UN FLAG DICHIARATO E NON «ESISTONO COMUNI PER QUESTO STATO» --
+#   Un catalogo caricato a meta' (una conversione in corso) renderebbe la
+#   forma del catalogo obbligatoria troppo presto: gli indirizzi nei comuni
+#   non ancora caricati non si potrebbero piu' scrivere. Il flag si accende
+#   quando il catalogo e' completo; le righe gia' scritte nella forma
+#   estera restano valide finche' qualcuno non tocca le colonne
+#   dell'indirizzo.
+#
+# -- IL VALORE --------------------------------------------------------------
+#   Il seed lo porta stati.csv (colonna in coda, mirror 20250716-03):
+#   Italia accesa, gli altri spenti. Il DEFAULT false copre le righe che
+#   nascono fuori dal CSV.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261018-80-alter-stati-add-catalogo-comuni-completo-mctit.yaml
+
+  - changeSet:
+      id: 20261018-80-alter-stati-add-catalogo-comuni-completo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.stati.catalogo_comuni_completo: lo stato dichiara se il suo catalogo di comuni
+        e CAP e' completo. Acceso, l'indirizzo libero usa comune e CAP del catalogo; spento,
+        la forma estera (localita', codice postale facoltativo). D-2 di Tid (2026-10-18),
+        richiesta BE in brief-db-processi-accensione-per-ambiente §6.11.
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: config
+                tableName: stati
+                columnName: catalogo_comuni_completo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati
+                ADD COLUMN catalogo_comuni_completo boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN config.stati.catalogo_comuni_completo IS
+                'Il catalogo di comuni e CAP di questo stato e'' completo (D-2 di Tid, 2026-10-18). Acceso: un indirizzo libero in questo stato usa comune_id e codice_postale_id del catalogo, obbligatori, e lascia vuoti locality, postal_code e administrative_area. Spento: la forma estera, locality obbligatoria e postal_code facoltativo; comune e CAP del catalogo restano ammessi se il chiamante li sceglie (catalogo caricato a meta''). Lo applica anagrafiche.trgfn_indirizzi_guard_forma_libera; il form lo legge per scegliere la variante. ⭐ Si DICHIARA e non si deduce dall''esistenza di comuni: un catalogo a meta'' renderebbe obbligatoria una forma che non si puo'' ancora compilare. Le righe scritte nella forma estera prima dell''accensione restano valide finche'' non si toccano le colonne dell''indirizzo. Seed: stati.csv.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati DROP COLUMN IF EXISTS catalogo_comuni_completo;

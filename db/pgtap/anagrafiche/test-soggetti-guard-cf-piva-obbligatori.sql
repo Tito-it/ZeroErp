@@ -70,6 +70,14 @@ SELECT substr(md5(clock_timestamp()::text), 1, 8) AS sfx,
 CREATE TEMP TABLE tmp_stato_test AS
 SELECT id AS stato_id
 FROM config.stati ORDER BY id LIMIT 1;
+-- rev 2026-10-18: i campi della forma che il guard vuole per questo stato
+--   (dbops.fn_pgtap_indirizzo_libero_forma: comune e CAP per l'Italia).
+ALTER TABLE tmp_stato_test ADD COLUMN comune_id integer, ADD COLUMN codice_postale_id integer,
+                           ADD COLUMN locality varchar, ADD COLUMN postal_code varchar;
+UPDATE tmp_stato_test
+   SET (comune_id, codice_postale_id, locality, postal_code) =
+       (SELECT f.comune_id, f.codice_postale_id, f.locality, f.postal_code
+          FROM dbops.fn_pgtap_indirizzo_libero_forma(tmp_stato_test.stato_id) f);
 
 SELECT ok(
     (SELECT count(*) FROM tmp_stato_test) = 1,
@@ -158,14 +166,14 @@ SELECT lives_ok(
           s.id, 'Contatto PR', 'pr@test.com', TRUE
       FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-PR-OK-' || (SELECT sfx FROM tmp_run_sfx);
       INSERT INTO anagrafiche.indirizzi_soggetti (soggetto_id, tipo_indirizzo_id, indirizzo_libero,
-          stato_id, locality, postal_box, administrative_area)
+          stato_id, comune_id, codice_postale_id, locality, postal_code)
       SELECT s.id, (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_res), 'Via Test PR RES',
-          (SELECT stato_id FROM tmp_stato_test), 'Test City', '00100', 'TS'
+          (SELECT stato_id FROM tmp_stato_test), (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
       FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-PR-OK-' || (SELECT sfx FROM tmp_run_sfx);
       INSERT INTO anagrafiche.indirizzi_soggetti (soggetto_id, tipo_indirizzo_id, indirizzo_libero,
-          stato_id, locality, postal_box, administrative_area)
+          stato_id, comune_id, codice_postale_id, locality, postal_code)
       SELECT s.id, (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_domfisc), 'Via Test PR DOMFISC',
-          (SELECT stato_id FROM tmp_stato_test), 'Test City', '00100', 'TS'
+          (SELECT stato_id FROM tmp_stato_test), (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
       FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-PR-OK-' || (SELECT sfx FROM tmp_run_sfx);
       -- Saga completa: qui i guard verificano davvero.
       SET CONSTRAINTS ALL IMMEDIATE;
@@ -234,9 +242,9 @@ SELECT lives_ok(
           s.id, 'Contatto DI', 'di@test.com', TRUE
       FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-DI-OK-' || (SELECT sfx FROM tmp_run_sfx);
       INSERT INTO anagrafiche.indirizzi_soggetti (soggetto_id, tipo_indirizzo_id, indirizzo_libero,
-          stato_id, locality, postal_box, administrative_area)
+          stato_id, comune_id, codice_postale_id, locality, postal_code)
       SELECT s.id, (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_domfisc), 'Via Test DI DOMFISC',
-          (SELECT stato_id FROM tmp_stato_test), 'Test City', '00100', 'TS'
+          (SELECT stato_id FROM tmp_stato_test), (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
       FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-DI-OK-' || (SELECT sfx FROM tmp_run_sfx);
       -- Saga completa: qui i guard verificano davvero.
       SET CONSTRAINTS ALL IMMEDIATE;
@@ -287,9 +295,9 @@ SELECT lives_ok(
           s.id, 'Contatto SP', 'sp@test.com', TRUE
       FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-SP-OK-' || (SELECT sfx FROM tmp_run_sfx);
       INSERT INTO anagrafiche.indirizzi_soggetti (soggetto_id, tipo_indirizzo_id, indirizzo_libero,
-          stato_id, locality, postal_box, administrative_area)
+          stato_id, comune_id, codice_postale_id, locality, postal_code)
       SELECT s.id, (SELECT tipo_indirizzo_id FROM tmp_tipo_ind_sedeleg), 'Via Test SP SEDELEG',
-          (SELECT stato_id FROM tmp_stato_test), 'Test City', '00100', 'TS'
+          (SELECT stato_id FROM tmp_stato_test), (SELECT comune_id FROM tmp_stato_test), (SELECT codice_postale_id FROM tmp_stato_test), (SELECT locality FROM tmp_stato_test), (SELECT postal_code FROM tmp_stato_test)
       FROM anagrafiche.soggetti s WHERE s.codice = 'TST-CFPIVA-SP-OK-' || (SELECT sfx FROM tmp_run_sfx);
       -- Saga completa: qui i guard verificano davvero.
       SET CONSTRAINTS ALL IMMEDIATE;

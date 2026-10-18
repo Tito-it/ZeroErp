@@ -207,10 +207,12 @@ SELECT anagrafiche.fn_crea_soggetto_pf(
            p_email := 'pgtap.titoli.pr2@example.com', p_sesso := 'M',
            p_tipo_soggetto_dettaglio_id := (SELECT pr FROM _ref)) AS id;
 
+-- rev 2026-10-18: i campi della forma dallo stato (Italia: comune e CAP del catalogo)
 INSERT INTO anagrafiche.indirizzi_soggetti (
-    soggetto_id, tipo_indirizzo_id, indirizzo_libero, stato_id, locality, postal_box, administrative_area)
-SELECT (SELECT id FROM _pr2), m.tipo_indirizzo_id, 'Via pgTAP 2', 1, 'Roma', '00100', 'RM'
+    soggetto_id, tipo_indirizzo_id, indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code)
+SELECT (SELECT id FROM _pr2), m.tipo_indirizzo_id, 'Via pgTAP 2', 1, f.comune_id, f.codice_postale_id, f.locality, f.postal_code
   FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+ CROSS JOIN dbops.fn_pgtap_indirizzo_libero_forma(1) f
  WHERE m.tipo_soggetto_dettaglio_id = (SELECT pr FROM _ref)
    AND m.attivo AND m.obbligatorio;
 

@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: script.fn_get_default_by_param
+#   Lookup dinamico «parametro -> id di una tabella di catalogo». Aveva cinque
+#   chiamanti, tutti per la stessa cosa: lo stato di default dei trigger
+#   normalize (indirizzi, soggetti, regioni, IVA per stato, toponomastica) col
+#   parametro state_code_iso3. Da 20261018-84 … -88 lo chiede
+#   script.fn_stato_proposto_id (20261018-83): la copia si ritira nello
+#   stesso giro (regola del 2).
+#   Difetti che se ne vanno con lei: un LIMIT 1 senza ORDER BY (una riga a
+#   caso quando il valore ne indica piu' d'una) e il ramo «tabella senza
+#   chiave primaria» con un messaggio che diceva altro.
+#   Censimento (2026-10-18): nessun altro chiamante in pg_proc, nel backend
+#   (solo la nota generata di E_DEFAULT_ERRATO), due pgTAP riscritti nello
+#   stesso giro. D-1 di Tid, richiesta BE in
+#   brief-db-processi-accensione-per-ambiente §6.11.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261018-93-drop-fn-get-default-by-param-mctit.yaml
+
+  - changeSet:
+      id: 20261018-93-drop-fn-get-default-by-param
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira script.fn_get_default_by_param: i suoi cinque chiamanti (i trigger normalize,
+        stato di default da state_code_iso3) passano a script.fn_stato_proposto_id. D-1 di Tid
+        (2026-10-18).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_default_by_param(text, text, text, text, text);
+      rollback:
+        - sql:
+            sql: >
+              SELECT 1; -- la funzione si ricrea dalla sua storia (20250727 e seguenti), se servisse

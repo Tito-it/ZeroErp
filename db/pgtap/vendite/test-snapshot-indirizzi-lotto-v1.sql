@@ -161,10 +161,10 @@ SELECT (SELECT count(*) FROM tmp_ba_sil) = 2 AS ok;
 -- e' la fattura che dovra' fallire.
 INSERT INTO anagrafiche.indirizzi (
   soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-  indirizzo_libero, stato_id, locality, postal_box, administrative_area
+  indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code
 )
 SELECT b.soggetto_ruolo_id, ti.fatt_id, b.istanza_utility_id,
-       'Via Lotto pgTAP 1', bs.stato_id, 'Roma', '00100', 'RM'
+       'Via Lotto pgTAP 1', bs.stato_id, (dbops.fn_pgtap_indirizzo_libero_forma(bs.stato_id)).*  -- rev 2026-10-18: la forma dello stato
   FROM tmp_ba_sil b, tmp_ti_sil ti, tmp_base_sil bs
  WHERE b.rn = 1;
 
@@ -304,10 +304,10 @@ END;
 -- ============================================================
 INSERT INTO anagrafiche.indirizzi (
   soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-  indirizzo_libero, stato_id, locality, postal_box, administrative_area
+  indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code
 )
 SELECT b.soggetto_ruolo_id, ti.fatt_id, NULL,
-       'Via Lotto pgTAP 2', bs.stato_id, 'Milano', '20100', 'MI'
+       'Via Lotto pgTAP 2', bs.stato_id, (dbops.fn_pgtap_indirizzo_libero_forma(bs.stato_id)).*  -- rev 2026-10-18: la forma dello stato
   FROM tmp_ba_sil b, tmp_ti_sil ti, tmp_base_sil bs
  WHERE b.rn = 2;
 

@@ -257,11 +257,15 @@ CREATE TEMP TABLE _ist AS
 WITH i AS (
     INSERT INTO anagrafiche.indirizzi (
         soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-        indirizzo_libero, stato_id, locality, postal_box, administrative_area)
+        indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code)
+    -- rev 2026-10-18: i campi della forma dallo stato (Italia: comune e CAP del catalogo)
     SELECT c.soggetto_ruolo_id, k.ind_fatt, c.istanza_utility_id,
-           'Via pgTAP fornitura A', (SELECT id FROM config.stati ORDER BY id LIMIT 1),
-           'Roma', '00100', 'RM'
-      FROM _c c CROSS JOIN _k k WHERE c.lato = 'A'
+           'Via pgTAP fornitura A', st.id,
+           f.comune_id, f.codice_postale_id, f.locality, f.postal_code
+      FROM _c c CROSS JOIN _k k
+     CROSS JOIN (SELECT id FROM config.stati ORDER BY id LIMIT 1) st
+     CROSS JOIN LATERAL dbops.fn_pgtap_indirizzo_libero_forma(st.id) f
+     WHERE c.lato = 'A'
     RETURNING id)
 SELECT id AS fatt_ist_a FROM i;
 

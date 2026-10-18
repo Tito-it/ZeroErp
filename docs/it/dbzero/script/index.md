@@ -122,7 +122,6 @@
 - [fn_get_contatto_default](funzioni/fn_get_contatto_default.md) — (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 - [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md) — (latest review 25-03-26)
 - [fn_get_credenziale_per_email](funzioni/fn_get_credenziale_per_email.md)
-- [fn_get_default_by_param](funzioni/fn_get_default_by_param.md) — (latest update 21-12-25) Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
 - [fn_get_deve_cambiare_password](funzioni/fn_get_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_get_emittenti_scope_pk_ids](funzioni/fn_get_emittenti_scope_pk_ids.md)
 - [fn_get_emittenti_scope_sr_ids](funzioni/fn_get_emittenti_scope_sr_ids.md) — (latest review 02-05-2026 — wrapper su `_pk_ids`)
@@ -279,6 +278,8 @@
 - [fn_sorgente_chiave_id](funzioni/fn_sorgente_chiave_id.md) — (scritta il 05-10-2026)
 - [fn_sorgente_chiave_uuid](funzioni/fn_sorgente_chiave_uuid.md) — (scritta il 05-10-2026)
 - [fn_sqlstate_di_ambiente](funzioni/fn_sqlstate_di_ambiente.md) — (latest review 16-10-2026)
+- [fn_stato_id_da_iso2](funzioni/fn_stato_id_da_iso2.md) — (18-10-2026 — decisione D-1 di Tid)
+- [fn_stato_proposto_id](funzioni/fn_stato_proposto_id.md) — (18-10-2026 — decisione D-1 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
 - [fn_stato_veste](funzioni/fn_stato_veste.md)
 - [fn_subentro_cliente](funzioni/fn_subentro_cliente.md) — (latest review 01-03-26)
 - [fn_totp_conferma_device](funzioni/fn_totp_conferma_device.md) — (scritta il 29-09-2026)

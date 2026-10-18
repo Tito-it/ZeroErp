@@ -92,10 +92,9 @@ SELECT anagrafiche.fn_crea_indirizzi_ruolo(
            jsonb_build_array(jsonb_build_object(
                'tipo_indirizzo_id',   (SELECT min(o.tipo_indirizzo_id) FROM t_obbl o),
                'indirizzo_libero',    'Via Indirizzi pgTAP 7',
-               'stato_id',            1,
-               'locality',            'Roma',
-               'postal_box',          '00100',
-               'administrative_area', 'RM'))) AS n
+               'stato_id',            1)
+               -- rev 2026-10-18: la forma che il guard vuole per lo stato (Italia: comune e CAP)
+               || (SELECT jsonb_strip_nulls(to_jsonb(frm)) FROM dbops.fn_pgtap_indirizzo_libero_forma(1) frm))) AS n
   FROM t_sr s;
 
 -- ============================================================
@@ -136,8 +135,9 @@ SELECT is(
                 s.sr_id,
                 jsonb_build_array(jsonb_build_object(
                     'tipo_indirizzo_id', (SELECT min(o.tipo_indirizzo_id) FROM t_obbl o),
-                    'indirizzo_libero',  'Altra via', 'stato_id', 1,
-                    'locality', 'Roma', 'postal_box', '00100', 'administrative_area', 'RM')))
+                    'indirizzo_libero',  'Altra via', 'stato_id', 1)
+               -- rev 2026-10-18: la forma che il guard vuole per lo stato (Italia: comune e CAP)
+               || (SELECT jsonb_strip_nulls(to_jsonb(frm)) FROM dbops.fn_pgtap_indirizzo_libero_forma(1) frm)))
        FROM t_sr s),
     0,
     '6. i tipi gia'' presenti si saltano: 0, niente duplicati');
