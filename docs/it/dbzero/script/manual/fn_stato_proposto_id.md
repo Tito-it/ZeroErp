@@ -4,7 +4,7 @@
 >
 [config.stati](/dbzero/config/manual/stati)
 > [script.fn_stato_id_da_iso2](/dbzero/script/manual/fn_stato_id_da_iso2) — la ricerca per codice ISO2
-> [script.fn_get_parameter_full](/dbzero/script/funzioni/fn_get_parameter_full) — la cascata degli override
+> [script.fn_get_parameter_di_sessione](/dbzero/script/manual/fn_get_parameter_di_sessione) — la cascata degli override, col contesto della sessione
 >
 **Guide:**
 >
@@ -19,6 +19,13 @@ indicato dal parametro `STATO_PROPOSTO_ISO2` (un codice ISO2, oggi `IT`).
 
 È una **proposta**, non «lo stato dell'installazione»: il parametro passa per la cascata
 degli override, quindi un utente che lavora con clienti tedeschi può avere `DE`.
+
+Il parametro si legge con
+[`script.fn_get_parameter_di_sessione`](/dbzero/script/manual/fn_get_parameter_di_sessione),
+che ricava il contesto dalla sessione: valgono gli override per utente, per gruppo, per
+azienda attiva, per sessione e per chi chiede (il nome del trigger o della funzione che la
+chiama). Fino al 18-10-2026 (R-BE-13) utente, gruppi e azienda arrivavano vuoti, e i loro
+override non scattavano.
 
 ---
 
@@ -71,7 +78,9 @@ giorno:
 
 ### Test
 
-`db/pgtap/anagrafiche/test-indirizzo-libero-due-forme-v1.sql` (test 16, 23, 26).
+`db/pgtap/anagrafiche/test-indirizzo-libero-due-forme-v1.sql` (test 16, 23, 26);
+`db/pgtap/script/test-fn-get-parameter-di-sessione-v1.sql` (test 5 e 6: l'override per
+utente arriva allo stato proposto e al trigger di un indirizzo).
 
 ---
 

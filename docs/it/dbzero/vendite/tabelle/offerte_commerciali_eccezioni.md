@@ -88,8 +88,8 @@
 | trg_offerte_eccezioni_a10_guard_articolo_ammesso_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_articolo_ammesso('OFFERTA_COMMERCIALE', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('offerta_id')` |
-| trg_offerte_eccezioni_a10_guard_erogazione_perimetro_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('OFFERTA', 'offerta_id')` |
-| trg_offerte_eccezioni_a10_guard_erogazione_perimetro_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('OFFERTA', 'offerta_id')` |
+| trg_offerte_eccezioni_a10_guard_erogazione_perimetro_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('OFFERTA_COMMERCIALE', 'offerta_id')` |
+| trg_offerte_eccezioni_a10_guard_erogazione_perimetro_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('OFFERTA_COMMERCIALE', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_senza_dati('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_pending('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_quantita_per_fonte_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_quantita_per_fonte('offerta_id')` |

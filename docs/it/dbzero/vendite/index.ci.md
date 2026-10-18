@@ -131,6 +131,7 @@
 - [fn_contratto_riga_componenti_preview](manual/fn_contratto_riga_componenti_preview.md)
 - [fn_contratto_righe_preview](manual/fn_contratto_righe_preview.md)
 - [fn_contratto_sovrapposto](manual/fn_contratto_sovrapposto.md) — `vendite.fn_contratto_sovrapposto(...)` risponde a una sola domanda, **senza modificare nulla**: *«per questo cliente/utility e in questo periodo esiste già un contratto attivo?»*. È il **rilevamento** del meccanismo generico di successione contratti (il "chiudi il vecchio e apri il nuovo").
+- [fn_coppie_fattura_scoperte](manual/fn_coppie_fattura_scoperte.md) — (18-10-2026 — R-BE-14, decisioni D-14a … D-14d di Tid, `brief-db-processi-accensione-per-ambiente` §6.14)
 - [fn_crea_famiglia_documento](manual/fn_crea_famiglia_documento.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_crea_revisione_offerta](manual/fn_crea_revisione_offerta.md) — (rev 2026-05-25)
 - [fn_crea_revisione_preventivo](manual/fn_crea_revisione_preventivo.md) — (latest review 14-09-2026) `vendite.fn_crea_revisione_preventivo(p_preventivo_id, p_user)` crea una **nuova revisione** di un preventivo vendita: copia testata, righe attive, componenti BoM e indirizzi. L'attivazione della revisione non e' piu' gestita qui: il flag `is_revision_attiva` e' stato rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendite.vw_preventivi`.

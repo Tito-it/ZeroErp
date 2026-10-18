@@ -79,15 +79,45 @@ doversi chiedere ogni volta *«l'ho già fatto?»*.
 
 ### Cosa non fa, ed è voluto
 
-* **la FATTURA resta fuori.** Il suo registro dipende da (tipo documento,
-  natura) e si configura in `vendite.tipi_doc_fiscale_registri`: una scelta
-  automatica non può indovinarlo. ⚠️ È un letterale nel codice, ed è un **debito
-  dichiarato** — lo stesso che sta in `fn_get_registro_documento` e in
-  `fn_get_pavimento_data_documento`;
 * **le famiglie spente non producono registri**: il filtro `attivo` sta qui, e le
   due porte non lo ripetono;
 * **non modifica** un registro esistente. Se qualcuno ne ha cambiato la serie o
   le regole di reset, quella è una decisione: non viene riscritta.
+
+---
+
+### 🔄 rev 2026-10-18 — anche il registro delle fatture
+
+Fino a oggi la FATTURA restava fuori, con un letterale: il suo registro dipende da
+(tipo documento, natura), e nessun altro lo creava. Risultato: **nessun emittente
+nasceva capace di fatturare**, nemmeno in un'installazione nuova (R-BE-14, il
+caso dell'emittente di prova del verbo di sviluppo).
+
+Ora (decisioni D-14a … D-14d di Tid), per ogni emittente selezionato che ha
+**coppie scoperte** — le dice
+[`vendite.fn_coppie_fattura_scoperte`](/dbzero/vendite/manual/fn_coppie_fattura_scoperte):
+
+| Passo | Che cosa |
+| --- | --- |
+| 1 | nasce **un** registro delle fatture **standard** (codice `FAT-<emittente>`), con la stessa regola degli altri registri: **un solo `INSERT`** per tutte le famiglie, cambiano solo le condizioni |
+| 2 | ogni coppia scoperta si collega a lui in `vendite.tipi_doc_fiscale_registri` |
+
+* un emittente configurato a mano riceve lo standard **solo per le coppie che non
+  ha**;
+* uno standard **spento** non si rifà e non si ricollega: spegnerlo è una scelta,
+  e la coppia resta scoperta;
+* il numero restituito resta «quanti **registri**»: i collegamenti non si contano.
+
+⭐ **La regola del codice esce in
+`vendite.fn_codice_registro_provisionato`**: serve a far nascere i registri delle
+famiglie, a far nascere lo standard e a **ritrovarlo** per collegarlo. Tre copie
+dello stesso letterale nella stessa funzione: la prima che cambiasse romperebbe il
+collegamento in silenzio.
+
+Chi la chiama per la fattura: la porta per emittente (alla nascita e alla
+riaccensione), la porta per famiglia con `'FATTURA'` (i trigger su
+`config.tipi_doc_fiscale` e `config.nature_doc_fiscale` quando nasce o si accende
+una riga, e la sistemazione degli emittenti esistenti, changeSet `20261019-11`).
 
 ---
 
@@ -101,4 +131,5 @@ doversi chiedere ogni volta *«l'ho già fatto?»*.
 
 ---
 
-*Piano: `brief-be-fe-crud-registri-di-numerazione`, sezione 11.6.*
+*Piano: `brief-be-fe-crud-registri-di-numerazione`, sezione 11.6;
+`brief-db-processi-accensione-per-ambiente` §6.14 (la fattura).*

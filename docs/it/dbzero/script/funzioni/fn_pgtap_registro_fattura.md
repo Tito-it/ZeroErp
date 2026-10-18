@@ -26,9 +26,14 @@ BEGIN
     --   registro_id = script.fn_pgtap_registro_fattura(<sr_id>)
     --
     -- ⛔ Non aggira vendite.trgfn_fatture_guard_registro_emittente:
-    --   restituisce cio' che l'applicazione userebbe. Chi vuole
-    --   il caso INCOERENTE se lo costruisce apposta — lo fa
+    --   il registro e' dell'emittente. Chi vuole il caso
+    --   INCOERENTE se lo costruisce apposta — lo fa
     --   db/pgtap/vendite/test-fatture-guard-registro-emittente.sql.
+    --
+    -- ⚠️ Salta il registro STANDARD (dal 2026-10-18, R-BE-14):
+    --   ha il limite di emissione di default, e le fixture
+    --   datano i documenti nel passato. Chi prova lo standard
+    --   lo legge da vendite.fn_get_registro_id.
     -- =========================================================
 
     -- Senza argomento: l'emittente dell'operatore di contesto,
@@ -48,6 +53,7 @@ BEGIN
      WHERE r.emittente_soggetto_ruolo_id = v_emittente
        AND r.famiglia_documento = 'FATTURA'
        AND r.attivo IS TRUE
+       AND r.codice <> vendite.fn_codice_registro_provisionato('FATTURA', v_emittente)
      ORDER BY r.id
      LIMIT 1;
 
@@ -75,7 +81,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_pgtap_registro_fattura(p_emittente_sr_id bigint)
-IS 'Helper pgTAP: il registro di fatturazione COERENTE con l''emittente indicato — quello dell''operatore di contesto se non si passa niente — creandolo se quell''emittente non ne ha ancora uno. ⛔ Nasce il 2026-08-30 perche'' vendite.trgfn_fatture_guard_registro_emittente ha reso visibile un difetto diffuso nelle fixture: 44 file pgTAP sceglievano il registro con una pescata INDIPENDENTE da quella dell''emittente (`SELECT id FROM registri_fatturazione WHERE attivo ORDER BY data_insert DESC LIMIT 1`), e che i due coincidessero era un caso. E'' la stessa lezione che le fixture piu'' curate avevano gia'' imparato sulla terna emittente/utility/billing account — «si sceglie INSIEME, non a pescate indipendenti» — applicata a un quarto elemento che nessuno aveva legato agli altri. ⭐ Un helper e non 44 patch: l''emittente giusto si scrive in tre modi diversi a seconda della fixture, e quarantaquattro copie della stessa regola sono quarantaquattro occasioni di scriverla storta, piu'' la fixture successiva che nascerebbe di nuovo sbagliata. ⚠️ CREA il registro se manca: senza, risponderebbe NULL e la fixture morirebbe su `registro_id NOT NULL`, con un errore che parla di una colonna invece che della configurazione; la riga nasce nella transazione del test e sparisce col ROLLBACK. ⚠️ Il registro creato ha limite_emissione_giorni = 9999 — stessa scelta gia'' fatta a mano in test-registri-progressivi: le fixture datano i documenti nel passato, e un limite attivo le farebbe cadere su un presidio che non stanno provando; chi il limite lo prova davvero (test-limite-emissione-v1) si costruisce il registro da se'', e deve continuare a farlo. ⛔ NON e'' una scorciatoia per aggirare il guard: restituisce un registro coerente, cioe'' esattamente quello che l''applicazione userebbe — e chi vuole il caso INCOERENTE se lo costruisce apposta, come fa db/pgtap/vendite/test-fatture-guard-registro-emittente.sql. Compagna di script.fn_pgtap_emittente_sr_operatore. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C1-3.';
+IS 'Helper pgTAP: il registro di fatturazione COERENTE con l''emittente indicato — quello dell''operatore di contesto se non si passa niente — creandolo se quell''emittente non ne ha ancora uno. ⛔ Nasce il 2026-08-30 perche'' vendite.trgfn_fatture_guard_registro_emittente ha reso visibile un difetto diffuso nelle fixture: 44 file pgTAP sceglievano il registro con una pescata INDIPENDENTE da quella dell''emittente, e che i due coincidessero era un caso. ⚠️ CREA il registro se manca, con limite_emissione_giorni = 9999: le fixture datano i documenti nel passato, e un limite attivo le farebbe cadere su un presidio che non stanno provando; chi il limite lo prova davvero (test-limite-emissione-v1) si costruisce il registro da se''. ⭐ Rev 2026-10-18 (20261019-12, R-BE-14): SALTA il registro delle fatture STANDARD (codice vendite.fn_codice_registro_provisionato(''FATTURA'', emittente)), che dal 20261019-08 nasce con ogni emittente col limite di emissione di DEFAULT. Su un emittente che aveva gia'' un registro restituisce lo stesso di prima (il primo per id, piu'' vecchio dello standard); su uno nuovo crea come prima il suo. Chi prova lo standard lo legge da vendite.fn_get_registro_id, il percorso vero. Compagna di script.fn_pgtap_emittente_sr_operatore. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C1-3; brief-db-processi-accensione-per-ambiente §6.14.';
 ```
 
 ---

@@ -60,18 +60,24 @@ Ritorna l'`id` della `risorsa_umana` creata.
 2. **Guard prerequisiti**:
    - qualifica esistente e `attivo=true`,
    - UO esistente e `attivo=true` se valorizzata,
-   - auth_user esistente se valorizzato (raise `E_ADMIN_VALIDAZIONE` o `E_ADMIN_UO_NON_TROVATA`).
+   - auth_user esistente se valorizzato (raise `E_ADMIN_VALIDAZIONE` o `E_ADMIN_UO_NON_TROVATA`),
+   - se `p_is_super_admin`: il profilo SUPER_ADMIN si **risolve prima di ogni scrittura** con
+     [`config.fn_profilo_super_admin_id`](/dbzero/config/manual/fn_profilo_super_admin_id), che
+     solleva `E_CONFIG_MANCANTE` se i profili attivi di quel tipo non sono esattamente uno.
 3. **Step 1**: `script.fn_get_or_create_soggetto_ruolo(p_soggetto_id, 'RIS_UMANA')` → upsert ruolo.
 4. **Step 2**: `INSERT INTO risorse_umane` (`attivo=true` hardcoded — il flag `p_attivo` riguarda solo l'identita digitale, non la risorsa).
 5. **Step 3** (se `p_auth_user_id IS NOT NULL`): `INSERT INTO identita_digitali`
    con `ruolo_applicativo='OPERATORE'` e `attivo=p_attivo`.
-6. **Step 4** (se `p_is_super_admin=true`): `INSERT INTO profili_accesso_bindings`
-   `(profilo_accesso_id=9100, identita_digitale_id, attivo=true)`.
+6. **Step 4** (se `p_is_super_admin=true`): il legame lo scrive la madre
+   [`config.fn_lega_profilo_identita`](/dbzero/config/manual/fn_lega_profilo_identita) sul profilo
+   risolto al passo 2 (dal 18-10-2026, `20261018-45`).
 
 ## Regole
 
 - Nessuna scrittura su `anagrafiche.risorse_umane_auth_user` (post-cutover §13.3 è una vista; i trigger-ponte sono stati droppati).
-- Il binding SUPER_ADMIN usa `profilo_accesso_id=9100` (seed convenzionale, non parametrizzato qui).
+- Il profilo del binding SUPER_ADMIN **non è più cablato** (fino al 23-09-2026 era l'id 9100 del seed): si
+  risolve per `tipo`, fra i profili attivi, esattamente uno. Dal 18-10-2026 (R-BE-11, `20261019-17`) la regola
+  sta nel lettore `config.fn_profilo_super_admin_id`, sede unica: era scritta qui e nel backend.
 - La fn è **transazionale**: se uno qualunque degli step fallisce, l'intera operazione è rolled-back (caller responsibility usare `BEGIN…COMMIT`).
 - Errori applicativi via `script.fn_log_and_raise_error` (codici stabili `E_ADMIN_VALIDAZIONE`, `E_ADMIN_UO_NON_TROVATA`).
 

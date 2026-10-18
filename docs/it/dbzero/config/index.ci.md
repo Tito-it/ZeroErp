@@ -137,6 +137,7 @@
 - [fn_lega_profilo_identita](manual/fn_lega_profilo_identita.md)
 - [fn_pannello_colonne_scrivibili](manual/fn_pannello_colonne_scrivibili.md) — (scritta il 27-09-2026)
 - [fn_pannello_scrivi](manual/fn_pannello_scrivi.md) — (scritta il 25-09-2026)
+- [fn_profilo_super_admin_id](manual/fn_profilo_super_admin_id.md) — (18-10-2026 — R-BE-11 del backend, regola del 2, ok di Tid; `brief-db-processi-accensione-per-ambiente` §6.15)
 - [fn_resolve_email_account](manual/fn_resolve_email_account.md) — Risolve l'account SMTP da utilizzare per l'invio di una email, dato il reparto (unita' organizzativa) del contesto. Implementa una catena di fallback a 2 livelli per garantire che ci sia sempre un account disponibile.
 - [fn_resolve_email_template](manual/fn_resolve_email_template.md) — Risolve il template email da utilizzare per un dato codice, reparto, tipo prestazione e lingua. Implementa una catena di fallback a 5 livelli che permette di specializzare i testi per reparto e tipo pratica mantenendo sempre un default di sistema.
 - [fn_scrivi_profilo_accesso](manual/fn_scrivi_profilo_accesso.md)

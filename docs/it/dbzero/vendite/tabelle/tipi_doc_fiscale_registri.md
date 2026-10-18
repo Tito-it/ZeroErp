@@ -38,15 +38,17 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_tipi_doc_fiscale_registri_a10_guard_coppia_unica_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica()` |
+| trg_tipi_doc_fiscale_registri_a10_guard_coppia_unica_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica()` |
 | trg_tipi_doc_fiscale_registri_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_tipi_doc_fiscale_registri_a10_nature_doc_fiscale_req_e1197d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'nature_doc_fiscale', 'attivo', 'natura_doc_id', 'id')` |
 | trg_tipi_doc_fiscale_registri_a10_nature_doc_fiscale_req_e1197d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'nature_doc_fiscale', 'attivo', 'natura_doc_id', 'id')` |
 | trg_tipi_doc_fiscale_registri_a10_registri_fatturazione__3f401f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
 | trg_tipi_doc_fiscale_registri_a10_registri_fatturazione__3f401f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
-| trg_tipi_doc_fiscale_registri_a10_tipi_doc_fiscale_requi_f3dd83 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_tipi_doc_fiscale_registri_a10_tipi_doc_fiscale_requi_f3dd83 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
-| trg_tipi_doc_fiscale_registri_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_tipi_doc_fiscale_registri_a10_tipi_doc_fiscale_requi_f3dd83 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_tipi_doc_fiscale_registri_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_tipi_doc_fiscale_registri_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}
