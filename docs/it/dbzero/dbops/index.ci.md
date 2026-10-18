@@ -100,6 +100,7 @@
 - [fn_pgtap_crea_preventivo](manual/fn_pgtap_crea_preventivo.md) — (rev 2026-10-07)
 - [fn_pgtap_crea_soggetto_pg](manual/fn_pgtap_crea_soggetto_pg.md) — (rev 2026-08-21)
 - [fn_pgtap_crea_soggetto_ruolo](manual/fn_pgtap_crea_soggetto_ruolo.md) — (rev 2026-08-21)
+- [fn_pgtap_indirizzo_libero_forma](manual/fn_pgtap_indirizzo_libero_forma.md) — (18-10-2026)
 - [fn_pgtap_listino_aggiungi_articoli](manual/fn_pgtap_listino_aggiungi_articoli.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento Lotto 3b)
 - [fn_pgtap_piva_libera](manual/fn_pgtap_piva_libera.md) — (rev 2026-08-21)
 - [fn_pgtap_porta_a_stato](manual/fn_pgtap_porta_a_stato.md) — (rev 2026-10-08)

@@ -62,14 +62,12 @@ SELECT plan(11);
 -- =========================================================
 -- 1) Crea due toponimi di test
 -- =========================================================
+-- rev 2026-10-18: lo stato di default e' lo stato proposto
+--   (script.fn_stato_proposto_id, parametro STATO_PROPOSTO_ISO2), che prende
+--   il posto di fn_get_default_by_param su state_code_iso3 (ritirati,
+--   20261018-83 … -93).
 CREATE TEMP TABLE tmp_def_param AS
-SELECT script.fn_get_default_by_param(
-    'config',
-    'stati',
-    'codice_iso3',
-    'state_code_iso3',
-    'test_toponomastica'
-)::integer AS stato_id;
+SELECT script.fn_stato_proposto_id('test_toponomastica') AS stato_id;
 
 CREATE TEMP TABLE tmp_topo_norm_impl AS
 SELECT EXISTS (
@@ -78,7 +76,7 @@ SELECT EXISTS (
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'config'
       AND p.proname = 'trgfn_toponomastica_normalize'
-      AND p.prosrc ILIKE '%fn_get_default_by_param%'
+      AND p.prosrc ILIKE '%fn_stato_proposto_id%'
 ) AS has_default;
 
 WITH def_stato AS (

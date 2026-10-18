@@ -20,6 +20,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | extra_country | jsonb | YES |  |
+| catalogo_comuni_completo | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

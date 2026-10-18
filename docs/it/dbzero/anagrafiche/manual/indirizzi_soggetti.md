@@ -130,9 +130,9 @@ Questa impostazione consente:
 * **Completezza indirizzo libero**
   Se `indirizzo_dettaglio_id` è `NULL`:
 
-  * `indirizzo_libero` e `stato_id` sono obbligatori;
-  * è richiesto **o** (`comune_id` + `codice_postale_id`) **oppure** (`locality` + `postal_box`),
-    con almeno uno tra `administrative_area` e `sublocality`.
+  * `indirizzo_libero` e `stato_id` sono obbligatori (lo stato non detto lo propone il sistema);
+  * la forma la decide lo stato (`config.stati.catalogo_comuni_completo`): **catalogo** = `comune_id` + `codice_postale_id` coerenti fra loro e con lo stato, senza `locality`, `postal_code` e `administrative_area`; **estera** = `locality`, con `postal_code`, `administrative_area` e `sublocality` facoltativi;
+  * il rifiuto, col codice e il campo, lo dà il guard [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/manual/trgfn_indirizzi_guard_forma_libera); il CHECK `chk_indirizzi_soggetti_free_requirements` resta come rete (rev 18-10-2026).
 
 * **Unicità soggetto + tipo indirizzo**
   `UNIQUE (soggetto_id, tipo_indirizzo_id)`

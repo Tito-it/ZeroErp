@@ -126,17 +126,18 @@ BEGIN
         );
     END IF;
 
-    -- Stato (nazionalita) — default da config.parameters
-    v_stato_iso2_resolved := COALESCE(
-        p_stato_iso2,
-        (SELECT default_value FROM config.parameters
-          WHERE code = 'soggetto_default_stato_iso2'),
-        'IT'
-    );
-
-    SELECT id INTO v_stato_id
-    FROM config.stati
-    WHERE codice_iso2 = v_stato_iso2_resolved;
+    -- Stato (nazionalita). Rev 2026-10-18 (D-1 di Tid): quello detto dal
+    -- chiamante, cercato dal BB che rifiuta un codice con piu' stati
+    -- (E_STATO_ISO2_AMBIGUO; prima un SELECT INTO ne prendeva uno a caso);
+    -- altrimenti quello proposto, che valida e non ripiega. ⛔ Il ripiego
+    -- silenzioso a 'IT' e il parametro soggetto_default_stato_iso2 sono
+    -- ritirati.
+    IF NULLIF(btrim(p_stato_iso2), '') IS NOT NULL THEN
+        v_stato_iso2_resolved := upper(btrim(p_stato_iso2));
+        v_stato_id := script.fn_stato_id_da_iso2(v_stato_iso2_resolved, 'anagrafiche.fn_crea_soggetto_pf');
+    ELSE
+        v_stato_id := script.fn_stato_proposto_id('anagrafiche.fn_crea_soggetto_pf');
+    END IF;
 
     IF v_stato_id IS NULL THEN
         -- Fix: E_GENERICO → E_CODICE
@@ -194,7 +195,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text)
-IS 'Crea un soggetto PERSONA FISICA (natura base PF: privato PR o ditta individuale DI, scelta dal chiamante con p_tipo_soggetto_dettaglio_id, obbligatorio) + contatto default con tipo_contatto_id. Una natura che non e'' PF si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA (porta giusta: fn_crea_soggetto_pg). p_partita_iva per la DI (la pretende il guard su CF e P.IVA). Il sesso passa com''e'', senza default: quando serve lo decide config.tipi_soggetto_dettaglio.sesso_policy nel guard trgfn_soggetti_guard_sesso_policy (PR obbligatorio, DI facoltativo). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2 da config.parameters. Guard CF univoco. NON crea indirizzo. Rev 20261009-26, brief-db-sesso-senza-default. Rev 2026-10-17: il contatto lo scrive il BB anagrafiche.fn_crea_contatto (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 3); comportamento invariato.';
+IS 'Crea un soggetto PERSONA FISICA (natura base PF: privato PR o ditta individuale DI, scelta dal chiamante con p_tipo_soggetto_dettaglio_id, obbligatorio) + contatto default con tipo_contatto_id. Una natura che non e'' PF si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA (porta giusta: fn_crea_soggetto_pg). p_partita_iva per la DI (la pretende il guard su CF e P.IVA). Il sesso passa com''e'', senza default: quando serve lo decide config.tipi_soggetto_dettaglio.sesso_policy nel guard trgfn_soggetti_guard_sesso_policy (PR obbligatorio, DI facoltativo). Fallback tipo contatto: primo da config.tipi_contatti. Stato: p_stato_iso2 se detto (script.fn_stato_id_da_iso2, E_STATO_ISO2_AMBIGUO se indica piu'' stati, E_CODICE se nessuno), altrimenti lo stato proposto (script.fn_stato_proposto_id, rev 2026-10-18: via il ripiego a ''IT'' e il parametro soggetto_default_stato_iso2). Guard CF univoco. NON crea indirizzo. Rev 20261009-26, brief-db-sesso-senza-default. Rev 2026-10-17: il contatto lo scrive il BB anagrafiche.fn_crea_contatto (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 3); comportamento invariato.';
 ```
 
 ---

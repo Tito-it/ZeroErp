@@ -142,16 +142,15 @@ SELECT dbops.fn_pgtap_crea_indirizzo_dettaglio('pgtap-guard-soggetto-pf-pura') A
 --   e un `SELECT` lo stamperebbe in mezzo al flusso TAP.
 DO $ind$
 BEGIN
+    -- rev 2026-10-18: la madre prende l'indirizzo in jsonb (20261018-96)
     PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
-        p_soggetto_id            := (SELECT soggetto_id FROM _t_sogg),
-        p_tipo_indirizzo_codice  := 'RES',
-        p_indirizzo_dettaglio_id := (SELECT dettaglio_id FROM _t_dett)
-    );
+        (SELECT soggetto_id FROM _t_sogg),
+        jsonb_build_object('tipo_indirizzo_codice',  'RES',
+                           'indirizzo_dettaglio_id', (SELECT dettaglio_id FROM _t_dett)));
     PERFORM anagrafiche.fn_crea_indirizzo_soggetto(
-        p_soggetto_id            := (SELECT soggetto_id FROM _t_sogg),
-        p_tipo_indirizzo_codice  := 'DOMFISC',
-        p_indirizzo_dettaglio_id := (SELECT dettaglio_id FROM _t_dett)
-    );
+        (SELECT soggetto_id FROM _t_sogg),
+        jsonb_build_object('tipo_indirizzo_codice',  'DOMFISC',
+                           'indirizzo_dettaglio_id', (SELECT dettaglio_id FROM _t_dett)));
 END $ind$;
 
 -- =========================================================

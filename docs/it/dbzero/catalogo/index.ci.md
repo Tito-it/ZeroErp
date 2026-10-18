@@ -15,6 +15,7 @@
 - [fn_articoli_ammessi](manual/fn_articoli_ammessi.md) — (nasce 2026-10-14, brief-db-articoli-ammessi-per-documento, Lotto 4: R-2, R-4, R-5; A-1, A-2, A-7)
 - [fn_articolo_colonne_struttura](manual/fn_articolo_colonne_struttura.md) — (nasce 2026-10-18, brief-db-articoli-ammessi-per-documento R-DB-3)
 - [fn_articolo_correggi_struttura](manual/fn_articolo_correggi_struttura.md) — (latest review 2026-10-18, brief-db-articoli-ammessi-per-documento A-10, R-DB-3)
+- [fn_articolo_righe_vive_non_ammesse](manual/fn_articolo_righe_vive_non_ammesse.md) — (nasce 2026-10-18, brief-db-articoli-ammessi-per-documento A-11)
 - [fn_articolo_usato](manual/fn_articolo_usato.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-10)
 - [fn_get_uom_base](manual/fn_get_uom_base.md) — (latest updates 13-01-26) La funzione **`catalogo.fn_get_uom_base(p_articolo_id)`** ritorna la **UoM base** dell’articolo, leggendo il campo `catalogo.articoli.uom_id`.
 - [fn_get_uom_factor](manual/fn_get_uom_factor.md) — (latest review 13-01-26) La funzione **`catalogo.fn_get_uom_factor(p_articolo_id, p_uom_id)`** ritorna il **fattore di conversione** dalla UoM richiesta alla **UoM base** dell’articolo.

@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# postal_box -> postal_code, SULLE DUE TABELLE DEGLI INDIRIZZI E LE QUATTRO VISTE
+#   Decisione D-3 di Tid (2026-10-18): la colonna e' il CODICE POSTALE di un
+#   indirizzo estero, testo libero e facoltativo; il CAP italiano resta
+#   codice_postale_id, dal catalogo.
+#
+# -- PERCHE' IL NOME CAMBIA --------------------------------------------------
+#   In inglese «PO box» e' la CASELLA postale, non il codice. Il nome aveva
+#   prodotto due letture nello stesso database: il COMMENT della colonna e la
+#   doc di vw_indirizzi_resolved_base dicevano «Casella postale (PO Box)», i
+#   builder pgTAP ci scrivevano '00100', cioe' un CAP. Il frontend non la
+#   scrive: nessuno scrittore ne fissava il senso.
+#
+# -- CHI SEGUE, E DOVE ---------------------------------------------------------
+#   * le quattro viste vw_indirizzi_resolved_* (qui: ALTER VIEW ... RENAME
+#     COLUMN, nessuna vista si ricrea, le reloption restano);
+#   * anagrafiche.trgfn_indirizzi_base_normalize (20261018-84);
+#   * anagrafiche.fn_crea_indirizzi_ruolo e il BB dell'elemento (-94, -95);
+#   * script.fn_get_indirizzo e fn_get_indirizzi_by_ruolo: la colonna del
+#     RETURNS TABLE, quindi DROP + CREATE (-98);
+#   * i builder pgTAP (20261019-02, -03) e i pgTAP che nominano la colonna;
+#   * il backend (soggetti_repository.py, due smoke): richiesta al BE.
+#   ⛔ Fra questo changeSet e quelli che riscrivono i corpi le funzioni che
+#   nominano postal_box sono rotte alla chiamata (il corpo plpgsql e sql non
+#   crea dipendenze). Stanno nello stesso migrate: nessuno scrive indirizzi
+#   in mezzo.
+#   Nessun trigger nomina la colonna in UPDATE OF, nessun indice la usa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261018-81-rename-indirizzi-postal-box-in-postal-code-mctit.yaml
+
+  - changeSet:
+      id: 20261018-81-rename-indirizzi-postal-box-in-postal-code
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        postal_box diventa postal_code su anagrafiche.indirizzi, indirizzi_soggetti e sulle
+        quattro viste vw_indirizzi_resolved_*: e' il codice postale libero di un indirizzo
+        estero (D-3 di Tid, 2026-10-18), non la casella postale. Richiesta BE in
+        brief-db-processi-accensione-per-ambiente §6.11.
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: indirizzi
+            columnName: postal_box
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.indirizzi          RENAME COLUMN postal_box TO postal_code;
+              ALTER TABLE anagrafiche.indirizzi_soggetti RENAME COLUMN postal_box TO postal_code;
+
+              -- La base prima: le tre viste a valle la leggono per numero di
+              -- colonna, e rinominano la loro.
+              ALTER VIEW anagrafiche.vw_indirizzi_resolved_base     RENAME COLUMN postal_box TO postal_code;
+              ALTER VIEW anagrafiche.vw_indirizzi_resolved_all      RENAME COLUMN postal_box TO postal_code;
+              ALTER VIEW anagrafiche.vw_indirizzi_resolved_ruolo    RENAME COLUMN postal_box TO postal_code;
+              ALTER VIEW anagrafiche.vw_indirizzi_resolved_soggetto RENAME COLUMN postal_box TO postal_code;
+
+              COMMENT ON COLUMN anagrafiche.indirizzi.postal_code IS
+                'Codice postale di un indirizzo libero nella forma estera (stato senza catalogo completo: config.stati.catalogo_comuni_completo spento). Testo libero, facoltativo: ci sono paesi senza codice postale. Nella forma del catalogo resta vuoto: il CAP e'' codice_postale_id. Fino al 2026-10-18 si chiamava postal_box (D-3 di Tid): in inglese e'' la casella postale, e il nome aveva prodotto due letture.';
+              COMMENT ON COLUMN anagrafiche.indirizzi_soggetti.postal_code IS
+                'Codice postale di un indirizzo libero nella forma estera (stato senza catalogo completo: config.stati.catalogo_comuni_completo spento). Testo libero, facoltativo: ci sono paesi senza codice postale. Nella forma del catalogo resta vuoto: il CAP e'' codice_postale_id. Fino al 2026-10-18 si chiamava postal_box (D-3 di Tid): in inglese e'' la casella postale, e il nome aveva prodotto due letture.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER VIEW anagrafiche.vw_indirizzi_resolved_soggetto RENAME COLUMN postal_code TO postal_box;
+              ALTER VIEW anagrafiche.vw_indirizzi_resolved_ruolo    RENAME COLUMN postal_code TO postal_box;
+              ALTER VIEW anagrafiche.vw_indirizzi_resolved_all      RENAME COLUMN postal_code TO postal_box;
+              ALTER VIEW anagrafiche.vw_indirizzi_resolved_base     RENAME COLUMN postal_code TO postal_box;
+              ALTER TABLE anagrafiche.indirizzi_soggetti RENAME COLUMN postal_code TO postal_box;
+              ALTER TABLE anagrafiche.indirizzi          RENAME COLUMN postal_code TO postal_box;

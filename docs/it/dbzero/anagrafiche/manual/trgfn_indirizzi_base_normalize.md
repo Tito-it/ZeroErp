@@ -9,23 +9,25 @@
 >
 **Approfondimento Funzioni:**   
 > 
-[script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)   
+[script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id)   
+> [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera)   
 >
 ### 🎯 Scopo Principale
-(latest review 28-12-25)
+(latest review 18-10-26)
 Normalizzare i campi base di `anagrafiche.indirizzi` in base alla presenza del collegamento a `indirizzi_dettaglio`.
 
-Quando `indirizzo_dettaglio_id` e' valorizzato, la funzione ripulisce tutti i campi di fallback/indirizzo libero. Quando non e' valorizzato, applica un default minimo su `stato_id` se assente.
+Quando `indirizzo_dettaglio_id` e' valorizzato, la funzione ripulisce tutti i campi di fallback/indirizzo libero. Quando non e' valorizzato (indirizzo libero), porta a NULL i testi vuoti e scrive lo stato proposto se lo stato manca. Il giudizio sulla forma viene dopo, dal guard `trgfn_indirizzi_guard_forma_libera` (fascia z10).
 
 ---
 
 ### Come Funziona
 
 1. **Caso normalizzato** (`NEW.indirizzo_dettaglio_id IS NOT NULL`):
-   * Azzeramento dei campi di fallback (`stato_id`, `indirizzo_libero`, `comune_id`, `codice_postale_id`, `administrative_area`, `locality`, `sublocality`, `postal_box`).
+   * Azzeramento dei campi di fallback (`stato_id`, `indirizzo_libero`, `comune_id`, `codice_postale_id`, `administrative_area`, `locality`, `sublocality`, `postal_code`).
    * Azzeramento di `geoloc` per forzare la derivazione dal dettaglio civico.
 2. **Caso libero/internazionale** (`indirizzo_dettaglio_id IS NULL`):
-   * Se `stato_id` e' NULL, viene impostato con `script.fn_get_default_by_param('config','stati','codice_iso3','state_code_iso3', TG_NAME)`.
+   * I testi vuoti (`indirizzo_libero`, `locality`, `postal_code`, `administrative_area`, `sublocality`) diventano NULL: una località di soli spazi non è una località.
+   * Se `stato_id` e' NULL, è lo stato proposto: `script.fn_stato_proposto_id(TG_NAME)` (parametro `STATO_PROPOSTO_ISO2`), che valida e non ripiega.
 
 ---
 

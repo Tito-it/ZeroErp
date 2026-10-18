@@ -1,0 +1,277 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_crea_soggetto_pg — lo stato
+#   * detto dal chiamante: lo cerca script.fn_stato_id_da_iso2 (20261018-83),
+#     che rifiuta un codice ISO2 con piu' stati; prima un SELECT INTO ne
+#     prendeva uno a caso (Armenia e Azerbaigian hanno due righe);
+#   * non detto: script.fn_stato_proposto_id, che valida e non ripiega.
+#     ⛔ Via il ripiego silenzioso a 'IT' e il parametro
+#     soggetto_default_stato_iso2 (ritirato: parameters.csv e 20261019-04).
+#   Il resto del corpo e' quello vivo (= doc auto-gen). D-1 di Tid
+#   (2026-10-18), richiesta BE in brief-db-processi-accensione-per-ambiente
+#   §6.11.
+#   Firma e RETURNS dall'ultimo YAML (ancorati, SECURITY INVOKER); il corpo
+#   da quello vivo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261018-91-update-fn-crea-soggetto-pg-stato-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261018-91-update-fn-crea-soggetto-pg-stato-dal-bb
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        anagrafiche.fn_crea_soggetto_pg: lo stato detto dal chiamante dal BB script.fn_stato_id_da_iso2, quello non detto da script.fn_stato_proposto_id; via il ripiego silenzioso a 'IT' e il parametro soggetto_default_stato_iso2. D-1 di Tid (2026-10-18).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pg(
+                  p_ragione_sociale              anagrafiche.soggetti.ragione_sociale%TYPE,
+                  p_tipo_soggetto_dettaglio_id   config.tipi_soggetto_dettaglio.id%TYPE,
+                  p_email                        anagrafiche.contatti.email%TYPE,
+                  p_codice_fiscale               anagrafiche.soggetti.codice_fiscale%TYPE           DEFAULT NULL,
+                  p_partita_iva                  anagrafiche.soggetti.partita_iva%TYPE              DEFAULT NULL,
+                  p_stato_iso2                   config.stati.codice_iso2%TYPE                      DEFAULT NULL,
+                  p_forma_giuridica_id           anagrafiche.dati_societari.forma_giuridica_id%TYPE DEFAULT NULL,
+                  p_id_prov_iscri_rea            anagrafiche.dati_societari.id_prov_iscri_rea%TYPE  DEFAULT NULL,
+                  p_iscrizione_rea               anagrafiche.dati_societari.iscrizione_rea%TYPE     DEFAULT NULL,
+                  p_capitale_sociale             anagrafiche.dati_societari.capitale_sociale%TYPE   DEFAULT NULL,
+                  p_socio_unico                  anagrafiche.dati_societari.socio_unico%TYPE        DEFAULT NULL,
+                  p_liquidazione                 anagrafiche.dati_societari.liquidazione%TYPE       DEFAULT NULL,
+                  p_destinatario_fe              anagrafiche.dati_societari.destinatario_fe%TYPE    DEFAULT NULL,
+                  p_pec_fatturazione             anagrafiche.dati_societari.pec_fatturazione%TYPE   DEFAULT NULL,
+                  p_codice_sdi                   anagrafiche.dati_societari.codice_sdi%TYPE         DEFAULT NULL,
+                  p_tipo_contatto_id             config.tipi_contatti.id%TYPE                       DEFAULT NULL
+              )
+              RETURNS anagrafiche.soggetti.id%TYPE
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- ⭐ Rev 20261009-28 (brief-db-sesso-senza-default): una natura base PF
+              --   (privato, ditta individuale) qui si rifiuta. La persona fisica ha la sua
+              --   porta, fn_crea_soggetto_pf, che ne riceve nome, cognome e sesso: da qui
+              --   una ditta individuale nasceva con la sola ragione sociale.
+              DECLARE
+                  v_tipo_soggetto_id            config.tipi_soggetto_dettaglio.tipo_soggetto_id%TYPE;
+                  v_descrizione_dettaglio       config.tipi_soggetto_dettaglio.descrizione%TYPE;
+                  v_stato_id                    config.stati.id%TYPE;
+                  v_stato_iso2_resolved         config.stati.codice_iso2%TYPE;
+                  v_dati_societari_policy       config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
+                  v_tipo_contatto_id            config.tipi_contatti.id%TYPE;
+                  v_soggetto_id                 anagrafiche.soggetti.id%TYPE;
+              BEGIN
+                  -- Validazione parametri obbligatori
+                  IF p_ragione_sociale IS NULL OR TRIM(p_ragione_sociale) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_soggetto_pg',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_ragione_sociale'),
+                          NULL::uuid, 'Ragione sociale obbligatoria.'
+                      );
+                  END IF;
+
+                  IF p_tipo_soggetto_dettaglio_id IS NULL OR p_tipo_soggetto_dettaglio_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_soggetto_pg',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_tipo_soggetto_dettaglio_id'),
+                          NULL::uuid, 'Tipo soggetto dettaglio obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  -- Verifica che il tipo soggetto esista e recupera policy dati societari
+                  SELECT tsd.dati_societari_policy, tsd.tipo_soggetto_id, tsd.descrizione
+                    INTO v_dati_societari_policy, v_tipo_soggetto_id, v_descrizione_dettaglio
+                    FROM config.tipi_soggetto_dettaglio tsd
+                   WHERE tsd.id = p_tipo_soggetto_dettaglio_id;
+
+                  IF v_dati_societari_policy IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_soggetto_pg',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_tipo_soggetto_dettaglio_id', p_tipo_soggetto_dettaglio_id),
+                          NULL::uuid,
+                          concat('Tipo soggetto dettaglio id=', p_tipo_soggetto_dettaglio_id, ' non trovato.')
+                      );
+                  END IF;
+
+                  -- ⛔ Rev 20261009-28: una persona fisica qui e' un chiamante che ha
+                  --   sbagliato porta (TECNICO, non un dato del form).
+                  IF v_tipo_soggetto_id = 'PF' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_soggetto_pg',
+                          'E_SOGGETTO_CREAZIONE_NATURA_ERRATA',
+                          jsonb_build_object('tipo_soggetto_dettaglio_id', p_tipo_soggetto_dettaglio_id,
+                                             'tipo_soggetto_id',           v_tipo_soggetto_id),
+                          NULL::uuid,
+                          COALESCE(v_descrizione_dettaglio, p_tipo_soggetto_dettaglio_id::text),
+                          v_tipo_soggetto_id
+                      );
+                  END IF;
+
+                  IF p_email IS NULL OR TRIM(p_email) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_soggetto_pg',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_email'),
+                          NULL::uuid, 'Email obbligatoria (usata per contatto default).'
+                      );
+                  END IF;
+
+                  -- Tipo contatto: fallback al primo dalla tabella se non fornito
+                  v_tipo_contatto_id := COALESCE(
+                      p_tipo_contatto_id,
+                      (SELECT id FROM config.tipi_contatti ORDER BY id LIMIT 1)
+                  );
+
+                  IF v_tipo_contatto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_soggetto_pg',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_tipo_contatto_id'),
+                          NULL::uuid,
+                          'Tipo contatto obbligatorio e nessun tipo contatto trovato in config.tipi_contatti.'
+                      );
+                  END IF;
+
+                  -- Stato (nazionalita). Rev 2026-10-18 (D-1 di Tid): quello detto dal
+                  -- chiamante, cercato dal BB che rifiuta un codice con piu' stati
+                  -- (E_STATO_ISO2_AMBIGUO; prima un SELECT INTO ne prendeva uno a caso);
+                  -- altrimenti quello proposto, che valida e non ripiega. ⛔ Il ripiego
+                  -- silenzioso a 'IT' e il parametro soggetto_default_stato_iso2 sono
+                  -- ritirati.
+                  IF NULLIF(btrim(p_stato_iso2), '') IS NOT NULL THEN
+                      v_stato_iso2_resolved := upper(btrim(p_stato_iso2));
+                      v_stato_id := script.fn_stato_id_da_iso2(v_stato_iso2_resolved, 'anagrafiche.fn_crea_soggetto_pg');
+                  ELSE
+                      v_stato_id := script.fn_stato_proposto_id('anagrafiche.fn_crea_soggetto_pg');
+                  END IF;
+
+                  IF v_stato_id IS NULL THEN
+                      -- Fix: E_GENERICO → E_CODICE
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_soggetto_pg',
+                          'E_CODICE',
+                          jsonb_build_object('codice_iso2', v_stato_iso2_resolved),
+                          NULL::uuid,
+                          v_stato_iso2_resolved, 'config.stati'
+                      );
+                  END IF;
+
+                  -- Guard unicita CF/PIVA per stato (se forniti)
+                  IF p_codice_fiscale IS NOT NULL AND TRIM(p_codice_fiscale) <> '' THEN
+                      IF EXISTS (
+                          SELECT 1 FROM anagrafiche.soggetti
+                           WHERE stato_id = v_stato_id
+                             AND id_fiscale_univoco_cf_piva = UPPER(TRIM(p_codice_fiscale))
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_soggetto_pg',
+                              'E_ADMIN_CF_DUPLICATO',
+                              jsonb_build_object('codice_fiscale', p_codice_fiscale),
+                              NULL::uuid, 'Codice fiscale gia'' presente in anagrafica.'
+                          );
+                      END IF;
+                  END IF;
+
+                  IF p_partita_iva IS NOT NULL AND TRIM(p_partita_iva) <> '' THEN
+                      IF EXISTS (
+                          SELECT 1 FROM anagrafiche.soggetti
+                           WHERE stato_id = v_stato_id
+                             AND id_fiscale_univoco_cf_piva = UPPER(TRIM(p_partita_iva))
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_soggetto_pg',
+                              'E_ADMIN_PIVA_DUPLICATA',
+                              jsonb_build_object('partita_iva', p_partita_iva),
+                              NULL::uuid, 'Partita IVA gia'' presente in anagrafica.'
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Step 1: Creazione soggetto (Persona Giuridica)
+                  INSERT INTO anagrafiche.soggetti (
+                      ragione_sociale, codice_fiscale, partita_iva,
+                      stato_id, tipo_soggetto_dettaglio_id, attivo
+                  )
+                  VALUES (
+                      TRIM(p_ragione_sociale),
+                      CASE WHEN p_codice_fiscale IS NOT NULL AND TRIM(p_codice_fiscale) <> ''
+                           THEN UPPER(TRIM(p_codice_fiscale))
+                           ELSE NULL
+                      END,
+                      CASE WHEN p_partita_iva IS NOT NULL AND TRIM(p_partita_iva) <> ''
+                           THEN UPPER(TRIM(p_partita_iva))
+                           ELSE NULL
+                      END,
+                      v_stato_id, p_tipo_soggetto_dettaglio_id, true
+                  )
+                  RETURNING id INTO v_soggetto_id;
+
+                  -- Step 2: Creazione contatto default con tipo_contatto_id
+                  --         (BB anagrafiche.fn_crea_contatto, rev 2026-10-17)
+                  PERFORM anagrafiche.fn_crea_contatto(
+                      v_soggetto_id, NULL,
+                      jsonb_build_object('tipo_contatto_id', v_tipo_contatto_id,
+                                         'nominativo',       TRIM(p_ragione_sociale),
+                                         'email',            TRIM(p_email),
+                                         'is_default',       true));
+
+                  -- Step 3: Creazione dati societari (se policy lo richiede
+                  --         o se almeno un campo DS e fornito con policy OPTIONAL)
+                  IF v_dati_societari_policy = 'REQUIRED'
+                     OR (v_dati_societari_policy = 'OPTIONAL' AND (
+                          p_id_prov_iscri_rea IS NOT NULL
+                          OR p_iscrizione_rea IS NOT NULL
+                          OR p_capitale_sociale IS NOT NULL
+                          OR p_forma_giuridica_id IS NOT NULL
+                          OR p_destinatario_fe IS NOT NULL
+                          OR p_pec_fatturazione IS NOT NULL
+                          OR p_codice_sdi IS NOT NULL
+                        ))
+                  THEN
+                      -- ⭐ Rev 20261011-01 (B-4, B-6, B-7 di brief-db-dati-fiscali-e-societari-del-soggetto):
+                      --   i dati societari passano dal VERBO, che e' la sola porta di scrittura
+                      --   (dal 20261011-04 l'app non scrive la tabella). Spariti i quattro
+                      --   controlli che stavano qui: REA e capitale li dice la forma (guard
+                      --   della forma, B-6), il canale FE e' facoltativo (B-7), i default di
+                      --   socio unico e liquidazione li risolve il verbo. Le regole stanno nei
+                      --   trigger della tabella, e scattano anche da qui.
+                      PERFORM anagrafiche.fn_scrivi_dati_societari(
+                          p_soggetto_id        := v_soggetto_id,
+                          p_forma_giuridica_id := p_forma_giuridica_id,
+                          p_id_prov_iscri_rea  := p_id_prov_iscri_rea,
+                          p_iscrizione_rea     := p_iscrizione_rea,
+                          p_capitale_sociale   := p_capitale_sociale,
+                          p_socio_unico        := p_socio_unico,
+                          p_liquidazione       := p_liquidazione,
+                          p_destinatario_fe    := p_destinatario_fe,
+                          p_pec_fatturazione   := p_pec_fatturazione,
+                          p_codice_sdi         := p_codice_sdi,
+                          p_data_costituzione  := NULL
+                      );
+                  END IF;
+
+                  RETURN v_soggetto_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer) IS
+                  'Crea soggetto PG o ENC + contatto default con tipo_contatto_id + dati societari (se policy). Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf (rev 20261009-28, brief-db-sesso-senza-default). Il sesso non si scrive: per PG ed ENC e'' NULL (sesso_policy NONE). Fallback tipo contatto: primo da config.tipi_contatti. Stato: p_stato_iso2 se detto (script.fn_stato_id_da_iso2, E_STATO_ISO2_AMBIGUO se indica piu'' stati, E_CODICE se nessuno), altrimenti lo stato proposto (script.fn_stato_proposto_id, rev 2026-10-18: via il ripiego a ''IT'' e il parametro soggetto_default_stato_iso2). Default socio_unico e liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli. Rev 20261011-01: i dati societari si scrivono con anagrafiche.fn_scrivi_dati_societari (B-4); REA, capitale e canale FE non si pretendono piu'' qui (li governano la forma giuridica e il canale, B-6/B-7). Brief: brief-db-dati-fiscali-e-societari-del-soggetto. Rev 2026-10-17: il contatto lo scrive il BB anagrafiche.fn_crea_contatto (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 3); comportamento invariato.';
+
+      rollback:
+        - sql:
+            sql: >
+              SELECT 1; -- il corpo precedente e' nella storia dei changeSet di questa funzione

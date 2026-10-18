@@ -215,7 +215,7 @@ WITH nuovo_indirizzo AS (
         administrative_area,
         locality,
         sublocality,
-        postal_box,
+        postal_code,
         geoloc,
         comune_id,
         codice_postale_id,
@@ -230,7 +230,7 @@ WITH nuovo_indirizzo AS (
         NULL,                    -- administrative_area (non usata per IT)
         NULL,                    -- locality
         NULL,                    -- sublocality
-        NULL,                    -- postal_box
+        NULL,                    -- postal_code
         NULL,                    -- geoloc (verrà eventualmente sincronizzata dal trigger)
         g.soggetto_comune_id,    -- comune_id (se valorizzato sul soggetto)
         NULL,                    -- codice_postale_id (non imposto nel test)
@@ -303,11 +303,11 @@ SELECT throws_ok(
     $$
     INSERT INTO anagrafiche.indirizzi (
         soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-        indirizzo_libero, stato_id, locality, postal_box, administrative_area
+        indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code
     )
     SELECT g.soggetto_ruolo_id, ti.id, NULL,
            'Via pgTAP residenza illegittima', g.soggetto_stato_id,
-           'Roma', '00100', 'RM'
+           (dbops.fn_pgtap_indirizzo_libero_forma(g.soggetto_stato_id)).*  -- rev 2026-10-18: la forma dello stato
       FROM tmp_gestore g,
            config.tipi_indirizzi ti
      WHERE ti.codice_interno = 'RES';

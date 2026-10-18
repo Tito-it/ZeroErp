@@ -75,10 +75,10 @@ Misurate collaudando, e non ovvie:
 - **`CON` non è inseribile sul ruolo cliente**: è ammesso al solo `tipo_ruolo = 8`,
   quindi il guard `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` respinge. Per
   esercitare quel tipo serve il layer SOGGETTO;
-- un indirizzo **non normalizzato** deve soddisfare
-  `chk_indirizzi_free_requirements`: non basta il testo libero, servono
-  `indirizzo_libero` + `stato_id` + la coppia comune/CAP **oppure** la terna
-  `locality` / `postal_box` / `administrative_area`.
+- un indirizzo **non normalizzato** deve avere la forma che il suo stato
+  vuole (guard `trgfn_indirizzi_guard_forma_libera`): per l'Italia la coppia
+  comune/CAP del catalogo, per uno stato senza catalogo la `locality`. Nelle
+  fixture la dà `dbops.fn_pgtap_indirizzo_libero_forma`.
 
 ---
 {% include-markdown "signature-core.md" %}

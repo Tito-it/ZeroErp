@@ -8,7 +8,7 @@ Approfondimento Tabelle:
 >
 Approfondimento Funzioni:
 >
-[script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)
+[script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id)
 
 ---
 ### 🎯 Scopo Principale

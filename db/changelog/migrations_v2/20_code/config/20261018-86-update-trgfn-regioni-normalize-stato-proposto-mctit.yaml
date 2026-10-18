@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.trgfn_regioni_normalize — lo stato che manca lo propone script.fn_stato_proposto_id
+#   (20261018-83) al posto di fn_get_default_by_param su state_code_iso3
+#   (ritirati, -93 e il CSV dei parametri). Una riga cambia, il resto del
+#   corpo e' quello vivo (= doc auto-gen). D-1 di Tid (2026-10-18), richiesta
+#   BE in brief-db-processi-accensione-per-ambiente §6.11.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261018-86-update-trgfn-regioni-normalize-stato-proposto-mctit.yaml
+
+  - changeSet:
+      id: 20261018-86-update-trgfn-regioni-normalize-stato-proposto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        config.trgfn_regioni_normalize: lo stato_id mancante dal BB script.fn_stato_proposto_id
+        invece di fn_get_default_by_param su state_code_iso3 (ritirati). D-1 di Tid
+        (2026-10-18).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_regioni_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+               BEGIN
+                 ------------------------------------------------------------------
+                 -- 1) Imposta stato_id di default da config.stati se è NULL
+                 IF NEW.stato_id IS NULL THEN
+                   NEW.stato_id := script.fn_stato_proposto_id(TG_NAME);           -- cast al tipo integer di stato_id
+                 END IF;
+                 ------------------------------------------------------------------
+                 -- 2) Altri cleanup (esempi)
+                 --IF NEW.nome IS NOT NULL THEN
+                 --  NEW.nome := UPPER(TRIM(NEW.nome));
+                 --END IF;
+                 --IF NEW.cognome IS NOT NULL THEN
+                   --NEW.cognome := UPPER(TRIM(NEW.cognome));
+                -- END IF;
+                 ------------------------------------------------------------------
+                 RETURN NEW;
+               END;
+               $function$;
+
+              COMMENT ON FUNCTION config.trgfn_regioni_normalize() IS
+                  'Function che pulisce i campi di config.regioni e imposta i valori di default per le colonne che non hanno un valore specificato: stato_id dal BB script.fn_stato_proposto_id (rev 2026-10-18: prima state_code_iso3 con fn_get_default_by_param, ritirati; D-1 di Tid).';
+      rollback:
+        - sql:
+            sql: >
+              SELECT 1; -- il corpo precedente leggeva state_code_iso3, ritirato

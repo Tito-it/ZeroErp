@@ -1,0 +1,188 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DUE BB: UN INDIRIZZO IN JSONB, LETTO E RISOLTO
+#   * anagrafiche.fn_indirizzo_elemento(p_el, p_chi, p_contesto): un oggetto,
+#     solo chiavi ammesse, il tipo risolto (id o codice interno). Ritorna
+#     l'elemento con tipo_indirizzo_id e senza tipo_indirizzo_codice;
+#   * anagrafiche.fn_indirizzo_elemento_dettaglio(p_el): l'indirizzo
+#     normalizzato dell'elemento. NULL per un indirizzo libero; l'id dato,
+#     se c'e'; altrimenti la via, risolta da anagrafiche.fn_create_indirizzo
+#     (idempotente).
+#   D-4 di Tid (2026-10-18), richiesta BE in
+#   brief-db-processi-accensione-per-ambiente §6.11 (la R-BE-10 del BE).
+#
+# -- CHI ERA LA COPIA, E LA DIVERGENZA CHE CHIUDE -----------------------------------
+#   Le due madri degli indirizzi dicevano la stessa cosa in due modi:
+#   * anagrafiche.fn_crea_indirizzi_ruolo (jsonb, 20261017-11) ammetteva le
+#     tre forme e la forma estera;
+#   * anagrafiche.fn_crea_indirizzo_soggetto (firma posizionale, 20260313-14)
+#     non aveva locality, postal_box, administrative_area e sublocality, e
+#     pretendeva comune e CAP per ogni indirizzo libero: la forma estera, che
+#     la tabella ammette, non passava.
+#   Da qui una grammatica sola: le chiavi ammesse e la risoluzione della via
+#   stanno in questi due BB, e le due madri li chiamano (20261018-95, -96).
+#   La completezza non sta qui: la dice il guard della tabella
+#   (anagrafiche.trgfn_indirizzi_guard_forma_libera, 20261018-90).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261018-94-create-fn-indirizzo-elemento-mctit.yaml
+
+  - changeSet:
+      id: 20261018-94-create-fn-indirizzo-elemento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea i BB anagrafiche.fn_indirizzo_elemento (oggetto, chiavi ammesse, tipo risolto) e
+        anagrafiche.fn_indirizzo_elemento_dettaglio (la via risolta con fn_create_indirizzo):
+        la grammatica comune delle due madri degli indirizzi. D-4 di Tid (2026-10-18).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzo_elemento(
+                  p_el       jsonb,
+                  p_chi      text,
+                  p_contesto jsonb DEFAULT '{}'::jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               STABLE
+              AS $function$
+              DECLARE
+                  v_ctx      jsonb := COALESCE(p_contesto, '{}'::jsonb);
+                  v_estranea text;
+                  v_tipo_id  config.tipi_indirizzi.id%TYPE;
+                  -- Le chiavi di un indirizzo: le colonne della riga, piu'
+                  -- quelle di una via da risolvere (fn_create_indirizzo).
+                  c_ammesse CONSTANT text[] := ARRAY[
+                      'tipo_indirizzo_id', 'tipo_indirizzo_codice',
+                      'indirizzo_dettaglio_id', 'indirizzo_libero',
+                      'stato_id', 'comune_id', 'codice_postale_id',
+                      'administrative_area', 'locality', 'sublocality', 'postal_code',
+                      'stradario_id', 'toponomastica_id', 'descrizione_via',
+                      'civico', 'estensione_civico', 'palazzina', 'scala', 'piano', 'interno'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Leggere un indirizzo in jsonb: un oggetto, solo chiavi
+                  --   ammesse, il tipo risolto (tipo_indirizzo_id, oppure
+                  --   tipo_indirizzo_codice = codice interno). Ritorna
+                  --   l'elemento con tipo_indirizzo_id e senza il codice.
+                  --   p_chi: la madre che chiama (per il log); p_contesto:
+                  --   le chiavi che la madre aggiunge al contesto dei rifiuti.
+                  --
+                  -- Regole:
+                  --   - non giudica la completezza ne' la forma: e' il guard
+                  --     della tabella (trgfn_indirizzi_guard_forma_libera).
+                  -- =========================================================
+                  IF jsonb_typeof(p_el) IS DISTINCT FROM 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', p_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          v_ctx || jsonb_build_object('tipo_elemento', jsonb_typeof(p_el)),
+                          NULL::uuid,
+                          p_chi,
+                          'un indirizzo non e'' un oggetto');
+                  END IF;
+
+                  v_estranea := script.fn_prima_chiave_estranea(p_el, c_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', p_chi, 'E_CAMPO_NON_AMMESSO',
+                          v_ctx || jsonb_build_object('campo', v_estranea),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  v_tipo_id := (p_el ->> 'tipo_indirizzo_id')::integer;
+                  IF v_tipo_id IS NULL AND NULLIF(btrim(p_el ->> 'tipo_indirizzo_codice'), '') IS NOT NULL THEN
+                      SELECT ti.id
+                        INTO v_tipo_id
+                        FROM config.tipi_indirizzi ti
+                       WHERE ti.codice_interno = upper(btrim(p_el ->> 'tipo_indirizzo_codice'));
+                  END IF;
+
+                  IF v_tipo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', p_chi, 'E_TIPO_INDIRIZZO_NON_TROVATO',
+                          v_ctx || jsonb_build_object(
+                              'campo', 'tipo_indirizzo_codice',
+                              'tipo_indirizzo_codice', p_el ->> 'tipo_indirizzo_codice'),
+                          NULL::uuid,
+                          COALESCE(NULLIF(btrim(p_el ->> 'tipo_indirizzo_codice'), ''), '-'));
+                  END IF;
+
+                  RETURN (p_el - 'tipo_indirizzo_codice')
+                         || jsonb_build_object('tipo_indirizzo_id', v_tipo_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzo_elemento(jsonb, text, jsonb) IS
+                  'BB (2026-10-18): legge un indirizzo in jsonb per le madri degli indirizzi. Un oggetto (E_SCRIPT_CHIAMATA_NON_VALIDA), solo chiavi ammesse (E_CAMPO_NON_AMMESSO: le colonne della riga, tipo_indirizzo_codice e i campi di una via da risolvere), il tipo risolto da tipo_indirizzo_id o tipo_indirizzo_codice (codice interno; E_TIPO_INDIRIZZO_NON_TROVATO). Ritorna l''elemento con tipo_indirizzo_id e senza il codice. p_chi: la madre che chiama; p_contesto: chiavi aggiunte al contesto dei rifiuti. Non giudica completezza ne'' forma: e'' anagrafiche.trgfn_indirizzi_guard_forma_libera. Chiamanti: anagrafiche.fn_crea_indirizzi_ruolo e fn_crea_indirizzo_soggetto (una grammatica sola, D-4 di Tid, richiesta BE in brief-db-processi-accensione-per-ambiente §6.11).';
+
+              GRANT EXECUTE ON FUNCTION anagrafiche.fn_indirizzo_elemento(jsonb, text, jsonb) TO zeroerp_app;
+
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzo_elemento_dettaglio(
+                  p_el jsonb)
+               RETURNS anagrafiche.indirizzi_dettaglio.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   L'indirizzo normalizzato di un elemento gia' letto da
+                  --   fn_indirizzo_elemento:
+                  --     * indirizzo libero: NULL (la riga e' libera);
+                  --     * indirizzo_dettaglio_id: quello;
+                  --     * altrimenti la via (stradario_id, oppure
+                  --       toponomastica + descrizione + comune + CAP) e il
+                  --       civico, risolti da anagrafiche.fn_create_indirizzo,
+                  --       idempotente.
+                  --
+                  -- Regole:
+                  --   - non valida i campi di una via nuova: pre-check del
+                  --     backend, come per fn_create_indirizzo.
+                  -- =========================================================
+                  IF NULLIF(btrim(p_el ->> 'indirizzo_libero'), '') IS NOT NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF p_el ->> 'indirizzo_dettaglio_id' IS NOT NULL THEN
+                      RETURN (p_el ->> 'indirizzo_dettaglio_id')::bigint;
+                  END IF;
+
+                  RETURN anagrafiche.fn_create_indirizzo(
+                      p_stradario_id      := (p_el ->> 'stradario_id')::integer,
+                      p_toponomastica_id  := (p_el ->> 'toponomastica_id')::integer,
+                      p_descrizione_via   := p_el ->> 'descrizione_via',
+                      p_comune_id         := (p_el ->> 'comune_id')::integer,
+                      p_codice_postale_id := (p_el ->> 'codice_postale_id')::integer,
+                      p_civico            := (p_el ->> 'civico')::integer,
+                      p_estensione_civico := NULLIF(btrim(p_el ->> 'estensione_civico'), ''),
+                      p_palazzina         := NULLIF(btrim(p_el ->> 'palazzina'), ''),
+                      p_scala             := NULLIF(btrim(p_el ->> 'scala'), ''),
+                      p_piano             := NULLIF(btrim(p_el ->> 'piano'), ''),
+                      p_interno           := NULLIF(btrim(p_el ->> 'interno'), ''));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzo_elemento_dettaglio(jsonb) IS
+                  'BB (2026-10-18): l''indirizzo normalizzato di un elemento letto da anagrafiche.fn_indirizzo_elemento. Indirizzo libero (indirizzo_libero non vuoto): NULL. indirizzo_dettaglio_id: quello. Altrimenti la via (stradario_id, oppure toponomastica_id + descrizione_via + comune_id + codice_postale_id) e il civico, risolti da anagrafiche.fn_create_indirizzo (idempotente). Non valida i campi di una via nuova (pre-check del backend, come fn_create_indirizzo). Chiamanti: anagrafiche.fn_crea_indirizzi_ruolo e fn_crea_indirizzo_soggetto. D-4 di Tid, richiesta BE in brief-db-processi-accensione-per-ambiente §6.11.';
+
+              GRANT EXECUTE ON FUNCTION anagrafiche.fn_indirizzo_elemento_dettaglio(jsonb) TO zeroerp_app;
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS anagrafiche.fn_indirizzo_elemento_dettaglio(jsonb);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_indirizzo_elemento(jsonb, text, jsonb);

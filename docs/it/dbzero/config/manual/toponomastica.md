@@ -49,7 +49,7 @@ In alternativa, per manutenzioni controllate, utilizzare `maintenance.proc_bump_
 
 ### Default stato_id
 
-Se `stato_id` non e' valorizzato, viene impostato da parametro (`state_code_iso3`) tramite `script.fn_get_default_by_param`.  
+Se `stato_id` non e' valorizzato, e' lo stato proposto (parametro `STATO_PROPOSTO_ISO2`, `script.fn_stato_proposto_id`).  
 Se il parametro non e' configurato e `stato_id` resta NULL, l'operazione va in errore.
 
 ---

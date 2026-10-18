@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: state_code_iso3 (id 4) e soggetto_default_stato_iso2 (id 6)
+#   Due parametri per la stessa cosa, lo stato proposto quando chi scrive non
+#   lo dice. Li sostituisce STATO_PROPOSTO_ISO2 (id 61, parameters.csv), letto
+#   da script.fn_stato_proposto_id (20261018-83). Le righe sono tolte anche da
+#   parameters.csv: il mirror (loadUpdateData) non cancella, quindi il DELETE
+#   e' l'unica eccezione ammessa (linee-guida-sql §11.2). Gli override, se ce
+#   ne sono, vanno con loro.
+#   D-1 di Tid (2026-10-18), richiesta BE in
+#   brief-db-processi-accensione-per-ambiente §6.11.
+#   Su un database da zero le righe non nascono (il CSV non le ha piu'): il
+#   DELETE non trova niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261019-04-delete-parameters-stato-di-default-mctit.yaml
+
+  - changeSet:
+      id: 20261019-04-delete-parameters-stato-di-default
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritirati i parametri state_code_iso3 e soggetto_default_stato_iso2 (e i loro override):
+        lo stato proposto e' STATO_PROPOSTO_ISO2, letto da script.fn_stato_proposto_id. Righe
+        tolte anche da parameters.csv. D-1 di Tid (2026-10-18).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+            - tableExists:
+                schemaName: config
+                tableName: parameter_overrides
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.parameter_overrides o
+               USING config.parameters p
+               WHERE p.id = o.parameter_id
+                 AND p.code IN ('state_code_iso3', 'soggetto_default_stato_iso2');
+
+              DELETE FROM config.parameters
+               WHERE code IN ('state_code_iso3', 'soggetto_default_stato_iso2');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le due righe come stavano nel CSV (gli override non tornano).
+              -- Vanno rimesse anche in parameters.csv, e i lettori di prima
+              -- (fn_get_default_by_param) non ci sono piu'.
+              INSERT INTO config.parameters (id, code, default_value, description, storicizza)
+              VALUES
+                (4, 'state_code_iso3', 'ITA',
+                 'Imposta il default della tabella stati tramite code_iso3.  Dove applicato sarà valorizzato lo stato di default.',
+                 false),
+                (6, 'soggetto_default_stato_iso2', 'IT',
+                 'Codice ISO2 dello stato di default per la creazione soggetti (PF e PG). Usato da fn_crea_soggetto_pf e fn_crea_soggetto_pg.',
+                 false)
+              ON CONFLICT (id) DO NOTHING;

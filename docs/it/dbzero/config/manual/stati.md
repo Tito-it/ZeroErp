@@ -31,6 +31,17 @@ La tabella **`config.stati`** censisce gli stati (o paesi), fornendo codici uffi
 * **Supporto per continent i**
   Il campo `continente` classifica ogni stato nel corrispondente continente (Europa, Asia, Africa, America, Oceania), utile per raggruppamenti e reportistica geografica.
 
+* **Catalogo dei comuni completo (`catalogo_comuni_completo`)** — dal 18-10-2026
+  Lo stato dichiara se il suo elenco di comuni e CAP è completo. È la proprietà che decide la **forma di un indirizzo libero** in quello stato:
+
+  * **acceso** (oggi l'Italia): comune e CAP si scelgono dall'elenco, e sono obbligatori;
+  * **spento**: la forma estera, con la località obbligatoria e il codice postale facoltativo.
+
+  Si **dichiara**, non si deduce dall'esistenza di qualche comune: un elenco caricato a metà (per esempio durante la conversione dei dati di un'azienda) renderebbe obbligatoria una scelta che non si può ancora fare. Quando l'elenco è completo il flag si accende; gli indirizzi già scritti nella forma estera restano validi finché qualcuno non li modifica. Il valore sta in `stati.csv`. Lo applica il guard [`anagrafiche.trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/manual/trgfn_indirizzi_guard_forma_libera), e il form lo legge per scegliere quale variante mostrare.
+
+* ⚠️ **`codice_iso2` non è univoco, e non deve esserlo**
+  L'elenco viene dalla tabella ISTAT degli stati esteri, che tiene anche righe **storiche** dello stesso paese con codici catastali diversi (Armenia, Azerbaigian, Singapore). Per questo uno stato non si cerca mai con un `SELECT … WHERE codice_iso2 = …` che ne prende uno a caso, ma con [`script.fn_stato_id_da_iso2`](/dbzero/script/manual/fn_stato_id_da_iso2), che pretende **una** riga. Al 18-10-2026 molte righe non hanno ancora i codici ISO (due spazi): è un debito di catalogo noto.
+
 ---
 
 ### Vantaggi Operativi

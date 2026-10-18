@@ -21,7 +21,8 @@ Approfondimento funzioni e trigger:
 >
 [anagrafiche.trgfn_indirizzi_base_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_base_normalize)  
 > [script.trgfn_storico_generic](/dbzero/script/funzioni/trgfn_storico_generic)  
-> [script.fn_get_default_by_param](/dbzero/script/funzioni/fn_get_default_by_param)   
+> [anagrafiche.trgfn_indirizzi_guard_forma_libera](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera)   
+> [script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id)   
 > [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
 
 ---
@@ -50,16 +51,17 @@ Supporta:
 
 * **Supporto per due modalità**  
   - **Normalizzata**: tramite `indirizzo_dettaglio_id`, si collega a una via e civico specifici (con geolocalizzazione puntuale e struttura gerarchica).
-  - **Libera**: tramite `indirizzo_libero`, con campi ausiliari (`comune_id`, `stato_id`, `locality`, `postal_box`, ecc.), utile per indirizzi internazionali o non standardizzati.
+  - **Libera**: tramite `indirizzo_libero`, con lo stato e, secondo lo stato, comune e CAP del catalogo oppure località e codice postale (`postal_code`), utile per indirizzi esteri o non ancora normalizzabili.
 
 > ⚠️ **Nota Bene**  
 > La modalità **normalizzata** è sempre preferibile.  
 > L’inserimento di indirizzi **liberi** deve essere considerato **solo come opzione estrema** (es. migrazioni da altri database o casi non normalizzabili).
 
 * **Controllo di coerenza**  
-  Tramite vincoli `CHECK`, è garantita l’alternatività tra le due modalità (o normalizzata o libera) e la completezza minima dei dati se si usa la modalità libera:
-  - se `indirizzo_dettaglio_id` è `NULL` → `indirizzo_libero` e `stato_id` sono obbligatori;
-  - modalità libera: o **`comune_id` + `codice_postale_id`**, oppure **`locality` + `postal_box`** con almeno uno tra `administrative_area` e `sublocality`.
+  Tramite vincoli `CHECK` è garantita l’alternatività tra le due modalità (o normalizzata o libera); la completezza dell'indirizzo libero ha due forme:
+  - se `indirizzo_dettaglio_id` è `NULL` → servono `indirizzo_libero` e `stato_id` (se lo stato non è detto, lo propone il sistema);
+  - poi la forma la decide lo stato (`config.stati.catalogo_comuni_completo`): **catalogo** = `comune_id` + `codice_postale_id` coerenti fra loro e con lo stato, senza `locality`, `postal_code` e `administrative_area`; **estera** = `locality`, con `postal_code`, `administrative_area` e `sublocality` facoltativi.
+  - il rifiuto, col codice e il campo, lo dà il guard [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/manual/trgfn_indirizzi_guard_forma_libera); il CHECK `chk_*_free_requirements` resta come rete (rev 18-10-2026).
 
 * **Tracciabilità e storicizzazione**  
   Con il campo `storicizza` e i trigger associati, le modifiche vengono salvate come snapshot nella tabella `storico.indirizzi`.

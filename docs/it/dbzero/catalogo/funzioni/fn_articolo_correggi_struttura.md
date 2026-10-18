@@ -18,6 +18,7 @@ DECLARE
     v_codice    catalogo.articoli.codice%TYPE;
     v_estranee  text;
     v_set       text;
+    v_prima     text[];
     v_righe     integer;
     v_documenti integer;
     v_elenco    jsonb;
@@ -26,7 +27,8 @@ BEGIN
     -- Scopo:
     --   Correggere i flag strutturali di un articolo anche se
     --   usato. Solo SUPER_ADMIN. Ordine: permesso, parametri,
-    --   articolo, scrittura con la porta aperta, righe vive.
+    --   articolo, righe non ammesse prima, scrittura con la
+    --   porta aperta, righe rese non ammesse.
     --   Le colonne ammesse: catalogo.fn_articolo_colonne_struttura().
     -- =========================================================
     PERFORM script.fn_guard_super_admin(
@@ -64,6 +66,11 @@ BEGIN
             COALESCE(p_articolo_id::text, '<null>'));
     END IF;
 
+    -- Le righe vive gia' non ammesse PRIMA: non sono della correzione.
+    SELECT array_agg(n.documento || ':' || n.riga_id)
+      INTO v_prima
+      FROM catalogo.fn_articolo_righe_vive_non_ammesse(p_articolo_id) n;
+
     -- Solo le colonne passate (gia' controllate qui sopra), ciascuna col
     -- tipo della sua colonna: jsonb_populate_record fa la conversione.
     SELECT string_agg(format('%1$I = r.%1$I', k), ', ' ORDER BY k)
@@ -82,71 +89,21 @@ BEGIN
 
     PERFORM set_config('zeroerp.articolo_correggi_struttura', '', true);
 
-    -- Le righe VIVE (attive, documento non chiuso) che con la struttura
-    -- nuova l'articolo non puo' piu' avere: il primo motivo della check
-    -- dei guard di riga, con la natura e il tipo d'eccezione della riga.
-    -- Le sette tabelle sono quelle di script.trgfn_righe_guard_articolo_ammesso.
+    -- Le righe che la correzione RENDE non ammesse: non ammesse dopo,
+    -- ammesse prima.
     SELECT count(*)::integer,
-           count(DISTINCT (g.documento, g.documento_id))::integer,
+           count(DISTINCT (n.documento, n.documento_id))::integer,
            jsonb_path_query_array(
                jsonb_agg(jsonb_build_object(
-                             'documento',    g.documento,
-                             'documento_id', g.documento_id,
-                             'riga_id',      g.riga_id,
-                             'codice',       g.motivo ->> 'codice')
-                         ORDER BY g.documento, g.documento_id, g.riga_id),
+                             'documento',    n.documento,
+                             'documento_id', n.documento_id,
+                             'riga_id',      n.riga_id,
+                             'codice',       n.motivo ->> 'codice')
+                         ORDER BY n.documento, n.documento_id, n.riga_id),
                '$[0 to 49]')
       INTO v_righe, v_documenti, v_elenco
-      FROM (
-          SELECT v.documento, v.documento_id, v.riga_id,
-                 script.fn_check_articolo_riga(
-                     v.documento, v.documento_id, p_articolo_id,
-                     v.natura_vendita_id, v.tipo_eccezione) -> 0 AS motivo
-            FROM (
-                SELECT 'PREVENTIVO'::text, r.preventivo_id, r.id, r.natura_vendita_id,
-                       NULL::vendite.tipo_eccezione_contratto
-                  FROM vendite.preventivi_righe r
-                  JOIN vendite.preventivi t ON t.id = r.preventivo_id
-                  JOIN config.stati_doc_preventivi s ON s.id = t.stato_doc_preventivo_id
-                 WHERE r.articolo_id = p_articolo_id AND r.attivo AND s.fase <> 'CHIUSO'
-                UNION ALL
-                SELECT 'ORDINE_VENDITA', r.ordine_id, r.id, r.natura_vendita_id, NULL
-                  FROM vendite.ordini_righe r
-                  JOIN vendite.ordini t ON t.id = r.ordine_id
-                  JOIN config.stati_doc_ordini s ON s.id = t.stato_doc_ordine_id
-                 WHERE r.articolo_id = p_articolo_id AND r.attivo AND s.fase <> 'CHIUSO'
-                UNION ALL
-                SELECT 'DDT_VENDITA', r.ddt_id, r.id, r.natura_vendita_id, NULL
-                  FROM vendite.ddt_righe r
-                  JOIN vendite.ddt t ON t.id = r.ddt_id
-                  JOIN config.stati_doc_ddt s ON s.id = t.stato_doc_ddt_id
-                 WHERE r.articolo_id = p_articolo_id AND r.attivo AND s.fase <> 'CHIUSO'
-                UNION ALL
-                SELECT 'OFFERTA_COMMERCIALE', r.offerta_id, r.id, NULL, r.tipo_eccezione
-                  FROM vendite.offerte_commerciali_eccezioni r
-                  JOIN vendite.offerte_commerciali t ON t.id = r.offerta_id
-                  JOIN config.stati_doc_offerte s ON s.id = t.stato_doc_offerta_id
-                 WHERE r.articolo_id = p_articolo_id AND r.attivo AND s.fase <> 'CHIUSO'
-                UNION ALL
-                SELECT 'CONTRATTO', r.contratto_id, r.id, NULL, r.tipo_eccezione
-                  FROM vendite.contratti_righe r
-                  JOIN vendite.contratti t ON t.id = r.contratto_id
-                  JOIN config.stati_doc_contratti s ON s.id = t.stato_doc_contratto_id
-                 WHERE r.articolo_id = p_articolo_id AND r.attivo AND s.fase <> 'CHIUSO'
-                UNION ALL
-                SELECT 'LISTINO_VERSIONE', r.listino_versione_id, r.id, NULL, NULL
-                  FROM vendite.listini_righe r
-                  JOIN vendite.listini_versioni lv ON lv.id = r.listino_versione_id
-                 WHERE r.articolo_id = p_articolo_id AND r.attivo AND lv.stato <> 'CHIUSA'
-                UNION ALL
-                SELECT 'PROMO_ARTICOLO', p.id, p.id, NULL, NULL
-                  FROM vendite.promo_articoli p
-                 WHERE p.articolo_id = p_articolo_id AND p.attivo
-                   AND (upper_inf(p.validita)
-                        OR upper(p.validita) > script.fn_data_operativa())
-            ) v(documento, documento_id, riga_id, natura_vendita_id, tipo_eccezione)
-      ) g
-     WHERE g.motivo IS NOT NULL;
+      FROM catalogo.fn_articolo_righe_vive_non_ammesse(p_articolo_id) n
+     WHERE (n.documento || ':' || n.riga_id) <> ALL (COALESCE(v_prima, '{}'::text[]));
 
     IF v_righe > 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -164,7 +121,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.fn_articolo_correggi_struttura(p_articolo_id uuid, p_campi jsonb)
-IS 'VERBO (A-10 di brief-db-articoli-ammessi-per-documento, 2026-10-13): la porta amministratore della regola «un articolo usato non cambia i flag strutturali» (catalogo.trgfn_articoli_guard_struttura_se_usato). Solo SUPER_ADMIN (script.fn_guard_super_admin su app.current_user_id; altrimenti E_PERMESSO_NEGATO). p_campi: oggetto jsonb con le sole colonne da cambiare fra quelle di catalogo.fn_articolo_colonne_struttura() (vuoto, non oggetto o chiavi estranee -> E_PARAMETRO_INVALIDO); articolo assente -> E_ARTICOLO_NOT_FOUND. Scrive le sole colonne passate, ciascuna col tipo della sua colonna (jsonb_populate_record), con la GUC transazionale zeroerp.articolo_correggi_struttura = id dell''articolo, che il guard onora solo insieme al proprietario della tabella (questo verbo e'' SECURITY DEFINER), e la richiude. Gli altri guard dell''articolo parlano lo stesso. Poi rigiudica le righe VIVE dell''articolo (attive, documento non chiuso: fase dello stato diversa da CHIUSO per preventivo, ordine, bolla, offerta e contratto; versione di listino non CHIUSA; promo col periodo non finito) con script.fn_check_articolo_riga, la check dei guard di riga, nelle sette tabelle dove e'' montato script.trgfn_righe_guard_articolo_ammesso e in tutte le aziende: se una non e'' piu'' ammessa -> E_ARTICOLO_STRUTTURA_RIGHE_APERTE (valori: codice, righe, documenti; dettaglio.righe: le prime 50, col codice del motivo) e la correzione si annulla. Le righe gia'' scritte non si toccano. La via normale resta un articolo nuovo. search_path bloccato; EXECUTE solo all''app. Rev 2026-10-18 (R-DB-3): le colonne dalla sede leggibile. Rev 2026-10-18 (A-11 di Tid): le righe vive.';
+IS 'VERBO (A-10 di brief-db-articoli-ammessi-per-documento, 2026-10-13): la porta amministratore della regola «un articolo usato non cambia i flag strutturali» (catalogo.trgfn_articoli_guard_struttura_se_usato). Solo SUPER_ADMIN (script.fn_guard_super_admin su app.current_user_id; altrimenti E_PERMESSO_NEGATO). p_campi: oggetto jsonb con le sole colonne da cambiare fra quelle di catalogo.fn_articolo_colonne_struttura() (vuoto, non oggetto o chiavi estranee -> E_PARAMETRO_INVALIDO); articolo assente -> E_ARTICOLO_NOT_FOUND. Scrive le sole colonne passate, ciascuna col tipo della sua colonna (jsonb_populate_record), con la GUC transazionale zeroerp.articolo_correggi_struttura = id dell''articolo, che il guard onora solo insieme al proprietario della tabella (questo verbo e'' SECURITY DEFINER), e la richiude. Gli altri guard dell''articolo parlano lo stesso. Poi confronta le righe vive non ammesse (catalogo.fn_articolo_righe_vive_non_ammesse: attive, documento non chiuso, primo motivo di script.fn_check_articolo_riga) prima e dopo la scrittura, in tutte le aziende: se la correzione RENDE non ammessa almeno una riga -> E_ARTICOLO_STRUTTURA_RIGHE_APERTE (valori: codice, righe, documenti; dettaglio.righe: le prime 50, col codice del motivo) e la correzione si annulla. Una riga gia'' non ammessa prima non blocca. Le righe gia'' scritte non si toccano. La via normale resta un articolo nuovo. search_path bloccato; EXECUTE solo all''app. Rev 2026-10-18 (R-DB-3): le colonne dalla sede leggibile. Rev 2026-10-18 (A-11 di Tid): le righe vive (20261018-72), poi solo quelle che la correzione rende non ammesse (20261018-74).';
 ```
 
 ---

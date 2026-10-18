@@ -55,7 +55,7 @@
 - [fn_crea_emittente_fiscale](funzioni/fn_crea_emittente_fiscale.md)
 - [fn_crea_fornitore](funzioni/fn_crea_fornitore.md)
 - [fn_crea_indirizzi_ruolo](funzioni/fn_crea_indirizzi_ruolo.md)
-- [fn_crea_indirizzo_soggetto](funzioni/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
+- [fn_crea_indirizzo_soggetto](funzioni/fn_crea_indirizzo_soggetto.md) — (latest review 18-10-2026)
 - [fn_crea_operatore_v2](funzioni/fn_crea_operatore_v2.md)
 - [fn_crea_risorsa_umana_v2](funzioni/fn_crea_risorsa_umana_v2.md)
 - [fn_crea_soggetto_pf](funzioni/fn_crea_soggetto_pf.md) — (latest review 09-10-2026) Building block atomico per la creazione di un soggetto **persona fisica** — privato (PR) o ditta individuale (DI) — con contatto default obbligatorio.
@@ -79,6 +79,8 @@
 - [fn_guard_istanza_ba_emittente](funzioni/fn_guard_istanza_ba_emittente.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ba_gestore_globale](funzioni/fn_guard_istanza_ba_gestore_globale.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ha_ba](funzioni/fn_guard_istanza_ha_ba.md) — (latest review 08-10-26)
+- [fn_indirizzo_elemento](funzioni/fn_indirizzo_elemento.md) — (18-10-2026 — decisione D-4 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
+- [fn_indirizzo_elemento_dettaglio](funzioni/fn_indirizzo_elemento_dettaglio.md) — (18-10-2026 — decisione D-4 di Tid)
 - [fn_lookup_utilities_per_ba](funzioni/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
 - [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_provisiona_dati_di_sviluppo](funzioni/fn_provisiona_dati_di_sviluppo.md)
@@ -134,9 +136,10 @@
 - [trgfn_identita_digitali_guard_natura_credenziale](funzioni/trgfn_identita_digitali_guard_natura_credenziale.md)
 - [trgfn_identita_digitali_guard_ultimo_super_admin](funzioni/trgfn_identita_digitali_guard_ultimo_super_admin.md) — (latest review 19-04-2026)
 - [trgfn_identita_digitali_sync_auth_user_active](funzioni/trgfn_identita_digitali_sync_auth_user_active.md) — (latest review 18-04-2026)
-- [trgfn_indirizzi_base_normalize](funzioni/trgfn_indirizzi_base_normalize.md) — (latest review 28-12-25) Normalizzare i campi base di `anagrafiche.indirizzi` in base alla presenza del collegamento a `indirizzi_dettaglio`.
+- [trgfn_indirizzi_base_normalize](funzioni/trgfn_indirizzi_base_normalize.md) — (latest review 18-10-26) Normalizzare i campi base di `anagrafiche.indirizzi` in base alla presenza del collegamento a `indirizzi_dettaglio`.
 - [trgfn_indirizzi_dettaglio_normalize](funzioni/trgfn_indirizzi_dettaglio_normalize.md) — (latest review 28-12-25) Normalizzare i campi dell'indirizzo dettaglio per garantire coerenza su via, civico e indirizzo completo prima di INSERT/UPDATE.
 - [trgfn_indirizzi_dettaglio_protect_update](funzioni/trgfn_indirizzi_dettaglio_protect_update.md) — (latest review 02-02-26) Impedire la modifica manuale di `stradario_id` su `anagrafiche.indirizzi_dettaglio` per garantire una riclassificazione coerente e tracciata.
+- [trgfn_indirizzi_guard_forma_libera](funzioni/trgfn_indirizzi_guard_forma_libera.md) — (18-10-2026 — richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11, decisioni D-2 e D-3 di Tid)
 - [trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo](funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo.md) — (latest review 30-11-25) La funzione **`anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`** è una **trigger function di tipo “guard”** che:
 - [trgfn_indirizzi_soggetti_guard_tipo_indirizzo](funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo.md) — (latest review 28-12-25) Garantire che il **tipo indirizzo** associato a un soggetto sia coerente con la **matrice di abilitazione** definita per il suo tipo soggetto dettaglio.
 - [trgfn_indirizzi_sync_geoloc](funzioni/trgfn_indirizzi_sync_geoloc.md) — Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi` o `anagrafiche.indirizzi_soggetti`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.

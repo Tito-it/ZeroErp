@@ -397,8 +397,7 @@ delle scritture precedenti sopravviva).
 | --- | --- | --- |
 | `DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<RUOLO>` (es. `_CL`, `_FO`) | LIKE `DEFAULT_TIPO_SOGGETTO_DETTAGLIO_%` | `config.tipi_soggetto_dettaglio.codice_interno` |
 | `DEFAULT_UTILITY` | EXACT | `config.utilities.codice_interno` |
-| `state_code_iso3` (default ISO3 stati) | — (parametro single-shot, no pattern) | `config.stati.code_iso3` (chiave naturale ISO) |
-| `soggetto_default_stato_iso2` | — | `config.stati.code_iso2` |
+| `STATO_PROPOSTO_ISO2` (lo stato proposto; dal 18-10-2026 prende il posto di `state_code_iso3` e `soggetto_default_stato_iso2`) | EXACT | `config.stati.codice_iso2` — ⚠️ non univoco (righe storiche ISTAT): l'unicità la controlla il lettore `script.fn_stato_id_da_iso2` |
 | `DEFAULT_IVA` | EXACT | `config.iva.codice_interno` |
 
 **Tech debt riconosciuto**: parametri legacy che oggi stoccano id numerici a tabelle di catalogo che **non espongono ancora** una chiave naturale stabile. Restano fuori scope del framework finche' la tabella target non viene dotata della chiave (aggiungere `codice_interno` -> il lock automatico viene provisionato dal runner -> rinominare il parametro -> aggiungere riga al registry). Migrazione tracciata caso per caso, non bulk.
