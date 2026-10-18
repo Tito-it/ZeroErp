@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 0: lo scope CATALOGO
+#   config.sorgenti.scope ammette un valore nuovo, CATALOGO.
+#   Brief: brief-db-grammatica-unica-documenti, G-1 e G-2 (Tid, 2026-10-18).
+#
+# -- PERCHE' --------------------------------------------------------------
+#   G-1 fa di config.sorgenti il catalogo di TUTTI i tipi di documento, e G-2
+#   ci porta dentro quelli che il database nomina senza averli a catalogo:
+#   ordine e DDT d'acquisto, inventario, rettifica e trasferimento, la
+#   distinta d'incasso, l'email. scope e' NOT NULL, e nessuno dei valori di
+#   oggi li descrive: non alimentano una commessa (PUSH_*), non sono marcatori
+#   della pipeline, non validano una riga, non generano movimenti (MAGAZZINO e'
+#   delle righe e degli eventi, non delle testate).
+#   CATALOGO dice proprio questo: il tipo e' a catalogo per il suo NOME (note,
+#   stato, lock, indirizzi, numerazione), e nessun meccanismo lo legge per
+#   scope. Quando uno di loro entrera' in un meccanismo (per esempio il carico
+#   da DDT d'acquisto), cambiera' scope col suo cantiere.
+#
+# -- IL COMMENT ------------------------------------------------------------
+#   Quello vivo (col_description) con la voce nuova in coda.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261019-14-alter-sorgenti-scope-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261019-14-alter-sorgenti-scope-catalogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.sorgenti.scope ammette CATALOGO: il tipo di documento e' a catalogo per il suo
+        nome (grammatica unica, G-1/G-2 di Tid del 2026-10-18), nessun meccanismo lo legge per
+        scope. Brief: brief-db-grammatica-unica-documenti, lotto 0.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: sorgenti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.sorgenti DROP CONSTRAINT chk_sorgenti_scope;
+              ALTER TABLE config.sorgenti ADD CONSTRAINT chk_sorgenti_scope
+                CHECK (scope IN ('PUSH_COMMESSA', 'PIPELINE_MARKER', 'ROW_VALIDATOR',
+                                 'POST_INVOICE', 'DIRECT_ENTRY', 'PUSH_CONTRATTO',
+                                 'REVERSE_FLOW', 'MAGAZZINO', 'CATALOGO'));
+
+              COMMENT ON COLUMN config.sorgenti.scope IS
+                'Classificazione funzionale della sorgente: PUSH_COMMESSA   — documenti business che alimentano commesse (preventivo, contratto, ordine, ddt); PIPELINE_MARKER — marcatori interni pipeline attivita'' fatturabili; ROW_VALIDATOR   — validazione polimorfa di una riga di documento (le *_RIGA di vendite e del reso); POST_INVOICE    — riconciliazione post-fattura; DIRECT_ENTRY   — inserimento diretto (futuro); PUSH_CONTRATTO  — documenti che generano un contratto DRAFT tramite push 1:1 (offerta_commerciale); REVERSE_FLOW    — documenti del flusso inverso, merce/valore che torna indietro (reso vendita); MAGAZZINO       — record di operazione di magazzino che genera movimenti (riga di inventario, di rettifica, di trasferimento; evento asset). Il magazzino la nomina in movimenti.sorgente_tipo_id: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.2. CATALOGO        — tipo di documento a catalogo per il suo NOME (note, stato, lock, indirizzi, numerazione) e che nessun meccanismo legge per scope: ordine e DDT d''acquisto, testate di magazzino, distinta d''incasso, email (20261019-14, brief-db-grammatica-unica-documenti G-1/G-2). Cambia scope quando il tipo entra in un meccanismo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sorgenti DROP CONSTRAINT chk_sorgenti_scope;
+              ALTER TABLE config.sorgenti ADD CONSTRAINT chk_sorgenti_scope
+                CHECK (scope IN ('PUSH_COMMESSA', 'PIPELINE_MARKER', 'ROW_VALIDATOR',
+                                 'POST_INVOICE', 'DIRECT_ENTRY', 'PUSH_CONTRATTO',
+                                 'REVERSE_FLOW', 'MAGAZZINO'));
