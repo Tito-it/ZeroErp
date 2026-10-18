@@ -31,7 +31,7 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 9-ter-quater | sessione BE/FE | ✅ (2026-10-18) firma jsonb della madre del soggetto, `postal_code`, tendina degli stati, form in due forme, codici; provato sul DB vero dopo l'apply | §6.12 | — |
 | 9-ter-quinquies | Tid | ✅ apply di `20261018-80 … -99` e `20261019-01 … -04` su dbdev, pgTAP verdi (2026-10-18) | §6.12 | — |
 | 9-ter-sexies | team DB | R-BE-13: `fn_stato_proposto_id` non applica l'override per utente | §6.12 | — |
-| 9-ter-septies | team DB | R-BE-14: l'emittente di prova del provisioning non può fatturare (nessun registro per tipo 1, natura 1) | §6.12 | — |
+| 9-ter-septies | team DB | R-BE-14: l'emittente di prova del provisioning non è attrezzato per lavorare (registri di fatturazione, template dei documenti): sette smoke si fermano lì | §6.12 | — |
 | 9-quater | team DB | ✅ 2b-3 scritta e provata (2026-10-18): etichette, guard, verbo, presidio, `fn_accendi_veste` (`20261018-55` … `-64`) | §5-ter.3 | — |
 | 9-octies | Tid | ✅ (2026-10-18, pgTAP verdi) apply della 2b-3 (`20261018-55` … `-64`, i due CSV dei codici, `presidi.csv`, `presidi_testi.csv`, il loop `20260205-41`); pgTAP `dbops/test-etichette-di-prova-v1`, `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1`, chi usa `fn_pgtap_crea_operatore_umano`, i presidi trasversali | §5-ter.3 | — |
 | 9-novies | sessione BE | ✅ (2026-10-18) ricaduta della 2b-3: codici, command `provision_utenti_sviluppo`, lista Operatori (BE e FE), smoke e run-book | §6.9 | — |
@@ -1631,12 +1631,33 @@ revisione qui sotto. La sua `INSERT` riscritta è provata a parte, in transazion
   Rosso **per il contesto**: `push-termine-documento-commessa`, che prende «l'ordine più recente» e ora cade su
   `DEVA` (R-BE-14).
 
-**R-BE-14 — al team DB: l'emittente di prova non può fatturare.** `vendite.fn_get_registro_id(1, NULL, NULL,
-<sr di DEVA>)` → `E_CONFIG_MANCANTE` «registro non risolto per tipo_doc 1 e natura 1»; sull'emittente 32 risponde.
-Su `DEVA` ci sono già due ordini scritti da `dev.smoke` (gli smoke via HTTP, 2026-10-18 18:44): ogni giro di
-fatturazione degli smoke sull'emittente di prova si ferma lì. Proposta: il verbo del provisioning (o la madre
-`fn_crea_emittente_fiscale`, se il registro di default è dell'emittente e non dello sviluppo) lascia l'emittente
-di prova **completo per fatturare**, registri compresi; un pgTAP lo prova costruendo una fattura su `DEVA`.
+**R-BE-14 — al team DB: l'emittente di prova non è attrezzato per lavorare.** Gli smoke girano su `dev.smoke`
+(via HTTP e in-process), e via HTTP lavorano sul suo emittente attivo, `DEVA` (41194). Il giro di baseline di Tid
+del 2026-10-18 (23:08) ha **sette** non-verdi con la stessa causa, nessuno per un difetto di codice:
+
+| Manca a `DEVA` | Codice | Smoke |
+| --- | --- | --- |
+| il registro della fattura (tipo 1, natura 1) | `E_CONFIG_MANCANTE` «registro non risolto» | `push-termine-documento-commessa` |
+| il template di default dei preventivi (sorgente 2) | `E_DOCUMENTI_NOT_FOUND` | `preventivi` (SENZA_MATERIA), `preventivi-smistamento-ordine`, `pratica-preventivi-bivio` |
+| il template di default dei contratti (sorgente 4) | `E_DOCUMENTI_NOT_FOUND` | `listini-v5` (SENZA_MATERIA), `contratti-addebito-standard` |
+| il template di default delle bolle | `E_DOCUMENTI_NOT_FOUND` | `resi-vendita` (non conclusivo, dopo il carico: vedi sotto) |
+| ~~la giacenza nel magazzino `DEVA-MAG`~~ | `E_MAG_GIACENZA_INSUFFICIENTE` | `resi-vendita`: ✅ sistemato nello smoke (2026-10-18) |
+
+Verificato: `vendite.fn_get_registro_id(1, NULL, NULL, <sr di DEVA>)` solleva, sull'emittente 32 risponde; i template
+sono per emittente (`uq_template_documenti_emittente_sorgente_codice`) e `DEVA` non ne ha.
+
+Proposta, in due pezzi diversi:
+* **configurazione** (registri, template di default per sorgente): è ciò senza cui un emittente non lavora, quindi
+  la deve avere ogni emittente che nasce — da valutare se è della madre `fn_crea_emittente_fiscale` (e allora vale
+  anche per gli emittenti veri) o del verbo del provisioning; un pgTAP lo prova costruendo preventivo, contratto e
+  fattura su un emittente appena nato;
+* **giacenza**: non è configurazione, è materia dello smoke. ✅ (2026-10-18) `resi-vendita` si carica la merce che
+  spedisce: una rettifica di magazzino sul magazzino del DDT (testata, riga `qta_delta`, CONFIRM, registra),
+  `carica_merce_ddt` nello smoke (prima occorrenza: resta lì). Rieseguito: il carico passa (11 OK), poi lo smoke
+  si dichiara non conclusivo sul template delle bolle di `DEVA`, cioè su R-BE-14.
+
+⚠️ Finché R-BE-14 non è fatta, `scripts/smoke-baseline.sh --update` non va lanciato: registrerebbe in baseline
+come «noti» i sette rossi dell'emittente di prova.
 
 **R-BE-13 — al team DB: l'override per utente dello stato proposto non scatta.** `script.fn_stato_proposto_id`
 chiama `fn_get_parameter_full('STATO_PROPOSTO_ISO2', NULL, NULL, NULL, session_key, p_chi)`: l'utente
