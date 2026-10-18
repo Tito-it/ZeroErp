@@ -31,6 +31,8 @@
 | acceso_in_produzione | boolean | YES |  |
 | spegnibile | boolean | YES |  |
 | causa_fallimento | text | NO |  |
+| corsa_verdetto_completo | boolean | NO | false |
+| accendibile_in_produzione | boolean | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

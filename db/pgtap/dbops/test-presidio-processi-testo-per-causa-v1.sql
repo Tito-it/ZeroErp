@@ -177,17 +177,17 @@ BEGIN
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
                                 jobname_pgagent, tolleranza_minuti, segno_di_vita,
                                 ci_esclusione,
-                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES
-        (9601, 'PGTAP-CAUSA-TIMER-FERMO',     'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL, true, true, true, 'PROGRAMMA'),
-        (9602, 'PGTAP-CAUSA-TIMER-MAI',       'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL, true, true, true, 'PROGRAMMA'),
-        (9603, 'PGTAP-CAUSA-SERVIZIO-GIU',    'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE', NULL, true, true, true, 'PROGRAMMA'),
-        (9604, 'PGTAP-CAUSA-NON-PROGRAMMATO', 'prova causa', 'MANUTENZIONE', 'PGAGENT', NULL, NULL, 'GIORNALE', NULL, true, true, true, 'PROGRAMMA'),
+        (9601, 'PGTAP-CAUSA-TIMER-FERMO',     'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL, true, true, true, 'PROGRAMMA', true),
+        (9602, 'PGTAP-CAUSA-TIMER-MAI',       'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL, true, true, true, 'PROGRAMMA', true),
+        (9603, 'PGTAP-CAUSA-SERVIZIO-GIU',    'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'SESSIONE', NULL, true, true, true, 'PROGRAMMA', true),
+        (9604, 'PGTAP-CAUSA-NON-PROGRAMMATO', 'prova causa', 'MANUTENZIONE', 'PGAGENT', NULL, NULL, 'GIORNALE', NULL, true, true, true, 'PROGRAMMA', true),
         (9605, 'PGTAP-CAUSA-JOB-ASSENTE',     'prova causa', 'MANUTENZIONE', 'PGAGENT',
-               'PGTAP-JOB-CAUSA-ASSENTE', NULL, 'GIORNALE', 'pgTAP: processo di prova', true, true, true, 'PROGRAMMA'),
-        (9611, 'PGTAP-CAUSA-SANO-OK',         'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL, true, true, true, 'PROGRAMMA'),
-        (9612, 'PGTAP-CAUSA-SANO-FUORI',      'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'GIORNALE', NULL, true, true, true, 'PROGRAMMA'),
-        (9613, 'PGTAP-CAUSA-SANO-CODA',       'prova causa', 'MANUTENZIONE', 'CODA',    NULL, NULL, 'GIORNALE', NULL, NULL, NULL, NULL, 'PROGRAMMA');
+               'PGTAP-JOB-CAUSA-ASSENTE', NULL, 'GIORNALE', 'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true),
+        (9611, 'PGTAP-CAUSA-SANO-OK',         'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, 30,   'GIORNALE', NULL, true, true, true, 'PROGRAMMA', true),
+        (9612, 'PGTAP-CAUSA-SANO-FUORI',      'prova causa', 'MANUTENZIONE', 'COMMAND', NULL, NULL, 'GIORNALE', NULL, true, true, true, 'PROGRAMMA', true),
+        (9613, 'PGTAP-CAUSA-SANO-CODA',       'prova causa', 'MANUTENZIONE', 'CODA',    NULL, NULL, 'GIORNALE', NULL, NULL, NULL, NULL, 'PROGRAMMA', NULL);
 
     INSERT INTO maintenance.job_run_log (jobname, processo_codice, origine, started_at, ended_at, ok, message)
     VALUES ('PGTAP-CAUSA-TIMER-FERMO', 'PGTAP-CAUSA-TIMER-FERMO', 'CRON',
@@ -238,19 +238,19 @@ BEGIN
     -- 20261016-20: chi ha una sveglia dichiara l'accensione (accesi ovunque).
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
                                 jobname_pgagent, ci_esclusione,
-                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES
         (9606, 'PGTAP-CAUSA-JOB-SPENTO', 'prova causa', 'MANUTENZIONE', 'PGAGENT',
-               'PGTAP-JOB-CAUSA-SPENTO', 'pgTAP: processo di prova', true, true, true, 'PROGRAMMA'),
+               'PGTAP-JOB-CAUSA-SPENTO', 'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true),
         (9607, 'PGTAP-CAUSA-JOB-MAI',    'prova causa', 'MANUTENZIONE', 'PGAGENT',
-               'PGTAP-JOB-CAUSA-MAI',    'pgTAP: processo di prova', true, true, true, 'PROGRAMMA'),
+               'PGTAP-JOB-CAUSA-MAI',    'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true),
         -- ⭐ pgAgent dice che e' girato tre ore fa, il giornale non ha niente.
         (9608, 'PGTAP-CAUSA-GIRA-MUTO',  'prova causa', 'MANUTENZIONE', 'PGAGENT',
-               'PGTAP-JOB-CAUSA-GIRA',   'pgTAP: processo di prova', true, true, true, 'PROGRAMMA'),
+               'PGTAP-JOB-CAUSA-GIRA',   'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true),
         (9609, 'PGTAP-CAUSA-JOB-RITARDO', 'prova causa', 'MANUTENZIONE', 'PGAGENT',
-               'PGTAP-JOB-CAUSA-RITARDO', 'pgTAP: processo di prova', true, true, true, 'PROGRAMMA'),
+               'PGTAP-JOB-CAUSA-RITARDO', 'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true),
         (9610, 'PGTAP-CAUSA-JOB-ATTESA',  'prova causa', 'MANUTENZIONE', 'PGAGENT',
-               'PGTAP-JOB-CAUSA-ATTESA',  'pgTAP: processo di prova', true, true, true, 'PROGRAMMA');
+               'PGTAP-JOB-CAUSA-ATTESA',  'pgTAP: processo di prova', true, true, true, 'PROGRAMMA', true);
 
     -- ⚠️ Il giornale sa della corsa di RITARDO: senza, il caso uscirebbe
     --   GIRA_E_NON_REGISTRA, che viene prima nel CASE.

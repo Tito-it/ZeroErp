@@ -70,6 +70,7 @@
 - [pratiche](tabelle/pratiche.md)
 - [pratiche_sorgenti](tabelle/pratiche_sorgenti.md)
 - [preventivi](tabelle/preventivi.md)
+- [processi_accensione](tabelle/processi_accensione.md)
 - [profili_accesso](tabelle/profili_accesso.md)
 - [profili_accesso_aree](tabelle/profili_accesso_aree.md)
 - [profili_accesso_azioni](tabelle/profili_accesso_azioni.md)

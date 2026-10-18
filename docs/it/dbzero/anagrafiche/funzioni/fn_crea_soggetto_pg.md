@@ -174,16 +174,13 @@ BEGIN
     RETURNING id INTO v_soggetto_id;
 
     -- Step 2: Creazione contatto default con tipo_contatto_id
-    INSERT INTO anagrafiche.contatti (
-        soggetto_id, tipo_contatto_id, nominativo, email, is_default
-    )
-    VALUES (
-        v_soggetto_id,
-        v_tipo_contatto_id,
-        TRIM(p_ragione_sociale),
-        TRIM(p_email),
-        true
-    );
+    --         (BB anagrafiche.fn_crea_contatto, rev 2026-10-17)
+    PERFORM anagrafiche.fn_crea_contatto(
+        v_soggetto_id, NULL,
+        jsonb_build_object('tipo_contatto_id', v_tipo_contatto_id,
+                           'nominativo',       TRIM(p_ragione_sociale),
+                           'email',            TRIM(p_email),
+                           'is_default',       true));
 
     -- Step 3: Creazione dati societari (se policy lo richiede
     --         o se almeno un campo DS e fornito con policy OPTIONAL)
@@ -225,7 +222,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer)
-IS 'Crea soggetto PG o ENC + contatto default con tipo_contatto_id + dati societari (se policy). Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf (rev 20261009-28, brief-db-sesso-senza-default). Il sesso non si scrive: per PG ed ENC e'' NULL (sesso_policy NONE). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2, socio_unico, liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli. Rev 20261011-01: i dati societari si scrivono con anagrafiche.fn_scrivi_dati_societari (B-4); REA, capitale e canale FE non si pretendono piu'' qui (li governano la forma giuridica e il canale, B-6/B-7). Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
+IS 'Crea soggetto PG o ENC + contatto default con tipo_contatto_id + dati societari (se policy). Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf (rev 20261009-28, brief-db-sesso-senza-default). Il sesso non si scrive: per PG ed ENC e'' NULL (sesso_policy NONE). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2, socio_unico, liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli. Rev 20261011-01: i dati societari si scrivono con anagrafiche.fn_scrivi_dati_societari (B-4); REA, capitale e canale FE non si pretendono piu'' qui (li governano la forma giuridica e il canale, B-6/B-7). Brief: brief-db-dati-fiscali-e-societari-del-soggetto. Rev 2026-10-17: il contatto lo scrive il BB anagrafiche.fn_crea_contatto (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 3); comportamento invariato.';
 ```
 
 ---

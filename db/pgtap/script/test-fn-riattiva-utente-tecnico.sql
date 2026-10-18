@@ -201,10 +201,10 @@ DECLARE
 BEGIN
     -- 20261016-20: un processo con una sveglia dichiara l'accensione.
     INSERT INTO dbops.processi (id, codice, descrizione, classe, canale,
-                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento)
+                                acceso_in_sviluppo, acceso_in_produzione, spegnibile, causa_fallimento, accendibile_in_produzione)
     VALUES (v_id, 'PGTAP-PROC-SENZA-UTENTE',
             'processo di prova che non ha mai avuto un utente tecnico',
-            'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA');
+            'DOMINIO', 'COMMAND', true, true, true, 'PROGRAMMA', true);
 END
 $senza_utente$;
 

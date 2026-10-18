@@ -48,6 +48,9 @@
 - [fn_clienti_stessa_chiave](funzioni/fn_clienti_stessa_chiave.md) — (latest review 14-10-26)
 - [fn_consuma_plafond_titolo_iva_righe](funzioni/fn_consuma_plafond_titolo_iva_righe.md) — (funzione nata il 2026-10-03, `20261003-07`; rev 2026-10-04, `20261004-06`)
 - [fn_crea_auth_user](funzioni/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
+- [fn_crea_contatto](funzioni/fn_crea_contatto.md)
+- [fn_crea_emittente_fiscale](funzioni/fn_crea_emittente_fiscale.md)
+- [fn_crea_indirizzi_ruolo](funzioni/fn_crea_indirizzi_ruolo.md)
 - [fn_crea_indirizzo_soggetto](funzioni/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
 - [fn_crea_operatore_v2](funzioni/fn_crea_operatore_v2.md)
 - [fn_crea_risorsa_umana_v2](funzioni/fn_crea_risorsa_umana_v2.md)

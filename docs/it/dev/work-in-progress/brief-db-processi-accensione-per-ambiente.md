@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: il team DB, col lotto 4 della 2b-1 (il fornitore, §5-ter.2). Lotti 1-3 applicati su dbdev,
-pgTAP verdi (2026-10-17).** In più, dal 2026-10-18: R-BE-5, il divieto di accendere a mano lo
-smoke in produzione (§6.6).
+**Riparte: la sessione BE, con la riga 10 (R-BE-5 applicato su dbdev il 2026-10-18, pgTAP senza
+regressioni: codice nuovo, capability del drawer, ritiro di `SMOKE_NOTTURNO_CONSENTITO`, §6.7.3). In
+parallelo il team DB, col lotto 4 della 2b-1 (il fornitore, §5-ter.2).**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -26,11 +26,14 @@ smoke in produzione (§6.6).
 | 9-ter | sessione BE | 2b-2: il backend passa ai BB, le sue copie si ritirano | §5-ter.1 | 9 |
 | 9-quater | team DB | 2b-3: etichette, verbo di sviluppo, presidio (R-4) | §5-ter.1 | 9 |
 | 10-bis | Tid | ✅ contraddizione su `SMOKE_NOTTURNO_CONSENTITO` sciolta (2026-10-18): il divieto entra nel modello, poi il consenso si ritira | §6.6 | — |
-| 10-ter | team DB | **R-BE-5**: «non accendibile a mano in PRODUZIONE» nel catalogo e nel guard di `processi_accensione`, con un codice d'errore suo; `smoke_notturno` primo a usarlo | §6.6 | 10-bis |
-| 10 | sessione BE | ✅ tolleranza di `smoke_notturno` (1560, R-BE-4, già nel catalogo). Da fare: la nota in `sveglie.json` («Tolleranza NULL…») da riscrivere; il ritiro di `SMOKE_NOTTURNO_CONSENTITO` da command, unit e `sveglie.json`, **dopo** R-BE-5 applicata; il drawer mostra il gesto rifiutato | §6.5, §6.6 | 10-ter |
-| 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10, 10-ter |
+| 10-ter | team DB | ✅ **R-BE-5** scritto e provato sullo scratch (2026-10-18): `accendibile_in_produzione` nel catalogo, il predicato, la regola e il guard, `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE` (1355) | §6.7 | — |
+| 10-quater | Tid | ✅ apply di R-BE-5 (`20261018-10` … `-14`) su dbdev, pgTAP senza regressioni (2026-10-18) | §6.7.4 | — |
+| 10 | sessione BE | ✅ tolleranza di `smoke_notturno` (1560, R-BE-4, già nel catalogo). Da fare: la nota in `sveglie.json` («Tolleranza NULL…») da riscrivere; il ritiro di `SMOKE_NOTTURNO_CONSENTITO` da command, unit e `sveglie.json`, **dopo** R-BE-5 applicata; il drawer mostra il gesto rifiutato; codice nuovo e capability (§6.7.3) | §6.5, §6.6, §6.7.3 | 10-quater |
+| 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10, 10-quater |
 
-Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). Da committare: i lotti 1-3 della 2b-1 (`20261017-05` … `-17`, i
+Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). Da committare: R-BE-5 (§6.7:
+cinque changeSet, `processi.csv` e mirror, i due CSV dei codici, un pgTAP nuovo, quattordici adeguati,
+tre pagine manual), i lotti 1-3 della 2b-1 (`20261017-05` … `-17`, i
 codici 1351-1354 nei due CSV, quattro pgTAP, cinque pagine manual), il giro 2a (tre changeSet,
 quattro CSV, un pgTAP, due pagine manual) e questo brief. ⚠️ `codici_errore.csv`,
 `messaggi_errore.csv` e `processi.csv` li tocca anche la sessione del brief del presidio dei job.
@@ -1017,3 +1020,88 @@ del DB.
    e ripiego.
 
 Non è un tampone: il consenso c'è già, e ritirarlo prima del guard aprirebbe il buco che oggi copre.
+
+### 6.7 R-BE-5 scritto (team DB, 2026-10-18)
+
+#### 6.7.1 I changeSet
+
+| changeSet / file | Che cosa |
+| --- | --- |
+| `00_schema/dbops/20261018-10` | `dbops.processi.accendibile_in_produzione`; `chk_processi_accensione` riscritto (NULL senza sveglia, obbligatoria con la sveglia, e un non accendibile è spento di default in produzione), rinasce NOT VALID |
+| `20_code/dbops/20261018-11` | `dbops.fn_accensione_a_mano_ammessa_su_valori(acceso, accendibile_in_produzione, ambiente)`: il divieto, puro sui valori (IMMUTABLE, sql) |
+| `20_code/dbops/20261018-12` | `dbops.fn_processo_acceso_su_valori` col parametro in coda (DROP della firma a sette + CREATE): la scelta a mano decide solo se il divieto la ammette; `fn_processo_acceso_dichiarato` gliela passa |
+| `20_code/dbops/20261018-13` | il guard di `processi_accensione`: il terzo rifiuto, `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE`; ambiente non dichiarato → `E_CONFIG_MANCANTE` |
+| `90_end/20261018-14` | convalida del CHECK riscritto (su un database nuovo la fa già `20261016-31`) |
+| `processi.csv` + mirror `20260904-13` | colonna in coda: `f` per `smoke_notturno`, `t` per gli altri con sveglia, `NULL` per CODA e ritirati |
+| `codici_errore.csv`, `messaggi_errore.csv` | `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE` (NON_ESEGUIBILE, 1355) |
+| pgTAP | `test-processi-accensione-v1` (35 → 47: predicato, regola, catalogo, CHECK), **nuovo** `test-processi-accensione-produzione-v1` (12, runner owner); 13 file con le fixture adeguate (sotto) |
+| manual | `processi`, `processi_accensione`, `fn_imposta_accensione_processo` |
+
+#### 6.7.2 Scelte di forma, dichiarate
+
+* **Una colonna «in produzione», non «per ambiente».** In sviluppo accendere a mano è sempre
+  lecito: una colonna per l'altro ambiente non avrebbe un caso.
+* **Un predicato, tre lettori.** La condizione sta in `fn_accensione_a_mano_ammessa_su_valori` e la
+  leggono il guard (rifiuta il gesto nuovo), la regola dello stato effettivo (ignora una riga accesa
+  già scritta: i due casi del §6.6, «la riga esiste già» e «l'ambiente si dichiara dopo») e il
+  backend per il pulsante. Pura sui valori come la regola (§5.5).
+* **Il parametro nuovo della regola è senza default**: il default che rifà il comportamento di prima
+  è il buco chiuso qui. L'unico chiamante (`fn_processo_acceso_dichiarato`) si riscrive nello stesso
+  changeSet; il backend non chiama la regola.
+* **Il guard chiede l'ambiente solo quando serve** (accendere un non accendibile). Con l'ambiente
+  non dichiarato quel gesto si ferma (`E_CONFIG_MANCANTE`); spegnere e tornare al default no.
+* **Il CHECK si riscrive, non se ne aggiunge un secondo**: è il contratto dell'accensione, e «senza
+  sveglia, colonne NULL» resta scritto una volta. Il prezzo: i pgTAP che creano processi finti con
+  una sveglia dichiarano la colonna. Censiti per `spegnibile, causa_fallimento)` e per la coda
+  `'PROGRAMMA')`: **43 tuple in 12 file**, adeguate col valore di `spegnibile` della stessa tupla
+  (`true` con la sveglia, `NULL` sui CODA, il `CASE` del ciclo dei canali), più il ritiro finto di
+  `digest_presidi` in `test-fn-guardiano-digest`.
+* **La prova del ramo PRODUZIONE sul dato**: il §5.5 la voleva solo sui valori. Il file nuovo la
+  costruisce davvero, come `test-installazione-ambiente-v1` costruisce l'ambiente non dichiarato:
+  runner owner, trigger di immutabilità spento dentro la transazione, `ROLLBACK`.
+
+#### 6.7.3 Ricaduta BE (riga 10)
+
+1. **Codice d'errore nuovo**: rigenerare `error_policies_generated.py` e il ripiego in
+   `error_messages_fallback.py` per `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE`. Finché non si fa, il
+   guardrail dei codici del backend è rosso.
+2. **La capability del drawer** («Accendi» disabilitato col motivo, come per i non spegnibili):
+   `_con_capability_accensione` oggi la deriva da `spegnibile`. Per il gesto «accendi» il DB espone
+   il predicato: nella lettura dell'accensione (`ProcessiRepository.accensione_processo`)
+   `dbops.fn_accensione_a_mano_ammessa_su_valori(true, p.accendibile_in_produzione,
+   script.fn_ambiente_dichiarato())`: `false` → motivo `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE`,
+   `NULL` → `E_CONFIG_MANCANTE`. ⛔ Non ricalcolare la condizione in Python (§12.1 delle
+   linee-guida SQL: il predicato è lo stesso del guard). Spegnere e tornare al default restano
+   ammessi.
+3. **Dopo l'apply**: il ritiro di `SMOKE_NOTTURNO_CONSENTITO` (command, unit, `.env.systemd` di dbdev,
+   nota in `sveglie.json`), come deciso al §6.6.
+
+#### 6.7.4 La prova (scratch `zeroerp_ruoli`, 2026-10-18)
+
+SQL estratto dei cinque changeSet + upsert **completo** di `processi.csv` (28 righe, nessuna
+rifiutata) + le due righe dei codici, in una transazione annullata, come `zeroerp_owner`:
+
+* `test-processi-accensione-v1` **47/47**, `test-processi-accensione-produzione-v1` **12/12**;
+* il file nuovo **vede il difetto**: senza `-12` e `-13` sono rossi 3, 4, 5, 6, 7 e 11;
+* **37 pgTAP identici prima e dopo** (prima: la versione committata, senza il prefisso; dopo: il
+  working tree, col prefisso): tutti quelli che scrivono o leggono `dbops.processi`,
+  `processi_accensione`, la sveglia, l'installazione, più i presidi trasversali (`riferimenti-morti`,
+  `catalogo-messaggi-errore-completo`, `rubinetto-primo-motivo`, `security-definer-search-path`,
+  `stati-check-scrittori`, `catalogo-presidi`, `vw-codici-errore-*`, `storico-scope-policy`). Già
+  rossi sullo scratch, identici prima e dopo: `test-identita-tecnica` e `test-fn-crea-utente-tecnico`
+  («il soggetto non ha contatti validi», §5-ter.2 lotto 3), `test-rls-email-log-ambito` (2 su 6).
+  `maintenance/test-vw-job-run-da-guardare` nel working tree è dell'altro cantiere e vuole la sua
+  colonna (`corsa_verdetto_completo`), non applicata sullo scratch;
+* cancelli statici: verdi. Il preambolo segnala `test-automazioni-guasto-ambiente-rilanciato-v1`,
+  già committato da `brief-db-presidio-job-run-a-chi-tocca`, non di questo giro.
+
+⚠️ Non provato: la corsa come app (la prova gira da owner).
+
+✅ **Applicato su dbdev il 2026-10-18 (Tid), pgTAP senza regressioni.**
+
+**Per Tid, l'apply** (fatto). ⚠️ `processi.csv` e il mirror `20260904-13` portano anche la colonna
+`corsa_verdetto_completo` di `brief-db-intermittente-e-verdetto-completo` (`00_schema/20261018-01`,
+non ancora applicato): il mirror carica le due colonne insieme, quindi i due giri si applicano
+**insieme**. Poi i pgTAP: `dbops/test-processi-accensione-v1`,
+`dbops/test-processi-accensione-produzione-v1` (owner), e i 13 file adeguati.
+

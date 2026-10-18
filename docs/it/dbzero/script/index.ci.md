@@ -179,6 +179,7 @@
 - [fn_pgtap_emittente_sr_operatore](manual/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_set_contesto_operatore](manual/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
 - [fn_predicato_soggetto_ruolo_visibile](manual/fn_predicato_soggetto_ruolo_visibile.md) — (latest review 10-10-2026)
+- [fn_prima_chiave_estranea](manual/fn_prima_chiave_estranea.md)
 - [fn_regime_fiscale_documento](manual/fn_regime_fiscale_documento.md)
 - [fn_registra_tentativo_login](manual/fn_registra_tentativo_login.md) — (riscritta il 25-09-2026)
 - [fn_resolve_codice_postale](manual/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
@@ -210,6 +211,7 @@
 - [fn_scope_fornitore_ownership](manual/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
 - [fn_scope_identita_processo](manual/fn_scope_identita_processo.md) — (latest review 05-09-2026)
 - [fn_scope_note_magazzino_ef_whitelist](manual/fn_scope_note_magazzino_ef_whitelist.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
+- [fn_scrivi_riga_da_jsonb](manual/fn_scrivi_riga_da_jsonb.md)
 - [fn_search_soggetti_universale](manual/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](manual/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](manual/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.

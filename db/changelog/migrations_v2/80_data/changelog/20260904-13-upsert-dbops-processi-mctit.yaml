@@ -69,6 +69,18 @@ databaseChangeLog:
               #   (brief-db-presidio-job-run-a-chi-tocca). Obbligatoria: NOT NULL
               #   e FK in 90_end/20261016-43.
               - column: { name: causa_fallimento, type: STRING }
+              # ⭐ Dal 2026-10-18 ogni corsa del processo e' un verdetto completo
+              #   (un verde chiude i rossi precedenti, salvo ricaduta), per il
+              #   motivo «intermittente» di maintenance.vw_job_run_da_guardare
+              #   (brief-db-intermittente-e-verdetto-completo). NOT NULL DEFAULT
+              #   false dal 00_schema/20261018-01.
+              - column: { name: corsa_verdetto_completo, type: BOOLEAN }
+              # ⭐ Dal 2026-10-18 il gemello di spegnibile: false = in PRODUZIONE
+              #   la sveglia non si accende a mano (smoke_notturno). NULL per i
+              #   processi senza sveglia, come le altre tre; chk_processi_accensione
+              #   riscritto in 00_schema/20261018-10, convalidato in
+              #   90_end/20261018-14 (brief-db-processi-accensione-per-ambiente, R-BE-5).
+              - column: { name: accendibile_in_produzione, type: BOOLEAN }
       rollback:
         - sql:
             splitStatements: false

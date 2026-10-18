@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GEMELLO DI SPEGNIBILE: UN PROCESSO CHE IN PRODUZIONE NON SI ACCENDE A MANO
+#   dbops.processi.accendibile_in_produzione; chk_processi_accensione la lega
+#   al canale e al default di produzione.
+#   Brief: brief-db-processi-accensione-per-ambiente (§6.6, R-BE-5)
+#
+# -- IL DIFETTO -----------------------------------------------------
+#   Il catalogo sapeva dire «questo processo non si spegne» (spegnibile), non
+#   «questo processo in PRODUZIONE non si accende a mano». smoke_notturno e'
+#   spento di default in produzione, ma spegnibile: un click e un motivo dal
+#   drawer lo accendevano, e scrive dati di prova (numerazione fiscale
+#   compresa, che non torna indietro). A fermarlo c'era solo il consenso
+#   SMOKE_NOTTURNO_CONSENTITO nel .env di una macchina: fuori dal modello,
+#   senza storia ne' autore. Il consenso si ritira DOPO questo giro (BE).
+#
+# -- LA COLONNA ------------------------------------------------------
+#   false = in un'installazione PRODUZIONE la scelta a mano non accende la
+#   sveglia: il guard di dbops.processi_accensione rifiuta il gesto
+#   (E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE, 20261018-13), e lo stato
+#   effettivo ignora una riga accesa scritta prima della regola, o prima che
+#   l'ambiente fosse dichiarato (20261018-12). In SVILUPPO non conta.
+#   Solo PRODUZIONE e non «per ambiente»: in sviluppo accendere a mano e'
+#   sempre lecito, e una colonna per l'altro ambiente non avrebbe un caso.
+#
+# -- IL CHECK --------------------------------------------------------
+#   chk_processi_accensione si riscrive, non se ne aggiunge un secondo: e' il
+#   contratto dell'accensione di un processo, e la regola «chi non ha sveglia
+#   ha le colonne NULL» resta scritta una volta. In piu':
+#     - chi ha una sveglia dichiara anche accendibile_in_produzione;
+#     - un non accendibile in produzione e' spento di default in produzione
+#       (altrimenti il divieto non vieterebbe niente). Un non spegnibile e'
+#       acceso in produzione, quindi e' accendibile: non serve scriverlo.
+#   Rinasce NOT VALID come in 20261016-20: le righe esistenti hanno la colonna
+#   NULL finche' non passa il CSV (mirror 20260904-13). Convalida in
+#   90_end/20261018-14 (su un database nuovo la fa gia' 20261016-31, che
+#   cerca il vincolo per nome).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261018-10-alter-processi-add-accendibile-in-produzione-mctit.yaml
+
+  - changeSet:
+      id: 20261018-10-alter-processi-add-accendibile-in-produzione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.processi.accendibile_in_produzione: il processo che in PRODUZIONE non si
+        accende a mano (il gemello di spegnibile); chk_processi_accensione riscritto.
+        Brief: brief-db-processi-accensione-per-ambiente (R-BE-5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: dbops, tableName: processi, columnName: spegnibile }
+            - not:
+                - columnExists: { schemaName: dbops, tableName: processi, columnName: accendibile_in_produzione }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  ADD COLUMN accendibile_in_produzione boolean;
+
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT chk_processi_accensione;
+
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_accensione CHECK (
+                      CASE
+                        WHEN canale = 'CODA' OR obsoleto_dal IS NOT NULL THEN
+                             acceso_in_sviluppo IS NULL
+                         AND acceso_in_produzione IS NULL
+                         AND spegnibile IS NULL
+                         AND accendibile_in_produzione IS NULL
+                        ELSE
+                             acceso_in_sviluppo IS NOT NULL
+                         AND acceso_in_produzione IS NOT NULL
+                         AND spegnibile IS NOT NULL
+                         AND accendibile_in_produzione IS NOT NULL
+                         AND (spegnibile OR (acceso_in_sviluppo AND acceso_in_produzione))
+                         AND (accendibile_in_produzione OR NOT acceso_in_produzione)
+                      END
+                  ) NOT VALID;
+
+              COMMENT ON COLUMN dbops.processi.accendibile_in_produzione IS
+                  'Se in un''installazione di PRODUZIONE la sveglia del processo si puo'' accendere a mano. false per un processo che li'' non deve girare mai, per esempio perche'' scrive dati di prova (smoke_notturno): la scelta a mano accesa e'' rifiutata (E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE) e, se c''e'' gia'', lo stato effettivo la ignora. Il gemello di spegnibile. Un non accendibile e'' spento di default in produzione (chk_processi_accensione). In SVILUPPO non conta. NULL per i processi senza sveglia (CODA, ritirati). La regola: dbops.fn_accensione_a_mano_ammessa_su_valori. Brief: brief-db-processi-accensione-per-ambiente (R-BE-5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE dbops.processi
+                  DROP CONSTRAINT IF EXISTS chk_processi_accensione;
+              ALTER TABLE dbops.processi
+                  DROP COLUMN IF EXISTS accendibile_in_produzione;
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_accensione CHECK (
+                      CASE
+                        WHEN canale = 'CODA' OR obsoleto_dal IS NOT NULL THEN
+                             acceso_in_sviluppo IS NULL
+                         AND acceso_in_produzione IS NULL
+                         AND spegnibile IS NULL
+                        ELSE
+                             acceso_in_sviluppo IS NOT NULL
+                         AND acceso_in_produzione IS NOT NULL
+                         AND spegnibile IS NOT NULL
+                         AND (spegnibile OR (acceso_in_sviluppo AND acceso_in_produzione))
+                      END
+                  ) NOT VALID;

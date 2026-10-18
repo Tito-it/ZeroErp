@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CONVALIDA DI chk_processi_accensione RISCRITTO
+#   00_schema/20261018-10 lo fa rinascere NOT VALID con accendibile_in_produzione;
+#   il valore arriva dal CSV (mirror 20260904-13). Qui si convalida.
+#   Brief: brief-db-processi-accensione-per-ambiente (R-BE-5)
+#
+#   Su un database nuovo la convalida la fa gia' 90_end/20261016-31, che cerca
+#   il vincolo per nome e gira dopo il CSV: questo changeSet e' un no-op.
+#   Serve ai database dove -31 e' gia' girato sul vincolo di prima (dbdev, lo
+#   scratch). La preCondition chiede la FORMA nuova (la colonna nel vincolo),
+#   non il contenuto del seed.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261018-14-validate-chk-processi-accensione-accendibile-mctit.yaml
+
+  - changeSet:
+      id: 20261018-14-validate-chk-processi-accensione-accendibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        VALIDATE CONSTRAINT chk_processi_accensione, riscritto con accendibile_in_produzione,
+        dopo il CSV dei processi. Brief: brief-db-processi-accensione-per-ambiente (R-BE-5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conrelid = 'dbops.processi'::regclass
+                 AND conname = 'chk_processi_accensione'
+                 AND pg_get_constraintdef(oid) LIKE '%accendibile_in_produzione%'
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: ALTER TABLE dbops.processi VALIDATE CONSTRAINT chk_processi_accensione;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Un vincolo convalidato non torna NOT VALID: il rollback e' un
+              -- no-op dichiarato (lo toglie il rollback di 20261018-10).
+              SELECT 1;
