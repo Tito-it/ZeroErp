@@ -200,14 +200,7 @@ class SecondoFattoreService:
             user, password, request=request, auth_repo=self._auth_repo,
             codice=E_TOTP_PASSWORD_NON_VALIDA, messaggio="Password non corretta.",
         )
-        segreto = totp_service.nuovo_segreto()
-        codici = totp_service.nuovi_codici_recupero()
-        self._repo.registra_device(
-            user.id,
-            secret_encrypted=crypto_service.encrypt(segreto),
-            impronte_recupero=[totp_service.impronta_codice_recupero(c) for c in codici],
-        )
-        logger.info("security.secondo_fattore_configurazione_avviata user_id=%s", user.id)
+        segreto, codici = self._registra_device_nuovo(user)
         return {
             "qr_data_uri": totp_service.qr_data_uri(totp_service.uri_configurazione(segreto, user.get_username())),
             # Per chi non puo' inquadrare il QR: lo stesso segreto, a gruppi.
@@ -240,6 +233,28 @@ class SecondoFattoreService:
         self._repo.conferma_device(user.id, passo=passo)
         logger.info("security.secondo_fattore_attivato user_id=%s", user.id)
         return self.stato(user.id)
+
+    # Scopo: Il secondo fattore di una credenziale DI PROVA, configurato e gia'
+    #        confermato, per il provisioning di sviluppo (T-1 di
+    #        brief-be-utenti-di-sviluppo): segreto e codici nuovi come
+    #        `avvia_configurazione`, poi la conferma sul passo di adesso.
+    #        Restituisce segreto e codici (escono una volta sola), o None se il
+    #        device e' gia' ATTIVO: la chiave buona e' quella gia' consegnata.
+    #        ⛔ Niente password ne' codice: non c'e' una sessione da proteggere,
+    #        e il segreto lo genera questo stesso processo. Per questo la chiama
+    #        solo il command del provisioning, sulle credenziali che il verbo
+    #        del DB restituisce come sue, e dentro il contesto della credenziale
+    #        (il DB vuole che agisca lei: `fn_guard_utente_stesso`).
+    def configura_confermato(self, user: User) -> dict[str, Any] | None:
+        if self._repo.get_device(user.id)["stato"] == STATO_DEVICE_ATTIVO:
+            return None
+        segreto, codici = self._registra_device_nuovo(user)
+        # Il passo PRECEDENTE: nessun codice e' stato usato davvero, e il DB
+        # accetta solo passi successivi all'ultimo registrato — cosi' il primo
+        # login (gli smoke, subito dopo) non trova il passo di adesso gia' preso.
+        self._repo.conferma_device(user.id, passo=totp_service.passo_corrente() - 1)
+        logger.info("security.secondo_fattore_attivato_dal_provisioning user_id=%s", user.id)
+        return {"segreto": segreto, "codici_recupero": codici}
 
     # Scopo: Codici di recupero nuovi (i vecchi non valgono piu'), dietro un
     #        codice dell'app corrente: con la sola sessione non si ottengono.
@@ -319,6 +334,20 @@ class SecondoFattoreService:
     # =================================================================
     # Interni
     # =================================================================
+
+    # Scopo: Segreto e codici di recupero nuovi, registrati sul device NON
+    #        confermato (al DB il segreto cifrato e le impronte). Restituisce
+    #        il segreto in chiaro e i codici: escono una volta sola.
+    def _registra_device_nuovo(self, user: User) -> tuple[str, list[str]]:
+        segreto = totp_service.nuovo_segreto()
+        codici = totp_service.nuovi_codici_recupero()
+        self._repo.registra_device(
+            user.id,
+            secret_encrypted=crypto_service.encrypt(segreto),
+            impronte_recupero=[totp_service.impronta_codice_recupero(c) for c in codici],
+        )
+        logger.info("security.secondo_fattore_configurazione_avviata user_id=%s", user.id)
+        return segreto, codici
 
     # Scopo: Il device ATTIVO, o E_TOTP_DEVICE_ASSENTE.
     def _device_attivo(self, auth_user_id: int) -> dict[str, Any]:

@@ -27,6 +27,7 @@ Indice test eseguiti:
 11) ServizioDbTests.test_senza_traccia_la_disattivazione_si_annulla — D-T3, il savepoint del servizio
 12) ServizioDbTests.test_la_password_sbagliata_conta_e_frena_la_configurazione — D-T2 sul freno vero
 13) ServizioDbTests.test_su_una_credenziale_di_sistema_l_obbligo_non_si_accende — le uscite restano aperte
+14) ServizioDbTests.test_configura_confermato_dal_provisioning — gia' confermato, e un device attivo resta
 """
 
 from __future__ import annotations
@@ -293,6 +294,25 @@ class ServizioDbTests(_TransazioneAnnullata):
         self.assertEqual(
             self._tracce(self.user.id),
             [{"via": "APP", "chi_agisce": self.user.id, "motivo": None}],
+        )
+
+    # Scopo: Il provisioning di sviluppo configura il device GIA' confermato,
+    #        sui verbi veri e come la credenziale stessa; il segreto restituito
+    #        e' quello scritto; su un device attivo non tocca niente.
+    def test_configura_confermato_dal_provisioning(self):
+        self._agisce(self.user.id)
+        configurazione = self.servizio.configura_confermato(self.user)
+        assert configurazione is not None
+        device = self.servizio.device(self.user.id)
+        self.assertEqual(device["stato"], "ATTIVO")
+        self.assertEqual(crypto_service.decrypt(device["secret_encrypted"]), configurazione["segreto"])
+        # Il passo di adesso resta libero per il primo login.
+        self.assertLess(device["ultimo_passo_usato"], totp_service.passo_corrente())
+        self.assertEqual(device["recovery_rimasti"], len(configurazione["codici_recupero"]))
+        self.assertIsNone(self.servizio.configura_confermato(self.user))
+        self.assertEqual(
+            crypto_service.decrypt(self.servizio.device(self.user.id)["secret_encrypted"]),
+            configurazione["segreto"],
         )
 
     # Scopo: La password sbagliata all'avvio della configurazione conta sul

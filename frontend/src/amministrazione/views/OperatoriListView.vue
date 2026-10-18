@@ -76,10 +76,15 @@ const {
 //    «Pulisci filtri» del drawer, un deep-link, un reset. Scritti a mano (un
 //    `ref` che spinge nello store e basta) il filtro si pulisce e la combo
 //    continua a mostrare il valore di prima, senza nessun errore.
-const { bindSelect } = useStoreFilterBindings(store, applyFilters)
+const { bindSelect, bindToggle } = useStoreFilterBindings(store, applyFilters)
 const { value: superAdminFilter, onChange: onSuperAdminChange } = bindSelect('is_super_admin')
 const { value: uoFilter, onChange: onUoChange } = bindSelect('unita_organizzativa_id')
 const { value: activeFilter, onChange: onActiveChange } = bindSelect('is_active')
+// Gli utenti di prova (provisioning di sviluppo): spento = nascosti, il default.
+// Acceso ALLARGA la lista, ed e' quello che il segno dei filtri conta.
+const { value: mostraDiProva, onChange: onMostraDiProvaChange } = bindToggle('includi_di_prova', {
+  on: true, off: null,
+})
 
 const superAdminOptions = buildFilterSuperAdminOptions(t)
 // ⭐ Dal BB di core (regola del 2, ok Tid 2026-09-23): `buildFilterStatoOptions`
@@ -238,6 +243,12 @@ function onPermessiAperti(acceso) {
           :placeholder="t('amministrazione.filter_stato')"
           @change="onActiveChange"
         />
+        <FiltroToggle
+          v-model="mostraDiProva"
+          :label="t('amministrazione.mostra_di_prova')"
+          :hint="t('amministrazione.mostra_di_prova_hint')"
+          @change="onMostraDiProvaChange"
+        />
       </FiltriLista>
       <!-- Non e' un filtro: cambia cosa si vede di ogni riga, non quali righe. -->
       <FiltroToggle
@@ -294,6 +305,11 @@ function onPermessiAperti(acceso) {
           <Badge v-for="veste in data.altre_vesti || []" :key="veste"
             :value="ruoloAppLabel(veste)" severity="secondary"
             v-tooltip.top="t('amministrazione.riuso_vesti')" />
+          <!-- L'etichetta del provisioning di sviluppo: un segno, non una
+               categoria (l'utente di prova resta un operatore in tutto). -->
+          <Badge v-if="data.di_prova"
+            :value="t('amministrazione.di_prova_badge')" severity="secondary"
+            v-tooltip.top="t('amministrazione.di_prova_tooltip')" />
         </div>
       </template>
       <template #cell-is_active="{ data }">

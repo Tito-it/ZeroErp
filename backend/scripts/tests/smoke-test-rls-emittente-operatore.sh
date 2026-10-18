@@ -14,8 +14,9 @@
 # READ-ONLY: nessun dato creato/modificato (solo login + GET + refresh
 # audit). Idempotente per costruzione → nessun cleanup necessario.
 #
-# Uso:
-#   SMOKE_USER=<operatore_ristretto> SMOKE_PASSWORD=<pwd> \
+# Uso (l'operatore ristretto del provisioning di sviluppo, solo l'emittente
+# di prova A in whitelist e senza secondo fattore; run-book §11):
+#   SMOKE_USER=dev.emittente SMOKE_PASSWORD="$DEV_EMITTENTE_PASSWORD" \
 #     ./scripts/tests/smoke-test-rls-emittente-operatore.sh
 #
 # Variabili:

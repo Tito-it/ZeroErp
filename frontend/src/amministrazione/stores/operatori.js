@@ -43,6 +43,9 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   // Lista (filtri sincronizzati con la toolbar). Multi-face auth (Fase 7):
   // solo is_super_admin + is_active + unita_organizzativa_id. Il legacy
   // ruolo_sistema e' rimosso. Parte piena: e' l'anagrafica degli operatori.
+  // `includi_di_prova`: gli utenti del provisioning di sviluppo restano fuori
+  // finche' non li si chiede (il backend li nasconde quando il parametro
+  // manca: R-4 del brief-db-processi-accensione-per-ambiente).
   const lista = useListaStoreCore({
     fetchPage: listOperatori,
     startsEmpty: false,
@@ -50,6 +53,7 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
       is_super_admin: null,
       unita_organizzativa_id: null,
       is_active: null,
+      includi_di_prova: null,
     },
     orderBy: 'soggetto_cognome',
   })

@@ -369,7 +369,10 @@ class ProcessiService:
             attore,
             motivo,
         )
-        return _con_capability_accensione(self._repo.accensione_processo(codice))
+        accensione = _con_capability_accensione(self._repo.accensione_processo(codice))
+        # La riga c'e': il processo l'ha trovato `_require_processo` qui sopra.
+        assert accensione is not None
+        return accensione
 
     # Scopo: Le corse recenti di un processo (tab «Ultimi run» del drawer).
     def list_run(

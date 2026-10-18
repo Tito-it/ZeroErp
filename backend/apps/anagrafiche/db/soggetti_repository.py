@@ -16,6 +16,7 @@ from typing import Any
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
+    coerce_jsonb_dict,
     pattern_contiene,
     RicercaFull,
     add_ricerca_full_condition,
@@ -160,6 +161,15 @@ INDIRIZZO_RUOLO_UPDATE_COLS: frozenset[str] = frozenset({
     "indirizzo_libero", "stato_id", "comune_id", "codice_postale_id",
     "administrative_area", "locality", "sublocality", "postal_box",
 })
+
+
+# Le colonne del contatto appena creato che il repository restituisce: le
+# stesse della RETURNING che c'era prima della madre (2026-10-18).
+_CONTATTO_CREATO_COLS: tuple[str, ...] = (
+    "id", "nominativo", "email", "telefono", "cellulare", "pec",
+    "tipo_contatto_id", "unita_organizzativa_id", "note",
+    "soggetto_ruolo_id", "istanza_utility_id",
+)
 
 
 class SoggettiRepository:
@@ -528,6 +538,11 @@ class SoggettiRepository:
 
     # Scopo: Crea contatto per un soggetto. Se soggetto_ruolo_id fornito, il contatto
     #        e' specifico del ruolo; altrimenti e' a livello soggetto (fallback).
+    # ⭐ Dal 2026-10-18 (2b-2, lotto 3) scrive la madre del DB
+    #    `anagrafiche.fn_crea_contatto`: nominativo e tipo obbligatori
+    #    (`E_CONTATTO_INCOMPLETO`, col campo), le chiavi assenti al DEFAULT.
+    #    Le unicita' escono dai vincoli, tradotti per nome dal chiamante.
+    #    Ritorna le stesse colonne di prima, non la riga intera.
     def crea_contatto(
         self, soggetto_id: str, *, nominativo: str, email: str | None = None,
         telefono: str | None = None, cellulare: str | None = None,
@@ -535,23 +550,23 @@ class SoggettiRepository:
         unita_organizzativa_id: int | None = None, note: str | None = None,
         soggetto_ruolo_id: int | None = None, istanza_utility_id: int | None = None,
     ) -> dict[str, Any]:
-        sql = """
-            INSERT INTO anagrafiche.contatti
-                (soggetto_id, soggetto_ruolo_id, istanza_utility_id, nominativo, email,
-                 telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note)
-            VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, nominativo, email, telefono, cellulare, pec,
-                      tipo_contatto_id, unita_organizzativa_id, note,
-                      soggetto_ruolo_id, istanza_utility_id
-        """
+        campi = {
+            k: v for k, v in {
+                "nominativo": nominativo, "email": email, "telefono": telefono,
+                "cellulare": cellulare, "pec": pec, "tipo_contatto_id": tipo_contatto_id,
+                "unita_organizzativa_id": unita_organizzativa_id, "note": note,
+                "istanza_utility_id": istanza_utility_id,
+            }.items() if v is not None
+        }
         with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                soggetto_id, soggetto_ruolo_id, istanza_utility_id, nominativo, email,
-                telefono, cellulare, pec, tipo_contatto_id, unita_organizzativa_id, note,
-            ])
-            result = row_to_dict(cursor)
-            assert result is not None
-            return result
+            cursor.execute(
+                "SELECT anagrafiche.fn_crea_contatto(%s::uuid, %s::bigint, %s::jsonb)",
+                [soggetto_id, soggetto_ruolo_id, json.dumps(campi)],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        riga = coerce_jsonb_dict(row[0])
+        return {k: riga.get(k) for k in _CONTATTO_CREATO_COLS}
 
     # Scopo: Aggiorna un contatto esistente con verifica ownership soggetto o ruolo.
     #        SET composto dal BB `sql_set_clause` (whitelist RIGIDA
@@ -673,17 +688,19 @@ class SoggettiRepository:
     # Indirizzi ruolo (anagrafiche.indirizzi — con istanza_utility_id)
     # =================================================================
 
-    # Scopo: Restituisce i tipo_indirizzo_id gia' presenti per un soggetto_ruolo.
-    #        Usato per evitare INSERT duplicati quando il ruolo esiste gia'.
-    def get_existing_tipo_indirizzo_ids(self, soggetto_ruolo_id: int) -> set[int]:
-        sql = """
-            SELECT tipo_indirizzo_id
-              FROM anagrafiche.indirizzi
-             WHERE soggetto_ruolo_id = %s
-        """
+    # Scopo: Gli indirizzi di un ruolo dalla madre del DB
+    #        `anagrafiche.fn_crea_indirizzi_ruolo` (auto-clone dei tipi
+    #        obbligatori, salto dei tipi presenti, via risolta da
+    #        `fn_create_indirizzo`). Ritorna quanti ne ha scritti.
+    def crea_indirizzi_ruolo(self, soggetto_ruolo_id: int, indirizzi: list[dict[str, Any]]) -> int:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_ruolo_id])
-            return {row[0] for row in cursor.fetchall()}
+            cursor.execute(
+                "SELECT anagrafiche.fn_crea_indirizzi_ruolo(%s::bigint, %s::jsonb)",
+                [soggetto_ruolo_id, json.dumps(indirizzi, default=str)],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
 
     # Campi nullable dell'update indirizzi ruolo: stringa vuota -> NULL.
     _IND_RUOLO_NULLABLE = {

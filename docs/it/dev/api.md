@@ -2331,8 +2331,8 @@ Due famiglie in `backend/scripts/tests/`, un runner solo:
 
 | | `smoke-*.py` | `smoke-test-*.sh` |
 | --- | --- | --- |
-| Come parlano | in-process (`./manage-env.sh shell <`), col database di sviluppo | via **HTTP** col backend in esecuzione (`BASE_URL`), utente `smoke` di `backend/env.sh` |
-| Cosa lasciano | niente: `transaction.atomic()` + `set_rollback(True)` | ⚠️ **scrivono** sul database di sviluppo (documenti di prova sull'emittente attivo dell'utente `smoke`) |
+| Come parlano | in-process (`./manage-env.sh shell <`), col database di sviluppo | via **HTTP** col backend in esecuzione (`BASE_URL`), utente degli smoke di `backend/env.sh` (`dev.smoke`, dal provisioning di sviluppo: run-book §11) |
+| Cosa lasciano | niente: `transaction.atomic()` + `set_rollback(True)` | ⚠️ **scrivono** sul database di sviluppo (documenti di prova sull'emittente attivo dell'utente degli smoke) |
 
 ⛔ Non li raccoglie il runner Django e non li esegue la CI, quindi vanno lanciati
 a mano. Fino al 2026-10-12 il runner prendeva i soli `.py`: i bash non li

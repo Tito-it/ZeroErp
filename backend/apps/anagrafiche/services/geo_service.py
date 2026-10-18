@@ -25,6 +25,32 @@ from apps.anagrafiche.services._validators import (
 )
 
 
+# Scopo: Il pre-check della VIA di un indirizzo normalizzato: uno stradario
+#        esistente (id positivo), oppure i quattro campi di una via nuova (tipo
+#        strada, nome, comune, CAP) che `anagrafiche.fn_create_indirizzo` usa
+#        per l'upsert dello stradario. Messaggi per l'operatore, prima di
+#        scrivere: il DB li rifiuterebbe con un errore meno parlante.
+#        Lo chiamano la creazione del dettaglio (qui) e gli indirizzi di ruolo
+#        (`SoggettiService.create_indirizzi_ruolo`), che alla madre passano la
+#        via da risolvere.
+def richiedi_via(payload: dict) -> None:
+    stradario_id = optional_int(payload, "stradario_id")
+    if stradario_id is not None:
+        ErrorManager.require(stradario_id > 0, code=E_ANAG_VALIDAZIONE, message="stradario_id non valido.")
+        return
+    toponomastica_id = optional_int(payload, "toponomastica_id")
+    comune_id = optional_int(payload, "comune_id")
+    codice_postale_id = optional_int(payload, "codice_postale_id")
+    ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
+                         code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio per via nuova.")
+    ErrorManager.require(bool((payload.get("descrizione_via") or "").strip()),
+                         code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
+    ErrorManager.require(comune_id is not None and comune_id > 0,
+                         code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio per via nuova.")
+    ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
+                         code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio per via nuova.")
+
+
 class GeoService:
     """Service per gestione entita' geografiche."""
 
@@ -300,36 +326,30 @@ class GeoService:
     # composizione (upsert stradario ×2 + get_or_create dettaglio) vive in una
     # sola funzione madre atomica anagrafiche.fn_create_indirizzo (fix #13).
     def create_indirizzo(self, payload: dict) -> dict[str, Any]:
-        stradario_id = optional_int(payload, "stradario_id")
-        toponomastica_id = optional_int(payload, "toponomastica_id")
-        descrizione_via = (payload.get("descrizione_via") or "").strip() or None
-        comune_id = optional_int(payload, "comune_id")
-        codice_postale_id = optional_int(payload, "codice_postale_id")
+        indirizzo_id = self.crea_dettaglio_indirizzo(payload)
+        detail = self._ind.get_indirizzo_dettaglio(indirizzo_id)
+        return detail or {"id": indirizzo_id}
 
-        if stradario_id is None:
-            # Via nuova: i campi stradario sono obbligatori (la fn li usa per
-            # l'upsert stradario_generale + stradario).
-            ErrorManager.require(toponomastica_id is not None and toponomastica_id > 0,
-                                 code=E_ANAG_VALIDAZIONE, message="Tipo strada obbligatorio per via nuova.")
-            ErrorManager.require(bool(descrizione_via),
-                                 code=E_ANAG_VALIDAZIONE, message="Nome via obbligatorio.")
-            ErrorManager.require(comune_id is not None and comune_id > 0,
-                                 code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio per via nuova.")
-            ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
-                                 code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio per via nuova.")
-        else:
-            ErrorManager.require(stradario_id > 0, code=E_ANAG_VALIDAZIONE, message="stradario_id non valido.")
-
+    # Scopo: Il dettaglio (via + civico) di un indirizzo dal payload: il
+    #        pre-check della via, poi la madre atomica
+    #        `anagrafiche.fn_create_indirizzo` (get_or_create: lo stesso
+    #        payload ritrova lo stesso dettaglio). Ritorna l'id del dettaglio.
+    # ⭐ Sede unica (2026-10-18, 2b-2 del brief-db-processi-accensione-per-
+    #    ambiente): la usa anche `SoggettiService` per gli indirizzi di soggetto
+    #    e di ruolo, che fino ad allora ne tenevano una copia non atomica
+    #    (`_create_stradario_da_generale` + `create_indirizzo_dettaglio`).
+    def crea_dettaglio_indirizzo(self, payload: dict) -> int:
+        richiedi_via(payload)
         # Fix analisi-fix-transazioni #13 (Classe D): upsert stradario (×2, solo
         # via nuova) + get_or_create del dettaglio in UNA sola fn madre atomica.
         # Prima erano get_or_create_stradario + create_indirizzo_dettaglio
         # separati → righe stradario di registro orfane se il dettaglio falliva.
-        indirizzo_id = self._ind.create_indirizzo_atomico(
-            stradario_id=stradario_id,
-            toponomastica_id=toponomastica_id,
-            descrizione_via=descrizione_via,
-            comune_id=comune_id,
-            codice_postale_id=codice_postale_id,
+        return self._ind.create_indirizzo_atomico(
+            stradario_id=optional_int(payload, "stradario_id"),
+            toponomastica_id=optional_int(payload, "toponomastica_id"),
+            descrizione_via=(payload.get("descrizione_via") or "").strip() or None,
+            comune_id=optional_int(payload, "comune_id"),
+            codice_postale_id=optional_int(payload, "codice_postale_id"),
             civico=optional_int(payload, "civico"),
             estensione_civico=(payload.get("estensione_civico") or "").strip() or None,
             palazzina=(payload.get("palazzina") or "").strip() or None,
@@ -337,8 +357,6 @@ class GeoService:
             piano=(payload.get("piano") or "").strip() or None,
             interno=(payload.get("interno") or "").strip() or None,
         )
-        detail = self._ind.get_indirizzo_dettaglio(indirizzo_id)
-        return detail or {"id": indirizzo_id}
 
     # Scopo: Aggiorna dettagli civico indirizzo.
     def update_indirizzo(self, pk: int, payload: dict) -> dict:

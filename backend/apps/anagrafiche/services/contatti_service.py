@@ -91,16 +91,15 @@ def missing_required_fields(data: dict[str, Any] | None) -> list[str]:
     return [f for f in _REQUIRED_FIELDS if not _is_filled(payload.get(f))]
 
 
-# Scopo: Orchestratore contatto inline opzionale: classifica + valida + crea.
-#        Centralizza il blocco identico che era duplicato in clienti_service e
-#        fornitori_service (regola del 2). Stati: EMPTY → skip; PARTIAL → solleva
-#        E_CONTATTO_INCOMPLETO; VALID → crea il contatto via repository.
-def crea_contatto_inline_se_valido(
-    sogg_repo: "SoggettiRepository",
-    soggetto_id: str,
-    soggetto_ruolo_id: int,
-    contatto_data: dict[str, Any] | None,
-) -> None:
+# Scopo: Il contatto inline OPZIONALE di una creazione (fornitore, cliente)
+#        nella forma che la madre del DB riceve: EMPTY → None (nessun
+#        contatto); PARTIAL → E_CONTATTO_INCOMPLETO coi campi da accendere;
+#        VALID → i campi del contatto (`campi_contatto`).
+# ⭐ Dal 2026-10-18 (2b-2): la scrittura la fa la madre (`fn_crea_fornitore`,
+#    `fn_crea_cliente`, che chiamano `fn_crea_contatto`); qui resta la
+#    classificazione, che decide SE c'e' un contatto. Prima era
+#    `crea_contatto_inline_se_valido`, che lo scriveva da se'.
+def contatto_inline_per_madre(contatto_data: dict[str, Any] | None) -> dict[str, Any] | None:
     contatto_status = classify_contatto_payload(contatto_data)
     if contatto_status == "PARTIAL":
         missing = missing_required_fields(contatto_data)
@@ -112,11 +111,26 @@ def crea_contatto_inline_se_valido(
             # per piu' di uno (presidio C2, §3-ter).
             fields=tuple(missing),
         )
-    if contatto_status == "VALID":
-        assert contatto_data is not None  # type narrowing per il checker
-        crea_contatto_validato(
-            sogg_repo, soggetto_id, contatto_data, soggetto_ruolo_id=soggetto_ruolo_id,
-        )
+    if contatto_status == "EMPTY":
+        return None
+    assert contatto_data is not None  # VALID
+    return campi_contatto(contatto_data)
+
+
+# Scopo: I campi di un contatto VALIDO come li scrive il DB: testi ripuliti
+#        (vuoto = assente), id interi; le chiavi assenti restano fuori.
+def campi_contatto(contatto: dict[str, Any]) -> dict[str, Any]:
+    campi = {
+        "nominativo": optional_str(contatto, "nominativo"),
+        "email": optional_str(contatto, "email"),
+        "telefono": optional_str(contatto, "telefono"),
+        "cellulare": optional_str(contatto, "cellulare"),
+        "pec": optional_str(contatto, "pec"),
+        "tipo_contatto_id": optional_int(contatto, "tipo_contatto_id"),
+        "unita_organizzativa_id": optional_int(contatto, "unita_organizzativa_id"),
+        "note": optional_str(contatto, "note"),
+    }
+    return {k: v for k, v in campi.items() if v is not None}
 
 
 # Scopo: il contatto e' VALIDO (nominativo + tipo contatto), altrimenti
@@ -138,7 +152,7 @@ def richiedi_contatto_valido(contatto: dict[str, Any] | None) -> None:
 # tipo, sul soggetto, sul ruolo, sul ruolo per istanza. Il campo e' il tipo
 # contatto: e' l'unica colonna che l'operatore sceglie (soggetto, ruolo e
 # istanza li da' il contesto della pagina).
-_VINCOLI_CONTATTO: Final[dict[str, str | tuple[str, str]]] = {
+VINCOLI_CONTATTO: Final[dict[str, str | tuple[str, str]]] = {
     "uq_contatti_soggetto_tipo": (
         "Il soggetto ha gia' un contatto di questo tipo.", "tipo_contatto_id",
     ),
@@ -169,22 +183,14 @@ def crea_contatto_validato(
     istanza_utility_id: int | None = None,
 ) -> dict[str, Any]:
     richiedi_contatto_valido(contatto)
-    nominativo = optional_str(contatto, "nominativo")
-    assert nominativo is not None  # garantito dal contatto VALIDO
+    campi = campi_contatto(contatto)
     risultato: dict[str, Any] = create_with_constraint_mapping(
         lambda: sogg_repo.crea_contatto(
             soggetto_id,
-            nominativo=nominativo,
-            email=optional_str(contatto, "email"),
-            telefono=optional_str(contatto, "telefono"),
-            cellulare=optional_str(contatto, "cellulare"),
-            pec=optional_str(contatto, "pec"),
-            tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),
-            unita_organizzativa_id=optional_int(contatto, "unita_organizzativa_id"),
-            note=optional_str(contatto, "note"),
+            **campi,
             soggetto_ruolo_id=soggetto_ruolo_id,
             istanza_utility_id=istanza_utility_id,
         ),
-        _VINCOLI_CONTATTO,
+        VINCOLI_CONTATTO,
     )
     return risultato

@@ -26,6 +26,7 @@ Indice test eseguiti:
 16) test_credenziale_per_email_trovata — GET credenziale-per-email con credenziale
 17) test_credenziale_per_email_assente — GET su email senza credenziale -> credenziale null
 18) test_credenziale_per_email_solo_admin — OPERATIVO non puo' leggerla
+19) test_list_operatori_includi_di_prova — gli utenti di prova solo a chi li chiede
 """
 
 from unittest import TestCase
@@ -150,6 +151,22 @@ class TestOperatoriListView(TestCase):
         self.assertEqual(call_kwargs["limit"], 10)
         # Niente piu' ruolo_sistema nei filtri (Fase 7).
         self.assertNotIn("ruolo_sistema", call_kwargs)
+        # Senza chiederli, gli utenti di prova restano fuori.
+        self.assertIs(call_kwargs["includi_di_prova"], False)
+
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    def test_list_operatori_includi_di_prova(self, MockRepo: MagicMock) -> None:
+        """Scopo: `includi_di_prova=true` arriva al repository; un valore estraneo e' un errore."""
+        repo_instance = MockRepo.return_value
+        repo_instance.list_operatori.return_value = ([], 0)
+        view = OperatoriListView()
+        view.check_permissions = MagicMock()
+
+        view.get(_admin_request(query_params={"includi_di_prova": "true"}))
+        self.assertIs(repo_instance.list_operatori.call_args.kwargs["includi_di_prova"], True)
+
+        with self.assertRaises(ValueError):
+            view.get(_admin_request(query_params={"includi_di_prova": "banana"}))
 
     @patch("apps.core.api.permissions.save_user_cache")
     @patch("apps.core.api.permissions.load_user_cache", return_value=None)

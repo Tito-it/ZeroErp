@@ -23,7 +23,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.invito_veste import PORTA_OPERATORE, InvitoVeste
 from apps.core.services.parameter_service import ParameterService
-from apps.core.services.payload_helpers import MISSING, PayloadValidator, translate_db_errors
+from apps.core.services.payload_helpers import MISSING, PayloadValidator, translate_db_errors, vincolo_violato
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
@@ -32,6 +32,8 @@ from apps.amm_software.types import CredenzialePerEmailRow, OperatoreDetailRow
 E_AMM_VALIDAZIONE = "E_AMM_VALIDAZIONE"
 E_AMM_NOT_FOUND = "E_AMM_OPERATORE_NOT_FOUND"
 E_AMM_SCOPE_NON_AMMESSO = "E_AMM_SCOPE_NON_AMMESSO"
+# Il vincolo «un profilo per identita'» di `config.profili_accesso_bindings`.
+_UQ_BINDING_IDENTITA = "uq_profili_accesso_bindings_identita"
 
 # Fase 5 audit hardening — codici stabili dal team DB.
 E_AUDIT_SUMMARY_PARAM_NON_VALIDO = "E_AUDIT_SUMMARY_PARAM_NON_VALIDO"
@@ -146,6 +148,20 @@ def _run_or_raise_super_admin_guard(repo_call: Callable[[], None]) -> None:
                 code=E_OPERATORE_SCOPE_PARAM_NON_VALIDO,
                 message="Parametri scope operatore non validi.",
                 detail=msg,
+            ) from exc
+        # Un'identita' ha un profilo legato solo: SUPER_ADMIN su un accesso che
+        # ne ha gia' un altro e' rifiutato dal vincolo (2026-10-18, madre
+        # `config.fn_lega_profilo_identita`). Prima la richiesta spariva in
+        # silenzio (`ON CONFLICT DO NOTHING`).
+        if vincolo_violato(exc, [_UQ_BINDING_IDENTITA]) is not None:
+            raise ServiceError(
+                code=E_AMM_VALIDAZIONE,
+                message=(
+                    "Questo accesso ha gia' un altro profilo legato: per renderlo "
+                    "Super Admin va tolto prima quel profilo."
+                ),
+                detail=msg,
+                context={"field": "is_super_admin"},
             ) from exc
         raise
 

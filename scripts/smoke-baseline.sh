@@ -9,9 +9,10 @@
 #        - `smoke-*.py`, in-process (`manage-env.sh shell <`), in transazione
 #          ritirata: non lasciano niente;
 #        - `smoke-test-*.sh`, via HTTP contro il backend in esecuzione
-#          (BASE_URL), con l'utente `smoke` di `backend/env.sh`. ⚠️ Questi
-#          SCRIVONO sul database di sviluppo (documenti di prova, sull'emittente
-#          attivo dell'utente smoke) e lasciano quello che creano.
+#          (BASE_URL), con l'utente degli smoke di `backend/env.sh`
+#          (`SMOKE_USER`, `dev.smoke`). ⚠️ Questi SCRIVONO sul database di
+#          sviluppo (documenti di prova, sull'emittente attivo dell'utente
+#          degli smoke) e lasciano quello che creano.
 #        Fino al 2026-10-12 il perimetro era solo `smoke-*.py`: i 36 bash non li
 #        lanciava nessuno, e quel giorno il primo giro completo ne ha trovati
 #        rossi piu' della meta' (contratti API cambiati sotto, id cablati).
