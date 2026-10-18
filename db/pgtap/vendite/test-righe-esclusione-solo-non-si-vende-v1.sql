@@ -7,6 +7,8 @@
 --   2026-10-04. Brief: brief-db-righe-esclusione-solo-non-si-vende (R1-R5, R8,
 --   R9). changeSet: 20261004-40 e -76 (CHECK, bonifica), -41…-47 (funzioni), -48/-49 (trigger),
 --   -70…-75 (lista, ritiri, commenti) + CSV codici e lock.
+--   ⚠️ rev 2026-10-19 (20261019-20, brief-db-grammatica-unica-documenti lotto 1):
+--   il documento dell'offerta e' OFFERTA_COMMERCIALE (test 25).
 --
 -- ⭐ TUTTO COSTRUITO: azienda, cliente, listino con un bundle, articoli,
 --   contratto, offerte e righe nascono qui (builder dbops.fn_pgtap_crea_*).
@@ -483,9 +485,9 @@ SELECT ok(
         AND m -> 0 ->> 'reason_key' = 'vendite.contratti.escludi_blocco.figlio_di_bundle'
         AND jsonb_array_length(m) = 1
         AND script.fn_check_esclusione_articolo_documento(
-                'OFFERTA', pg_temp.doc('offerta'), pg_temp.art('A')) = '[]'::jsonb
+                'OFFERTA_COMMERCIALE', pg_temp.doc('offerta'), pg_temp.art('A')) = '[]'::jsonb
        FROM (SELECT script.fn_check_esclusione_articolo_documento(
-                 'OFFERTA', pg_temp.doc('offerta'), pg_temp.art('F')) AS m) x),
+                 'OFFERTA_COMMERCIALE', pg_temp.doc('offerta'), pg_temp.art('F')) AS m) x),
     '25) la check generica sull''offerta: F un motivo a catalogo, A nessuno');
 
 -- ============================================================

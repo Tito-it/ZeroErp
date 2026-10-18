@@ -2,8 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: il team DB col lotto 1**, al via e coi numeri di Tid, insieme alla sessione BE/FE (stesso giro).
-Il lotto 0 è chiuso anche lato FE: le 25 chiavi del §8.4 ci sono, `check_i18n_keys` è verde.
+**Riparte: la sessione BE** (il §9.4: consegnare il giro del lotto 1). Il DB del lotto 1 è applicato su dbdev
+senza regressioni (Tid, 2026-10-19): finché il BE non passa `OFFERTA_COMMERCIALE`, sul dev il form delle
+erogazioni e il listino operativo dell'offerta rispondono `E_DOC_TIPO_NON_GESTITO`.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -16,11 +17,13 @@ Il lotto 0 è chiuso anche lato FE: le 25 chiavi del §8.4 ci sono, `check_i18n_
 | 5-bis | ✅ **Tid** | K-1 = (b1), la chiave resta doppia; nomi `DISTINTA_INCASSO` ed `EMAIL` confermati (2026-10-19) | §8.3 | — |
 | 5-ter | ✅ **Tid** | Apply del lotto 0, pgTAP 9/9 come app dopo la correzione del test 6 (2026-10-19) | §8.5 | 5 |
 | 5-quater | ✅ sessione FE | Le 25 chiavi `config.tipi_entita.*` in `it.json`/`en.json`, `check_i18n_keys` verde (2026-10-19) | §8.4 | 5 |
-| 6 | team DB + sessione BE/FE | Lotti 1, 2, 3 (il 3 anticipabile): DB e backend nello stesso giro; col lotto 2 il SQL a mano delle chiavi (G-8) | §5 G-4, §3.2, §7.9 | 5-ter |
-| 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6 |
+| 6 | ✅ team DB | Lotto 1 scritto e provato in transazione: `20261019-18` … `-32`, pgTAP (2026-10-19) | §9 | — |
+| 6-bis | sessione BE | Il giro BE del lotto 1: `DocumentoEccezioni` e i due punti di `offerte_service` sui codici delle sorgenti. ⏳ Al 2026-10-19 non ancora su `origin/dev/backend-tid` | §9.4 | 6 |
+| 6-ter | ✅ **Tid** | Apply del lotto 1 su dbdev e corsa dei pgTAP come app: nessuna regressione (2026-10-19) | §9.5 | 6 |
+| 6-quater | team DB + sessione BE/FE | Lotti 2 e 3 (il 3 anticipabile): DB e backend nello stesso giro; col lotto 2 il SQL a mano delle chiavi (G-8) | §5 G-4, §3.2, §7.9 | 6-bis |
+| 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6-quater |
 
-**Decisioni aperte di Tid:** nessuna (K-1 e i nomi decisi il 2026-10-19, §8.3). Da committare: le 25 chiavi
-i18n del §8.4 (`dev/backend-tid`). ⚠️ Mancano ancora i rimandi del §6.1 in
+**Decisioni aperte di Tid:** nessuna (K-1 e i nomi decisi il 2026-10-19, §8.3). Da committare: il lotto 1 (§9). ⚠️ Mancano ancora i rimandi del §6.1 in
 [brief-db-indirizzi-documento-seguono-il-cliente](brief-db-indirizzi-documento-seguono-il-cliente.md) (R-BE-1) e in
 [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md): oggi rimanda qui solo
 quello degli articoli ammessi.
@@ -580,3 +583,98 @@ Il backend non cambia: il lookup dei tipi entità legge il catalogo così com'è
   `config.email_outbox`. Il test legge ora schema e tabella da `pg_class`/`pg_namespace`, convertiti in
   `text` con `COLLATE "default"`: due `name` composti lasciano indeciso il confronto di `results_eq`.
   Rilanciato come app: **9/9**.
+
+## 9. Lotto 1 — la famiglia delle eccezioni (team DB, 2026-10-19)
+
+Via di Tid il 2026-10-19 («procedi col progressivo successivo»). Numeri `20261019-18` … `-32`. Scritto,
+provato in transazione e ✅ **applicato su dbdev il 2026-10-19** (nessuna regressione). ⚠️ Andava applicato **insieme** al giro BE del §9.4: dopo l'apply il
+codice `OFFERTA` è rifiutato dalle funzioni della famiglia.
+
+### 9.1 Che cosa contiene
+
+La famiglia dei documenti con eccezioni (§9.8.3 del brief degli articoli ammessi) passa da `OFFERTA` al
+codice della sorgente, `OFFERTA_COMMERCIALE`. `CONTRATTO` è già il codice della sorgente.
+
+| ChangeSet | Oggetto | Che cosa |
+| --- | --- | --- |
+| `-18` | `vendite.fn_documento_listino_operativo` | ramo `OFFERTA_COMMERCIALE`; `p_documento` ancorato (DROP + CREATE) |
+| `-19` | `vendite.fn_documento_righe_eccezione` | idem |
+| `-20` | `script.fn_check_esclusione_articolo_documento` | firma ancorata (il corpo passa il codice al `-18`) |
+| `-21` | `script.fn_check_riga_erogazione` | valori ammessi `OFFERTA_COMMERCIALE`, `CONTRATTO`; firma ancorata |
+| `-22` | `script.fn_check_listino_congelabile` | idem, e il ramo dell'offerta; i codici `E_OFFERTA_*` restano |
+| `-23` | `vendite.fn_documento_righe_preview` | il ramo dei componenti dell'offerta; firma ancorata |
+| `-24` | `vendite.fn_documento_riga_erogazioni` | firma ancorata (passa il codice al `-21`) |
+| `-25` | `vendite.fn_offerta_righe_espanse` | chiama il listino operativo con `OFFERTA_COMMERCIALE` |
+| `-26` | `vendite.fn_offerta_righe_preview` | chiama la preview comune con `OFFERTA_COMMERCIALE` |
+| `-27` | `script.fn_available_actions_offerta` | chiama la check del listino con `OFFERTA_COMMERCIALE` |
+| `-28` | `vendite.trgfn_offerte_commerciali_guard_transizione` | idem |
+| `-29` | `script.trgfn_righe_guard_erogazione_perimetro` | il commento che elenca i documenti |
+| `-30` | i due montaggi del guard dell'erogazione su `vendite.offerte_commerciali_eccezioni` | rimontati con `OFFERTA_COMMERCIALE`, stessa forma (`WHEN` compreso) |
+| `-31` | `script.fn_articolo_riga_contesto` (il ponte A-8) | il listino operativo riceve il codice com'è; la chiave `doc_listino` esce dal contesto |
+| `-32` | `script.fn_check_articolo_riga_su_contesto` | le due check del listino ricevono il documento del contesto; `v_doc_listino` esce |
+
+pgTAP: nuovo `vendite/test-grammatica-eccezioni-codice-sorgente-v1` (12 test); adeguati
+`vendite/test-righe-esclusione-solo-non-si-vende-v1` (test 25, il codice) e
+`vendite/offerte_commerciali/test-offerta-emissione-congela-listino-v1` (test 2, la firma).
+
+### 9.2 Le scelte
+
+* **`p_documento` ancorato a `config.sorgenti.codice_interno%TYPE`** (raccomandazione di Tid: `%TYPE` in
+  firma, `DECLARE` e `RETURNS TABLE`). Era un `text` nudo «senza colonna-vocabolario»; col lotto 0 la
+  colonna c'è. Il tipo passa da `text` a `character varying`, quindi la firma cambia: **DROP + CREATE**
+  per le sette funzioni che ricevono `p_documento` (un `CREATE OR REPLACE` avrebbe lasciato due overload).
+  Tutte `plpgsql`, nessun dipendente registrato in `pg_depend`; nessun `COST`/`ROWS`/`SET` da ripetere
+  (default). Il backend passa il codice come parametro semplice: un `text` si converte da solo.
+* **Il ponte A-8 si restringe, non sparisce.** Traduceva per tre lettori (listino operativo, etichetta
+  della testata, le due check via `doc_listino`). Dopo il lotto 1 traduce solo verso
+  `script.fn_get_stato_testata_documento`, che parla la grammatica delle testate: lo ritira il lotto 2.
+  La chiave `doc_listino` del contesto era diventata una copia di `documento` ed esce (regola del 2).
+* **Due funzioni parlano per un giro due grammatiche**, dichiarato nei loro changeSet:
+  `fn_available_actions_offerta` e `trgfn_offerte_commerciali_guard_transizione` passano ancora `'OFFERTA'`
+  a `script.fn_check_indirizzi_documento_cliente` (grammatica delle testate, lotto 2).
+* **I COMMENT** delle funzioni sono storie: non si riscrivono, prendono in coda una nota di revisione
+  che dice il codice di oggi.
+
+### 9.3 Fuori dal lotto 1 (e perché)
+
+* `script.trgfn_righe_default_erogazione_da_articolo` (nel censimento del §9.8.3): non nomina il documento.
+* I montaggi del contratto (`'CONTRATTO'`): già il codice della sorgente.
+* Tutto ciò che parla la grammatica delle testate (`fn_get_stato_testata_documento`,
+  `fn_check_indirizzi_documento_cliente`, lock, indirizzi, `_indirizzi_documento = "OFFERTA"` nel
+  repository): lotto 2. Le note (`target_tipo = 'OFFERTA'`): lotto 3.
+
+### 9.4 Richiesta al backend (stesso apply)
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `vendite/db/_documento_eccezioni_repo.py:39` | `DocumentoEccezioni = Literal["CONTRATTO", "OFFERTA"]` | i codici delle sorgenti: `SORGENTE_CONTRATTO`, `SORGENTE_OFFERTA_COMMERCIALE` di `apps/config/sorgenti.py` (anche nel commento di testa, riga 15) |
+| `vendite/services/offerte_service.py:1259` | `list_erogazioni_riga("OFFERTA", …)` | `SORGENTE_OFFERTA_COMMERCIALE` |
+| `vendite/services/offerte_service.py:1678` | `listino_versione_operativa("OFFERTA", …)` | `SORGENTE_OFFERTA_COMMERCIALE` |
+| `vendite/services/contratti_service.py` | `"CONTRATTO"` | invariato nel valore; `SORGENTE_CONTRATTO` se si vuole la costante |
+| `vendite/tests/api/test_riga_erogazioni_api.py` | `"OFFERTA"` | da adeguare |
+
+Restano come sono (lotti 2 e 3): `offerte_repository._indirizzi_documento = "OFFERTA"`, `note_views`
+(`target_tipo="OFFERTA"`), `_annullo_con_legami.py`. Le API non cambiano forma: nessuna risposta porta il
+selettore.
+
+### 9.5 La prova (2026-10-19, scratch `zeroerp_ruoli`, come owner, in transazione annullata)
+
+* **Censimento dal catalogo vivo** (`pg_proc.prosrc` di dbdev), non solo dalla doc: i chiamanti delle sette
+  funzioni sono quelli del §9.1, più `vendite.trgfn_contratti_freeze_listino_versione`,
+  `script.fn_available_actions_contratto` e `vendite.fn_contratto_righe_preview` (passano `CONTRATTO`:
+  invariati) e `script.trgfn_righe_default_erogazione_da_articolo` (solo un commento).
+  `script.trgfn_righe_guard_aggiunta_fuori_listino`, nominato in un COMMENT, non esiste più.
+* SQL estratto dei 15 changeSet: applicato senza errori; una sola firma per ciascuna delle sette, primo
+  argomento `character varying`; `plpgsql_check` a zero errori sulle dodici funzioni toccate.
+* **48 pgTAP** (ogni file che nomina un oggetto del lotto, più `script/test-catalogo-messaggi-errore-completo`
+  e `dbops/test-riferimenti-morti-v1`), prima e dopo: **identici**. Il nuovo
+  `vendite/test-grammatica-eccezioni-codice-sorgente-v1`: **12/12**.
+* Rossi **già prima**, con gli stessi test (da owner sullo scratch, non dal lotto):
+  `script/test-capability-annulla-aspetto-e-stato-leggibile-v1` (2, 4, 8),
+  `vendite/test-annullo-documento-con-legami-v1` (27), `vendite/test-fn-contratto-righe-preview-nuovi-campi-v1`
+  (2, fixture), `vendite/test-offerta-righe-espanse` (6, 7, 8).
+* Cancelli statici verdi (`run_on_change`, `precondition_seed`, `sql_letterali`,
+  `ddl_su_trigger_automazione`, `timestamp_senza_fuso`, `v1_congelato`, `check_i18n_keys`).
+* Non provato prima dell'apply: i pgTAP **come app** (li lancia Tid) e il giro BE del §9.4.
+* **Dopo l'apply su dbdev (2026-10-19), corsa di Tid come app: nessuna regressione.** Resta il giro BE
+  del §9.4: fino alla sua consegna, sul dev, le chiamate del backend con `OFFERTA` sono rifiutate.

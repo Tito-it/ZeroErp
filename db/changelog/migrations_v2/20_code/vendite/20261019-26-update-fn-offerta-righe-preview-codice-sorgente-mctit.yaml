@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 1: vendite.fn_offerta_righe_preview
+#   Brief: brief-db-grammatica-unica-documenti §9 (G-1, G-4 di Tid, 2026-10-18).
+#
+#   L'involucro dell'offerta chiama vendite.fn_documento_righe_preview
+#   (-23) col codice della sorgente, OFFERTA_COMMERCIALE.
+#
+#   CREATE OR REPLACE: la firma non cambia. Corpo dalla definizione viva
+#   (dbdev, 2026-10-19), firma e RETURNS dall'ultimo YAML che li ha ancorati
+#   (20261004-72). COMMENT vivo con la nota di revisione in coda.
+#
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-26-update-fn-offerta-righe-preview-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261019-26-update-fn-offerta-righe-preview-codice-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_offerta_righe_preview chiama fn_documento_righe_preview con OFFERTA_COMMERCIALE.
+        Grammatica unica, lotto 1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_offerta_righe_preview(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+              RETURNS TABLE(
+                  articolo_id           catalogo.articoli.id%TYPE,
+                  articolo_codice       catalogo.articoli.codice%TYPE,
+                  articolo_descrizione  catalogo.articoli.descrizione%TYPE,
+                  is_composito          catalogo.articoli.is_composito%TYPE,
+                  uom_id                catalogo.unita_misura.id%TYPE,
+                  uom_codice            catalogo.unita_misura.codice%TYPE,
+                  prezzo_listino        vendite.listini_righe.prezzo%TYPE,
+                  tipo_variazione       vendite.offerte_commerciali.tipo_variazione_globale%TYPE,
+                  valore_variazione     vendite.offerte_commerciali.valore_variazione_globale%TYPE,
+                  override_riga_id      vendite.offerte_commerciali_eccezioni.id%TYPE,
+                  override_prezzo       vendite.offerte_commerciali_eccezioni.prezzo_unitario%TYPE,
+                  tipo_eccezione        vendite.offerte_commerciali_eccezioni.tipo_eccezione%TYPE,
+                  origine               character varying,
+                  prezzo_finale         numeric,
+                  componenti            jsonb,
+                  quantita              vendite.offerte_commerciali_eccezioni.quantita%TYPE,
+                  qta_operativa         vendite.offerte_commerciali_eccezioni.qta_operativa%TYPE,
+                  tipo_erogazione       vendite.offerte_commerciali_eccezioni.tipo_erogazione%TYPE,
+                  fonte_quantita_attesa vendite.offerte_commerciali_eccezioni.fonte_quantita_attesa%TYPE,
+                  riga_key              text,
+                  azioni                text[],
+                  escludi_blocco_codice text,
+                  ordine                vendite.offerte_commerciali_eccezioni.ordine%TYPE,
+                  uom_operativa_id      vendite.offerte_commerciali_eccezioni.uom_operativa_id%TYPE)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+
+              -- Scopo: le righe del drawer dell'offerta, coi verbi che il DB
+              --   ammette, come quelle del contratto (stesse colonne, stessi verbi).
+              --   Corpo comune: vendite.fn_documento_righe_preview.
+              -- Nasce il 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R4).
+              BEGIN
+                  RETURN QUERY
+                  SELECT *
+                    FROM vendite.fn_documento_righe_preview('OFFERTA_COMMERCIALE', p_offerta_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_offerta_righe_preview(vendite.offerte_commerciali.id%TYPE) IS
+                'Le righe di un''offerta come le vede il drawer: righe della versione operativa del listino con l''overlay OVERRIDE/ESCLUSIONE, piu'' le AGGIUNTA standalone e bundle; riga_key, azioni (DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI) ed escludi_blocco_codice. Stesse 24 colonne di vendite.fn_contratto_righe_preview: involucro di vendite.fn_documento_righe_preview(''OFFERTA'', id). Il drawer rende i verbi del DB e non li deduce. Non e'' vendite.fn_offerta_righe_espanse (righe ordine-ready, esclusioni tolte). Nasce il 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende (R4). ⭐ rev 2026-10-19 (20261019-26, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_offerta_righe_preview(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+              RETURNS TABLE(
+                  articolo_id           catalogo.articoli.id%TYPE,
+                  articolo_codice       catalogo.articoli.codice%TYPE,
+                  articolo_descrizione  catalogo.articoli.descrizione%TYPE,
+                  is_composito          catalogo.articoli.is_composito%TYPE,
+                  uom_id                catalogo.unita_misura.id%TYPE,
+                  uom_codice            catalogo.unita_misura.codice%TYPE,
+                  prezzo_listino        vendite.listini_righe.prezzo%TYPE,
+                  tipo_variazione       vendite.offerte_commerciali.tipo_variazione_globale%TYPE,
+                  valore_variazione     vendite.offerte_commerciali.valore_variazione_globale%TYPE,
+                  override_riga_id      vendite.offerte_commerciali_eccezioni.id%TYPE,
+                  override_prezzo       vendite.offerte_commerciali_eccezioni.prezzo_unitario%TYPE,
+                  tipo_eccezione        vendite.offerte_commerciali_eccezioni.tipo_eccezione%TYPE,
+                  origine               character varying,
+                  prezzo_finale         numeric,
+                  componenti            jsonb,
+                  quantita              vendite.offerte_commerciali_eccezioni.quantita%TYPE,
+                  qta_operativa         vendite.offerte_commerciali_eccezioni.qta_operativa%TYPE,
+                  tipo_erogazione       vendite.offerte_commerciali_eccezioni.tipo_erogazione%TYPE,
+                  fonte_quantita_attesa vendite.offerte_commerciali_eccezioni.fonte_quantita_attesa%TYPE,
+                  riga_key              text,
+                  azioni                text[],
+                  escludi_blocco_codice text,
+                  ordine                vendite.offerte_commerciali_eccezioni.ordine%TYPE,
+                  uom_operativa_id      vendite.offerte_commerciali_eccezioni.uom_operativa_id%TYPE)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+
+              -- Scopo: le righe del drawer dell'offerta, coi verbi che il DB
+              --   ammette, come quelle del contratto (stesse colonne, stessi verbi).
+              --   Corpo comune: vendite.fn_documento_righe_preview.
+              -- Nasce il 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R4).
+              BEGIN
+                  RETURN QUERY
+                  SELECT *
+                    FROM vendite.fn_documento_righe_preview('OFFERTA', p_offerta_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_offerta_righe_preview(bigint) IS
+                'Le righe di un''offerta come le vede il drawer: righe della versione operativa del listino con l''overlay OVERRIDE/ESCLUSIONE, piu'' le AGGIUNTA standalone e bundle; riga_key, azioni (DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI) ed escludi_blocco_codice. Stesse 24 colonne di vendite.fn_contratto_righe_preview: involucro di vendite.fn_documento_righe_preview(''OFFERTA'', id). Il drawer rende i verbi del DB e non li deduce. Non e'' vendite.fn_offerta_righe_espanse (righe ordine-ready, esclusioni tolte). Nasce il 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende (R4).';
