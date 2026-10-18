@@ -1,6 +1,6 @@
 -- ------------------------------------------------------------
 -- Collaudo del presidio dei job: ogni riga dice a chi tocca
--- Brief: brief-db-presidio-job-run-a-chi-tocca §5
+-- Brief: work-done/brief-db-presidio-job-run-a-chi-tocca §5
 --
 -- PREPARA: mette nel giornale quattro corse di prova, una per causa, e controlla
 -- nel database che ognuna abbia la causa e il destinatario attesi. Se un
@@ -8,12 +8,12 @@
 --
 -- Come si lancia (da chi possiede gli schemi, su dbdev):
 --   set -a; . db/internal.env; set +a
---   psql -X -f docs/it/dev/work-in-progress/allegati/collaudo-presidio-job-run-prepara.sql
+--   psql -X -f docs/it/dev/work-done/allegati/collaudo-presidio-job-run-prepara.sql
 -- Poi il digest a mano, che non invia e non registra:
 --   source backend/.venv/bin/activate
 --   python backend/manage.py digest_presidi --cadenza giornaliera --secco
 -- A collaudo finito:
---   psql -X -f docs/it/dev/work-in-progress/allegati/collaudo-presidio-job-run-pulisci.sql
+--   psql -X -f docs/it/dev/work-done/allegati/collaudo-presidio-job-run-pulisci.sql
 --
 -- Le corse attese nel digest, sotto `maintenance.vw_job_run_da_guardare`:
 --   COLLAUDO-CAUSA-APPESA          → AMBIENTE       → chi gestisce il server
@@ -51,13 +51,13 @@ $gia$;
 -- Il processo di collaudo: canale CODA, i suoi fallimenti sono PROGRAMMA.
 -- ⚠️ id esplicito (la tabella non ha identity): 9990, fuori dai valori del CSV.
 INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, causa_fallimento)
-VALUES (9990, 'COLLAUDO-CAUSA', 'Processo di collaudo del presidio dei job (brief-db-presidio-job-run-a-chi-tocca §5). Da togliere col suo script di pulizia.',
+VALUES (9990, 'COLLAUDO-CAUSA', 'Processo di collaudo del presidio dei job (work-done/brief-db-presidio-job-run-a-chi-tocca §5). Da togliere col suo script di pulizia.',
         'MANUTENZIONE', 'CODA', 'PROGRAMMA');
 
 -- Il codice di collaudo che dichiara CONFIGURAZIONE.
 INSERT INTO config.codici_errore (codice, classe, note, causa_fallimento)
 VALUES ('E_COLLAUDO_CAUSA_CONFIGURAZIONE', 'TECNICO',
-        'Codice di collaudo del presidio dei job (brief-db-presidio-job-run-a-chi-tocca §5). Da togliere col suo script di pulizia.',
+        'Codice di collaudo del presidio dei job (work-done/brief-db-presidio-job-run-a-chi-tocca §5). Da togliere col suo script di pulizia.',
         'CONFIGURAZIONE');
 
 -- 1) appesa da tre ore: il processo è morto senza chiudere la corsa.
