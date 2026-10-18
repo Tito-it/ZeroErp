@@ -3,7 +3,7 @@
 
 import {
   listArticoli, getArticolo, createArticolo, updateArticolo,
-  disattivaArticolo, riattivaArticolo, correggiStrutturaArticolo,
+  disattivaArticolo, riattivaArticolo,
 } from '../api/catalogo'
 import { createCrudStore } from '../../core/stores/createCrudStore'
 import { TAB_ENTITIES } from '../../core/constants'
@@ -23,6 +23,5 @@ export const useArticoliStore = createCrudStore('catalogo-articoli', {
   extraActions: {
     disattiva: disattivaArticolo,
     riattiva: riattivaArticolo,
-    correggiStruttura: correggiStrutturaArticolo,
   },
 })

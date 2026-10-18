@@ -32,6 +32,9 @@
 #   6) la correzione di struttura senza SUPER_ADMIN: la rifiuta il verbo
 #   7) la correzione di struttura con `campi` assente, vuoto o non oggetto: la
 #      rifiuta il verbo (il service non ripete la regola)
+#   8) R-BE-1: correzione e PATCH in UNA transazione — un UPDATE rifiutato
+#      annulla anche la correzione; riuscito, le scrive tutte e due
+#   9) `struttura_correggibile` del dettaglio e' la sede del DB
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -42,7 +45,9 @@ import uuid
 from django.db import DatabaseError, connection, transaction
 
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
+from apps.catalogo.services.catalogo_service import fn_get_articolo, fn_update_articolo
 from apps.core.services.db_error_fields import db_error_code
+from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
 
@@ -170,6 +175,73 @@ class ArticoliAmmessiDbTests(unittest.TestCase):
                                 "00000000-0000-0000-0000-000000000001", campi,
                             )
                         self.assertEqual(db_error_code(ctx.exception), "E_PARAMETRO_INVALIDO")
+                raise Annulla
+        except Annulla:
+            pass
+
+    # Scopo: il SUPER_ADMIN costruito e un articolo nuovo gestito a magazzino,
+    #        senza lotto. Ritorna l'id dell'articolo.
+    @staticmethod
+    def _admin_e_articolo(cur) -> str:
+        cur.execute(
+            "SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('struttura admin', true)"
+        )
+        admin = cur.fetchone()[0]
+        cur.execute(
+            "SELECT dbops.fn_pgtap_crea_articolo(%s, true, false)",
+            [f"PYSTR-{uuid.uuid4().hex[:8]}"],
+        )
+        articolo_id = str(cur.fetchone()[0])
+        cur.execute("SET LOCAL app.ruolo_applicativo = 'OPERATORE'")
+        cur.execute("SET LOCAL app.current_user_id = %s", [str(admin)])
+        return articolo_id
+
+    @staticmethod
+    def _lotto_e_descrizione(cur, articolo_id: str) -> tuple[bool, str]:
+        cur.execute(
+            "SELECT requires_lotto, descrizione FROM catalogo.articoli WHERE id = %s", [articolo_id]
+        )
+        return cur.fetchone()
+
+    # 8. R-BE-1: la correzione viaggia nel PATCH, e le due scritture sono UNA
+    #    transazione. Un UPDATE che il DB rifiuta (un'aliquota che non esiste:
+    #    la FK, DOPO il verbo) annulla anche la correzione; un PATCH buono le
+    #    scrive tutte e due. Fino al 2026-10-18 erano due chiamate, e la prima
+    #    restava scritta.
+    def test_correzione_e_patch_in_una_transazione(self):
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                articolo_id = self._admin_e_articolo(cur)
+                prima = self._lotto_e_descrizione(cur, articolo_id)
+                self.assertFalse(prima[0])
+
+                with self.assertRaises(ServiceError):
+                    fn_update_articolo(articolo_id, {
+                        "iva_id": 2_000_000_000,
+                        "correzione_struttura": {"requires_lotto": True},
+                    })
+                self.assertEqual(self._lotto_e_descrizione(cur, articolo_id), prima)
+
+                dettaglio = fn_update_articolo(articolo_id, {
+                    "descrizione": "Corretto in un colpo",
+                    "correzione_struttura": {"requires_lotto": True},
+                })
+                self.assertTrue(dettaglio["requires_lotto"])
+                self.assertEqual(self._lotto_e_descrizione(cur, articolo_id), (True, "Corretto in un colpo"))
+                raise Annulla
+        except Annulla:
+            pass
+
+    # 9. Le colonne che la scheda riapre in correzione arrivano col dettaglio,
+    #    dalla sede del DB (R-DB-3): le stesse, nello stesso ordine.
+    def test_struttura_correggibile_dalla_sede(self):
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                articolo_id = self._admin_e_articolo(cur)
+                cur.execute("SELECT catalogo.fn_articolo_colonne_struttura()")
+                sede = list(cur.fetchone()[0])
+                self.assertIn("requires_lotto", sede)
+                self.assertEqual(fn_get_articolo(articolo_id)["struttura_correggibile"], sede)
                 raise Annulla
         except Annulla:
             pass

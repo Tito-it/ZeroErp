@@ -440,6 +440,18 @@ class CatalogoRepository:
                 [articolo_id, json.dumps(campi)],
             )
 
+    # Scopo: Le colonne STRUTTURALI dell'articolo, quelle che la correzione
+    #        riapre, dalla sede del DB `catalogo.fn_articolo_colonne_struttura`
+    #        (R-DB-3, 2026-10-18: le regole del form sul predicato dell'uso),
+    #        nell'ordine della dichiarazione. La stessa sede da cui il verbo
+    #        della correzione legge le colonne ammesse.
+    def colonne_struttura_articolo(self) -> list[str]:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT catalogo.fn_articolo_colonne_struttura()")
+            row = cursor.fetchone()
+        assert row is not None
+        return list(row[0] or [])
+
     # Scopo: Restituisce lookup articoli per autocomplete cross-dominio.
     def lookup_articoli(
         self,

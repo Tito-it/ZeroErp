@@ -23,6 +23,7 @@ utenti dei portali non hanno un PF loro (la veste sta sul ruolo del cliente o de
 | 9 | ✅ **FE** | T-6: il filtro e il badge nella lista Operatori (2026-10-18) | §8 | — |
 
 **Decisioni aperte di Tid: nessuna** (§7.4 deciso il 2026-10-16). Domande aperte al team DB: nessuna (D-1 risposta dal giro 1).
+✅ **Committato** su `dev/backend-tid` (`08cc15a61`, 2026-10-18; PR #1881): T-1 … T-4, T-6 e la 2b-2. Da committare: niente.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-16. **A chi:** il team BE/FE; la §6 al
 > team DB.

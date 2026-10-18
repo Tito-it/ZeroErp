@@ -41,8 +41,9 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 10-bis-env | Tid | ✅ tolta la riga `SMOKE_NOTTURNO_CONSENTITO` da `backend/.env.systemd` di backend-dev (2026-10-18) | §6.8 | — |
 | 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10, 10-quater |
 
-Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). Da committare: la ricaduta BE/FE della
-2b-3 (§6.9) e la 2b-2 (§6.10), su `dev/backend-tid`. ✅ Il lavoro
+Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
+2b-2 (§6.10) e le richieste R-BE-11, R-BE-12 sono committate su `dev/backend-tid` (`08cc15a61`, 2026-10-18,
+mergiato in `Tito-dev` con la PR #1881). Da committare: niente. ✅ Il lavoro
 DB del cantiere è committato e pushato su `dev/db-tid` (2026-10-18): 2b-1 lotti 1-9, 2b-3, giro 2a, R-BE-5,
 le copie del binding nei pgTAP e questo brief. ⚠️ `codici_errore.csv`, `messaggi_errore.csv` e
 `processi.csv` li tocca anche la sessione del brief del presidio dei job.

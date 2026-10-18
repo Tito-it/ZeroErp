@@ -31,7 +31,6 @@ from apps.catalogo.services.catalogo_service import (
     fn_get_articolo_form_defaults,
     fn_get_uom_tipo,
     fn_riattiva_articolo,
-    fn_correggi_struttura_articolo,
     fn_get_articolo,
     fn_get_unita_misura,
     fn_list_componenti,
@@ -57,7 +56,7 @@ from apps.catalogo.services.catalogo_service import (
     fn_list_note_componente,
     fn_create_nota_componente,
 )
-from apps.core.api.base_views import AdminAPIView, DomainAPIView
+from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
@@ -170,7 +169,19 @@ _ARTICOLO_CREATE_REQUEST = inline_serializer(
 
 _ARTICOLO_PATCH_REQUEST = inline_serializer(
     name="CatalogoArticoloPatchRequest",
-    fields=_articolo_write_fields(for_create=False),
+    fields={
+        **_articolo_write_fields(for_create=False),
+        # R-BE-1: la correzione di struttura nello stesso PATCH, in una
+        # transazione. La giudica il verbo del DB (SUPER_ADMIN, colonne ammesse).
+        "correzione_struttura": serializers.DictField(
+            required=False,
+            help_text=(
+                "Solo SUPER_ADMIN: {colonna: valore} delle colonne strutturali da correggere "
+                "(quelle di `struttura_correggibile`), anche su un articolo usato. Si applica "
+                "prima dell'aggiornamento, nella stessa transazione."
+            ),
+        ),
+    },
 )
 
 _UOM_CREATE_REQUEST = inline_serializer(
@@ -361,36 +372,6 @@ class ApiArticoloRiattiva(DomainAPIView):
     #        Idempotente su articolo gia' attivo (no-op DB, ritorna dettaglio).
     def post(self, request: Request, articolo_id: UUID) -> JsonResponse:
         return handle_post_json(request, handler=lambda _payload: fn_riattiva_articolo(articolo_id))
-
-
-class ApiArticoloStruttura(AdminAPIView):
-    """`POST /catalogo/articoli/<id>/struttura/` — il SUPER_ADMIN corregge i flag
-    strutturali di un articolo anche se usato (A-10 di
-    brief-db-articoli-ammessi-per-documento). Body `{"campi": {colonna: valore}}`.
-
-    `AdminAPIView` perche' e' un'eccezione riservata all'amministratore, non
-    un'operazione dell'area catalogo; il verbo DB ripete lo stesso controllo
-    (`script.fn_guard_super_admin`), che resta la regola."""
-
-    @extend_schema(
-        request=inline_serializer(
-            name="CatalogoArticoloStrutturaRequest",
-            fields={"campi": serializers.DictField()},
-        ),
-        responses={
-            200: inline_serializer(
-                name="CatalogoArticoloStrutturaResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Corregge la struttura dell'articolo e ne restituisce il dettaglio.
-    def post(self, request: Request, articolo_id: UUID) -> JsonResponse:
-        return handle_post_json(
-            request,
-            handler=lambda payload: fn_correggi_struttura_articolo(articolo_id, payload),
-            require_idempotency_key=True,
-        )
 
 
 class ApiArticoloUomList(DomainAPIView):

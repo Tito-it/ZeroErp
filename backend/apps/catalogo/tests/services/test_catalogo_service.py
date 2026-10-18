@@ -216,26 +216,37 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
         repo.lookup_articoli_ammessi.assert_not_called()
 
-    # Scopo: la correzione di struttura non ha regole nel backend: `campi` arriva
-    # al verbo DB com'e', anche vuoto o assente (forma, permesso e colonne li
-    # giudica il verbo; il rifiuto e' provato su DB vero in
-    # tests/db/test_articoli_ammessi_db.py).
+    # Scopo: la correzione di struttura nel PATCH (R-BE-1): prima il verbo, poi
+    # l'UPDATE; `correzione_struttura` arriva al verbo com'e' (forma, permesso e
+    # colonne li giudica lui); da sola non chiede altri campi; assente, il verbo
+    # non parte. L'atomicita' e' provata su DB vero
+    # (tests/db/test_articoli_ammessi_db.py).
     @patch("apps.catalogo.services.catalogo_service.fn_get_articolo")
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
-    def test_fn_correggi_struttura_articolo_inoltra_i_campi(self, mock_repo_cls, mock_get):
-        from apps.catalogo.services.catalogo_service import fn_correggi_struttura_articolo
+    def test_update_articolo_con_correzione_di_struttura(self, mock_repo_cls, mock_get):
+        from apps.catalogo.services.catalogo_service import fn_update_articolo
 
         articolo_id = "00000000-0000-0000-0000-000000000001"
+        repo = mock_repo_cls.return_value
+        repo.update_articolo.return_value = True
         mock_get.return_value = {"id": articolo_id}
-        for payload, atteso in (
-            ({"campi": {"requires_lotto": True}}, {"requires_lotto": True}),
-            ({"campi": {}}, {}),
-            ({}, None),
-        ):
-            with self.subTest(payload=payload):
-                result = fn_correggi_struttura_articolo(articolo_id, payload)
-                mock_repo_cls.return_value.correggi_struttura_articolo.assert_called_with(articolo_id, atteso)
-                self.assertEqual(result, {"id": articolo_id})
+
+        fn_update_articolo(articolo_id, {"descrizione": "Nuova", "correzione_struttura": {"requires_lotto": True}})
+        chiamate = [c[0] for c in repo.method_calls]
+        self.assertEqual(chiamate, ["correggi_struttura_articolo", "update_articolo"])
+        repo.correggi_struttura_articolo.assert_called_once_with(articolo_id, {"requires_lotto": True})
+        repo.update_articolo.assert_called_once_with(articolo_id, {"descrizione": "Nuova"})
+
+        repo.reset_mock()
+        for correzione in ({}, None):
+            with self.subTest(correzione=correzione):
+                fn_update_articolo(articolo_id, {"correzione_struttura": correzione})
+                repo.correggi_struttura_articolo.assert_called_with(articolo_id, correzione)
+        repo.update_articolo.assert_not_called()
+
+        repo.reset_mock()
+        fn_update_articolo(articolo_id, {"descrizione": "Nuova"})
+        repo.correggi_struttura_articolo.assert_not_called()
 
     # Scopo: 🔴 IL CASO PER CUI D6 ESISTE — un lookup TAGLIATO lo dichiara.
     #        Prima di oggi la risposta era `{"count": 20, "results": [20 righe]}`
