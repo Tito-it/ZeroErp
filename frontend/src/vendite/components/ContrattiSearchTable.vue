@@ -14,7 +14,6 @@ import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { exportContratti } from '../api/contratti'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { defaultFiltroDataDa, toMeseString, oggiAziendale } from '../../core/utils/date'
-import { MONTH_FORMAT } from '../../core/constants'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
@@ -31,7 +30,8 @@ import ExportDialog from '../../core/components/ExportDialog.vue'
 import PdfDocumentiSorgenteDialog from '../../documenti/components/PdfDocumentiSorgenteDialog.vue'
 import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
 import { useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { TIPO_RUOLO, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { MONTH_FORMAT, TIPO_RUOLO, MANAGE_ICONS, TAB_ENTITIES } from '../../core/constants'
+import { SORGENTE_CODES } from '../../documenti/constants'
 import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 
@@ -260,7 +260,7 @@ onMounted(() => {
 
     <PdfDocumentiSorgenteDialog
       v-model:visible="pdfDialogVisible"
-      sorgente-code="CONTRATTO"
+      :sorgente-code="SORGENTE_CODES.CONTRATTO"
       :sorgente-id="pdfDialogContratto?.id ?? null"
       :emittente-fiscale-id="pdfDialogContratto?.emittente_fiscale_id ?? null"
       :title="pdfDialogContratto

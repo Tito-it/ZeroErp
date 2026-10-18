@@ -229,7 +229,7 @@ onMounted(() => store.fetchList())
          building block `PdfDocumentiSorgenteDialog` (come ordini/offerte). -->
     <PdfDocumentiSorgenteDialog
       v-model:visible="pdfDialogVisible"
-      :sorgente-code="SORGENTE_CODES.DDT"
+      :sorgente-code="SORGENTE_CODES.DDT_VENDITA"
       :sorgente-id="pdfDialogDdt?.id ?? null"
       :emittente-fiscale-id="pdfDialogDdt?.emittente_fiscale_id ?? null"
       :title="pdfDialogDdt

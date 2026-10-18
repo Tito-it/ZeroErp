@@ -10,9 +10,8 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Message from 'primevue/message'
 import DocumentoEmissioneDialog from '../../../../documenti/components/DocumentoEmissioneDialog.vue'
+import { SORGENTE_CODES } from '../../../../documenti/constants'
 import { displayDate } from '../../../../core/utils/date'
-
-const SORGENTE_CODE = 'OFFERTA_COMMERCIALE'
 
 const props = defineProps({
   visible: Boolean,
@@ -35,7 +34,7 @@ const eccezioniCount = computed(
 <template>
   <DocumentoEmissioneDialog
     :visible="props.visible"
-    :sorgente-code="SORGENTE_CODE"
+    :sorgente-code="SORGENTE_CODES.OFFERTA_COMMERCIALE"
     :sorgente-id="props.offerta?.id ?? null"
     advances-state
     :header="t('vendite.offerte.emissione_titolo')"

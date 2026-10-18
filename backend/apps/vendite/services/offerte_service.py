@@ -32,6 +32,7 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.capability_blob import capabilities_o_vuoto
@@ -61,7 +62,7 @@ from apps.vendite.services._indirizzi_documento_helpers import (
     upsert_indirizzo_documento,
 )
 from apps.vendite.services._approvazioni_prezzo_constants import (
-    SORGENTE_OFFERTA,
+    META_SORGENTE_OFFERTA,
     STATO_APPROVAZIONE_PENDING,
 )
 from apps.vendite.services._componenti_service_helpers import (
@@ -1084,7 +1085,7 @@ class OfferteService:
                     link_riga_a_pratica(
                         pratica_id=pratica_id_l3,
                         riga_id=eccezione_id,
-                        sorgente=SORGENTE_OFFERTA,
+                        sorgente=META_SORGENTE_OFFERTA,
                     )
                 # Auto-init componenti BoM su articolo composito (mirror del
                 # flow contratti: la fn DB e' idempotente, no-op se gia'
@@ -1256,7 +1257,7 @@ class OfferteService:
         self._get_offerta_or_raise(
             offerta_id, op="list_erogazioni_riga", getter=self._repo.get_stato_codice,
         )
-        return list_erogazioni_riga("OFFERTA", offerta_id, articolo)
+        return list_erogazioni_riga(SORGENTE_OFFERTA_COMMERCIALE, offerta_id, articolo)
 
     # =================================================================
     # Componenti BoM su eccezione (mirror contratti, simmetria 2026-05-26)
@@ -1675,7 +1676,7 @@ def _load_offerta_context_for_pricing(
     # contratti). La versione la dice il DB, con la regola che governa le righe
     # a video e che congela all'emissione: la fissata, altrimenti quella in
     # vigore oggi (`vendite.fn_documento_listino_operativo`).
-    listino_versione_id_preferito = listino_versione_operativa("OFFERTA", offerta_id)
+    listino_versione_id_preferito = listino_versione_operativa(SORGENTE_OFFERTA_COMMERCIALE, offerta_id)
 
     assert ba_id_raw is not None and utility_id_raw is not None
     return {
@@ -1805,7 +1806,7 @@ def _orchestrate_l3_request_offerta(
         link_riga_a_pratica(
             pratica_id=pratica_id,
             riga_id=riga_id_for_link,
-            sorgente=SORGENTE_OFFERTA,
+            sorgente=META_SORGENTE_OFFERTA,
         )
     return pratica_id
 

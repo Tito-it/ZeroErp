@@ -31,7 +31,7 @@ const { t } = useI18n()
 <template>
   <DocumentoEmissioneDialog
     :visible="props.visible"
-    :sorgente-code="SORGENTE_CODES.DDT"
+    :sorgente-code="SORGENTE_CODES.DDT_VENDITA"
     :sorgente-id="props.ddt?.id ?? null"
     advances-state
     :header="t('vendite.ddt.emissione_titolo')"

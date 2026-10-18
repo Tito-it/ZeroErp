@@ -742,7 +742,7 @@ const drawerActions = computed(() => {
           <!-- Stampa DDT accompagnatorio: anteprima in bozza, gestione
                documenti generati post-emissione. BB EntityPdfButton 1:1. -->
           <EntityPdfButton
-            :sorgente-code="SORGENTE_CODES.DDT"
+            :sorgente-code="SORGENTE_CODES.DDT_VENDITA"
             :entity-id="effectiveDdtId"
             :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
             :pdf="capabilities.pdf"

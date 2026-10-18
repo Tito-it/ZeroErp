@@ -2,9 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: la sessione BE** (il §9.4: consegnare il giro del lotto 1). Il DB del lotto 1 è applicato su dbdev
-senza regressioni (Tid, 2026-10-19): finché il BE non passa `OFFERTA_COMMERCIALE`, sul dev il form delle
-erogazioni e il listino operativo dell'offerta rispondono `E_DOC_TIPO_NON_GESTITO`.
+**Riparte: il team DB coi lotti 2 e 3**, al via di Tid, insieme alla sessione BE/FE (stesso giro). Il lotto 1 è
+chiuso anche lato BE (§9.6): il backend passa i codici delle sorgenti, e il dev è ricaricato.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -18,12 +17,12 @@ erogazioni e il listino operativo dell'offerta rispondono `E_DOC_TIPO_NON_GESTIT
 | 5-ter | ✅ **Tid** | Apply del lotto 0, pgTAP 9/9 come app dopo la correzione del test 6 (2026-10-19) | §8.5 | 5 |
 | 5-quater | ✅ sessione FE | Le 25 chiavi `config.tipi_entita.*` in `it.json`/`en.json`, `check_i18n_keys` verde (2026-10-19) | §8.4 | 5 |
 | 6 | ✅ team DB | Lotto 1 scritto e provato in transazione: `20261019-18` … `-32`, pgTAP (2026-10-19) | §9 | — |
-| 6-bis | sessione BE | Il giro BE del lotto 1: `DocumentoEccezioni` e i due punti di `offerte_service` sui codici delle sorgenti. ⏳ Al 2026-10-19 non ancora su `origin/dev/backend-tid` | §9.4 | 6 |
+| 6-bis | ✅ sessione BE | Il giro BE del lotto 1: `DocumentoEccezioni` e i due service sui codici delle sorgenti, chiamata reale su dbdev (2026-10-19) | §9.4, §9.6 | 6 |
 | 6-ter | ✅ **Tid** | Apply del lotto 1 su dbdev e corsa dei pgTAP come app: nessuna regressione (2026-10-19) | §9.5 | 6 |
 | 6-quater | team DB + sessione BE/FE | Lotti 2 e 3 (il 3 anticipabile): DB e backend nello stesso giro; col lotto 2 il SQL a mano delle chiavi (G-8) | §5 G-4, §3.2, §7.9 | 6-bis |
 | 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6-quater |
 
-**Decisioni aperte di Tid:** nessuna (K-1 e i nomi decisi il 2026-10-19, §8.3). Da committare: il lotto 1 (§9). ⚠️ Mancano ancora i rimandi del §6.1 in
+**Decisioni aperte di Tid:** nessuna (K-1 e i nomi decisi il 2026-10-19, §8.3). Da committare: il giro BE del lotto 1 (§9.6, `dev/backend-tid`). ⚠️ Mancano ancora i rimandi del §6.1 in
 [brief-db-indirizzi-documento-seguono-il-cliente](brief-db-indirizzi-documento-seguono-il-cliente.md) (R-BE-1) e in
 [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md): oggi rimanda qui solo
 quello degli articoli ammessi.
@@ -678,3 +677,26 @@ selettore.
 * Non provato prima dell'apply: i pgTAP **come app** (li lancia Tid) e il giro BE del §9.4.
 * **Dopo l'apply su dbdev (2026-10-19), corsa di Tid come app: nessuna regressione.** Resta il giro BE
   del §9.4: fino alla sua consegna, sul dev, le chiamate del backend con `OFFERTA` sono rifiutate.
+
+### 9.6 Il giro BE (sessione BE, 2026-10-19)
+
+* `DocumentoEccezioni = Literal["CONTRATTO", "OFFERTA_COMMERCIALE"]`; `offerte_service` e
+  `contratti_service` passano `SORGENTE_OFFERTA_COMMERCIALE` e `SORGENTE_CONTRATTO` di `apps.config.sorgenti`;
+  il test delle erogazioni dell'offerta segue.
+* ⭐ Le costanti di `apps/config/sorgenti.py` sono ora **`Final`**: mypy le legge come letterali e le
+  confronta col `Literal` della firma. Controprova: `SORGENTE_PREVENTIVO` e `'OFFERTA'` passati al
+  repository sono errori di tipo; prima erano `str` e passavano.
+* ⚠️ `_approvazioni_prezzo_constants` aveva un `SORGENTE_CONTRATTO = "contratto"` (il `meta` della
+  pratica, §7.8): stesso nome, altro valore, e in un modulo che importava i due vinceva l'ultimo import in
+  silenzio. Ora `META_SORGENTE_*` (sotto); i valori minuscoli si ritirano col lotto delle approvazioni di
+  prezzo (§7.9, in coda).
+* Prova: mypy a cricchetto pulito; 4291 test Django e 686 test FE verdi, build FE; chiamata **reale** su dbdev di
+  `listino_versione_operativa` e `list_erogazioni_riga`: `OFFERTA_COMMERCIALE` e `CONTRATTO` passano,
+  `OFFERTA` è rifiutato («Tipo documento OFFERTA sconosciuto»). Worker gunicorn del dev ricaricati.
+* Le API non cambiano forma: il frontend non ha lavoro.
+* **Revisione dello stesso giro.** I `SORGENTE_*` minuscoli del meta della pratica si chiamano ora
+  `META_SORGENTE_*` (solo il nome Python: i valori scritti nei dati restano, li migra il lotto delle
+  approvazioni), e `test_sorgenti_seed` ha un 4° test contro lo stesso nome con un altro valore. Lato FE:
+  tre dialog di emissione e tre liste scrivevano a mano il codice sorgente invece di usare
+  `SORGENTE_CODES`, e la chiave `SORGENTE_CODES.DDT` diventa `DDT_VENDITA` (la chiave è il codice);
+  presidio `documenti/constants.spec.js`.

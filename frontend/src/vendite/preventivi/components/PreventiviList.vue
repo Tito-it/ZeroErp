@@ -15,6 +15,7 @@ import { exportPreventivi } from '../api/preventiviApi'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
 import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
 import { MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 import InputText from 'primevue/inputtext'
 import Tag from 'primevue/tag'
 import LookupSelect from '../../../core/components/LookupSelect.vue'
@@ -219,7 +220,7 @@ onMounted(() => store.fetchList())
          block `PdfDocumentiSorgenteDialog`. -->
     <PdfDocumentiSorgenteDialog
       v-model:visible="pdfDialogVisible"
-      sorgente-code="PREVENTIVO"
+      :sorgente-code="SORGENTE_CODES.PREVENTIVO"
       :sorgente-id="pdfDialogPreventivo?.id ?? null"
       :emittente-fiscale-id="pdfDialogPreventivo?.emittente_fiscale_id ?? null"
       :title="pdfDialogPreventivo

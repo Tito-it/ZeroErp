@@ -42,6 +42,7 @@ from typing import Any
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
+from apps.config.sorgenti import SORGENTE_CONTRATTO
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
@@ -87,7 +88,7 @@ from apps.vendite.services._componenti_service_helpers import (
     resolve_emittente_sr_id_for_testata,
 )
 from apps.vendite.services._approvazioni_prezzo_constants import (
-    SORGENTE_CONTRATTO,
+    META_SORGENTE_CONTRATTO,
     STATO_APPROVAZIONE_PENDING,
 )
 from apps.vendite.services._pricing_gate_helpers import (
@@ -1238,7 +1239,7 @@ class ContrattiService:
                 link_riga_a_pratica(
                     pratica_id=pratica_id_l3,
                     riga_id=new_id,
-                    sorgente=SORGENTE_CONTRATTO,
+                    sorgente=META_SORGENTE_CONTRATTO,
                 )
 
             # ESCLUSIONE escluso dall'auto-init: un articolo escluso non ha
@@ -1617,7 +1618,7 @@ class ContrattiService:
         self._get_contratto_or_raise(
             contratto_id, op="list_erogazioni_riga", getter=self._repo.get_stato_codice,
         )
-        return list_erogazioni_riga("CONTRATTO", contratto_id, articolo)
+        return list_erogazioni_riga(SORGENTE_CONTRATTO, contratto_id, articolo)
 
     # Scopo: Preview componenti BoM per drawer riga contratto (ComponentiDialog
     # FE). Read-only: il FE invoca PRIMA del save di una riga composita per
@@ -2412,7 +2413,7 @@ def _load_contratto_context_for_pricing(
     # `valido_dal`, mentre le righe usavano gia' quella di oggi
     # (brief-db-offerta-emissione-ed-erogazione §C.1.3).
     # Doc DB: cfr. nota team `dev/db-tid` sul 9° arg di fn_resolve_prezzo_listino_v2.
-    listino_versione_id_preferito = listino_versione_operativa("CONTRATTO", contratto_id)
+    listino_versione_id_preferito = listino_versione_operativa(SORGENTE_CONTRATTO, contratto_id)
 
     assert ba_id_raw is not None and utility_id_raw is not None
     return {
@@ -2560,7 +2561,7 @@ def _orchestrate_l3_request_contratto(
         link_riga_a_pratica(
             pratica_id=pratica_id,
             riga_id=riga_id_for_link,
-            sorgente=SORGENTE_CONTRATTO,
+            sorgente=META_SORGENTE_CONTRATTO,
         )
     return pratica_id
 

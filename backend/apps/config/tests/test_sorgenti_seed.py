@@ -12,6 +12,7 @@ Indice test eseguiti:
 1) test_ogni_costante_e_un_codice_attivo_del_seed
 2) test_il_nome_della_costante_e_il_codice
 3) test_nessun_modulo_ricopia_un_codice_sorgente_in_una_costante_locale
+4) test_nessun_modulo_riusa_il_nome_di_una_costante_con_un_altro_valore
 """
 
 import csv
@@ -77,3 +78,20 @@ class SorgentiSeedTests(SimpleTestCase):
             testo = sorgente_senza_commenti(percorso.read_text(encoding="utf-8"))
             trovate += [f"{percorso.relative_to(app)}: {m.group(0)}" for m in copia.finditer(testo)]
         self.assertEqual(trovate, [], "copie locali di codici di config.sorgenti: usare apps.config.sorgenti")
+
+    # Scopo: il caso che il test 3 non vede, perche' cerca il VALORE: lo stesso
+    #        NOME con un valore diverso. `_approvazioni_prezzo_constants` aveva
+    #        `SORGENTE_CONTRATTO = "contratto"` (il meta della pratica), e un
+    #        modulo che importava le due costanti teneva quella dell'ultimo
+    #        import, senza errore (2026-10-19, brief-db-grammatica-unica-documenti).
+    def test_nessun_modulo_riusa_il_nome_di_una_costante_con_un_altro_valore(self) -> None:
+        nomi = "|".join(re.escape(n) for n in _costanti())
+        omonimo = re.compile(rf"^({nomi})\b\s*(?::[^=\n]*)?=", re.M)
+        app = repo_root() / "backend" / "apps"
+        trovati = []
+        for percorso in sorted(app.rglob("*.py")):
+            if "tests" in percorso.parts or percorso.name == "sorgenti.py" and percorso.parent.name == "config":
+                continue
+            testo = sorgente_senza_commenti(percorso.read_text(encoding="utf-8"))
+            trovati += [f"{percorso.relative_to(app)}: {m.group(1)}" for m in omonimo.finditer(testo)]
+        self.assertEqual(trovati, [], "nomi delle costanti di apps.config.sorgenti riusati altrove")
