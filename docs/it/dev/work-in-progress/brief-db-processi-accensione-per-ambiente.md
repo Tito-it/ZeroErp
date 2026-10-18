@@ -2,8 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: il team DB, con le richieste del BE della 2b-2 (R-BE-6, R-BE-7, R-BE-11, R-BE-12, §6.10) e dell'indirizzo libero (R-BE-8 … R-BE-10, §6.11); Tid, col collaudo
-finale (riga 9-decies) quando vuole.** ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
+**Riparte: il team DB, con le richieste del BE della 2b-2 (R-BE-6, R-BE-7, R-BE-11, R-BE-12, §6.10) e dell'indirizzo libero (R-BE-8 … R-BE-10, §6.11).** ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
 fatta (2026-10-18, §6.10): il backend crea emittente, fornitore, cliente, veste portale, magazzino, profilo,
 legame SUPER_ADMIN, override, emittente attivo e accende la veste dalle madri del DB; restano due scritture
 che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione è chiusa.
@@ -29,11 +28,14 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 9-ter | sessione BE | ✅ (2026-10-18) 2b-2: il backend passa ai BB, le sue copie si ritirano | §6.10 | — |
 | 9-ter-bis | team DB | R-BE-6 (l'indirizzo di ruolo per istanza) e R-BE-7 (il legame di reparto): due scritture del backend che le madri non coprono; R-BE-11 (il profilo SUPER_ADMIN si risolve in una sede, regola del 2, ok Tid 2026-10-18) e R-BE-12 (la madre plurale degli indirizzi di soggetto, gemella di quella del ruolo) | §6.10 | — |
 | 9-ter-ter | team DB | l'indirizzo libero: R-BE-8 (lo stato di sistema), R-BE-9 (un guard col codice e il campo), R-BE-10 (la forma estera nella madre del soggetto); da valutare l'alleggerimento della regione | §6.11 | — |
-| 9-ter-quater | sessione BE/FE | il form dell'indirizzo libero nelle due varianti (stato di sistema / estero) | §6.11 | 9-ter-ter |
+| 9-ter-quater | sessione BE/FE | ✅ (2026-10-18) firma jsonb della madre del soggetto, `postal_code`, tendina degli stati, form in due forme, codici; provato sul DB vero dopo l'apply | §6.12 | — |
+| 9-ter-quinquies | Tid | ✅ apply di `20261018-80 … -99` e `20261019-01 … -04` su dbdev, pgTAP verdi (2026-10-18) | §6.12 | — |
+| 9-ter-sexies | team DB | R-BE-13: `fn_stato_proposto_id` non applica l'override per utente | §6.12 | — |
+| 9-ter-septies | team DB | R-BE-14: l'emittente di prova del provisioning non può fatturare (nessun registro per tipo 1, natura 1) | §6.12 | — |
 | 9-quater | team DB | ✅ 2b-3 scritta e provata (2026-10-18): etichette, guard, verbo, presidio, `fn_accendi_veste` (`20261018-55` … `-64`) | §5-ter.3 | — |
 | 9-octies | Tid | ✅ (2026-10-18, pgTAP verdi) apply della 2b-3 (`20261018-55` … `-64`, i due CSV dei codici, `presidi.csv`, `presidi_testi.csv`, il loop `20260205-41`); pgTAP `dbops/test-etichette-di-prova-v1`, `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1`, chi usa `fn_pgtap_crea_operatore_umano`, i presidi trasversali | §5-ter.3 | — |
 | 9-novies | sessione BE | ✅ (2026-10-18) ricaduta della 2b-3: codici, command `provision_utenti_sviluppo`, lista Operatori (BE e FE), smoke e run-book | §6.9 | — |
-| 9-decies | Tid | collaudo: il command su dbdev, `env.sh` a `dev.smoke`, il giro degli smoke, poi `smoke` disattivato | brief BE riga 8 | — |
+| 9-decies | Tid | ✅ collaudo (2026-10-18): command su dbdev, `env.sh` a `dev.smoke`, `smoke` disattivato. Il giro degli smoke ha aperto T-7 e il brief dei modelli di documento standard, fuori da questo brief | brief BE §9 | — |
 | 10-bis | Tid | ✅ contraddizione su `SMOKE_NOTTURNO_CONSENTITO` sciolta (2026-10-18): il divieto entra nel modello, poi il consenso si ritira | §6.6 | — |
 | 10-ter | team DB | ✅ **R-BE-5** scritto e provato sullo scratch (2026-10-18): `accendibile_in_produzione` nel catalogo, il predicato, la regola e il guard, `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE` (1355) | §6.7 | — |
 | 10-quater | Tid | ✅ apply di R-BE-5 (`20261018-10` … `-14`) su dbdev, pgTAP senza regressioni (2026-10-18) | §6.7.4 | — |
@@ -43,7 +45,8 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 
 Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
 2b-2 (§6.10) e le richieste R-BE-11, R-BE-12 sono committate su `dev/backend-tid` (`08cc15a61`, 2026-10-18,
-mergiato in `Tito-dev` con la PR #1881). Da committare: niente. ✅ Il lavoro
+mergiato in `Tito-dev` con la PR #1881). Da committare: la ricaduta BE/FE delle due forme dell'indirizzo libero
+(§6.12). ✅ Il lavoro
 DB del cantiere è committato e pushato su `dev/db-tid` (2026-10-18): 2b-1 lotti 1-9, 2b-3, giro 2a, R-BE-5,
 le copie del binding nei pgTAP e questo brief. ⚠️ `codici_errore.csv`, `messaggi_errore.csv` e
 `processi.csv` li tocca anche la sessione del brief del presidio dei job.
@@ -1563,4 +1566,83 @@ indirizzi di ruolo li portavano già tutti dalla 2b-2 (`indirizzi_per_madre`). P
 **Dopo il DB, BE/FE (riga 9-ter-quater):** il form dell'indirizzo libero in due varianti scelte dallo stato
 (stato di sistema dal lettore R-BE-8), la validazione del form sulla stessa regola, e il backend che passa la
 forma estera anche per il soggetto.
+
+### 6.12 Ricaduta BE/FE delle due forme dell'indirizzo libero (sessione BE, 2026-10-18)
+
+> Risposta del team DB al §6.11: commit `42ae92188` (D-1 … D-4 di Tid). Scritta sul codice vero (changeSet e
+> doc auto-generata), **prima dell'apply**: le prove sul DB vero si fanno dopo (riga 9-ter-quinquies).
+
+| Che cosa | Dove |
+| --- | --- |
+| l'indirizzo del soggetto con la firma nuova `fn_crea_indirizzo_soggetto(soggetto, indirizzo jsonb)`: un oggetto, la stessa grammatica del ruolo (`indirizzo_per_madre`, estratto da `indirizzi_per_madre`); la forma estera passa anche per il soggetto. Ritirati il percorso posizionale e `_create_indirizzo_libero` | `SoggettiRepository.crea_indirizzo_soggetto`, `SoggettiService._create_indirizzo` |
+| `postal_box` → `postal_code` nelle colonne scrivibili degli indirizzi di ruolo | `soggetti_repository.py` |
+| la tendina degli stati porta `catalogo_comuni_completo` (la forma) e `proposto` (da `script.fn_stato_proposto_id`) | `GeoRepository.list_stati_lookup` |
+| i due smoke scrivono l'indirizzo nella forma che decide lo stato, coi campi dell'helper `dbops.fn_pgtap_indirizzo_libero_forma` e lo stato proposto (non più `codice_iso2 = 'IT'`, che non è univoco) | `smoke-indirizzi-documento-catena.py`, `smoke-fattura-indirizzi-snapshot.py` |
+| il form dell'indirizzo libero in due forme dal flag dello stato scelto: comune e CAP (il blocco del form normalizzato, uno solo) oppure località obbligatoria, codice postale, regione; sotto-località in tutte e due; lo stato proposto preselezionato; validazione e payload in un modulo solo (`indirizzoLibero.js`), che non manda i campi dell'altra forma | `IndirizzoSoggettoForm.vue`, `useIndirizzoSoggettoForm`, `useIndirizzoMultiTipo` |
+| i ripieghi dei cinque codici nuovi | `error_messages_fallback.py` |
+
+Prove: unitari backend di `anagrafiche` 577, frontend 897 (spec nuovo `indirizzoLibero.spec.js`), lint, guard,
+mypy. ✅ **Dopo l'apply (2026-10-18):** policy dei codici rigenerata (i cinque codici nuovi, nessun altro); suite
+backend completa sul DB vero **6716 verdi**, `test_creazioni_dalle_madri_db` 10/10 (forma estera del soggetto, il
+guard col campo `locality`, la tendina e lo stato proposto); `smoke-indirizzi-documento-catena` verde.
+`smoke-fattura-indirizzi-snapshot` si ferma prima dell'indirizzo, ma **non** per mancanza di materia: su dbdev le
+attività fatturabili ci sono (63 sull'emittente 32, 2026-10-18). Lo smoke apre il contesto con
+`config.user_emittenti_fiscali LIMIT 1`, senza ordine: da quando ci sono gli utenti `dev.*` pesca `dev.lettura`, che
+vede solo l'emittente di prova (vuoto), e la RLS gli dà zero righe. Stesso frammento in dieci smoke Python: vedi la
+revisione qui sotto. La sua `INSERT` riscritta è provata a parte, in transazione annullata, e passa il guard.
+
+**Revisione prima del commit (sessione BE, 2026-10-18).** Corretti:
+
+* il form non indovina la forma: uno stato scelto la cui riga la tendina non porta (non ancora caricata,
+  o fallita) ferma la validazione sullo stato, invece di chiedere la località a un indirizzo italiano
+  (`validaLibero`, spec 4);
+* `formaCatalogo` esportato dal composable e mai letto (il componente ha la sua): tolto;
+* la tendina e il test 10 chiedono lo stato proposto con lo stesso `p_chi` (`CHI_STATI_LOOKUP`): finché
+  vale R-BE-13 quel valore pesa sull'override per funzione, e il test confrontava due chiamate diverse;
+* i ripieghi dei codici nuovi in ordine, e il commento di `E_INDIRIZZO_DOC_NON_DEL_CLIENTE` di nuovo sopra
+  la sua voce.
+
+* ✅ regola del 2 (ok di Tid, 2026-10-18): l'`INSERT` dell'indirizzo libero di ruolo, scritta tre volte in
+  due smoke, è il BB degli smoke `scripts/tests/_smoke_indirizzo.py` (`crea_indirizzo_libero_ruolo`, sul
+  modello di `_smoke_commessa.py`); le tre copie ritirate;
+* `smoke-indirizzi-documento-catena` si **costruisce** il cliente (`dbops.fn_pgtap_crea_cliente_ba`, due
+  volte per l'altra istanza) invece di prendere il primo BA di dbdev e cancellarne gli indirizzi: un
+  contratto annullato che li usava lo fermava col lock delle righe (`E_DOC_*` fuori bozza), cioè l'esito
+  dipendeva dai dati. Rieseguito: 1-6 verdi, nessuno skip, niente resta sul DB.
+
+* ✅ regola del 2 (ok di Tid, 2026-10-18): il **contesto operatore** dei dieci smoke Python (la copia
+  `config.user_emittenti_fiscali LIMIT 1`) è il BB `scripts/tests/_smoke_contesto.py`:
+  `apri_contesto_smoke` apre il contesto su **`dev.smoke`** (decisione di Tid: l'utente degli smoke, mai uno
+  personale; il nome da `UTENTE_SMOKE` del command), e si ferma se non è di prova, super admin e con la veste
+  OPERATORE; `seleziona_emittente_di_prova` sceglie l'emittente di prova (dall'etichetta, non dalla sigla) per chi
+  costruisce un BA. La catena lo usa. Esito dei dieci, 2026-10-18: verdi `catena` (1-6), `fattura-indirizzi-snapshot`
+  (9, prima si fermava), `fattura-contatore-note`, `fattura-scadenze`, `fattura-aggregazione-termini`,
+  `ritorno-lotto-a-draft`, `fatturazione-aggregazione-righe`. Riallineati al codice lo stesso giro (erano
+  rossi anche con un operatore vero, provato a parte sull'emittente 32), ora verdi:
+  * `fatturazione-render-stampa` (10/10): il template della fattura si risolve per l'EMITTENTE della fattura
+    (`find_template_applicabile`, come il generatore; prima `WHERE codice = 'Fattura'` e una riga qualsiasi, ma i
+    template sono per emittente); le righe di primo livello si separano da quelle `row-componente` (dalla forma 3 i
+    componenti stanno dentro il kit: il confronto per posizione era sfasato) e un caso nuovo, 4b, prova i
+    componenti; il PDF col risolutore degli asset del generatore (`risolvi_asset`); il caso 9 su una fattura
+    pre-fiscale sua, e se ha già il piano ne verifica i valori;
+  * `nota-credito-resi` (16 OK, 14 e 15 saltati per materia come prima): il piano rate prima del numero, come il
+    giro vero (dalla rev 2026-09-17, P-5, il guard lo chiede a ogni totale diverso da zero), e un caso nuovo, 11-bis,
+    che prova la P-5 (una rata negativa uguale al totale).
+  Rosso **per il contesto**: `push-termine-documento-commessa`, che prende «l'ordine più recente» e ora cade su
+  `DEVA` (R-BE-14).
+
+**R-BE-14 — al team DB: l'emittente di prova non può fatturare.** `vendite.fn_get_registro_id(1, NULL, NULL,
+<sr di DEVA>)` → `E_CONFIG_MANCANTE` «registro non risolto per tipo_doc 1 e natura 1»; sull'emittente 32 risponde.
+Su `DEVA` ci sono già due ordini scritti da `dev.smoke` (gli smoke via HTTP, 2026-10-18 18:44): ogni giro di
+fatturazione degli smoke sull'emittente di prova si ferma lì. Proposta: il verbo del provisioning (o la madre
+`fn_crea_emittente_fiscale`, se il registro di default è dell'emittente e non dello sviluppo) lascia l'emittente
+di prova **completo per fatturare**, registri compresi; un pgTAP lo prova costruendo una fattura su `DEVA`.
+
+**R-BE-13 — al team DB: l'override per utente dello stato proposto non scatta.** `script.fn_stato_proposto_id`
+chiama `fn_get_parameter_full('STATO_PROPOSTO_ISO2', NULL, NULL, NULL, session_key, p_chi)`: l'utente
+(`p_django_user_id`) è sempre NULL, e `p_chi` finisce nel posto della **funzione** (`p_function_name`). Così vale
+l'override per sessione e per nome di funzione, non quello per utente o per gruppo che la pagina manual promette
+(«un utente che lavora con clienti tedeschi può avere DE»). Proposta: l'utente dalla GUC `app.current_user_id`
+(e i suoi gruppi), come gli altri lettori dei parametri; `p_chi` resta per il contesto dell'errore. Il backend
+legge già da quel lettore (la tendina degli stati), quindi corretto il DB vale anche per il form.
 

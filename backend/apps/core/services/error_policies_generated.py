@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1102, di cui 120 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1107, di cui 120 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -543,7 +543,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DDT_STATO_TRANSIZIONE": "CONFLITTO_STATO",
     "E_DDT_VALIDAZIONE": "DATO_ERRATO",
     "E_DEFAULT_CONTATTO_MISSING": "DATO_ERRATO",
-    # `script.fn_get_default_by_param`: il parametro non ha valori per · quella tabella. E' un default mai configurato, non un dato · sbagliato dall'operatore.
+    # Un parametro di default punta a un valore che la sua tabella non ha: e' un default configurato male, non un dato sbagliato dall'operatore. Dal 2026-10-18 lo solleva script.fn_stato_proposto_id (STATO_PROPOSTO_ISO2 senza stato in config.stati); script.fn_get_default_by_param, che lo sollevava prima, e' ritirata (20261018-93).
     "E_DEFAULT_ERRATO": "TECNICO",
     # <- DEFINIZIONE_BOZZA_ESISTENTE  (vivo)
     "E_DEFINIZIONE_BOZZA_ESISTENTE": "CONFLITTO_STATO",
@@ -867,12 +867,20 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_IDEMPOTENCY_KEY_REQUIRED": "DATO_ERRATO",
     "E_IDENTITA_NON_ATTIVA": "NON_AUTENTICATO",
     "E_ID_FISCALI_DIVERSI": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_indirizzi_guard_forma_libera (2026-10-18): nella forma del catalogo (comune e CAP dall'elenco) e' valorizzato un campo della forma estera, locality, postal_code o administrative_area (la sotto-località resta ammessa). Contesto campo = la colonna da svuotare; VARIADIC = il campo come lo legge una persona. D-2 e D-3 di Tid, brief-db-processi-accensione-per-ambiente §6.11.
+    "E_INDIRIZZO_CAMPO_ALTRA_FORMA": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_indirizzi_guard_forma_libera (2026-10-18): il CAP (config.codici_postali) dell'indirizzo libero non e' del suo comune. Contesto campo codice_postale_id; VARIADIC il CAP e il nome del comune. D-2 di Tid, brief-db-processi-accensione-per-ambiente §6.11.
+    "E_INDIRIZZO_CAP_ALTRO_COMUNE": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_indirizzi_guard_forma_libera (2026-10-18): il comune dell'indirizzo libero non e' dello stato dell'indirizzo, letto dalla catena config.comuni -> province -> regioni -> stati; anche a catena interrotta (provincia senza regione), perche' non si puo' dire che lo sia. Contesto campo comune_id, con comune_id, stato_id e stato_del_comune; VARIADIC il nome del comune e dello stato. D-2 di Tid, brief-db-processi-accensione-per-ambiente §6.11.
+    "E_INDIRIZZO_COMUNE_ALTRO_STATO": "DATO_ERRATO",
     # Un indirizzo d'anagrafica sul documento non e' del suo cliente (2026-10-11, brief-db-indirizzi-documento-seguono-il-cliente, D-1 e D-3 di Tid). Due sedi, un predicato (script.fn_indirizzo_documento_fuori_cliente): il guard di scrittura vendite.trgfn_doc_indirizzi_guard_cliente sulle sei vendite.*_indirizzi, e il motivo d'emissione script.fn_check_indirizzi_documento_cliente, letto dai gate di DDT (vendite.trgfn_ddt_guard_indirizzi_obbligatori), preventivo (fn_check_preventivo_emettibile), offerta e contratto (guard di transizione e capability). Sostituisce il guard d'origine del backend (upsert_indirizzo_documento). · DATO_ERRATO: si corregge scegliendo un indirizzo del cliente, o scrivendone uno a mano (una-tantum). · CAMPO: tipo_indirizzo_id. · VALORI: il tipo d'indirizzo leggibile (Consegna, Fatturazione...). Nel contesto il motivo macchina: ALTRO_CLIENTE (ruolo diverso) o ALTRA_FORNITURA (indirizzo legato a un'istanza che non e' quella del documento).
     "E_INDIRIZZO_DOC_NON_DEL_CLIENTE": "DATO_ERRATO",
     # Guard DB all'emissione DDT (tipi obbligatori dell'ambito mancanti): · il FE previene (Conferma disabilitata), il trigger resta la fonte · di verita'.
     "E_INDIRIZZO_DOC_OBBLIGATORIO": "NON_ESEGUIBILE",
     # Non sono errori di richiesta: viaggiano su `task_runs.error_code` e · arrivano all'utente dal cockpit. Registrarli serve al `user_message`: · senza policy il fallback li mostrerebbe tutti come «Errore di · validazione», che non dice ne' cosa e' successo ne' dove guardare.
     "E_INDIRIZZO_FATTURA_MANCANTE": "NON_ESEGUIBILE",
+    # Guard anagrafiche.trgfn_indirizzi_guard_forma_libera (2026-10-18) su anagrafiche.indirizzi e indirizzi_soggetti, dopo il normalize: l'indirizzo libero manca di un campo della sua forma. Testo e stato sempre; poi la forma la decide lo stato (config.stati.catalogo_comuni_completo): catalogo = comune_id e codice_postale_id, estera = locality. Il primo campo che manca va in contesto campo (canale COLUMN); il VARIADIC porta il campo come lo legge una persona («il comune», «la località»). Prima arrivava come E_DATABASE dal CHECK chk_*_free_requirements, che resta come rete. Richiesta BE in brief-db-processi-accensione-per-ambiente §6.11 (la R-BE-9 del BE), D-2 e D-3 di Tid.
+    "E_INDIRIZZO_LIBERO_INCOMPLETO": "DATO_ERRATO",
     "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": "DATO_ERRATO",
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "NON_TROVATO",
     "E_INVALID_ID": "DATO_ERRATO",
@@ -1569,6 +1577,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Codice sollevato dal trigger guard transizioni DDT · (trgfn_ddt_guard_transizione): la coppia (stato_attuale, stato_target) · non e' nella matrice config.transizioni_stati_ddt.
     "E_STATO_DDT_TRANSIZIONE_NON_VALIDA": "CONFLITTO_STATO",
     "E_STATO_DOC_ESITO_NON_VERDETTO": "DATO_ERRATO",
+    # BB script.fn_stato_id_da_iso2 (2026-10-18), chiamato da script.fn_stato_proposto_id e da anagrafiche.fn_crea_soggetto_pf/_pg: il codice ISO2 indica piu' righe di config.stati. codice_iso2 non e' univoco e non deve esserlo: il catalogo ISTAT tiene righe storiche dello stesso paese con codici catastali diversi (Armenia, Azerbaigian). TECNICO: a rimediare e' chi amministra la configurazione (lo stato proposto STATO_PROPOSTO_ISO2) o il catalogo; mai una riga a caso. VARIADIC il codice e il numero di stati. D-1 di Tid, brief-db-processi-accensione-per-ambiente §6.11.
+    "E_STATO_ISO2_AMBIGUO": "TECNICO",
     # Guard trigger transizioni reso (trgfn_resi_guard_transizione): la · coppia di stati non e' nella matrice config.transizioni_stati_reso.
     "E_STATO_RESO_TRANSIZIONE_NON_VALIDA": "CONFLITTO_STATO",
     # ⚠️ RITIRATO il 2026-08-06

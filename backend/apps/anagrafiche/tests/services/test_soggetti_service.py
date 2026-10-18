@@ -529,19 +529,21 @@ class TestSoggettiIndirizzi(TestCase):
 
     @patch(SOGG_REPO)
     def test_create_indirizzo_libero_porta_comune_e_cap(self, mock_repo):
-        """L'indirizzo libero del soggetto arriva alla madre con comune e CAP,
-        che lei pretende: fino al 2026-10-18 il backend li buttava."""
+        """L'indirizzo libero del soggetto arriva alla madre com'e', nell'oggetto
+        della firma nuova (2026-10-18): la forma estera compresa, vuoti tolti.
+        La sua completezza la giudica il guard della tabella."""
         repo = mock_repo.return_value
         repo.exists_soggetto.return_value = True
         repo.crea_indirizzo_soggetto.return_value = 43
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         SoggettiService().create_indirizzo_soggetto(FAKE_UUID, {
-            "tipo_indirizzo_codice": "RES", "indirizzo_libero": "Localita' Prova",
-            "stato_id": 1, "comune_id": 7, "codice_postale_id": 9,
+            "tipo_indirizzo_codice": "RES", "indirizzo_libero": "Hauptstrasse 5",
+            "stato_id": 1, "locality": "Berlin", "postal_code": "10115", "administrative_area": "",
         })
-        kwargs = repo.crea_indirizzo_soggetto.call_args.kwargs
-        self.assertEqual((kwargs["comune_id"], kwargs["codice_postale_id"]), (7, 9))
-        self.assertEqual(kwargs["indirizzo_libero"], "Localita' Prova")
+        repo.crea_indirizzo_soggetto.assert_called_once_with(FAKE_UUID, {
+            "tipo_indirizzo_codice": "RES", "indirizzo_libero": "Hauptstrasse 5",
+            "stato_id": 1, "locality": "Berlin", "postal_code": "10115",
+        })
 
     @patch(SOGG_REPO)
     def test_create_indirizzo_missing_tipo(self, mock_repo):
@@ -660,8 +662,6 @@ class TestAutoCloneIndirizzi(TestCase):
         repo.update_contatto.return_value = True
         repo.crea_indirizzo_soggetto.return_value = 10
 
-        mock_ind.return_value.crea_dettaglio_indirizzo.return_value = 50
-
         # Matrice: RESID obbligatorio, DOMFISC obbligatorio, FATT facoltativo
         mock_lookup.return_value.list_matrice_indirizzi.return_value = [
             {"codice": "RESID", "obbligatorio": True},
@@ -686,8 +686,8 @@ class TestAutoCloneIndirizzi(TestCase):
         # crea_indirizzo_soggetto deve essere chiamato 2 volte (RESID + DOMFISC clone)
         self.assertEqual(repo.crea_indirizzo_soggetto.call_count, 2)
         calls = repo.crea_indirizzo_soggetto.call_args_list
-        self.assertEqual(calls[0].kwargs["tipo_indirizzo_codice"], "RESID")
-        self.assertEqual(calls[1].kwargs["tipo_indirizzo_codice"], "DOMFISC")
+        self.assertEqual(calls[0].args[1]["tipo_indirizzo_codice"], "RESID")
+        self.assertEqual(calls[1].args[1]["tipo_indirizzo_codice"], "DOMFISC")
 
     @patch(LOOKUP_REPO)
     @patch(GEO_SVC)
@@ -700,8 +700,6 @@ class TestAutoCloneIndirizzi(TestCase):
         repo.get_soggetto_contatti.return_value = [{"id": 1}]
         repo.update_contatto.return_value = True
         repo.crea_indirizzo_soggetto.return_value = 10
-
-        mock_ind.return_value.crea_dettaglio_indirizzo.return_value = 50
 
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         SoggettiService().create_soggetto({
@@ -724,10 +722,11 @@ class TestAutoCloneIndirizzi(TestCase):
     @patch(GEO_SVC)
     @patch(SOGG_REPO)
     def test_ogni_indirizzo_risolve_il_suo_dettaglio(self, mock_sogg, mock_ind, mock_lookup):
-        """Ogni indirizzo risolve il SUO dettaglio: due vie diverse, due dettagli;
-        il clone porta il payload del primo e la madre (get_or_create) gli
-        ritrova lo stesso. Fino al 2026-10-18 il primo dettaglio si riusava per
-        ogni indirizzo successivo senza dettaglio, anche per una via diversa."""
+        """Ogni indirizzo porta alla madre la SUA via: il clone porta quella del
+        primo, e la madre (`fn_crea_indirizzo_soggetto`, via `fn_create_indirizzo`,
+        get_or_create) ritrova lo stesso dettaglio. Dal 2026-10-18 la via non la
+        risolve piu' il backend; fino a quel giorno il primo dettaglio si
+        riusava per ogni indirizzo successivo, anche per una via diversa."""
         repo = mock_sogg.return_value
         repo.get_natura_by_tipo_id.return_value = "PF"
         repo.crea_soggetto_pf.return_value = FAKE_UUID
@@ -735,10 +734,6 @@ class TestAutoCloneIndirizzi(TestCase):
         repo.update_contatto.return_value = True
         repo.crea_indirizzo_soggetto.return_value = 10
 
-        # La madre: lo stesso stradario ritrova lo stesso dettaglio.
-        mock_ind.return_value.crea_dettaglio_indirizzo.side_effect = (
-            lambda payload: 50 if payload["stradario_id"] == 100 else 60
-        )
         mock_lookup.return_value.list_matrice_indirizzi.return_value = [
             {"codice": "RESID", "obbligatorio": True},
             {"codice": "DOMFISC", "obbligatorio": True},
@@ -759,11 +754,12 @@ class TestAutoCloneIndirizzi(TestCase):
         })
 
         per_tipo = {
-            c.kwargs["tipo_indirizzo_codice"]: c.kwargs["indirizzo_dettaglio_id"]
+            c.args[1]["tipo_indirizzo_codice"]: c.args[1]["stradario_id"]
             for c in repo.crea_indirizzo_soggetto.call_args_list
         }
         # FATT ha la sua via; DOMFISC e' il clone di RESID.
-        self.assertEqual(per_tipo, {"RESID": 50, "FATT": 60, "DOMFISC": 50})
+        self.assertEqual(per_tipo, {"RESID": 100, "FATT": 200, "DOMFISC": 100})
+        mock_ind.return_value.crea_dettaglio_indirizzo.assert_not_called()
 
 
 class TestResolveFiltriExportLabel(TestCase):

@@ -169,36 +169,20 @@ smoke_chiudi_contratti "$BA_ID" "$AMBITO"   # residui sul cliente condiviso
 # soggetto ha UN cliente manuale per utility e azienda (E_CLIENTE_STESSA_CHIAVE,
 # brief-db-cliente-manuale-uno-per-soggetto-e-utility C-1/C-2). Prima il
 # cliente nasceva sul soggetto del primo cliente della lista: dal secondo giro
-# il DB lo rifiutava, giustamente. Il soggetto lo crea il BB dall'API.
-smoke_soggetto_privato "Contratto"
+# il DB lo rifiutava, giustamente. Soggetto e cliente li crea il BB
+# `smoke_cliente_del_giro` (_smoke_cliente.sh), dall'API.
+smoke_cliente_del_giro "Contratto" "" "${UTILITY_ID:-}"
 if [[ -z "$SOGG_ID" ]]; then
     echo -e "${RED}Setup fallito: impossibile creare il soggetto del giro (motivo sopra). Stop.${NC}"; exit 1
 fi
 log_info "soggetto del giro: $SOGG_ID (CF $SOGG_CF)"
-do_curl GET "/api/v1/anagrafiche/utilities/manual-lookup/"
-UTIL_MANUALE=$(echo "$LAST_BODY" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin).get('data')
-    rows = d.get('results', d) if isinstance(d, dict) else d
-    ids = [str(r.get('id') or r.get('utility_id')) for r in (rows or [])]
-    print(sys.argv[1] if sys.argv[1] in ids else (ids[0] if ids else ''))
-except Exception:
-    print('')
-" "${UTILITY_ID:-}" 2>/dev/null)
-do_curl GET "/api/v1/core/lookup/codici/?rel=anagrafiche.categorie_clienti&limit=1"
-CAT_ID=$(json_get "$LAST_BODY" "data.results.0.id")
-# Gli indirizzi del RUOLO cliente: un soggetto appena nato non li ha (il guard
-# del ruolo pretende FATT, con ripiego DOMFISC). Ne basta uno: i tipi
-# obbligatori mancanti li clona il service dalla matrice del ruolo.
-do_curl POST "/api/v1/anagrafiche/clienti/" \
-    "{\"soggetto_id\": \"${SOGG_ID}\", \"utility_id\": ${UTIL_MANUALE:-null}, \"ba_categoria_cliente_id\": ${CAT_ID:-null}, \"indirizzi\": [{\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}]}"
+LAST_STATUS="$GIRO_LAST_STATUS"; LAST_BODY="$GIRO_LAST_BODY"
 if ! check "POST cliente proprio del giro" 200 "data.billing_account_id"; then
     echo -e "${RED}Setup fallito: impossibile creare il cliente del giro. Stop.${NC}"; exit 1
 fi
-BA_ID="$EXTRACTED"
-ISTANZA_ID=$(json_get "$LAST_BODY" "data.istanza_utility_id")
-UTILITY_ID="$UTIL_MANUALE"
+BA_ID="$GIRO_BA_ID"
+ISTANZA_ID="$GIRO_ISTANZA_ID"
+UTILITY_ID="$GIRO_UTILITY_ID"
 EF_SRC=""   # l'emittente e' quello attivo, lo stesso del nuovo cliente
 log_info "cliente del giro: BA=$BA_ID istanza=$ISTANZA_ID utility=$UTILITY_ID"
 trap 'smoke_chiudi_contratti "$BA_ID" "$AMBITO"; rm -f "$TMPFILE"' EXIT

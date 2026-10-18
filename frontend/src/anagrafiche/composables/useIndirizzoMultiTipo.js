@@ -4,6 +4,7 @@
 // NON gestisce: form fields, validazione, payload, check duplicato (delegati a base/soggetto).
 
 import { ref, computed } from 'vue'
+import { assegnaCampiLiberi, campiLiberi } from './indirizzoLibero'
 
 export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, form }) {
   const indirizziSalvati = ref({})
@@ -46,9 +47,7 @@ export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, fo
       ...baseSnapshot(),
       tipo_indirizzo_codice: form.tipo_indirizzo_codice,
       isLibera: form._isLibera,
-      indirizzo_libero: form.indirizzo_libero,
-      stato_id: form.stato_id,
-      locality: form.locality,
+      ...campiLiberi(form),
     }
   }
 
@@ -56,9 +55,7 @@ export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, fo
     baseRestore(snap)
     form.tipo_indirizzo_codice = snap.tipo_indirizzo_codice ?? null
     form._isLibera = snap.isLibera ?? false
-    form.indirizzo_libero = snap.indirizzo_libero || ''
-    form.stato_id = snap.stato_id ?? null
-    form.locality = snap.locality || ''
+    assegnaCampiLiberi(form, snap)
   }
 
   // Scopo: Salva snapshot del tipo attivo (se compilato).
@@ -77,9 +74,7 @@ export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, fo
       baseReset()
       form.tipo_indirizzo_codice = codice
       form._isLibera = false
-      form.indirizzo_libero = ''
-      form.stato_id = null
-      form.locality = ''
+      assegnaCampiLiberi(form)
     }
   }
 

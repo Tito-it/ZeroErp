@@ -99,12 +99,32 @@ _UPDATE_INDIRIZZO_RUOLO_KEYS: frozenset[str] = INDIRIZZO_RUOLO_UPDATE_COLS
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
 
-# Scopo: Gli indirizzi di un ruolo nella forma che le madri del DB ricevono
-#        (`fn_crea_indirizzi_ruolo`, e attraverso lei `fn_crea_fornitore` e
-#        `fn_crea_cliente`), coi pre-check per l'operatore: un elemento che
-#        non e' un oggetto, i campi di una via nuova (`richiedi_via`). Le
-#        stringhe vuote e i null valgono assenti (null_vs_empty). `None` o
-#        un elenco vuoto: nessun indirizzo.
+# Scopo: UN indirizzo nella forma che le madri del DB ricevono
+#        (`fn_crea_indirizzo_soggetto`, `fn_crea_indirizzi_ruolo`, e attraverso
+#        lei `fn_crea_fornitore` e `fn_crea_cliente`: la stessa grammatica,
+#        `fn_indirizzo_elemento`), coi pre-check per l'operatore: un elemento
+#        che non e' un oggetto, i campi di una via nuova (`richiedi_via`). Le
+#        stringhe vuote e i null valgono assenti (null_vs_empty). La forma
+#        dell'indirizzo LIBERO non si ripete qui: la giudica il guard della
+#        tabella (`trgfn_indirizzi_guard_forma_libera`), col campo.
+def indirizzo_per_madre(ind: Any) -> dict[str, Any]:
+    ErrorManager.require(
+        isinstance(ind, dict),
+        code=E_ANAG_VALIDAZIONE,
+        message="Indirizzo non valido: atteso un oggetto.",
+    )
+    pulito = {
+        k: v for k, v in ind.items()
+        if v is not None and not (isinstance(v, str) and not v.strip())
+    }
+    if not pulito.get("indirizzo_libero") and not pulito.get("indirizzo_dettaglio_id"):
+        richiedi_via(pulito)
+    return pulito
+
+
+# Scopo: Gli indirizzi di un ruolo per la madre: `indirizzo_per_madre` per
+#        elemento. `None` o un elenco vuoto: nessun indirizzo; un elenco che
+#        non e' una lista e' un 400 (era un TypeError, cioe' un 500).
 def indirizzi_per_madre(indirizzi_data: list[Any] | None) -> list[dict[str, Any]]:
     ErrorManager.require(
         indirizzi_data is None or isinstance(indirizzi_data, list),
@@ -112,21 +132,7 @@ def indirizzi_per_madre(indirizzi_data: list[Any] | None) -> list[dict[str, Any]
         message="Indirizzi non validi: attesa una lista.",
         context={"field": "indirizzi"},
     )
-    indirizzi: list[dict[str, Any]] = []
-    for ind in indirizzi_data or []:
-        ErrorManager.require(
-            isinstance(ind, dict),
-            code=E_ANAG_VALIDAZIONE,
-            message="Indirizzo non valido: atteso un oggetto.",
-        )
-        pulito = {
-            k: v for k, v in ind.items()
-            if v is not None and not (isinstance(v, str) and not v.strip())
-        }
-        if not pulito.get("indirizzo_libero") and not pulito.get("indirizzo_dettaglio_id"):
-            richiedi_via(pulito)
-        indirizzi.append(pulito)
-    return indirizzi
+    return [indirizzo_per_madre(ind) for ind in indirizzi_data or []]
 
 
 class SoggettiService:
@@ -932,42 +938,21 @@ class SoggettiService:
         for ind in indirizzi:
             self._create_indirizzo(soggetto_id, ind)
 
-    # Scopo: Dispatch creazione indirizzo soggetto — il payload determina il path.
+    # Scopo: Crea UN indirizzo del soggetto con la madre del DB
+    #        `anagrafiche.fn_crea_indirizzo_soggetto(soggetto, indirizzo jsonb)`:
+    #        tipo per codice, indirizzo in una di tre forme (libero, dettaglio
+    #        gia' risolto, via da risolvere). La forma dell'indirizzo libero —
+    #        comune e CAP del catalogo, o la localita' per uno stato senza
+    #        catalogo — la giudica il guard della tabella, col campo.
+    # ⭐ Dal 2026-10-18 (D-4 di Tid, brief-db-processi-accensione-per-ambiente
+    #    §6.11): la firma posizionale non aveva la forma estera, e il backend
+    #    risolveva da se' la via. Ora un oggetto, la stessa grammatica della
+    #    gemella del ruolo.
     def _create_indirizzo(self, soggetto_id: str, payload: dict[str, Any]) -> int:
-        tipo_codice = require_str(payload, "tipo_indirizzo_codice",
-                                  "Codice tipo indirizzo obbligatorio.")
-
-        if optional_str(payload, "indirizzo_libero"):
-            return self._create_indirizzo_libero(soggetto_id, payload, tipo_codice)
-
-        det_id = self._resolve_indirizzo_dettaglio(payload)
+        require_str(payload, "tipo_indirizzo_codice", "Codice tipo indirizzo obbligatorio.")
+        indirizzo = indirizzo_per_madre(payload)
         return create_with_dedup(
-            lambda: self._repo.crea_indirizzo_soggetto(
-                soggetto_id,
-                tipo_indirizzo_codice=tipo_codice,
-                indirizzo_dettaglio_id=det_id,
-            ),
-            "Indirizzo duplicato per questo soggetto.",
-        )
-
-    # Scopo: Crea indirizzo libero (via fuori stradario, in forma libera).
-    # ⚠️ Comune e CAP viaggiano (2026-10-18): la madre
-    #    `anagrafiche.fn_crea_indirizzo_soggetto` li pretende per un indirizzo
-    #    libero, e fino a quel giorno il backend li buttava — un indirizzo
-    #    libero del soggetto non poteva nascere. La forma estera (localita',
-    #    codice postale, regione) la madre non la riceve ancora: richiesta al
-    #    team DB (brief-db-processi-accensione-per-ambiente §6.11).
-    def _create_indirizzo_libero(self, soggetto_id: str, payload: dict[str, Any],
-                                 tipo_codice: str) -> int:
-        return create_with_dedup(
-            lambda: self._repo.crea_indirizzo_soggetto(
-                soggetto_id,
-                tipo_indirizzo_codice=tipo_codice,
-                indirizzo_libero=optional_str(payload, "indirizzo_libero"),
-                stato_id=optional_int(payload, "stato_id"),
-                comune_id=optional_int(payload, "comune_id"),
-                codice_postale_id=optional_int(payload, "codice_postale_id"),
-            ),
+            lambda: self._repo.crea_indirizzo_soggetto(soggetto_id, indirizzo),
             "Indirizzo duplicato per questo soggetto.",
         )
 

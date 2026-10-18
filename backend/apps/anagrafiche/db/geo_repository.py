@@ -168,6 +168,14 @@ def _lista_geo(
     )
 
 
+# Chi chiede lo stato proposto per la tendina degli stati (`p_chi` di
+# `script.fn_stato_proposto_id`). ⚠️ Oggi il lettore lo passa anche come nome
+# di FUNZIONE al lettore dei parametri (R-BE-13), quindi un override per
+# funzione dipende da questo valore: chi rilegge lo stato proposto per
+# confrontarlo con la tendina usa questa costante.
+CHI_STATI_LOOKUP = "anagrafiche.stati_lookup"
+
+
 class GeoRepository:
     """Accesso DB per toponomastica, comuni, province, regioni, stati."""
 
@@ -449,11 +457,25 @@ class GeoRepository:
             ordinamento=ordinamento, limit=limit, offset=offset,
         )
 
-    # Scopo: Lista stati per dropdown.
+    # Scopo: Lista stati per dropdown. Due colonne in piu' (2026-10-18, D-1 e
+    #        D-2 di Tid, brief-db-processi-accensione-per-ambiente §6.11):
+    #        - `catalogo_comuni_completo`: la FORMA dell'indirizzo libero in
+    #          quello stato (acceso: comune e CAP dall'elenco; spento: la
+    #          localita'). Il form la legge da qui, non la ricalcola;
+    #        - `proposto`: lo stato da preselezionare, da
+    #          `script.fn_stato_proposto_id` (parametro STATO_PROPOSTO_ISO2), lo
+    #          stesso lettore dei trigger che lo scrivono quando manca. Valida e
+    #          non ripiega: un parametro sbagliato e' un errore, non un 'IT'.
     def list_stati_lookup(self) -> list[dict[str, Any]]:
-        sql = "SELECT id, descrizione, codice_iso2 FROM config.stati ORDER BY descrizione"
+        sql = """
+            SELECT s.id, s.descrizione, s.codice_iso2, s.catalogo_comuni_completo,
+                   (s.id = p.stato_id) AS proposto
+              FROM config.stati s
+             CROSS JOIN (SELECT script.fn_stato_proposto_id(%s) AS stato_id) p
+             ORDER BY s.descrizione
+        """
         with connection.cursor() as cursor:
-            cursor.execute(sql)
+            cursor.execute(sql, [CHI_STATI_LOOKUP])
             return rows_to_list(cursor)
 
     # Scopo: Crea stato.

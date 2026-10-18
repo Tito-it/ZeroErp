@@ -258,11 +258,12 @@ if [[ -z "$BA_ID" || -z "$BA_UTILITY_ID" ]]; then
 fi
 log_info "BA=${BA_ID} utility=${BA_UTILITY_ID} istanza=${BA_ISTANZA_ID}"
 
-# Emittente: prendo il primo autorizzato via endpoint emittenti
-do_curl GET "/api/v1/anagrafiche/emittenti-fiscali/?attivo=true&page=1&page_size=1"
-EMITTENTE_SR=$(json_get "$LAST_BODY" ".data.results.0.soggetto_ruolo_id")
+# Emittente: quello ATTIVO dell'operatore (BB _smoke_cliente.sh), lo stesso
+# del cliente del lookup. Non «il primo della lista»: vedi il BB.
+smoke_emittente_attivo   # -> EMITTENTE_ATTIVO_ID, EMITTENTE_ATTIVO_SR_ID
+EMITTENTE_SR="$EMITTENTE_ATTIVO_SR_ID"
 if [[ -z "$EMITTENTE_SR" ]]; then
-    echo -e "${RED}ERRORE:${NC} nessun emittente fiscale disponibile."
+    echo -e "${RED}ERRORE:${NC} nessun emittente attivo per l'operatore."
     exit 3
 fi
 log_info "Emittente soggetto_ruolo_id=${EMITTENTE_SR}"

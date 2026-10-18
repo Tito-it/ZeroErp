@@ -590,11 +590,15 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_IDEMPOTENCY_KEY_REQUIRED": "Idempotency-Key obbligatoria per questa operazione.",
     "E_IDENTITA_NON_ATTIVA": "Sessione non piu' valida: effettua nuovamente l'accesso.",
     "E_ID_FISCALI_DIVERSI": "Il parent account appartiene a un identificativo fiscale diverso.",
+    "E_INDIRIZZO_CAMPO_ALTRA_FORMA": "Per questo indirizzo comune e CAP vengono dall'elenco: localita', codice postale e regione non si compilano.",
+    "E_INDIRIZZO_CAP_ALTRO_COMUNE": "Il CAP scelto non e' del comune dell'indirizzo.",
+    "E_INDIRIZZO_COMUNE_ALTRO_STATO": "Il comune scelto non e' dello stato dell'indirizzo.",
     # brief-db-indirizzi-documento-seguono-il-cliente (2026-10-11): l'indirizzo
     # preso dall'anagrafica non e' del cliente del documento.
     "E_INDIRIZZO_DOC_NON_DEL_CLIENTE": "Un indirizzo del documento non e' del suo cliente: viene dall'anagrafica di un altro cliente, o di una fornitura diversa. Sceglilo fra quelli del cliente del documento.",
     "E_INDIRIZZO_DOC_OBBLIGATORIO": "Indirizzo obbligatorio mancante: impostare l'indirizzo di consegna prima dell'emissione.",
     "E_INDIRIZZO_FATTURA_MANCANTE": "Alcune fatture non hanno l'indirizzo di fatturazione: vedi i log delle fatture interessate.",
+    "E_INDIRIZZO_LIBERO_INCOMPLETO": "Indirizzo incompleto: manca un campo della sua forma (via, stato, e poi comune e CAP oppure la localita').",
     "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": "Indirizzo obbligatorio mancante per questo tipo soggetto.",
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "Indirizzo anagrafico non trovato: ricaricare gli indirizzi del cliente.",
     "E_INVALID_ID": "ID non valido.",
@@ -1250,6 +1254,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_STATISTICHE_MANCANTI": "Dopo l'aggiornamento delle statistiche restano tabelle senza statistiche.",
     "E_STATO_DDT_TRANSIZIONE_NON_VALIDA": "Transizione di stato non ammessa per il DDT.",
     "E_STATO_DOC_ESITO_NON_VERDETTO": "L'esito indicato non e' un verdetto: non ammesso come proiezione.",
+    "E_STATO_ISO2_AMBIGUO": "Il codice dello stato indica piu' stati dell'elenco: il sistema non puo' scegliere da solo.",
     "E_STATO_RESO_TRANSIZIONE_NON_VALIDA": "Transizione di stato non ammessa per il reso.",
     "E_STATO_SORGENTE_PARAM_INVALIDO": "Parametri sorgente non validi.",
     "E_STATO_WORKFLOW_NON_TROVATO": "Stato di destinazione non trovato o non attivo.",

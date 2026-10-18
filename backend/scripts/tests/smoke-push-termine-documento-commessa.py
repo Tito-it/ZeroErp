@@ -82,6 +82,7 @@ from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.commesse_service import pr_run_commesse_push_one
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 from scripts.tests._smoke_commessa import crea_riga_commessa
+from scripts.tests._smoke_contesto import apri_contesto_smoke
 
 FAIL: list[str] = []
 SKIP: list[str] = []
@@ -190,11 +191,7 @@ with transaction.atomic():
         # GUC operatore le SELECT tornano 0 righe e le INSERT falliscono il
         # WITH CHECK (trappola gia' pagata: un conteggio fail-closed somiglia
         # a un dato).
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
+        apri_contesto_smoke(cur)
 
         # --- catalogo: il termine multi-rata (il caso ORD0004786) + un termine
         #     DIVERSO per il secondo ordine. Presi dal catalogo reale.

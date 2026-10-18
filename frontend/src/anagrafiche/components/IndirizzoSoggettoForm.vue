@@ -1,7 +1,9 @@
 <script setup>
 // Scopo: Building block form indirizzo per layer soggetto (identita').
 // Supporta multi-tipo con barra tag, auto-clone per obbligatori.
-// Modalita' normalizzata (comune + via + civico) e libera (estero).
+// Modalita' normalizzata (comune + via + civico) e libera, in due forme decise
+// dallo stato scelto (`indirizzoLibero.js`): comune e CAP dall'elenco per uno
+// stato col catalogo dei comuni, la localita' per gli altri.
 
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -15,6 +17,7 @@ import { STATUS_ICONS } from '../../core/constants'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
 import StradarioAutocomplete from './StradarioAutocomplete.vue'
 import StradarioGeneraleAutocomplete from './StradarioGeneraleAutocomplete.vue'
+import { isFormaCatalogo, statoDi } from '../composables/indirizzoLibero'
 
 const { t } = useI18n()
 
@@ -54,6 +57,10 @@ const tipoAttivoDescrizione = computed(() => {
   const attivo = tipiStatoArricchiti.value.find(t => t.attivo)
   return attivo?.descrizione || null
 })
+
+// La forma dell'indirizzo libero, dal flag dello stato scelto.
+const formaCatalogo = computed(() =>
+  isFormaCatalogo(statoDi(props.statiLookup?.items.value, form.value.stato_id)))
 
 // True se almeno un tab e' selezionato (non esistente)
 const hasTabAttivo = computed(() => !!tipoAttivoDescrizione.value)
@@ -122,9 +129,30 @@ const viaNoResultsGenerale = computed(() =>
       </div>
     </div>
 
-    <!-- === MODALITA' NORMALIZZATA === -->
-    <template v-if="!isLibera">
-      <!-- Comune + CAP affiancati -->
+    <!-- === MODALITA' LIBERA: via scritta e stato === -->
+    <template v-if="isLibera">
+      <div class="form-field">
+        <label>{{ t('anagrafiche.indirizzo_soggetto.indirizzo_libero') }} *</label>
+        <InputText v-model="form.indirizzo_libero" :disabled="disabled" />
+      </div>
+      <div class="form-field" v-if="statiLookup">
+        <label>{{ t('anagrafiche.indirizzo_soggetto.stato') }} *</label>
+        <Select
+          v-model="form.stato_id"
+          :options="statiLookup.items.value"
+          :loading="statiLookup.loading.value"
+          option-label="descrizione"
+          option-value="id"
+          :placeholder="t('geo.select_stato')"
+          :disabled="disabled"
+          filter
+        />
+      </div>
+    </template>
+
+    <!-- Comune + CAP affiancati: dell'indirizzo normalizzato, e della forma
+         libera «del catalogo» (stato col catalogo dei comuni). Un blocco solo. -->
+    <template v-if="!isLibera || formaCatalogo">
       <div style="display: flex; gap: 0.5rem;">
         <div class="form-field" style="flex: 3;">
           <label>{{ t('indirizzi.campo_comune') }} *</label>
@@ -147,6 +175,10 @@ const viaNoResultsGenerale = computed(() =>
         </div>
       </div>
 
+    </template>
+
+    <!-- === MODALITA' NORMALIZZATA: via e civico === -->
+    <template v-if="!isLibera">
       <!-- Via esistente (stradario locale) -->
       <template v-if="!form.via_nuova">
         <div class="form-field">
@@ -214,28 +246,28 @@ const viaNoResultsGenerale = computed(() =>
       </Message>
     </template>
 
-    <!-- === MODALITA' LIBERA === -->
-    <template v-else>
-      <div class="form-field">
-        <label>{{ t('anagrafiche.indirizzo_soggetto.indirizzo_libero') }} *</label>
-        <InputText v-model="form.indirizzo_libero" :disabled="disabled" />
-      </div>
-      <div class="form-field" v-if="statiLookup">
-        <label>{{ t('anagrafiche.indirizzo_soggetto.stato') }} *</label>
-        <Select
-          v-model="form.stato_id"
-          :options="statiLookup.items.value"
-          :loading="statiLookup.loading.value"
-          option-label="descrizione"
-          option-value="id"
-          :placeholder="t('geo.select_stato')"
-          :disabled="disabled"
-          filter
-        />
-      </div>
-      <div class="form-field">
-        <label>{{ t('anagrafiche.indirizzo_soggetto.locality') }}</label>
-        <InputText v-model="form.locality" :disabled="disabled" />
+    <!-- === MODALITA' LIBERA: i campi della forma estera === -->
+    <template v-if="isLibera">
+      <!-- Forma estera: la localita'; codice postale e regione facoltativi. -->
+      <template v-if="!formaCatalogo && form.stato_id">
+        <div class="form-field">
+          <label>{{ t('anagrafiche.indirizzo_soggetto.locality') }} *</label>
+          <InputText v-model="form.locality" :disabled="disabled" />
+        </div>
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('anagrafiche.indirizzo_soggetto.postal_code') }}</label>
+            <InputText v-model="form.postal_code" :disabled="disabled" />
+          </div>
+          <div class="form-field">
+            <label>{{ t('anagrafiche.indirizzo_soggetto.administrative_area') }}</label>
+            <InputText v-model="form.administrative_area" :disabled="disabled" />
+          </div>
+        </div>
+      </template>
+      <div v-if="form.stato_id" class="form-field">
+        <label>{{ t('anagrafiche.indirizzo_soggetto.sublocality') }}</label>
+        <InputText v-model="form.sublocality" :disabled="disabled" />
       </div>
     </template>
 
