@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 0: le entita' legate
+# alle sorgenti
+#   config.tipi_entita.is_sorgente (boolean NOT NULL, default false) e la
+#   colonna generata sorgente_codice_interno, con FK verso
+#   config.sorgenti(codice_interno).
+#   Brief: brief-db-grammatica-unica-documenti, G-1 e G-7 (Tid, 2026-10-18).
+#
+# -- CHE COSA DICE ---------------------------------------------------------
+#   Un'entita' che e' anche una sorgente (un documento, una sua riga, una
+#   variante) porta lo STESSO codice della sorgente, e lo porta per vincolo,
+#   non per convenzione (G-1). La riga dichiara is_sorgente; la colonna
+#   generata vale il codice dell'entita', e la FK pretende che quel codice
+#   esista in config.sorgenti. Un nome diverso per lo stesso documento non
+#   passa piu' il seed.
+#   Il verso opposto (ogni sorgente ha la sua entita') lo asserisce il pgTAP
+#   del lotto: una FK non sa dirlo, perche' le entita' comprendono anche cio'
+#   che non e' una sorgente (LOTTO, TASK_RUN, FLUSSO, ARTICOLO...).
+#
+# -- PERCHE' IN QUESTO VERSO (entita' -> sorgenti) ---------------------------
+#   Nel migrate il mirror delle sorgenti (80_data 20251002-21) gira prima di
+#   quello delle entita' (20260822-55). Un tipo nuovo e' una riga in tutti e
+#   due i CSV: in questo verso la riga della sorgente c'e' gia' quando arriva
+#   quella dell'entita'. Nel verso opposto il mirror delle sorgenti
+#   inserirebbe una riga che punta a un'entita' non ancora seminata, e ogni
+#   tipo nuovo fermerebbe il migrate.
+#   Su un database ricostruito da zero la tabella e' vuota quando nasce la
+#   FK; su dev le righe di oggi hanno is_sorgente = false (il default), e la
+#   colonna la valorizza il CSV in 80_data.
+#
+# -- L'AUTOMAZIONE ATTIVO ----------------------------------------------------
+#   Provato sullo scratch (2026-10-19, in transazione annullata, dopo
+#   l'upsert dei due CSV): dbops.fn_run_automations_attivo('AUTO',
+#   ARRAY['config'], false) NON monta niente su questa coppia, e una sorgente
+#   con la sua entita' si spegne (attivo = false) senza errore. La FK lega il
+#   NOME, non l'accensione. La nota storica del COMMENT di tabella (niente
+#   colonna attivo su tipi_entita, per non far nascere un lucchetto su
+#   vendite.event_log) resta vera: riguarda chi PUNTA a tipi_entita.
+#
+# -- LA CHIAVE (key_selector) ------------------------------------------------
+#   Per preventivo e offerta le due colonne dicono cose diverse, e restano
+#   cosi' (K-1 di Tid, 2026-10-19): sorgenti.key_selector e' la chiave con cui
+#   il documento si COLLEGA (uid, collegamento polimorfo), tipi_entita.key_selector
+#   quella con cui lo si APRE (id, le rotte). La FK lega il codice del tipo,
+#   non la chiave. Guida: sorgente-polimorfa §4 e §6.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261019-15-alter-tipi-entita-legame-sorgenti-mctit.yaml
+
+  - changeSet:
+      id: 20261019-15-alter-tipi-entita-legame-sorgenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.tipi_entita: is_sorgente e la colonna generata sorgente_codice_interno con FK
+        verso config.sorgenti(codice_interno). Un'entita' che e' anche una sorgente porta lo
+        stesso codice per vincolo (G-1/G-7 di Tid, 2026-10-18). Brief:
+        brief-db-grammatica-unica-documenti, lotto 0.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: tipi_entita
+        - not:
+            - columnExists:
+                schemaName: config
+                tableName: tipi_entita
+                columnName: is_sorgente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tipi_entita
+                ADD COLUMN is_sorgente boolean NOT NULL DEFAULT false;
+
+              ALTER TABLE config.tipi_entita
+                ADD COLUMN sorgente_codice_interno text
+                  GENERATED ALWAYS AS (CASE WHEN is_sorgente THEN codice END) STORED;
+
+              ALTER TABLE config.tipi_entita
+                ADD CONSTRAINT fk_tipi_entita_sorgenti
+                FOREIGN KEY (sorgente_codice_interno)
+                REFERENCES config.sorgenti (codice_interno);
+
+              COMMENT ON COLUMN config.tipi_entita.is_sorgente IS
+                'L''entita'' e'' anche una sorgente (config.sorgenti): un documento, una sua riga o una variante. Allora il suo codice E'' il codice_interno della sorgente, e lo garantisce la FK su sorgente_codice_interno (G-1 di brief-db-grammatica-unica-documenti, Tid 2026-10-18). Falso per cio'' che si indica e non e'' una sorgente (LOTTO, TASK_RUN, FLUSSO, ARTICOLO...). Il seed lo dichiara in tipi_entita.csv; il pgTAP del lotto 0 asserisce il verso opposto, ogni sorgente ha la sua entita''. 20261019-15.';
+
+              COMMENT ON COLUMN config.tipi_entita.sorgente_codice_interno IS
+                'Generata: il codice dell''entita'' quando is_sorgente, altrimenti NULL. Esiste per portare la FK fk_tipi_entita_sorgenti verso config.sorgenti(codice_interno): il legame fra i due cataloghi e'' un vincolo, non una convenzione (G-1). Non si scrive. 20261019-15.';
+
+              COMMENT ON TABLE config.tipi_entita IS
+                'Catalogo di «che cosa e'' questa entita''», condiviso dal perimetro del giornale (vendite.event_log.entity_type), dal bersaglio degli errori e, col lotto 3 della grammatica unica, dalle note (G-7). ⛔ SENZA colonna attivo, e non e'' una dimenticanza: una FK verso un padre con attivo fa generare a dbops.fn_run_automations_attivo un lucchetto require_attivo, e il diario smetterebbe di scrivere per una voce di elenco disattivata — la D-12 violata da un''automazione, alle 21:00. La deprecazione si fa con obsoleto_dal. ⭐ Rev 2026-10-19 (20261019-15, brief-db-grammatica-unica-documenti G-1): il tipo di documento ha UN nome, il codice_interno di config.sorgenti. Un''entita'' che e'' anche una sorgente lo dichiara (is_sorgente) e la FK fk_tipi_entita_sorgenti lega il codice; le entita'' che non sono sorgenti (LOTTO, TASK_RUN, FLUSSO, ARTICOLO...) restano solo qui. Fino a questa revisione il commento diceva «non ci si aggancia»: era la scelta di prima, superata da G-1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.tipi_entita DROP CONSTRAINT IF EXISTS fk_tipi_entita_sorgenti;
+              ALTER TABLE config.tipi_entita DROP COLUMN IF EXISTS sorgente_codice_interno;
+              ALTER TABLE config.tipi_entita DROP COLUMN IF EXISTS is_sorgente;

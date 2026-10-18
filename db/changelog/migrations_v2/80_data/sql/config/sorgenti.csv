@@ -21,3 +21,10 @@ id,codice_interno,codice,categoria,descrizione,attivo,meta,data_insert,user_inse
 20,EVENTO_ASSET,EVENTO_ASSET,RIGA,Evento del ciclo di vita di un asset,t,{},2026-09-15 00:00:00+02,titodb,2026-09-15 00:00:00+02,titodb,magazzino.eventi_assets,id,NULL,MAGAZZINO,NULL,NULL
 21,DDT_VENDITA_PRELIEVO,DDT_VENDITA_PRELIEVO,RIGA,"Prelievo di una riga di bolla (lotto, seriale, ubicazione): sorgente del movimento di magazzino",t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit,vendite.ddt_righe_prelievi,id,NULL,MAGAZZINO,NULL,NULL
 22,RESO_VENDITA_RIENTRO,RESO_VENDITA_RIENTRO,RIGA,"Rientro di una riga di reso (quale prelievo della bolla torna, e dove): sorgente del carico di magazzino",t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit,vendite.resi_righe_rientri,id,NULL,MAGAZZINO,NULL,NULL
+23,ORDINE_ACQUISTO,ORDINE_ACQUISTO,DOCUMENTO,Ordine d'acquisto (testata),t,{},2026-10-19 00:00:00+02,mctit,2026-10-19 00:00:00+02,mctit,acquisti.ordini,id,NULL,CATALOGO,NULL,numero
+24,DDT_ACQUISTO,DDT_ACQUISTO,DOCUMENTO,DDT d'acquisto (testata),t,{},2026-10-19 00:00:00+02,mctit,2026-10-19 00:00:00+02,mctit,acquisti.ddt,id,NULL,CATALOGO,NULL,numero
+25,INVENTARIO,INVENTARIO,DOCUMENTO,Inventario di magazzino (testata),t,{},2026-10-19 00:00:00+02,mctit,2026-10-19 00:00:00+02,mctit,magazzino.inventari,id,NULL,CATALOGO,NULL,NULL
+26,RETTIFICA,RETTIFICA,DOCUMENTO,Rettifica di giacenza (testata),t,{},2026-10-19 00:00:00+02,mctit,2026-10-19 00:00:00+02,mctit,magazzino.rettifiche,id,NULL,CATALOGO,NULL,NULL
+27,TRASFERIMENTO,TRASFERIMENTO,DOCUMENTO,Trasferimento fra magazzini (testata),t,{},2026-10-19 00:00:00+02,mctit,2026-10-19 00:00:00+02,mctit,magazzino.trasferimenti,id,NULL,CATALOGO,NULL,NULL
+28,DISTINTA_INCASSO,DISTINTA_INCASSO,DOCUMENTO,Distinta d'incasso (testata),t,{},2026-10-19 00:00:00+02,mctit,2026-10-19 00:00:00+02,mctit,pagamenti.vendite_contabili,id,NULL,CATALOGO,NULL,codice
+29,EMAIL,EMAIL,DOCUMENTO,Email in uscita (in bozza finche' non si invia),t,{},2026-10-19 00:00:00+02,mctit,2026-10-19 00:00:00+02,mctit,config.email_outbox,id,NULL,CATALOGO,NULL,NULL
