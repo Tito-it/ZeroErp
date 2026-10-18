@@ -13,18 +13,21 @@ CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_movimento(p_auth_use
  LANGUAGE sql
  STABLE COST 5000
 AS $function$
-    -- Scopo: perimetro di un movimento del registro, via il suo magazzino.
-    --   E' la chiave che porta magazzino.note_movimento.
-    SELECT script.fn_scope_ef_whitelist_via_magazzino(
+    -- Scopo: l'utente vede l'emittente della chiave (movimento)? La
+    --   domanda su UN emittente, per chi non sta in una policy (verbi, guard,
+    --   backend): la regola e' della canonica, l'emittente del risolutore.
+    -- ⭐ Rev 2026-10-18 (20261018-49, D-3b-2 ondata 2): l'emittente si chiede a
+    --   script.fn_resolve_emittente_fiscale_id('movimento', ...), DEFINER, invece di
+    --   leggerlo sotto la RLS del padre: una strada sola, e nessuna policy del
+    --   padre rieseguita a ogni chiamata. Stesse risposte. Le policy non passano
+    --   piu' di qui (20261018-50).
+    SELECT script.fn_check_user_emittente_scope(
         p_auth_user_id,
-        (SELECT mv.magazzino_id
-           FROM magazzino.movimenti mv
-          WHERE mv.id = p_movimento_id)
-    );
+        script.fn_resolve_emittente_fiscale_id('movimento', p_movimento_id))
 $function$
 
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_movimento(p_auth_user_id integer, p_movimento_id bigint)
-IS 'Adattatore di scope per una riga del registro (magazzino.movimenti) via il suo magazzino: delega a fn_scope_ef_whitelist_via_magazzino. E'' la chiave di note_movimento.';
+IS '⭐ rev 2026-10-18 (20261018-49, D-3b-2 ondata 2): l''emittente dal risolutore DEFINER (via_efba: dalla composizione delle policy, in convenzione soggetto_ruolo); una strada sola, nessuna policy del padre per chiamata. Stesse risposte. Adattatore di scope per una riga del registro (magazzino.movimenti) via il suo magazzino: delega a fn_scope_ef_whitelist_via_magazzino. E'' la chiave di note_movimento.';
 ```
 
 ---

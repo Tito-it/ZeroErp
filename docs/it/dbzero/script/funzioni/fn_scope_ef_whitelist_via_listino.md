@@ -13,19 +13,25 @@ CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_listino(p_auth_user_
  LANGUAGE sql
  STABLE COST 5000
 AS $function$
-    -- Risolve listino -> emittente_soggetto_ruolo_id e delega
-    -- all'adapter SR. Listino inesistente -> SR NULL -> false
-    -- (fail-closed se whitelist valorizzata).
-    SELECT script.fn_scope_ef_whitelist_via_sr(
+    -- Scopo: l'utente vede l'emittente della chiave (listino)? La domanda
+    --   su UN emittente, per chi non sta in una policy (verbi, guard,
+    --   backend): la regola e' della canonica, l'emittente del risolutore.
+    -- ⭐ Rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l'emittente si chiede a
+    --   script.fn_resolve_emittente_fiscale_id('listino', ...), DEFINER, invece
+    --   di leggerlo qui sotto la RLS del padre: la strada documento ->
+    --   emittente e' scritta UNA volta (il modo del risolutore), e una
+    --   chiamata non riesegue piu' la policy del padre. Stesse risposte: per
+    --   l'operatore il padre e' invisibile esattamente quando il suo
+    --   emittente e' fuori perimetro, e la canonica lo dice comunque.
+    --   Le policy non passano piu' di qui (20261018-33): calcolano il
+    --   perimetro una volta per istruzione.
+    SELECT script.fn_check_user_emittente_scope(
         p_auth_user_id,
-        (SELECT l.emittente_soggetto_ruolo_id
-           FROM vendite.listini l
-          WHERE l.id = p_listino_id)
-    );
+        script.fn_resolve_emittente_fiscale_id('listino', p_listino_id))
 $function$
 
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_listino(p_auth_user_id integer, p_listino_id bigint)
-IS 'Adapter via-listino dello scope EF_WHITELIST: risolve l''emittente attraverso vendite.listini e delega a fn_scope_ef_whitelist_via_sr (-> canonica). Per le tabelle figlie del listino senza colonna emittente propria (vendite.listini_versioni). Gemello di fn_scope_ef_whitelist_via_fattura. STABLE, inlineable. Brief: brief-db-processi-automatici-residui-be §DB-4.';
+IS '⭐ rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l''emittente lo chiede a script.fn_resolve_emittente_fiscale_id (DEFINER), non lo legge sotto la RLS del padre: una strada sola, e nessuna policy del padre rieseguita a ogni chiamata. Stesse risposte. Adapter via-listino dello scope EF_WHITELIST: risolve l''emittente attraverso vendite.listini e delega a fn_scope_ef_whitelist_via_sr (-> canonica). Per le tabelle figlie del listino senza colonna emittente propria (vendite.listini_versioni). Gemello di fn_scope_ef_whitelist_via_fattura. STABLE, inlineable. Brief: brief-db-processi-automatici-residui-be §DB-4.';
 ```
 
 ---

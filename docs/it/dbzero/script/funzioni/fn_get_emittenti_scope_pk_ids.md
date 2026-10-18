@@ -11,11 +11,12 @@ CREATE FUNCTION fn_get_emittenti_scope_pk_ids(p_auth_user_id integer)
 CREATE OR REPLACE FUNCTION script.fn_get_emittenti_scope_pk_ids(p_auth_user_id integer)
  RETURNS bigint[]
  LANGUAGE plpgsql
- STABLE
+ STABLE COST 5000
 AS $function$
 DECLARE
+    -- ⚠️ `bigint[]` esplicito: `colonna%TYPE[]` non esiste in PostgreSQL.
     v_ids    bigint[];
-    v_attivo bigint;
+    v_attivo anagrafiche.emittenti_fiscali.id%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -37,21 +38,29 @@ BEGIN
                     ''
                 )::bigint;
 
-    -- 1. Identita OPERATORE attiva (helper DRY §4.6.B.0).
-    --    '{}' e' gia' il valore piu' restrittivo: nessuna
-    --    intersezione potrebbe cambiarlo, esce subito.
-    IF NOT script.fn_has_identita_attiva(
-               p_auth_user_id,
-               'OPERATORE'::config.ruolo_applicativo) THEN
-        RETURN '{}'::bigint[];
-    END IF;
-
-    -- 2. Scope di diritto.
+    -- 1. Scope di diritto: super admin, oppure veste OPERATORE
+    --    utilizzabile + whitelist.
+    --    ⭐ Rev 2026-10-18 (D-3b-2, 20261018-22): il super admin
+    --    si chiede PRIMA della veste. L'esito non cambia — il
+    --    super admin richiede gia' una veste OPERATORE
+    --    utilizzabile (fn_is_super_admin_account) — ma la veste
+    --    si verifica una volta sola invece di due. Ora che la
+    --    canonica fn_check_user_emittente_scope chiede qui, e la
+    --    chiamano per riga adattatori e guard, la verifica in
+    --    piu' raddoppiava il costo di ogni chiamata (misura nel
+    --    brief-db-plancache-funzioni-con-query-incorporate).
     IF script.fn_is_super_admin(p_auth_user_id) THEN
         -- Nessuna restrizione: NULL = universo.
         -- ⭐ E' l'UNICO attore legittimamente multi-emittente
         --    (decisione Tid 2026-08-17). Non toccato da P-2a.
         v_ids := NULL;
+    ELSIF NOT script.fn_has_identita_attiva(
+                  p_auth_user_id,
+                  'OPERATORE'::config.ruolo_applicativo) THEN
+        -- Nessuna veste OPERATORE utilizzabile (helper DRY
+        -- §4.6.B.0). '{}' e' gia' il valore piu' restrittivo:
+        -- nessuna intersezione potrebbe cambiarlo, esce subito.
+        RETURN '{}'::bigint[];
     ELSE
         -- OPERATIVO: whitelist PK reale. Lettura diretta da
         -- user_emittenti_fiscali (la colonna e' gia' la PK).
@@ -92,7 +101,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_get_emittenti_scope_pk_ids(p_auth_user_id integer)
-IS 'Scope emittenti per filtri su colonne PK (emittenti_fiscali.id). Semantica: NULL=tutto, ''{}''=nessuno, array=whitelist. Identita OPERATORE mancante -> []; SUPER_ADMIN -> NULL; altrimenti whitelist PK. Post 2026-08-04: uscita unica e intersezione con la GUC app.current_emittente_id (universo ∩ {X} = {X}; whitelist senza X -> []). Post 2026-08-18 (P-2a): operatore non super admin SENZA riga in config.user_emittenti_fiscali -> ''{}'' e non piu'' NULL. Prima vedeva TUTTI gli emittenti ed era indistinguibile da un super admin: non uno stato del modello, un errore di configurazione non rilevato. Allinea la lettura alla scrittura, che gia'' rispondeva false (fn_check_user_can_create_ba). Gemella di fn_get_emittenti_scope_sr_ids (che e'' un wrapper su questa e aveva gia'' ricevuto la correzione). Vedi guida soggetti-e-ruoli §5b e brief perimetro-emittente §2.5.';
+IS '⭐ rev 2026-10-18 (20261018-17, D-3b-2): COST 5000. E'' la sede delle regole del perimetro (la canonica fn_check_user_emittente_scope si appoggia a lei) e le policy ef_whitelist dirette la chiamano una volta per istruzione. Scope emittenti per filtri su colonne PK (emittenti_fiscali.id). Semantica: NULL=tutto, ''{}''=nessuno, array=whitelist. Identita OPERATORE mancante -> []; SUPER_ADMIN -> NULL; altrimenti whitelist PK. Post 2026-08-04: uscita unica e intersezione con la GUC app.current_emittente_id (universo ∩ {X} = {X}; whitelist senza X -> []). Post 2026-08-18 (P-2a): operatore non super admin SENZA riga in config.user_emittenti_fiscali -> ''{}'' e non piu'' NULL. Prima vedeva TUTTI gli emittenti ed era indistinguibile da un super admin: non uno stato del modello, un errore di configurazione non rilevato. Allinea la lettura alla scrittura, che gia'' rispondeva false (fn_check_user_can_create_ba). Gemella di fn_get_emittenti_scope_sr_ids (che e'' un wrapper su questa e aveva gia'' ricevuto la correzione). Vedi guida soggetti-e-ruoli §5b e brief perimetro-emittente §2.5.';
 ```
 
 ---

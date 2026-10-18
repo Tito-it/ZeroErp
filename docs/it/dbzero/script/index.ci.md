@@ -193,6 +193,7 @@
 - [fn_scope_ba_ownership](manual/fn_scope_ba_ownership.md) — (latest review 20-04-2026 — ruolo-aware)
 - [fn_scope_ba_ownership_via_fattura](manual/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)
 - [fn_scope_cliente_ownership](manual/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
+- [fn_scope_ef_perimetro](manual/fn_scope_ef_perimetro.md) — (nata il 2026-10-18; firma attuale da `20261018-24`)
 - [fn_scope_ef_whitelist](manual/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
 - [fn_scope_ef_whitelist_via_asset](manual/fn_scope_ef_whitelist_via_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_commessa](manual/fn_scope_ef_whitelist_via_commessa.md) — (rev 2026-07-20)

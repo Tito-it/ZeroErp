@@ -1,9 +1,12 @@
 **Best Practice e Convenzioni**
 
+> **Ultimo aggiornamento**: 18 ottobre 2026
+>
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
 > 
 > * [Liquibase Setup & Workflow](liquibase-setup-workflow.md)   
+> * [Un database che resta veloce](/guide/database-che-resta-veloce) — il racconto e il metodo delle prestazioni; le regole sono al §13
 > * [Storicizzazione Tabelle](/guide/storicizzazione-tabelle)   
 > * [Transaction ID](/guide/tx_id_implementation_guide) 
 > * [Configurazione e Gestione Parametri](/guide/configurazione-e-gestione-parametri)   
@@ -815,62 +818,6 @@ Brief: `brief-db-character-n-spazi-di-riempimento`.
 
 ---
 
-### 8. Indici
-
-* **Naming**: `ix_<table>_<column>`
-* **Tipologia**: B-Tree per default; GIN/GIST per JSONB/Geometrie.
-* **Parziali**: `CREATE UNIQUE INDEX ix_contatti_default ON contatti(soggetto_id) WHERE is_default;` per default logic
-* **Indici `upper(...)`**: non usarli in modo generico; introdurli solo per query case‑insensitive specifiche e con beneficio prestazionale misurabile.
-* **Ricerche case‑insensitive**: usare `ILIKE` lato query; l’indice serve solo se compatibile con la forma del predicato.
-
----
-
-### 9. Automazione Indici FK
-
-All’interno della cartella **`90_end/`** delle migrazioni Liquibase, inserire sempre per ultimi uno script YAML con `runAlways` o `runAlways: false` per richiamare la procedura che crea/rimuove indici sulle foreign key:
-
-```yaml
-- changeSet:
-    id: 90-end-apply-fk-policy
-    author: mctit
-    runAlways: true
-    sql:
-      splitStatements: false
-      sql: |
-        CALL dbops.apply_fk_index_policy();
-```
-
-* La tabella `dbops.fk_index_policy` deve essere mantenuta aggiornata:
-
-  * individuare nuove FK senza indice con `dbops.vw_fk_senza_indice`
-  * popolare policy con `SELECT dbops.fn_populate_fk_index_policy();`
-* La policy consente di generare o eliminare indici non necessari.
-
-**La policy è OPT-IN**: `fn_populate_fk_index_policy()` registra le FK nuove con `consentito=false`. Perché l'indice nasca serve un seed esplicito che porti il flag a `true` — senza, l'automazione non crea nulla.
-
-**Non creare né droppare a mano un indice governato dalla policy.** Si agisce sul flag e ci pensa `apply_fk_index_policy()` in `90_end`. Dettagli e casistica in §8.7.
-
----
-
-### 10. Gestione Indici Ridondanti
-
-Un indice può essere superfluo in **due modi diversi**, e servono due viste perché nessuna delle due può vedere l'altro caso.
-
-```sql
--- 1. duplicati esatti: stessa firma completa, sono intercambiabili
-SELECT * FROM dbops.vw_duplicate_indexes;
-
--- 2. ridondanti per prefisso: le colonne di uno sono la testa di un altro
-SELECT * FROM dbops.vw_indici_ridondanti_prefisso;
-```
-
-**`vw_duplicate_indexes`** raggruppa per firma normalizzata — metodo di accesso, colonne ed espressioni, classe di operatori, collation, ordinamento, `INCLUDE`, predicato. Usare `indice_da_tenere` e `indici_da_droppare`, che il gruppo espone già pronti.
-
-**`vw_indici_ridondanti_prefisso`** trova i btree le cui colonne chiave sono la testa di quelle di un altro btree: PostgreSQL usa già il più largo per ogni ricerca sulle colonne del più stretto. La colonna **`origine`** dice come si rimuove — vedi §8.6.
-
-> ⚠️ Due indici sulla stessa colonna **non** sono duplicati se differiscono per metodo (un GIN `trgm` e un btree servono query diverse) o per predicato (due UNIQUE parziali disgiunte convivono legittimamente). Le viste tengono conto di entrambi: se una coppia compare, è ridondante davvero.
-
-
 ## 8. Indici
 
 Gli indici rappresentano uno strumento fondamentale per garantire performance, scalabilità e prevedibilità delle query in Zero ERP.
@@ -1166,6 +1113,8 @@ Il confronto pretende identici opclass, collation, ordinamento **e predicato**; 
 | --- | --- |
 | `AUTOMAZIONE_FK` | `consentito=false` in `dbops.fk_index_policy` **e** `DROP` esplicito. Il solo `DROP` verrebbe annullato da `apply_fk_index_policy()` al primo `migrate` |
 | `MANUALE` | `DROP INDEX` in un changeSet dedicato |
+
+> ⚠️ Due indici sulla stessa colonna **non** sono ridondanti se differiscono per metodo (un GIN `trgm` e un btree servono query diverse) o per predicato (due UNIQUE parziali disgiunte convivono legittimamente). Le due viste tengono conto di entrambi: se una coppia compare, è ridondante davvero.
 
 #### Un `idx_scan` alto non è una controindicazione
 
@@ -2687,6 +2636,141 @@ Precedenti: `vendite.fn_listini_selezionabili` (il listino della testata, sui
 valori del form) e `catalogo.fn_articoli_ammessi` (gli articoli di una riga,
 sull'id della testata, con la check divisa in `script.fn_articolo_riga_contesto`
 e `script.fn_check_articolo_riga_su_contesto`; brief-db-articoli-ammessi-per-documento).
+
+---
+
+## 13. Prestazioni: la forma di funzioni e query
+
+Le regole di questo capitolo valgono per **ogni** funzione e vista, non solo per
+le funzioni di scope (§10.3) o per gli indici (§8). Il racconto, il metodo
+d'indagine e la mappa di ciò che il database fa da solo stanno nella guida
+[Un database che resta veloce](/guide/database-che-resta-veloce); le statistiche
+in [Le statistiche del planner](/guide/statistiche-del-planner).
+
+⛔ **La regola zero vale qui più che altrove.** Il lavoro sulle prestazioni è
+fatto di misure, e la tentazione è lasciare che decidano. Una misura **trova** il
+difetto e **conferma** la cura; la cura si scrive sulla **forma** — «si ricalcola
+per riga», «la policy gira su tutta la tabella», «il piano tiene i rami di due
+modi» — e regge a qualunque volume. ⛔ Mai «oggi sono 300 righe, basta così»; mai
+una soglia di tempo come criterio di accettazione. Nei documenti e nei pgTAP un
+tempo si scrive come **fatto datato**: data, macchina, ruolo.
+
+### 13.1 ⛔ Si prova come applicazione, mai da owner
+
+L'owner non passa dalle policy: il planner gli costruisce un altro piano, spesso
+migliore — il `LIKE 'k%'` che da owner diventa un range sull'indice e sotto
+policy no (§8.5-bis), il join che da owner è un hash e come app un nested loop
+(§13.3). **La prova da owner mente.** Si misura col ruolo `zeroerp_app` e il
+contesto GUC di un utente vero, in `BEGIN … ROLLBACK`.
+
+⚠️ E si misura **il chiamante reale**, non solo la funzione: lo stesso corpo
+chiamato con un letterale e chiamato con una colonna o un parametro produce piani
+diversi (§13.4, §13.5). Il JIT della lineage (2026-10-11) si è visto dal pgTAP
+lento, non dalla funzione misurata da sola.
+
+### 13.2 ⛔ Ciò che non dipende dalla riga si calcola una volta
+
+Il difetto più frequente, e il più caro, è un calcolo che **si ripete per ogni
+riga** con la stessa risposta. Tre forme:
+
+| Forma | Perché si ripete | Cura |
+| --- | --- | --- |
+| `LEFT JOIN` a una vista che calcola tutto (es. la lineage di tutti i documenti), filtrata per chiave | il filtro non scende dentro la ricorsione; sotto policy il planner stima poche righe e sceglie un nested loop | seminare la funzione con le chiavi che servono, oppure leggere la vista **una volta** in una CTE `MATERIALIZED` |
+| `LEFT JOIN` a una tabella sotto policy, o a una funzione che restituisce righe, dentro una funzione SQL incorporata | sopra una CTE non ci sono statistiche; come app finisce lato interno di un nested loop e la policy si rivaluta per riga × righe | CTE `MATERIALIZED` letta una volta, e il join su quella |
+| un valore che dipende solo da **chi** guarda (perimetro, veste, emittente) calcolato dentro la funzione chiamata per riga | una plpgsql è opaca; una SQL con una sottoquery nel corpo non si incorpora | sottoquery scalare **non correlata** (`InitPlan`), passata come argomento — la forma è in §10.3 |
+
+Precedenti: `brief-db-liste-documento-lineage-lenta` (la prima),
+`fn_ddt_push_diagnosi` → `fn_partite_merce` (la seconda),
+`fn_scope_ef_perimetro` (la terza).
+
+### 13.3 ⛔ Un cast o una funzione nel join verso una tabella sotto policy
+
+Sotto RLS una condizione di join entra nell'indice solo se è **leakproof**
+(§8.5-bis vale anche per i join, non solo per i `WHERE`). `p.uid =
+cs.sorgente_uid::uuid` non lo è: il cast resta un filtro sopra la policy, e la
+tabella si legge tutta. La chiave si converte **prima**, in una CTE
+`MATERIALIZED`, e il join confronta tipi uguali. Caso:
+`vendite.fn_documento_lineage_archi` (`20261011-92`).
+
+### 13.4 Il piano generico: `plan_cache_mode` sulla funzione
+
+Una funzione plpgsql tiene in cache il piano di ogni istruzione. In modo `auto`,
+dopo cinque esecuzioni, confronta il costo **stimato** del piano generico (che
+non conosce il valore del parametro) con quello dei piani su misura, e se il
+generico le sembra più caro **ripianifica a ogni chiamata**. Con una query grande
+— tipicamente una plpgsql che chiama con un parametro una funzione SQL
+`BEGIN ATOMIC` che si incorpora — la sola pianificazione costa decine di
+millisecondi, e il piano su misura spesso non è nemmeno più veloce.
+
+**Cura**: `ALTER FUNCTION … SET plan_cache_mode = force_generic_plan` sulla
+funzione **chiamante**. Su una funzione `LANGUAGE sql` la clausola `SET` la rende
+**non incorporabile**: si pianifica dentro di sé, una volta per sessione.
+
+⛔ Il piano generico non conosce i valori: una forma che regge solo coi valori
+noti (un range con bordi calcolati) lì crolla — §8.5-bis, rev 2026-10-10, e la
+forma che regge (uguaglianza su una colonna di base).
+
+⛔ **Non si mette «per igiene».** La clausola è la cura di una forma precisa
+(query grande, chiamata con un parametro, generico stabile), verificata come app
+confrontando `auto` e `force_generic_plan` di sessione su un ciclo di chiamate.
+Dove le due modalità costano uguale, il difetto non c'è e la clausola non serve.
+
+### 13.5 Il JIT: `jit = off` dove il piano tiene i rami di più modi
+
+Sopra `jit_above_cost` PostgreSQL compila le espressioni del piano in codice
+macchina. Ripaga su una query lunga; su una chiamata breve la **compilazione
+costa più della query**, e la paga a ogni esecuzione. Il caso tipico è una
+funzione SQL con più modi in `UNION ALL` (per seme / tutti): con un seme
+letterale il planner pota i rami dell'altro modo, con un seme **non costante**
+(una colonna esterna, un parametro) li tiene tutti, il costo stimato supera la
+soglia e la compilazione costa secondi — **anche a database vuoto**, perché
+dipende dalla stima, non dalle righe.
+
+Due cure, secondo l'oggetto:
+
+* **sulla funzione**: `SET jit = off` (con `plan_cache_mode`, §13.4) —
+  `fn_documento_lineage_nodi`/`_archi`, `20261011-67`;
+* **sulla stima**: se il costo stimato è gonfiato da una cardinalità sbagliata
+  (§13.6), si corregge quella, e la vista torna sotto soglia da sola —
+  `dbops.vw_funzioni_check_codici`, `20261010-43`. Il presidio asserisce il
+  costo stimato sotto la soglia di default, non il testo del filtro.
+
+### 13.6 Dichiarare costo e cardinalità: `COST` e `ROWS`
+
+Il planner non guarda dentro una funzione: per il suo costo usa `COST` (default
+100) e per le righe che restituisce `ROWS` (default 1.000 per una funzione che
+restituisce un insieme). `ANALYZE` non li tocca mai.
+
+* **`COST`**: una funzione che legge tabelle ed è chiamata per riga dichiara il
+  suo prezzo vero — le funzioni di scope e quelle che chiamano, §10.3.
+* **`ROWS`**: una funzione che restituisce righe dichiara l'ordine di grandezza
+  vero. Le funzioni di sistema sbagliano anche loro (`regexp_matches` dichiara
+  10, `regexp_split_to_table` 1.000): dentro una vista che le moltiplica la stima
+  esplode. Cura: un wrapper che dichiara la cardinalità vera —
+  `dbops.fn_regexp_occorrenze` (`ROWS 1`).
+
+Conta l'ordine di grandezza, non la cifra: `COST` e `ROWS` non forzano un piano,
+danno al planner il prezzo vero.
+
+### 13.7 ⛔ Le proprietà invisibili nel corpo si ripetono a ogni `CREATE OR REPLACE`
+
+`COST`, `ROWS` e le clausole `SET` (`plan_cache_mode`, `jit`, `search_path`)
+non stanno nel corpo della funzione. Un `CREATE OR REPLACE FUNCTION` che non le
+ripete le **riporta al default**, con risultati identici: nessun test di
+comportamento se ne accorge, se ne accorge solo il tempo. Per questo:
+
+* il changeSet nuovo di una funzione le prende dalla **doc auto-generata**
+  insieme al corpo (AGENTS.md: mai da uno YAML), e le ripete tutte;
+* ognuna ha il suo **presidio pgTAP**, che la pretende per nome:
+  `script/test-plan-cache-mode-piano-generico-v1` (`plan_cache_mode` e `jit`),
+  `script/test-policy-funzioni-cost-v1` (`COST` delle funzioni di policy),
+  `dbops/test-vw-funzioni-check-codici-sotto-jit-v1` (la stima sotto il JIT).
+  Una funzione che riceve la clausola si aggiunge al suo presidio nello stesso
+  giro.
+
+Lo stesso vale per `security_invoker` sulle viste: un `CREATE OR REPLACE VIEW`
+che non lo ripete lo perde, e la vista esce dal perimetro RLS. Presidio:
+`rls/test-rls-viste-security-invoker`.
 
 ---
 

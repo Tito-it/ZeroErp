@@ -106,6 +106,9 @@ BEGIN
         -- ⭐ DB-4: una VERSIONE di listino non porta l'emittente — lo porta il
         --   listino padre, con `emittente_soggetto_ruolo_id` NOT NULL. Un salto
         --   solo, come il modo 'fattura'.
+        -- ⚠️ Rev 2026-10-18: p_valore qui e' l'id del LISTINO (il chiamante
+        --   risolve gia' la versione). Dalla VERSIONE c'e' il modo
+        --   'listino_versione'.
         -- ⚠️ JOIN interna: un listino il cui soggetto_ruolo non e' (piu') un
         --   emittente risolve a NULL, cioe' «nessun padrone». Oggi non ne
         --   esistono (misurato: zero orfani il 2026-09-05), ed e' il
@@ -133,6 +136,212 @@ BEGIN
           FROM magazzino.magazzini m
          WHERE m.id = p_valore;
 
+    -- ⭐ Rev 2026-10-18 (20261018-31, D-3b-2 giro 1b): i modi dei
+    --   documenti di vendita e delle loro righe. Le policy ef_whitelist
+    --   delle tabelle senza colonna emittente lo chiedono QUI, per riga,
+    --   e confrontano col perimetro calcolato una volta per istruzione
+    --   (script.fn_scope_ef_perimetro). DEFINER e' il punto anche per
+    --   loro: letta sotto la RLS del padre, ogni riga rieseguiva la
+    --   policy del padre. Gli adattatori fn_scope_ef_whitelist_via_*
+    --   chiedono qui la stessa cosa (20261018-32): la strada documento ->
+    --   emittente e' scritta UNA volta.
+    --   Le catene sono una lettura per chiave; le colonne di collegamento
+    --   sono tutte NOT NULL.
+    ELSIF p_modo = 'ddt' THEN
+        -- Il DDT porta l'emittente.
+        SELECT d.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.ddt d
+         WHERE d.id = p_valore;
+    ELSIF p_modo = 'ddt_riga' THEN
+        -- La riga di DDT: dal DDT.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.ddt_righe r
+          JOIN vendite.ddt p ON p.id = r.ddt_id
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'ordine' THEN
+        -- L'ordine porta l'emittente.
+        SELECT o.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.ordini o
+         WHERE o.id = p_valore;
+    ELSIF p_modo = 'ordine_riga' THEN
+        -- La riga d'ordine: dall'ordine.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.ordini_righe r
+          JOIN vendite.ordini p ON p.id = r.ordine_id
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'preventivo' THEN
+        -- Il preventivo porta l'emittente.
+        SELECT pv.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.preventivi pv
+         WHERE pv.id = p_valore;
+    ELSIF p_modo = 'preventivo_riga' THEN
+        -- La riga di preventivo: dal preventivo.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.preventivi_righe r
+          JOIN vendite.preventivi p ON p.id = r.preventivo_id
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'offerta' THEN
+        -- L'offerta porta l'emittente.
+        SELECT oc.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.offerte_commerciali oc
+         WHERE oc.id = p_valore;
+    ELSIF p_modo = 'offerta_eccezione' THEN
+        -- L'eccezione d'offerta: dall'offerta.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.offerte_commerciali_eccezioni r
+          JOIN vendite.offerte_commerciali p ON p.id = r.offerta_id
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'contratto' THEN
+        -- Il contratto porta l'emittente.
+        SELECT k.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.contratti k
+         WHERE k.id = p_valore;
+    ELSIF p_modo = 'contratto_riga' THEN
+        -- La riga di contratto: dal contratto.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.contratti_righe r
+          JOIN vendite.contratti p ON p.id = r.contratto_id
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'reso' THEN
+        -- Il reso porta l'emittente.
+        SELECT rs.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.resi rs
+         WHERE rs.id = p_valore;
+    ELSIF p_modo = 'reso_riga' THEN
+        -- La riga di reso: dal reso.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM vendite.resi_righe r
+          JOIN vendite.resi p ON p.id = r.reso_id
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'commessa' THEN
+        -- La commessa porta il ruolo emittente: un salto, come 'fattura'.
+        SELECT ef.id
+          INTO v_emittente_fiscale_id
+          FROM vendite.commesse c
+          JOIN anagrafiche.emittenti_fiscali ef
+            ON ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
+         WHERE c.id = p_valore;
+    ELSIF p_modo = 'commessa_attivita' THEN
+        -- L'attivita' di commessa: dalla commessa.
+        SELECT ef.id
+          INTO v_emittente_fiscale_id
+          FROM vendite.commesse_attivita ca
+          JOIN vendite.commesse c ON c.id = ca.commessa_id
+          JOIN anagrafiche.emittenti_fiscali ef
+            ON ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
+         WHERE ca.id = p_valore;
+    ELSIF p_modo = 'attivita_fatturabile' THEN
+        -- L'attivita' fatturabile: dalla sua commessa.
+        SELECT ef.id
+          INTO v_emittente_fiscale_id
+          FROM vendite.attivita_fatturabili af
+          JOIN vendite.commesse c ON c.id = af.commessa_id
+          JOIN anagrafiche.emittenti_fiscali ef
+            ON ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id
+         WHERE af.id = p_valore;
+    ELSIF p_modo = 'lotto' THEN
+        -- Il lotto di fatturazione porta il ruolo emittente.
+        SELECT ef.id
+          INTO v_emittente_fiscale_id
+          FROM vendite.fatturazione_lotti l
+          JOIN anagrafiche.emittenti_fiscali ef
+            ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
+         WHERE l.id = p_valore;
+    ELSIF p_modo = 'fattura_sdi' THEN
+        -- La pratica SDI: dalla sua fattura.
+        SELECT ef.id
+          INTO v_emittente_fiscale_id
+          FROM vendite.fatture_sdi s
+          JOIN vendite.fatture f ON f.id = s.fattura_id
+          JOIN anagrafiche.emittenti_fiscali ef
+            ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+         WHERE s.id = p_valore;
+    ELSIF p_modo = 'listino_versione' THEN
+        -- La versione di listino: dal listino padre.
+        SELECT ef.id
+          INTO v_emittente_fiscale_id
+          FROM vendite.listini_versioni lv
+          JOIN vendite.listini l ON l.id = lv.listino_id
+          JOIN anagrafiche.emittenti_fiscali ef
+            ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
+         WHERE lv.id = p_valore;
+    -- ⭐ Rev 2026-10-18 (20261018-48, D-3b-2 ondata 2): i modi di
+    --   magazzino, pratiche e documenti generati, per le stesse ragioni
+    --   dei documenti di vendita (20261018-31): le policy ef_whitelist
+    --   delle tabelle senza colonna emittente lo chiedono qui per riga, e
+    --   gli adattatori via_* chiedono qui (20261018-49).
+    ELSIF p_modo = 'asset' THEN
+        -- L'asset porta l'emittente.
+        SELECT a.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM magazzino.assets a
+         WHERE a.id = p_valore;
+    ELSIF p_modo = 'evento_asset' THEN
+        -- L'evento di un asset: dall'asset.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM magazzino.eventi_assets r
+          JOIN magazzino.assets p ON p.id = r.asset_id
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'inventario' THEN
+        -- L'inventario: dal suo magazzino.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM magazzino.inventari r
+          JOIN magazzino.magazzini p ON p.id = r.magazzino_id
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'movimento' THEN
+        -- Il movimento: dal suo magazzino.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM magazzino.movimenti r
+          JOIN magazzino.magazzini p ON p.id = r.magazzino_id
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'rettifica' THEN
+        -- La rettifica: dal suo magazzino.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM magazzino.rettifiche r
+          JOIN magazzino.magazzini p ON p.id = r.magazzino_id
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'trasferimento' THEN
+        -- Il trasferimento: dal magazzino di PARTENZA, come l'adattatore di prima.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM magazzino.trasferimenti r
+          JOIN magazzino.magazzini p ON p.id = r.magazzino_id_from
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'pratica' THEN
+        -- La pratica porta l'emittente.
+        SELECT pr.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM pratiche.pratiche pr
+         WHERE pr.id = p_valore;
+    ELSIF p_modo = 'flusso' THEN
+        -- Il flusso: dalla sua pratica.
+        SELECT p.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM pratiche.flussi r
+          JOIN pratiche.pratiche p ON p.id = r.pratica_id
+         WHERE r.id = p_valore;
+    ELSIF p_modo = 'documento_generato' THEN
+        -- Il documento generato porta l'emittente.
+        SELECT dg.emittente_fiscale_id
+          INTO v_emittente_fiscale_id
+          FROM documenti.documenti_generati dg
+         WHERE dg.id = p_valore;
     ELSE
         -- ⛔ Non si restituisce NULL: NULL vuol dire «lascia
         --    passare», e un errore di battitura in un CREATE
@@ -149,7 +358,12 @@ BEGIN
             NULL::uuid,
             format(
                 'il modo di risoluzione dell''emittente «%s» non esiste: '
-                'sono ammessi fiscale, soggetto_ruolo, fattura, listino, ente_incasso, contabile e magazzino',
+                'sono ammessi fiscale, soggetto_ruolo, fattura, fattura_sdi, listino, listino_versione, '
+                'ente_incasso, contabile, magazzino, ddt, ddt_riga, ordine, ordine_riga, preventivo, '
+                'preventivo_riga, offerta, offerta_eccezione, contratto, contratto_riga, reso, '
+                'reso_riga, commessa, commessa_attivita, attivita_fatturabile, lotto, asset, '
+                'evento_asset, inventario, movimento, rettifica, trasferimento, pratica, flusso '
+                'e documento_generato',
                 p_modo
             )
         );
@@ -160,7 +374,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_resolve_emittente_fiscale_id(p_modo text, p_valore bigint)
-IS 'Dice DI CHI E'' una riga: l''id dell''emittente fiscale raggiunto da p_valore secondo p_modo, o NULL se il riferimento non porta a nessun emittente («nessun padrone»: il guard lascia passare). Modi: fiscale (la colonna E'' emittente_fiscale_id), soggetto_ruolo, fattura, listino (dal listino padre della versione), ente_incasso (dal conto su cui atterra il denaro), contabile (la distinta sa di chi e''), magazzino (rev 2026-09-18, Lotto 2 magazzino: magazzini.emittente_fiscale_id — il perimetro del ledger che la primitiva DEFINER scavalca). Un modo sconosciuto SOLLEVA E_PARAMETRO_INVALIDO, non risponde NULL. SECURITY DEFINER del proprietario, perche'' due catene passano da tabelle sotto row security e un guard INVOKER fuori perimetro non troverebbe l''emittente; search_path bloccato. Risponde solo alla domanda di FATTO: il permesso e'' di script.fn_check_user_emittente_scope. Chiamata da script.trgfn_guard_emittente_scope.';
+IS '⭐ rev 2026-10-18 (20261018-48, D-3b-2 ondata 2): 9 modi di magazzino, pratiche e documenti generati (asset, evento_asset, inventario, movimento, rettifica, trasferimento, pratica, flusso, documento_generato), per le policy ef_whitelist e gli adattatori via_*. ⭐ rev 2026-10-18 (20261018-31, D-3b-2 giro 1b): 18 modi dei documenti di vendita e delle loro righe (ddt, ddt_riga, ordine, ordine_riga, preventivo, preventivo_riga, offerta, offerta_eccezione, contratto, contratto_riga, reso, reso_riga, commessa, commessa_attivita, attivita_fatturabile, lotto, fattura_sdi, listino_versione): li chiedono le policy ef_whitelist per riga e gli adattatori fn_scope_ef_whitelist_via_*, una strada sola. Dice DI CHI E'' una riga: l''id dell''emittente fiscale raggiunto da p_valore secondo p_modo, o NULL se il riferimento non porta a nessun emittente («nessun padrone»: il guard lascia passare). Modi: fiscale (la colonna E'' emittente_fiscale_id), soggetto_ruolo, fattura, listino (dal listino padre della versione), ente_incasso (dal conto su cui atterra il denaro), contabile (la distinta sa di chi e''), magazzino (rev 2026-09-18, Lotto 2 magazzino: magazzini.emittente_fiscale_id — il perimetro del ledger che la primitiva DEFINER scavalca). Un modo sconosciuto SOLLEVA E_PARAMETRO_INVALIDO, non risponde NULL. SECURITY DEFINER del proprietario, perche'' due catene passano da tabelle sotto row security e un guard INVOKER fuori perimetro non troverebbe l''emittente; search_path bloccato. Risponde solo alla domanda di FATTO: il permesso e'' di script.fn_check_user_emittente_scope. Chiamata da script.trgfn_guard_emittente_scope.';
 ```
 
 ---
