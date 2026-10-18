@@ -13,6 +13,9 @@
 
 // Codici sorgente documentale registrati lato BE
 // (`apps.documenti.services.context_builders.registry`).
+// ⭐ La chiave E' il codice (`config.sorgenti.codice_interno`), come il nome
+//    `SORGENTE_<codice>` lato BE: una chiave corta (`DDT`) e' un vocabolario
+//    in piu' (brief-db-grammatica-unica-documenti). Lo presidia constants.spec.js.
 export const SORGENTE_CODES = Object.freeze({
   PREVENTIVO: 'PREVENTIVO',
   CONTRATTO: 'CONTRATTO',
@@ -20,7 +23,7 @@ export const SORGENTE_CODES = Object.freeze({
   ORDINE_VENDITA: 'ORDINE_VENDITA',
   // DDT di vendita (DDT accompagnatorio): quinto dominio del motore
   // documentale, context builder DDT_VENDITA registrato lato BE.
-  DDT: 'DDT_VENDITA',
+  DDT_VENDITA: 'DDT_VENDITA',
   // Fattura: sesto dominio del motore documentale, context builder FATTURA
   // registrato lato BE. Stampa/ristampa (nessuna emissione da UI).
   FATTURA: 'FATTURA',

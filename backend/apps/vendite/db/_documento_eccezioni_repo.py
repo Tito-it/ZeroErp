@@ -12,7 +12,8 @@
 
 # PERCHE' ESISTE (regola del 2). Le due domande hanno la stessa risposta sui due
 # documenti, e il DB la da' con UNA funzione che prende il documento come
-# selettore (`p_documento` = 'CONTRATTO' | 'OFFERTA'). Il backend la legge una
+# selettore (`p_documento` = 'CONTRATTO' | 'OFFERTA_COMMERCIALE', i codici di
+# `config.sorgenti`). Il backend la legge una
 # volta sola, qui; i due service la chiamano col proprio selettore.
 #
 # ⛔ NON sono regole di dominio: sono le LETTURE di regole che vivono nel DB.
@@ -35,8 +36,11 @@ from django.db import connection
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
 
-# Il selettore del DB: i due documenti con listino ed eccezioni.
-DocumentoEccezioni = Literal["CONTRATTO", "OFFERTA"]
+# Il selettore del DB: i due documenti con listino ed eccezioni, coi codici di
+# `config.sorgenti` (brief-db-grammatica-unica-documenti, lotto 1: il DB rifiuta
+# `OFFERTA` con E_DOC_TIPO_NON_GESTITO). I chiamanti passano le costanti di
+# `apps.config.sorgenti`, che sono `Final`: mypy le confronta con questo elenco.
+DocumentoEccezioni = Literal["CONTRATTO", "OFFERTA_COMMERCIALE"]
 
 
 # Scopo: La versione di listino che governa il documento: quella fissata se

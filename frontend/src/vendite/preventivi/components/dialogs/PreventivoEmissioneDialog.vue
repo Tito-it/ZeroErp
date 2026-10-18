@@ -7,12 +7,8 @@
 //        allegati, atomico). Mirror di `OffertaEmissioneDialog`.
 import { useI18n } from 'vue-i18n'
 import DocumentoEmissioneDialog from '../../../../documenti/components/DocumentoEmissioneDialog.vue'
+import { SORGENTE_CODES } from '../../../../documenti/constants'
 import { displayDate } from '../../../../core/utils/date'
-
-// Codice sorgente PREVENTIVO: chiave del SORGENTE_CLIENT_MAP del
-// documentiPerSorgente store (anteprima/lista/allegati condividono lo
-// stesso routing).
-const SORGENTE_CODE = 'PREVENTIVO'
 
 const props = defineProps({
   visible: Boolean,
@@ -27,7 +23,7 @@ const { t } = useI18n()
 <template>
   <DocumentoEmissioneDialog
     :visible="props.visible"
-    :sorgente-code="SORGENTE_CODE"
+    :sorgente-code="SORGENTE_CODES.PREVENTIVO"
     :sorgente-id="props.preventivo?.id ?? null"
     advances-state
     :header="t('vendite.preventivi.emissione_titolo')"

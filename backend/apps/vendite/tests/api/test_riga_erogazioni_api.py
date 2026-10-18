@@ -137,7 +137,7 @@ class ContrattoRigaErogazioniServiceTests(_RigaErogazioniServiceBase, TestCase):
 class OffertaRigaErogazioniServiceTests(_RigaErogazioniServiceBase, TestCase):
     modulo = "apps.vendite.services.offerte_service"
     repository = "OfferteRepository"
-    documento = "OFFERTA"
+    documento = "OFFERTA_COMMERCIALE"
 
     def _service(self):
         return OfferteService()

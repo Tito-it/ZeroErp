@@ -33,8 +33,8 @@ from apps.core.api.success_responses import success_response
 from apps.core.db._helpers import limiti_pagina
 from apps.vendite.services import approvazioni_prezzo_service
 from apps.vendite.services._approvazioni_prezzo_constants import (
-    SORGENTE_CONTRATTO,
-    SORGENTE_OFFERTA,
+    META_SORGENTE_CONTRATTO,
+    META_SORGENTE_OFFERTA,
 )
 
 
@@ -158,7 +158,7 @@ class ApprovaPrezzoContrattoView(DomainAPIView):
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
                 nota=payload.get("nota") if isinstance(payload.get("nota"), str) else None,
-                sorgente=SORGENTE_CONTRATTO,
+                sorgente=META_SORGENTE_CONTRATTO,
             )
 
         return handle_post_json(request, handler=_handler)
@@ -189,7 +189,7 @@ class RifiutaPrezzoContrattoView(DomainAPIView):
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
                 motivazione=motivazione if isinstance(motivazione, str) else None,
-                sorgente=SORGENTE_CONTRATTO,
+                sorgente=META_SORGENTE_CONTRATTO,
             )
 
         return handle_post_json(request, handler=_handler)
@@ -221,7 +221,7 @@ class ApprovaPrezzoOffertaView(DomainAPIView):
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
                 nota=payload.get("nota") if isinstance(payload.get("nota"), str) else None,
-                sorgente=SORGENTE_OFFERTA,
+                sorgente=META_SORGENTE_OFFERTA,
             )
 
         return handle_post_json(request, handler=_handler)
@@ -252,7 +252,7 @@ class RifiutaPrezzoOffertaView(DomainAPIView):
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
                 motivazione=motivazione if isinstance(motivazione, str) else None,
-                sorgente=SORGENTE_OFFERTA,
+                sorgente=META_SORGENTE_OFFERTA,
             )
 
         return handle_post_json(request, handler=_handler)

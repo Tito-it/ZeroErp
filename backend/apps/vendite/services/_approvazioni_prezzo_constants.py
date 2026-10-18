@@ -43,8 +43,15 @@ META_KEY_RIGA_PREVENTIVO_ID = "riga_preventivo_id"
 # /righe-contratto/<id>/approva-prezzo/ (contratti).
 META_KEY_RIGA_CONTRATTO_ID = "riga_contratto_id"
 META_KEY_SORGENTE = "sorgente"
-SORGENTE_PREVENTIVO = "preventivo"
-SORGENTE_CONTRATTO = "contratto"
+# ⚠️ Prefisso `META_`: sono i VALORI della chiave `sorgente` nel meta della
+#    pratica (minuscoli, scritti nei dati), non i codici di `config.sorgenti`.
+#    Fino al 2026-10-19 si chiamavano `SORGENTE_PREVENTIVO`/`_CONTRATTO`/
+#    `_OFFERTA`, come le costanti di `apps.config.sorgenti` con valori diversi:
+#    in un modulo che importava entrambi vinceva l'ultimo import, in silenzio.
+#    Il passaggio ai codici delle sorgenti e' un lotto di
+#    brief-db-grammatica-unica-documenti (§7.9, le approvazioni di prezzo).
+META_SORGENTE_PREVENTIVO = "preventivo"
+META_SORGENTE_CONTRATTO = "contratto"
 
 # Refactor 2026-06-01 (gate L1/L2/L3 sulle offerte): terza sorgente del
 # workflow L3. Le offerte commerciali hanno eccezioni OVERRIDE/AGGIUNTA col
@@ -52,7 +59,7 @@ SORGENTE_CONTRATTO = "contratto"
 # `stato_approvazione_prezzo`/`pratica_approvazione_prezzo_id` su
 # `vendite.offerte_commerciali_eccezioni` (migration 20260601-01).
 META_KEY_RIGA_OFFERTA_ID = "riga_offerta_id"
-SORGENTE_OFFERTA = "offerta"
+META_SORGENTE_OFFERTA = "offerta"
 
 # Stato preventivo "bozza" (codice_interno in `config.stati_doc_preventivi`).
 # La descrizione mostrata all'utente e' "Bozza" ma il codice tecnico e' DRAFT.
