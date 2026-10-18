@@ -24,7 +24,8 @@
 --    1) SECURITY DEFINER
 --    2) search_path fissato, pg_catalog per primo
 --   la prima corsa (mondo con django)
---    3) venti radici, tutte create
+--    3) venti radici: create quelle che mancavano, riallineate quelle che c'erano
+--       (su un database nuovo tutte create; su dbdev, dopo il command, tutte riallineate)
 --    4) otto credenziali e dodici soggetti etichettati
 --    5) secondo fattore: solo dev.smoke
 --    6) dev.smoke e' SUPER_ADMIN
@@ -90,6 +91,15 @@ CREATE TEMP TABLE t_guc AS
 SELECT current_setting('app.current_user_id', true) AS u, current_setting('app.current_emittente_id', true) AS e;
 
 CREATE TEMP TABLE t_c1 (tipo text, chiave text, radice_id text, esito text, secondo_fattore boolean);
+
+-- ⚠️ rev 2026-10-19: le radici di prova che esistono GIA', prima della prima
+--   corsa. Su un database dove il command e' gia' girato (dbdev, dal collaudo
+--   del 2026-10-18) il verbo non crea: riallinea. Il test 3 pretendeva «tutte
+--   create», cioe' un database senza dati di sviluppo, ed era rosso su dbdev
+--   con il verbo giusto. Ora pretende il conto esatto di create e riallineate.
+CREATE TEMP TABLE t_prima AS
+SELECT (SELECT count(*) FROM dbops.credenziali_di_prova WHERE chiave LIKE 'dev.%')
+     + (SELECT count(*) FROM dbops.soggetti_di_prova WHERE chiave LIKE 'DEV-%') AS radici;
 CREATE TEMP TABLE t_c2 (LIKE t_c1);
 
 -- ⚠️ I vincoli differiti (indirizzi obbligatori, satelliti dell'istanza) si
@@ -115,8 +125,10 @@ $$;
 -- La prima corsa
 -- ============================================================
 SELECT CASE WHEN (SELECT django FROM t_mondo) THEN
-    is((SELECT format('%s|%s', count(*), count(*) FILTER (WHERE esito = 'creata')) FROM t_c1), '20|20',
-       '3. venti radici, tutte create')
+    is((SELECT format('%s|%s|%s', count(*), count(*) FILTER (WHERE esito = 'creata'),
+                      count(*) FILTER (WHERE esito = 'riallineata')) FROM t_c1),
+       (SELECT format('20|%s|%s', 20 - radici, radici) FROM t_prima),
+       '3. venti radici: create quelle che mancavano, riallineate quelle che c''erano')
   ELSE skip('mondo CI: django.auth_user non c''e'', il verbo non crea credenziali', 1) END;
 
 SELECT CASE WHEN (SELECT django FROM t_mondo) THEN

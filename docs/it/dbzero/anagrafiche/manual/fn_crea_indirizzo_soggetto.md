@@ -70,6 +70,12 @@ Se si indicano insieme `indirizzo_dettaglio_id` e `indirizzo_libero` vale il det
 
 ---
 
+### 🔄 19-10-2026 — nasce la plurale
+
+Gli indirizzi di un soggetto in un colpo solo, con la copia del primo per gli obbligatori, li scrive [`fn_crea_indirizzi_soggetto`](/dbzero/anagrafiche/manual/fn_crea_indirizzi_soggetto), che chiama questa funzione per ogni riga (R-BE-12, decisione D-16a di Tid).
+
+---
+
 ### Test
 
 `db/pgtap/anagrafiche/test-fn-crea-indirizzo-soggetto.sql` (il contratto della madre) e

@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: LA COPIA DEL PRIMO INDIRIZZO PER I TIPI OBBLIGATORI CHE MANCANO
+#   anagrafiche.fn_indirizzi_con_obbligatori(indirizzi, tipi obbligatori):
+#   all'elenco di indirizzi (gia' normalizzati, col tipo_indirizzo_id) aggiunge,
+#   per ogni tipo obbligatorio che non c'e', una copia del PRIMO indirizzo con
+#   quel tipo. R-BE-12 del BE, decisione D-16a di Tid (2026-10-19),
+#   brief-db-processi-accensione-per-ambiente §6.16.
+#
+# -- PERCHE' UN BB -----------------------------------------------------------------
+#   La regola («se l'operatore compila un indirizzo solo, gli obbligatori non
+#   compilati ne ricevono una copia») serve alle due plurali: quella del ruolo
+#   (la matrice e' config.tipi_ruolo_tipi_indirizzo, 20261019-38) e quella del
+#   soggetto (config.tipi_soggetto_dettaglio_tipi_indirizzo, 20261019-39).
+#   Cambia solo da dove si leggono gli obbligatori: quello lo fa ciascuna
+#   plurale, la copia la fa questo BB. Era anche la saga del backend
+#   (SoggettiService._apply_auto_clone), che si ritira (R-DB-16b).
+#
+# -- LE REGOLE -----------------------------------------------------------------------
+#   * la copia e' del PRIMO elemento, col tipo sostituito;
+#   * i tipi gia' presenti nell'elenco non si copiano;
+#   * le copie entrano in ordine di tipo, una per tipo (i doppioni nell'elenco
+#     dei tipi non contano);
+#   * elenco vuoto: nessuna copia (non c'e' niente da copiare).
+#   Pura: non legge tabelle.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261019-37-create-fn-indirizzi-con-obbligatori-mctit.yaml
+
+  - changeSet:
+      id: 20261019-37-create-fn-indirizzi-con-obbligatori
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea anagrafiche.fn_indirizzi_con_obbligatori: all'elenco di indirizzi aggiunge una copia
+        del primo per ogni tipo obbligatorio che manca. Regola comune alle due plurali (ruolo e
+        soggetto). R-BE-12, D-16a di Tid, brief-db-processi-accensione-per-ambiente §6.16.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzi_con_obbligatori(
+                  p_indirizzi        jsonb,
+                  -- %TYPE[] non esiste: tipo esplicito (tipo_indirizzo_id e' integer)
+                  p_tipi_obbligatori integer[])
+               RETURNS jsonb
+               LANGUAGE sql
+               IMMUTABLE
+              AS $function$
+                  -- La copia del PRIMO elemento, col tipo sostituito, per ogni
+                  -- tipo obbligatorio che l'elenco non ha; in ordine di tipo.
+                  SELECT COALESCE(p_indirizzi, '[]'::jsonb) || COALESCE(
+                      (SELECT jsonb_agg((p_indirizzi -> 0) || jsonb_build_object('tipo_indirizzo_id', t.tipo)
+                                        ORDER BY t.tipo)
+                         FROM (SELECT DISTINCT u.tipo
+                                 FROM unnest(p_tipi_obbligatori) AS u(tipo)
+                                WHERE u.tipo IS NOT NULL) t
+                        WHERE (p_indirizzi -> 0) IS NOT NULL
+                          AND NOT EXISTS (
+                                SELECT 1
+                                  FROM jsonb_array_elements(p_indirizzi) AS x
+                                 WHERE (x ->> 'tipo_indirizzo_id')::integer = t.tipo)),
+                      '[]'::jsonb);
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzi_con_obbligatori(jsonb, integer[]) IS
+                  'BB puro (2026-10-19): all''elenco di indirizzi gia'' normalizzati (ognuno col tipo_indirizzo_id, cioe'' passato da anagrafiche.fn_indirizzo_elemento) aggiunge, per ogni tipo obbligatorio che non c''e'', una copia del PRIMO indirizzo col tipo sostituito; in ordine di tipo, una per tipo. Elenco vuoto: nessuna copia. Non legge tabelle: gli obbligatori li legge chi chiama, ognuno dalla sua matrice. Lettori: anagrafiche.fn_crea_indirizzi_ruolo (config.tipi_ruolo_tipi_indirizzo) e anagrafiche.fn_crea_indirizzi_soggetto (config.tipi_soggetto_dettaglio_tipi_indirizzo). Regola del 2: era scritta nella plurale del ruolo e nella saga del backend SoggettiService._apply_auto_clone. R-BE-12, D-16a di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS anagrafiche.fn_indirizzi_con_obbligatori(jsonb, integer[]);

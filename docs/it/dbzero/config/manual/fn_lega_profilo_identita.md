@@ -12,6 +12,12 @@ non sostituito in silenzio.
 admin), la creazione degli utenti tecnici, il backend e il provisioning dei
 dati di sviluppo.
 
+### 🔄 19-10-2026 — le gemelle
+
+Il legame di un reparto e lo slegare (dall'identità e dal reparto) hanno ora le loro madri: [`fn_lega_profilo_reparto`, `fn_slega_profilo_reparto`, `fn_slega_profilo_identita`](/dbzero/config/manual/fn_lega_profilo_reparto) (R-BE-7, decisioni D-16b e D-16c di Tid).
+
+---
+
 ### Test
 
 `db/pgtap/config/test-fn-scrivi-profilo-accesso-v1.sql`.

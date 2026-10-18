@@ -57,6 +57,16 @@ dopo.
   guard della tabella (`trgfn_indirizzi_guard_forma_libera` per la forma, con
   codice e campo).
 
+### 🔄 rev 19-10-2026 — la riga la scrive la singolare
+
+(R-BE-6, decisione D-16a di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
+
+* ogni riga la scrive la singolare [`fn_crea_indirizzo_ruolo`](/dbzero/anagrafiche/manual/fn_crea_indirizzo_ruolo), che ammette anche l'istanza; la plurale non conosce le istanze (un elemento con `istanza_utility_id` è rifiutato);
+* la copia degli obbligatori è il BB `fn_indirizzi_con_obbligatori`, comune alla plurale del soggetto;
+* il salto dei tipi che il ruolo ha già guarda solo gli indirizzi **senza istanza**: prima un indirizzo di un'istanza dello stesso tipo faceva saltare quello del ruolo, che poi non nasceva.
+
+---
+
 ### Test
 
 `db/pgtap/anagrafiche/test-fn-crea-indirizzi-ruolo-v1.sql`.

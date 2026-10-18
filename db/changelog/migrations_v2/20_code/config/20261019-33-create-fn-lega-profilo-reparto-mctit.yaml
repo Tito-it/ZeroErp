@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MADRE: LEGARE UN PROFILO A UN REPARTO
+#   config.fn_lega_profilo_reparto(profilo, unita' organizzativa): il binding
+#   di un reparto a un profilo di accesso. Ritorna l'id del binding.
+#   Gemella di config.fn_lega_profilo_identita (20261018-43).
+#   R-BE-7 del BE, decisione D-16b di Tid (2026-10-19),
+#   brief-db-processi-accensione-per-ambiente §6.10 (richiesta) e §6.16
+#   (risposta).
+#
+# -- CHI ERA LA COPIA -----------------------------------------------------------
+#   Il backend scriveva il legame con un UPSERT suo
+#   (AmmSoftwareRepository.put_profilo_reparto, ON CONFLICT DO UPDATE): la
+#   madre del legame copriva le identita', non i reparti. Il backend passa a
+#   questa madre (R-DB-16a).
+#
+# -- LE SCELTE (la forma della gemella) ------------------------------------------
+#   * un reparto ha UN binding (uq_profili_accesso_bindings_uo). Lo stesso
+#     profilo gia' legato: il BB lo ritorna (idempotente). Un ALTRO profilo gia'
+#     legato: lo dice il vincolo, col suo nome; il BB non sostituisce in
+#     silenzio.
+#   ⚠️ Il backend invece SOSTITUIVA (DO UPDATE). In pratica non cambia: il
+#     profilo di un reparto ha sempre lo stesso codice (REPARTO_<codice del
+#     reparto>), che config.fn_scrivi_profilo_accesso crea o aggiorna, quindi
+#     lo stesso id. Un profilo diverso su un reparto gia' legato e' un caso che
+#     il percorso del backend non produce: se capita, si dice.
+#   * coerenza (profilo attivo, reparto attivo) e notifica dei permessi: i
+#     trigger della tabella, come per l'identita'.
+#   * il permesso: backend. INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261019-33-create-fn-lega-profilo-reparto-mctit.yaml
+
+  - changeSet:
+      id: 20261019-33-create-fn-lega-profilo-reparto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea config.fn_lega_profilo_reparto: il binding di un reparto a un profilo di accesso,
+        gemella di config.fn_lega_profilo_identita. Sede unica dell'UPSERT del backend
+        (put_profilo_reparto). R-BE-7, D-16b di Tid, brief-db-processi-accensione-per-ambiente
+        §6.16.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_lega_profilo_reparto(
+                  p_profilo_accesso_id     config.profili_accesso_bindings.profilo_accesso_id%TYPE,
+                  p_unita_organizzativa_id config.profili_accesso_bindings.unita_organizzativa_id%TYPE)
+               RETURNS config.profili_accesso_bindings.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_id config.profili_accesso_bindings.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Legare un reparto (unita' organizzativa) a un profilo
+                  --   di accesso. Ritorna l'id del binding.
+                  --
+                  -- Regole:
+                  --   - lo stesso profilo gia' legato: ritorna quel binding;
+                  --   - un altro profilo gia' legato: lo dice il vincolo
+                  --     uq_profili_accesso_bindings_uo;
+                  --   - argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA.
+                  -- =========================================================
+                  IF p_profilo_accesso_id IS NULL OR p_unita_organizzativa_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_lega_profilo_reparto', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('profilo_accesso_id',     p_profilo_accesso_id,
+                                             'unita_organizzativa_id', p_unita_organizzativa_id),
+                          NULL::uuid,
+                          'config.fn_lega_profilo_reparto',
+                          'profilo o reparto mancanti');
+                  END IF;
+
+                  SELECT pab.id
+                    INTO v_id
+                    FROM config.profili_accesso_bindings pab
+                   WHERE pab.unita_organizzativa_id = p_unita_organizzativa_id
+                     AND pab.profilo_accesso_id     = p_profilo_accesso_id;
+
+                  IF v_id IS NOT NULL THEN
+                      RETURN v_id;
+                  END IF;
+
+                  INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, unita_organizzativa_id)
+                  VALUES (p_profilo_accesso_id, p_unita_organizzativa_id)
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_lega_profilo_reparto(
+                      config.profili_accesso_bindings.profilo_accesso_id%TYPE,
+                      config.profili_accesso_bindings.unita_organizzativa_id%TYPE)
+              IS 'MADRE (2026-10-19): lega un reparto (unita'' organizzativa) a un profilo di accesso, la riga di config.profili_accesso_bindings con unita_organizzativa_id. Gemella di config.fn_lega_profilo_identita. Un reparto ha un binding solo (uq_profili_accesso_bindings_uo): lo stesso profilo gia'' legato ritorna quel binding (idempotente), un altro profilo gia'' legato lo rifiuta il vincolo col suo nome (non sostituisce in silenzio: il backend con ON CONFLICT DO UPDATE sostituiva, ma il profilo di un reparto ha sempre lo stesso codice e quindi lo stesso id). Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Coerenza e notifica dei permessi: i trigger della tabella. Non controlla il permesso (backend). INVOKER. Il contrario: config.fn_slega_profilo_reparto. Sede unica dell''UPSERT di AmmSoftwareRepository.put_profilo_reparto. R-BE-7, D-16b di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS config.fn_lega_profilo_reparto(config.profili_accesso_bindings.profilo_accesso_id%TYPE, config.profili_accesso_bindings.unita_organizzativa_id%TYPE);

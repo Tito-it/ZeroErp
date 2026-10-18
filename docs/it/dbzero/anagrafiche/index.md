@@ -55,6 +55,8 @@
 - [fn_crea_emittente_fiscale](funzioni/fn_crea_emittente_fiscale.md)
 - [fn_crea_fornitore](funzioni/fn_crea_fornitore.md)
 - [fn_crea_indirizzi_ruolo](funzioni/fn_crea_indirizzi_ruolo.md)
+- [fn_crea_indirizzi_soggetto](funzioni/fn_crea_indirizzi_soggetto.md) — (19-10-2026 — R-BE-12 del backend, decisione D-16a di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
+- [fn_crea_indirizzo_ruolo](funzioni/fn_crea_indirizzo_ruolo.md) — (19-10-2026 — R-BE-6 del backend, decisione D-16a di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
 - [fn_crea_indirizzo_soggetto](funzioni/fn_crea_indirizzo_soggetto.md) — (latest review 18-10-2026)
 - [fn_crea_operatore_v2](funzioni/fn_crea_operatore_v2.md)
 - [fn_crea_risorsa_umana_v2](funzioni/fn_crea_risorsa_umana_v2.md)
@@ -79,6 +81,7 @@
 - [fn_guard_istanza_ba_emittente](funzioni/fn_guard_istanza_ba_emittente.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ba_gestore_globale](funzioni/fn_guard_istanza_ba_gestore_globale.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ha_ba](funzioni/fn_guard_istanza_ha_ba.md) — (latest review 08-10-26)
+- [fn_indirizzi_con_obbligatori](funzioni/fn_indirizzi_con_obbligatori.md)
 - [fn_indirizzo_elemento](funzioni/fn_indirizzo_elemento.md) — (18-10-2026 — decisione D-4 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
 - [fn_indirizzo_elemento_dettaglio](funzioni/fn_indirizzo_elemento_dettaglio.md) — (18-10-2026 — decisione D-4 di Tid)
 - [fn_lookup_utilities_per_ba](funzioni/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:

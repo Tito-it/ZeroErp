@@ -143,6 +143,7 @@
 - [fn_imposta_emittente_attivo](funzioni/fn_imposta_emittente_attivo.md)
 - [fn_imposta_override_oggetti](funzioni/fn_imposta_override_oggetti.md)
 - [fn_lega_profilo_identita](funzioni/fn_lega_profilo_identita.md)
+- [fn_lega_profilo_reparto](funzioni/fn_lega_profilo_reparto.md) — (19-10-2026 — R-BE-7 del backend, decisioni D-16b e D-16c di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
 - [fn_pannello_colonne_scrivibili](funzioni/fn_pannello_colonne_scrivibili.md) — (scritta il 27-09-2026)
 - [fn_pannello_scrivi](funzioni/fn_pannello_scrivi.md) — (scritta il 25-09-2026)
 - [fn_profilo_super_admin_id](funzioni/fn_profilo_super_admin_id.md) — (18-10-2026 — R-BE-11 del backend, regola del 2, ok di Tid; `brief-db-processi-accensione-per-ambiente` §6.15)
@@ -150,6 +151,8 @@
 - [fn_resolve_email_template](funzioni/fn_resolve_email_template.md) — Risolve il template email da utilizzare per un dato codice, reparto, tipo prestazione e lingua. Implementa una catena di fallback a 5 livelli che permette di specializzare i testi per reparto e tipo pratica mantenendo sempre un default di sistema.
 - [fn_scrivi_profilo_accesso](funzioni/fn_scrivi_profilo_accesso.md)
 - [fn_sigla_provincia_ammessa](funzioni/fn_sigla_provincia_ammessa.md)
+- [fn_slega_profilo_identita](funzioni/fn_slega_profilo_identita.md)
+- [fn_slega_profilo_reparto](funzioni/fn_slega_profilo_reparto.md)
 - [trgfn_comuni_protect_update](funzioni/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
 - [trgfn_credenziali_guard_ultimo_super_admin](funzioni/trgfn_credenziali_guard_ultimo_super_admin.md) — (scritta il 25-09-2026)
 - [trgfn_email_allegato_guard_solo_bozza](funzioni/trgfn_email_allegato_guard_solo_bozza.md)
