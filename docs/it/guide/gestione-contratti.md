@@ -341,16 +341,19 @@ Dopo l'attivazione il contratto è un documento firmato: quasi tutto resta com'e
 | Che cosa | In ATTIVO | In CESSATO e ANNULLATO |
 | --- | --- | --- |
 | data, valuta | fermi | fermi |
-| cliente (billing account, istanza, utility) | fermo | fermo |
+| cliente (billing account, istanza) | fermo | fermo |
+| utility, azienda che emette | ferme (già in bozza) | ferme |
 | listino, versione, variazioni globali, ambito, decorrenza, contratto padre, categoria cliente | fermi | fermi |
 | offerta e sorgente da cui nasce | ferme | ferme |
 | fine validità (`valido_al`), CIG, CUP, codice commessa, note | **si cambiano** | fermi |
 
 La fine validità si sposta per programmare la cessazione; CIG, CUP e codice
 commessa arrivano spesso dopo la firma. A contratto cessato o annullato si ferma
-tutto. Il rifiuto dice quale famiglia di dati si è toccata
-(`E_DOC_IDENTITA_FUORI_BOZZA`, `E_DOC_CONDIZIONI_FUORI_BOZZA`,
-`E_DOC_CLIENTE_FUORI_BOZZA`, `E_DOC_SORGENTE_FUORI_BOZZA`, `E_DOC_CHIUSO`). La
+tutto. Utility e azienda che emette non si cambiano nemmeno in bozza: in bozza
+si cambia il cliente, dentro la stessa utility. Il rifiuto dice quale famiglia
+di dati si è toccata (`E_DOC_IDENTITA_FUORI_BOZZA`, `E_DOC_CONDIZIONI_FUORI_BOZZA`,
+`E_DOC_CLIENTE_FUORI_BOZZA`, `E_DOC_SORGENTE_FUORI_BOZZA`, `E_DOC_CHIUSO`,
+`E_DOC_UTILITY_IMMUTABILE`, `E_DOC_EMITTENTE_IMMUTABILE`). La
 regola sta nel montaggio del lock di testata, e da lì la legge anche la
 capability del contratto per spegnere i campi nel form. Fino al 10 ottobre 2026 i
 quattro dati di pricing li fermava un controllo a parte, solo in ATTIVO

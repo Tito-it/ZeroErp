@@ -143,3 +143,23 @@ con [`script.fn_doc_testata_in_stato`](/dbzero/script/funzioni/fn_doc_testata_in
 
 > 📎 changeSet `20261010-68`, `-69`. Presidio: `db/pgtap/vendite/test-testata-dopo-emissione-v1.sql`
 > (la matrice colonna × stato, test 3).
+
+### 🔄 rev 2026-10-18 — emittente e utility fermi sempre (brief-db-indirizzi-documento-seguono-il-cliente §8.7)
+
+Su preventivo, offerta e contratto la **utility** e l'**emittente** non si cambiano più nemmeno
+in bozza: in bozza si cambia il cliente, dentro la stessa utility (decisioni B-4 ed E-3 di Tid).
+Prima la regola la diceva solo il backend, e in tre modi diversi. Nel montaggio la terna ha `-` al
+posto degli stati; i codici sono nuovi, perché la frase di prima («si sceglie solo in bozza») qui
+sarebbe falsa:
+
+| Colonna | Codice |
+| --- | --- |
+| `utility_id` | `E_DOC_UTILITY_IMMUTABILE` |
+| `emittente_fiscale_id` | `E_DOC_EMITTENTE_IMMUTABILE` |
+
+Bolla, reso e ordine non cambiano. Il lock è in fascia `_a05_`: il rifiuto parla prima dei guard
+che giudicano il valore nuovo (emittente e billing account, perimetro dell'emittente), che
+proporrebbero un rimedio sbagliato. Il corpo della funzione non cambia.
+
+> 📎 changeSet `20261018-67`. Presidio: `db/pgtap/vendite/test-doc-emittente-utility-fermi-v1.sql`;
+> la matrice colonna × stato di `test-testata-dopo-emissione-v1.sql` dice `-` per queste sei colonne.

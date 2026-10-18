@@ -1,19 +1,24 @@
 # Brief DB — Gli indirizzi del documento seguono il cliente
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-14
+## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: Tid (collaudo, §8.5 e §8.6.4) e il team DB (§8.7), in parallelo. Il giro BE/FE del §8.3 e del §8.4.6 e' fatto e verde.**
+**Riparte: Tid (apply del §8.7 e pgTAP; collaudo §8.5 e §8.6.4). Il lato DB del §8.7 e' scritto e provato (§8.7.4).**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | **Tid** | Collaudo in-app: slot di default alla creazione, cambio di cliente in bozza su DDT, preventivo e offerta (§8.5); poi la scheda precompilata in creazione e il cambio di cliente del contratto (§8.6.4). Il backend di sviluppo è ricaricato | §8.5, §8.6.4 | niente |
-| 2 | **team DB** | Emittente e utility fermi in modifica su offerta, contratto e preventivo: capability e guard | §8.7 | niente |
-| 3 | **BE/FE** | Il ritiro dei due campi dalla modifica dell'offerta, dopo la consegna DB | §8.7.3 | 2 |
-| 4 | **Tid** | Archiviazione in `work-done/` | — | 1, 3 |
+| 1 | **Tid** | Apply di `20261018-65` … `-68` e dei due codici (mirror di `codici_errore` e `messaggi_errore`), poi i pgTAP come app | §8.7.4 | niente |
+| 2 | **BE** | R-BE-8 (policy e ripiego dei due codici) **nello stesso giro dell'apply**; poi R-BE-9 e R-BE-10 | §8.7.3 | 1 |
+| 3 | **Tid** | Collaudo in-app: slot di default e cambio di cliente in bozza su DDT, preventivo e offerta (§8.5); scheda precompilata e cambio di cliente del contratto (§8.6.4); emittente e utility spenti in modifica su preventivo, offerta e contratto (R-FE-5) | §8.5, §8.6.4, §8.7.3 | 1, 2 |
+| 4 | **Tid** | Archiviazione in `work-done/` | — | 3 |
 
-**Decisioni aperte di Tid: nessuna** (2026-10-14: la lettura della scheda nei form-defaults, i due
-parametri nel drawer del contratto, l'offerta come terzo consumatore del BB della coppia; §8.6.1).
-✅ **Committato** il giro BE/FE del §8.6 con questo documento (`cf89dfbc5`, `dev/backend-tid`, 2026-10-14). Niente da committare.
+**Decisioni aperte di Tid: nessuna.** La forma del §8.7 (la colonna «ferma sempre» nel montaggio
+del lock di testata, due codici nuovi) era scelta del team DB: e' motivata nel §8.7.4, se Tid la
+vuole diversa lo dice prima dell'apply.
+✅ **Committato** su `dev/db-tid` il 2026-10-18 (i quattro changeSet, le righe dei due codici, il
+pgTAP nuovo e i tre adeguati, le pagine `manual/`, la guida dei contratti, questo documento).
+Corsa di Tid su `zeroerp_ruoli` dopo l'apply (2026-10-18): nessuna regressione del giro; i quattro
+rossi segnalati erano rossi di fixture della baseline dello scratch (§8.7.4 non c'entra), sistemati
+a parte.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-10. **A chi:** team DB; poi BE/FE (§6).
 > **Origine:** §12.3 di [brief-db-esecutivi-ba-coppia](../work-done/brief-db-esecutivi-ba-coppia.md).
@@ -25,7 +30,7 @@ parametri nel drawer del contratto, l'offerta come terzo consumatore del BB dell
 > applicato e verde il 2026-10-12 (`20261012-34` … `-42`, pgTAP verdi nella corsa di Tid). ⏳ Restano il
 > collaudo in-app di Tid (§8.5), la ricaduta BE/FE del §8.4.6 e il cambio di cliente del **contratto** in
 > bozza (§8.3). ✅ **§8.3 e §8.4.6 fatti il 2026-10-14** (§8.6). ⏳ Restano il collaudo e la richiesta DB
-> del §8.7.
+> del §8.7. ✅ **§8.7 lato DB scritto e provato il 2026-10-18** (§8.7.4): da applicare.
 > **Nel registro dei difetti DB:** voce **D27** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -612,10 +617,73 @@ Forma, codice e nome sono scelte del team DB.
 
 #### 8.7.3 Ricaduta BE/FE (dopo la consegna)
 
-* `offerte_service`: `utility_id` ed `emittente_fiscale_id` escono da `UPDATE_KEYS_OFFERTA`; il BB della
-  coppia prende la utility dalla testata. Codice nuovo in policy e ripiego.
-* `OffertaDrawer`: i due campi seguono `testata.bloccato(...)` come oggi, e si spengono da soli quando
-  la capability li nomina.
-* Contratto e preventivo: il divieto Python resta come errore parlante anticipato, o si ritira se il
-  codice del DB arriva sul campo giusto: da decidere sulla consegna.
+> Riscritta dal team DB il 2026-10-18 sulla forma consegnata (§8.7.4). ⛔ R-BE-8 va fatta **nello
+> stesso giro dell'apply**: senza, la CI e' rossa sul lato BE (guardrail delle policy).
 
+| # | Lato | Che cosa |
+| --- | --- | --- |
+| **R-BE-8** | BE | Codici nuovi **`E_DOC_UTILITY_IMMUTABILE`** ed **`E_DOC_EMITTENTE_IMMUTABILE`** (`CONFLITTO_STATO`, 409, **niente `campo`**, come la famiglia dei lock; VARIADIC lo stato): policy rigenerata e frase di ripiego |
+| **R-BE-9** | BE | `offerte_service`: `utility_id` ed `emittente_fiscale_id` escono da `UPDATE_KEYS_OFFERTA`; il BB della coppia prende la utility dalla testata. Finche' non escono non si rompe niente: un `UPDATE` allo stesso valore passa (il lock guarda il cambio), uno diverso prende il codice nuovo |
+| **R-BE-10** | BE | Contratto e preventivo: il divieto Python (`_FORBIDDEN_TESTATA_UPDATE`, la whitelist del preventivo) si puo' ritirare. Il codice del DB **non** porta il campo (`CONFLITTO_STATO`): se il BE vuole l'errore sul campo lo tiene come errore anticipato, altrimenti si ritira. Scelta del BE |
+| **R-FE-5** | FE | Niente da scrivere: in modifica i due campi si spengono da soli, perche' le capability di preventivo, offerta e contratto ora li mettono in `non_editable_fields` **anche in bozza**. Da verificare nel collaudo sull'offerta (prima l'emittente si accendeva in bozza) |
+
+#### 8.7.4 ✅ Consegna DB (team DB, 2026-10-18) — da applicare
+
+**La forma: una colonna «ferma sempre» nel montaggio del lock di testata.** Il terzo elemento di
+una terna di `vendite.trgfn_doc_testata_lock_fuori_bozza` puo' essere `-`: la colonna non si
+cambia in nessuno stato, bozza compresa. Sui montaggi di preventivo, offerta e contratto
+`utility_id` ed `emittente_fiscale_id` passano a `-`.
+
+Perche' qui e non nel registro dei lock di colonna (`dbops.automation_lock_columns`, la forma
+dell'ordine e del billing account):
+
+* **la capability la legge gia'**: `non_editable_fields` esce dal montaggio del lock di testata
+  (`script.fn_doc_testata_in_stato`). Col registro serviva la lista `c_sempre_non_edit` in tre
+  capability, cioe' una seconda copia della regola; cosi' la copia del preventivo si **ritira**;
+* **parla per prima**: il lock e' in fascia `_a05_`. Il trigger generato dal registro
+  (`trg_*_a10_lock_columns_upd`) verrebbe dopo `trg_*_a10_guard_emittente_ba` e
+  `_guard_emittente_scope`, e un cambio di emittente si sarebbe sentito rispondere «emittente
+  incoerente col billing account», cioe' un rimedio che non e' il rimedio;
+* niente convergenza dei trigger generati su dbdev (il job notturno o un `CALL` a mano).
+
+**I codici sono nuovi**: la frase di `E_DOC_CLIENTE_FUORI_BOZZA` e di `E_DOC_EMITTENTE_FUORI_BOZZA`
+dice «si sceglie solo in bozza», che qui sarebbe falso. DDT, reso e ordine tengono i loro.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261018-65` | grammatica `script.fn_doc_lock_regola`: la terna con `-`, la chiave `ferma_sempre`; `-` insieme a degli stati e' un montaggio sbagliato |
+| `20_code/script/20261018-66` | decisione `script.fn_doc_lock_colonna_bloccata`: una colonna ferma sempre si ferma anche in bozza; per le righe niente cambia |
+| `20_code/vendite/20261018-67` | i tre montaggi rimontati (utility → `E_DOC_UTILITY_IMMUTABILE`, emittente → `E_DOC_EMITTENTE_IMMUTABILE`, terna `-`), COMMENT della funzione del trigger |
+| `20_code/script/20261018-68` | `script.fn_available_actions_preventivo`: via `c_sempre_non_edit` (la sola `utility_id`), firma ancorata a `%TYPE` |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | i due codici, `CONFLITTO_STATO`, messaggi 1359 e 1360 |
+| `db/pgtap/vendite/test-doc-emittente-utility-fermi-v1.sql` | nuovo, 18 test |
+| `db/pgtap/vendite/test-fornitura-documento-segue-cliente-v1.sql` | test 12: il contratto portato su un'altra utility ora e' **rifiutato** e la scheda resta quella di prima (era «la scheda dell'altra utility»: il caso non e' piu' raggiungibile dalla testata) |
+| `db/pgtap/vendite/test-testata-dopo-emissione-v1.sql` | la matrice dice `-` per le sei colonne (test 3), i codici nuovi fra quelli di lock (21), in testa a `non_editable_fields` del preventivo c'e' la data (25) |
+| `db/pgtap/script/test-doc-lock-montaggio-v1.sql` | test 4: la regola porta `ferma_sempre` |
+| `docs/it/dbzero/*/manual/` | `fn_doc_lock_regola`, `fn_doc_lock_colonna_bloccata`, `fn_doc_testata_in_stato`, `trgfn_doc_testata_lock_fuori_bozza`, `fn_available_actions_preventivo`, `trgfn_doc_guard_emittente_ba`; la guida `gestione-contratti.md` §6.1 |
+
+⚠️ **Censito il 2026-10-18, chi scrive le due colonne in `UPDATE`**: nessun verbo e nessun trigger
+del DB (l'emittente lo scrive solo `trgfn_default_emittente_fiscale`, in `INSERT`); fra i pgTAP solo
+il test 12 della fornitura. Lato BE l'offerta (R-BE-9).
+
+⚠️ Il caso che aveva deciso D-6 (§8.4.4: un contratto che passa da una utility senza tipi d'uso a
+una con) **non e' piu' raggiungibile** dalla testata. Il guard della coppia sulla scheda resta:
+protegge la scheda da chi la scrive con un'altra coppia (test 13 e 14 della fornitura).
+
+**Prove (2026-10-18), su `zeroerp_ruoli` allineato fino a `20261018-64`, da owner, in transazione
+annullata**: l'SQL **estratto** dagli YAML `-65` … `-68`, i due codici inseriti a mano come li
+caricherebbe il mirror, poi il pgTAP senza il suo `BEGIN`. ⚠️ Non coperto: il loader dei CSV, e
+la RLS (da owner non c'e'). L'apply e la corsa come app restano di Tid.
+
+| Prova | Esito |
+| --- | --- |
+| `test-doc-emittente-utility-fermi-v1` | 18/18 |
+| Mutazioni, un changeSet tolto alla volta | senza `-66`: rossi 3, 5-10, 14-16; senza `-67`: 4, 5-10, 14-16; senza `-68`: 17 |
+| I tre pgTAP adeguati (fornitura, testata dopo l'emissione, montaggio del lock) | 17/17, 26/26, 30/30 |
+| Regressione: 64 pgTAP che toccano le tre testate, le loro capability, il lock di testata, la nascita e la revisione di contratto, offerta e preventivo; «prima» (versione di `HEAD`, senza l'SQL) e «dopo» (versione di lavoro, con l'SQL) | **0 differenze**. 12 file hanno rossi o errori, **uguali** nelle due corse (ambiente: scratch da owner) |
+| Corpi di partenza | `pg_get_functiondef` su dbdev il 2026-10-18, uguali alla doc auto-generata |
+
+Fuori perimetro, detto per completezza: sull'**ordine** la utility e' ferma solo fuori bozza nel
+montaggio, ma il billing account ha il lock assoluto e la utility la deriva il DB dal BA; su
+**DDT e reso** l'emittente in bozza si cambia ancora (B-4 riguardava contratto e preventivo, E-3
+l'offerta).

@@ -26,6 +26,10 @@ BEGIN
   --   E' la decisione dei due building block «si tocca solo
   --   in bozza»: la usano il trigger e la capability, che
   --   cosi' non possono rispondere in due modi.
+  -- rev 2026-10-18: sulla TESTATA una colonna «ferma sempre»
+  --   (ferma_sempre della regola) non si cambia nemmeno in
+  --   bozza. Per questo la bozza non chiude piu' la decisione
+  --   prima dei due rami: la chiude ciascun ramo.
   -- =========================================================
 
   -- Un montaggio sbagliato non lascia passare niente.
@@ -33,12 +37,12 @@ BEGIN
     RETURN '*';
   END IF;
 
-  -- In bozza tutto si tocca. Uno stato NULL non e' la bozza.
-  IF p_stato = p_regola ->> 'stato_bozza' THEN
-    RETURN NULL;
-  END IF;
-
   IF p_regola ->> 'building_block' = 'RIGHE' THEN
+    -- In bozza tutto si tocca. Uno stato NULL non e' la bozza.
+    IF p_stato = p_regola ->> 'stato_bozza' THEN
+      RETURN NULL;
+    END IF;
+
     -- La riga intera (INSERT, DELETE): nessuna eccezione.
     IF p_colonne IS NULL THEN
       RETURN '*';
@@ -71,11 +75,16 @@ BEGIN
     -- Le colonne nominate, nell'ordine del montaggio: la prima
     -- che cambia e che in questo stato non e' aperta. Le altre
     -- colonne della testata sono libere.
+    -- Aperta: in bozza, o in uno degli stati della terna; una
+    -- colonna ferma sempre non e' aperta in nessuno stato, bozza
+    -- compresa. Uno stato NULL non e' la bozza.
     RETURN (SELECT e ->> 'colonna'
               FROM jsonb_array_elements(p_regola -> 'colonne') WITH ORDINALITY AS x(e, k)
              WHERE (p_colonne IS NULL OR (e ->> 'colonna') = ANY (p_colonne))
-               AND (p_stato IS NULL
-                    OR NOT jsonb_exists(e -> 'stati_ammessi', p_stato))
+               AND ((e ->> 'ferma_sempre')::boolean IS TRUE
+                    OR (p_stato IS DISTINCT FROM p_regola ->> 'stato_bozza'
+                        AND (p_stato IS NULL
+                             OR NOT jsonb_exists(e -> 'stati_ammessi', p_stato))))
              ORDER BY k
              LIMIT 1);
   END IF;
@@ -86,7 +95,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_doc_lock_colonna_bloccata(p_regola jsonb, p_stato text, p_colonne text[])
-IS 'Building block (2026-10-10, brief-db-testata-dopo-emissione fase 1, R-1): la DECISIONE dei due building block «si tocca solo in bozza». Con il documento in p_stato (codice_interno), quale delle colonne p_colonne il montaggio p_regola (uscita di script.fn_doc_lock_regola) non lascia cambiare? NULL = passa; altrimenti la prima che ferma, ''*'' = la riga intera. Montaggio sbagliato: ''*''. Stato bozza: NULL. p_stato NULL = fuori bozza in nessuno stato ammesso. RIGHE: p_colonne NULL (INSERT, DELETE) = ''*''; fuori dagli stati ammessi la prima colonna non tecnica, o ''*'' anche se non ne cambia nessuna; negli stati ammessi la prima colonna che non e'' ammessa ne'' tecnica (data_update, user_update, tx_id). TESTATA: la prima colonna nominata dal montaggio (nel suo ordine) che cambia e che nello stato non e'' aperta; le colonne non nominate sono libere; p_colonne NULL = tutte. La chiamano vendite.trgfn_doc_righe_lock_fuori_bozza, vendite.trgfn_doc_testata_lock_fuori_bozza e script.fn_doc_colonna_modificabile: trigger e capability decidono con la stessa funzione. IMMUTABLE.';
+IS 'Building block (2026-10-10, brief-db-testata-dopo-emissione fase 1, R-1): la DECISIONE dei due building block «si tocca solo in bozza». Con il documento in p_stato (codice_interno), quale delle colonne p_colonne il montaggio p_regola (uscita di script.fn_doc_lock_regola) non lascia cambiare? NULL = passa; altrimenti la prima che ferma, ''*'' = la riga intera. Montaggio sbagliato: ''*''. Stato bozza: NULL. p_stato NULL = fuori bozza in nessuno stato ammesso. RIGHE: p_colonne NULL (INSERT, DELETE) = ''*''; fuori dagli stati ammessi la prima colonna non tecnica, o ''*'' anche se non ne cambia nessuna; negli stati ammessi la prima colonna che non e'' ammessa ne'' tecnica (data_update, user_update, tx_id). TESTATA: la prima colonna nominata dal montaggio (nel suo ordine) che cambia e che nello stato non e'' aperta; le colonne non nominate sono libere; p_colonne NULL = tutte. La chiamano vendite.trgfn_doc_righe_lock_fuori_bozza, vendite.trgfn_doc_testata_lock_fuori_bozza e script.fn_doc_colonna_modificabile: trigger e capability decidono con la stessa funzione. IMMUTABLE. rev 2026-10-18 (brief-db-indirizzi-documento-seguono-il-cliente §8.7): sulla TESTATA una colonna con ferma_sempre (terna con ''-'', script.fn_doc_lock_regola) si ferma in ogni stato, bozza compresa: la bozza non chiude piu'' la decisione prima dei due rami, la chiude ciascun ramo. RIGHE invariato. Lo stato bozza da'' NULL salvo una colonna ferma sempre che cambia.';
 ```
 
 ---

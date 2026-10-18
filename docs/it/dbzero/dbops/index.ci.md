@@ -18,6 +18,7 @@
 - [coda_lavori](manual/coda_lavori.md) — (latest review 20-07-2026)
 - [coda_lavori_tipi](manual/coda_lavori_tipi.md) — (latest review 14-09-2026)
 - [codici_errore_senza_policy](manual/codici_errore_senza_policy.md) — (rev 2026-08-21)
+- [credenziali_di_prova](manual/credenziali_di_prova.md)
 - [domini_task](manual/domini_task.md) — (latest review 08-02-2026) `dbops.domini_task` definisce i **domini logici** per i task pipeline (es. `FATTURAZIONE`, `ATTIVITA_FATTURABILI`, `PRATICHE`). Serve a stabilire un **perimetro chiaro** per il registry multi‑dominio e garantire univocita` dei task per dominio.
 - [error_log](manual/error_log.md) — * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore. * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
 - [fk_index_policy](manual/fk_index_policy.md) — (latest review 27-07-26) La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli indici sulle foreign key: una riga per vincolo, un flag che dice se l'indice deve esistere, e il comando che lo crea.
@@ -39,6 +40,7 @@
 - [rls_perimetro_debito](manual/rls_perimetro_debito.md) — (latest review 09-09-2026)
 - [sec_functions_owner](manual/sec_functions_owner.md) — * **Centralizzare l'elenco delle funzioni "sensibili"** che richiedono owner dedicato. * **Garantire automaticamente la corretta assegnazione dei permessi**, tramite `dbops.fn_sync_functions_owner()`. * **Prevenire errori operativi o di sicurezza** derivanti da modifiche accidentali o ripristini non controllati. * Supportare la procedura di *hardening post-deploy*, mantenendo coerenza anche in CI, dopo migrazioni o clonazioni del database.
 - [sessioni_utente](manual/sessioni_utente.md) — (latest review 05-03-2026)
+- [soggetti_di_prova](manual/soggetti_di_prova.md)
 - [stati_check_dichiarazioni](manual/stati_check_dichiarazioni.md) — (latest review 21-09-2026)
 - [storico_scope_policy](manual/storico_scope_policy.md) — (latest review 11-09-2026)
 - [transaction_ids](manual/transaction_ids.md) — (latest review 10-01-26) La tabella **`dbops.transaction_ids`** funge da **registro centrale** di tutti gli identificativi di transazione (UUID) utilizzati in Zero ERP: ogni volta che viene avviata un’operazione di modifica dati (inserimento, aggiornamento o cancellazione) che coinvolge più tabelle, si genera un nuovo **`tx_id`** in questa tabella e lo si propaga a tutte le righe interessate, garantendo la **tracciabilità** e il **raggruppamento** coerente delle modifiche.
@@ -63,6 +65,7 @@
 - [fn_col_exists](manual/fn_col_exists.md) — (rev 2026-08-21)
 - [fn_conta_presidio](manual/fn_conta_presidio.md) — (latest review 10-10-2026)
 - [fn_conta_presidio_per_variante](manual/fn_conta_presidio_per_variante.md) — (latest review 10-10-2026)
+- [fn_dati_di_sviluppo_ammessi_su_valori](manual/fn_dati_di_sviluppo_ammessi_su_valori.md)
 - [fn_drop_triggers_by_function_args](manual/fn_drop_triggers_by_function_args.md) — (latest review 13-01-26) La funzione **`fn_drop_triggers_by_function_args`** elimina tutti i **trigger associati a una tabella** che invocano una determinata funzione di trigger, filtrando in base a **schema**, **nome funzione** e **lista di argomenti**.
 - [fn_ensure_storico_table](manual/fn_ensure_storico_table.md) — (latest review 16-01-26) La funzione **`fn_ensure_storico_table`** si occupa di **creare** (se non esiste) la **tabella di storico** nello schema `storico` corrispondente ad una tabella base (`p_schema_base.p_table_base`), con **colonna FK** coerente al **tipo** della PK della tabella padre, **indici** necessari e **logging** integrato. Supporta modalità **dry‑run** e la creazione opzionale di un **indice GIN** sullo `snapshot`.
 - [fn_find_file_usage](manual/fn_find_file_usage.md) — * **Analisi d’impatto**     Identificare rapidamente tutte le relazioni di FK verso una tabella, utile per valutare dipendenze e conseguenze di modifiche, cancellazioni o refactoring di schema.
@@ -178,6 +181,7 @@
 - [vw_processi_programmazione_da_guardare](manual/vw_processi_programmazione_da_guardare.md) — (latest review 07-09-2026)
 - [vw_processi_roster](manual/vw_processi_roster.md) — (latest review 05-09-2026)
 - [vw_punti_canale_campo](manual/vw_punti_canale_campo.md) — (latest review 22-09-2026)
+- [vw_radici_di_prova_in_produzione](manual/vw_radici_di_prova_in_produzione.md)
 - [vw_riferimenti_morti_da_sanare](manual/vw_riferimenti_morti_da_sanare.md) — (rev 2026-08-21)
 - [vw_riferimenti_morti_rientrati](manual/vw_riferimenti_morti_rientrati.md) — (rev 2026-08-21)
 - [vw_rls_perimetro_scoperto](manual/vw_rls_perimetro_scoperto.md) — (latest review 09-09-2026)

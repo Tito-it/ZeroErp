@@ -19,6 +19,9 @@ Un articolo **usato** non cambia i flag che decidono come si vende e come sta a 
 * Trigger `trg_articoli_a10_guard_struttura_se_usato_upd`, **BEFORE UPDATE OF** le otto colonne:
   `is_composito`, `is_solo_componente`, `natura_vendita_id`, `causale_onere_id`,
   `listino_tipologia_id`, `gestito_a_magazzino`, `requires_lotto`, `requires_serial`.
+  L'elenco leggibile è `catalogo.fn_articolo_colonne_struttura()`; qui (trigger e `CASE`) è
+  scritto perché un trigger non legge le sue colonne da una funzione, e il pgTAP
+  `catalogo/test-articolo-colonne-struttura-v1` controlla che le due cose coincidano.
 * Se nessuna cambia davvero (`IS DISTINCT FROM`), esce: un salvataggio del form che riscrive gli
   stessi valori passa.
 * Se l'articolo è usato (`catalogo.fn_articolo_usato`) → `E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE`.

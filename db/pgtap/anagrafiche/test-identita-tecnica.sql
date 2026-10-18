@@ -48,6 +48,11 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   bocciando un soggetto che sta per ricevere il contatto due righe sotto.
 --   ⇒ Sta subito dopo quel blocco. Il guardrail del preambolo controlla la
 --     presenza, non la posizione.
+-- ⛔ E la finestra si DICHIARA (rev 2026-10-18): su un database vuoto la riga di
+--   contesto qui sopra costruisce il mondo ed esce con i vincoli IMMEDIATE, e la
+--   fabbrica moriva su E_SOGGETTO_NO_CONTATTI (rosso solo sullo scratch: su
+--   dbdev il mondo c'e' gia' e il contesto non costruisce niente).
+SET CONSTRAINTS ALL DEFERRED;
 
 SELECT plan(8);
 
@@ -147,12 +152,11 @@ DECLARE
     v_auth_user_id integer;   -- ⚠️ niente %TYPE su django.*
     v_emittente    anagrafiche.emittenti_fiscali.codice%TYPE;
 BEGIN
-    -- Ordine stabile: una fixture che pesca a caso non verifica, scommette.
+    -- L'emittente si deriva dall'operatore di contesto, non si pesca
+    -- (rev 2026-10-18: prima era «il primo attivo della tabella»).
     SELECT ef.codice INTO v_emittente
       FROM anagrafiche.emittenti_fiscali ef
-     WHERE ef.attivo
-     ORDER BY ef.id
-     LIMIT 1;
+     WHERE ef.id = script.fn_pgtap_emittente_operatore();
 
     IF v_emittente IS NULL THEN
         PERFORM set_config('pgtap.auth_user_id', '', true);
