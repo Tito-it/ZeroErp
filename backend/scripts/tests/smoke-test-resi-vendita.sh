@@ -151,6 +151,52 @@ except Exception:
 if [[ -z "$CAUSALE_ID" ]]; then echo -e "${RED}Setup fallito: nessuna causale di trasporto.${NC}"; exit 1; fi
 log_info "causale di trasporto id=$CAUSALE_ID"
 
+# Helper: CARICA in magazzino la merce che il DDT `$1` spedisce (`$2` unita'
+# dell'articolo dello smoke), con una rettifica di magazzino registrata sul
+# magazzino del DDT: testata, riga (`qta_delta` positiva), conferma, registra.
+# ⛔ Fino al 2026-10-18 lo smoke contava sulla giacenza che trovava: sul
+#    magazzino dell'emittente di prova (dove lavora `dev.smoke`) non c'era, e
+#    l'emissione si fermava su E_MAG_GIACENZA_INSUFFICIENTE. La merce che si
+#    spedisce e' materia dello smoke, non un dato da trovare.
+# ⚠️ Scrive davvero (come tutto lo smoke): la rettifica resta, il teardown non
+#    la storna — la merce rientra col reso e l'accredito, ed e' cio' che si prova.
+# POST con `Idempotency-Key` (le scritture del magazzino la pretendono): come
+# do_curl, piu' la chiave.
+do_curl_idem() {
+    local url="$1" data="$2" chiave="$3"
+    curl -s -w '\n%{http_code}' -X POST \
+        -H "Authorization: Bearer ${TOKEN:-none}" -H "Content-Type: application/json" \
+        -H "Idempotency-Key: ${chiave}" -d "$data" \
+        "${BASE_URL}${url}" > "$TMPFILE" 2>/dev/null
+    LAST_STATUS=$(tail -1 "$TMPFILE"); LAST_BODY=$(sed '$d' "$TMPFILE")
+}
+
+carica_merce_ddt() {
+    local ddt_id="$1" qta="$2" label="$3" mag rid
+    do_curl GET "/api/v1/vendite/ddt/${ddt_id}/"
+    mag=$(json_get "$LAST_BODY" "data.magazzino_id")
+    if [[ -z "$mag" || "$mag" == "None" ]]; then
+        log_fail "[$label] il DDT $ddt_id non ha un magazzino: impossibile caricare la merce"
+        return 1
+    fi
+    do_curl_idem "/api/v1/magazzino/rettifiche/" "{\"magazzino_id\": ${mag}}" \
+        "smoke-resi-carico-ddt-${ddt_id}"
+    check "[$label] carico: rettifica sul magazzino $mag" 200 "data.id" || return 1
+    rid="$EXTRACTED"
+    do_curl_idem "/api/v1/magazzino/rettifiche/${rid}/righe/" \
+        "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_delta\": \"${qta}\", \"motivo\": \"smoke resi: merce da spedire\"}" \
+        "smoke-resi-carico-${rid}-riga"
+    check "[$label] carico: riga +${qta}" 200 || return 1
+    # DRAFT -> CONFIRM (lo stato), poi CONFIRM -> POSTED (la registrazione,
+    # che scrive i movimenti): da DRAFT la registrazione non e' ammessa.
+    do_curl_idem "/api/v1/magazzino/rettifiche/${rid}/stato/" '{"stato": "CONFIRM"}' \
+        "smoke-resi-carico-${rid}-confirm"
+    check "[$label] carico: rettifica confermata" 200 || return 1
+    do_curl_idem "/api/v1/magazzino/rettifiche/${rid}/registra/" '{}' "smoke-resi-carico-${rid}-registra"
+    check "[$label] carico: rettifica registrata" 200 || return 1
+    return 0
+}
+
 # Helper: crea un ordine CONFERMATO con N righe (qta 5 cad.) e lo evade a un
 # DDT portato fino a CONSEGNATO. Popola le globali DDT_ID / RIGHE_JSON.
 build_ddt_consegnato() {
@@ -175,6 +221,8 @@ build_ddt_consegnato() {
     # DRAFT -> EMESSO -> SPEDITO -> CONSEGNATO (la causale prima dell'emissione)
     do_curl PATCH "/api/v1/vendite/ddt/${DDT_ID}/" "{\"causale_trasporto_id\": ${CAUSALE_ID}}"
     check "[$label] DDT causale di trasporto" 200 || return 1
+    # La merce che il DDT spedisce (N righe da 5), caricata prima di emetterlo.
+    carica_merce_ddt "$DDT_ID" "$((nrighe * 5))" "$label" || return 1
     # Una bolla che muove merce si emette dall'operazione della bolla (registra i
     # movimenti di magazzino): /emetti/, BB _smoke_documenti.sh. Il cambio di
     # stato diretto risponde E_DDT_STATO_SOLO_DA_VERBO, e fino al 2026-10-12 lo
