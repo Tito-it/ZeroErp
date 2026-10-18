@@ -147,6 +147,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_BOM_MODIFICA_VIETATA": "Struttura BoM immutabile: i campi di struttura non sono modificabili. Per correggere, chiudere la riga e inserirne una nuova versione.",
     "E_BOM_VALIDO_AL_INVALIDO": "Data di chiusura non valida: deve essere uguale o successiva alla data di inizio della riga.",
     "E_CAMBIO_PASSWORD_RICHIESTO": "Prima di continuare e' necessario cambiare la password.",
+    "E_CAMPO_NON_AMMESSO": "Un campo inviato non si puo' scrivere con questa operazione.",
     "E_CANALE_ORIGINE_IMMUTABILE": "Il canale origine non e' modificabile dopo l'inserimento.",
     "E_CAPITALE_SOCIALE_NON_AMMESSO": "Per questa forma giuridica il capitale sociale non si indica.",
     "E_CAPITALE_SOCIALE_OBBLIGATORIO": "Per questa forma giuridica il capitale sociale e' obbligatorio.",
@@ -1180,6 +1181,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "Scrittura senza un utente in sessione su una tabella con perimetro "
         "emittente: il processo non dichiara chi agisce."
     ),
+    "E_SCRIPT_CHIAMATA_NON_VALIDA": "Chiamata non valida a una funzione del database: anomalia tecnica.",
     "E_SCRITTURA_IN_LETTURA": "Modifica dati non permessa.",
     "E_SEARCH_NOT_FOUND": "Nessun risultato trovato.",
     "E_SEARCH_VALIDATION": "Parametri ricerca non validi.",
@@ -1218,6 +1220,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_SOGGETTO_NOT_FOUND": "Soggetto non trovato.",
     "E_SOGGETTO_NO_CONTATTI": "Il soggetto deve avere almeno un contatto.",
     "E_SOGGETTO_NULL": "Soggetto mancante per il ruolo indicato.",
+    "E_SOGGETTO_RUOLO_NON_TROVATO": "Il ruolo del soggetto non esiste.",
     "E_SORGENTE_CON_RIGHE_EMESSE": "Il documento ha righe di commessa gia' emesse: non si puo' chiudere finche' ci sono. Si recuperano prima dalla dashboard di competenza, casella «Emesse non fatturate», col verbo «Riporta da emettere»; fatto questo il documento si chiude e il ritiro le prende insieme alle altre.",
     "E_SORG_CONF": "Configurazione sorgente mancante o non attiva.",
     "E_SORG_EMITTENTE_NON_RISOLTO": "Impossibile stabilire chi emette il documento di origine: anomalia tecnica.",
@@ -1304,6 +1307,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TIPO_FONDO_NOT_FOUND": "Tipo fondo non trovato.",
     "E_TIPO_INDIRIZZO": "Tipo indirizzo non ammesso per questo documento.",
     "E_TIPO_INDIRIZZO_NON_PERMESSO": "Tipo indirizzo non permesso per questo tipo di ruolo.",
+    "E_TIPO_INDIRIZZO_NON_TROVATO": "Il tipo di indirizzo non esiste.",
     "E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO": "Tipo indirizzo non permesso per questo tipo di soggetto.",
     "E_TIPO_RUOLO_NON_TROVATO": "Tipo ruolo non trovato.",
     "E_TOKEN": "Token non valido, scaduto o gia' utilizzato.",

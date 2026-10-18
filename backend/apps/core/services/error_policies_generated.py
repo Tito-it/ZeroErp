@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1091, di cui 120 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1095, di cui 120 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -226,6 +226,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_BOM_VERSIONE_OVERLAP": "CONFLITTO_STATO",
     # Lo solleva il BACKEND, dal cancello degli obblighi che gira dopo l'autenticazione DRF (apps/core/api/cancello_obblighi.py, lotto T-0 di brief-be-fe-sicurezza-header-token-mfa, chiude A-8 del piano accessi): la credenziale ha deve_cambiare_password e la richiesta non e' fra quelle ammesse (cambio password, logout, profilo). A catalogo per la frase e la classe, come E_TOTP_CODICE_NON_VALIDO. NON_PERMESSO (403) e non NON_AUTENTICATO: chi chiede e' autenticato, e' l'obbligo pendente che non gli permette altro. Esisteva gia' come stringa scritta a mano da PasswordChangeRequiredMiddleware, mai registrata: il middleware si ritira col cancello, e con lui E_CAMBIO_PASSWORD_CHECK_FALLITO, che NON si registra (un DB che non risponde dentro l'autenticazione e' E_DATABASE, fail-closed). Frase chiusa. Nasce il 2026-09-30 (brief-db-codici-cancello-obblighi-e-sfida-totp).
     "E_CAMBIO_PASSWORD_RICHIESTO": "NON_PERMESSO",
+    # Un verbo di creazione o modifica ha ricevuto nel payload jsonb una chiave che non accetta: inesistente, oppure una colonna che non si scrive a mano (audit, conferme, codici generati). Si RIFIUTA col nome del campo, non si scarta in silenzio (stessa regola di E_PANNELLO_CAMPO_NON_AMMESSO, D-P3, che resta il codice del pannello perche' il frontend ne ha la chiave). La chiave la trova script.fn_prima_chiave_estranea; il campo viaggia nel contesto (campo) per accenderlo nel form. Primo uso: anagrafiche.fn_crea_emittente_fiscale. Brief: brief-db-processi-accensione-per-ambiente (2b-1).
+    "E_CAMPO_NON_AMMESSO": "DATO_ERRATO",
     "E_CANALE_ORIGINE_IMMUTABILE": "CONFLITTO_STATO",
     # Guard anagrafiche.trgfn_dati_societari_guard_forma_giuridica (20261010-97): la forma ha capitale_sociale_policy = NONE (ditta individuale, enti) e il capitale e' compilato. DATO_ERRATO, campo capitale_sociale. VARIADIC: la forma. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-6).
     "E_CAPITALE_SOCIALE_NON_AMMESSO": "DATO_ERRATO",
@@ -1467,6 +1469,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SCOPE_EMITTENTE": "NON_PERMESSO",
     # script.trgfn_guard_emittente_scope: una sessione APPLICATIVA ha provato a scrivere su una tabella con perimetro emittente senza dichiarare chi agisce (app.current_user_id vuota). ⛔ Fino al 2026-09-04 quel caso usciva con RETURN NEW: era la porta da cui un processo automatico scriveva ovunque, e il cantiere «nessun processo senza operatore» esiste per chiuderla. ⭐ Il criterio non e il ruolo DB ma row_security_active() sulla tabella: chi passa dalla RLS (proprietario, superuser, BYPASSRLS) passa anche di qui, e chi la subisce deve dire chi e. Un criterio solo, quello che PostgreSQL applica gia. ⚠️ TECNICO e non NON_PERMESSO: non ce una persona a cui negare qualcosa: ce un processo configurato senza identita. Il fratello NON_PERMESSO e E_SCOPE_EMITTENTE, che nega a un utente NOTO un emittente fuori perimetro. Brief: brief-db-processi-automatici-identita-e-perimetro §7.
     "E_SCOPE_SENZA_UTENTE": "TECNICO",
+    # Guard di parametro dei building block generici di script (e dei verbi che li compongono) su valori che NESSUNA interfaccia puo' produrre: una tabella NULL, un payload che non e' un oggetto jsonb, una chiave di riga vuota. Se arrivano, e' rotto il chiamante: l'operatore non ha niente da correggere, quindi TECNICO e non DATO_ERRATO. Gemello SCRIPT di E_VENDITE_CHIAMATA_NON_VALIDA e E_PAGAMENTI_CHIAMATA_NON_VALIDA, per la stessa ragione (E_PARAMETRO_INVALIDO e' uno split rimandato, D11 di brief-db-be-classe-codici-errore). Primo uso: script.fn_scrivi_riga_da_jsonb e anagrafiche.fn_crea_emittente_fiscale. Brief: brief-db-processi-accensione-per-ambiente (2b-1).
+    "E_SCRIPT_CHIAMATA_NON_VALIDA": "TECNICO",
     # Sollevato dal backend, mai dal DB: traduce il 25006 (read_only_sql_transaction) che PostgreSQL alza quando una richiesta classificata come lettura (GET/HEAD, tool di lettura dell'assistente) tenta una scrittura dentro apps/core/db/sola_lettura.py::transazione_sola_lettura. La regola e' della transazione, non del ruolo: vale anche dentro una SECURITY DEFINER. TECNICO: non e' un permesso mancante dell'operatore (quello e' E_PERMESSO_NEGATO), e' un difetto del codice, una lettura che scrive. Il nome della view va nel log, non nel messaggio. Nasce il 2026-09-25 (brief-be-letture-in-transazione-sola-lettura, sezione 5).
     "E_SCRITTURA_IN_LETTURA": "TECNICO",
     "E_SEARCH_NOT_FOUND": "NON_TROVATO",
@@ -1516,6 +1520,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SOGGETTO_NO_CONTATTI": "DATO_ERRATO",
     "E_SOGGETTO_NOT_FOUND": "NON_TROVATO",
     "E_SOGGETTO_NULL": "DATO_ERRATO",
+    # Un verbo ha ricevuto un soggetto_ruolo_id che non esiste (o che l'operatore non vede). Primo uso: anagrafiche.fn_crea_indirizzi_ruolo, che legge dal ruolo il tipo per la matrice degli indirizzi obbligatori. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 2).
+    "E_SOGGETTO_RUOLO_NON_TROVATO": "NON_TROVATO",
     # RITIRATO il 2026-08-26, lo stesso giorno in cui e' nato (changeSet 20260826-43 -> 20260826-50). Il nome nominava il CLIENTE, e la domanda non e' quella: l'emittente si legge dal documento, che ce l'ha sempre (emittente_fiscale_id NOT NULL su tutte e sei le tabelle sorgente), non dal suo billing account, che su quattro di quelle sei e' nullable. Sostituito da E_SORG_EMITTENTE_NON_RISOLTO. ⛔ NON si cancella, e il tentativo di farlo e' fallito dicendo la cosa giusta: error_log ha una FK verso messaggi_errore e quel codice ERA GIA' STATO SOLLEVATO — cancellarlo vorrebbe dire riscrivere il giornale per far tornare i conti a una rinomina. E' il pattern obsoleto_dal, lo stesso di qualunque voce di catalogo gia' referenziata.
     # ⚠️ RITIRATO il 2026-08-26
     "E_SORG_BA_NON_RISOLTO": "TECNICO",
@@ -1596,6 +1602,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Trigger whitelist tipi indirizzo per ambito documento · (trgfn_tipi_indirizzi_only_allowed, fail-closed): ri-sollevato da · _db_errors del BB col codice originale del RAISE.
     "E_TIPO_INDIRIZZO": "DATO_ERRATO",
     "E_TIPO_INDIRIZZO_NON_PERMESSO": "DATO_ERRATO",
+    # Un indirizzo inviato a un verbo nomina un tipo di indirizzo (per id o per codice interno) che il catalogo config.tipi_indirizzi non ha. DATO_ERRATO e non TECNICO: il tipo arriva dal form, e il campo da accendere e' tipo_indirizzo_codice. Distinto da E_TIPO_INDIRIZZO_NON_PERMESSO (il tipo esiste, ma non e' ammesso per quel ruolo: lo dice il guard della tabella). Primo uso: anagrafiche.fn_crea_indirizzi_ruolo. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 2).
+    "E_TIPO_INDIRIZZO_NON_TROVATO": "DATO_ERRATO",
     # anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo: il tipo di indirizzo non e' fra quelli che config.tipi_soggetto_dettaglio_tipi_indirizzo ammette per il TIPO SOGGETTO DETTAGLIO della riga. ⛔ Codice distinto da E_TIPO_INDIRIZZO_NON_PERMESSO (584) e non un doppione: quello resta del guard sui RUOLI (trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo), che legge un'altra matrice (config.tipi_ruolo_tipi_indirizzo) e ha altri identificativi in mano. I due guard hanno condiviso un codice solo fino al 2026-08-19, e il messaggio era scritto per il ruolo: chi lo incontrava sul layer soggetto leggeva «tipo_ruolo_id» dove c'era un tipo_soggetto_dettaglio_id e veniva mandato a cercare nella tabella sbagliata. Un messaggio plausibile e falso costa piu' di un messaggio assente. Origine: bonifica baseline pgTAP anagrafiche.
     "E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO": "DATO_ERRATO",
     # script.fn_predicato_soggetto_ruolo_visibile (20261010-10), la regola unica della ricerca universale chiamata da lista e dettaglio: il tipo ruolo esiste ma config.tipi_ruoli.ricerca_visibile e' false (oggi emittente fiscale, gestore, risorsa umana, PSP, processo automatico). Decisione di Tid del 2026-10-09 (Q-2): il controllo era solo nel backend (E_SEARCH_VALIDATION), che lo ritira; il menu a tendina continua a leggere la colonna. NON_TROVATO come il fratello E_TIPO_RUOLO_NON_TROVATO: l'id arriva dall'URL, e per la ricerca universale quel ruolo non c'e'; chi lo manda puo' rimediare cambiando richiesta. VARIADIC: la descrizione del ruolo. Brief: brief-db-codici-non-trovato-email-e-permessi (R-6, Q-2).

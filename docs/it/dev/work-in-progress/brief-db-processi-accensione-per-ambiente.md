@@ -1,9 +1,10 @@
 # Brief DB — Quali processi sono accesi: per ambiente, a mano, e quelli che non si spengono
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-17
+## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
 **Riparte: il team DB, col lotto 4 della 2b-1 (il fornitore, §5-ter.2). Lotti 1-3 applicati su dbdev,
-pgTAP verdi (2026-10-17).**
+pgTAP verdi (2026-10-17).** In più, dal 2026-10-18: R-BE-5, il divieto di accendere a mano lo
+smoke in produzione (§6.6).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -24,11 +25,12 @@ pgTAP verdi (2026-10-17).**
 | 9-sexies | Tid | ✅ apply dei lotti 2 e 3 (`-11` … `-17`), pgTAP verdi (2026-10-17) | §5-ter.2 | — |
 | 9-ter | sessione BE | 2b-2: il backend passa ai BB, le sue copie si ritirano | §5-ter.1 | 9 |
 | 9-quater | team DB | 2b-3: etichette, verbo di sviluppo, presidio (R-4) | §5-ter.1 | 9 |
-| 10-bis | Tid | ⏳ **sciogliere la contraddizione su `SMOKE_NOTTURNO_CONSENTITO`**: S-2 (§6.2) dice «si ritira», il §6.5 dice «resta», tutte e due come decisione di Tid del 2026-10-17 | §6.2, §6.5 | — |
-| 10 | sessione BE | con S-2: il valore della tolleranza di `smoke_notturno` in sviluppo (dato: 1560, R-BE-4 al §6.5); il ritiro di `SMOKE_NOTTURNO_CONSENTITO` dal command e dalla unit, **solo se** 10-bis conferma il ritiro | §6.2, §6.5 | 10-bis |
-| 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10 |
+| 10-bis | Tid | ✅ contraddizione su `SMOKE_NOTTURNO_CONSENTITO` sciolta (2026-10-18): il divieto entra nel modello, poi il consenso si ritira | §6.6 | — |
+| 10-ter | team DB | **R-BE-5**: «non accendibile a mano in PRODUZIONE» nel catalogo e nel guard di `processi_accensione`, con un codice d'errore suo; `smoke_notturno` primo a usarlo | §6.6 | 10-bis |
+| 10 | sessione BE | ✅ tolleranza di `smoke_notturno` (1560, R-BE-4, già nel catalogo). Da fare: la nota in `sveglie.json` («Tolleranza NULL…») da riscrivere; il ritiro di `SMOKE_NOTTURNO_CONSENTITO` da command, unit e `sveglie.json`, **dopo** R-BE-5 applicata; il drawer mostra il gesto rifiutato | §6.5, §6.6 | 10-ter |
+| 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10, 10-ter |
 
-Decisioni aperte di Tid: **una**, la 10-bis (`SMOKE_NOTTURNO_CONSENTITO`: resta o si ritira). Da committare: i lotti 1-3 della 2b-1 (`20261017-05` … `-17`, i
+Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). Da committare: i lotti 1-3 della 2b-1 (`20261017-05` … `-17`, i
 codici 1351-1354 nei due CSV, quattro pgTAP, cinque pagine manual), il giro 2a (tre changeSet,
 quattro CSV, un pgTAP, due pagine manual) e questo brief. ⚠️ `codici_errore.csv`,
 `messaggi_errore.csv` e `processi.csv` li tocca anche la sessione del brief del presidio dei job.
@@ -827,8 +829,9 @@ storicizzazione accanto a quella generica, cioè una copia della stessa regola.
 Ricaduta BE con S-1: nessuna sul verbo (stessa firma, stesso ritorno); il drawer, se vuole, legge
 lo storico. Il log applicativo del gesto diventa ridondante.
 
-> ⚠️ **In contraddizione col §6.5** (sessione BE, stessa data: «il consenso resta»), emersa al merge
-> del 2026-10-18. Si scioglie alla riga 10-bis del «Chi riparte».
+> ⚠️ **Superata per la parte del consenso** dal §6.6 (Tid, 2026-10-18): il consenso si ritira, ma
+> **dopo** che il divieto di accensione in produzione è entrato nel modello (R-BE-5). Il §6.5 diceva
+> il contrario alla stessa data: la contraddizione è emersa al merge del 2026-10-18.
 
 **S-2 — lo smoke (§6.0 punto 7).** ✅ **Deciso (Tid, 2026-10-17): proposta accolta**, il consenso
 `SMOKE_NOTTURNO_CONSENTITO` si ritira; il valore della tolleranza lo dà il BE e lo scrive il team DB
@@ -956,9 +959,9 @@ entrino negli unit.
   avrebbe suonato ogni giorno. Con lo stato `SPENTO` quel motivo cade: in produzione lo smoke e'
   spento (default a catalogo), non morto. Senza tolleranza, invece, un giro notturno che smette di
   partire su sviluppo non lo vede nessuno.
-* ⚠️ **In contraddizione con S-2 al §6.2** (team DB, stessa data: «il consenso si ritira»), emersa
-  al merge del 2026-10-18. Si scioglie alla riga 10-bis del «Chi riparte».
-* ✅ **`SMOKE_NOTTURNO_CONSENTITO` resta** come seconda serratura: lo smoke e' spegnibile, quindi in
+* ⚠️ **Superato dal §6.6 (Tid, 2026-10-18).** S-2 al §6.2 diceva il contrario alla stessa data.
+  Il fatto qui sotto resta vero ed è quello che ha deciso: il consenso si ritira, ma dopo R-BE-5.
+* ~~✅ **`SMOKE_NOTTURNO_CONSENTITO` resta** come seconda serratura:~~ lo smoke e' spegnibile, quindi in
   produzione si puo' accendere a mano dal drawer; la riga che manca in `.env.systemd` lo ferma
   comunque. Due serrature indipendenti su un comando che scrive dati di prova.
 
@@ -974,3 +977,43 @@ sovrascriversi.
 Dopo il CSV, lato BE: la nota della voce in `backend/deploy/sveglie.json` («Tolleranza NULL a
 catalogo … nessuno se ne accorge») va riscritta. Nessun codice cambia.
 
+### 6.6 Il consenso dello smoke: la decisione (Tid, 2026-10-18)
+
+**La contraddizione.** Lo stesso giorno (2026-10-17) S-2 (§6.2, team DB) diceva «il consenso
+`SMOKE_NOTTURNO_CONSENTITO` si ritira» e il §6.5 (sessione BE) diceva «resta». È emersa al merge
+del 2026-10-18.
+
+**Avevano ragione tutti e due, ciascuno su una metà.**
+
+* **Il fatto (BE):** in produzione lo smoke è spento di default, ma `fn_imposta_accensione_processo`
+  con `p_acceso = true` lo accende «qualunque cosa dica il default». `smoke_notturno` ha
+  `spegnibile = t`, quindi nessun guard lo ferma: un click e un motivo dal drawer bastano.
+  Oggi a fermarlo è solo la riga che manca in `.env.systemd`. Togliere il consenso adesso aprirebbe
+  la strada a documenti di prova su una base vera (numerazione fiscale compresa, che non torna
+  indietro).
+* **Il principio (DB):** una protezione in un `.env` di una macchina non sta nel modello. Il drawer
+  non la vede, non ha storia né autore, e la si perde in silenzio copiando il file da sviluppo.
+* L'argomento «in produzione `dev.smoke` non esiste» non regge: R-4 non c'è ancora, e uno smoke
+  che si ferma perché mancano gli utenti è una coincidenza, non una regola.
+
+**Il difetto vero è un'asimmetria del modello.** Il catalogo sa dire «questo processo non si può
+**spegnere**» (`spegnibile`). Non sa dire «questo processo non si può **accendere** a mano in
+questo ambiente». Il consenso nel `.env` copre proprio quel concetto che manca: non è un doppione
+del DB.
+
+**Decisione.** Il divieto entra nel modello, e poi il consenso si ritira, in quest'ordine:
+
+1. **R-BE-5 — al team DB.** Il gemello di `spegnibile`: un processo «non accendibile a mano in
+   `PRODUZIONE`». Il guard di `dbops.processi_accensione` rifiuta `acceso = true` per quel processo
+   quando l'ambiente dichiarato è `PRODUZIONE`, con un codice d'errore suo (+ messaggio e ripiego).
+   `smoke_notturno` è il primo a usarlo. Il guard deve valere anche se la riga a mano esiste già
+   (una scelta fatta prima della regola) e, da verificare scrivendo, anche se l'ambiente si
+   dichiara dopo la scelta. Forma (colonna nel catalogo, nome, codice) a scelta del team DB, dentro
+   la regola del 2: si appoggia al guard che c'è già, non ne nasce un secondo.
+2. **Lato BE, dopo l'apply di R-BE-5:** via `SMOKE_NOTTURNO_CONSENTITO` dal command
+   (`smoke_notturno.py`, `ENV_CONSENTITO` e test), dalla unit, da `.env.systemd` di dbdev e dalla nota
+   in `sveglie.json`, nello stesso giro della nota sulla tolleranza (riga 10). Il drawer mostra il
+   gesto come non disponibile, come per i non spegnibili. Codice d'errore nuovo: policy rigenerate
+   e ripiego.
+
+Non è un tampone: il consenso c'è già, e ritirarlo prima del guard aprirebbe il buco che oggi copre.
