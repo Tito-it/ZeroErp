@@ -2,25 +2,19 @@
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-09. **A chi:** team DB.
 > **Origine:** debito emerso lavorando
-> [brief-db-riga-listino-propagata-dalla-commessa](../work-done/brief-db-riga-listino-propagata-dalla-commessa.md)
+> [brief-db-riga-listino-propagata-dalla-commessa](brief-db-riga-listino-propagata-dalla-commessa.md)
 > (§6, D-3). Quel brief fa scrivere `listino_riga_id`; questo dice che cosa la
 > colonna può contenere.
-> **Stato:** 🟡 aperto. La metà «riga di listino ↔ versione, articolo, unità di misura» è
-> **fatta e applicata** il 2026-10-15 (§5); secondo (§6, §7) e terzo giro (§8, la matrice
-> categoria → listino) applicati il 2026-10-16, pgTAP verdi. **Lato DB chiuso**; resta il BE (§9).
+> **Stato:** ✅ **chiuso il 2026-10-17**, archiviato in `work-done/`. La metà «riga di listino ↔
+> versione, articolo, unità di misura» è stata applicata il 2026-10-15 (§5). Il secondo giro (§6, §7) e
+> il terzo (§8, la matrice categoria → listino) sono stati applicati il 2026-10-16, pgTAP verdi. Il BE
+> (§9.1) è fatto il 2026-10-16. Nessun residuo (§10).
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-16
+## ⏭️ Chi riparte
 
-**Riparte: Tid, con l'archiviazione.** Lato DB chiuso (tre giri applicati su dbdev, pgTAP verdi); ✅ i due passi BE del §9 fatti il 2026-10-16 (§9.1), da committare.
-
-| # | Chi | Che cosa | Dove | Aspetta |
-| --- | --- | --- | --- | --- |
-| 1 | ✅ BE | Rigenerato `error_policies_generated.py`: i sette codici, più i loro ripieghi | §9.1 | — |
-| 2 | ✅ BE | Fixture di `test_prezzo_riga_commessa_db` sul builder `dbops.fn_pgtap_crea_commessa_attivita`, tolta la copia della chiamata alla madre | §9.1 | — |
-| 3 | **Tid** | Archiviazione in `work-done/` | — | 1, 2 |
-
-**Decisioni aperte di Tid: nessuna.** Prese: D-1 (2026-10-15); D-2…D-4 e D-5 = opzione B sulla matrice (2026-10-16).
-✅ **Committato** su `dev/db-tid` il 2026-10-16: i tre giri (§5, §7, §8) e questo documento. ✅ **Committato** su `dev/backend-tid` il 2026-10-16: il giro BE del §9.1. Niente da committare.
+**Nessuno: il brief è chiuso.** Commit: `1aae0c568` (DB, i tre giri) e `843166c88` (BE, §9.1), tutti e
+due su `Tito-dev`. Decisioni prese: D-1 (2026-10-15); D-2…D-4 e D-5 = opzione B sulla matrice (2026-10-16).
+Il §3.B è chiuso al §10.
 
 ## 1. Il problema
 
@@ -193,6 +187,7 @@ che la commessa non può usare (D-3). Vanno solo fatte.
   esempio un'anteprima mentre si scrive il listino, e con il suo caso d'uso scritto.
 * **B del §3** (guard dei listini in `SECURITY DEFINER`): resta difesa in profondità. Con D-3
   diventa superflua per la cecità del §2, ma non la contraddice. Si valuta scrivendo.
+  → Non fatta: vedi §10.
 
 ## 7. Secondo giro — scritto il 2026-10-16
 
@@ -363,3 +358,17 @@ Testo da passare al BE così com'è:
   (fatto datato); lo prova la pgTAP nuova.
 * **Fixture**: `test_prezzo_riga_commessa_db` scrive la riga col builder (articolo e versione dal
   chiamante); la copia della chiamata alla madre è tolta. 5/5 verdi.
+
+## 10. Archiviazione (2026-10-17)
+
+* **§3.B non fatta, senza debito.** `vendite.trgfn_listini_righe_guard_stato` resta
+  `SECURITY INVOKER` (doc auto-generata, 2026-10-17). La cecità del §2 nasceva da una riga di
+  commessa che cita il listino di un altro emittente: D-3 (§7) la rifiuta sulla tabella, per ogni
+  percorso, quindi chi vede il listino vede anche ogni commessa che lo cita. B servirebbe solo
+  come difesa in più. Non si apre un brief: se un giorno la regola di D-3 si allenta, B torna
+  necessaria e va rivista lì.
+* **Opzione «anche bozza» del risolutore** (§6, D-4): non è un residuo. Per decisione nasce col
+  primo chiamante che la chiede, insieme al suo caso d'uso.
+* **Seguito**: dire **quando** si scrive `listino_riga_id` (la provenienza che segue il prezzo dal
+  documento) sta in `brief-db-provenienza-prezzo-segue-il-prezzo`, che è ancora in WIP. Lì il guard
+  di questo brief è il candidato da montare anche sulle righe di documento.

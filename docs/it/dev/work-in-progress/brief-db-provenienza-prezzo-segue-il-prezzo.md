@@ -69,7 +69,7 @@ versione precedente risulta «diverso» pur essendo venuto dal listino.
 
 ## 4. Rapporto con gli altri brief
 
-* [brief-db-coerenza-listino-della-riga-di-commessa](brief-db-coerenza-listino-della-riga-di-commessa.md)
+* [brief-db-coerenza-listino-della-riga-di-commessa](../work-done/brief-db-coerenza-listino-della-riga-di-commessa.md) (chiuso il 2026-10-17)
   dice che cosa la colonna `listino_riga_id` **può** contenere (stessa versione,
   stesso emittente, versione in vigore). Questo dice **quando** si scrive. Il guard
   di quel brief va montato anche sulle righe di documento di R-1: la stessa regola,

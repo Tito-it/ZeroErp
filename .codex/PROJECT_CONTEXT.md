@@ -225,8 +225,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `utente_autenticato`/`utente_autenticato_id`. Trovati e corretti difetti veri (fra cui i 500 di riallinea/sblocca
   prezzo e l'alert scadenze listini sempre in 400). Chiuso il 2026-10-09
   `work-done/brief-db-riga-listino-propagata-dalla-commessa` (la riga di listino che ha dato il prezzo a una
-  commessa è «propagata», e la regola ha una sede sola, il guard DB; il seguito D-3 in
-  `brief-db-coerenza-listino-della-riga-di-commessa`, il ritiro di `E_VENDITE_RIGA_GIA_PROPAGATA`, chiuso, in
+  commessa è «propagata», e la regola ha una sede sola, il guard DB; il seguito D-3, chiuso il 2026-10-17, in
+  `work-done/brief-db-coerenza-listino-della-riga-di-commessa`, il ritiro di `E_VENDITE_RIGA_GIA_PROPAGATA`, chiuso, in
   `work-done/brief-db-ritiro-codice-riga-gia-propagata`; e — decisione B di Tid, 2026-10-09 — la riga di listino si cita solo
   se il prezzo viene davvero da lì: il push non la scrive più, la provenienza dovrà viaggiare col prezzo dal
   documento, `brief-db-provenienza-prezzo-segue-il-prezzo`, BE in attesa). Chiuso il 2026-10-09
