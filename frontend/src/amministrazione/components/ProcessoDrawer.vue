@@ -120,6 +120,22 @@ const dialogAccensione = computed({
   set: (aperto) => { if (!aperto) gestoAccensione.value = undefined },
 })
 
+// Scopo: «Accendi» è spento? Il motivo dal backend (la terna `can_accendere*`,
+//        dal predicato del guard del DB: R-BE-5, in PRODUZIONE un processo non
+//        accendibile si spegne e torna al default, ma non si accende a mano).
+// ⛔ Non si guarda `ambiente` né il catalogo per deciderlo: la regola è del
+//    database, e qui si MOSTRA.
+function accendiBloccato(a) {
+  return bloccoAttivo(a, 'can_accendere', 'can_accendere')
+}
+
+// Scopo: il tooltip di «Accendi»: il MOTIVO se spento, cosa fa se acceso.
+function accendiTooltip(a) {
+  return accendiBloccato(a)
+    ? motivoBloccoRiga(t, te, a, 'can_accendere')
+    : t('amministrazione.processi.accendi_spiegazione')
+}
+
 // Scopo: la chiave i18n del gesto in corso, per titolo e pulsante del dialog.
 function chiaveGesto(gesto) {
   if (gesto === true) return 'accendi'
@@ -139,6 +155,16 @@ function etichettaAmbiente(ambiente) {
 //        (motivo, quando, chi), default dell'ambiente, ambiente non dichiarato.
 function provenienzaAccensione(a) {
   if (a.spegnibile === false) return t('amministrazione.processi.accensione_mai_spento')
+  // ⭐ Una scelta «accendi» che il divieto di produzione non ammette resta
+  //    scritta ma non vale (R-BE-5): lo dice il backend (`ammessa`), qui si
+  //    mostra. Senza, «Spento» e «Scelta a mano» si contraddirebbero.
+  if (a.scelta_a_mano && a.scelta_a_mano.ammessa === false) {
+    return t('amministrazione.processi.accensione_a_mano_non_ammessa', {
+      motivo: a.scelta_a_mano.motivo,
+      quando: displayTimestamp(a.scelta_a_mano.data),
+      chi: a.scelta_a_mano.utente || '—',
+    })
+  }
   if (a.scelta_a_mano) {
     return t('amministrazione.processi.accensione_a_mano', {
       motivo: a.scelta_a_mano.motivo,
@@ -411,13 +437,22 @@ async function eseguiOra(sveglia) {
               size="small" outlined severity="danger"
               @click="gestoAccensione = false"
             />
-            <Button
+            <!-- ⚠️ Il tooltip sta sull'INVOLUCRO: un `<button disabled>` non
+                 emette eventi del mouse, e a pulsante spento è proprio quando
+                 il motivo serve (come «Esegui ora»). -->
+            <span
               v-if="accensione.acceso !== true"
-              :label="t('amministrazione.processi.accendi')"
-              :icon="MANAGE_ICONS.RIATTIVA"
-              size="small" outlined
-              @click="gestoAccensione = true"
-            />
+              class="app-action-tooltip-wrap"
+              v-tooltip.top="accendiTooltip(accensione)"
+            >
+              <Button
+                :label="t('amministrazione.processi.accendi')"
+                :icon="MANAGE_ICONS.RIATTIVA"
+                size="small" outlined
+                :disabled="accendiBloccato(accensione)"
+                @click="gestoAccensione = true"
+              />
+            </span>
             <Button
               v-if="accensione.scelta_a_mano"
               :label="t('amministrazione.processi.torna_al_default')"

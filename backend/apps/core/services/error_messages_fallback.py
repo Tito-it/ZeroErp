@@ -1052,6 +1052,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "Il comando della sveglia non e' finito entro il tempo massimo: e' troppo "
         "lungo per «Esegui ora» ed e' stato interrotto."
     ),
+    "E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE": (
+        "Questo processo automatico non si puo' accendere a mano in un'installazione di produzione."
+    ),
     "E_PROCESSO_NON_ELEGGIBILE_UTENTE_TECNICO": (
         "Questo processo non puo' avere un utente tecnico: ne serve uno solo ai "
         "processi che fanno il lavoro di un'azienda senza che nessuno li avvii."

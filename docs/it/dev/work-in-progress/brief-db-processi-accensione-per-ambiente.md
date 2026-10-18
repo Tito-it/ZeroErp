@@ -2,9 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: la sessione BE, con la riga 10 (R-BE-5 applicato su dbdev il 2026-10-18, pgTAP senza
-regressioni: codice nuovo, capability del drawer, ritiro di `SMOKE_NOTTURNO_CONSENTITO`, §6.7.3). In
-parallelo il team DB, col lotto 4 della 2b-1 (il fornitore, §5-ter.2).**
+**Riparte: il team DB, col lotto 4 della 2b-1 (il fornitore, §5-ter.2).** ✅ La riga 10 del BE è fatta
+(2026-10-18, §6.8), e il consenso è tolto anche da `.env.systemd`: l'accensione è chiusa, resta il giro 2b (R-4).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -28,7 +27,8 @@ parallelo il team DB, col lotto 4 della 2b-1 (il fornitore, §5-ter.2).**
 | 10-bis | Tid | ✅ contraddizione su `SMOKE_NOTTURNO_CONSENTITO` sciolta (2026-10-18): il divieto entra nel modello, poi il consenso si ritira | §6.6 | — |
 | 10-ter | team DB | ✅ **R-BE-5** scritto e provato sullo scratch (2026-10-18): `accendibile_in_produzione` nel catalogo, il predicato, la regola e il guard, `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE` (1355) | §6.7 | — |
 | 10-quater | Tid | ✅ apply di R-BE-5 (`20261018-10` … `-14`) su dbdev, pgTAP senza regressioni (2026-10-18) | §6.7.4 | — |
-| 10 | sessione BE | ✅ tolleranza di `smoke_notturno` (1560, R-BE-4, già nel catalogo). Da fare: la nota in `sveglie.json` («Tolleranza NULL…») da riscrivere; il ritiro di `SMOKE_NOTTURNO_CONSENTITO` da command, unit e `sveglie.json`, **dopo** R-BE-5 applicata; il drawer mostra il gesto rifiutato; codice nuovo e capability (§6.7.3) | §6.5, §6.6, §6.7.3 | 10-quater |
+| 10 | sessione BE | ✅ (2026-10-18) codice nuovo e ripiego, capability di «Accendi» dal predicato del guard, consenso ritirato da command, test, unit e `sveglie.json`, nota della tolleranza riscritta | §6.8 | — |
+| 10-bis-env | Tid | ✅ tolta la riga `SMOKE_NOTTURNO_CONSENTITO` da `backend/.env.systemd` di backend-dev (2026-10-18) | §6.8 | — |
 | 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10, 10-quater |
 
 Decisioni aperte di Tid: nessuna (la 10-bis è presa il 2026-10-18, §6.6). Da committare: R-BE-5 (§6.7:
@@ -1104,4 +1104,30 @@ rifiutata) + le due righe dei codici, in una transazione annullata, come `zeroer
 non ancora applicato): il mirror carica le due colonne insieme, quindi i due giri si applicano
 **insieme**. Poi i pgTAP: `dbops/test-processi-accensione-v1`,
 `dbops/test-processi-accensione-produzione-v1` (owner), e i 13 file adeguati.
+
+### 6.8 Riga 10 fatta (sessione BE, 2026-10-18)
+
+* **Codice nuovo:** `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE` in `error_policies_generated.py`
+  (NON_ESEGUIBILE, nessuna classe cambiata) e il ripiego, senza `%s`, in `error_messages_fallback.py`.
+* **La capability di «Accendi».** `ProcessiRepository.accensione_processo` legge
+  `dbops.fn_accensione_a_mano_ammessa_su_valori(true, p.accendibile_in_produzione,
+  script.fn_ambiente_dichiarato())`; `_con_capability_accensione` ne fa la terna `can_accendere`,
+  `_reason`, `_reason_key` (`false` → `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE`, `NULL` →
+  `E_CONFIG_MANCANTE`), e il dato grezzo non arriva al client. «Spegni» e «Torna al default» restano
+  sotto `can_imposta_accensione`. Il drawer mostra «Accendi» spento col motivo nel tooltip
+  (`bloccoAttivo`/`motivoBloccoRiga`, come «Esegui ora»; chiavi `accendi_blocco.*`).
+* **Consenso ritirato:** `ENV_CONSENTITO` e il suo rifiuto via dal command `smoke_notturno`, il test
+  3 ritirato, il test 8 prova il passaggio dell'ambiente con una variabile qualsiasi; commenti della
+  unit e nota di `sveglie.json` riscritti (divieto a catalogo, tolleranza 1560, la spia finché un
+  giro non torna verde).
+* **Test:** `test_processi_accensione` 6 (la terna dai cinque casi), `test_processi_accensione_db` 5
+  (binding del predicato sul DB vero, smoke notturno e coda stampa). Corretto anche il test 1 dello
+  stesso file, rosso dal giro 2a: «torna al default» ora vuole il motivo.
+* **La scelta «accendi» non ammessa** (revisione del 2026-10-18): una riga accesa a mano scritta
+  prima del divieto, o prima che l'ambiente fosse dichiarato, resta nella tabella ma la regola la
+  ignora (§6.6). Il drawer avrebbe mostrato «Spento» sopra «Scelta a mano: …». Ora la scelta viaggia
+  con `ammessa` (la risposta dello stesso predicato; una scelta che non accende è sempre ammessa) e
+  il drawer dice «Scelta a mano non applicata … "Torna al default" la toglie». Test 7 del service.
+* ⚠️ Il ramo PRODUZIONE sul DB vero non si prova dal backend (l'ambiente è immutabile e la CI è
+  SVILUPPO): lo prova il pgTAP sui valori; qui la terna è provata coi tre valori del predicato.
 
