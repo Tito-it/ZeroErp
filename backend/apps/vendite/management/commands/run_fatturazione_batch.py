@@ -32,7 +32,11 @@ from django.core.management.base import CommandError
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.management.comando_aziendale import ComandoAziendale
 
-from apps.core.services.job_run import ORIGINE_CRON, registered_job
+from apps.core.services.job_run import (
+    ORIGINE_CRON,
+    chiudi_se_elementi_non_completati,
+    registered_job,
+)
 from apps.core.services.processi import PROCESSO_RUN_FATTURAZIONE_BATCH
 from apps.vendite.services.fatturazione_driver_service import modalita_disponibili
 from apps.vendite.services.fatturazione_produttore_service import (
@@ -110,6 +114,12 @@ class Command(ComandoAziendale):
             self._print_summary(summary)
             job.set_meta(summary)
             job.set_rows_affected(summary["accodati"])
+            # ⭐ Un'azienda non accodata non lascia una riga in coda: senza
+            #    questo il giro chiuderebbe verde avendola persa (D9).
+            chiudi_se_elementi_non_completati(
+                job, [f["emittente_codice"] for f in summary["falliti"]],
+                cosa="aziende non accodate",
+            )
 
     # Scopo: log per azienda: quale lavoro è stato accodato, o perché no.
     def _print_emittente(self, badge, job_id, errore) -> None:

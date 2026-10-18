@@ -360,6 +360,33 @@ WSGI_APPLICATION = 'zeroerp_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# ⭐ TETTI DI RETE di OGNI connessione del backend al database (2026-10-17).
+#    Senza, una connessione caduta a meta' (la rete via Tailscale che si
+#    interrompe) tiene il processo in attesa PER SEMPRE: il 2026-10-16 alle
+#    23:45 due sveglie (`draina_coda_lavori`, `send_pending_emails`) sono
+#    rimaste «in avvio» oltre un'ora, col TCP aperto e nessuna sessione nel DB,
+#    e il panorama le ha dette ferme. Con i tetti la connessione morta diventa
+#    un ERRORE in secondi, che la sveglia scrive e la successiva ritenta.
+#     - `connect_timeout` (s): quanto puo' durare l'apertura;
+#     - `tcp_user_timeout` (ms): quanto un dato scritto puo' restare senza
+#       riscontro TCP;
+#     - `keepalives*`: la sonda TCP su una connessione ferma (in attesa di una
+#       risposta, o a riposo nel pool di CONN_MAX_AGE).
+#    ⚠️ Non tagliano le query lunghe: scattano solo quando dall'altra parte non
+#       risponde piu' nemmeno il TCP, non quando il DB lavora.
+#    ⭐ SEDE UNICA (regola del 2, ok Tid 2026-10-17): li legge `DATABASES`
+#       qui sotto E il listener dei permessi, che apre una connessione sua
+#       (`notify_listener._get_conninfo`). Fino a quel giorno il listener aveva
+#       due costanti proprie con gli stessi valori.
+DB_TETTI_DI_RETE: dict[str, int] = {
+    "connect_timeout": 10,
+    "tcp_user_timeout": 30_000,
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 3,
+}
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -369,7 +396,9 @@ DATABASES = {
         "HOST": env("DB_HOST", "127.0.0.1"),
         "PORT": env("DB_PORT", "5432"),
         "OPTIONS": {
-            "options": "-c search_path=django,public,config,dbops,script,anagrafiche"
+            "options": "-c search_path=django,public,config,dbops,script,anagrafiche",
+            # I tetti di rete: vedi `DB_TETTI_DI_RETE` qui sopra.
+            **DB_TETTI_DI_RETE,
         },
         "CONN_MAX_AGE": int(env("CONN_MAX_AGE", "600")),
     }

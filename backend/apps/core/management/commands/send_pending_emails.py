@@ -34,7 +34,11 @@ from apps.core.db.email_repository import EmailRepository
 from apps.core.db.processi_repository import ProcessiRepository
 from apps.core.services.coda_lavori.context import operator_identity_context
 from apps.core.services.email_service import EmailDispatchService
-from apps.core.services.job_run import ORIGINE_CRON, registered_job
+from apps.core.services.job_run import (
+    ORIGINE_CRON,
+    chiudi_se_elementi_non_completati,
+    registered_job,
+)
 from apps.core.services.processi import PROCESSO_SEND_PENDING_EMAILS
 
 logger = logging.getLogger("zeroerp.email")
@@ -95,6 +99,13 @@ class Command(ComandoAziendale):
             esito = self._esegui(options)
             job.set_meta(esito)
             job.set_rows_affected(esito.get("processate", 0))
+            # ⭐ Un badge fallito non lascia righe in `config.email_log`: le sue
+            #    email restano in coda senza che nessuno le abbia provate. Le
+            #    email fallite una per una no, quelle le vede il loro presidio (D9).
+            chiudi_se_elementi_non_completati(
+                job, [b["emittente_codice"] for b in esito.get("badge_falliti", [])],
+                cosa="aziende con il giro delle email non eseguito",
+            )
 
     # Scopo: Il giro completo — un'azienda alla volta, ciascuna con l'identita'
     #        del proprio utente tecnico. Ritorna il riepilogo aggregato.

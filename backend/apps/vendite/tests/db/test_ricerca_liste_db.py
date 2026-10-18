@@ -56,7 +56,6 @@ _COMPETENZA = date(2083, 2, 1)
 # vincolo UNIQUE globale.
 _FIXTURE: tuple[str, ...] = (
     "CREATE TEMP TABLE _mondo AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('ricerca liste vendite')",
-    "CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('RVART-' || %(sfx)s, false) AS articolo_id",
     """
     CREATE TEMP TABLE _refs AS
     SELECT (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
@@ -71,13 +70,16 @@ _FIXTURE: tuple[str, ...] = (
              WHERE s.codice_interno = 'PREVENTIVO' ORDER BY s.id LIMIT 1) AS src_preventivo_id
     """,
     # ── Listino e riga ─────────────────────────────────────────────────────
-    # ⚠️ L'articolo prende la TIPOLOGIA del listino: il guard
-    #    `trgfn_listini_righe_guard_tipologia` rifiuta un articolo senza.
+    # ⚠️ L'articolo nasce della TIPOLOGIA del listino: il guard
+    #    `trgfn_listini_righe_guard_tipologia` rifiuta un articolo senza, e su
+    #    un articolo usato la tipologia non cambia piu' (guard A-10). Per
+    #    questo il listino nasce prima dell'articolo.
     "CREATE TEMP TABLE _lst AS SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _mondo), 'ricerca')",
+    "CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('RVART-' || %(sfx)s, false,"
+    " p_listino_tipologia_id => (SELECT tipologia_id FROM _lst)) AS articolo_id",
     """
     UPDATE catalogo.articoli
-       SET descrizione = 'Articolo ricdescart',
-           listino_tipologia_id = (SELECT tipologia_id FROM _lst)
+       SET descrizione = 'Articolo ricdescart'
      WHERE id = (SELECT articolo_id FROM _art)
     """,
     """

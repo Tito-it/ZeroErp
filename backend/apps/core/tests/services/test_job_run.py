@@ -13,22 +13,36 @@
 #   7) ambiente assente → valgono gli argomenti (i sei command non cambiano)
 #   8) ⛔ origine ignota nell'ambiente → solleva PRIMA di aprire il run
 #   9) ⛔ id non numerico, vuoto o <= 0 → solleva, nessun attore di ripiego
+#  10) ⭐ errore del database → SQLSTATE al nono argomento di fn_job_run_end
+#  11) ⭐ P0001 del database → error_code e' il codice E_, non InternalError
+#  12) ⭐ ServiceError tradotto da un errore DB → codice del backend + SQLSTATE
+#      dal fondo della catena
+#  13) errore non del database (o solo per __context__) → SQLSTATE NULL
+#  14) errore del driver senza SQLSTATE (lato client) → nessuno SQLSTATE inventato
+#  15) chiudi_se_elementi_non_completati: nessun elemento → niente
+#  16) ⭐ elementi falliti → messaggio della corsa, ServiceError col codice D9
+#  17) dentro registered_job → corsa rossa con E_JOB_ELEMENTI_NON_COMPLETATI e meta
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 import json
 import os
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError
 
 from apps.core.services.job_run import (
+    E_JOB_ELEMENTI_NON_COMPLETATI,
     ENV_JOB_AUTH_USER_ID,
+    JobRunHandle,
+    chiudi_se_elementi_non_completati,
     ENV_JOB_ORIGINE,
     ORIGINE_COMMAND,
     ORIGINE_CRON,
+    esito_errore,
     registered_job,
 )
 from apps.core.services.service_errors import ServiceError
@@ -217,3 +231,131 @@ class RegisteredJobAmbienteTests(TestCase):
                         with registered_job("job:x", processo_codice=_PROCESSO):
                             self.fail("il corpo non deve partire")
                 cursor.execute.assert_not_called()
+
+
+# Scopo: un errore del DRIVER finto, con la forma che psycopg 3 espone:
+#        `sqlstate` e `diag.constraint_name`.
+class _ErroreDriver(Exception):
+    def __init__(self, sqlstate: str | None, constraint_name: str | None = None) -> None:
+        super().__init__(f"driver {sqlstate}")
+        self.sqlstate = sqlstate
+        self.diag = SimpleNamespace(constraint_name=constraint_name)
+
+
+# Scopo: un errore Django che avvolge quello del driver, come fa
+#        `DatabaseErrorWrapper` (`raise dj_exc from driver_exc`).
+def _errore_django(driver: BaseException) -> DatabaseError:
+    try:
+        raise DatabaseError(str(driver)) from driver
+    except DatabaseError as exc:
+        return exc
+
+
+# Scopo: i parametri con cui e' stata chiamata `fn_job_run_end`.
+def _params_end(cursor):
+    call = next(c for c in cursor.execute.call_args_list if "fn_job_run_end" in c.args[0])
+    return call.args[1]
+
+
+class RegisteredJobErroreDbTests(TestCase):
+    """brief-db-presidio-job-run-a-chi-tocca §4.2: SQLSTATE e codice E_."""
+
+    def _corsa_che_solleva(self, exc: BaseException):
+        conn, cursor = _mock_connection(start_row=(5, "uuid-5", True))
+        with patch(_CONN, conn):
+            with self.assertRaises(type(exc)):
+                with registered_job("job:x", processo_codice=_PROCESSO):
+                    raise exc
+        return _params_end(cursor)
+
+    # 10. ⭐ Un disco pieno dentro un command: lo SQLSTATE arriva al nono
+    #     argomento, ed e' quello che la vista legge per dire AMBIENTE.
+    def test_errore_db_passa_lo_sqlstate(self):
+        params = self._corsa_che_solleva(_errore_django(_ErroreDriver("53100")))
+        self.assertEqual(len(params), 9)
+        self.assertEqual(params[8], "53100")
+        self.assertEqual(params[4], "DatabaseError")
+
+    # 11. ⭐ Un errore di dominio sollevato dal database: il codice E_ va in
+    #     error_code, cosi' config.codici_errore ne vede la causa.
+    def test_p0001_scrive_il_codice_di_dominio(self):
+        driver = _ErroreDriver("P0001", constraint_name="E_STATISTICHE_MANCANTI")
+        params = self._corsa_che_solleva(_errore_django(driver))
+        self.assertEqual(params[4], "E_STATISTICHE_MANCANTI")
+        self.assertEqual(params[8], "P0001")
+
+    # 12. ⭐ La strada piu' comune: un service traduce l'errore DB in un
+    #     ServiceError. Il codice resta quello del backend; lo SQLSTATE si
+    #     prende dal fondo della catena, non si perde al primo anello.
+    def test_service_error_tradotto_tiene_lo_sqlstate(self):
+        try:
+            raise ServiceError(code="E_BOOM", message="rotto") from _errore_django(
+                _ErroreDriver("08006"),
+            )
+        except ServiceError as exc:
+            tradotto = exc
+        params = self._corsa_che_solleva(tradotto)
+        self.assertEqual(params[4], "E_BOOM")
+        self.assertEqual(params[8], "08006")
+
+    # 13. Niente database nella catena delle cause ESPLICITE → SQLSTATE NULL.
+    #     ⚠️ Un errore DB solo come `__context__` (nato mentre si gestiva
+    #     l'altro) non e' la causa, e non presta il suo SQLSTATE.
+    def test_errore_non_db_non_ha_sqlstate(self):
+        self.assertEqual(esito_errore(ValueError("x")), ("ValueError", None))
+        try:
+            try:
+                raise _errore_django(_ErroreDriver("53100"))
+            except DatabaseError:
+                raise RuntimeError("altro") from None
+        except RuntimeError as exc:
+            self.assertEqual(esito_errore(exc), ("RuntimeError", None))
+
+    # 14. Un errore del driver lato client (la connessione non si apre) non
+    #     porta SQLSTATE: resta NULL, non se ne inventa uno.
+    def test_errore_lato_client_senza_sqlstate(self):
+        self.assertEqual(
+            esito_errore(_errore_django(_ErroreDriver(None))), ("DatabaseError", None),
+        )
+
+
+class ChiudiSeElementiNonCompletatiTests(TestCase):
+    """D9 di brief-db-presidio-job-run-a-chi-tocca: la corsa che perde elementi
+    senza un registro loro chiude rossa."""
+
+    # 15. Nessun elemento fallito: la corsa resta com'e', niente messaggio.
+    def test_senza_elementi_non_fa_niente(self):
+        job = JobRunHandle(run_id=1, run_uuid="u", acquired=True)
+        chiudi_se_elementi_non_completati(job, [], cosa="aziende non accodate")
+        self.assertIsNone(job.message)
+
+    # 16. ⭐ Elementi falliti: il messaggio della corsa dice quanti (e non
+    #     cancella quello che c'era), il dettaglio li nomina.
+    def test_con_elementi_solleva_col_codice(self):
+        job = JobRunHandle(run_id=1, run_uuid="u", acquired=True)
+        job.set_message("accodati 3")
+        with self.assertRaises(ServiceError) as ctx:
+            chiudi_se_elementi_non_completati(
+                job, ["ACME", "BETA"], cosa="aziende non accodate",
+            )
+        self.assertEqual(ctx.exception.code, E_JOB_ELEMENTI_NON_COMPLETATI)
+        self.assertEqual(job.message, "accodati 3; aziende non accodate: 2")
+        self.assertIn("ACME, BETA", ctx.exception.detail or "")
+
+    # 17. Dentro `registered_job`: corsa chiusa ok=false col codice, e il meta
+    #     scritto prima arriva al giornale insieme al rosso.
+    def test_dentro_la_corsa_chiude_rossa_col_meta(self):
+        conn, cursor = _mock_connection(start_row=(9, "uuid-9", True))
+        with patch(_CONN, conn):
+            with self.assertRaises(ServiceError):
+                with registered_job("job:x", processo_codice=_PROCESSO) as job:
+                    job.set_meta({"falliti": [{"emittente_codice": "ACME"}]})
+                    chiudi_se_elementi_non_completati(
+                        job, ["ACME"], cosa="aziende non accodate",
+                    )
+        params = _params_end(cursor)
+        self.assertIs(params[1], False)
+        self.assertEqual(params[2], "aziende non accodate: 1")
+        self.assertEqual(params[4], E_JOB_ELEMENTI_NON_COMPLETATI)
+        self.assertEqual(json.loads(params[6]), {"falliti": [{"emittente_codice": "ACME"}]})
+        self.assertIsNone(params[8])

@@ -11,7 +11,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-16
 
-**Riparte: Tid, con l'archiviazione.** Lato DB chiuso (tre giri applicati su dbdev, pgTAP verdi); ✅ i due passi BE del §9 fatti il 2026-10-16 (§9.1), da committare.
+**Riparte: Tid, con l'archiviazione.** Lato DB chiuso (tre giri applicati su dbdev, pgTAP verdi); ✅ i due passi BE del §9 fatti e committati il 2026-10-16 (§9.1).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |

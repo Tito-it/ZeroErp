@@ -363,10 +363,10 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
         from apps.catalogo.services import catalogo_service as svc
 
         def _prova(cur, m):
-            def _articolo(sigla: str) -> str:
+            def _articolo(sigla: str, composito: bool = False) -> str:
                 cur.execute(
-                    "SELECT dbops.fn_pgtap_crea_articolo(%s, false)",
-                    [f"BE-DATE-{sigla}-{uuid.uuid4().hex[:8]}"],
+                    "SELECT dbops.fn_pgtap_crea_articolo(%s, false, p_is_composito => %s)",
+                    [f"BE-DATE-{sigla}-{uuid.uuid4().hex[:8]}", composito],
                 )
                 return str(cur.fetchone()[0])
 
@@ -385,7 +385,8 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
             giorno = {"valido_dal": _DAL.isoformat(), "valido_al": _DAL.isoformat()}
 
             # UoM operativa: la riga base che il DB semina alla nascita dell'articolo.
-            padre = _articolo("P")
+            # Il padre della distinta nasce composito: e' struttura (guard A-10).
+            padre = _articolo("P", composito=True)
             cur.execute(
                 "SELECT id FROM catalogo.articoli_uom_operativa WHERE articolo_id = %s",
                 [padre],
@@ -400,10 +401,7 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
             )
             svc.fn_update_uom_operativa(padre, uom_op, {"valido_al": _DAL.isoformat()})
 
-            # Componente di distinta: il padre dev'essere composito.
-            cur.execute(
-                "UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = %s", [padre],
-            )
+            # Componente di distinta: il padre e' nato composito.
             figlio = _articolo("F")
             base_comp = {"componente_id": figlio, "coeff_qta": "1"}
             self._rifiuto_del_periodo(

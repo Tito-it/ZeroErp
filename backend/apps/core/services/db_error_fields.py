@@ -65,8 +65,25 @@ SQLSTATE_RAISE_EXCEPTION = "P0001"
 #        Ritorna None se l'eccezione non viene dall'helper DB (o se il campo e'
 #        vuoto), lasciando decidere al chiamante se ripiegare sul testo.
 def structured_db_error_code(exc: BaseException) -> str | None:
-    cause = getattr(exc, "__cause__", None)
-    sqlstate = getattr(cause, "sqlstate", None) or getattr(cause, "pgcode", None)
+    return codice_strutturato_del_driver(getattr(exc, "__cause__", None))
+
+
+# Scopo: Lo SQLSTATE di un errore del DRIVER (psycopg), o None se l'oggetto non
+#        ne porta uno: non e' un errore del driver, oppure e' un errore lato
+#        client (connessione mai aperta), che uno SQLSTATE non ce l'ha.
+# ⚠️ Riceve l'errore del driver, non quello di Django: e' la lettura che le
+#    funzioni qui sopra fanno sulla `__cause__`, messa in una sede sola per chi
+#    l'errore del driver lo ha gia' in mano (`job_run`, che lo cerca lungo la
+#    catena delle cause).
+def sqlstate_del_driver(err: object) -> str | None:
+    return getattr(err, "sqlstate", None) or getattr(err, "pgcode", None) or None
+
+
+# Scopo: Il codice di dominio dal campo strutturato di un errore del DRIVER: il
+#        contratto «`P0001` + `constraint_name` valorizzato». E' il corpo di
+#        `structured_db_error_code`, che lo chiama sulla `__cause__`.
+def codice_strutturato_del_driver(cause: object) -> str | None:
+    sqlstate = sqlstate_del_driver(cause)
     # ⚠️ Il guard sullo SQLSTATE non e' prudenza, e' necessario: su una
     # violazione di vincolo vera (classe 23xxx) `constraint_name` contiene il
     # nome del vincolo DB (`uq_...`, `fk_...`). Prenderlo per un codice
@@ -208,8 +225,7 @@ class Bersaglio:
 #        d'errore non puo' essere quello che rompe l'errore.
 def structured_db_error_target(exc: BaseException) -> tuple[Bersaglio, ...]:
     cause = getattr(exc, "__cause__", None)
-    sqlstate = getattr(cause, "sqlstate", None) or getattr(cause, "pgcode", None)
-    if sqlstate != SQLSTATE_RAISE_EXCEPTION:
+    if sqlstate_del_driver(cause) != SQLSTATE_RAISE_EXCEPTION:
         return ()
     diag = getattr(cause, "diag", None)
     # `or ""`: come per il codice e per il campo, un valore che nasce da
@@ -322,7 +338,7 @@ def diagnostica_db(exc: BaseException, *, text: str | None = None) -> Diagnostic
     codice_strutturato = structured_db_error_code(exc)
     return DiagnosticaDb(
         testo=testo,
-        sqlstate=getattr(cause, "sqlstate", None) or getattr(cause, "pgcode", None),
+        sqlstate=sqlstate_del_driver(cause),
         codice_strutturato=codice_strutturato,
         codice=codice_strutturato or app_error_code_from_text(testo),
         messaggio=getattr(diag, "message_primary", None) or None,

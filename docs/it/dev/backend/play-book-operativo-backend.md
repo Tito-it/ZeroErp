@@ -466,7 +466,10 @@ riparte col nome nuovo, il panorama dei processi segna `listen_permessi`
 2. la coppia `deploy/systemd/<unit>.{service,timer}` (solo il `.service` se è un
    servizio sempre acceso), con
    `ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__`, **mai** la riga
-   scritta a mano;
+   scritta a mano, l'`ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto <unit>`
+   e, se `oneshot`, un `TimeoutStartSec=<N>min` sotto la tolleranza del processo
+   e sotto l'ora (dal 2026-10-17: senza, una corsa appesa ferma il timer per
+   sempre — lo pretende `test_sveglie` 22);
 3. `sudo backend/bin/install-timers.sh`.
 
 ### 16.3-bis) Togliere o rinominare una sveglia

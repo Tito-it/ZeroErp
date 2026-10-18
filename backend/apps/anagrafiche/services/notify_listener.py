@@ -54,9 +54,11 @@
 #       ritrasmette per ~15 minuti prima di arrendersi, e la `SELECT 1`
 #       resterebbe appesa. Lo taglia `tcp_user_timeout` nella connessione;
 #       `connect_timeout` fa lo stesso per i tentativi di riconnessione.
-#       I keepalive TCP non servono: con la sonda il client scrive comunque
-#       ogni `poll_interval`, e un secondo meccanismo per la stessa domanda
-#       sarebbe una seconda sede.
+#       ⭐ Dal 2026-10-17 i tetti sono quelli di OGNI connessione del backend,
+#       `settings.DB_TETTI_DI_RETE` (regola del 2, ok Tid): prima erano due
+#       costanti di questo modulo, con gli stessi valori. Ci sono anche i
+#       keepalive TCP: qui non decidono niente (la sonda scrive comunque ogni
+#       `poll_interval`), ma la regola della connessione e' una sola.
 #       ⚠️ «Sonda», non «battito»: nel progetto il battito e' un segno di vita
 #       SCRITTO SUL GIORNALE (`job_liveness`, il battito del digest). La sonda
 #       non scrive niente da nessuna parte: chiede solo alla connessione se
@@ -98,11 +100,6 @@ RECONNECT_BASE_DELAY = 1.0
 RECONNECT_MAX_DELAY = 60.0
 # La sonda: istruzione che fa scrivere il client sulla connessione.
 SONDA_SQL = "SELECT 1"
-# Tetti di rete (vedi header): quanto puo' restare senza risposta un dato
-# scritto (millisecondi, parametro libpq) e quanto puo' durare un tentativo
-# di connessione (secondi).
-TCP_USER_TIMEOUT_MS = 30_000
-CONNECT_TIMEOUT_S = 10
 
 
 class PermessiListener:
@@ -126,9 +123,10 @@ class PermessiListener:
     # Scopo: Costruisce i parametri di connessione psycopg3 dai settings Django.
     # ⚠️ `application_name` e' il segno di vita del processo (vedi header): il
     #    database lo legge da `pg_stat_activity` per dire se il listener e' vivo.
-    # ⚠️ `tcp_user_timeout` e `connect_timeout` sono il tetto della sonda
-    #    (vedi header): senza, una connessione mezza morta tiene appeso il
-    #    listener per minuti invece di farlo riconnettere.
+    # ⚠️ `tcp_user_timeout` e `connect_timeout` (in `DB_TETTI_DI_RETE`, la
+    #    sede comune) sono il tetto della sonda (vedi header): senza, una
+    #    connessione mezza morta tiene appeso il listener per minuti invece di
+    #    farlo riconnettere.
     @staticmethod
     def _get_conninfo() -> str:
         db = settings.DATABASES["default"]
@@ -139,8 +137,7 @@ class PermessiListener:
             user=db.get("USER", ""),
             password=db.get("PASSWORD", ""),
             application_name=PROCESSO_LISTEN_PERMESSI,
-            tcp_user_timeout=TCP_USER_TIMEOUT_MS,
-            connect_timeout=CONNECT_TIMEOUT_S,
+            **settings.DB_TETTI_DI_RETE,
         )
 
     # Scopo: Avvia il loop LISTEN/NOTIFY con riconnessione automatica.
