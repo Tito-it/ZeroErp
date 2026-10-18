@@ -116,24 +116,22 @@ SELECT ok(
 -- ============================================================
 -- fixture comune
 -- ============================================================
+-- ⭐ Il cliente si FABBRICA, legato all'emittente dell'operatore di contesto
+--   (rev 2026-10-18). Prima si pescava «il primo billing account con un
+--   emittente»: su un database ricostruito da zero non ce n'e' nessuno, e la
+--   fixture moriva con E_PARAMETRO p_billing_account_id.
+CREATE TEMP TABLE tmp_cliente AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'pgTAP annulla riga commessa', NULL, script.fn_pgtap_emittente_sr_operatore());
+
+SET CONSTRAINTS ALL IMMEDIATE;
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id) FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS emittente_soggetto_ruolo_id,
+  (SELECT billing_account_id FROM tmp_cliente) AS billing_account_id,
+  (SELECT utility_id FROM tmp_cliente) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_cliente) AS istanza_utility_id,
+  (SELECT anagrafiche.fn_get_emittente_fiscale_id(billing_account_id) FROM tmp_cliente) AS emittente_soggetto_ruolo_id,
   (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
   -- Sorgente ROOT: COMMESSA con uid = id della commessa stessa (la riga esiste
   -- per costruzione). fn_emit esige una ROOT sulla commessa, non ne dereferenzia

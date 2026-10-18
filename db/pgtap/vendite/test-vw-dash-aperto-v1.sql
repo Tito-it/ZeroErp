@@ -76,27 +76,33 @@ SELECT plan(14);
 -- ============================================================
 -- 0) Riferimenti minimi
 -- ============================================================
+-- ⭐ Il mondo si FABBRICA (rev 2026-10-18): emittente A col suo operatore,
+--   emittente B, e un cliente per ciascuno, legato al suo emittente. Prima si
+--   pescavano «il primo BA con un emittente derivabile» e «un BA di un altro
+--   emittente»: su un database ricostruito da zero non ce n'e' nessuno, la
+--   fixture moriva su «Nessun emittente fiscale attivo» e il 13 andava in skip.
+--   ⚠️ Nessun contesto operatore aperto qui: i builder lavorano da owner, come
+--   il resto della fixture (guard emittente in modalita' batch).
+CREATE TEMP TABLE tmp_ap_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+CREATE TEMP TABLE tmp_ap_cli_a AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'pgTAP dash aperto A', NULL, (SELECT soggetto_ruolo_id FROM tmp_ap_mondo));
+
+CREATE TEMP TABLE tmp_ap_ef_b AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente();
+
+CREATE TEMP TABLE tmp_ap_cli_b AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'pgTAP dash aperto B', NULL, (SELECT soggetto_ruolo_id FROM tmp_ap_ef_b));
+
 CREATE TEMP TABLE tmp_ap_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL
-      -- dal lavoro emittente (2026-07-13) i guard emittente<->BA pretendono
-      -- coerenza: il BA deve avere un emittente derivabile
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id,
+  (SELECT billing_account_id FROM tmp_ap_cli_a) AS billing_account_id,
+  (SELECT utility_id FROM tmp_ap_cli_a) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_ap_cli_a) AS istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo('PGT-DASH-AP') AS articolo_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS prev_accettato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
@@ -118,37 +124,20 @@ SELECT
     ORDER BY sc.id LIMIT 1) AS stato_commessa_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   -- Emittente A = quello DERIVABILE dal BA principale (fn_get_emittente_fiscale_pk
-  -- e' la funzione con cui i guard emittente<->BA confrontano): un emittente
-  -- scelto a caso non passerebbe piu' i guard del 2026-07-13.
-  (SELECT anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS emittente_fiscale_id,
+  -- e' la funzione con cui i guard emittente<->BA confrontano).
+  (SELECT anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id) FROM tmp_ap_cli_a) AS emittente_fiscale_id,
   (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.id = (SELECT anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
-                     FROM anagrafiche.billing_account ba
-                    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-                      AND ba.soggetto_ruolo_id IS NOT NULL
-                      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-                    ORDER BY ba.id LIMIT 1)) AS ef_a_sr;
+    WHERE ef.id = (SELECT anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id)
+                     FROM tmp_ap_cli_a)) AS ef_a_sr;
 
--- Emittente B: serve un SECONDO BA il cui emittente derivabile sia diverso da
--- quello di A (il guard vieta un emittente non coerente col BA: non basta piu'
--- "il secondo EF della tabella"). Se non esiste, il test 13 fa skip come prima.
+-- Emittente B: il SECONDO BA, fabbricato sull'emittente B (il guard vieta un
+-- emittente non coerente col BA: serve un BA suo, non «il secondo EF»).
 CREATE TEMP TABLE tmp_ap_refs_b AS
-SELECT ba.id                                        AS ba_b_id,
-       ba.utility_id                                AS ba_b_utility_id,
-       ba.istanza_utility_id                        AS ba_b_istanza_id,
-       anagrafiche.fn_get_emittente_fiscale_pk(ba.id) AS ef_b_id
-  FROM anagrafiche.billing_account ba
- WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-   AND ba.soggetto_ruolo_id IS NOT NULL
-   AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id) IS NOT NULL
-   AND anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
-       IS DISTINCT FROM (SELECT emittente_fiscale_id FROM tmp_ap_refs)
- ORDER BY ba.id LIMIT 1;
+SELECT c.billing_account_id                                       AS ba_b_id,
+       c.utility_id                                               AS ba_b_utility_id,
+       c.istanza_utility_id                                       AS ba_b_istanza_id,
+       anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id) AS ef_b_id
+  FROM tmp_ap_cli_b c;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND articolo_id IS NOT NULL
@@ -319,18 +308,20 @@ FROM tmp_ap_refs r;
 -- ============================================================
 -- 4) Setup scope: operatore OPERATORE non-super whitelistato su A.
 -- ============================================================
+-- L'operatore e' quello fabbricato con l'emittente A (rev 2026-10-18): un
+-- operatore OPERATORE non super, che prima si pescava fra quelli esistenti.
 CREATE TEMP TABLE tmp_ap_op AS
 SELECT id.auth_user_id AS user_id
   FROM anagrafiche.identita_digitali id
- WHERE id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+ WHERE id.auth_user_id = (SELECT auth_user_id FROM tmp_ap_mondo)
+   AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
    AND id.attivo = true
    AND NOT EXISTS (
        SELECT 1 FROM config.profili_accesso_bindings pab
        JOIN config.profili_accesso pa ON pa.id = pab.profilo_accesso_id
        WHERE pab.identita_digitale_id = id.id
          AND pab.attivo = true
-         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso)
- ORDER BY id.id LIMIT 1;
+         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso);
 
 SELECT ok(
   (SELECT user_id IS NOT NULL FROM tmp_ap_op),

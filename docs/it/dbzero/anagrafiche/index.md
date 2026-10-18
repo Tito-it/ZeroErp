@@ -38,6 +38,7 @@
 - [vettori](tabelle/vettori.md) — (rev 2026-08-21)
 
 ## ⚙️ Funzioni
+- [fn_accendi_veste](funzioni/fn_accendi_veste.md)
 - [fn_annulla_movimento_titolo_iva](funzioni/fn_annulla_movimento_titolo_iva.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
 - [fn_ba_ha_storia_emittente](funzioni/fn_ba_ha_storia_emittente.md) — (latest review 31-08-2026)
 - [fn_build_indirizzo_normalizzato](funzioni/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). Il backend Python la usa per check duplicato via GIN index.
@@ -80,6 +81,7 @@
 - [fn_guard_istanza_ha_ba](funzioni/fn_guard_istanza_ha_ba.md) — (latest review 08-10-26)
 - [fn_lookup_utilities_per_ba](funzioni/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
 - [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
+- [fn_provisiona_dati_di_sviluppo](funzioni/fn_provisiona_dati_di_sviluppo.md)
 - [fn_scrivi_dati_societari](funzioni/fn_scrivi_dati_societari.md)
 - [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
 - [fn_sync_auth_user_expired](funzioni/fn_sync_auth_user_expired.md) — (latest review 18-04-2026)

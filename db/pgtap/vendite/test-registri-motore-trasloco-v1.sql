@@ -71,49 +71,23 @@ SELECT 'pgtap_motore_trasloco'::text AS test_scope,
        2101::smallint AS anno_a,
        2102::smallint AS anno_b;
 
--- ⚠️ `codice_interno = 'EF'` e non `codice`: quest'ultimo e' modificabile
---   dall'utente e un confronto logico su di esso si sgancia al primo rename.
--- ⚠️ La natura del soggetto non e' libera: senza il join su
---   config.tipi_ruoli_nature_ammesse la fixture morirebbe su un errore di
---   dominio che sembrerebbe un difetto del cantiere.
-CREATE TEMP TABLE tmp_mot_sogg AS
-SELECT s.id, row_number() OVER (ORDER BY s.id) AS n
-  FROM anagrafiche.soggetti s
-  JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
-  JOIN config.tipi_ruoli_nature_ammesse na ON na.tipo_soggetto_id = tsd.tipo_soggetto_id
-  JOIN config.tipi_ruoli tr ON tr.id = na.tipo_ruolo_id AND tr.codice_interno = 'EF'
- WHERE s.attivo IS TRUE
-   AND NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti_ruoli sr
-                    WHERE sr.soggetto_id = s.id AND sr.tipo_ruolo_id = tr.id)
- ORDER BY s.id
- LIMIT 3;
-
--- ⚠️ TRE ruoli e non due: il terzo serve al 6)/7), che hanno bisogno di un
+-- ⭐ Gli emittenti si FABBRICANO (rev 2026-10-18): soggetto, ruolo EF e
+--   emittente dal builder dbops.fn_pgtap_crea_emittente, che scrive l'emittente
+--   col verbo anagrafiche.fn_crea_emittente_fiscale — il percorso reale, quello
+--   che fa nascere anche i registri. Prima si pescavano tre soggetti esistenti
+--   «che potevano diventare EF»: su un database ricostruito da zero non ce n'e'
+--   nessuno, e la fixture moriva su fn_get_next_progressivo(NULL).
+-- ⚠️ TRE emittenti e non due: il terzo serve al 6)/7), che hanno bisogno di un
 --   emittente SENZA registro — e un emittente a cui il provisioning ha gia'
 --   dato i registri non serve a niente li'.
-CREATE TEMP TABLE tmp_mot_ruoli AS
-WITH ins AS (
-  INSERT INTO anagrafiche.soggetti_ruoli (soggetto_id, tipo_ruolo_id)
-  SELECT g.id, (SELECT id FROM config.tipi_ruoli WHERE codice_interno = 'EF')
-    FROM tmp_mot_sogg g
-  RETURNING id AS soggetto_ruolo_id, soggetto_id
-)
-SELECT i.soggetto_ruolo_id, g.n
-  FROM ins i JOIN tmp_mot_sogg g ON g.id = i.soggetto_id;
-
 -- ⚠️ Le sigle rispettano chk_emittenti_fiscali_codice_forma (maiuscole e cifre,
 --   2..10): dal 2026-08-31 una sigla col trattino non si scrive piu'.
 CREATE TEMP TABLE tmp_mot_emittenti AS
-WITH ins AS (
-  INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice, brand_meta)
-  SELECT r.soggetto_ruolo_id,
-         'PGTMOT' || r.n,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_mot_costanti))
-    FROM tmp_mot_ruoli r
-  RETURNING soggetto_ruolo_id, codice
-)
-SELECT i.soggetto_ruolo_id, i.codice, r.n
-  FROM ins i JOIN tmp_mot_ruoli r ON r.soggetto_ruolo_id = i.soggetto_ruolo_id;
+SELECT e.soggetto_ruolo_id, e.emittente_codice AS codice, g.n
+  FROM generate_series(1, 3) AS g(n)
+  CROSS JOIN LATERAL dbops.fn_pgtap_crea_emittente(('PGTMOT' || g.n)::varchar) AS e;
+
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- ⭐ I REGISTRI NON SI CREANO A MANO: si usano quelli che
 --   vendite.fn_provision_registri_emittente ha appena fatto nascere insieme

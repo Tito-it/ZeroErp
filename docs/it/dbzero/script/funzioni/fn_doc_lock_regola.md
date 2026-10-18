@@ -89,6 +89,10 @@ BEGIN
     -- (D-8 e D-10, rev 2026-10-10). Le colonne che il montaggio non
     -- nomina sono libere: le scrive il database (totali, istantanee,
     -- date dei cambi di stato, lo stato stesso).
+    -- rev 2026-10-18: '-' al posto degli stati = la colonna e' ferma
+    -- sempre, anche in bozza (ferma_sempre): si sceglie alla nascita
+    -- e non si cambia piu'. Il '-' sta da solo: mescolato a degli
+    -- stati e' un montaggio sbagliato.
     IF n < 5
        OR (n - 2) % 3 <> 0
        OR NULLIF(a[1], '') IS NULL
@@ -96,22 +100,28 @@ BEGIN
        OR EXISTS (SELECT 1
                     FROM generate_series(3, n, 3) AS g(k)
                    WHERE NULLIF(btrim(a[k]), '') IS NULL
-                      OR NULLIF(btrim(a[k + 1]), '') IS NULL) THEN
+                      OR NULLIF(btrim(a[k + 1]), '') IS NULL
+                      OR (SELECT bool_or(btrim(x) = '-') AND count(*) > 1
+                            FROM unnest(string_to_array(COALESCE(a[k + 2], ''), ',')) AS x
+                           WHERE btrim(x) <> '')) THEN
       RETURN jsonb_build_object(
         'building_block', 'TESTATA',
         'documento',      NULLIF(a[1], ''),
         'stato_bozza',    NULLIF(a[2], ''),
         'colonne',        '[]'::jsonb,
-        'errore',         'attesi: tipo documento, codice dello stato bozza, e terne (colonna, codice errore, stati in cui resta aperta fuori bozza o vuoto)');
+        'errore',         'attesi: tipo documento, codice dello stato bozza, e terne (colonna, codice errore, stati in cui resta aperta fuori bozza, vuoto, o - se e'' ferma anche in bozza)');
     END IF;
 
     FOR i IN 3 .. n BY 3 LOOP
+      v_stati := ARRAY(SELECT btrim(x)
+                         FROM unnest(string_to_array(COALESCE(a[i + 2], ''), ',')) AS x
+                        WHERE btrim(x) <> '');
       v_colonne := v_colonne || jsonb_build_array(jsonb_build_object(
         'colonna',       btrim(a[i]),
         'codice',        btrim(a[i + 1]),
-        'stati_ammessi', to_jsonb(ARRAY(SELECT btrim(x)
-                                          FROM unnest(string_to_array(COALESCE(a[i + 2], ''), ',')) AS x
-                                         WHERE btrim(x) <> ''))));
+        'ferma_sempre',  v_stati = ARRAY['-'],
+        'stati_ammessi', CASE WHEN v_stati = ARRAY['-'] THEN '[]'::jsonb
+                              ELSE to_jsonb(v_stati) END));
     END LOOP;
 
     RETURN jsonb_build_object(
@@ -131,7 +141,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_doc_lock_regola(p_building_block text, p_argomenti text[])
-IS 'Building block (2026-10-10, brief-db-testata-dopo-emissione fase 1, R-1): la GRAMMATICA dei montaggi dei due building block «si tocca solo in bozza». Dagli argomenti di un trigger (TG_ARGV, o pg_trigger.tgargs letto da dbops.fn_trigger_argomenti; qualunque primo indice) alla regola che dicono, in jsonb. p_building_block = RIGHE (vendite.trgfn_doc_righe_lock_fuori_bozza): documento, colonna_fk, stato_bozza (default DRAFT), livello (default TESTATA), colonne_ammesse e stati_ammessi (argomenti [4] e [5], liste separate da virgola), codice (argomento [6], default E_RIGA_DOC_NON_BOZZA), colonne_tecniche. TESTATA (vendite.trgfn_doc_testata_lock_fuori_bozza): documento, stato_bozza, colonne = [{colonna, codice, stati_ammessi}] nell''ordine degli argomenti: dal 2026-10-10 (fase 2) gli argomenti sono terne (colonna, codice, stati in cui resta aperta fuori bozza; vuoto = bloccata fuori bozza), D-8 e D-10. errore: NULL, o la frase di un montaggio sbagliato, che il chiamante solleva con E_DOC_RIGHE_LOCK_MONTAGGIO. La chiamano i due building block e il lettore script.fn_doc_lock_montaggi: trigger e capability non possono capire gli argomenti in due modi. La decisione per colonna e stato e'' script.fn_doc_lock_colonna_bloccata. STABLE. rev 2026-10-10 (fase 2, §5-bis.7 del brief, accettato da Tid): la testata a terne; una terna con colonna o codice vuoti e'' un montaggio sbagliato. rev 2026-10-11 (§11, R-DB-3 e D-12 di Tid): RIGHE legge un settimo argomento, il codice da sollevare, perche'' i satelliti del documento (indirizzi, fornitura) montano lo stesso building block con un codice la cui frase non parla di righe; oltre sette argomenti e'' un montaggio sbagliato. Gli adottanti di prima non lo passano e restano su E_RIGA_DOC_NON_BOZZA.';
+IS 'Building block (2026-10-10, brief-db-testata-dopo-emissione fase 1, R-1): la GRAMMATICA dei montaggi dei due building block «si tocca solo in bozza». Dagli argomenti di un trigger (TG_ARGV, o pg_trigger.tgargs letto da dbops.fn_trigger_argomenti; qualunque primo indice) alla regola che dicono, in jsonb. p_building_block = RIGHE (vendite.trgfn_doc_righe_lock_fuori_bozza): documento, colonna_fk, stato_bozza (default DRAFT), livello (default TESTATA), colonne_ammesse e stati_ammessi (argomenti [4] e [5], liste separate da virgola), codice (argomento [6], default E_RIGA_DOC_NON_BOZZA), colonne_tecniche. TESTATA (vendite.trgfn_doc_testata_lock_fuori_bozza): documento, stato_bozza, colonne = [{colonna, codice, stati_ammessi}] nell''ordine degli argomenti: dal 2026-10-10 (fase 2) gli argomenti sono terne (colonna, codice, stati in cui resta aperta fuori bozza; vuoto = bloccata fuori bozza), D-8 e D-10. errore: NULL, o la frase di un montaggio sbagliato, che il chiamante solleva con E_DOC_RIGHE_LOCK_MONTAGGIO. La chiamano i due building block e il lettore script.fn_doc_lock_montaggi: trigger e capability non possono capire gli argomenti in due modi. La decisione per colonna e stato e'' script.fn_doc_lock_colonna_bloccata. STABLE. rev 2026-10-10 (fase 2, §5-bis.7 del brief, accettato da Tid): la testata a terne; una terna con colonna o codice vuoti e'' un montaggio sbagliato. rev 2026-10-11 (§11, R-DB-3 e D-12 di Tid): RIGHE legge un settimo argomento, il codice da sollevare, perche'' i satelliti del documento (indirizzi, fornitura) montano lo stesso building block con un codice la cui frase non parla di righe; oltre sette argomenti e'' un montaggio sbagliato. Gli adottanti di prima non lo passano e restano su E_RIGA_DOC_NON_BOZZA. rev 2026-10-18 (brief-db-indirizzi-documento-seguono-il-cliente §8.7): TESTATA, il terzo elemento della terna puo'' essere ''-'': la colonna e'' ferma sempre, anche in bozza (ferma_sempre = true, stati_ammessi vuoto). Ogni colonna della regola porta ferma_sempre. Un ''-'' mescolato a degli stati e'' un montaggio sbagliato. Primi adottanti: emittente_fiscale_id e utility_id di preventivo, offerta e contratto.';
 ```
 
 ---
