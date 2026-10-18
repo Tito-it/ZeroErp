@@ -662,7 +662,8 @@ export const MANAGE_ICONS = {
   // Maniglia di trascinamento per riordinare una voce. ⛔ Non `pi-bars`, che
   // e' `MENU`; ne' `SPOSTA_SU`/`SPOSTA_GIU`, che sono i pulsanti a scatto.
   TRASCINA: 'pi pi-arrows-v',
-  // L'operatore super-amministratore (chip in topbar). ⛔ Non `pi-shield`,
+  // L'operatore super-amministratore (scheda utente; in topbar, dal
+  // 2026-10-18, solo su mobile accanto alle iniziali). ⛔ Non `pi-shield`,
   // che e' `PERMISSIONS`: il chip dice CHI sei, non che cosa puoi fare.
   SUPER_ADMIN: 'pi pi-crown',
   //

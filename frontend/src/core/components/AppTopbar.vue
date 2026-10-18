@@ -276,7 +276,7 @@ onMounted(async () => {
       <i v-if="!showHamburger" class="topbar-emittente-icon" :class="MANAGE_ICONS.BUILDING"></i>
       <EmittenteAttivoSelect />
 
-      <!-- Operatore: badge SUPER_ADMIN o iniziali, subito dopo l'emittente.
+      <!-- Operatore: iniziali (piu' il chip SUPER_ADMIN), subito dopo l'emittente.
            ⭐ Decisione di Tid, 2026-09-21: la topbar si legge a tre blocchi —
            sinistra = CHI (emittente + operatore che lo sta usando, la coppia
            «sistema + utente» in testa allo schermo AS/400), centro = DOVE
@@ -294,15 +294,26 @@ onMounted(async () => {
         aria-haspopup="true"
         @click="schedaUtente?.toggle($event)"
       >
+        <!-- ⭐ Le iniziali ci sono sempre, anche per il super-amministratore:
+             dicono CHI e' l'operatore. Il chip accanto dice solo che e' super
+             admin. Decisione di Tid, 2026-10-18: prima il super admin aveva
+             la corona al posto delle iniziali. Le iniziali stanno DENTRO il
+             pulsante: cliccandole si apre la scheda, anche su mobile, dove il
+             chip sparisce e al suo posto resta la corona rossa. -->
+        <span class="user-initials-badge">
+          {{ userInitials }}
+        </span>
+        <i
+          v-if="auth.isSuperAdmin"
+          class="admin-crown-mobile"
+          :class="MANAGE_ICONS.SUPER_ADMIN"
+          aria-hidden="true"
+        />
         <Chip v-if="auth.isSuperAdmin" class="admin-chip">
           <template #default>
-            <i class="admin-chip-icon" :class="MANAGE_ICONS.SUPER_ADMIN" />
             <span class="admin-chip-label">{{ t('auth.super_admin_badge') }}</span>
           </template>
         </Chip>
-        <span v-else class="user-initials-badge">
-          {{ userInitials }}
-        </span>
       </button>
       <SchedaUtentePopover ref="schedaUtente" />
     </div>
@@ -587,6 +598,7 @@ onMounted(async () => {
 .topbar-utente-btn {
   display: flex;
   align-items: center;
+  gap: 0.35rem;
   margin-left: 0.5rem;
   padding: 0;
   border: none;
@@ -608,13 +620,16 @@ onMounted(async () => {
   padding: 0.15rem 0.5rem;
 }
 
-.topbar-left .admin-chip-icon {
-  font-size: 0.8rem;
-  color: var(--app-warning-color);
+/* La corona del super admin: solo su mobile, al posto del chip (vedi la
+   media query). ⛔ Col prefisso `.topbar-left`: senza, vince `.topbar-left i`
+   (piu' specifica) e la corona prende il colore delle icone. */
+.topbar-left .admin-crown-mobile {
+  display: none;
+  font-size: 0.85rem;
+  color: var(--app-severity-danger);
 }
 
 .admin-chip-label {
-  margin-left: 0.3rem;
   font-weight: 600;
   color: var(--app-warning-color);
 }
@@ -653,7 +668,7 @@ onMounted(async () => {
   background: var(--p-red-50);
 }
 
-/* Badge iniziali utente (non-admin) — sfondo celeste pastello */
+/* Badge iniziali operatore (ogni operatore, super admin compreso) — sfondo celeste pastello */
 .user-initials-badge {
   display: flex;
   align-items: center;
@@ -667,7 +682,7 @@ onMounted(async () => {
   background: var(--p-blue-50);
   border: 1px solid var(--p-blue-200);
   border-radius: 50%;
-  cursor: default;
+  cursor: inherit;
   user-select: none;
 }
 
@@ -708,12 +723,14 @@ onMounted(async () => {
     max-width: 120px;
   }
 
-  .admin-chip-label {
+  /* Su mobile il chip non ci sta: accanto alle iniziali resta la corona
+     rossa a dire «super admin», la scritta la da' la scheda utente. */
+  .topbar-left .admin-chip {
     display: none;
   }
 
-  .admin-chip {
-    padding: 0.15rem 0.35rem;
+  .topbar-left .admin-crown-mobile {
+    display: inline-block;
   }
 
   /* Su mobile le icone inline ricerca+AI sono nascoste:
