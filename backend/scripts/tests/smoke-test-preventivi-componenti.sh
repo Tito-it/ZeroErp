@@ -6,23 +6,16 @@
 #   - tabelle vendite.preventivi_righe_componenti + trigger _m50_/_z90_
 #   - fn vendite.fn_preventivo_riga_componenti_init
 #   - fn vendite.fn_resolve_prezzo_composito 8 colonne
-#   - articolo `composito` con almeno 1 BoM esposta in fattura
-# ------------------------------------------------------------
-# Indice test (0..N):
-#  0) Autenticazione JWT (UNA volta, no thundering throttle)
-#  1) Setup CASO A: articolo composito nuovo + riga BoM esposizione_in_fattura=DESCRITTIVO
-#  2) Discovery cliente + emittente (BA con utility + emittente attivo)
-#  3) Cleanup proattivo: delete preventivi smoke precedenti
-#  4) Crea preventivo DRAFT con suffisso unico (smoke-<EPOCH>)
-#  5) Aggiungi riga articolo `composito` qty=1
-#  6) GET /righe/ -> verifica is_composito_caso_a=TRUE sulla riga
-#  7) GET /righe/<id>/componenti/ -> lista popolata (>=1 componente)
-#  8) PATCH componente: prezzo_unitario=99.99 + origine_prezzo=MANUALE
-#  9) Re-fetch riga padre: prezzo_unitario = SUM(componenti × coeff)
-# 10) DELETE componente (se >1): verifica padre ricalcolato
-# 11) Guard transizione: tenta cambio stato verso ACCETTATO con prezzo
-#     PENDING (se applicabile) -> deve fallire E_PREVENTIVO_RIGHE_PRICING_PENDENTI
-# 12) Cleanup finale: delete preventivo + chiudi BoM + disattiva articolo
+# Materia: se la costruisce lo smoke (2026-10-18, collaudo `dev.smoke`, T-7a).
+#   STABILE, cercata per codice e creata se manca: il componente
+#   `SMOKE-COMP-COMPONENTE`, la categoria `SMOKE-COMP`, il listino
+#   `SMOKE-COMP-<emittente>-<utility>` con la riga del componente, la mappa
+#   categoria -> listino. DEL GIRO: il composito con la sua BoM (campi
+#   dall'articolo merce del BB `smoke_articolo_merce`), il cliente (BB
+#   `smoke_cliente_del_giro`, con la categoria dello smoke), il preventivo.
+#   Prima clonava due articoli per id scritto qui e usava il primo cliente della
+#   lista: su un emittente senza listino mappato si fermava, su un database
+#   nuovo non partiva.
 # ------------------------------------------------------------
 set -euo pipefail
 
@@ -30,10 +23,8 @@ BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 # Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 
-# Fixture: clonare campi articolo `composito` esistente per il padre nuovo,
-# riusare componente2 esistente come componente esposto in fattura.
-ARTICOLO_COMPOSITO_REFERENCE_ID='019dcf26-da75-79ac-908c-10d4fc779ece'
-COMPONENTE_REFERENCE_ID='019d57c1-b2b2-7d3a-9ebb-421addc5f393'  # componente2
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"
 EPOCH=$(date +%s)
 SUFFIX="smk-${EPOCH}"
 NEW_COMPOSITO_ID=""
@@ -115,6 +106,41 @@ check_http() {
     return 1
 }
 
+# Scopo: pulisce la materia del giro, dal figlio al padre (figli prima del
+#        padre: i trigger rifiutano il contrario). Una sede per i due finali,
+#        il fermo «non conclusivo» e la fine del percorso felice: fino al
+#        2026-10-18 erano due pulizie diverse, e quella finale (mai raggiunta)
+#        cancellava un preventivo con le righe e spegneva l'articolo via PATCH,
+#        due cose che l'API rifiuta. Ogni passo e' controllato: una pulizia che
+#        non riesce e' un rosso, non un residuo silenzioso.
+#        Restano il cliente del giro (un soggetto per giro, come in
+#        contratti-addebito) e la materia stabile del passo 2 (riusata).
+pulisci_giro() {
+    local riga uom_op
+    if [[ -n "${PREVENTIVO_ID:-}" ]]; then
+        for riga in ${RIGA_ID:-}; do
+            do_curl DELETE "/api/v1/vendite/preventivi/${PREVENTIVO_ID}/righe/${riga}/"
+            check_http "Cleanup riga preventivo" "200|204" || true
+        done
+        do_curl DELETE "/api/v1/vendite/preventivi/${PREVENTIVO_ID}/"
+        check_http "Cleanup preventivo" "200|204" || true
+    fi
+    if [[ -n "$NEW_BOM_ROW_ID" && -n "$NEW_COMPOSITO_ID" ]]; then
+        do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/componenti/${NEW_BOM_ROW_ID}/" '{"attivo": false}'
+        check_http "Cleanup riga BoM (spenta)" "200" || true
+    fi
+    if [[ -n "$NEW_COMPOSITO_ID" ]]; then
+        do_curl GET "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/uom/"
+        uom_op=$(json_get "$LAST_BODY" "data.results.0.id")
+        if [[ -n "$uom_op" ]]; then
+            do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/uom/${uom_op}/" '{"attivo": false}'
+            check_http "Cleanup UoM operativa base (spenta)" "200" || true
+        fi
+        do_curl POST "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/disattiva/" '{}'
+        check_http "Cleanup articolo composito (disattiva)" "200|204" || true
+    fi
+}
+
 # =====================================================
 # 0) AUTH
 # =====================================================
@@ -126,27 +152,85 @@ log_ok "Login OK (token ${#TOKEN} char)"
 # 1) Setup CASO A: crea articolo nuovo + BoM esposta
 # =====================================================
 log_step "1) Setup CASO A: crea articolo composito-${SUFFIX} + BoM esposta"
-# 1a) Clona campi struttura dall'articolo composito esistente
-do_curl GET "/api/v1/catalogo/articoli/${ARTICOLO_COMPOSITO_REFERENCE_ID}/"
-check_http "GET articolo reference (per clonare campi)" "200" || exit 3
-REF_FIELDS=$(echo "$LAST_BODY" | python3 -c "
+# Materia STABILE dello smoke sull'emittente attivo: un componente, una
+# categoria, un listino con la riga del componente e la mappa categoria ->
+# listino. Si cercano per codice fisso e si creano solo se mancano, come
+# `SMOKE-SERV-UT` in preventivi-smistamento-ordine: niente che si accumula, e
+# niente da spegnere a ogni giro (un componente con una riga di listino attiva
+# non si disattiva, giustamente). Nasce nuovo a ogni giro solo cio' che il giro
+# prova: il composito con la sua BoM, il cliente, il preventivo.
+# ⛔ Non il cliente condiviso del lookup: una mappa sulla sua categoria
+# cambierebbe i prezzi degli altri smoke dell'emittente. Il cliente e' del giro,
+# la categoria e' quella dello smoke.
+
+# Scopo: id della riga con `codice` esatto in una lista che filtra `search`.
+#        $1 = path della lista (senza query), $2 = codice. Vuoto se non c'e'.
+id_per_codice() {
+    curl -s -G -H "Authorization: Bearer $TOKEN" --data-urlencode "search=$2" \
+        --data-urlencode "limit=50" --data-urlencode "page_size=50" \
+        "${BASE_URL}$1" 2>/dev/null | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin).get('data') or {}
+    rows = d.get('results', d) if isinstance(d, dict) else d
+    print(next((str(r['id']) for r in rows or [] if r.get('codice') == sys.argv[1] and r.get('attivo') is not False), ''))
+except Exception:
+    print('')
+" "$2" 2>/dev/null
+}
+
+# 1a) I campi di struttura da un articolo merce del catalogo (BB
+#     _smoke_documenti.sh), scelto per proprieta' e non per id.
+smoke_articolo_merce   # -> ARTICOLO_ID
+if [[ -z "$ARTICOLO_ID" ]]; then
+    echo "Setup fallito: nessun articolo merce da cui prendere i campi (motivo sopra)."; exit 3
+fi
+do_curl GET "/api/v1/catalogo/articoli/${ARTICOLO_ID}/"
+check_http "GET articolo merce (per i campi di struttura)" "200" || exit 3
+# $1 = codice, $2 = ruolo nella BoM: composito | componente
+payload_articolo() {
+    echo "$LAST_BODY" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)['data']
+ruolo = sys.argv[2]
 print(json.dumps({
-    'codice': 'composito-${SUFFIX}',
-    'descrizione': 'Smoke composito ${SUFFIX}',
-    'descrizione_breve': 'Smoke ${SUFFIX}',
+    'codice': sys.argv[1],
+    'descrizione': 'Smoke ' + ruolo,
+    'descrizione_breve': 'Smoke ' + ruolo,
     'uom_id': d['uom_id'],
     'tipo_voce_id': d['tipo_voce_id'],
     'gruppo_voce_id': d['gruppo_voce_id'],
     'iva_id': d['iva_id'],
     'listino_tipologia_id': d['listino_tipologia_id'],
-    'is_composito': True,
+    'is_composito': ruolo == 'composito',
+    # ⚠️ Il componente NON e' «solo componente»: un articolo cosi' non entra in
+    # una riga di listino (E_ARTICOLO_SOLO_COMPONENTE), e il percorso felice
+    # vuole il componente col suo prezzo di listino.
     'is_solo_componente': False,
-    'meta': {'smoke_suffix': '${SUFFIX}'},
+    'meta': {'smoke': 'preventivi-componenti'},
 }))
-")
-do_curl POST "/api/v1/catalogo/articoli/" "$REF_FIELDS"
+" "$1" "$2"
+}
+PAYLOAD_COMPONENTE=$(payload_articolo "SMOKE-COMP-COMPONENTE" componente)
+PAYLOAD_COMPOSITO=$(payload_articolo "composito-${SUFFIX}" composito)
+LISTINO_TIPOLOGIA_ID=$(json_get "$LAST_BODY" "data.listino_tipologia_id")
+ARTICOLO_IVA_ID=$(json_get "$LAST_BODY" "data.iva_id")
+
+# 1b) Il componente stabile (crea se assente).
+COMPONENTE_ID_STABILE=$(id_per_codice "/api/v1/catalogo/articoli/" "SMOKE-COMP-COMPONENTE")
+if [[ -n "$COMPONENTE_ID_STABILE" ]]; then
+    log_ok "Componente riusato (codice SMOKE-COMP-COMPONENTE)"
+else
+    do_curl POST "/api/v1/catalogo/articoli/" "$PAYLOAD_COMPONENTE"
+    check_http "POST componente SMOKE-COMP-COMPONENTE" "200" || exit 3
+    COMPONENTE_ID_STABILE=$(json_get "$LAST_BODY" "data.id")
+fi
+do_curl GET "/api/v1/catalogo/articoli/${COMPONENTE_ID_STABILE}/"
+COMPONENTE_UOM_ID=$(json_get "$LAST_BODY" "data.uom_id")
+log_info "Componente id=$COMPONENTE_ID_STABILE uom=$COMPONENTE_UOM_ID"
+
+# 1c) Il composito del giro.
+do_curl POST "/api/v1/catalogo/articoli/" "$PAYLOAD_COMPOSITO"
 check_http "POST nuovo articolo composito" "200" || {
     log_info "Categoria fallimento: validazione catalogo (campi richiesti) o permesso"
     exit 3
@@ -155,10 +239,10 @@ NEW_COMPOSITO_ID=$(json_get "$LAST_BODY" "data.id")
 COMPOSITO_UOM_ID=$(json_get "$LAST_BODY" "data.uom_id")   # la sua UoM, per la riga (passo 5)
 log_info "Creato articolo composito id=$NEW_COMPOSITO_ID uom=$COMPOSITO_UOM_ID"
 
-# 1b) Aggiungi riga BoM esposta valida da oggi
+# 1d) Riga BoM esposta, valida da ieri
 BOM_PAYLOAD=$(cat <<EOF
 {
-  "componente_id": "$COMPONENTE_REFERENCE_ID",
+  "componente_id": "$COMPONENTE_ID_STABILE",
   "coeff_qta": 1,
   "obbligatorio": true,
   "esposizione_in_fattura": "DESCRITTIVO",
@@ -176,24 +260,91 @@ NEW_BOM_ROW_ID=$(json_get "$LAST_BODY" "data.id")
 log_info "Creata BoM riga id=$NEW_BOM_ROW_ID (esposizione=DESCRITTIVO)"
 
 # =====================================================
-# 2) Discovery cliente + emittente
+# 2) Emittente, categoria, cliente del giro, listino e mappa
 # =====================================================
-log_step "2) Discovery cliente (billing_account) + emittente"
-# Prendo il primo cliente con utility (BA con utility_id NON NULL)
-do_curl GET "/api/v1/anagrafiche/clienti/?page=1&page_size=1"
-check_http "GET clienti (per discovery)" "200" || exit 4
-CLIENTE_BA_ID=$(echo "$LAST_BODY" | python3 -c "
-import json, sys
-d = json.load(sys.stdin).get('data', {})
-results = d.get('results', [])
-for r in results:
-    if r.get('billing_account_id'):
-        print(r['billing_account_id']); break
-")
-log_info "billing_account_id = ${CLIENTE_BA_ID:-NONE}"
-if [[ -z "$CLIENTE_BA_ID" ]]; then
-    log_fail "Nessun cliente con billing_account trovato"
-    exit 4
+log_step "2) Emittente attivo, cliente del giro, listino dello smoke"
+# 2a) L'emittente attivo (BB _smoke_cliente.sh): il listino e la mappa vogliono
+#     il suo soggetto_ruolo, il preventivo il suo id.
+smoke_emittente_attivo   # -> EMITTENTE_ATTIVO_ID, EMITTENTE_ATTIVO_SR_ID
+EMITTENTE_ID="$EMITTENTE_ATTIVO_ID"
+if [[ -z "$EMITTENTE_ID" || -z "$EMITTENTE_ATTIVO_SR_ID" ]]; then
+    log_fail "Emittente attivo dell'operatore non risolto"; exit 4
+fi
+log_info "emittente_fiscale_id = $EMITTENTE_ID (soggetto_ruolo $EMITTENTE_ATTIVO_SR_ID)"
+
+# 2b) La categoria dello smoke (crea se assente).
+CATEGORIA_ID=$(id_per_codice "/api/v1/anagrafiche/categorie-clienti/" "SMOKE-COMP")
+if [[ -n "$CATEGORIA_ID" ]]; then
+    log_ok "Categoria riusata (codice SMOKE-COMP)"
+else
+    do_curl POST "/api/v1/anagrafiche/categorie-clienti/" \
+        '{"codice":"SMOKE-COMP","descrizione":"Smoke preventivi componenti","partecipa_promo":false,"ordinamento":900}'
+    check_http "POST categoria SMOKE-COMP" "200" || exit 4
+    CATEGORIA_ID=$(json_get "$LAST_BODY" "data.id")
+fi
+
+# 2c) Il cliente del giro, con la categoria dello smoke (BB _smoke_cliente.sh).
+smoke_cliente_del_giro "Componenti" "$CATEGORIA_ID"   # -> GIRO_BA_ID, GIRO_UTILITY_ID
+LAST_STATUS="$GIRO_LAST_STATUS"; LAST_BODY="$GIRO_LAST_BODY"
+check_http "POST cliente del giro (categoria $CATEGORIA_ID)" "200" || exit 4
+CLIENTE_BA_ID="$GIRO_BA_ID"
+log_info "billing_account_id = ${CLIENTE_BA_ID} utility = ${GIRO_UTILITY_ID}"
+
+# 2d) Il listino dello smoke per (emittente, utility), con una versione ATTIVA
+#     che porta la riga del componente. Il composito non ha riga sua: il suo
+#     prezzo e' la somma dei componenti (E_LISTINO_RIGA_COMPOSITO_VIETATO).
+LISTINO_CODICE="SMOKE-COMP-${EMITTENTE_ID}-${GIRO_UTILITY_ID}"
+LISTINO_ID=$(id_per_codice "/api/v1/vendite/listini/" "$LISTINO_CODICE")
+if [[ -z "$LISTINO_ID" ]]; then
+    do_curl POST "/api/v1/vendite/listini/" \
+        "{\"codice\":\"${LISTINO_CODICE}\",\"descrizione\":\"Smoke preventivi componenti\",\"utility_id\":${GIRO_UTILITY_ID},\"tipologia_id\":${LISTINO_TIPOLOGIA_ID},\"emittente_soggetto_ruolo_id\":${EMITTENTE_ATTIVO_SR_ID}}"
+    check_http "POST listino $LISTINO_CODICE" "200" || exit 4
+    LISTINO_ID=$(json_get "$LAST_BODY" "data.id")
+fi
+do_curl GET "/api/v1/vendite/listini/${LISTINO_ID}/versioni/"
+VERSIONE_ATTIVA=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin).get('data') or {}
+    rows = d.get('results', d) if isinstance(d, dict) else d
+    print(next((str(r['id']) for r in rows or [] if r.get('stato') == 'ATTIVA' and r.get('attivo') is not False), ''))
+except Exception:
+    print('')
+" 2>/dev/null)
+if [[ -n "$VERSIONE_ATTIVA" ]]; then
+    log_ok "Listino riusato ($LISTINO_CODICE, versione ATTIVA $VERSIONE_ATTIVA)"
+else
+    # Una versione nuova a ogni tentativo: un giro interrotto lascia al piu' una
+    # BOZZA, che non pesa sui prezzi.
+    do_curl POST "/api/v1/vendite/listini/${LISTINO_ID}/versioni/" \
+        "{\"codice_versione\":\"V-${EPOCH}\",\"valido_dal\":\"${DATA_IERI_UTC}\"}"
+    check_http "POST versione del listino" "200" || exit 4
+    VERSIONE_ID=$(json_get "$LAST_BODY" "data.id")
+    do_curl POST "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/righe/" \
+        "{\"articolo_id\":\"${COMPONENTE_ID_STABILE}\",\"uom_id\":${COMPONENTE_UOM_ID},\"prezzo\":\"12.5000000000\"}"
+    check_http "POST riga listino componente" "200" || exit 4
+    do_curl POST "/api/v1/vendite/listini/${LISTINO_ID}/versioni/${VERSIONE_ID}/stato/" '{"stato":"ATTIVA"}'
+    check_http "Attiva versione del listino" "200" || exit 4
+fi
+
+# 2e) La mappa categoria -> listino (crea se assente).
+do_curl GET "/api/v1/anagrafiche/categorie-clienti-listini/?categoria_cliente_id=${CATEGORIA_ID}"
+MAPPA_ID=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin).get('data') or {}
+    rows = d.get('results', d) if isinstance(d, dict) else d
+    print(next((str(r['id']) for r in rows or [] if str(r.get('listino_id')) == sys.argv[1]
+                and r.get('attivo') is not False and not r.get('valido_al')), ''))
+except Exception:
+    print('')
+" "$LISTINO_ID" 2>/dev/null)
+if [[ -n "$MAPPA_ID" ]]; then
+    log_ok "Mappa categoria -> listino riusata ($MAPPA_ID)"
+else
+    do_curl POST "/api/v1/anagrafiche/categorie-clienti-listini/" \
+        "{\"categoria_cliente_id\":${CATEGORIA_ID},\"utility_id\":${GIRO_UTILITY_ID},\"emittente_soggetto_ruolo_id\":${EMITTENTE_ATTIVO_SR_ID},\"listino_id\":${LISTINO_ID},\"valido_dal\":\"${DATA_IERI_UTC}\"}"
+    check_http "POST mappa categoria -> listino" "200" || exit 4
 fi
 
 # 2b) Form defaults BA-aware: deriva utility/istanza/valuta dalla BA
@@ -206,18 +357,6 @@ DEFAULT_IVA_ID=$(json_get "$LAST_BODY" "data.iva_id")
 VALIDITA_AL=$(json_get "$LAST_BODY" "data.default_validita_al")
 log_info "utility=$UTILITY_ID istanza=$ISTANZA_ID valuta=$VALUTA_ID iva=$DEFAULT_IVA_ID validita_al=$VALIDITA_AL"
 
-# 2c) Emittente: l'utente degli smoke e' admin globale (no emittente assegnato),
-# devo passarlo esplicito. Scelgo il primo emittente attivo via lookup.
-do_curl GET "/api/v1/anagrafiche/emittenti-fiscali/?page_size=20"
-check_http "GET emittenti fiscali (per discovery)" "200" || exit 4
-EMITTENTE_ID=$(echo "$LAST_BODY" | python3 -c "
-import json, sys
-d = json.load(sys.stdin).get('data', {})
-for e in d.get('results', []):
-    if e.get('attivo'):
-        print(e['id']); break
-")
-log_info "emittente_fiscale_id = ${EMITTENTE_ID:-NONE}"
 if [[ -z "$EMITTENTE_ID" ]]; then log_fail "Nessun emittente attivo trovato"; exit 4; fi
 
 # =====================================================
@@ -268,7 +407,7 @@ PAYLOAD=$(cat <<EOF
   "qta_operativa": 1,
   "uom_operativa_id": $COMPOSITO_UOM_ID,
   "prezzo_unitario": 0,
-  "iva_id": 16
+  "iva_id": $ARTICOLO_IVA_ID
 }
 EOF
 )
@@ -285,22 +424,8 @@ do_curl POST "/api/v1/vendite/preventivi/${PREVENTIVO_ID}/righe/" "$PAYLOAD"
 #        (figli prima del padre: righe BoM e UoM operativa base).
 fermo_non_conclusivo() {
     local motivo="$1"
-    if [[ -n "$NEW_BOM_ROW_ID" && -n "$NEW_COMPOSITO_ID" ]]; then
-        do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/componenti/${NEW_BOM_ROW_ID}/" '{"attivo": false}'
-        check_http "Cleanup riga BoM (spenta)" "200" || true
-    fi
-    if [[ -n "$NEW_COMPOSITO_ID" ]]; then
-        do_curl GET "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/uom/"
-        local uom_op; uom_op=$(json_get "$LAST_BODY" "data.results.0.id")
-        if [[ -n "$uom_op" ]]; then
-            do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/uom/${uom_op}/" '{"attivo": false}'
-            check_http "Cleanup UoM operativa base (spenta)" "200" || true
-        fi
-        do_curl POST "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/disattiva/" '{}'
-        check_http "Cleanup articolo (disattiva)" "200|204" || true
-    fi
-    do_curl DELETE "/api/v1/vendite/preventivi/${PREVENTIVO_ID}/"
-    check_http "Cleanup preventivo" "200|204" || true
+    RIGA_ID=""   # la riga non e' nata: si ferma proprio li'
+    pulisci_giro
     echo ""
     echo "Smoke non conclusivo: $motivo"
     echo " Risultato: ${PASS} OK / ${FAIL} FAIL (percorso felice non eseguito)"
@@ -375,7 +500,9 @@ log_info "Componente 0: id=$COMPONENTE_ID coeff=$COEFF_QTA prezzo=$PREZZO_PRE or
 # =====================================================
 log_step "8) PATCH componente prezzo=99.99 origine=MANUALE"
 do_curl PATCH "/api/v1/vendite/preventivi/${PREVENTIVO_ID}/righe/${RIGA_ID}/componenti/${COMPONENTE_ID}/" \
-    '{"prezzo_unitario": 99.99, "origine_prezzo": "MANUALE"}'
+    '{"prezzo_unitario": 99.99}'
+# `origine_prezzo` non si manda: un prezzo scritto dall'operatore e' MANUALE e
+# lo dice il server (`COMPONENTE_PATCH_OPERATORE`); mandarlo e' un 400.
 check_http "PATCH componente prezzo MANUALE" "200" || {
     log_info "Categoria fallimento: L1 override / L2 limit"
     log_info "Body: $(echo "$LAST_BODY" | head -c 300)"
@@ -438,26 +565,10 @@ log_step "11) Guard transizione (skip se nessun componente PENDING)"
 log_info "Skip: questo test richiede setup L3 con sconto >L2 — coperto da test BE unit"
 
 # =====================================================
-# 12) Cleanup finale: delete preventivo + chiudi BoM + disattiva articolo
+# 12) Cleanup finale: righe e preventivo, BoM e composito del giro
 # =====================================================
-log_step "12) Cleanup: delete preventivo + chiudi BoM + disattiva articolo nuovo"
-do_curl DELETE "/api/v1/vendite/preventivi/${PREVENTIVO_ID}/"
-check_http "DELETE preventivo smoke" "200|204" || true
-
-# Chiudi BoM (PATCH valido_al = ieri, valido_al non e' bloccato dal trigger immutabilita')
-if [[ -n "$NEW_BOM_ROW_ID" && -n "$NEW_COMPOSITO_ID" ]]; then
-    do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/componenti/${NEW_BOM_ROW_ID}/" \
-        "{\"valido_al\": \"$DATA_OGGI_UTC\"}"
-    check_http "PATCH BoM valido_al (chiusura)" "200" || \
-        log_info "Cleanup parziale: BoM resta aperta (valido_al non patchabile?)"
-fi
-
-# Disattiva articolo nuovo (soft via PATCH attivo=false)
-if [[ -n "$NEW_COMPOSITO_ID" ]]; then
-    do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/" '{"attivo": false}'
-    check_http "Disattiva articolo composito smoke" "200" || \
-        log_info "Cleanup parziale: articolo resta attivo"
-fi
+log_step "12) Cleanup del giro"
+pulisci_giro
 
 # =====================================================
 # SUMMARY

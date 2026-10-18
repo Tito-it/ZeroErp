@@ -1,6 +1,6 @@
 // Scopo: Composable per form indirizzo layer soggetto (identita').
 // Compone: useIndirizzoBase (form geografico) + useIndirizzoMultiTipo (snapshot/barra tag)
-//          + modalita' libera (indirizzo estero) + payload.
+//          + modalita' libera (due forme decise dallo stato, `indirizzoLibero.js`) + payload.
 // L'utente compila un indirizzo alla volta, con auto-clone per gli obbligatori mancanti.
 
 import { ref, computed, watch } from 'vue'
@@ -9,6 +9,9 @@ import { useIndirizzoBase, buildIndirizzoPayload } from './useIndirizzoBase'
 import { useIndirizzoMultiTipo } from './useIndirizzoMultiTipo'
 import { lookupStati } from '../api/anagrafiche'
 import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo } from '../../core/apiCore'
+import {
+  assegnaCampiLiberi, campiLiberi, payloadLibero, statoDi, validaLibero,
+} from './indirizzoLibero'
 
 export function useIndirizzoSoggettoForm() {
   // Composable base: comune, via, civico, CAP, check duplicato
@@ -18,15 +21,15 @@ export function useIndirizzoSoggettoForm() {
   // Vue 3 reactive() traccia le nuove proprieta' aggiunte dopo la creazione.
   const form = base.form
   form.tipo_indirizzo_codice = null
-  form.indirizzo_libero = ''
-  form.stato_id = null
-  form.locality = ''
+  assegnaCampiLiberi(form)
   form._isLibera = false
 
   // Modalita' libera con due slot di memoria: i dati nazionali vengono
   // salvati al toggle verso estero e ripristinati al toggle verso nazionale.
+  // Comune e CAP sono della parte geografica (base): la forma libera «del
+  // catalogo» li usa, e restano condivisi fra le due modalita'.
   const _savedNazionale = ref(null)
-  const _savedEstero = ref({ indirizzo_libero: '', stato_id: null, locality: '' })
+  const _savedEstero = ref(campiLiberi())
 
   const isLibera = computed({
     get: () => form._isLibera,
@@ -35,16 +38,10 @@ export function useIndirizzoSoggettoForm() {
       if (val) {
         // Nazionale → Estero: salva dati nazionali, ripristina estero
         _savedNazionale.value = base.snapshot()
-        form.indirizzo_libero = _savedEstero.value.indirizzo_libero || ''
-        form.stato_id = _savedEstero.value.stato_id || null
-        form.locality = _savedEstero.value.locality || ''
+        assegnaCampiLiberi(form, _savedEstero.value)
       } else {
         // Estero → Nazionale: salva dati estero, ripristina nazionali
-        _savedEstero.value = {
-          indirizzo_libero: form.indirizzo_libero,
-          stato_id: form.stato_id,
-          locality: form.locality,
-        }
+        _savedEstero.value = campiLiberi(form)
         if (_savedNazionale.value) {
           base.restore(_savedNazionale.value)
         }
@@ -61,12 +58,26 @@ export function useIndirizzoSoggettoForm() {
     form,
   })
 
-  // Lookup stati per modalita' libera (lazy)
+  // Lookup stati per modalita' libera (lazy). Ogni stato porta
+  // `catalogo_comuni_completo` (la forma) e `proposto` (la preselezione).
   const statiLookup = useLookup(() => lookupStati())
 
   watch(isLibera, (val) => {
     if (val && !statiLookup.loaded.value) statiLookup.load()
   })
+
+  // Lo stato proposto (parametro STATO_PROPOSTO_ISO2, dal DB) si preseleziona
+  // quando l'indirizzo libero non ne ha uno: mai scelto in silenzio sopra una
+  // scelta dell'operatore.
+  watch([isLibera, () => statiLookup.items.value], ([libera, stati]) => {
+    if (!libera || form.stato_id || !Array.isArray(stati)) return
+    const proposto = stati.find((s) => s.proposto)
+    if (proposto) form.stato_id = proposto.id
+  })
+
+  // Lo stato scelto, la cui riga decide la forma dell'indirizzo libero
+  // (`indirizzoLibero.js`; quali campi mostrare lo decide il componente).
+  const statoLibero = computed(() => statoDi(statiLookup.items.value, form.stato_id))
 
   // --- Validazione ---
   function validate() {
@@ -74,8 +85,7 @@ export function useIndirizzoSoggettoForm() {
     if (!form.tipo_indirizzo_codice) errors.push('tipo_indirizzo_codice')
 
     if (isLibera.value) {
-      if (!(form.indirizzo_libero || '').trim()) errors.push('indirizzo_libero')
-      if (!form.stato_id) errors.push('stato_id')
+      errors.push(...validaLibero(form, statoLibero.value))
     } else {
       errors.push(...base.validate())
     }
@@ -96,9 +106,7 @@ export function useIndirizzoSoggettoForm() {
     if (snap.isLibera) {
       return {
         tipo_indirizzo_codice: codice,
-        indirizzo_libero: (snap.indirizzo_libero || '').trim(),
-        stato_id: snap.stato_id,
-        locality: (snap.locality || '').trim() || null,
+        ...payloadLibero(snap, statoDi(statiLookup.items.value, snap.stato_id)),
       }
     }
     return {
@@ -120,11 +128,9 @@ export function useIndirizzoSoggettoForm() {
     base.reset()
     form.tipo_indirizzo_codice = null
     form._isLibera = false
-    form.indirizzo_libero = ''
-    form.stato_id = null
-    form.locality = ''
+    assegnaCampiLiberi(form)
     _savedNazionale.value = null
-    _savedEstero.value = { indirizzo_libero: '', stato_id: null, locality: '' }
+    _savedEstero.value = campiLiberi()
     multiTipo.reset()
   }
 
@@ -133,9 +139,7 @@ export function useIndirizzoSoggettoForm() {
     base.restore(data)
     form.tipo_indirizzo_codice = data.tipo_indirizzo_codice ?? null
     form._isLibera = !!data.indirizzo_libero
-    form.indirizzo_libero = data.indirizzo_libero || ''
-    form.stato_id = data.stato_id ?? null
-    form.locality = data.locality || ''
+    assegnaCampiLiberi(form, data)
   }
 
   // Scopo: Carica matrice indirizzi per tipo soggetto dettaglio e setta nel multi-tipo.

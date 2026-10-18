@@ -54,6 +54,7 @@ from apps.core.db._helpers import coerce_jsonb_dict
 from apps.vendite.services import _kit_meta as kit_meta
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 from scripts.tests._smoke_commessa import crea_riga_commessa
+from scripts.tests._smoke_contesto import apri_contesto_smoke
 
 # Attivita' gia' fatturata usata come TEMPLATE: da lei si ereditano
 # billing account, istanza utility, uom, valuta e tipo documento, cosi' il
@@ -144,11 +145,7 @@ with transaction.atomic():
     with connection.cursor() as cur:
         # Contesto operatore: `vendite.fatturazione_lotti` e `vendite.fatture`
         # sono RLS. Senza GUC le query tornano 0 righe e lo smoke mentirebbe.
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
+        apri_contesto_smoke(cur)
 
         cur.execute(SQL_TEMPLATE)
         row = cur.fetchone()

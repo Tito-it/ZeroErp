@@ -77,6 +77,21 @@ smoke_emittente_attivo
 if [[ -z "$EMITTENTE_ATTIVO_ID" ]]; then log_fail "Emittente attivo dell'operatore non risolto"; exit 1; fi
 export SMOKE_GUC_EMITTENTE="$EMITTENTE_ATTIVO_ID"
 log_ok "Emittente attivo: $EMITTENTE_ATTIVO_ID"
+# Il cliente dei preventivi del seed: dal lookup (BB _smoke_cliente.sh), che
+# restituisce solo i clienti dell'emittente attivo; la valuta dai default del
+# form del preventivo per quel cliente. ⛔ Fino al 2026-10-18 la terna si
+# copiava dall'«ultimo preventivo visibile»: su un emittente senza preventivi
+# (l'emittente di prova di `dev.smoke`) il seed non partiva.
+smoke_cliente_dal_lookup   # -> BA_ID, UTILITY_ID, ISTANZA_ID
+SMOKE_SEED_VALUTA=$(curl -s -H "Authorization: Bearer $TOKEN" \
+    "${BASE_URL}/api/v1/vendite/preventivi/form-defaults/?billing_account_id=${BA_ID:-0}" 2>/dev/null \
+    | python3 -c "import sys, json; print((json.load(sys.stdin).get('data') or {}).get('valuta_id') or '')" 2>/dev/null)
+if [[ -z "${BA_ID:-}" || -z "$SMOKE_SEED_VALUTA" ]]; then
+    echo -e "${RED}Setup fallito: nessun cliente con utility e istanza (o senza valuta) per l'emittente attivo (motivo sopra). Stop.${NC}"
+    exit 1
+fi
+export SMOKE_SEED_BA="$BA_ID" SMOKE_SEED_UTILITY="$UTILITY_ID" SMOKE_SEED_ISTANZA="$ISTANZA_ID" SMOKE_SEED_VALUTA
+log_info "cliente del seed: BA=$BA_ID utility=$UTILITY_ID istanza=$ISTANZA_ID valuta=$SMOKE_SEED_VALUTA"
 
 # --- Cleanup (inizio + trap) ---
 cleanup() {
@@ -118,12 +133,12 @@ with connection.cursor() as c:
     # la pratica deve stare nel percorso che contiene lo step (FK composta
     # `fk_template_flussi_definizione`). Niente id di definizione cablato.
     c.execute("SELECT definizione_id, tipo_prestazione_id FROM pratiche.template_flussi WHERE id=9011"); defin, tipo=c.fetchone()
-    # Il modello e' l'ultimo preventivo VISIBILE (RLS: emittente attivo, vedi _guc).
     # Il preventivo nasce SEMPRE col suo cliente (billing_account_id NOT NULL,
-    # brief-db-istanza-nasce-col-ba): la terna dallo stesso preventivo, coerente.
-    c.execute("""SELECT billing_account_id, istanza_utility_id, utility_id, valuta_id, emittente_fiscale_id FROM vendite.preventivi
-                 WHERE utility_id IS NOT NULL AND istanza_utility_id IS NOT NULL ORDER BY id DESC LIMIT 1""")
-    ba, istanza, utility, valuta, pemitt = c.fetchone()
+    # brief-db-istanza-nasce-col-ba): la terna dal cliente del lookup, che e'
+    # dell'emittente attivo (bash, sopra); l'emittente e' quello attivo.
+    ba, istanza, utility, valuta = (int(os.environ[k]) for k in
+        ("SMOKE_SEED_BA", "SMOKE_SEED_ISTANZA", "SMOKE_SEED_UTILITY", "SMOKE_SEED_VALUTA"))
+    pemitt = int(os.environ["SMOKE_GUC_EMITTENTE"])
     # ⛔ La pratica e' COERENTE col preventivo: stesso emittente, e il suo
     # soggetto e' il cliente del preventivo. Fino al 2026-10-12 emittente e
     # soggetto venivano dalla pratica-modello, indipendente dal preventivo:

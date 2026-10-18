@@ -41,6 +41,7 @@ from apps.core.services.partitioned_note_service import PartitionedNoteService
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.services.vendite_service import get_fattura_dettaglio
+from scripts.tests._smoke_contesto import apri_contesto_smoke
 
 note_svc = PartitionedNoteService(repo=NOTE_REPO_FATTURA)
 
@@ -60,13 +61,7 @@ with transaction.atomic():
     with connection.cursor() as cur:
         # Contesto operatore: `vendite.fatture` e' RLS. Senza GUC la testata
         # non si legge e lo smoke misurerebbe il nulla.
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
-        cur.execute("SELECT auth_user_id FROM config.user_emittenti_fiscali LIMIT 1")
-        auth_user_id = cur.fetchone()[0]
+        auth_user_id = apri_contesto_smoke(cur)
         cur.execute("SELECT id FROM vendite.fatture ORDER BY id DESC LIMIT 1")
         row = cur.fetchone()
         if not row:

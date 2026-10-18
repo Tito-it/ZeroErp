@@ -41,6 +41,8 @@ from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services import _kit_meta as kit_meta  # noqa: F401 (parita' fixture)
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 from scripts.tests._smoke_commessa import crea_riga_commessa
+from scripts.tests._smoke_indirizzo import crea_indirizzo_libero_ruolo
+from scripts.tests._smoke_contesto import apri_contesto_smoke
 
 FAIL: list[str] = []
 
@@ -70,11 +72,7 @@ repo = VenditePipelineRepository()
 
 with transaction.atomic():
     with connection.cursor() as cur:
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
+        apri_contesto_smoke(cur)
         cur.execute(SQL_TEMPLATE)
         row = cur.fetchone()
         if not row:
@@ -282,19 +280,10 @@ with transaction.atomic():
 
     # --- CORREZIONE + RILANCIO -------------------------------------------
     with connection.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO anagrafiche.indirizzi
-                   (soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                    indirizzo_libero, stato_id, locality, postal_box,
-                    administrative_area)
-            VALUES (%s, %s, NULL, 'Via Fatturazione 1 - smoke',
-                    (SELECT id FROM config.stati WHERE codice_iso2 = 'IT'),
-                    'Roma', '00100', 'RM')
-            RETURNING id
-            """, [sr_id, tipo_fatt],
+        id_fatt_nuovo = crea_indirizzo_libero_ruolo(
+            cur, soggetto_ruolo_id=sr_id, tipo_indirizzo_id=tipo_fatt,
+            testo="Via Fatturazione 1 - smoke",
         )
-        id_fatt_nuovo = cur.fetchone()[0]
 
     esito_ok = repo.run_snapshot_indirizzi_lotto_task(lotto_id=lotto_id)
     check("3) rilancio dopo correzione: failed_rows = 0 e riga FATT per ogni fattura",

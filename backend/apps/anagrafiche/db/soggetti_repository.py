@@ -159,7 +159,7 @@ CONTATTO_UPDATE_COLS: frozenset[str] = frozenset({
 INDIRIZZO_RUOLO_UPDATE_COLS: frozenset[str] = frozenset({
     "tipo_indirizzo_id", "istanza_utility_id", "indirizzo_dettaglio_id",
     "indirizzo_libero", "stato_id", "comune_id", "codice_postale_id",
-    "administrative_area", "locality", "sublocality", "postal_box",
+    "administrative_area", "locality", "sublocality", "postal_code",
 })
 
 
@@ -641,38 +641,19 @@ class SoggettiRepository:
             cursor.execute(sql, [soggetto_id])
             return rows_to_list(cursor)
 
-    # Scopo: Crea indirizzo soggetto chiamando la funzione DB.
-    #        Supporta modalita' normalizzata (indirizzo_dettaglio_id)
-    #        e modalita' libera (indirizzo_libero + stato_id).
-    def crea_indirizzo_soggetto(
-        self, soggetto_id: str, *,
-        tipo_indirizzo_codice: str,
-        indirizzo_dettaglio_id: int | None = None,
-        indirizzo_libero: str | None = None,
-        stato_id: int | None = None,
-        comune_id: int | None = None,
-        codice_postale_id: int | None = None,
-    ) -> int:
-        sql = """
-            SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-                p_soggetto_id            := %s::uuid,
-                p_tipo_indirizzo_codice  := %s,
-                p_indirizzo_dettaglio_id := %s,
-                p_indirizzo_libero       := %s,
-                p_stato_id               := %s,
-                p_comune_id              := %s,
-                p_codice_postale_id      := %s
-            )
-        """
+    # Scopo: Crea un indirizzo del soggetto con la madre del DB
+    #        `anagrafiche.fn_crea_indirizzo_soggetto(soggetto, indirizzo jsonb)`
+    #        (firma dal 2026-10-18: la posizionale non c'e' piu'). Ritorna l'id
+    #        della riga di `indirizzi_soggetti`.
+    def crea_indirizzo_soggetto(self, soggetto_id: str, indirizzo: dict[str, Any]) -> int:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                soggetto_id, tipo_indirizzo_codice,
-                indirizzo_dettaglio_id, indirizzo_libero,
-                stato_id, comune_id, codice_postale_id,
-            ])
+            cursor.execute(
+                "SELECT anagrafiche.fn_crea_indirizzo_soggetto(%s::uuid, %s::jsonb)",
+                [soggetto_id, json.dumps(indirizzo, default=str)],
+            )
             row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
+        assert row is not None
+        return int(row[0])
 
     # Scopo: Elimina un'associazione indirizzo-soggetto per id.
     def delete_indirizzo_soggetto(self, indirizzo_soggetto_id: int, soggetto_id: str) -> bool:
@@ -706,7 +687,7 @@ class SoggettiRepository:
     _IND_RUOLO_NULLABLE = {
         "istanza_utility_id", "indirizzo_dettaglio_id", "indirizzo_libero",
         "stato_id", "comune_id", "codice_postale_id",
-        "administrative_area", "locality", "sublocality", "postal_box",
+        "administrative_area", "locality", "sublocality", "postal_code",
     }
 
     # Scopo: Crea indirizzo a livello ruolo.

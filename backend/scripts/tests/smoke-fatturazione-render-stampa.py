@@ -24,6 +24,9 @@
 # dipendono dai dati — ma la CORRISPONDENZA context -> output, che e' il
 # contratto che si e' rotto.
 #
+# CONTESTO. `dev.smoke` (BB `_smoke_contesto`), super admin: il perimetro e'
+# largo, e ogni template si risolve per l'emittente della SUA fattura.
+#
 # IDEMPOTENZA. Nessun documento persistito, nessuna riga in coda. I casi 1-8
 # sono di SOLA LETTURA; il caso 9 (piano rate, aggiunto il 2026-08-02) genera
 # le rate dentro `transaction.atomic()` e fa ROLLBACK — vedi la sua nota per
@@ -34,12 +37,15 @@
 #   2  il context espone le chiavi di contratto delle righe
 #   3  il render Jinja non solleva (StrictUndefined attivo)
 #   4  ogni riga del context compare nel documento con quantita' e importo
+#   4b i componenti dei kit compaiono sotto il loro padre (righe `row-componente`)
 #   5  nessuna cella numerica stampa "-" dove il context ha un valore
 #   6  i totali di testata compaiono nella LORO sezione del documento
 #   7  il PDF si genera e non e' un guscio vuoto
 #   8  auto-verifica: il presidio del caso 5 e' vivo (mutazione controllata)
 #   9  il documento stampa il PIANO RATE: sezione assente prima, presente dopo
-#      la generazione, coi valori del context nelle celle
+#      la generazione, coi valori del context nelle celle (su una fattura
+#      pre-fiscale sua, col template del suo emittente; se ha gia' il piano se
+#      ne verificano i valori)
 #      ✅ prova di mutazione (2026-08-02): togliendo `importo` dal context
 #         passato al template — il difetto storico, chiave sbagliata -> '-' —
 #         il caso 9 diventa ROSSO e gli altri restano verdi.
@@ -49,16 +55,15 @@ import re
 
 from django.db import connection, transaction
 
+from apps.config.sorgenti import SORGENTE_FATTURA
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.documenti.db.documenti_repository import DocumentiRepository
+from apps.documenti.services.document_generation_service import DocumentGenerationService
 from apps.documenti.services.render_service import _render_html_with_jinja, render_pdf
 from apps.vendite.services.fattura_document_context_builder import (
     FatturaDocumentContextBuilder,
 )
-
-# Codice del template documento da collaudare. E' il `codice` di
-# `documenti.template_documenti`, non un id: gli id cambiano fra ambienti.
-TEMPLATE_CODICE = "Fattura"
+from scripts.tests._smoke_contesto import apri_contesto_smoke
 
 FAIL: list[str] = []
 
@@ -71,21 +76,27 @@ def check(label, cond, detail=""):
 
 
 # Scopo: Estrae le celle della tabella righe dal documento renderizzato,
-#        ripulite dal markup. Una lista di celle per riga.
+#        ripulite dal markup: `(righe di primo livello, righe dei componenti)`,
+#        una lista di celle per riga.
+# ⚠️ Dalla forma dei dati 3 (2026-10-02) un kit e' UNA riga del context coi
+#    componenti DENTRO (`r.componenti`), e il template li stampa come righe
+#    `row-componente` sotto il padre. Fino al 2026-10-18 lo smoke le contava
+#    insieme: dal primo kit il confronto per posizione era sfasato, e i casi 4,
+#    5 e 8 accusavano celle di un'altra riga.
 def celle_per_riga(html):
     blocco = re.search(r"Righe fattura.*?</table>", html, re.S)
     if not blocco:
-        return []
-    righe = re.findall(r"<tr[^>]*>(.*?)</tr>", blocco.group(0), re.S)
-    out = []
-    for tr in righe[1:]:  # [0] e' l'intestazione
+        return [], []
+    primo, componenti = [], []
+    for attr, tr in re.findall(r"<tr([^>]*)>(.*?)</tr>", blocco.group(0), re.S):
         celle = [
             re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", c)).strip()
             for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)
         ]
-        if celle:
-            out.append(celle)
-    return out
+        if not celle:
+            continue  # l'intestazione ha solo <th>
+        (componenti if "row-componente" in attr else primo).append(celle)
+    return primo, componenti
 
 
 # Scopo: Mappa campo di contratto -> indice di colonna, leggendo i <th> della
@@ -120,39 +131,89 @@ print("\n=== SMOKE render stampa fattura (contratto context <-> template) ===\n"
 with connection.cursor() as cur:
     # `vendite.fatture` e' RLS: senza contesto operatore il context builder
     # solleverebbe E_NOT_FOUND su una fattura che esiste.
-    cur.execute(
-        "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-        "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-        "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-    )
-    # Una fattura reale CON righe: senza righe il contratto non si esercita.
+    apri_contesto_smoke(cur)
+    # Casi 1-8 (sola lettura): la fattura reale piu' ricca, preferendo una con
+    # un KIT, che il template stampa su due livelli (padre + componenti). Lo
+    # stato non conta: non si scrive niente.
     cur.execute(
         """
         SELECT r.fattura_id, count(*)
           FROM vendite.fatture_righe r
          GROUP BY r.fattura_id
-         ORDER BY count(*) DESC, r.fattura_id DESC
+         ORDER BY bool_or(r.kit_key IS NOT NULL) DESC, count(*) DESC, r.fattura_id DESC
          LIMIT 1
         """
     )
     row = cur.fetchone()
     if not row:
-        raise SystemExit("Nessuna fattura con righe: impossibile collaudare la stampa.")
+        raise SystemExit("SENZA_MATERIA: nessuna fattura con righe.")
     fattura_id, n_righe = row
-
+    # Caso 9 (genera il piano rate e annulla): una fattura PRE-FISCALE (DRAFT o
+    # EMESSA: oltre la soglia il generatore rifiuta, 573) con un totale
+    # positivo (con base non positiva le rate sono zero per progetto, D-D),
+    # preferendo una SENZA piano: e' quella su cui si prova che la sezione
+    # nasce con la generazione. ⛔ Fino al 2026-10-18 il 9 usava la fattura dei
+    # casi 1-8, «quella con piu' righe», e cadeva su una DEFINITIVA.
     cur.execute(
-        "SELECT id FROM documenti.template_documenti WHERE codice = %s", [TEMPLATE_CODICE]
+        """
+        SELECT f.id
+          FROM vendite.fatture f
+          JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
+         WHERE s.codice_interno IN ('DRAFT', 'EMESSA')
+           AND f.totale_a_pagare > 0
+           AND EXISTS (SELECT 1 FROM vendite.fatture_righe r WHERE r.fattura_id = f.id)
+         ORDER BY EXISTS (SELECT 1 FROM vendite.fatture_scadenze fs WHERE fs.fattura_id = f.id),
+                  f.id DESC
+         LIMIT 1
+        """
     )
-    t = cur.fetchone()
-    if not t:
-        raise SystemExit(f"Template '{TEMPLATE_CODICE}' inesistente.")
-    template_id = t[0]
+    row = cur.fetchone()
+    fattura_rate_id = row[0] if row else None
+    cur.execute(
+        "SELECT id FROM config.sorgenti WHERE codice_interno = %s AND attivo",
+        [SORGENTE_FATTURA],
+    )
+    sorgente_fattura_id = cur.fetchone()[0]
 
-print(f"fattura {fattura_id} ({n_righe} righe), template '{TEMPLATE_CODICE}'\n")
 
-versione = DocumentiRepository().get_versione_pubblicata_attiva(
-    template_id, today=oggi_aziendale()
-)
+# Scopo: il template di una fattura e la sua versione pubblicata, come li
+#        sceglie il generatore: quello di default dell'EMITTENTE della fattura
+#        per la sorgente FATTURA. Ritorna `(emittente_fiscale_id, template,
+#        versione)`; template o versione None se mancano.
+# ⛔ Fino al 2026-10-18 lo smoke prendeva `WHERE codice = 'Fattura'` e una riga
+#    qualsiasi, ma `template_documenti` e' per emittente: poteva collaudare il
+#    template di un altro.
+def template_della_fattura(fid):
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            SELECT ef.id
+              FROM vendite.fatture f
+              JOIN anagrafiche.emittenti_fiscali ef
+                ON ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id
+             WHERE f.id = %s
+            """, [fid],
+        )
+        ef_id = cur.fetchone()[0]
+    repo = DocumentiRepository()
+    tpl = repo.find_template_applicabile(
+        sorgente_tipo_id=sorgente_fattura_id, emittente_fiscale_id=ef_id,
+        tipo_documento_output_id=None, emittente_ids_scope=None,
+    )
+    ver = (repo.get_versione_pubblicata_attiva(tpl["id"], today=oggi_aziendale())
+           if tpl else None)
+    return ef_id, tpl, ver
+
+
+emittente_fiscale_id, template, versione = template_della_fattura(fattura_id)
+if template is None:
+    raise SystemExit(
+        f"SENZA_MATERIA: l'emittente {emittente_fiscale_id} della fattura {fattura_id} "
+        "non ha un template di default per la fattura."
+    )
+print(f"fattura {fattura_id} ({n_righe} righe), template {template['codice']!r} "
+      f"(id {template['id']}, emittente {emittente_fiscale_id})\n")
+
 check("1) esiste una versione PUBBLICATA del template", versione is not None)
 if versione is None:
     raise SystemExit("Nessuna versione pubblicata: il resto dello smoke non ha senso.")
@@ -178,7 +239,7 @@ except Exception as exc:  # lo smoke deve riportare, non propagare
 if reso:
     check("3) il render Jinja non solleva", True)
 
-celle = celle_per_riga(html)
+celle, celle_componenti = celle_per_riga(html)
 
 # 4) corrispondenza context -> documento, riga per riga.
 #    Le righe KIT_PADRE non esistono in tabella ma sono nel context: si
@@ -199,6 +260,20 @@ check("4) ogni riga del context compare con quantita' e importo",
       not disallineate and len(celle) == len(righe_ctx),
       "; ".join(disallineate[:3]) if disallineate
       else f"{len(celle)} righe rese su {len(righe_ctx)} nel context")
+
+# 4b) i componenti dei kit: tante righe `row-componente` quanti i componenti
+#     del context, ognuna con la quantita' del suo componente, nell'ordine.
+componenti_ctx = [c for r in righe_ctx for c in (r.get("componenti") or [])]
+diversi = [
+    f"componente {k + 1}: quantita={c.get('quantita')} non nella riga"
+    for k, c in enumerate(componenti_ctx)
+    if k < len(celle_componenti) and c.get("quantita") is not None
+    and str(c.get("quantita")) not in " | ".join(celle_componenti[k])
+]
+check("4b) i componenti dei kit compaiono sotto il loro padre",
+      not diversi and len(celle_componenti) == len(componenti_ctx),
+      "; ".join(diversi[:3]) if diversi
+      else f"{len(celle_componenti)} componenti resi su {len(componenti_ctx)} nel context")
 
 # 5) nessun trattino NELLA COLONNA di un campo che il context valorizza. E' il
 #    sintomo esatto del difetto d'origine: chiave sbagliata -> `.get()` torna
@@ -253,7 +328,15 @@ check("6) i totali di testata compaiono nella loro sezione",
 
 # 7) il PDF si genera davvero
 try:
-    pdf = render_pdf(template_versione=versione, context=ctx)
+    # Il risolutore degli asset del generatore vero (`asset:` del template,
+    # nel perimetro dell'emittente del template, solo validi oggi): un logo
+    # mancante deve far fallire anche qui.
+    pdf = render_pdf(
+        template_versione=versione, context=ctx,
+        risolvi_asset=DocumentGenerationService()._risolutore_asset(
+            emittente_fiscale_id, solo_validi=True,
+        ),
+    )
     check("7) il PDF si genera e non e' un guscio vuoto",
           pdf.startswith(b"%PDF") and len(pdf) > 5000, f"{len(pdf)} byte")
 except Exception as exc:
@@ -275,7 +358,7 @@ ctx_rotto = {**ctx, "righe": [
 ]}
 try:
     html_rotto = _render_html_with_jinja(versione["html_template"], ctx_rotto)
-    celle_rotte = celle_per_riga(html_rotto)
+    celle_rotte, _ = celle_per_riga(html_rotto)
     j_importo = col_di.get("importo_riga")
     intercettato = j_importo is not None and any(
         riga.get("importo_riga") is not None
@@ -296,120 +379,123 @@ check("8) auto-verifica: il presidio del caso 5 e' vivo", intercettato,
 #    difetti storici: chiave sbagliata -> trattino stampato, PDF valido, coda
 #    FATTO, nessuno se ne accorge.
 #
-#    ⚠️ Questo e' l'UNICO caso che SCRIVE, e per una ragione che non si aggira:
-#    `fatture_scadenze` e' stata vuota per costruzione fino al 2026-08-02, e
-#    nessuna fattura del sistema ha ancora un piano rate. Un caso "trova una
-#    fattura con rate" sarebbe uno SKIP perenne, cioe' una copertura che sembra
-#    esserci e non c'e'. Le rate si generano qui, si rende, e la transazione fa
-#    ROLLBACK: fuori di qui nulla e' cambiato.
+#    ⚠️ Questo e' l'UNICO caso che SCRIVE: le rate si generano qui, si rende, e
+#    la transazione fa ROLLBACK — fuori di qui nulla e' cambiato. Si collauda
+#    sulla fattura `fattura_rate_id` (pre-fiscale, totale positivo, scelta
+#    sopra) col template del SUO emittente.
 #
-#    Il controllo e' integrato e non aggiunto: PRIMA di generare la sezione NON
-#    esiste (`{% if scadenze %}` e' falso), DOPO deve esistere e portare i
-#    valori. Un'asserzione di sola presenza sarebbe passata anche su un
-#    template che stampa quattro trattini.
+#    Il controllo e' integrato e non aggiunto: su una fattura SENZA piano la
+#    sezione PRIMA non esiste (`{% if scadenze %}` e' falso), DOPO la
+#    generazione deve esistere e portare i valori. Un'asserzione di sola
+#    presenza sarebbe passata anche su un template che stampa quattro trattini.
+#    Se tutte le fatture pre-fiscali hanno gia' un piano (fino al 2026-08-02
+#    non ne aveva nessuna: oggi il generatore gira nel giro di fatturazione),
+#    non si rigenera: si verificano i valori del piano che c'e'.
 print()
-with connection.cursor() as cur:
-    cur.execute(
-        """
-        SELECT f.termine_pagamento_id, f.totale_a_pagare, s.codice_interno
-          FROM vendite.fatture f
-          LEFT JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
-         WHERE f.id = %s
-        """, [fattura_id],
-    )
-    h_term, h_base, h_stato = cur.fetchone()
-
-sezione_prima = re.search(r"Scadenze pagamento.*?</table>", html, re.S)
-
-if h_stato not in ("DRAFT", "EMESSA"):
+if fattura_rate_id is None:
     check("9) il documento stampa il piano rate", False,
-          f"fattura {fattura_id} in stato {h_stato}: oltre la soglia il "
-          "generatore rifiuta (573) e il caso non e' esercitabile — "
-          "scegliere una fattura pre-fiscale")
-elif h_base is None or h_base <= 0:
-    check("9) il documento stampa il piano rate", False,
-          f"totale_a_pagare={h_base}: con base non positiva le rate sono zero "
-          "per progetto (D-D) e non c'e' piano da stampare")
+          "SENZA_MATERIA: nessuna fattura DRAFT o EMESSA con righe e totale positivo")
 else:
-    with transaction.atomic():
-        with connection.cursor() as cur:
-            # Fixture di RENDERING, non di dominio: se la testata non porta il
-            # termine (fatture anteriori alla catena 3b) se ne mette uno di
-            # catalogo. Qui si collauda il TEMPLATE — che la risoluzione del
-            # termine sia corretta lo presidia `smoke-fattura-scadenze.py`,
-            # dove il termine arriva dalla commessa passando dalla chiave.
-            if h_term is None:
-                cur.execute(
-                    "SELECT id FROM config.termini_pagamento"
-                    " WHERE attivo AND numero_rate > 1"
-                    " ORDER BY numero_rate DESC, id LIMIT 1"
-                )
-                t_row = cur.fetchone()
-                if t_row:
+    _ef_rate, _tpl_rate, versione_rate = template_della_fattura(fattura_rate_id)
+    if versione_rate is None:
+        check("9) il documento stampa il piano rate", False,
+              f"l'emittente della fattura {fattura_rate_id} non ha un template "
+              "di default pubblicato")
+    else:
+        ctx_prima = FatturaDocumentContextBuilder().build_context(fattura_rate_id)
+        ha_piano_prima = bool(ctx_prima.get("scadenze"))
+        sezione_prima = re.search(
+            r"Scadenze pagamento.*?</table>",
+            _render_html_with_jinja(versione_rate["html_template"], ctx_prima), re.S,
+        )
+        with transaction.atomic():
+            if not ha_piano_prima:
+                with connection.cursor() as cur:
                     cur.execute(
-                        "UPDATE vendite.fatture SET termine_pagamento_id = %s"
-                        " WHERE id = %s", [t_row[0], fattura_id],
+                        "SELECT termine_pagamento_id FROM vendite.fatture WHERE id = %s",
+                        [fattura_rate_id],
                     )
-            # Anche la MODALITA', per lo stesso motivo e con piu' forza: il
-            # generatore copia `meta.modalita_codice` dalla testata, e su una
-            # testata NULL la colonna «Modalita» stampa un trattino LEGITTIMO.
-            # Lasciarla cosi' renderebbe il caso cieco proprio sulla colonna
-            # piu' esposta al difetto storico — un `-` che nessuno accusa.
-            cur.execute(
-                "UPDATE vendite.fatture SET modalita_pagamento_id = COALESCE("
-                "  modalita_pagamento_id,"
-                "  (SELECT id FROM config.modalita_pagamento ORDER BY id LIMIT 1))"
-                " WHERE id = %s", [fattura_id],
-            )
-            cur.execute("SELECT * FROM vendite.fn_genera_scadenze_fattura(%s)",
-                        [fattura_id])
-            cur.fetchone()
+                    h_term = cur.fetchone()[0]
+                    # Fixture di RENDERING, non di dominio: se la testata non
+                    # porta il termine (fatture anteriori alla catena 3b) se ne
+                    # mette uno di catalogo. Qui si collauda il TEMPLATE — che la
+                    # risoluzione del termine sia corretta lo presidia
+                    # `smoke-fattura-scadenze.py`.
+                    if h_term is None:
+                        cur.execute(
+                            "SELECT id FROM config.termini_pagamento"
+                            " WHERE attivo AND numero_rate > 1"
+                            " ORDER BY numero_rate DESC, id LIMIT 1"
+                        )
+                        t_row = cur.fetchone()
+                        if t_row:
+                            cur.execute(
+                                "UPDATE vendite.fatture SET termine_pagamento_id = %s"
+                                " WHERE id = %s", [t_row[0], fattura_rate_id],
+                            )
+                    # Anche la MODALITA': il generatore copia
+                    # `meta.modalita_codice` dalla testata, e su una testata NULL
+                    # la colonna «Modalita» stampa un trattino LEGITTIMO, che
+                    # renderebbe il caso cieco proprio sulla colonna piu' esposta
+                    # al difetto storico.
+                    cur.execute(
+                        "UPDATE vendite.fatture SET modalita_pagamento_id = COALESCE("
+                        "  modalita_pagamento_id,"
+                        "  (SELECT id FROM config.modalita_pagamento ORDER BY id LIMIT 1))"
+                        " WHERE id = %s", [fattura_rate_id],
+                    )
+                    cur.execute("SELECT * FROM vendite.fn_genera_scadenze_fattura(%s)",
+                                [fattura_rate_id])
+                    cur.fetchone()
 
-        ctx_scad = FatturaDocumentContextBuilder().build_context(fattura_id)
-        scadenze_ctx = ctx_scad.get("scadenze") or []
-        html_scad = _render_html_with_jinja(versione["html_template"], ctx_scad)
-        sezione = re.search(r"Scadenze pagamento.*?</table>", html_scad, re.S)
+            ctx_scad = FatturaDocumentContextBuilder().build_context(fattura_rate_id)
+            scadenze_ctx = ctx_scad.get("scadenze") or []
+            html_scad = _render_html_with_jinja(versione_rate["html_template"], ctx_scad)
+            sezione = re.search(r"Scadenze pagamento.*?</table>", html_scad, re.S)
 
-        assenti = []
-        if sezione:
-            testo = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", sezione.group(0)))
-            # Tutte e quattro le colonne della sezione, `modalita_codice`
-            # inclusa: e' quella che il fixture valorizza apposta per non
-            # lasciarla a trattino e quindi non asserita.
-            for s in scadenze_ctx:
-                for campo in ("nr", "data", "importo", "modalita_codice"):
-                    valore = s.get(campo)
-                    if valore is not None and str(valore) not in testo:
-                        assenti.append(f"rata {s.get('nr')}: {campo}={valore}")
-            mancanti_mod = [s.get("nr") for s in scadenze_ctx
-                            if not s.get("modalita_codice")]
-            if mancanti_mod:
-                assenti.append(
-                    f"modalita_codice assente nel context per le rate {mancanti_mod}: "
-                    "il generatore non l'ha copiata dalla testata"
-                )
-        check("9) il documento stampa il piano rate",
-              sezione_prima is None and sezione is not None
-              and len(scadenze_ctx) > 0 and not assenti,
-              f"{len(scadenze_ctx)} rate nel context, sezione "
-              f"{'assente' if not sezione else 'presente'} "
-              f"(prima della generazione: {'assente' if not sezione_prima else 'PRESENTE'}) "
-              + (f"— valori non stampati: {'; '.join(assenti[:3])}" if assenti else ""))
-        if sezione:
-            print("\n--- sezione «Scadenze pagamento» resa ---")
-            for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", sezione.group(0), re.S)[1:]:
-                celle_s = [
-                    re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", c)).strip()
-                    for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)
-                ]
-                if celle_s:
-                    print("   ", " | ".join(celle_s))
+            assenti = []
+            if sezione:
+                testo = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", sezione.group(0)))
+                # Tutte e quattro le colonne della sezione, `modalita_codice`
+                # inclusa.
+                for s in scadenze_ctx:
+                    for campo in ("nr", "data", "importo", "modalita_codice"):
+                        valore = s.get(campo)
+                        if valore is not None and str(valore) not in testo:
+                            assenti.append(f"rata {s.get('nr')}: {campo}={valore}")
+                mancanti_mod = [s.get("nr") for s in scadenze_ctx
+                                if not s.get("modalita_codice")]
+                if mancanti_mod and not ha_piano_prima:
+                    assenti.append(
+                        f"modalita_codice assente nel context per le rate {mancanti_mod}: "
+                        "il generatore non l'ha copiata dalla testata"
+                    )
+            check("9) il documento stampa il piano rate",
+                  (ha_piano_prima or sezione_prima is None) and sezione is not None
+                  and len(scadenze_ctx) > 0 and not assenti,
+                  f"fattura {fattura_rate_id}: {len(scadenze_ctx)} rate nel context, sezione "
+                  f"{'assente' if not sezione else 'presente'} "
+                  + ("(piano gia' presente: valori verificati, niente rigenerato) "
+                     if ha_piano_prima else
+                     f"(prima della generazione: {'assente' if not sezione_prima else 'PRESENTE'}) ")
+                  + (f"— valori non stampati: {'; '.join(assenti[:3])}" if assenti else ""))
+            if sezione:
+                print("\n--- sezione «Scadenze pagamento» resa ---")
+                for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", sezione.group(0), re.S)[1:]:
+                    celle_s = [
+                        re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", c)).strip()
+                        for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)
+                    ]
+                    if celle_s:
+                        print("   ", " | ".join(celle_s))
 
-        transaction.set_rollback(True)
-    print("\n    (rollback: nessuna rata persistita)")
+            transaction.set_rollback(True)
+        print("\n    (rollback: nessuna rata persistita)")
 
 print("\n--- righe rese ---")
 for c in celle:
     print("   ", " | ".join(c))
+for c in celle_componenti:
+    print("    (componente)", " | ".join(c))
 
 print(f"\n=== ESITO: {'FALLITO — ' + ', '.join(FAIL) if FAIL else 'TUTTO VERDE'} ===\n")

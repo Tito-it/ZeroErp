@@ -43,12 +43,14 @@
 from django.db import connection, transaction
 
 from apps.core.db._helpers import coerce_jsonb_dict, row_to_dict
+from scripts.tests._smoke_indirizzo import crea_indirizzo_libero_ruolo
 
 from apps.vendite.db.contratti_repository import ContrattiRepository
 from apps.vendite.db.ddt_repository import DdtRepository
 from apps.vendite.db.offerte_repository import OfferteRepository
 from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.db.preventivi_repository import PreventiviRepository
+from scripts.tests._smoke_contesto import apri_contesto_smoke, seleziona_emittente_di_prova
 
 FAIL: list[str] = []
 
@@ -99,35 +101,32 @@ with transaction.atomic():
     with connection.cursor() as cur:
         # Contesto operatore (le anagrafiche non sono RLS, ma i documenti sì:
         # lo smoke resta coerente con il percorso applicativo).
-        cur.execute(
-            "SELECT set_config('app.ruolo_applicativo','OPERATORE',false),"
-            "       set_config('app.current_user_id', (SELECT auth_user_id::text"
-            "         FROM config.user_emittenti_fiscali LIMIT 1), false)"
-        )
+        apri_contesto_smoke(cur)
 
-        # Fixture: un soggetto_ruolo CLIENTE con billing account e istanza, preso
-        # dai dati reali. Serve una coppia (ruolo, istanza) coerente.
+        # Fixture: un soggetto_ruolo CLIENTE con billing account e istanza,
+        # COSTRUITO dentro la transazione annullata dal builder delle fixture
+        # (`dbops.fn_pgtap_crea_cliente_ba`). ⛔ Fino al 2026-10-18 lo smoke
+        # prendeva il primo BA dei dati reali e ne cancellava gli indirizzi: un
+        # documento fuori bozza che li usava (un contratto annullato) lo fermava
+        # col lock delle righe, e l'esito dipendeva da cosa c'era su dbdev.
+        # Sull'emittente DI PROVA, scelto come lo sceglie l'operatore:
+        # `dev.smoke` e' super admin in «Tutti gli emittenti», e un BA nuovo
+        # ne vuole uno.
+        _ef_id, ef_sr_id = seleziona_emittente_di_prova(cur)
         cur.execute(
-            """
-            SELECT ba.soggetto_ruolo_id, ba.istanza_utility_id
-              FROM anagrafiche.billing_account ba
-             ORDER BY ba.id
-             LIMIT 1
-            """
+            "SELECT soggetto_ruolo_id, istanza_utility_id"
+            "  FROM dbops.fn_pgtap_crea_cliente_ba('smoke catena indirizzi', NULL, %s)",
+            [ef_sr_id],
         )
-        base = cur.fetchone()
-        if not base:
-            raise SystemExit("Nessun billing account: smoke impossibile.")
-        sr_id, istanza_id = base
-        # Un'ALTRA istanza qualsiasi, per la controprova cross-istanza (3c):
-        # risolvere per lei non deve pescare l'indirizzo dell'istanza sopra.
+        sr_id, istanza_id = cur.fetchone()
+        # Un'ALTRA istanza, per la controprova cross-istanza (3c): risolvere per
+        # lei non deve pescare l'indirizzo dell'istanza sopra.
         cur.execute(
-            "SELECT istanza_utility_id FROM anagrafiche.billing_account"
-            " WHERE istanza_utility_id <> %s ORDER BY id LIMIT 1",
-            [istanza_id],
+            "SELECT istanza_utility_id"
+            "  FROM dbops.fn_pgtap_crea_cliente_ba('smoke catena indirizzi, altra istanza', NULL, %s)",
+            [ef_sr_id],
         )
-        row_altra = cur.fetchone()
-        altra_istanza_id = row_altra[0] if row_altra else None
+        altra_istanza_id = cur.fetchone()[0]
         print(f"fixture: soggetto_ruolo {sr_id}, istanza {istanza_id}, "
               f"altra istanza {altra_istanza_id}\n")
 
@@ -166,25 +165,12 @@ with transaction.atomic():
         )
 
         # --- 2) layer RUOLO: indirizzo GENERICO (istanza NULL) --------------
-        # `anagrafiche.indirizzi` non ha colonne CAP/città. Il CHECK
-        # `chk_indirizzi_free_requirements` impone, per un indirizzo NON
-        # normalizzato: `indirizzo_libero` + `stato_id` + la terna
-        # (locality, postal_box, administrative_area) — oppure comune/CAP
-        # normalizzati. Lo snapshot lo compone la funzione DB, non lo smoke.
-        cur.execute(
-            """
-            INSERT INTO anagrafiche.indirizzi
-                   (soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                    indirizzo_libero, stato_id, locality, postal_box,
-                    administrative_area)
-            VALUES (%s, %s, NULL, 'Via GENERICA 1 - smoke',
-                    (SELECT id FROM config.stati WHERE codice_iso2 = 'IT'),
-                    'Roma', '00100', 'RM')
-            RETURNING id
-            """,
-            [sr_id, tipo_id],
+        # Un indirizzo NON normalizzato, nella forma che decide lo stato
+        # (BB `_smoke_indirizzo`). Lo snapshot lo compone la funzione DB.
+        id_generico = crea_indirizzo_libero_ruolo(
+            cur, soggetto_ruolo_id=sr_id, tipo_indirizzo_id=tipo_id,
+            testo="Via GENERICA 1 - smoke",
         )
-        id_generico = cur.fetchone()[0]
 
     risolto = _risolvi(
         soggetto_ruolo_id=sr_id, istanza_utility_id=istanza_id, tipo_codice=tipo_codice,
@@ -201,20 +187,10 @@ with transaction.atomic():
     # del mixin (`istanza_utility_id NULLS FIRST`) avrebbe continuato a vincere
     # il generico: è esattamente il difetto C-14c.
     with connection.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO anagrafiche.indirizzi
-                   (soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                    indirizzo_libero, stato_id, locality, postal_box,
-                    administrative_area)
-            VALUES (%s, %s, %s, 'Via ISTANZA 99 - smoke',
-                    (SELECT id FROM config.stati WHERE codice_iso2 = 'IT'),
-                    'Milano', '20100', 'MI')
-            RETURNING id
-            """,
-            [sr_id, tipo_id, istanza_id],
+        id_istanza = crea_indirizzo_libero_ruolo(
+            cur, soggetto_ruolo_id=sr_id, tipo_indirizzo_id=tipo_id,
+            testo="Via ISTANZA 99 - smoke", istanza_utility_id=istanza_id,
         )
-        id_istanza = cur.fetchone()[0]
 
     risolto = _risolvi(
         soggetto_ruolo_id=sr_id, istanza_utility_id=istanza_id, tipo_codice=tipo_codice,

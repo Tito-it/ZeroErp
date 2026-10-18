@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: Tid, col collaudo T-5 (riga 8), che fa alla fine.** T-1 … T-4 e T-6 sono fatti (2026-10-18, §8): il
-command `provision_utenti_sviluppo`, la lista Operatori col filtro e il badge, il run-book §11. Fatta anche la
-2b-2 (il backend crea dalle madri del DB): [brief DB §6.10](brief-db-processi-accensione-per-ambiente.md).
+**Riparte: Tid, con le decisioni del [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §5; il team DB, col listino che non si spegne (§9.5). T-7a è fatto (§9.4); T-7b aspetta i modelli.** Il collaudo T-5 è fatto (2026-10-18, §9): provisioning, `env.sh` e login con
+`dev.smoke` funzionano, `smoke` è disattivato; il giro degli smoke ha trovato un emittente di prova che non sa
+emettere (nessun modello di documento) e smoke che vivevano dei dati di `EMITEST`.
 
 ⚠️ Due scostamenti dal §7, imposti dal modello (brief DB §5-ter.3): `dev.multiveste` ha il portale sul
 **cliente 3** (un ruolo cliente ha una sola veste portale attiva, e il cliente 1 è di `dev.portale1`); gli
@@ -19,11 +19,16 @@ utenti dei portali non hanno un PF loro (la veste sta sul ruolo del cliente o de
 | 5 | ✅ **team DB** | Giro 2: i BB (2b-1), etichette, verbo `anagrafiche.fn_provisiona_dati_di_sviluppo`, presidio (2b-3). La colonna della lista Operatori: `LEFT JOIN dbops.credenziali_di_prova` (T-4) | brief DB §5-ter.2, §5-ter.3 | — |
 | 6 | ✅ **Tid** | Apply del giro 2 su dbdev, pgTAP verdi (2026-10-18) | — | — |
 | 7 | ✅ **BE** | T-1 … T-4 (2026-10-18, §8) e la 2b-2: il backend crea dalle madri del DB e le sue copie sono ritirate (brief DB §6.10) | §8; brief DB §6.10 | — |
-| 8 | **Tid** | Collaudo: `./manage-env.sh provision_utenti_sviluppo` su dbdev, le righe stampate in `env.sh` (`SMOKE_USER='dev.smoke'` e le altre), il giro degli smoke con `dev.smoke`, poi la disattivazione di `smoke` | §8, T-5 | — |
+| 8 | ✅ **Tid + BE** | Collaudo T-5: command su dbdev, `env.sh` a `dev.smoke`, giro degli smoke, `smoke` disattivato (2026-10-18). Esito e correzioni in §9 | §9 | — |
 | 9 | ✅ **FE** | T-6: il filtro e il badge nella lista Operatori (2026-10-18) | §8 | — |
+| 10 | **Tid → team DB** | I modelli di documento standard: un emittente nuovo emette dal primo giorno | [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) | — |
+| 11 | ✅ **BE** | T-7a (2026-10-18): preventivi-componenti e guida-inversione si costruiscono la materia; trovato il listino che non si spegne | §9.4 | — |
+| 11-bis | **team DB** | Il guard di disattivazione del listino punta a una tabella eliminata: 500 a ogni spegnimento (R-1, Q-1) | §9.5 | — |
+| 12 | **BE** | T-7b: gli smoke che hanno bisogno di un documento emesso; il giro intero con `--update` della baseline | §9.3 | 10 |
+| 13 | **Tid** | Archiviazione in `work-done/` | — | 12 |
 
-**Decisioni aperte di Tid: nessuna** (§7.4 deciso il 2026-10-16). Domande aperte al team DB: nessuna (D-1 risposta dal giro 1).
-✅ **Committato** su `dev/backend-tid` (`08cc15a61`, 2026-10-18; PR #1881): T-1 … T-4, T-6 e la 2b-2. Da committare: niente.
+**Decisioni aperte di Tid: nessuna qui** (§7.4 deciso il 2026-10-16); D-1 … D-3 stanno nel brief dei modelli standard. Domande aperte al team DB: nessuna (D-1 risposta dal giro 1).
+✅ **Committato** su `dev/backend-tid` (`08cc15a61`, 2026-10-18; PR #1881): T-1 … T-4, T-6 e la 2b-2. Da committare: il §9 e le correzioni degli smoke del 2026-10-18 (§9.2).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-16. **A chi:** il team BE/FE; la §6 al
 > team DB.
@@ -32,7 +37,7 @@ utenti dei portali non hanno un PF loro (la veste sta sul ruolo del cliente o de
 > ([brief-db-ruoli-di-sistema](brief-db-ruoli-di-sistema.md) §1). Il modello è stato chiuso con
 > il team DB in [brief-db-processi-accensione-per-ambiente](brief-db-processi-accensione-per-ambiente.md) §4-ter (R-2, R-4), decisioni di Tid del
 > 2026-10-16.
-> **Stato:** 🔨 giro 2 DB applicato (2026-10-18); tocca al BE (T-1 … T-4, 2b-2).
+> **Stato:** ✅ T-1 … T-6 fatti (2026-10-18); 🔨 T-7, gli smoke senza i dati di `EMITEST` (§9).
 
 ## 1. La regola
 
@@ -244,4 +249,108 @@ guard, mypy a cricchetto (sanati nello stesso giro due rilievi già in HEAD: `no
 * Il secondo fattore di `dev.smoke` si conferma sul passo **precedente** a quello di adesso: nessun codice è
   stato usato davvero, e così il primo login degli smoke, subito dopo, non trova il passo già preso
   (`E_TOTP_PASSO_GIA_USATO`).
+
+## 9. Il collaudo T-5 (Tid + sessione BE, 2026-10-18)
+
+Provisioning su dbdev, righe in `backend/env.sh`, `smoke-baseline.sh` con `dev.smoke`. Il login, il
+secondo fattore, `core`, audit, JWT e il resto del perimetro sono verdi. 14 regressioni rispetto alla
+baseline, in tre gruppi.
+
+### 9.1 Le cause
+
+| Gruppo | Smoke | Causa |
+| --- | --- | --- |
+| **A** | clienti, soggetti, contratti-addebito-standard | **non era il collaudo**: gunicorn servì il codice di prima della firma nuova di `anagrafiche.fn_crea_indirizzo_soggetto(uuid, jsonb)` (brief DB accensione §6.11): il master era partito alle 19:24, il repository era cambiato alle 20:29. Dopo `kill -HUP` clienti e soggetti verdi; contratti-addebito passa nel gruppo C |
+| **B** | listini-v5 (e preventivi-componenti, già in baseline) | **difetto degli smoke**: prendevano «il primo emittente» della lista `/anagrafiche/emittenti-fiscali/`, che al super admin li mostra tutti. Il guard accetta solo l'emittente attivo (`fn_check_user_emittente_scope`, regola 2, vale anche per il super admin): `E_SCOPE_EMITTENTE` e `E_DOC_EMITTENTE_BA_INCOERENTE`. Verdi per sottrazione finché il primo della lista coincideva con l'attivo di `smoke` |
+| **C** | gli altri | **l'emittente di prova A è vuoto** (§7.4 D-A, previsto): nessun modello di documento, nessuna mappa categoria → listino, nessun documento o attività da cui partire |
+
+### 9.2 Corretto (sessione BE, 2026-10-18)
+
+* `_smoke_cliente.sh`: `smoke_emittente_attivo` dà anche `EMITTENTE_ATTIVO_SR_ID` (da `/core/me/`,
+  `emittente_attivo.soggetto_ruolo_id`; con `EMITTENTE_ID` di override lo legge dalla lista). Il BB
+  esisteva: allargato, non estratto.
+* `smoke-test-listini-v5.sh`, `smoke-test-preventivi-componenti.sh`: l'emittente è quello attivo, dal BB.
+  Esito: listini-v5 arriva al passo 16 (17 OK, poi il modello del contratto), preventivi-componenti alla
+  riga del composito (11 OK, poi la mappa categoria → listino).
+
+### 9.3 Da fare: T-7
+
+**Il difetto di fondo non è degli smoke.** Un emittente nuovo non sa emettere: è il
+[brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md), e risolve da solo gli
+smoke che si fermano sul modello. Il resto è materia che ogni smoke si deve costruire da sé, a partire
+dalle radici di prova (§1: il verbo dà identità stabili, non dati di lavoro).
+
+| Lotto | Smoke | Che cosa gli manca | Aspetta |
+| --- | --- | --- | --- |
+| — | preventivi, preventivi-smistamento-ordine, contratti-addebito-standard, listini-v5 (dal passo 16) | il modello di documento: nient'altro | brief modelli |
+| **T-7a** | preventivi-componenti | il suo listino e la sua mappa categoria → listino (`SMOKE-*`, come listini-v5 crea la sua categoria) | — |
+| **T-7a** | guida-inversione-preventivi | il seed cerca «l'ultimo preventivo visibile» per copiarne la terna: va preso dal cliente del lookup (`smoke_cliente_dal_lookup`) | — |
+| **T-7b** | fattura-aggregazione-termini, fattura-indirizzi-snapshot, fattura-scadenze, fatturazione-aggregazione-righe, ritorno-lotto-a-draft | cercano un'attività fatturabile esistente da usare come stampo: se la devono costruire (contratto attivo → push) | brief modelli |
+| **T-7b** | fattura-contatore-note | una fattura esistente | brief modelli |
+| **T-7b** | push-termine-documento-commessa | un ordine esistente nel perimetro dell'emittente attivo | brief modelli |
+
+⚠️ Niente `--update` della baseline prima della fine di T-7b: registrerebbe come noti dei rossi che hanno
+una causa e una correzione.
+
+### 9.4 T-7a fatto (sessione BE, 2026-10-18)
+
+* **Regola del 2 (ok Tid):** `smoke_cliente_del_giro` in `_smoke_cliente.sh`, estratto da
+  contratti-addebito (copia ritirata nello stesso giro), secondo consumatore preventivi-componenti.
+  Registrato nel catalogo BB backend con l'allargamento di `smoke_emittente_attivo`.
+* **preventivi-componenti** ✅ verde, due giri di fila. Materia **stabile**, cercata per codice e
+  creata se manca (lo schema di `SMOKE-SERV-UT`): componente `SMOKE-COMP-COMPONENTE`, categoria
+  `SMOKE-COMP`, listino `SMOKE-COMP-<emittente>-<utility>` con la riga del componente, mappa
+  categoria → listino. **Del giro**: composito e BoM, cliente, preventivo. Tolti i due id di
+  articolo scritti nello smoke. Corretti tre difetti nascosti, perché lo smoke non arrivava mai
+  oltre il passo 5: il passo 8 mandava `origine_prezzo` (400: lo decide il server); la pulizia
+  finale cancellava il preventivo con le righe (409) e spegneva l'articolo via PATCH (400). Ora la
+  pulizia è una sola, per il fermo e per la fine.
+  Il composito non ha una riga di listino sua (`E_LISTINO_RIGA_COMPOSITO_VIETATO`), e il componente
+  non è «solo componente», perché quello non entra in un listino (`E_ARTICOLO_SOLO_COMPONENTE`).
+* **guida-inversione-preventivi** ✅ verde: il seed prende la terna dal cliente del lookup e la
+  valuta dai default del form, invece di cercare «l'ultimo preventivo visibile».
+* **Trovato:** spegnere un listino risponde 500 → §9.5.
+
+**Giro intero dopo T-7a** (2026-10-18 22:46): 9 non-verdi su 51 (erano 20). Restano:
+contratti-addebito, preventivi, smistamento-ordine e listini-v5, fermi sul modello di documento
+(brief modelli); push-termine, che ora arriva alla fattura e si ferma sul **registro fatture
+mancante** di DEVA (`E_CONFIG_MANCANTE`, aggiunto al brief modelli §2); più i sei già in baseline.
+
+⚠️ **I verdi degli smoke Python non sono di T-7a.** Nello stesso pomeriggio un'altra sessione ha
+estratto `_smoke_contesto.py` (regola del 2, ok Tid): gli smoke Python aprivano il contesto RLS su
+`config.user_emittenti_fiscali LIMIT 1`, cioè su un operatore a caso. Dopo il provisioning poteva
+essere `dev.lettura`, che vede solo l'emittente di prova vuoto, e quindi la causa dei loro
+SENZA_MATERIA al §9.1 era **anche** questa, non solo DEVA vuoto. Ora aprono il contesto su
+`dev.smoke` senza emittente attivo, quindi con il perimetro largo del super admin, e trovano la
+materia degli altri emittenti (EMITEST). Sono verdi, ma **contano ancora su dati esistenti**: su un
+database nuovo tornano SENZA_MATERIA. T-7b resta per loro, e **niente `--update`** finché non è
+chiuso.
+
+### 9.5 Al team DB: un listino non si spegne (trovato da T-7a, 2026-10-18)
+
+**Il caso.** `PATCH /api/v1/vendite/listini/<id>/` con `{"attivo": false}` risponde **500**
+`E_ATTIVO_BLOCK_FKCOL_NOT_FOUND` «Colonna FK del figlio non trovata in catalogo». Succede con **ogni**
+listino, con o senza figli: il guard scatta prima di guardare i figli. Dalla UI un listino non si
+può spegnere.
+
+**La causa** (doc `dbzero`). Su `vendite.listini` ci sono cinque trigger
+`dbops.trgfn_prevent_deactivate_if_children`, uno per figlio. Uno è
+`('vendite', 'listini_associazioni', 'listino_id', 'id', 'attivo')`, ma `vendite.listini_associazioni`
+è stata eliminata il 2026-04-15 (`00_schema/vendite/20260415-05-drop-listini-associazioni-mctit.yaml`;
+`to_regclass` NULL su dbdev). La funzione cerca la colonna FK nel catalogo, non la trova e solleva
+l'errore. Gli altri quattro figli (`categorie_clienti_listini`, `contratti`, `listini_versioni`,
+`offerte_commerciali`) esistono e hanno `listino_id`.
+
+* **R-1** — togliere il trigger orfano. Proponiamo anche una regola: un `DROP TABLE` porta via,
+  nello stesso changeSet, i guard dei padri che la nominano come figlia.
+* **Q-1** — i guard `trgfn_prevent_deactivate_if_children` e `trgfn_child_requires_active_parent`
+  nominano tabelle e colonne **per testo**: un rename o un drop non li aggiorna, e il difetto si
+  vede solo quando qualcuno spegne il padre. Vi chiediamo se serve un presidio che verifichi, per
+  ogni trigger di queste funzioni, che la tabella e la colonna nominate esistano.
+
+**Ricaduta BE:** nessuna nel codice, perché il service passa l'errore del DB. La riprova è uno
+spegnimento dalla API, oppure `listini-v5`, che oggi spegne i suoi `SMK-V5-*` con `dbshell`.
+Su dbdev restano accesi quattro listini `SMK-COMP-<epoch>` dei giri di prova di T-7a, con le loro
+categorie e una mappa: non pesano su nessun prezzo (ogni categoria è usata solo dal cliente del suo
+giro) e si spengono dopo la correzione.
 

@@ -24,6 +24,12 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    «senza inizio», non il DEFAULT della data operativa
 7) IndirizzoLiberoSoggettoDbTests.test_indirizzo_libero_italiano_del_soggetto_nasce — comune e CAP
    arrivano alla madre `fn_crea_indirizzo_soggetto`
+8) IndirizzoLiberoSoggettoDbTests.test_indirizzo_libero_estero_del_soggetto_nasce — la forma estera
+   (localita', codice postale) passa dalla firma jsonb della madre (2026-10-18, D-4)
+9) IndirizzoLiberoSoggettoDbTests.test_forma_incompleta_rifiutata_col_campo — il guard dice il campo:
+   400 `E_INDIRIZZO_LIBERO_INCOMPLETO` sul campo, non piu' `E_DATABASE`
+10) StatiLookupDbTests.test_la_tendina_dice_forma_e_stato_proposto — `catalogo_comuni_completo` per
+    stato e uno e un solo stato `proposto`, quello di `fn_stato_proposto_id`
 """
 from __future__ import annotations
 
@@ -34,7 +40,7 @@ from decimal import Decimal
 from django.contrib.auth.models import User
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.services.db_error_fields import structured_db_error_code
+from apps.core.services.db_error_fields import diagnostica_db, structured_db_error_code
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_annullata, richiedi_db_provvisto
 
@@ -167,12 +173,16 @@ class IndirizziRuoloDbTests(_MondoCostruito):
             self.skipTest("La matrice del ruolo FO non ha tipi obbligatori: niente da clonare.")
         primo = sorted(obbligatori)[0]
         with connection.cursor() as cur:
-            cur.execute("SELECT id FROM config.stati ORDER BY id LIMIT 1")
+            # Uno stato SENZA catalogo dei comuni: la forma estera, la localita'
+            # (dal 2026-10-18 la forma la decide lo stato, D-2 di Tid).
+            cur.execute(
+                "SELECT id FROM config.stati WHERE NOT catalogo_comuni_completo ORDER BY id LIMIT 1"
+            )
             stato_id = cur.fetchone()[0]
         # Un indirizzo in forma libera, estero (`chk_indirizzi_free_requirements`).
         scritti = SoggettiService().create_indirizzi_ruolo(sr_id, [{
             "tipo_indirizzo_codice": primo, "indirizzo_libero": "Via di prova 1",
-            "stato_id": stato_id, "locality": "Prova", "postal_box": "PB1",
+            "stato_id": stato_id, "locality": "Prova", "postal_code": "PB1",
             "administrative_area": "Area", "scala": "  ",
         }])
         obbligatori, presenti = self._tipi(sr_id)
@@ -180,7 +190,7 @@ class IndirizziRuoloDbTests(_MondoCostruito):
         self.assertEqual(obbligatori, presenti)
         self.assertEqual(0, SoggettiService().create_indirizzi_ruolo(sr_id, [{
             "tipo_indirizzo_codice": primo, "indirizzo_libero": "Via di prova 2",
-            "stato_id": stato_id, "locality": "Prova", "postal_box": "PB2", "sublocality": "Sub",
+            "stato_id": stato_id, "locality": "Prova", "postal_code": "PB2", "sublocality": "Sub",
         }]))
         # Il COMMIT: il guard differito trova gli obbligatori.
         with connection.cursor() as cur:
@@ -315,4 +325,69 @@ class IndirizzoLiberoSoggettoDbTests(_MondoCostruito):
                 [esito["id"]],
             )
             self.assertEqual(("Localita' Prova snc", comune_id, cap_id), cur.fetchone())
+
+    # Scopo: Uno stato senza catalogo dei comuni (forma estera); salta se non c'e'.
+    def _stato_estero(self) -> int:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM config.stati WHERE NOT catalogo_comuni_completo ORDER BY id LIMIT 1"
+            )
+            riga = cur.fetchone()
+        if riga is None:
+            self.skipTest("Nessuno stato senza catalogo dei comuni.")
+        return int(riga[0])
+
+    def test_indirizzo_libero_estero_del_soggetto_nasce(self):
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        stato_id = self._stato_estero()
+        soggetto_id = self._soggetto_pg("Soggetto e2e indirizzo estero")
+        esito = SoggettiService().create_indirizzo_soggetto(soggetto_id, {
+            "tipo_indirizzo_codice": "FATT", "indirizzo_libero": "Hauptstrasse 5",
+            "stato_id": stato_id, "locality": "Berlin", "postal_code": "10115",
+        })
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT stato_id, locality, postal_code, comune_id"
+                "  FROM anagrafiche.indirizzi_soggetti WHERE id = %s",
+                [esito["id"]],
+            )
+            self.assertEqual((stato_id, "Berlin", "10115", None), cur.fetchone())
+
+    def test_forma_incompleta_rifiutata_col_campo(self):
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        stato_id = self._stato_estero()
+        soggetto_id = self._soggetto_pg("Soggetto e2e indirizzo incompleto")
+        # L'errore di dominio del guard sale come `DatabaseError` e lo traduce il
+        # middleware (`ErrorTranslator`): qui si legge come lo legge lui.
+        with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+            SoggettiService().create_indirizzo_soggetto(soggetto_id, {
+                "tipo_indirizzo_codice": "FATT", "indirizzo_libero": "Hauptstrasse 5",
+                "stato_id": stato_id,
+            })
+        diagnostica = diagnostica_db(ctx.exception)
+        self.assertEqual("E_INDIRIZZO_LIBERO_INCOMPLETO", diagnostica.codice)
+        self.assertEqual("locality", diagnostica.campo)
+
+
+class StatiLookupDbTests(unittest.TestCase):
+    """La tendina degli stati per il form dell'indirizzo (2026-10-18)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        richiedi_db_provvisto()
+
+    def test_la_tendina_dice_forma_e_stato_proposto(self):
+        from apps.anagrafiche.db.geo_repository import CHI_STATI_LOOKUP
+        from apps.anagrafiche.services.geo_service import GeoService
+
+        righe = GeoService().lookup_stati()
+        self.assertTrue(righe)
+        self.assertTrue(all(isinstance(r["catalogo_comuni_completo"], bool) for r in righe))
+        proposti = [r["id"] for r in righe if r["proposto"]]
+        with connection.cursor() as cur:
+            # Lo stesso `p_chi` della tendina: oggi pesa sull'override (R-BE-13).
+            cur.execute("SELECT script.fn_stato_proposto_id(%s)", [CHI_STATI_LOOKUP])
+            self.assertEqual([cur.fetchone()[0]], proposti)
 
