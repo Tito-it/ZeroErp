@@ -1,13 +1,13 @@
 -- ------------------------------------------------------------
 -- Collaudo del presidio dei job: PULIZIA
--- Brief: brief-db-presidio-job-run-a-chi-tocca §5
+-- Brief: work-done/brief-db-presidio-job-run-a-chi-tocca §5
 --
 -- Toglie tutto ciò che ha messo collaudo-presidio-job-run-prepara.sql: le corse
 -- COLLAUDO-CAUSA-*, il processo COLLAUDO-CAUSA e il codice
 -- E_COLLAUDO_CAUSA_CONFIGURAZIONE. Si può lanciare anche più volte.
 --
 --   set -a; . db/internal.env; set +a
---   psql -X -f docs/it/dev/work-in-progress/allegati/collaudo-presidio-job-run-pulisci.sql
+--   psql -X -f docs/it/dev/work-done/allegati/collaudo-presidio-job-run-pulisci.sql
 -- ------------------------------------------------------------
 
 \set ON_ERROR_STOP 1

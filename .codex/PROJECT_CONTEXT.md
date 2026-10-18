@@ -252,6 +252,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   causa ha sede in `dbops.fn_conta_presidio_per_variante` (`fn_conta_presidio` ne è la somma). Il pannello
   mostra ogni causa col suo conteggio e il suo rimedio; il digest manda ogni causa a chi deve agire.
   Collaudo a video di Tid superato. Il residuo è in § «Aperto — Media priorità».
+- **Il presidio dei job falliti dice a chi tocca: chiuso** (`work-done/brief-db-presidio-job-run-a-chi-tocca.md`,
+  archiviato il 2026-10-18): ogni riga di `maintenance.vw_job_run_da_guardare` porta una causa (corsa appesa o
+  SQLSTATE dell'ambiente → `AMBIENTE`, poi la causa del codice d'errore, poi quella del processo), e il digest la
+  manda a chi deve agire. Lato BE: `registered_job` scrive SQLSTATE e codice `E_` dei `P0001` (§4.2), e una corsa
+  che lascia indietro elementi senza registro chiude rossa con `E_JOB_ELEMENTI_NON_COMPLETATI` (D9, BB
+  `chiudi_se_elementi_non_completati`). Collaudo DB e BE di Tid superati. I residui sono in § «Aperto — Media priorità».
 - **Una credenziale senza veste si elimina dall'applicazione: chiuso** (`work-done/brief-db-elimina-credenziale-senza-veste.md`,
   archiviato il 2026-10-07): verbo `script.fn_elimina_credenziale` + check derivata da `pg_constraint` e fail-closed senza
   il ponte django, traccia in `config.credenziali_eliminate`, all'app tolto il `DELETE` su `django.auth_user`; BE/FE
@@ -470,6 +476,17 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **Residui di `work-done/brief-db-presidio-job-run-a-chi-tocca.md`** (ereditati il 2026-10-18 dalla chiusura),
+  nessuno bloccante:
+  - **errori lato client senza SQLSTATE** (§12): una connessione che cade dentro un command arriva come
+    `OperationalError` senza SQLSTATE e va a `PROGRAMMA`. Se servirà, la strada è riconoscere la classe Python
+    (`OSError`, `ConnectionError`), che è la tassonomia lasciata al BE dal §4.2. BE;
+  - **`SMOKE_GIRO_FALLITO`** copre sia il tetto di tempo sia lo script uscito con 2 (§12): si separa quando lo
+    smoke avrà un caso reale da instradare diversamente. BE;
+  - **`error_detail` con la riga `CONTEXT:`** (§5, visto nel collaudo del 2026-10-18): per un errore PL/pgSQL
+    `registered_job` scrive `str(exc)`, che porta il `CONTEXT` del driver su una riga nuova, e il digest stampa la
+    voce spezzata. BE;
+  - **il `%TYPE` mancato del giro 1** (§10.1-bis): debito noto, deciso di non riscrivere (Tid, 2026-10-16). DB.
 - **Residui di `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`** (ereditati il 2026-10-14 dalla
   chiusura):
   - **D-4, che cosa registra il titolo IVA `COOPERATIVA`** (§4): l'aliquota agevolata delle cooperative sociali

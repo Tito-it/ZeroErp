@@ -1,10 +1,11 @@
 # Brief DB — Il presidio dei job falliti manda tutto al sistemista
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-17
+## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: Tid**: la fase di collaudo dopo D9 (§5) e l'archiviazione. ✅ D9 fatto lato DB
-(2026-10-17, §11.3) e lato BE (2026-10-17, §12). ✅ §4.2 fatto lato BE (2026-10-17). ✅ Giro 1
-(§8) e giro 2 (§11) applicati, pgTAP senza regressioni.
+**Nessuno: il brief è chiuso** e archiviato il 2026-10-18. ✅ Collaudo completo, fase DB e fase BE
+(§5). ✅ D9 fatto lato DB (2026-10-17, §11.3) e lato BE (2026-10-17, §12). ✅ §4.2 fatto lato BE
+(2026-10-17). ✅ Giro 1 (§8) e giro 2 (§11) applicati, pgTAP senza regressioni. I residui non
+bloccanti (§12, §10.1-bis) stanno in PROJECT_CONTEXT § «Aperto — Media priorità».
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -19,7 +20,8 @@
 | 8b | Tid | ✅ migrate del giro 2 applicato, pgTAP senza regressioni (2026-10-16) | §11 | — |
 | 9a | Tid | ✅ nome confermato: `E_JOB_ELEMENTI_NON_COMPLETATI` (2026-10-17) | §12 | — |
 | 10 | team DB | ✅ codice di D9 nel registro (+ messaggio), nome dal BE: `E_JOB_ELEMENTI_NON_COMPLETATI` (2026-10-17), su `Tito-dev` (`7798ecddb`) | §11.3 | — |
-| 11 | Tid | ✅ collaudo lato DB e digest stampato (2026-10-17); resta la fase dopo D9; poi archiviazione | §5 | — |
+| 11 | Tid | ✅ collaudo lato DB e digest stampato (2026-10-17); ✅ fase BE dopo §4.2 e D9 (2026-10-18) | §5 | — |
+| 12 | sessione BE | ✅ archiviazione in `work-done/`, riga di PROJECT_CONTEXT (2026-10-18) | — | — |
 | 9 | team BE | ✅ D9: una corsa con elementi falliti senza registro chiude rossa (2026-10-17) | §10.3, §12 | — |
 | 6 | Tid | ✅ collaudo: digest `--secco` con un rosso per causa (2026-10-17) | §5 | — |
 
@@ -309,7 +311,7 @@ Digest `--secco` con un rosso per causa: una corsa lasciata aperta, un rosso con
 SQLSTATE `53100`, un rosso applicativo, un rosso con un codice che dichiara
 `CONFIGURAZIONE`. Ognuno deve finire nel gruppo del suo destinatario e col suo testo.
 
-**Script (2026-10-17)**, in `allegati/`:
+**Script (2026-10-17)**, in `work-done/allegati/`:
 1. `collaudo-presidio-job-run-prepara.sql`: mette le quattro corse
    (`COLLAUDO-CAUSA-*`), un processo `COLLAUDO-CAUSA` di canale CODA (non tocca il
    pannello dei processi) e un codice `E_COLLAUDO_CAUSA_CONFIGURAZIONE`. Controlla
@@ -332,6 +334,26 @@ uscendone si annullava prima del `COMMIT`. Ora gli script hanno `\pset pager off
 **Fasi:** ora quello che è applicato (i quattro casi qui sopra). Dopo il §4.2 del BE,
 un errore del database dentro un command (va al sistemista) e un `P0001` col suo
 codice `E_`. Dopo D9, un'azienda non accodata che chiude rossa la corsa.
+
+✅ **Fase BE, su dbdev (Tid, 2026-10-18).** Script `collaudo-presidio-job-run-be.py`
+(in `work-done/allegati/`, lanciato con `backend/manage-env.sh shell <` dopo il `prepara`):
+tre corse fatte passare dal vero `registered_job`, non scritte a mano. Esito, letto dalla vista e
+dal digest `--secco`:
+
+| Corsa | Giornale | Causa → chi agisce |
+| --- | --- | --- |
+| `COLLAUDO-CAUSA-BE-AMBIENTE` (`statement_timeout` dentro il command) | `error_code = OperationalError`, `sqlstate = 57014` | `AMBIENTE` → SISTEMISTA |
+| `COLLAUDO-CAUSA-BE-CODICE` (`RAISE … USING CONSTRAINT`) | `error_code = E_COLLAUDO_CAUSA_CONFIGURAZIONE`, `sqlstate = P0001` | `CONFIGURAZIONE` → AMMINISTRATORE |
+| `COLLAUDO-CAUSA-BE-D9` (due aziende non accodate) | `error_code = E_JOB_ELEMENTI_NON_COMPLETATI`, dettaglio coi due codici | `PROGRAMMA` (dal processo) → SVILUPPO |
+
+Il digest ha messo le sette righe di collaudo (quattro della fase DB, tre della fase BE) nei tre
+gruppi attesi; pulizia lanciata lo stesso giorno. Per D9 lo script chiama il BB
+`chiudi_se_elementi_non_completati` direttamente: il collegamento dai due command al BB è coperto
+dai loro unit test (§12).
+
+⚠️ Visto nel collaudo, non bloccante: per un errore PL/pgSQL `error_detail` è `str(exc)`, che
+porta anche la riga `CONTEXT: …` del driver su una riga nuova, e il digest la stampa spezzando la
+voce. Residuo BE in PROJECT_CONTEXT.
 
 ## 6. Decisioni aperte di Tid
 
