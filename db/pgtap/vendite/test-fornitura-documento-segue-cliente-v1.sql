@@ -37,7 +37,8 @@
 --    9) A -> B: la scheda e' quella di B, la correzione dell'operatore non passa
 --   10) B -> N: il contratto resta senza scheda
 --   11) N -> A: la riceve dall'anagrafica, anche se prima non c'era (D-5-bis)
---   12) A -> G, utility senza tipi d'uso -> con: la scheda di G, classe e tipo compresi
+--   12) A -> G, su un'altra utility: rifiutato, la scheda resta quella di A
+--       (rev 2026-10-18: la utility della testata e' ferma sempre, §8.7 del brief)
 --   IL GUARD DELLA COPPIA (D-6)
 --   13) una scheda con la coppia di un altro cliente: E_DOC_FORNITURA_FUORI_TESTATA
 --   14) spostare la coppia di una scheda gia' scritta: E_DOC_FORNITURA_FUORI_TESTATA
@@ -299,6 +300,10 @@ SELECT is(
 
 -- ⚠️ Il cambio in un'istruzione a se': pg_temp.scheda e' STABLE e nella
 --   stessa istruzione vedrebbe la fotografia di prima del cambio.
+-- rev 2026-10-18 (§8.7 del brief): la utility della testata e' ferma
+--   sempre, anche in bozza (20261018-67). A -> G cambia utility: il lock di
+--   testata lo rifiuta prima che la scheda si muova. Prima il test diceva
+--   «la scheda di G»: il caso non e' piu' raggiungibile dalla testata.
 CREATE TEMP TABLE _r12 AS
 SELECT pg_temp.codice(format('SELECT pg_temp.sposta_contratto(%s, %L)',
                              (SELECT contratto_id FROM _k1), 'G')) AS esito;
@@ -306,8 +311,8 @@ SELECT pg_temp.codice(format('SELECT pg_temp.sposta_contratto(%s, %L)',
 SELECT is(
     (SELECT esito FROM _r12)
     || ' ' || pg_temp.scheda('contratti_utilities', 'contratto_id', (SELECT contratto_id FROM _k1)),
-    'nessun errore ' || pg_temp.attesa('G'),
-    '12) A -> G, da una utility senza tipi d''uso a una con: la scheda di G, classe e tipo compresi');
+    'P0001 E_DOC_UTILITY_IMMUTABILE ' || pg_temp.attesa('A'),
+    '12) A -> G, su un''altra utility: rifiutato (la utility e'' ferma), la scheda resta quella di A');
 
 -- ============================================================
 -- IL GUARD DELLA COPPIA (D-6)

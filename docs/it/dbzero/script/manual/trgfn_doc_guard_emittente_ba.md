@@ -5,7 +5,7 @@
 > [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) · [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id) — i due risolutori: dal billing account all'azienda che emette
 > [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) · [vendite.trgfn_commesse_default_emittente](/dbzero/vendite/manual/trgfn_commesse_default_emittente) — chi riempie l'emittente quando il chiamante non lo dice, prima di questo controllo
 > [anagrafiche.fn_guard_ba_cambio_emittente](/dbzero/anagrafiche/manual/fn_guard_ba_cambio_emittente) — l'altra metà: un cliente che ha già documenti non cambia azienda
-> [vendite.trgfn_doc_testata_lock_fuori_bozza](/dbzero/vendite/manual/trgfn_doc_testata_lock_fuori_bozza) — fuori bozza l'emittente non si cambia proprio
+> [vendite.trgfn_doc_testata_lock_fuori_bozza](/dbzero/vendite/manual/trgfn_doc_testata_lock_fuori_bozza) — fuori bozza l'emittente non si cambia proprio; su preventivo, offerta e contratto nemmeno in bozza (e quel rifiuto parla prima di questo controllo)
 
 ---
 

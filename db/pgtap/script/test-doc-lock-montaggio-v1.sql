@@ -136,8 +136,12 @@ SELECT is(
     jsonb_build_object(
         'building_block', 'TESTATA', 'documento', 'DDT', 'stato_bozza', 'DRAFT',
         'colonne', jsonb_build_array(
-            jsonb_build_object('colonna', 'causale_trasporto_id', 'codice', 'E_DDT_CAUSALE_IMMUTABILE', 'stati_ammessi', '[]'::jsonb),
-            jsonb_build_object('colonna', 'tracking_code', 'codice', 'E_DOC_CHIUSO', 'stati_ammessi', jsonb_build_array('EMESSO', 'SPEDITO'))),
+            -- rev 2026-10-18: ogni colonna porta ferma_sempre (la terna con '-',
+            --   test-doc-emittente-utility-fermi-v1)
+            jsonb_build_object('colonna', 'causale_trasporto_id', 'codice', 'E_DDT_CAUSALE_IMMUTABILE',
+                               'ferma_sempre', false, 'stati_ammessi', '[]'::jsonb),
+            jsonb_build_object('colonna', 'tracking_code', 'codice', 'E_DOC_CHIUSO',
+                               'ferma_sempre', false, 'stati_ammessi', jsonb_build_array('EMESSO', 'SPEDITO'))),
         'errore', NULL),
     '4) TESTATA: le terne nell''ordine degli argomenti, col codice e gli stati in cui la colonna resta aperta (vuoti = bloccata)'
 );

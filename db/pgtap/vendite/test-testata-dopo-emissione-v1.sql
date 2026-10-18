@@ -39,7 +39,8 @@
 --  23) ordine CONFERMATO: can_edit_testata vero (le note si cambiano), e fra i non modificabili
 --      ci sono data e termine ma non le note
 --  24) ordine ANNULLATO: can_edit_testata falso, e le note sono fra i non modificabili
---  25) preventivo ACCETTATO: competenza_mese modificabile, il cliente no; le colonne «sempre» in testa
+--  25) preventivo ACCETTATO: competenza_mese modificabile, il cliente no; in testa la prima colonna
+--      del montaggio (rev 2026-10-18: la lista «sempre» del preventivo e' ritirata)
 --  26) nessuna capability porta piu' una lista scritta a mano dei campi bloccati fuori bozza
 --
 -- Scopo:
@@ -74,7 +75,9 @@ $f$;
 -- =========================================================
 -- Le decisioni del brief, scritte dal test (non lette dal montaggio):
 --   una riga per colonna nominata, con gli stati (oltre alla bozza) in cui
---   resta aperta. Vuoto = bloccata fuori bozza.
+--   resta aperta. Vuoto = bloccata fuori bozza. '-' = ferma sempre, bozza
+--   compresa (rev 2026-10-18: utility ed emittente di preventivo, offerta e
+--   contratto, §8.7 di brief-db-indirizzi-documento-seguono-il-cliente).
 -- =========================================================
 CREATE TEMP TABLE _atteso (tabella text, colonna text, aperta_in text);
 INSERT INTO _atteso VALUES
@@ -103,21 +106,21 @@ INSERT INTO _atteso VALUES
   ('ordini','meta','ALLOCATO,CONFERMATO,CONSEGNATO,EVASO,PARZIALMENTE_EVASO,SPEDITO'),
   -- preventivo (D-3, D-6, D-7, D-9, D-10)
   ('preventivi','data',''),('preventivi','valuta_id',''),('preventivi','rev',''),
-  ('preventivi','billing_account_id',''),('preventivi','istanza_utility_id',''),('preventivi','utility_id',''),
-  ('preventivi','emittente_fiscale_id',''),('preventivi','termine_pagamento_id',''),
+  ('preventivi','billing_account_id',''),('preventivi','istanza_utility_id',''),('preventivi','utility_id','-'),
+  ('preventivi','emittente_fiscale_id','-'),('preventivi','termine_pagamento_id',''),
   ('preventivi','validita_dal',''),('preventivi','validita_al',''),
   ('preventivi','competenza_mese','ACCETTATO,EMESSO'),('preventivi','meta','ACCETTATO,EMESSO'),
   -- offerta (D-3, D-6, D-7, D-10)
   ('offerte_commerciali','valuta_id',''),('offerte_commerciali','billing_account_id',''),
-  ('offerte_commerciali','istanza_utility_id',''),('offerte_commerciali','utility_id',''),
-  ('offerte_commerciali','emittente_fiscale_id',''),('offerte_commerciali','listino_id',''),
+  ('offerte_commerciali','istanza_utility_id',''),('offerte_commerciali','utility_id','-'),
+  ('offerte_commerciali','emittente_fiscale_id','-'),('offerte_commerciali','listino_id',''),
   ('offerte_commerciali','listino_versione_id',''),('offerte_commerciali','tipo_variazione_globale',''),
   ('offerte_commerciali','valore_variazione_globale',''),('offerte_commerciali','validita_dal',''),
   ('offerte_commerciali','validita_al',''),
   ('offerte_commerciali','meta','ACCETTATA,EMESSA'),('offerte_commerciali','motivazione_rifiuto','ACCETTATA,EMESSA'),
   -- contratto (D-3, D-5, D-6, D-7, D-10)
   ('contratti','data',''),('contratti','valuta_id',''),('contratti','billing_account_id',''),
-  ('contratti','istanza_utility_id',''),('contratti','utility_id',''),('contratti','emittente_fiscale_id',''),
+  ('contratti','istanza_utility_id',''),('contratti','utility_id','-'),('contratti','emittente_fiscale_id','-'),
   ('contratti','listino_id',''),('contratti','listino_versione_id',''),('contratti','tipo_variazione_globale',''),
   ('contratti','valore_variazione_globale',''),('contratti','ambito',''),('contratti','valido_dal',''),
   ('contratti','parent_contratto_id',''),('contratti','categoria_cliente_id_snapshot',''),('contratti','offerta_id',''),('contratti','sorgente_tipo_id',''),
@@ -171,9 +174,11 @@ SELECT is(
        JOIN _stati s ON s.tabella = a.tabella
        JOIN (SELECT DISTINCT tabella, bozza FROM _nominate) b ON b.tabella = a.tabella
       WHERE script.fn_doc_colonna_modificabile(('vendite.' || a.tabella)::regclass, a.colonna::name, s.stato)
-            IS DISTINCT FROM (s.stato = b.bozza OR coalesce(s.stato = ANY (string_to_array(nullif(a.aperta_in, ''), ',')), false))),
+            IS DISTINCT FROM (a.aperta_in IS DISTINCT FROM '-'
+                              AND (s.stato = b.bozza
+                                   OR coalesce(s.stato = ANY (string_to_array(nullif(a.aperta_in, ''), ',')), false)))),
     NULL,
-    '3) la matrice: ogni colonna nominata, in ogni stato del catalogo, e'' aperta solo in bozza e negli stati decisi (§9.2)'
+    '3) la matrice: ogni colonna nominata, in ogni stato del catalogo, e'' aperta solo in bozza e negli stati decisi (§9.2); le ferme sempre in nessuno'
 );
 
 SELECT is(
@@ -372,7 +377,8 @@ BEGIN
             -- solo se a rifiutare e' un codice di lock.
             IF coalesce(v_esito, '') NOT IN ('E_DOC_IDENTITA_FUORI_BOZZA', 'E_DOC_CONDIZIONI_FUORI_BOZZA',
                                              'E_DOC_CLIENTE_FUORI_BOZZA', 'E_DOC_SORGENTE_FUORI_BOZZA',
-                                             'E_DOC_CHIUSO', 'E_DOC_EMITTENTE_FUORI_BOZZA') THEN
+                                             'E_DOC_CHIUSO', 'E_DOC_EMITTENTE_FUORI_BOZZA',
+                                             'E_DOC_EMITTENTE_IMMUTABILE', 'E_DOC_UTILITY_IMMUTABILE') THEN
                 v_esito := 'NON_PROVABILE';
             END IF;
     END;
@@ -429,8 +435,11 @@ SELECT is(
             || (c -> 'non_editable_fields' ? 'competenza_mese')::text || '|'
             || (c -> 'non_editable_fields' ? 'billing_account_id')::text
        FROM (SELECT script.fn_available_actions_preventivo(pg_temp.doc('PREV')) AS c) x),
-    'true|utility_id|false|true',
-    '25) preventivo ACCETTATO: competenza_mese modificabile (D-9), il cliente no; in testa le colonne «sempre» della capability'
+    -- rev 2026-10-18: la capability del preventivo non ha piu' colonne
+    --   «sempre» sue (20261018-68): la utility ferma la dice il montaggio, e
+    --   in testa c'e' la prima colonna del montaggio, la data.
+    'true|data|false|true',
+    '25) preventivo ACCETTATO: competenza_mese modificabile (D-9), il cliente no; in testa la prima colonna del montaggio'
 );
 
 SELECT is(

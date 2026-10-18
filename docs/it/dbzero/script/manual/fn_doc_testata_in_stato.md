@@ -21,7 +21,7 @@ Restituisce:
 
 | Chiave | Che cosa |
 | --- | --- |
-| `non_modificabili` | le colonne che la capability dichiara ferme **sempre** (campi di sistema, lock assoluti come il cliente dell'ordine), seguite da quelle che il lock ferma in questo stato, senza doppioni |
+| `non_modificabili` | le colonne che la capability dichiara ferme **sempre** (campi di sistema, lock assoluti come il cliente dell'ordine), seguite da quelle che il lock ferma in questo stato, senza doppioni. Dal 2026-10-18 il lock stesso può dire una colonna ferma sempre, bozza compresa (utility ed emittente di preventivo, offerta e contratto): esce in ogni stato, e la capability non la ripete |
 | `modificabile` | vero se in questo stato almeno una colonna nominata dal lock si cambia: in bozza tutte, dopo l'emissione quelle aperte (le note, i dati di trasporto della bolla, la fine validità del contratto attivo), a documento chiuso nessuna |
 
 Le colonne che il lock non nomina non compaiono: le scrive il database, o il form non le
