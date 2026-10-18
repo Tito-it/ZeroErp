@@ -54,6 +54,8 @@
 - [fn_crea_emittente_fiscale](manual/fn_crea_emittente_fiscale.md)
 - [fn_crea_fornitore](manual/fn_crea_fornitore.md)
 - [fn_crea_indirizzi_ruolo](manual/fn_crea_indirizzi_ruolo.md)
+- [fn_crea_indirizzi_soggetto](manual/fn_crea_indirizzi_soggetto.md) — (19-10-2026 — R-BE-12 del backend, decisione D-16a di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
+- [fn_crea_indirizzo_ruolo](manual/fn_crea_indirizzo_ruolo.md) — (19-10-2026 — R-BE-6 del backend, decisione D-16a di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
 - [fn_crea_indirizzo_soggetto](manual/fn_crea_indirizzo_soggetto.md) — (latest review 18-10-2026)
 - [fn_crea_operatore_v2](manual/fn_crea_operatore_v2.md)
 - [fn_crea_risorsa_umana_v2](manual/fn_crea_risorsa_umana_v2.md)

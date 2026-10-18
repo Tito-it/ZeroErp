@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: Tid, con l'apply di R-BE-11 (`20261019-16`, `-17`, §6.15) e le decisioni su R-BE-6, R-BE-7, R-BE-12 (§6.10, non iniziate); poi il team DB; Tid, col commit di R-BE-13 e R-BE-14 (applicati su dbdev, pgTAP verdi, §6.13 e §6.14); la sessione BE, con R-DB-14a (il codice `E_REGISTRO_COPPIA_GIA_COPERTA`, §6.14) e, dopo l'apply, R-DB-11a (§6.15).** ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
+**Riparte: la sessione BE, con R-DB-14a (§6.14), R-DB-11a (§6.15), R-DB-16a e R-DB-16b (§6.16): il lavoro DB è tutto applicato su dbdev, pgTAP verdi, e committato (2026-10-19). Poi chi chiude, con l'archiviazione (riga 11).** ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
 fatta (2026-10-18, §6.10): il backend crea emittente, fornitore, cliente, veste portale, magazzino, profilo,
 legame SUPER_ADMIN, override, emittente attivo e accende la veste dalle madri del DB; restano due scritture
 che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione è chiusa.
@@ -26,8 +26,10 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 9-quinquies | Tid | ✅ apply del lotto 1, pgTAP verdi (2026-10-17) | §5-ter.2 | — |
 | 9-sexies | Tid | ✅ apply dei lotti 2 e 3 (`-11` … `-17`), pgTAP verdi (2026-10-17) | §5-ter.2 | — |
 | 9-ter | sessione BE | ✅ (2026-10-18) 2b-2: il backend passa ai BB, le sue copie si ritirano | §6.10 | — |
-| 9-ter-bis-11 | team DB, poi Tid, poi BE | ✅ R-BE-11 scritto e provato sullo scratch (2026-10-18): `20261019-16` (lettore `config.fn_profilo_super_admin_id`) e `-17` (la madre lo usa). Resta: apply e pgTAP (Tid), poi R-DB-11a (BE ritira la sua query) | §6.15 | — |
-| 9-ter-bis | team DB | R-BE-6 (l'indirizzo di ruolo per istanza) e R-BE-7 (il legame di reparto): due scritture del backend che le madri non coprono; R-BE-12 (la madre plurale degli indirizzi di soggetto, gemella di quella del ruolo). Proposte del BE, servono le decisioni di Tid. R-BE-11 ha la sua riga (9-ter-bis-11) | §6.10 | — |
+| 9-ter-bis-11 | team DB, poi Tid, poi BE | ✅ R-BE-11: `20261019-16` (lettore `config.fn_profilo_super_admin_id`) e `-17` (la madre lo usa), applicati su dbdev (2026-10-18 23:59), pgTAP verdi, committati. Resta R-DB-11a (BE ritira la sua query) | §6.15 | — |
+| 9-ter-bis | team DB | ✅ (2026-10-19) R-BE-6, R-BE-7, R-BE-12: decisioni D-16a … D-16c di Tid col via allo sviluppo; `20261019-33` … `-39` scritti e provati sullo scratch, due pgTAP nuovi. R-BE-11 ha la sua riga (9-ter-bis-11) | §6.10, §6.16 | — |
+| 9-ter-bis-16 | Tid | ✅ apply di `20261019-33` … `-39` su dbdev (2026-10-19 00:26), pgTAP verdi compreso `test-fn-provisiona-dati-di-sviluppo-v1` corretto; committati | §6.16 | — |
+| 9-ter-bis-16-be | sessione BE | R-DB-16a (i legami di profilo dalle madri) e R-DB-16b (gli indirizzi dalle madri, ritirati la INSERT e la procedura) | §6.16 | 9-ter-bis-16 |
 | 9-ter-ter | team DB | ✅ (2026-10-18, D-1 … D-4 di Tid, `20261018-80` … `-99`, `20261019-01` … `-04`, applicati) l'indirizzo libero: R-BE-8 (lo stato proposto, `script.fn_stato_proposto_id`), R-BE-9 (il guard `trgfn_indirizzi_guard_forma_libera` col codice e il campo), R-BE-10 (la forma estera nella madre del soggetto, `fn_crea_indirizzo_soggetto(soggetto, jsonb)`); la regione alleggerita (`-82`: forma estera = località sola) | §6.11, §6.12 | — |
 | 9-ter-quater | sessione BE/FE | ✅ (2026-10-18) firma jsonb della madre del soggetto, `postal_code`, tendina degli stati, form in due forme, codici; provato sul DB vero dopo l'apply | §6.12 | — |
 | 9-ter-quinquies | Tid | ✅ apply di `20261018-80 … -99` e `20261019-01 … -04` su dbdev, pgTAP verdi (2026-10-18) | §6.12 | — |
@@ -49,7 +51,7 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 Decisioni aperte di Tid: nessuna (D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18, §6.14). La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
 2b-2 (§6.10) e le richieste R-BE-11, R-BE-12 sono committate su `dev/backend-tid` (`08cc15a61`, 2026-10-18,
 mergiato in `Tito-dev` con la PR #1881). ✅ La ricaduta BE/FE delle due forme dell'indirizzo libero (§6.12) è
-committata (`bd7946224`, mergiata in `Tito-dev` con la PR #1884). Da committare: R-BE-13 lato DB (§6.13), R-BE-14 (§6.14) e R-BE-11 (§6.15). ✅ Il lavoro
+committata (`bd7946224`, mergiata in `Tito-dev` con la PR #1884). ✅ Committati su `dev/db-tid` (2026-10-19): R-BE-13 lato DB (§6.13), R-BE-14 (§6.14), R-BE-11 (§6.15) e R-BE-6, R-BE-7, R-BE-12 (§6.16). ✅ Il lavoro
 DB del cantiere è committato e pushato su `dev/db-tid` (2026-10-18): 2b-1 lotti 1-9, 2b-3, giro 2a, R-BE-5,
 le copie del binding nei pgTAP e questo brief. ⚠️ `codici_errore.csv`, `messaggi_errore.csv` e
 `processi.csv` li tocca anche la sessione del brief del presidio dei job.
@@ -1972,8 +1974,7 @@ sviluppo le passa il flag; i guard «ultimo super admin» e `script.fn_is_super_
   `anagrafiche/test-istanza-ba-gestore-globale-v1` 8/8, `test-fn-provisiona-dati-di-sviluppo-v1` 20/20,
   `config/test-credenziali-porta-v1` 10 ok e 3 ko in tutti e due i casi (dello scratch, non di questo giro).
 
-**Per Tid:** apply di `20261019-16` e `-17`; pgTAP `config/test-fn-profilo-super-admin-id-v1`, i file della
-regressione, il presidio `dbops/test-riferimenti-morti-v1`. Da committare.
+✅ **Applicato** da Tid su dbdev (2026-10-18 23:59, `20261019-16` e `-17`), pgTAP verdi; committato il 2026-10-19.
 
 **Dopo il DB, BE (richiesta):**
 
@@ -1984,3 +1985,79 @@ regressione, il presidio `dbops/test-riferimenti-morti-v1`. Da committare.
 **Trovato, da decidere (non toccato):** `AmmSoftwareRepository.count_admin_attivi` conta i super admin attivi con
 una query sua; nel DB c'è `script.fn_check_almeno_un_super_admin_attivo`. Se dicono la stessa cosa sono due
 copie (regola del 2); va confrontato il significato, non il testo.
+
+### 6.16 Risposta del team DB a R-BE-6, R-BE-7, R-BE-12: indirizzi e legami dalle madri (2026-10-19)
+
+**Le richieste** sono nel §6.10; le decisioni D-16a … D-16c di Tid (2026-10-19), col via allo sviluppo, sono
+scritte lì. Progressivi da Tid: dal `20261019-33`.
+
+**Ricognizione (corpo vivo, 2026-10-19).**
+
+* **indirizzi:** per il soggetto c'era solo la singolare (`fn_crea_indirizzo_soggetto`, l'id), per il ruolo solo la
+  plurale (`fn_crea_indirizzi_ruolo`, un conteggio, senza istanza). La regola «copia il primo per gli obbligatori
+  che mancano» stava nella plurale del ruolo e nella procedura del backend del soggetto, con due matrici
+  diverse (`config.tipi_ruolo_tipi_indirizzo`, `config.tipi_soggetto_dettaglio_tipi_indirizzo`);
+* **un difetto della plurale del ruolo:** saltava un tipo se il ruolo ne aveva **un qualsiasi** indirizzo, anche di
+  un'istanza; la chiave vera è `uq_indirizzi_ruolo_tipo_no_istanza` (ruolo + tipo senza istanza): l'indirizzo del
+  ruolo non nasceva;
+* **legami:** `config.profili_accesso_bindings` ha tre bersagli (reparto, identità, ruolo applicativo), uno per
+  riga, al più un legame per reparto e per identità; la madre c'era solo per legare un'identità. Il backend legava
+  il reparto con un `UPSERT` (che sostituiva il profilo) e slegava il SUPER_ADMIN con un `DELETE`.
+
+**Fatto (team DB, 2026-10-19), da applicare:**
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/config/20261019-33-create-fn-lega-profilo-reparto` | `config.fn_lega_profilo_reparto(profilo, reparto)`, gemella di `fn_lega_profilo_identita`: idempotente sullo stesso profilo, un altro profilo lo rifiuta `uq_profili_accesso_bindings_uo` (non sostituisce: in pratica è lo stesso, il profilo di un reparto ha sempre lo stesso codice e quindi lo stesso id) |
+| `20_code/config/20261019-34-create-fn-slega-profilo-identita` | `config.fn_slega_profilo_identita(profilo, identità)`: toglie il legame solo verso quel profilo, ritorna 0 o 1; l'ultimo super admin lo protegge il trigger della tabella |
+| `20_code/config/20261019-35-create-fn-slega-profilo-reparto` | `config.fn_slega_profilo_reparto(profilo, reparto)`, la gemella per il reparto |
+| `20_code/anagrafiche/20261019-36-create-fn-crea-indirizzo-ruolo` | la singolare del ruolo: UN indirizzo, anche di un'istanza (la legge la madre: la grammatica `fn_indirizzo_elemento` è comune al soggetto e resta senza istanza), ritorna l'id |
+| `20_code/anagrafiche/20261019-37-create-fn-indirizzi-con-obbligatori` | il BB puro della copia del primo per i tipi obbligatori che mancano, comune alle due plurali (regola del 2) |
+| `20_code/anagrafiche/20261019-38-update-fn-crea-indirizzi-ruolo-dalla-singolare` | la plurale del ruolo: la copia dal BB, ogni riga dalla singolare, il salto solo sugli indirizzi senza istanza. Corpo di partenza `20261018-95` = vivo (md5 `3dad0435…`), generato da script, firma e ritorno invariati |
+| `20_code/anagrafiche/20261019-39-create-fn-crea-indirizzi-soggetto` | la plurale del soggetto, gemella: matrice del tipo di soggetto, copia attiva di default (`p_copia_obbligatori`, il flag `auto_clone` del backend), salto dei tipi presenti, righe dalla singolare; `E_SOGGETTO_NOT_FOUND` |
+
+* **pgTAP nuovi:** `config/test-legami-profilo-lega-e-slega-v1.sql` (plan 11) e
+  `anagrafiche/test-indirizzi-singolare-e-plurale-v1.sql` (plan 14: il BB, la singolare con l'istanza, la plurale
+  che non salta più per un'istanza, la plurale del soggetto con e senza copia, dentro una finestra dei differiti).
+  Non provato: l'ultimo super admin slegato (lo protegge il trigger della tabella, coi suoi test).
+* **Doc:** manual nuove `anagrafiche/manual/fn_crea_indirizzo_ruolo.md`, `fn_crea_indirizzi_soggetto.md`,
+  `config/manual/fn_lega_profilo_reparto.md` (le tre madri dei legami); note di revisione in
+  `fn_crea_indirizzi_ruolo.md`, `fn_crea_indirizzo_soggetto.md`, `fn_lega_profilo_identita.md`.
+
+**Prova prima dell'apply** (scratch `zeroerp_ruoli`, come `zeroerp_owner`, SQL estratto dai YAML dentro
+`BEGIN … ROLLBACK`; scratch intatto dopo ogni corsa):
+
+* pgTAP nuovi: **11/11** e **14/14**. Controprova senza il `-38`: rosso il test 8 (il salto per un'istanza);
+* con i sette changeSet: **una versione** per ognuna delle sette funzioni; `plpgsql_check` **pulito** su tutte e sei
+  le plpgsql;
+* regressione, senza e con l'estratto degli indirizzi, esiti **identici**: `anagrafiche/test-fn-crea-indirizzi-ruolo-v1`
+  18/18, `test-indirizzo-libero-due-forme-v1` 28/28, `test-fn-provisiona-dati-di-sviluppo-v1` 20/20,
+  `test-fn-crea-fornitore-v1` 16/16, `test-fn-crea-cliente-v1` 25/25, `test-istanza-cliente-chain` 26/26,
+  `test-crea-operatore-riusa-credenziale-v1` 20/20.
+
+✅ **Applicato** da Tid su dbdev (2026-10-19 00:26, `20261019-33` … `-39`), pgTAP verdi; committato il 2026-10-19.
+
+**Dopo il DB, BE (richieste):**
+
+* **R-DB-16a — i legami di profilo dalle madri.** `AmmSoftwareRepository.put_profilo_reparto` lega con
+  `config.fn_lega_profilo_reparto` al posto del suo `UPSERT`; `_set_super_admin_binding` (ramo `enabled = false`)
+  slega con `config.fn_slega_profilo_identita(config.fn_profilo_super_admin_id(), <veste>)` al posto del suo
+  `DELETE`. Un profilo diverso su un reparto già legato ora è un errore (`uq_profili_accesso_bindings_uo`), non una
+  sostituzione: il percorso del backend non lo produce;
+* **R-DB-16b — gli indirizzi dalle madri.** `SoggettiRepository.crea_indirizzo_ruolo` chiama
+  `anagrafiche.fn_crea_indirizzo_ruolo(ruolo, indirizzo jsonb)` (l'istanza nella chiave `istanza_utility_id`; la
+  grammatica di `indirizzo_per_madre`, forma estera e via compresa) al posto della sua INSERT; `create_soggetto`
+  chiama `anagrafiche.fn_crea_indirizzi_soggetto(soggetto, indirizzi, auto_clone)` e ritira
+  `_apply_auto_clone` e `_create_indirizzi_batch`. Il tipo già presente ora si **salta** (come per il ruolo),
+  invece del duplicato tradotto da `create_with_dedup`.
+
+**Collaudo, rosso non di questo giro (2026-10-19):** `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1` test 3
+su dbdev, «have 20|0, want 20|20». Il verbo è giusto: su dbdev le 20 radici di prova esistono dal command del
+collaudo (2026-10-18 20:37), e rilanciato le **riallinea**. Il test pretendeva «tutte create», cioè un database
+senza dati di sviluppo. Corretto il test: conta le radici già presenti prima della prima corsa e pretende il conto
+esatto (create le mancanti, riallineate le presenti): su un database nuovo `20|20|0`, su dbdev `20|0|20`. Provato
+sullo scratch (nessuna radice): 20/20. ✅ Rilanciato da Tid su dbdev: verde.
+
+**Trovato, non toccato:** nessun controllo verifica che l'istanza di un indirizzo di ruolo sia dello stesso soggetto
+del ruolo (`istanze_utilities.soggetto_id` contro `soggetti_ruoli.soggetto_id`). È una regola della tabella, che
+vale anche per l'`UPDATE`: andrebbe in un guard su `anagrafiche.indirizzi`, non nella madre.

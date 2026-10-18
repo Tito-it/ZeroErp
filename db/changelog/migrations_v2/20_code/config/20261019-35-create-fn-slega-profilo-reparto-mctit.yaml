@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MADRE: SLEGARE UN PROFILO DA UN REPARTO
+#   config.fn_slega_profilo_reparto(profilo, unita' organizzativa): toglie il
+#   binding di un reparto da quel profilo di accesso. Ritorna quanti binding
+#   ha tolto (0 o 1). Il contrario di config.fn_lega_profilo_reparto
+#   (20261019-33), gemella di config.fn_slega_profilo_identita (-34).
+#   R-BE-7 del BE, decisione D-16c di Tid (2026-10-19),
+#   brief-db-processi-accensione-per-ambiente §6.16.
+#
+# -- PERCHE' ANCHE QUESTA ---------------------------------------------------------
+#   Oggi il backend non slega i reparti. Il contrario di una madre nasce con
+#   lei: senza, il primo che ne avra' bisogno scrivera' un DELETE suo, cioe' la
+#   copia che R-BE-7 toglie per le identita'.
+#   Le scelte sono quelle della gemella per l'identita': solo il binding verso
+#   QUEL profilo, nessun binding = 0, il permesso al backend, INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261019-35-create-fn-slega-profilo-reparto-mctit.yaml
+
+  - changeSet:
+      id: 20261019-35-create-fn-slega-profilo-reparto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea config.fn_slega_profilo_reparto: toglie il binding di un reparto da quel profilo, il
+        contrario di config.fn_lega_profilo_reparto. R-BE-7, D-16c di Tid,
+        brief-db-processi-accensione-per-ambiente §6.16.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.fn_slega_profilo_reparto(
+                  p_profilo_accesso_id     config.profili_accesso_bindings.profilo_accesso_id%TYPE,
+                  p_unita_organizzativa_id config.profili_accesso_bindings.unita_organizzativa_id%TYPE)
+               RETURNS integer
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_tolti integer;  -- un conteggio: nessuna colonna di cui sia il riflesso
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Togliere il binding di un reparto da quel profilo di
+                  --   accesso. Ritorna quanti binding ha tolto.
+                  --
+                  -- Regole:
+                  --   - solo il binding verso QUEL profilo;
+                  --   - nessun binding: ritorna 0, non e' un errore;
+                  --   - argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA.
+                  -- =========================================================
+                  IF p_profilo_accesso_id IS NULL OR p_unita_organizzativa_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'config', 'config.fn_slega_profilo_reparto', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('profilo_accesso_id',     p_profilo_accesso_id,
+                                             'unita_organizzativa_id', p_unita_organizzativa_id),
+                          NULL::uuid,
+                          'config.fn_slega_profilo_reparto',
+                          'profilo o reparto mancanti');
+                  END IF;
+
+                  DELETE FROM config.profili_accesso_bindings pab
+                   WHERE pab.unita_organizzativa_id = p_unita_organizzativa_id
+                     AND pab.profilo_accesso_id     = p_profilo_accesso_id;
+
+                  GET DIAGNOSTICS v_tolti = ROW_COUNT;
+                  RETURN v_tolti;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_slega_profilo_reparto(
+                      config.profili_accesso_bindings.profilo_accesso_id%TYPE,
+                      config.profili_accesso_bindings.unita_organizzativa_id%TYPE)
+              IS 'MADRE (2026-10-19): toglie il binding di un reparto (unita'' organizzativa) da QUEL profilo di accesso; ritorna quanti binding ha tolto, 0 se non ce n''era (idempotente). Il contrario di config.fn_lega_profilo_reparto, gemella di config.fn_slega_profilo_identita. Nasce con la madre che lega, prima che qualcuno ne abbia bisogno: senza, il primo scrittore farebbe un DELETE suo. Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Non controlla il permesso (backend). INVOKER. R-BE-7, D-16c di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS config.fn_slega_profilo_reparto(config.profili_accesso_bindings.profilo_accesso_id%TYPE, config.profili_accesso_bindings.unita_organizzativa_id%TYPE);

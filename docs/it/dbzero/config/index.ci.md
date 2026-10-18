@@ -135,6 +135,7 @@
 - [fn_imposta_emittente_attivo](manual/fn_imposta_emittente_attivo.md)
 - [fn_imposta_override_oggetti](manual/fn_imposta_override_oggetti.md)
 - [fn_lega_profilo_identita](manual/fn_lega_profilo_identita.md)
+- [fn_lega_profilo_reparto](manual/fn_lega_profilo_reparto.md) — (19-10-2026 — R-BE-7 del backend, decisioni D-16b e D-16c di Tid, `brief-db-processi-accensione-per-ambiente` §6.16)
 - [fn_pannello_colonne_scrivibili](manual/fn_pannello_colonne_scrivibili.md) — (scritta il 27-09-2026)
 - [fn_pannello_scrivi](manual/fn_pannello_scrivi.md) — (scritta il 25-09-2026)
 - [fn_profilo_super_admin_id](manual/fn_profilo_super_admin_id.md) — (18-10-2026 — R-BE-11 del backend, regola del 2, ok di Tid; `brief-db-processi-accensione-per-ambiente` §6.15)

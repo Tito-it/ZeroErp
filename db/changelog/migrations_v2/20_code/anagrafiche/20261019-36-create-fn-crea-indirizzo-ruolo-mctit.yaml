@@ -1,0 +1,140 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MADRE SINGOLARE: UN INDIRIZZO DI RUOLO
+#   anagrafiche.fn_crea_indirizzo_ruolo(ruolo, indirizzo jsonb): scrive UN
+#   indirizzo di un ruolo, anche di un'istanza, e ne ritorna l'id. Gemella di
+#   anagrafiche.fn_crea_indirizzo_soggetto (20261018-96).
+#   R-BE-6 del BE, decisione D-16a di Tid (2026-10-19),
+#   brief-db-processi-accensione-per-ambiente §6.10 (richiesta) e §6.16
+#   (risposta).
+#
+# -- IL DIFETTO ------------------------------------------------------------------
+#   Per il ruolo c'era solo la madre plurale (fn_crea_indirizzi_ruolo), che
+#   torna un conteggio e non conosce l'istanza: POST …/ruoli/<id>/indirizzi/
+#   restava una INSERT del backend (SoggettiRepository.crea_indirizzo_ruolo),
+#   senza il BB dell'elemento (nessuna forma estera, nessuna via da
+#   risolvere). Per il soggetto, al contrario, c'era solo la singolare. D-16a:
+#   ogni livello ha la singolare (un indirizzo, l'id) e la plurale (piu'
+#   indirizzi e la copia degli obbligatori), e la plurale usa la singolare
+#   (20261019-37).
+#
+# -- L'ISTANZA E' DEL RUOLO, NON DELL'ELEMENTO -------------------------------------
+#   anagrafiche.fn_indirizzo_elemento (la grammatica comune ai due livelli)
+#   ammette un elenco chiuso di chiavi, e l'istanza non c'e': un indirizzo di
+#   soggetto non ha istanze. La legge questa madre, e passa al BB l'elemento
+#   senza quella chiave.
+#
+# -- QUELLO CHE NON FA -------------------------------------------------------------
+#   * non salta un tipo gia' presente: un indirizzo di quel tipo (per il ruolo
+#     o per quell'istanza) lo rifiuta il vincolo col suo nome
+#     (uq_indirizzi_ruolo_tipo_no_istanza, uq_indirizzi_ruolo_istanza_tipo).
+#     Il salto e' della plurale, che scrive un elenco;
+#   * non controlla che l'istanza sia del soggetto del ruolo: e' una regola
+#     della tabella (vale anche per l'UPDATE), da un guard. Trovato, non
+#     toccato (§6.16);
+#   * la matrice dei tipi ammessi e la forma dell'indirizzo libero: i trigger
+#     della tabella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261019-36-create-fn-crea-indirizzo-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261019-36-create-fn-crea-indirizzo-ruolo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea anagrafiche.fn_crea_indirizzo_ruolo: UN indirizzo di un ruolo (anche di
+        un'istanza), con la grammatica di fn_indirizzo_elemento; ritorna l'id. Gemella di
+        fn_crea_indirizzo_soggetto. R-BE-6, D-16a di Tid,
+        brief-db-processi-accensione-per-ambiente §6.16.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_indirizzo_ruolo(
+                  p_soggetto_ruolo_id anagrafiche.indirizzi.soggetto_ruolo_id%TYPE,
+                  p_indirizzo         jsonb)
+               RETURNS anagrafiche.indirizzi.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  c_chi      CONSTANT text := 'anagrafiche.fn_crea_indirizzo_ruolo';
+                  v_istanza  anagrafiche.indirizzi.istanza_utility_id%TYPE;
+                  v_el       jsonb;
+                  v_id       anagrafiche.indirizzi.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere UN indirizzo di un ruolo, e ritornarne l'id.
+                  --   p_indirizzo: un oggetto con il tipo (id o codice
+                  --   interno) e l'indirizzo in una delle tre forme di
+                  --   anagrafiche.fn_indirizzo_elemento; in piu', facoltativa,
+                  --   l'istanza (istanza_utility_id).
+                  --
+                  -- Regole:
+                  --   - l'istanza la legge questa madre: il BB dell'elemento
+                  --     e' comune al soggetto, che istanze non ne ha;
+                  --   - un tipo gia' presente lo rifiuta il vincolo;
+                  --   - ruolo inesistente: E_SOGGETTO_RUOLO_NON_TROVATO.
+                  -- =========================================================
+                  IF NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti_ruoli sr
+                                  WHERE sr.id = p_soggetto_ruolo_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_SOGGETTO_RUOLO_NON_TROVATO',
+                          jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id),
+                          NULL::uuid,
+                          COALESCE(p_soggetto_ruolo_id::text, '-'));
+                  END IF;
+
+                  IF jsonb_typeof(p_indirizzo) = 'object' THEN
+                      v_istanza := (p_indirizzo ->> 'istanza_utility_id')::integer;
+                  END IF;
+
+                  v_el := anagrafiche.fn_indirizzo_elemento(
+                              CASE WHEN jsonb_typeof(p_indirizzo) = 'object'
+                                   THEN p_indirizzo - 'istanza_utility_id'
+                                   ELSE p_indirizzo END,
+                              c_chi,
+                              jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id));
+
+                  INSERT INTO anagrafiche.indirizzi (
+                      soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
+                      indirizzo_dettaglio_id, indirizzo_libero,
+                      stato_id, comune_id, codice_postale_id,
+                      administrative_area, locality, sublocality, postal_code)
+                  VALUES (
+                      p_soggetto_ruolo_id, (v_el ->> 'tipo_indirizzo_id')::integer, v_istanza,
+                      anagrafiche.fn_indirizzo_elemento_dettaglio(v_el),
+                      NULLIF(btrim(v_el ->> 'indirizzo_libero'), ''),
+                      (v_el ->> 'stato_id')::integer,
+                      (v_el ->> 'comune_id')::integer,
+                      (v_el ->> 'codice_postale_id')::integer,
+                      v_el ->> 'administrative_area',
+                      v_el ->> 'locality',
+                      v_el ->> 'sublocality',
+                      v_el ->> 'postal_code')
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_indirizzo_ruolo(
+                      anagrafiche.indirizzi.soggetto_ruolo_id%TYPE, jsonb)
+              IS 'MADRE SINGOLARE (2026-10-19): scrive UN indirizzo di un ruolo, anche di un''istanza (chiave facoltativa istanza_utility_id), e ne ritorna l''id. L''elemento ha la grammatica di anagrafiche.fn_indirizzo_elemento (tipo per id o codice interno; forma libera, dettaglio gia'' risolto o via da risolvere; chiavi estranee E_CAMPO_NON_AMMESSO); l''istanza la legge questa madre, perche'' il BB e'' comune al soggetto. Un tipo gia'' presente lo rifiuta il vincolo col suo nome (uq_indirizzi_ruolo_tipo_no_istanza / uq_indirizzi_ruolo_istanza_tipo): il salto dei tipi presenti e'' della plurale anagrafiche.fn_crea_indirizzi_ruolo, che scrive un elenco e usa questa. Ruolo inesistente: E_SOGGETTO_RUOLO_NON_TROVATO. Matrice dei tipi ammessi e forma dell''indirizzo libero: i trigger della tabella. Gemella di anagrafiche.fn_crea_indirizzo_soggetto (D-16a). Sede unica della INSERT di SoggettiRepository.crea_indirizzo_ruolo. R-BE-6, D-16a di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_indirizzo_ruolo(anagrafiche.indirizzi.soggetto_ruolo_id%TYPE, jsonb);
