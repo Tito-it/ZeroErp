@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SCELTA A MANO HA UNA STORIA
+#   dbops.processi_accensione (20261016-21) diceva solo l'ULTIMA scelta, e
+#   «torna al default» cancellava la riga: chi e perche' sparivano con lei.
+#   Brief: brief-db-processi-accensione-per-ambiente, §6.2 (S-1, R-BE-1, R-BE-2).
+#
+# -- acceso NULL = «segue il default» ------------------------------------
+#   «Torna al default» non cancella piu': riscrive la riga con acceso NULL e
+#   il motivo. La riga dice sempre l'ultimo gesto (chi, quando, perche');
+#   l'assenza della riga dice che nessuno l'ha mai toccata. La regola
+#   (dbops.fn_processo_acceso_su_valori) legge gia' NULL come «nessuna
+#   scelta»: non cambia. Il verbo e' 20261017-03.
+#
+# -- LA STORIA LA TIENE LA MACCHINA CHE C'E' GIA' ------------------------
+#   Le due colonne del framework delle automazioni:
+#     * storicizza: la gemella storico.processi_accensione, una versione per
+#       ogni gesto (registrata in config.storico_set_storicizza, 20261017-04,
+#       perche' il flag non si azzeri dopo il primo UPDATE);
+#     * tx_id: la correlazione transazionale delle versioni.
+#   La tabella entra in automation_scope.csv (dbops,processi_accensione) e in
+#   storico_scope_policy.csv (NESSUNO). L'audit di ci_apply
+#   (script.trgfn_audit_data_user_generic) scrive user_insert/user_update da
+#   app.jwt_user: e' R-BE-1, «chi» diventa la persona e non zeroerp_app.
+#   ⛔ Niente trigger scritti qui: li genera ci_apply (linee-guida-sql §11.5).
+#   ⚠️ Su dbdev il migrate normale non passa da ci_apply: i trigger nascono
+#   dai job automations_* (o a mano, nell'ordine della CI: brief §6.3).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261017-02-alter-dbops-processi-accensione-storia-mctit.yaml
+
+  - changeSet:
+      id: 20261017-02-alter-dbops-processi-accensione-storia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.processi_accensione: acceso diventa nullable (NULL = segue il default, «torna al
+        default» non cancella la riga), e la tabella prende storicizza e tx_id per lo storico e
+        l'audit generati da ci_apply. Brief: brief-db-processi-accensione-per-ambiente (S-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: dbops, tableName: processi_accensione, columnName: acceso }
+            - not:
+                - columnExists: { schemaName: dbops, tableName: processi_accensione, columnName: storicizza }
+            - not:
+                - columnExists: { schemaName: dbops, tableName: processi_accensione, columnName: tx_id }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi_accensione
+                  ALTER COLUMN acceso DROP NOT NULL,
+                  ADD COLUMN storicizza boolean NOT NULL DEFAULT true,
+                  ADD COLUMN tx_id      uuid;
+
+              COMMENT ON TABLE dbops.processi_accensione IS
+                  'La scelta a mano di questa installazione sulla sveglia di un processo: acceso, spento o tornato al default, col motivo. Scavalca il default per ambiente di dbops.processi (acceso_in_sviluppo, acceso_in_produzione). La riga dice l''ULTIMO gesto (chi, quando, perche''): acceso NULL = segue il default; assenza della riga = nessuno l''ha mai toccata. La storia dei gesti e'' in storico.processi_accensione (storicizza, automazioni di ci_apply); chi e'' l''utente lo scrive l''audit generato (app.jwt_user). Dato di MACCHINA (come dbops.processi_identita): nessun seed, la scrive l''operatore col verbo dbops.fn_imposta_accensione_processo. Un non spegnibile non si spegne e un processo senza sveglia (CODA, ritirato) non ha righe: dbops.trgfn_processi_accensione_guard. Lo stato effettivo lo dice dbops.fn_processo_acceso_dichiarato (e maintenance.fn_sveglia_accesa per le sveglie). Brief: brief-db-processi-accensione-per-ambiente (A-2, S-1).';
+              COMMENT ON COLUMN dbops.processi_accensione.acceso IS
+                  'La scelta: true acceso, false spento, NULL tornato al default per ambiente («torna al default» riscrive la riga, non la cancella: chi e perche'' restano). false su un processo non spegnibile e'' rifiutato (E_PROCESSO_NON_SPEGNIBILE).';
+              COMMENT ON COLUMN dbops.processi_accensione.storicizza IS
+                  'Flag del framework di storicizzazione: true, ogni gesto lascia una versione in storico.processi_accensione (tabella registrata in config.storico_set_storicizza, il flag non si azzera).';
+              COMMENT ON COLUMN dbops.processi_accensione.tx_id IS
+                  'Transaction ID della scrittura, gestito dal trigger generato da ci_apply: correla la riga alle sue versioni nello storico.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              ALTER TABLE dbops.processi_accensione
+                  DROP COLUMN IF EXISTS tx_id,
+                  DROP COLUMN IF EXISTS storicizza;

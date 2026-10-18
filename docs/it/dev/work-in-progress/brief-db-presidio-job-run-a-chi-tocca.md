@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-16
 
-**Riparte: team BE** (tramite Tid): §4.2 e D9 (§10.3). Lato DB resta solo il codice di
-D9, che aspetta il nome dal BE. ✅ Giro 1 (§8) e giro 2 (§11) applicati, pgTAP senza
+**Riparte: team BE** (tramite Tid): §4.2 e D9 (§10.3). Lato DB il codice di D9 è nel
+registro (2026-10-17, §11.3): si applica col mirror dei due CSV, ed è da committare. ✅ Giro 1 (§8) e giro 2 (§11) applicati, pgTAP senza
 regressioni.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -17,7 +17,7 @@ regressioni.
 | 7 | Tid | ✅ via allo sviluppo del giro 2 (2026-10-16) | §10 | — |
 | 8 | team DB | ✅ giro 2 D8 scritto e provato (`20261016-44…53`); codice di D9 in attesa del nome dal BE | §11 | — |
 | 8b | Tid | ✅ migrate del giro 2 applicato, pgTAP senza regressioni (2026-10-16) | §11 | — |
-| 10 | team DB | codice di D9 nel registro (+ messaggio), col nome concordato col BE | §10.3 | 9 |
+| 10 | team DB | ✅ codice di D9 nel registro (+ messaggio), nome dal BE: `E_JOB_ELEMENTI_NON_COMPLETATI` (2026-10-17) | §11.3 | — |
 | 11 | Tid | ✅ collaudo lato DB (2026-10-17); resta il digest stampato e le fasi dopo BE; poi archiviazione | §5 | 4, 9, 10 |
 | 9 | team BE | D9: una corsa con elementi falliti senza registro chiude rossa | §10.3 | 8 |
 | 6 | Tid | collaudo: digest `--secco` con un rosso per causa | §5 | 3, 4 |
@@ -698,6 +698,7 @@ sì, ed è il predicato. Le nove copie del blocco le tiene allineate il test 5-6
 ⚠️ **Il codice di D9 non è scritto.** Il nome del codice registrato
 (es. `E_JOB_ELEMENTI_NON_COMPLETATI`) va concordato col BE, che lo solleva. Un
 codice a registro senza nessuno che lo sollevi sarebbe un riferimento morto.
+✅ Scritto il 2026-10-17, col nome dato dal BE: §11.3.
 
 ### 11.2 Prova (sessione DB, 2026-10-16, scratch `zeroerp_ruoli`, transazione annullata)
 
@@ -715,3 +716,24 @@ codice a registro senza nessuno che lo sollevi sarebbe un riferimento morto.
 **Apply:** solo migrate, nessun provision-post (nessuna funzione del registro dei
 superuser).
 
+### 11.3 Il codice di D9 (2026-10-17)
+
+Nome dal BE: **`E_JOB_ELEMENTI_NON_COMPLETATI`**. Due righe, nessun changeSet: le carica il mirror
+dei due CSV, come `E_JOB_RUN_SALTATA_NON_CHIUDIBILE`, il precedente citato dal BE.
+
+| CSV | Riga |
+| --- | --- |
+| `codici_errore.csv` | classe `TECNICO`, `causa_fallimento` NULL (la causa la decide il processo, oggi `PROGRAMMA`) |
+| `messaggi_errore.csv` (id 1350) | «Il lavoro automatico è finito, ma alcuni elementi non sono stati completati.» |
+
+⚠️ **La frase è chiusa, senza `%s`: uno scostamento dalla proposta del BE, voluto.** Il BE
+proponeva di passarle `jobname` e `falliti`. Ma il codice lo solleva il **backend**, che scrive la
+sua frase in `maintenance.job_run_log.message` e non riempie i segnaposto del catalogo: un `%s` a
+catalogo uscirebbe grezzo dovunque la frase del catalogo venga mostrata. È la forma dei diciannove
+`*_VALIDATION`, tutti chiusi perché li solleva il BE. La corsa e il numero di elementi falliti
+stanno dove li legge chi guarda: nel `message` della corsa (il BE li mette nella sua frase) e nel
+`meta` (`falliti`, `badge_falliti`). Causa e soluzione a catalogo dicono dove guardarli.
+
+Provato sullo scratch (`zeroerp_ruoli`, transazione annullata): le due righe entrano nelle tabelle,
+coi loro vincoli. Per il BE: rigenerare `error_policies_generated.py` e, se serve, il ripiego in
+`error_messages_fallback.py`.

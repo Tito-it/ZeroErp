@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: SCRIVERE UNA RIGA CON LE SOLE COLONNE DEL PAYLOAD
+#   script.fn_scrivi_riga_da_jsonb(tabella, dati, dove): INSERT (dove NULL) o
+#   UPDATE (dove = le colonne che individuano la riga) delle SOLE chiavi di
+#   `dati`, coi valori convertiti da jsonb_populate_record sul tipo di riga.
+#   Le colonne assenti restano al DEFAULT (INSERT) o com'erano (UPDATE), e i
+#   trigger della tabella scattano come sempre.
+#   Brief: brief-db-processi-accensione-per-ambiente, §5-ter.1 (2b-1).
+#
+# -- REGOLA DEL 2 -------------------------------------------------------
+#   La stessa scrittura era scritta a mano in tre punti, ed entrava in altri
+#   quattro (i BB della 2b-1: emittente, cliente, fornitore, veste portale):
+#     * config.fn_pannello_scrivi, passo 3 (INSERT e UPDATE per id);
+#     * vendite.fn_create_contratto, passo 3 (INSERT della testata) e passo 4
+#       (INSERT o UPDATE per contratto_id della fornitura).
+#   Le tre copie si ritirano nello stesso giro: 20261017-07 (pannello) e
+#   20261017-08 (contratto).
+#
+# -- CHE COSA NON FA, apposta ---------------------------------------------
+#   Non sceglie le chiavi. Il pannello RIFIUTA una chiave estranea, il
+#   contratto la SCARTA: sono due regole diverse, e restano a chi chiama. Il
+#   BB scrive cio' che riceve: una chiave che non e' una colonna finisce
+#   nella lista delle colonne e PostgreSQL risponde 42703. Si filtra prima.
+#
+# -- INVOKER --------------------------------------------------------------
+#   Gira coi privilegi di chi chiama: dall'app non scrive niente che l'app non
+#   potesse gia' scrivere con un INSERT. Dentro una DEFINER (il pannello) gira
+#   come il proprietario, come la copia che sostituisce.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261017-05-create-fn-scrivi-riga-da-jsonb-mctit.yaml
+
+  - changeSet:
+      id: 20261017-05-create-fn-scrivi-riga-da-jsonb
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea script.fn_scrivi_riga_da_jsonb: INSERT o UPDATE di una riga con le sole colonne del
+        payload jsonb, valori convertiti sul tipo di riga. Regola del 2: prende il posto delle
+        copie in config.fn_pannello_scrivi e vendite.fn_create_contratto.
+        Brief: brief-db-processi-accensione-per-ambiente (2b-1).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scrivi_riga_da_jsonb(
+                  p_tabella regclass,
+                  p_dati    jsonb,
+                  p_dove    jsonb DEFAULT NULL)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_colonne     text;   -- colonne di p_dati, quotate
+                  v_valori      text;   -- le stesse, lette dal record r
+                  v_dove_col    text;   -- colonne di p_dove, quotate
+                  v_dove_val    text;
+                  v_riga        jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere una riga di p_tabella con le SOLE colonne di
+                  --   p_dati (valori convertiti da jsonb_populate_record):
+                  --     * p_dove NULL     -> INSERT; le assenti al DEFAULT;
+                  --     * p_dove {col: v} -> UPDATE delle righe con quei
+                  --                          valori; le assenti invariate.
+                  --   Ritorna la riga scritta (to_jsonb), NULL se l'UPDATE
+                  --   non trova righe. p_dati vuoto: INSERT DEFAULT VALUES,
+                  --   oppure nessuna scrittura e la riga com'e'.
+                  --
+                  -- Regole:
+                  --   - le chiavi le sceglie chi chiama (rifiutare o scartare
+                  --     e' una regola sua): qui ogni chiave e' una colonna;
+                  --   - UPDATE: una riga. Se p_dove ne individua piu' d'una le
+                  --     scrive tutte e ritorna la prima: p_dove e' una chiave.
+                  -- =========================================================
+                  IF p_tabella IS NULL
+                     OR p_dati IS NULL OR jsonb_typeof(p_dati) <> 'object'
+                     OR (p_dove IS NOT NULL
+                         AND (jsonb_typeof(p_dove) <> 'object' OR p_dove = '{}'::jsonb)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'script.fn_scrivi_riga_da_jsonb', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('tabella',    p_tabella::text,
+                                             'tipo_dati',  jsonb_typeof(p_dati),
+                                             'tipo_dove',  jsonb_typeof(p_dove)),
+                          NULL::uuid,
+                          'script.fn_scrivi_riga_da_jsonb',
+                          'tabella, dati o chiave della riga mancanti');
+                  END IF;
+
+                  SELECT string_agg(quote_ident(k), ', ' ORDER BY k),
+                         string_agg('r.' || quote_ident(k), ', ' ORDER BY k)
+                    INTO v_colonne, v_valori
+                    FROM jsonb_object_keys(p_dati) AS k;
+
+                  IF p_dove IS NULL THEN
+                      IF v_colonne IS NULL THEN
+                          EXECUTE format(
+                              'INSERT INTO %s AS t DEFAULT VALUES RETURNING to_jsonb(t.*)',
+                              p_tabella)
+                             INTO v_riga;
+                      ELSE
+                          EXECUTE format(
+                              'INSERT INTO %s AS t (%s) SELECT %s FROM jsonb_populate_record(NULL::%s, $1) AS r '
+                              'RETURNING to_jsonb(t.*)',
+                              p_tabella, v_colonne, v_valori, p_tabella)
+                             INTO v_riga
+                            USING p_dati;
+                      END IF;
+                      RETURN v_riga;
+                  END IF;
+
+                  SELECT string_agg('t.' || quote_ident(k), ', ' ORDER BY k),
+                         string_agg('w.' || quote_ident(k), ', ' ORDER BY k)
+                    INTO v_dove_col, v_dove_val
+                    FROM jsonb_object_keys(p_dove) AS k;
+
+                  IF v_colonne IS NULL THEN
+                      EXECUTE format(
+                          'SELECT to_jsonb(t.*) FROM %s AS t, jsonb_populate_record(NULL::%s, $1) AS w '
+                          'WHERE ROW(%s) = ROW(%s)',
+                          p_tabella, p_tabella, v_dove_col, v_dove_val)
+                         INTO v_riga
+                        USING p_dove;
+                  ELSE
+                      -- ROW(...) anche con una colonna sola.
+                      EXECUTE format(
+                          'UPDATE %s AS t SET (%s) = ROW(%s) '
+                          '  FROM jsonb_populate_record(NULL::%s, $1) AS r, '
+                          '       jsonb_populate_record(NULL::%s, $2) AS w '
+                          ' WHERE ROW(%s) = ROW(%s) '
+                          'RETURNING to_jsonb(t.*)',
+                          p_tabella, v_colonne, v_valori, p_tabella, p_tabella,
+                          v_dove_col, v_dove_val)
+                         INTO v_riga
+                        USING p_dati, p_dove;
+                  END IF;
+
+                  RETURN v_riga;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scrivi_riga_da_jsonb(regclass, jsonb, jsonb) IS
+                  'BB (2026-10-17): scrive una riga di p_tabella con le SOLE colonne di p_dati, valori convertiti da jsonb_populate_record sul tipo di riga. p_dove NULL: INSERT, le colonne assenti al DEFAULT (p_dati vuoto: DEFAULT VALUES). p_dove {colonna: valore, ...}: UPDATE delle righe con quei valori, le colonne assenti invariate (p_dati vuoto: nessuna scrittura, ritorna la riga). Ritorna la riga scritta (to_jsonb), NULL se l''UPDATE non trova righe. Le chiavi le sceglie chi chiama: ogni chiave deve essere una colonna (rifiutare o scartare quelle estranee e'' una regola del chiamante). I trigger della tabella scattano come sempre. INVOKER. Chiamata malformata: E_SCRIPT_CHIAMATA_NON_VALIDA. Regola del 2: prende il posto delle copie in config.fn_pannello_scrivi (passo 3) e vendite.fn_create_contratto (passi 3 e 4). Brief: brief-db-processi-accensione-per-ambiente (2b-1).';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_scrivi_riga_da_jsonb(regclass, jsonb, jsonb);

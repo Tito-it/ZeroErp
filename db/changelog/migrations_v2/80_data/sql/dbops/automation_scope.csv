@@ -11,3 +11,4 @@ pagamenti,*all
 documenti,*all
 pratiche,*all
 dbops,sessioni_utente
+dbops,processi_accensione

@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: LA PRIMA CHIAVE CHE UN VERBO NON ACCETTA
+#   script.fn_prima_chiave_estranea(dati, ammesse): la prima chiave di un
+#   payload jsonb (in ordine alfabetico) che non sta nell'elenco delle ammesse,
+#   o NULL. Pura sui valori: il codice d'errore lo sceglie chi chiama, perche'
+#   il frontend accende il campo dal codice e dal contesto del verbo.
+#   Brief: brief-db-processi-accensione-per-ambiente, §5-ter.1 (2b-1).
+#
+# -- REGOLA DEL 2 -------------------------------------------------------
+#   La regola «una chiave estranea si RIFIUTA, col suo nome» era scritta in
+#   config.fn_pannello_scrivi (passo 2, D-P3); la seconda occorrenza sono i
+#   verbi di creazione della 2b-1 (il primo: anagrafiche.fn_crea_emittente_fiscale,
+#   20261017-09). Il pannello passa al BB in 20261017-07.
+#   ⚠️ Non vale per vendite.fn_create_contratto, che una chiave estranea la
+#   SCARTA: e' una regola diversa (resta la proposta §6 di
+#   brief-db-fatturazione-immediata-create-contratto).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261017-06-create-fn-prima-chiave-estranea-mctit.yaml
+
+  - changeSet:
+      id: 20261017-06-create-fn-prima-chiave-estranea
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea script.fn_prima_chiave_estranea: la prima chiave di un payload jsonb fuori
+        dall'elenco delle ammesse, o NULL. Regola del 2 col pannello di configurazione.
+        Brief: brief-db-processi-accensione-per-ambiente (2b-1).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_prima_chiave_estranea(
+                  p_dati    jsonb,
+                  p_ammesse text[])
+               RETURNS text
+               LANGUAGE sql
+               IMMUTABLE
+              AS $function$
+                  -- Scopo: la prima chiave (alfabetica) di p_dati fuori da
+                  --   p_ammesse, o NULL. Un elenco NULL non ammette niente.
+                  SELECT k
+                    FROM jsonb_object_keys(p_dati) AS k
+                   WHERE k <> ALL (COALESCE(p_ammesse, ARRAY[]::text[]))
+                   ORDER BY k
+                   LIMIT 1;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_prima_chiave_estranea(jsonb, text[]) IS
+                  'BB (2026-10-17): la prima chiave di p_dati, in ordine alfabetico, che non sta in p_ammesse; NULL se sono tutte ammesse. p_ammesse NULL = nessuna ammessa. p_dati deve essere un oggetto jsonb (un array o uno scalare fanno fallire jsonb_object_keys: lo controlla chi chiama). Pura e IMMUTABLE: il codice d''errore e il contesto li sceglie il verbo che rifiuta. Regola del 2: la usano config.fn_pannello_scrivi (passo 2, D-P3) e i verbi di creazione della 2b-1. Non la usa vendite.fn_create_contratto, che una chiave estranea la scarta. Brief: brief-db-processi-accensione-per-ambiente (2b-1).';
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS script.fn_prima_chiave_estranea(jsonb, text[]);

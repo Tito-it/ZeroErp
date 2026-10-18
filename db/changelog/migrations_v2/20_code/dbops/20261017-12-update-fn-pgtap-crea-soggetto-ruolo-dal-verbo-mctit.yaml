@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BUILDER DEL RUOLO PASSA DAL VERBO DEGLI INDIRIZZI
+#   dbops.fn_pgtap_crea_soggetto_ruolo: l'INSERT diretto degli indirizzi
+#   obbligatori del ruolo passa da anagrafiche.fn_crea_indirizzi_ruolo
+#   (20261017-11), la copia si ritira (regola del 2). Corpo vivo di partenza:
+#   doc auto-gen dbops/funzioni/fn_pgtap_crea_soggetto_ruolo (20260818-76).
+#   Gli indirizzi scritti sono gli stessi: un indirizzo libero ('Via pgTAP
+#   ruolo 1', Roma) per ogni tipo obbligatorio della matrice; prima li
+#   elencava l'INSERT, ora li clona il verbo dal primo. Firma, ritorno e
+#   finestra dei vincoli differiti invariati.
+#   Brief: brief-db-processi-accensione-per-ambiente, §5-ter.2 (2b-1, lotto 2).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261017-12-update-fn-pgtap-crea-soggetto-ruolo-dal-verbo-mctit.yaml
+
+  - changeSet:
+      id: 20261017-12-update-fn-pgtap-crea-soggetto-ruolo-dal-verbo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_crea_soggetto_ruolo: gli indirizzi del ruolo li scrive il verbo
+        anagrafiche.fn_crea_indirizzi_ruolo (regola del 2). Firma e ritorno invariati.
+        Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_crea_indirizzi_ruolo';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_soggetto_ruolo(
+                  p_soggetto_id  anagrafiche.soggetti.id%TYPE,
+                  p_cd_int_ruolo config.tipi_ruoli.codice_interno%TYPE,
+                  p_stato_id     integer DEFAULT 1
+              )
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: assegnare a un soggetto un ruolo GIA' completo dei suoi
+              --   indirizzi obbligatori, che sono un layer SEPARATO da quelli
+              --   del soggetto.
+              -- Uso:
+              --   SELECT dbops.fn_pgtap_crea_soggetto_ruolo(<soggetto_id>, 'GE');
+              DECLARE
+                  v_ruolo_id bigint;
+              BEGIN
+                  -- Vedi la nota sulla finestra differita in
+                  -- fn_pgtap_crea_soggetto_pg: qui vale per il layer RUOLO, che
+                  -- ha una matrice SUA (config.tipi_ruolo_tipi_indirizzo) e un
+                  -- guard suo. ⚠️ Un indirizzo di SOGGETTO, per quanto presente,
+                  -- non lo soddisfa: sono due layer distinti, e il fallback del
+                  -- guard porta a un altro TIPO, non all'altro LAYER.
+                  SET CONSTRAINTS ALL DEFERRED;
+
+                  v_ruolo_id := script.fn_get_or_create_soggetto_ruolo(
+                                    p_soggetto_id  := p_soggetto_id,
+                                    p_cd_int_ruolo := p_cd_int_ruolo
+                                );
+
+                  -- ⭐ Rev 2026-10-17: gli indirizzi li scrive il verbo di dominio
+                  --   anagrafiche.fn_crea_indirizzi_ruolo, come l'applicazione (regola
+                  --   del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 2). Si
+                  --   passa il PRIMO tipo obbligatorio: gli altri li clona il verbo
+                  --   (auto-clone), e i tipi che il ruolo ha gia' li salta (il ruolo puo'
+                  --   gia' esistere). Nessun tipo obbligatorio: elenco vuoto, niente.
+                  PERFORM anagrafiche.fn_crea_indirizzi_ruolo(
+                      v_ruolo_id,
+                      COALESCE(
+                          (SELECT jsonb_build_array(jsonb_build_object(
+                                      'tipo_indirizzo_id',   trti.tipo_indirizzo_id,
+                                      'indirizzo_libero',    'Via pgTAP ruolo 1',
+                                      'stato_id',            p_stato_id,
+                                      'locality',            'Roma',
+                                      'postal_box',          '00100',
+                                      'administrative_area', 'RM'))
+                             FROM config.tipi_ruolo_tipi_indirizzo trti
+                             JOIN config.tipi_ruoli tr ON tr.id = trti.tipo_ruolo_id
+                            WHERE tr.codice_interno = p_cd_int_ruolo
+                              AND trti.attivo
+                              AND trti.obbligatorio
+                            ORDER BY trti.tipo_indirizzo_id
+                            LIMIT 1),
+                          '[]'::jsonb));
+
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN v_ruolo_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_soggetto_ruolo(anagrafiche.soggetti.id%TYPE, config.tipi_ruoli.codice_interno%TYPE, integer) IS
+                  'Assegna a un soggetto un ruolo gia'' completo dei suoi indirizzi OBBLIGATORI, letti da config.tipi_ruolo_tipi_indirizzo. ⚠️ Gli indirizzi di RUOLO sono un layer separato da quelli di SOGGETTO: hanno una matrice propria e un guard proprio, e un indirizzo di soggetto non soddisfa il guard del ruolo — il suo fallback porta a un altro TIPO, non all''altro LAYER. Come la sorella, apre e RICHIUDE la finestra dei vincoli differiti. Idempotente sugli indirizzi: il ruolo puo'' gia'' esistere (fn_get_or_create_soggetto_ruolo) e non si duplica cio'' che ha gia''. Ritorna il soggetto_ruolo_id. Brief: brief-db-bonifica-baseline-pgtap-vendite.md Rev 2026-10-17: gli indirizzi li scrive il verbo anagrafiche.fn_crea_indirizzi_ruolo (auto-clone dei tipi obbligatori, skip dei presenti; regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 2). Firma e ritorno invariati.';
+      rollback:
+        - sql:
+            sql: SELECT 1;

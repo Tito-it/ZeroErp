@@ -9,8 +9,14 @@
 --   (guard), -24 (la regola sui valori), -25 (la lettura), -26 (la sveglia),
 --   -27 (il verbo), -28 (panorama: SPENTO), 90_end/20261016-31 (convalida);
 --   80_data processi.csv (i default), codici_errore/messaggi_errore (1341-1343).
+--   Rev 2026-10-17 (S-1, R-BE-1): 20261017-02 (acceso nullable, storicizza,
+--   tx_id), -03 (il verbo non cancella e non scrive l'audit), -04 (registro
+--   dello storico); automation_scope.csv e storico_scope_policy.csv.
+--   ⚠️ I test 33-34 leggono l'audit e lo storico GENERATI da ci_apply: su un
+--   database di sviluppo sono verdi dopo il giro dei job automations_* (brief
+--   §6.3), non subito dopo il migrate.
 --
--- Elenco test (plan 31):
+-- Elenco test (plan 35):
 --   forma
 --    1) la regola e' IMMUTABLE, LANGUAGE sql, senza STRICT (i NULL sono casi normali)
 --    2) la sveglia e' SECURITY DEFINER con search_path pinnato
@@ -42,12 +48,17 @@
 --   23) ... e il panorama dice SPENTO, non da guardare, acceso false
 --   24) lo riaccende: torna true
 --   25) lo rimette al default: lo stato e' il default dell'ambiente
---   25-bis) ... e la riga della scelta a mano non c'e' piu'
+--   25-bis) ... e la riga resta, con acceso NULL e il motivo (S-1)
 --   26) spegnere listen_permessi -> E_PROCESSO_NON_SPEGNIBILE
 --   27) confermare acceso un non spegnibile e' ammesso
 --   28) motivo vuoto -> E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO
 --   29) un processo CODA -> E_PROCESSO_SENZA_SVEGLIA
 --   30) codice inesistente -> E_PROCESSO_NON_TROVATO
+--   la storia (S-1, R-BE-1)
+--   31) acceso e' nullable: NULL = tornato al default
+--   32) tornare al default senza motivo -> E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO
+--   33) chi ha fatto i gesti e' l'utente del backend (app.jwt_user), non il ruolo
+--   34) ogni gesto lascia una versione in storico.processi_accensione
 --
 --   ⚠️ Il cablaggio dei passi pgAgent (85_pgagent/20261016-30) e il caso
 --   «ambiente non dichiarato» costruito stanno in
@@ -60,7 +71,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(31);
+SELECT plan(35);
 
 -- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
 -- P0001 (fn_log_and_raise_error): si pinna il codice, non la frase.
@@ -187,6 +198,10 @@ DELETE FROM dbops.processi_accensione a
  USING dbops.processi p
  WHERE p.id = a.processo_id AND p.codice IN ('smoke_notturno', 'listen_permessi');
 
+-- L'utente del backend: lo imposta il middleware a ogni richiesta, e l'audit
+--   generato lo legge (test 33). Locale alla transazione.
+SELECT set_config('app.jwt_user', 'pgtap.accensione', true);
+
 SELECT is(dbops.fn_imposta_accensione_processo('smoke_notturno', false, 'pgTAP: prova dello spegnimento'),
           false, '21. il verbo spegne smoke_notturno e torna lo stato effettivo: false');
 
@@ -203,11 +218,10 @@ SELECT is(
 SELECT is(dbops.fn_imposta_accensione_processo('smoke_notturno', true, 'pgTAP: prova della riaccensione'),
           true, '24. il verbo lo riaccende: true');
 
--- ⚠️ Il verbo e il conteggio in DUE istruzioni: nella stessa SELECT il
---   conteggio vedrebbe la fotografia di inizio istruzione, cioe' la riga
---   appena cancellata.
+-- ⚠️ Il verbo e la lettura della riga in DUE istruzioni: nella stessa SELECT
+--   la lettura vedrebbe la fotografia di inizio istruzione.
 SELECT is(
-    dbops.fn_imposta_accensione_processo('smoke_notturno', NULL, NULL)
+    dbops.fn_imposta_accensione_processo('smoke_notturno', NULL, 'pgTAP: prova del ritorno al default')
         IS NOT DISTINCT FROM
     (SELECT CASE script.fn_ambiente_dichiarato()
                  WHEN 'SVILUPPO'   THEN p.acceso_in_sviluppo
@@ -217,12 +231,12 @@ SELECT is(
     '25. rimesso al default: lo stato e'' quello del suo ambiente');
 
 SELECT is(
-    (SELECT count(*)::int
+    (SELECT format('%s|%s', a.acceso IS NULL, a.motivo)
        FROM dbops.processi_accensione a
        JOIN dbops.processi p ON p.id = a.processo_id
       WHERE p.codice = 'smoke_notturno'),
-    0,
-    '25-bis. ... e la scelta a mano non c''e'' piu''');
+    't|pgTAP: prova del ritorno al default',
+    '25-bis. ... e la riga resta, con acceso NULL e il motivo: chi e perche'' non si perdono (S-1)');
 
 SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo('listen_permessi', false, 'pgTAP: prova')$$),
           'E_PROCESSO_NON_SPEGNIBILE', '26. spegnere listen_permessi: E_PROCESSO_NON_SPEGNIBILE');
@@ -238,6 +252,63 @@ SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo('a
 
 SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo('PGTAP-PROCESSO-CHE-NON-ESISTE', false, 'pgTAP')$$),
           'E_PROCESSO_NON_TROVATO', '30. codice inesistente: E_PROCESSO_NON_TROVATO');
+
+-- ============================================================
+-- La storia (S-1, R-BE-1)
+-- ============================================================
+SELECT is(
+    (SELECT a.attnotnull
+       FROM pg_attribute a
+      WHERE a.attrelid = 'dbops.processi_accensione'::regclass
+        AND a.attname = 'acceso'),
+    false,
+    '31. acceso e'' nullable: NULL = tornato al default (20261017-02)');
+
+SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo('smoke_notturno', NULL, NULL)$$),
+          'E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO',
+          '32. anche tornare al default vuole il motivo');
+
+-- ⚠️ Audit e storico sono GENERATI da ci_apply: senza i trigger questi due
+--   test sono rossi, ed e' cio' che devono dire (brief §6.3).
+SELECT is(
+    (SELECT format('%s|%s', a.user_insert, a.user_update)
+       FROM dbops.processi_accensione a
+       JOIN dbops.processi p ON p.id = a.processo_id
+      WHERE p.codice = 'smoke_notturno'),
+    'pgtap.accensione|pgtap.accensione',
+    '33. chi ha fatto i gesti e'' l''utente del backend (app.jwt_user), non zeroerp_app (R-BE-1)');
+
+-- I tre gesti su smoke_notturno (21 spegne: INSERT; 24 riaccende e 25 torna
+--   al default: due UPDATE) lasciano tre versioni: la fotografia di partenza
+--   del primo UPDATE (tipo 1) e una per UPDATE; quella aperta e' l'ultima.
+--   ⚠️ La gemella si legge via EXECUTE: se non c'e' ancora (automazioni non
+--   girate) il test e' rosso con la causa, non interrompe il file.
+CREATE OR REPLACE FUNCTION pg_temp.versioni_smoke() RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE v_r text;
+BEGIN
+    IF to_regclass('storico.processi_accensione') IS NULL THEN
+        RETURN 'gemella storico.processi_accensione assente';
+    END IF;
+    EXECUTE $q$
+        SELECT format('%s|%s|%s',
+                      count(*),
+                      count(*) FILTER (WHERE s.valid_to IS NULL
+                                         AND s.snapshot ->> 'acceso' IS NULL
+                                         AND s.snapshot ->> 'motivo' = 'pgTAP: prova del ritorno al default'),
+                      count(*) FILTER (WHERE s.snapshot ->> 'acceso' = 'false'))
+          FROM storico.processi_accensione s
+          JOIN dbops.processi_accensione a ON a.id = s.processi_accensione_id
+          JOIN dbops.processi p ON p.id = a.processo_id
+         WHERE p.codice = 'smoke_notturno'
+    $q$ INTO v_r;
+    RETURN v_r;
+END $$;
+
+SELECT is(
+    pg_temp.versioni_smoke(),
+    '3|1|1',
+    '34. ogni gesto lascia una versione nello storico; l''ultima, aperta, e'' il ritorno al default');
 
 SELECT * FROM finish();
 
