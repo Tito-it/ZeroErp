@@ -14,7 +14,7 @@ vocabolario solo, nessun ponte); la forma la decide Tid sul censimento.
 | 5 | sessione BE/FE | Il ritiro delle traduzioni del backend nello stesso giro di ciascun lotto | §3.2 | 4 |
 | 6 | chi chiude | Il ritiro del ponte di `fn_articolo_riga_contesto`, l'archiviazione, la riga di PROJECT_CONTEXT | — | 5 |
 
-**Decisioni aperte di Tid:** G-1 … G-4 (§5), dopo il censimento. Da committare: questo documento.
+**Decisioni aperte di Tid:** G-1 … G-4 (§5), dopo il censimento. ✅ Documento committato su `dev/backend-tid` (`22e31580e`, 2026-10-18).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-18. **A chi:** il team DB, poi Tid.
 > **Origine:** l'A-8-ter di
