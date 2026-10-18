@@ -21,7 +21,7 @@ Indice test eseguiti:
 10b) CatalogoApiTests.test_lookup_articoli_documento_rifiuta_i_filtri_liberi
 10c) CatalogoApiTests.test_lookup_articoli_padre_non_uuid
 10c-bis) CatalogoApiTests.test_lookup_articoli_filtri_ritirati
-10d) CatalogoApiTests.test_struttura_articolo_e_da_amministratore
+10d) CatalogoApiTests.test_patch_articolo_porta_la_correzione_di_struttura
 11) CatalogoApiTests.test_create_articolo_ok
 14) CatalogoApiTests.test_create_articolo_validation_error
 15) CatalogoApiTests.test_patch_articolo_ok
@@ -249,46 +249,31 @@ class CatalogoApiTests(JwtMockedApiTest):
         self.assertEqual(response.status_code, 400)
         mocked_ammessi.assert_not_called()
 
-    # Scopo: la correzione di struttura e' un endpoint da AMMINISTRATORE,
-    # provato dalla richiesta HTTP e non dalla gerarchia delle classi: chi non
-    # e' SUPER_ADMIN riceve 403 e il service non parte; il SUPER_ADMIN passa,
-    # col corpo intero al service; senza `Idempotency-Key` e' un 400.
-    # ⚠️ L'utente finto ha `is_superuser=False` ESPLICITO: un `Mock()` nudo
-    #    risponde a `is_superuser` con un Mock vero, e `IsAdminZeroERP` lo
-    #    lascerebbe passare — il 403 non si vedrebbe mai.
-    @patch("apps.core.api.permissions.PermissionResolver.is_super_admin")
-    @patch("apps.catalogo.api.views.fn_correggi_struttura_articolo")
-    def test_struttura_articolo_e_da_amministratore(self, mocked_correggi, mocked_super_admin):
-        utente = Mock(is_authenticated=True, is_superuser=False, id=2)
-        url = f"/api/v1/catalogo/articoli/{_COMPONENTE_UUID}/struttura/"
-        corpo = {"campi": {"requires_lotto": True}}
-        mocked_correggi.return_value = _DETAIL_RESPONSE
+    # Scopo: la correzione di struttura viaggia nel PATCH dell'articolo (R-BE-1,
+    # 2026-10-18): il corpo arriva intero al service, `correzione_struttura`
+    # compreso; l'endpoint dedicato `…/struttura/` non c'e' piu'. Il permesso
+    # (SUPER_ADMIN) lo giudica il verbo del DB (`E_PERMESSO_NEGATO`, provato su
+    # DB vero in tests/db/test_articoli_ammessi_db.py).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.catalogo.api.views.fn_update_articolo")
+    def test_patch_articolo_porta_la_correzione_di_struttura(self, mocked_update, _mock_auth):
+        mocked_update.return_value = _DETAIL_RESPONSE
+        corpo = {"descrizione": "Nuova", "correzione_struttura": {"requires_lotto": True}}
 
-        with patch(
-            "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
-            return_value=(utente, None),
-        ):
-            mocked_super_admin.return_value = False
-            response = self.client.post(
-                url, data=corpo, content_type="application/json", HTTP_IDEMPOTENCY_KEY="k-1",
-            )
-            self.assertEqual(response.status_code, 403)
-            mocked_correggi.assert_not_called()
+        response = self.client.patch(
+            f"/api/v1/catalogo/articoli/{_COMPONENTE_UUID}/",
+            data=corpo, content_type="application/json",
+        )
 
-            mocked_super_admin.return_value = True
-            response = self.client.post(
-                url, data=corpo, content_type="application/json", HTTP_IDEMPOTENCY_KEY="k-2",
-            )
-            self.assertEqual(response.status_code, 200)
-            articolo_id, payload = mocked_correggi.call_args.args
-            self.assertEqual(str(articolo_id), _COMPONENTE_UUID)
-            self.assertEqual(payload, corpo)
-
-            mocked_correggi.reset_mock()
-            response = self.client.post(url, data=corpo, content_type="application/json")
-            self.assertEqual(response.status_code, 400)
-            self.assertEqual(response.json()["error"]["code"], "E_IDEMPOTENCY_KEY_REQUIRED")
-            mocked_correggi.assert_not_called()
+        self.assertEqual(response.status_code, 200)
+        articolo_id, payload = mocked_update.call_args.args
+        self.assertEqual(str(articolo_id), _COMPONENTE_UUID)
+        self.assertEqual(payload, corpo)
+        response = self.client.post(
+            f"/api/v1/catalogo/articoli/{_COMPONENTE_UUID}/struttura/",
+            data={"campi": {"requires_lotto": True}}, content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
 
     # Scopo: limit lookup articoli fuori range -> 400 dal service.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

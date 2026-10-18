@@ -67,33 +67,30 @@ const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { v
 // `isEdit` su singoli campi.
 const nonEditableFields = computed(() => detail.value?.non_editable_fields || [])
 function isFieldLocked(name) {
-  if (correzioneStruttura.value && COLONNE_STRUTTURA.includes(name)) return false
+  if (correzioneStruttura.value && colonneStruttura.value.includes(name)) return false
   return isEdit.value && nonEditableFields.value.includes(name)
 }
 
 // ⭐ La CORREZIONE DI STRUTTURA (A-10, Lotto 3u): un articolo usato non cambia
 // la sua struttura, e la via normale e' un articolo nuovo. Per un errore di
 // caricamento il SUPER_ADMIN ha una porta sola, il verbo
-// `catalogo.fn_articolo_correggi_struttura` (`POST …/struttura/`). Qui l'azione
-// riapre i campi strutturali bloccati; al salvataggio quelli cambiati passano
-// dal verbo, il resto dal PATCH di sempre.
-// ⚠️ L'elenco e' quello delle colonne che il verbo accetta: e' il DB a
-// giudicarle (una colonna estranea la rifiuta con E_PARAMETRO_INVALIDO), qui
-// serve solo a sapere quali controlli riaprire. La causale onere non e' in
-// questo form.
-const COLONNE_STRUTTURA = Object.freeze([
-  'is_composito', 'is_solo_componente', 'natura_vendita_id', 'causale_onere_id',
-  'listino_tipologia_id', 'gestito_a_magazzino', 'requires_lotto', 'requires_serial',
-])
+// `catalogo.fn_articolo_correggi_struttura`. Qui l'azione riapre i campi
+// strutturali bloccati; al salvataggio quelli cambiati viaggiano nello STESSO
+// PATCH (`correzione_struttura`), e il backend li scrive col verbo e poi
+// l'UPDATE in una transazione (R-BE-1, 2026-10-18).
+// ⭐ Quali campi riaprire lo dice il dettaglio (`struttura_correggibile`), dalla
+// sede del DB da cui il verbo legge le colonne ammesse (R-DB-3): nessuna copia
+// qui. La causale onere non e' in questo form.
+const colonneStruttura = computed(() => detail.value?.struttura_correggibile || [])
 const correzioneStruttura = ref(false)
 const strutturaBloccata = computed(() =>
-  COLONNE_STRUTTURA.some(c => nonEditableFields.value.includes(c)))
+  colonneStruttura.value.some(c => nonEditableFields.value.includes(c)))
 
 // Scopo: le colonne strutturali che l'amministratore ha cambiato rispetto al
 // dettaglio caricato: le sole da mandare al verbo.
 function campiStrutturaCambiati() {
   const campi = {}
-  for (const c of COLONNE_STRUTTURA) {
+  for (const c of colonneStruttura.value) {
     if (!(c in form.value)) continue
     if (form.value[c] !== detail.value?.[c]) campi[c] = form.value[c]
   }
@@ -276,18 +273,12 @@ async function handleSave() {
       gestito_a_magazzino: f.gestito_a_magazzino,
       lead_time_giorni: f.lead_time_giorni,
     }
-    // Prima la struttura, dal verbo dell'amministratore: dopo, il PATCH porta
-    // gli stessi valori e il guard dell'articolo usato non ha niente da dire.
+    // La struttura cambiata viaggia nel PATCH: il backend la passa prima al
+    // verbo dell'amministratore, poi aggiorna il resto (che porta gli stessi
+    // valori), in una transazione. Un rifiuto annulla tutto.
     if (correzioneStruttura.value) {
       const campi = campiStrutturaCambiati()
-      if (Object.keys(campi).length) {
-        const corretto = await execute(() => store.correggiStruttura(props.articoloId, campi))
-        if (corretto === null) return
-        // ⚠️ Sono DUE scritture: se il PATCH qui sotto fallisce, la struttura e'
-        // gia' corretta a DB. Il dettaglio si allinea subito, cosi' un nuovo
-        // salvataggio non la rimanda al verbo e il confronto parte dal vero.
-        detail.value = corretto
-      }
+      if (Object.keys(campi).length) payload.correzione_struttura = campi
     }
     const result = await execute(
       () => store.update(props.articoloId, payload),

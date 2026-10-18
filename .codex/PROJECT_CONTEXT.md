@@ -218,6 +218,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
+- **Una sola grammatica per i tipi di documento** (aperto il 2026-10-18,
+  `work-in-progress/brief-db-grammatica-unica-documenti.md`): lo stesso tipo di documento ha più nomi
+  (`config.tipi_entita`, `config.sorgenti`, la grammatica delle testate, le partizioni delle note) e chi passa
+  dall'uno all'altro traduce. Direzione decisa da Tid (strada 3 dell'A-8-ter): un vocabolario solo, nessun ponte.
+  Riparte il team DB col censimento; poi le decisioni G-1 … G-4 di Tid.
 - **Type checker del backend (D2-b): chiuso il 2026-10-09** (`work-done/piano-be-type-checker.md`;
   `0ffe7b7c3`, `ebc54fc56`): mypy col plugin Django in CI, a cricchetto (`backend/mypy.ini`,
   `backend/mypy.baseline.json`, `scripts/check_mypy_baseline.py`; sede `docs/it/dev/sicurezza-e-qualita-statica.md`

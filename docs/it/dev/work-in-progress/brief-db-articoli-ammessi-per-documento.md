@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-18
 
-**Riparte: la sessione BE/FE** con 5d (§9.8.1, §9.8.4: `struttura_correggibile`, ritiro di `COLONNE_STRUTTURA`, policy di `E_ARTICOLO_STRUTTURA_RIGHE_APERTE`, R-BE-1); **Tid** decide l'A-8-ter (§9.8.3) e fa il collaudo a video (§9.7.4). ✅ **Lato DB del giro del 2026-10-18 chiuso e committato**: R-DB-2, R-DB-3, A-11 (`20261018-70 … -74` + CSV), applicati da Tid, pgTAP verdi; punto 2 chiuso (§9.8.5). Al DB resta solo ciò che l'A-8-ter decidesse di tenere (proposta: niente) e l'archiviazione. ✅ **Giro BE/FE del §9.6 fatto, rivisto e committato il 2026-10-14** (§9.7, revisione §9.7.5), tranne l'A-8-bis; aperta per la sessione BE/FE R-BE-1 (§9.7.3-bis). ✅ **Lato DB chiuso il 2026-10-14**: Tid ha applicato `20261014-06` (D-7, il kit senza componenti, §9.4.1), pgTAP verdi; prima il Lotto 4 (`20261014-01 → -05` + CSV dei codici + locales), pgTAP verdi; il Lotto 5 (doc) è scritto. Lotti 1, 2, 3a, 3u, 3b, 3c applicati, verdi e committati.
+**Riparte: Tid**, col collaudo a video (§9.7.4, più la correzione di struttura del §9.8.7); poi l'archiviazione. ✅ **A-8-ter decisa il 2026-10-18** (strada 1 qui, strada 3 come direzione in [brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md)). ✅ **Giro BE/FE 5d fatto il 2026-10-18** (§9.8.7): `struttura_correggibile` dalla sede, `COLONNE_STRUTTURA` ritirata, R-BE-1 (correzione nel PATCH, una transazione; `POST …/struttura/` ritirato), policy e ripiego di `E_ARTICOLO_STRUTTURA_RIGHE_APERTE`. ✅ **Lato DB del giro del 2026-10-18 chiuso e committato**: R-DB-2, R-DB-3, A-11. Al DB non resta niente: il ponte di `fn_articolo_riga_contesto` lo ritira il brief della grammatica unica.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -26,19 +26,19 @@
 | 4n | Tid | ✅ `20261014-06` applicato (+ `codici_errore.csv`, `messaggi_errore.csv` + locales), pgTAP verdi (2026-10-14) | §9.4.1 | — |
 | 5 | ✅ BE/FE | giro del §9.6 (2026-10-14): policy e ripieghi, lookup e `ArticoloLookup` sulla sede unica, ritiro dei filtri liberi, scheda articolo e correzione di struttura, doc | §9.7 | — |
 | 5a | ✅ DB | R-DB-2: la nota di `E_ARTICOLO_SOLO_COMPONENTE` nel CSV (2026-10-18) | §9.8.2 | — |
-| 5a-bis | **Tid** | **A-8-ter**: l'A-8-bis (R-DB-1) si toglie da questo brief? Censimento e proposta | §9.8.3 | — |
-| 5b | sessione BE | il pezzo BE dell'A-8-bis, **solo se** A-8-ter lo tiene | §9.8.3 | 5a-bis |
+| 5a-bis | ✅ **Tid** | **A-8-ter** (2026-10-18): l'A-8-bis (R-DB-1) esce da questo brief (strada 1); la grammatica unica (strada 3) è la direzione, nel suo brief | §9.8.3 | — |
+| 5b | ~~sessione BE~~ | ~~il pezzo BE dell'A-8-bis~~: cade con l'A-8-ter (strada 1) | §9.8.3 | — |
 | 5c | ✅ DB | **R-DB-3** scritto e provato (2026-10-18): `20261018-70`, `-71`, pgTAP nuovo | §9.8.1 | — |
 | 5c-bis | Tid | ✅ `20261018-70`, `-71` applicati, pgTAP verdi (2026-10-18) | §9.8.1 | — |
 | 5c-ter | ✅ DB | **A-11** (Tid, 2026-10-18: strada «a»): `20261018-72` + codice `E_ARTICOLO_STRUTTURA_RIGHE_APERTE`, scritto e provato; §9.8.5 chiuso | §9.8.4, §9.8.5 | — |
 | 5c-quater | Tid | ✅ `20261018-72` e CSV applicati (2026-10-18); la corsa ha trovato due rossi (§9.8.6) | §9.8.4 | — |
 | 5c-quinquies | ✅ DB | i due rossi corretti: `20261018-73`, `-74`, fixture di `test-articolo-colonne-struttura-v1` | §9.8.6 | — |
 | 5c-sexies | Tid | ✅ `20261018-73`, `-74` applicati, pgTAP verdi (2026-10-18) | §9.8.6 | — |
-| 5d | sessione BE/FE | `struttura_correggibile` nel dettaglio dell'articolo dalla sede, ritiro di `COLONNE_STRUTTURA`; policy e ripiego di `E_ARTICOLO_STRUTTURA_RIGHE_APERTE`; e **R-BE-1**, il salvataggio con correzione in una transazione | §9.8.1, §9.8.4, §9.7.3-bis | 5c-quater per il codice nuovo |
-| 6 | Tid | collaudo a video | §9.7.4 | 5 (5b per le eccezioni) |
-| 7 | DB | archiviazione del brief in `work-done/` (resta aperto per il giro BE/FE 5d, l'A-8-ter e il collaudo); se l'A-8-ter sceglie la strada 1, all'archiviazione un brief nuovo per la grammatica dei documenti | — | 5a-bis, 5d, 6 |
+| 5d | ✅ sessione BE/FE | (2026-10-18) `struttura_correggibile` nel dettaglio dell'articolo dalla sede, ritiro di `COLONNE_STRUTTURA`; policy e ripiego di `E_ARTICOLO_STRUTTURA_RIGHE_APERTE`; **R-BE-1**, il salvataggio con correzione in una transazione | §9.8.7 | — |
+| 6 | Tid | collaudo a video, con la correzione di struttura in un salvataggio solo (§9.8.7) | §9.7.4, §9.8.7 | 5 (5b per le eccezioni) |
+| 7 | chi chiude | archiviazione del brief in `work-done/` e riga di PROJECT_CONTEXT; il ponte resta, e lo ritira [brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md) | — | 6 |
 
-**Decisioni aperte di Tid (2026-10-18): A-8-ter** (§9.8.3). ✅ **Committato il 2026-10-18 (sessione DB, `dev/db-tid`)**: `20261018-70` … `-74`; i pgTAP `catalogo/test-articolo-colonne-struttura-v1` e `catalogo/test-articolo-correzione-righe-aperte-v1`; in `codici_errore.csv` la nota di `E_ARTICOLO_SOLO_COMPONENTE` e il codice nuovo `E_ARTICOLO_STRUTTURA_RIGHE_APERTE`, in `messaggi_errore.csv` il suo messaggio (id 1361); i manual `catalogo/manual/fn_articolo_colonne_struttura`, `fn_articolo_righe_vive_non_ammesse` (nuovi), `fn_articolo_correggi_struttura`, `trgfn_articoli_guard_struttura_se_usato`; la doc generata del catalogo; questo documento.
+**Decisioni aperte di Tid: nessuna** (A-8-ter decisa il 2026-10-18, §9.8.3). ✅ **Committato il 2026-10-18 (sessione DB, `dev/db-tid`)**: `20261018-70` … `-74`; i pgTAP `catalogo/test-articolo-colonne-struttura-v1` e `catalogo/test-articolo-correzione-righe-aperte-v1`; in `codici_errore.csv` la nota di `E_ARTICOLO_SOLO_COMPONENTE` e il codice nuovo `E_ARTICOLO_STRUTTURA_RIGHE_APERTE`, in `messaggi_errore.csv` il suo messaggio (id 1361); i manual `catalogo/manual/fn_articolo_colonne_struttura`, `fn_articolo_righe_vive_non_ammesse` (nuovi), `fn_articolo_correggi_struttura`, `trgfn_articoli_guard_struttura_se_usato`; la doc generata del catalogo; questo documento.
 ✅ **Committato il 2026-10-14 (sessione BE, `dev/backend-tid`)**: il giro del §9.7 con la sua revisione (§9.7.5). Decisioni prese prima: D-7 il 2026-10-14; A-8-bis il 2026-10-13 (rivista dall'A-8-ter); D-5 rinviato al cantiere acquisti. Da guardare (scelte del team DB dentro le decisioni prese, §9.4): la check divisa in due metà per R-5; il composito ammesso nella promo (D-6). ✅ **D-7 committata il 2026-10-14** (§9.4.1: `20261014-06`, CSV, locales, pgTAP del picker e due fixture, manual, guide, questo documento). ✅ Lotti 4 e 5 committati il 2026-10-14 (`7797acc42`); il Lotto 3c in `42bc5d2e0`. ✅ **Committati il 2026-10-13 (sessione DB)**: Lotti 1, 2 e `20261013-14` (prima); poi Lotti **3a, 3u, 3b** (`20261013-40 … -52`, `-55 … -58`), CSV dei codici, chiavi dei locales, baseline B-7, pgTAP nuovi e corretti, manual, guide e questo documento. ⚠️ **Restano fuori, col lavoro che ne porta la causa**: i cinque file pgTAP misti con un altro cantiere (`test-fn-list-ddt-da-pushare-contatore-v1`, `test-vw-dash-backlog-resi-v1`, `test-vw-partite-merce-v1`, `test-vw-resi-da-accreditare-contatore-v1`, `test-vw-situazione-merce-ordine-v1`); i quattro SORGENTE_POLIMORFA del §9.2.1 erano gia' fuori. Fuori anche, perche' di altri cantieri: `20261013-53` (lettori dell'emittente della bolla) col suo pgTAP e la sua doc, il D32, la pulizia di `baseline-rossi-scratch.tsv`.
 
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-11. **A chi:** team DB
@@ -375,7 +375,7 @@ senza regole sull'articolo, listino (tipologia, composito in INSERT), promo (il 
 | **D-6** | Promo | ✅ **Tid, 2026-10-13: una promo si crea solo se il calcolo del prezzo la può applicare.** Solo componente: rifiutata (il resolver salta la promo in contesto bundle, «STADIO PROMO OVERLAY (non applicato in contesto bundle)» in `fn_resolve_prezzo_listino_v2_esito`, e con D-3 non c'è prezzo standalone). Composito: in consegna si verifica se il kit riceve la promo; se no, rifiutata, e la promo sul kit diventa una richiesta a parte |
 | **A-10** | I flag che decidono come si vende un articolo si possono cambiare dopo che l'articolo è stato usato? | ✅ **Tid, 2026-10-13: no.** Cambiano troppe cose a valle (listini, ordini, bolle): invece di rincorrere le conseguenze (natura congelata, ricontrolli nei verbi di copia, porte), un articolo **usato** non cambia più i flag strutturali. **Usato** = compare in una riga di documento (preventivo, offerta, contratto, ordine, bolla, fattura, reso), in un listino, in una commessa o in un movimento di magazzino, **in qualunque stato** (anche chiuso o annullato: i documenti chiusi si rileggono). **Bloccate se usato**: `is_composito`, `is_solo_componente`, `natura_vendita_id`, `causale_onere_id`, `listino_tipologia_id`, `gestito_a_magazzino`, `requires_lotto`, `requires_serial` (`codice` e `uom_id` lo sono già sempre). **Libere**: `iva_id` (l'aliquota cambia per legge, le righe hanno la loro), descrizioni, gruppi, conti, tempi, modo di approvvigionamento. **Via d'uscita**: un articolo nuovo (il ritiro del vecchio non è obbligatorio), più una **porta amministratore** per correggere un errore di caricamento. ⚠️ Gli articoli sono **unici per tutte le aziende** (nessun emittente né RLS nel catalogo, verificato il 2026-10-13): il predicato «usato» deve vedere i documenti di tutte, quindi SECURITY DEFINER, e il messaggio non nomina documenti che l'operatore non vede. ⚠️ La porta oggi esistente (`zeroerp.allow_lock_columns_override`) la accende qualunque sessione: quella amministratore vuole anche il controllo del ruolo. Un predicato solo, letto dal guard e dal form (`lock_columns_conditional`). Sostituisce il guard «solo componente in bozza» (`20261013-44/-45/-46`), chiude la decisione sui verbi di copia (un ordine confermato non trova un articolo cambiato) e il buco multi-azienda di quel guard. Lotto **3u** (§9.3), prima della 3b |
 | **D-7** | Il composito con la **distinta vuota** è un motivo della check per tipo di riga? | ✅ **Tid, 2026-10-14: sì.** Motivo 2 (dopo il solo componente) di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto, codice nuovo `E_ARTICOLO_KIT_SENZA_COMPONENTI`; «vuoto» = nessun componente attivo a qualunque data, il caso legato alla data resta all'init (`E_DOC_COMPOSITO_BOM_VUOTA`). `20261014-06` (§9.4.1) |
-| **A-8-ter** | L'A-8-bis (tre lettori del listino a `config.tipi_entita`) si fa come è scritto? | ⏳ **aperta** (team DB, 2026-10-18): **no**, si toglie da questo brief. I tre lettori sono parte di una grammatica che ne conta molti di più, e spostarne tre moltiplica i ponti invece di toglierli. Censimento e proposta nel §9.8.3 |
+| **A-8-ter** | L'A-8-bis (tre lettori del listino a `config.tipi_entita`) si fa come è scritto? | ✅ **Tid, 2026-10-18: no, strada 1.** Esce da questo brief: spostarne tre moltiplicava i ponti (censimento nel §9.8.3). ⭐ La strada 3 (una grammatica sola per tutti i documenti) è la **direzione**, non un debito: si apre in [brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md), col censimento al team DB. Il ponte di `fn_articolo_riga_contesto` resta fino a quel brief |
 | **A-11** | Le righe già scritte di ordine e bolla (R-6): chi le ricontrolla, ora che la porta amministratore può cambiare la struttura di un articolo usato? | ✅ **Tid, 2026-10-18: strada «a»**: il verbo di correzione rifiuta una correzione che renderebbe non ammesse righe di documenti aperti. Nessuna logica per le righe nate prima dei guard: non c'è produzione. `20261018-72` (§9.8.4) |
 
 **P-1 (al BE).** Esiste un flusso in cui una riga di documento si scrive prima che la testata
@@ -1251,6 +1251,13 @@ gate mypy pulito.
    operatore il pulsante non c'è.
 7. **Consultazioni invariate**: il picker di movimenti, disponibilità, inventari e rettifiche
    (solo gestiti a magazzino) e del test resolver si comporta come prima.
+8. **Correzione in un salvataggio solo** (§9.8.7, 2026-10-18): da SUPER_ADMIN, «Correggi
+   struttura» su un articolo usato, cambiare un campo strutturale **e** la descrizione, salvare:
+   tutte e due le modifiche ci sono, con un salvataggio solo. (Il rifiuto a metà, che annulla
+   anche la correzione, non si provoca dal form: lo prova il test 8 sul DB vero.)
+9. **Correzione che renderebbe non valide righe aperte** (A-11): rendere «solo componente» un
+   articolo che sta in un preventivo in bozza: rifiuto col messaggio (righe e documenti contati),
+   e l'articolo resta com'era.
 
 ### 9.8 Il giro DB del 2026-10-18 (R-DB-2, R-DB-3; l'A-8-bis rivisto)
 
@@ -1353,6 +1360,8 @@ dichiarato; dopo l'A-8-bis ce ne sarebbero cinque o sei, sparsi. È la regola de
 | 1 | ⭐ **Togliere l'A-8-bis da questo brief.** Il ponte in `fn_articolo_riga_contesto` resta, come punto unico e dichiarato di traduzione fra il vocabolario delle entità (`config.tipi_entita`, quello del picker e della check) e la grammatica delle testate. All'archiviazione, un brief nuovo (con la sua voce di debito) per **una** grammatica dei documenti | nessuno ora; niente pezzo BE (5b cade) | due vocabolari per la stessa cosa, con un ponte solo, fino al brief nuovo |
 | 2 | Spostare **tutta** la famiglia «documenti con eccezioni» | ~11 oggetti DB, quattro montaggi, il repository BE e i due service, nello stesso apply | il ponte resta comunque, verso le testate (punto sopra) |
 | 3 | Unificare **tutte** le grammatiche dei documenti su `config.tipi_entita` | un cantiere: decine di funzioni, i lettori del BE, altri brief aperti sugli stessi oggetti (indirizzi, lock delle testate) | niente, a cantiere chiuso |
+
+✅ **Decisione di Tid (2026-10-18): la 1 qui, la 3 come direzione** in [brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md); la 5b cade.
 
 **Proposta del team DB: la 1.** La 2 costa quasi quanto la 3 e lascia il ponte che doveva togliere;
 la 3 è un cantiere a sé, che non va aperto dentro questo brief. La domanda giusta per il brief nuovo
@@ -1522,3 +1531,31 @@ contro il piano; `md5(prosrc)` del verbo uguale prima e dopo su tutti e due i da
 
 **Doc**: nuovo `catalogo/manual/fn_articolo_righe_vive_non_ammesse`; `catalogo/manual/fn_articolo_correggi_struttura`
 (prima e dopo).
+
+#### 9.8.7 Il giro BE/FE 5d (sessione BE, `dev/backend-tid`, 2026-10-18)
+
+| Che cosa | Dove |
+| --- | --- |
+| Il dettaglio dell'articolo porta `struttura_correggibile` = `catalogo.fn_articolo_colonne_struttura()` (R-DB-3) | `CatalogoRepository.colonne_struttura_articolo`, `fn_get_articolo` |
+| La scheda articolo riapre in correzione **quelle** colonne; `COLONNE_STRUTTURA` ritirata | `ArticoloDrawer.vue` |
+| **R-BE-1**: la correzione viaggia nel PATCH (`correzione_struttura: {colonna: valore}`, le sole cambiate); il service chiama il verbo e poi l'UPDATE dentro **un** `transaction.atomic()`; `correzione_struttura` da sola basta. Il FE fa una chiamata sola | `fn_update_articolo`, `ArticoloDrawer.handleSave` |
+| Ritirati `POST …/articoli/<id>/struttura/` (`ApiArticoloStruttura`, `fn_correggi_struttura_articolo`, `correggiStrutturaArticolo` e l'azione dello store): nessun altro consumatore | `catalogo/api`, store `articoli` |
+| Policy e ripiego di `E_ARTICOLO_STRUTTURA_RIGHE_APERTE` (CONFLITTO_STATO, 409), con la rigenerazione del 2026-10-18 dopo la verifica che il codice fosse a catalogo in git | `error_policies_generated.py`, `error_messages_fallback.py` |
+| Doc API: §1.6-bis riscritto (la correzione nel PATCH) | `backend/catalogo/manual/api_catalogo.md` |
+
+**Il permesso.** Il PATCH resta `DomainAPIView` (area catalogo): il SUPER_ADMIN della correzione lo
+giudica il verbo (`E_PERMESSO_NEGATO`), che era già la regola; prima lo ripeteva anche `AdminAPIView`.
+Un operatore del catalogo che mandasse `correzione_struttura` riceve il rifiuto del verbo, e
+l'aggiornamento non parte (stessa transazione).
+
+**A video**, il rifiuto `E_ARTICOLO_STRUTTURA_RIGHE_APERTE` arriva col messaggio del DB (righe e
+documenti contati) nel banner degli errori; l'elenco dei documenti (`dettaglio.righe`) per ora non si
+mostra: se al collaudo serve, è un'aggiunta del solo FE.
+
+**Prove:** su DB vero (`ZEROERP_TEST_DB_E2E=1`), `catalogo/tests/db/test_articoli_ammessi_db` 8 (un
+PATCH con correzione e un'aliquota inesistente: la FK rifiuta dopo il verbo, e la struttura resta
+quella di prima; un PATCH buono scrive tutte e due) — provato per mutazione (tolta la transazione dal
+service → rosso) — e 9 (`struttura_correggibile` uguale alla sede); unitari di view e service; FE
+`ArticoloDrawer.spec.js` (3: riapre le sole colonne del dettaglio, un PATCH solo con la correzione,
+nessuna correzione senza l'azione).
+

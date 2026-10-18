@@ -241,27 +241,37 @@ immutabilita' (Fase 5):
 
 ### 1.6-bis Correzione di struttura (amministratore)
 
+Non ha un endpoint suo: viaggia nel **PATCH dell'articolo** (§1.4), nella chiave
+`correzione_struttura`.
+
 | | |
 |---|---|
-| **Metodo** | `POST` |
-| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/struttura/` |
-| **Permesso** | solo SUPER_ADMIN (`AdminAPIView`); lo ripete il verbo DB |
-| **Header** | `Idempotency-Key` obbligatorio |
+| **Metodo** | `PATCH` |
+| **URL** | `/api/v1/catalogo/articoli/{articolo_id}/` |
+| **Permesso** | solo SUPER_ADMIN: lo giudica il verbo DB |
 
 Un articolo **usato** (in un documento, un listino, una commessa o in magazzino) non cambia la
-sua struttura: natura, tipologia di listino, causale onere, composito, solo componente, gestito a
-magazzino, lotto, seriale (`E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE`). La via normale è un articolo
-nuovo. Per un errore di caricamento l'amministratore corregge da qui (A-10 di
+sua struttura (`E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE`). La via normale è un articolo nuovo. Per
+un errore di caricamento l'amministratore la corregge (A-10 di
 brief-db-articoli-ammessi-per-documento).
 
-Body: `{"campi": {"natura_vendita_id": 3}}`, le sole colonne da cambiare. Risposta: il dettaglio
-aggiornato dell'articolo.
+Body: i campi di sempre più `"correzione_struttura": {"natura_vendita_id": 3}`, le sole colonne
+strutturali da cambiare. Quali sono lo dice il dettaglio dell'articolo, `struttura_correggibile`
+(dalla sede `catalogo.fn_articolo_colonne_struttura`, la stessa da cui il verbo legge le colonne
+ammesse). Il backend chiama prima il verbo `catalogo.fn_articolo_correggi_struttura`, poi
+l'aggiornamento, **in una transazione**: un aggiornamento rifiutato annulla anche la correzione.
+`correzione_struttura` da sola basta (nessun altro campo richiesto). Risposta: il dettaglio
+aggiornato.
 
-* chi non è SUPER_ADMIN: `E_PERMESSO_NEGATO`; `campi` mancante, vuoto o non oggetto, o una
-  colonna fuori dalle otto: `400` `E_PARAMETRO_INVALIDO`; articolo inesistente:
-  `E_ARTICOLO_NOT_FOUND` — li solleva tutti il verbo `catalogo.fn_articolo_correggi_struttura`,
-  l'unica porta (il backend non ripete nessuna di queste regole);
-* gli altri guard dell'articolo parlano lo stesso; le righe già scritte non cambiano.
+* chi non è SUPER_ADMIN: `E_PERMESSO_NEGATO`; `correzione_struttura` vuota o non oggetto, o una
+  colonna fuori dalla sede: `400` `E_PARAMETRO_INVALIDO`; articolo inesistente:
+  `E_ARTICOLO_NOT_FOUND`; una correzione che renderebbe non valide righe di documenti ancora
+  aperti: `409` `E_ARTICOLO_STRUTTURA_RIGHE_APERTE` (i documenti in `dettaglio.righe`) — li solleva
+  tutti il verbo, l'unica porta (il backend non ripete nessuna di queste regole);
+* gli altri guard dell'articolo parlano lo stesso.
+
+Fino al 2026-10-18 la correzione era `POST …/articoli/{id}/struttura/`, una chiamata a parte prima
+del PATCH: un PATCH fallito lasciava la struttura già corretta (R-BE-1). L'endpoint è ritirato.
 
 ### 1.7 Defaults form articolo (Fase 8)
 

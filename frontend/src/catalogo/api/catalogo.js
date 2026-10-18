@@ -1,7 +1,6 @@
 // Client API per il dominio catalogo (articoli, UoM, componenti, note).
 import api from '../../core/api'
 import { makeNotesApi } from '../../core/api/notes'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 
 const BASE = '/catalogo'
 
@@ -49,16 +48,6 @@ export function riattivaArticolo(id) {
   return api.post(`${BASE}/articoli/${id}/riattiva/`, {})
 }
 
-// Il SUPER_ADMIN corregge i flag strutturali di un articolo anche se usato
-// (A-10 di brief-db-articoli-ammessi-per-documento): `campi` porta le sole
-// colonne da cambiare. Risponde col dettaglio aggiornato.
-export function correggiStrutturaArticolo(id, campi) {
-  return api.post(
-    `${BASE}/articoli/${id}/struttura/`,
-    { campi },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
-  )
-}
 
 export function lookupArticoli(params = {}) {
   return api.get(`${BASE}/articoli/lookup/`, { params })

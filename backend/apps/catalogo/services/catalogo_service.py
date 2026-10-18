@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Any, NoReturn
 from uuid import UUID
 
-from django.db import DatabaseError, IntegrityError
+from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT
@@ -1327,6 +1327,9 @@ def fn_get_articolo(articolo_id: UUID | str) -> dict[str, Any]:
         # coerente con la firma (`UUID | str` -> `str`).
         "catalogo", "articoli", record_id=str(articolo_id),
     )
+    # Le colonne che la correzione di struttura riapre (R-DB-3): le legge la
+    # sede del DB, la stessa del verbo. Il FE non ne tiene una copia.
+    articolo["struttura_correggibile"] = CatalogoRepository().colonne_struttura_articolo()
     return articolo
 
 
@@ -1342,31 +1345,55 @@ def fn_create_articolo(payload: dict[str, Any]) -> dict[str, Any]:
     return fn_get_articolo(articolo_id)
 
 
+# La chiave del PATCH che porta la CORREZIONE DI STRUTTURA: `{colonna: valore}`
+# delle sole colonne strutturali da cambiare (R-BE-1).
+CHIAVE_CORREZIONE_STRUTTURA = "correzione_struttura"
+
+
 # Scopo: Aggiorna un articolo sui soli campi presenti e restituisce il dettaglio aggiornato.
+# ⭐ LA CORREZIONE DI STRUTTURA viaggia nello STESSO PATCH (R-BE-1 di
+#    brief-db-articoli-ammessi-per-documento, 2026-10-18): `correzione_struttura`
+#    porta le colonne strutturali da cambiare di un articolo anche se usato
+#    (A-10, per un errore di caricamento). Prima il verbo, poi l'UPDATE, in UNA
+#    transazione: un UPDATE rifiutato annulla anche la correzione. Fino ad
+#    allora erano due chiamate (`POST …/struttura/`, poi il PATCH) e un PATCH
+#    fallito lasciava la struttura gia' corretta.
+# ⛔ Il backend non giudica la correzione: il permesso (SUPER_ADMIN), la forma
+#    di `campi`, le colonne ammesse (`fn_articolo_colonne_struttura`), le righe
+#    dei documenti aperti (A-11) e l'articolo inesistente li giudica il verbo
+#    `catalogo.fn_articolo_correggi_struttura`, coi suoi codici. Una copia qui
+#    divergerebbe.
 def fn_update_articolo(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "catalogo.catalogo_service.fn_update_articolo"
+    payload = dict(payload)
+    correzione = payload.pop(CHIAVE_CORREZIONE_STRUTTURA, _MISSING)
     data = _extract_articolo_payload(payload, for_update=True, function_name=function_name)
-    _V.require_campi_da_aggiornare(
-        data,
-        message="Payload articolo non valido.",
-        detail="Nessun campo aggiornabile presente nel payload.",
-        context={"allowed_nullable_fields": sorted(_ARTICOLO_NULLABLE_FIELDS)},
-        function_name=function_name,
-    )
+    if correzione is _MISSING:
+        _V.require_campi_da_aggiornare(
+            data,
+            message="Payload articolo non valido.",
+            detail="Nessun campo aggiornabile presente nel payload.",
+            context={"allowed_nullable_fields": sorted(_ARTICOLO_NULLABLE_FIELDS)},
+            function_name=function_name,
+        )
     repository = CatalogoRepository()
-    try:
-        updated = repository.update_articolo(articolo_id, data)
-    except IntegrityError as exc:
-        _translate_articolo_integrity_error(exc, function_name=function_name)
-    ErrorManager.require(
-        updated,
-        code="E_CATALOGO_ARTICOLO_NOT_FOUND",
-        message="Articolo non trovato.",
-        detail=f"Nessun articolo con id={articolo_id}.",
-        context={"articolo_id": articolo_id},
-        function_name=function_name,
-        log_to_db=False,
-    )
+    with transaction.atomic():
+        if correzione is not _MISSING:
+            repository.correggi_struttura_articolo(articolo_id, correzione)
+        if data:
+            try:
+                updated = repository.update_articolo(articolo_id, data)
+            except IntegrityError as exc:
+                _translate_articolo_integrity_error(exc, function_name=function_name)
+            ErrorManager.require(
+                updated,
+                code="E_CATALOGO_ARTICOLO_NOT_FOUND",
+                message="Articolo non trovato.",
+                detail=f"Nessun articolo con id={articolo_id}.",
+                context={"articolo_id": articolo_id},
+                function_name=function_name,
+                log_to_db=False,
+            )
     return fn_get_articolo(articolo_id)
 
 
@@ -1411,21 +1438,6 @@ def fn_riattiva_articolo(articolo_id: UUID | str) -> dict[str, Any]:
         repository.reactivate_articolo(articolo_id)
     except IntegrityError as exc:
         _translate_articolo_integrity_error(exc, function_name=function_name)
-    return fn_get_articolo(articolo_id)
-
-
-# Scopo: Correzione amministratore della STRUTTURA di un articolo anche se
-#        usato (A-10 di brief-db-articoli-ammessi-per-documento, Lotto 3u):
-#        `campi` porta le sole colonne strutturali da cambiare. Ritorna il
-#        dettaglio aggiornato. Serve per un errore di caricamento: la via
-#        normale per vendere o gestire diversamente resta un articolo nuovo.
-# ⭐ Il backend non decide niente: il permesso (SUPER_ADMIN), la FORMA di
-#    `campi` (un oggetto non vuoto: assente, lista o `{}` arrivano al verbo come
-#    jsonb non-oggetto), le otto colonne ammesse e l'articolo inesistente li
-#    giudica il verbo `catalogo.fn_articolo_correggi_struttura`, coi suoi codici
-#    (`E_PARAMETRO_INVALIDO` e' DATO_ERRATO: 400). Una copia qui divergerebbe.
-def fn_correggi_struttura_articolo(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, Any]:
-    CatalogoRepository().correggi_struttura_articolo(articolo_id, payload.get("campi"))
     return fn_get_articolo(articolo_id)
 
 
