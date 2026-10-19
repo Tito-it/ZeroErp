@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# REVISIONE: IL GUARD DEL BA CONFRONTA L'ISTANZA DAL BB
+#   anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza: il
+#   punto 1 (il soggetto del ruolo e' quello dell'istanza) passa dal BB
+#   anagrafiche.fn_istanza_di_altro_soggetto (20261019-80). Regola del 2: il
+#   guard del BA era la prima copia del confronto, gli indirizzi la seconda.
+#   D-17b di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.
+#
+# -- CHE COSA NON CAMBIA ---------------------------------------------------------
+#   * il codice E_BA_SOGGETTO_INCOERENTE_ISTANZA, il contesto (campo
+#     istanza_utility_id) e i tre argomenti della frase: il backend li consuma
+#     (error_ui_overrides, il ripiego), e il presidio del canale
+#     (dbops/test-punti-canale-campo-v1, test 1) legge il campo nella chiamata;
+#   * la lettura che non risolve (ruolo o istanza che non esistono) non dice
+#     niente, come prima: la risolve la FK. Il BB risponde NULL negli stessi
+#     casi;
+#   * il punto 2 (il ruolo e' CLIENTE) e la fascia a20.
+#   Corpo di partenza: il vivo su dbdev (2026-10-19, md5 del prosrc
+#   571d0d35…), uguale alla doc auto-generata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261019-84-update-trgfn-billing-account-guard-coerenza-istanza-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261019-84-update-trgfn-billing-account-guard-coerenza-istanza-dal-bb
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza: il confronto fra il
+        soggetto del ruolo e quello dell'istanza dal BB anagrafiche.fn_istanza_di_altro_soggetto
+        (regola del 2). Codice, contesto e frase invariati. D-17b di Tid,
+        brief-db-processi-accensione-per-ambiente §6.17.1.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: il ruolo del billing account e' quello giusto per la
+              --   sua istanza:
+              --   1. il soggetto raggiunto via NEW.soggetto_ruolo_id coincide
+              --      con il soggetto dell'istanza (NEW.istanza_utility_id);
+              --   2. il ruolo e' di tipo CLIENTE (rev 2026-10-09, D-7 di
+              --      brief-db-esecutivi-ba-coppia): dal BB
+              --      script.fn_guard_soggetto_ruolo, come le specializzazioni.
+              -- Allinea il vincolo DB al modello documentato in
+              -- istanze_utilities §7.3 ("il cliente vive dentro l'istanza").
+              -- ⚠️ Gira in fascia _a20_, DOPO il lock di colonna: su UPDATE
+              --   di soggetto_ruolo_id o istanza_utility_id deve parlare
+              --   l'immutabilita' (E_BA_ISTANZA_IMMUTABILE), non la coerenza.
+              -- rev 2026-10-19 (D-17b di brief-db-processi-accensione-per-
+              --   ambiente §6.17.1): il punto 1 dal BB
+              --   anagrafiche.fn_istanza_di_altro_soggetto, comune ai guard
+              --   di indirizzi, contatti, conti del ruolo e pratiche.
+              DECLARE
+                  v_soggetto_ruolo  anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_soggetto_istanza anagrafiche.istanze_utilities.soggetto_id%TYPE;
+              BEGIN
+                  SELECT sr.soggetto_id
+                    INTO v_soggetto_ruolo
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                  -- 1. Il soggetto.
+                  -- Il BB risponde col soggetto dell'istanza solo quando e'
+                  -- diverso. Se il ruolo o l'istanza non si risolvono non dice
+                  -- niente: l'errore strutturale lo danno le FK.
+                  v_soggetto_istanza := anagrafiche.fn_istanza_di_altro_soggetto(
+                      NEW.istanza_utility_id, v_soggetto_ruolo);
+
+                  IF v_soggetto_istanza IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          'E_BA_SOGGETTO_INCOERENTE_ISTANZA',
+                          jsonb_build_object(
+                              'campo', 'istanza_utility_id',
+                              'billing_account_id',  NEW.id,
+                              'codice',              NEW.codice,
+                              'istanza_utility_id',  NEW.istanza_utility_id,
+                              'soggetto_ruolo_id',   NEW.soggetto_ruolo_id,
+                              'ba_soggetto_id',      v_soggetto_ruolo,
+                              'istanza_soggetto_id', v_soggetto_istanza
+                          ),
+                          NEW.tx_id,
+                          NEW.codice,
+                          v_soggetto_ruolo::text,
+                          v_soggetto_istanza::text
+                      );
+                  END IF;
+
+                  -- 2. Il tipo: un billing account e' di un ruolo CLIENTE.
+                  --   Il soggetto l'ha gia' guardato il punto 1, quindi al BB
+                  --   si passa NULL: qui serve solo il tipo.
+                  PERFORM script.fn_guard_soggetto_ruolo(
+                      p_soggetto_id       := NULL,
+                      p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
+                      p_cd_int_ruolo      := 'CL');
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza() IS
+                  'Guard del ruolo del billing account: (1) soggetti_ruoli.soggetto_id = istanze_utilities.soggetto_id, E_BA_SOGGETTO_INCOERENTE_ISTANZA — rev 2026-10-19 (D-17b, brief-db-processi-accensione-per-ambiente §6.17.1): il confronto dal BB anagrafiche.fn_istanza_di_altro_soggetto, comune ai guard di indirizzi, contatti, conti del ruolo e pratiche (regola del 2); codice, contesto e frase invariati; (2) rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-7): il ruolo e'' di tipo CLIENTE, dal BB script.fn_guard_soggetto_ruolo(NULL, sr, ''CL''), E_SOGGETTI_RUOLI — prima un BA poteva nascere sul ruolo FORNITORE del soggetto giusto, perche'' si confrontava il soggetto e non il tipo. Trigger in fascia _a20_ (dal 20261009-69): dopo il lock di colonna, che su UPDATE del ruolo o dell''istanza deve parlare per primo.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Rollback: il corpo di prima ripeteva il confronto (regola del 2).
+              -- Se serve davvero, ri-applicare 20261009-68.
+              SELECT 1;

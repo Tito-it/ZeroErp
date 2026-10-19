@@ -79,9 +79,11 @@
 - [fn_guard_istanza_ha_ba](manual/fn_guard_istanza_ha_ba.md) — (latest review 08-10-26)
 - [fn_indirizzo_elemento](manual/fn_indirizzo_elemento.md) — (18-10-2026 — decisione D-4 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
 - [fn_indirizzo_elemento_dettaglio](manual/fn_indirizzo_elemento_dettaglio.md) — (18-10-2026 — decisione D-4 di Tid)
+- [fn_istanza_di_altro_soggetto](manual/fn_istanza_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a … D-17d di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [fn_lookup_utilities_per_ba](manual/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
 - [fn_notify_cambio_reparto](manual/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_provisiona_dati_di_sviluppo](manual/fn_provisiona_dati_di_sviluppo.md)
+- [fn_ruolo_di_altro_soggetto](manual/fn_ruolo_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a e D-17b di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [fn_search_indirizzi_dettaglio](manual/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
 - [fn_sync_auth_user_expired](manual/fn_sync_auth_user_expired.md) — (latest review 18-04-2026)
 - [fn_sync_auth_user_is_active](manual/fn_sync_auth_user_is_active.md) — (latest review 20-04-2026 — semantica OR multi-veste)
@@ -103,6 +105,7 @@
 - [trgfn_clienti_sync_pdp](manual/trgfn_clienti_sync_pdp.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_sync_pdp()` è una **trigger function di sincronizzazione** che ha il compito di mantenere allineato il campo `pdp_id` della tabella `anagrafiche.clienti` con il valore presente sull’istanza collegata (`anagrafiche.istanze_utilities`).
 - [trgfn_clienti_sync_stato_pdp](manual/trgfn_clienti_sync_stato_pdp.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_sync_stato_pdp()` è una **trigger function di dominio** che sincronizza lo **stato tecnico del PDP** (`anagrafiche.pdp.stato_pdp_id`) in base al cambio di **stato commerciale** del cliente (`anagrafiche.clienti.stato_cliente_id`).
 - [trgfn_clienti_sync_utility_from_ba](manual/trgfn_clienti_sync_utility_from_ba.md) — (latest review 15-02-26) La trigger function **`anagrafiche.trgfn_clienti_sync_utility_from_ba()`** garantisce la **coerenza** tra:
+- [trgfn_contatti_guard_contesto_soggetto](manual/trgfn_contatti_guard_contesto_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a e D-17c di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [trgfn_contatti_set_default_contatto](manual/trgfn_contatti_set_default_contatto.md) — (latest review 03-12-25) * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_conti_bancari_normalize](manual/trgfn_conti_bancari_normalize.md) — (latest review 15-12-26) La trigger function **`anagrafiche.trgfn_conti_bancari_normalize()`** normalizza i campi bancari principali prima della persistenza, applicando regole semplici e deterministicamente ripetibili:
 - [trgfn_dati_societari_guard_forma_giuridica](manual/trgfn_dati_societari_guard_forma_giuridica.md)
@@ -121,6 +124,7 @@
 - [trgfn_fornitori_guard_ruolo_fornitore](manual/trgfn_fornitori_guard_ruolo_fornitore.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_fornitori_guard_ruolo_fornitore()`** assicura che ogni record di `anagrafiche.fornitori` punti a un `soggetto_ruolo_id` coerente con il ruolo **fornitore** (`codice_interno = 'FO'`).
 - [trgfn_gestori_guard](manual/trgfn_gestori_guard.md) — (latest review 03-12-25) La funzione **`anagrafiche.trgfn_gestori_guard()`** è una **funzione trigger di guardia di dominio** per la tabella `anagrafiche.gestori`.
 - [trgfn_gestori_guard_ruolo_gestore](manual/trgfn_gestori_guard_ruolo_gestore.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
+- [trgfn_guard_istanza_del_ruolo](manual/trgfn_guard_istanza_del_ruolo.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a … D-17d di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [trgfn_identita_digitali_guard_coerenza](manual/trgfn_identita_digitali_guard_coerenza.md) — (latest review 04-09-2026 — biforcazione sul flag `tecnica`; prima: 18-04-2026) La trigger function **`anagrafiche.trgfn_identita_digitali_guard_coerenza()`** verifica la coerenza tra il **ruolo applicativo** di una identità digitale e il **tipo di soggetto_ruolo** a cui è collegata.
 - [trgfn_identita_digitali_guard_natura_credenziale](manual/trgfn_identita_digitali_guard_natura_credenziale.md)
 - [trgfn_identita_digitali_guard_ultimo_super_admin](manual/trgfn_identita_digitali_guard_ultimo_super_admin.md) — (latest review 19-04-2026)

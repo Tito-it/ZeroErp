@@ -23,6 +23,12 @@
 --   (il test gira come app): si sposta in anagrafica l'indirizzo su un'altra
 --   fornitura, che e' il terzo modo in cui la riga diventa d'altri (§7.2 c del
 --   brief: l'istanza dell'indirizzo d'anagrafica si legge viva).
+-- ⚠️ rev 2026-10-19 (R-BE-15, brief-db-processi-accensione-per-ambiente
+--   §6.17.1, 20261019-82): l'«altra fornitura» e' una SECONDA fornitura di A,
+--   non quella di B. Un indirizzo del ruolo di A sull'istanza di B ora lo
+--   rifiuta il guard della tabella (E_ISTANZA_ALTRO_SOGGETTO): il test lo
+--   costruiva, ed era proprio il difetto. Il predicato risponde ALTRA_FORNITURA
+--   come prima, e la check ha lo stesso motivo.
 -- ⚠️ Gli slot di default (test 1) li semina il CSV del mirror 20260711-18:
 --   prima dell'apply non ci sono.
 --
@@ -274,6 +280,22 @@ WITH i AS (
     RETURNING id)
 SELECT id AS fatt_ist_a FROM i;
 
+-- Una seconda fornitura di A (la sua istanza nasce col billing account, dalla
+-- madre): l'«altra fornitura» dei test 13-16. Istanza e BA nascono nella
+-- stessa istruzione: il guard differito dell'istanza vuole la finestra dei
+-- differiti, che IMMEDIATE richiude (e fa da commit dei controlli).
+SET CONSTRAINTS ALL DEFERRED;
+CREATE TEMP TABLE _ist2 AS
+SELECT b.istanza_utility_id AS ist_a2
+  FROM _c c
+ CROSS JOIN LATERAL anagrafiche.fn_crea_billing_account(
+           c.soggetto_ruolo_id, c.utility_id,
+           jsonb_build_object('categoria_cliente_id',
+                              (SELECT cc.id FROM anagrafiche.categorie_clienti cc
+                                WHERE cc.codice_interno = 'STANDARD'))) b
+ WHERE c.lato = 'A';
+SET CONSTRAINTS ALL IMMEDIATE;
+
 CREATE TEMP TABLE _r11 AS
 SELECT vendite.fn_doc_indirizzo_default('PREVENTIVO', (SELECT prev_a FROM _p)) AS scritto;
 
@@ -295,10 +317,10 @@ SELECT throws_like(
     '%non e'' del cliente del documento%',
     '12) la Fatturazione di B sul preventivo di A: rifiutata');
 
--- In anagrafica l'indirizzo passa alla fornitura di B: la riga del preventivo
--- di A diventa d'altri, e lo vede solo l'emissione.
+-- In anagrafica l'indirizzo passa all'altra fornitura di A: la riga del
+-- preventivo non e' piu' della sua fornitura, e lo vede solo l'emissione.
 UPDATE anagrafiche.indirizzi
-   SET istanza_utility_id = (SELECT istanza_utility_id FROM _c WHERE lato = 'B')
+   SET istanza_utility_id = (SELECT ist_a2 FROM _ist2)
  WHERE id = (SELECT fatt_ist_a FROM _ist);
 
 SELECT is(
@@ -317,7 +339,7 @@ SELECT ok(
 -- ============================================================
 -- La Fatturazione della fornitura torna ad A; la bolla di A la prende come CON
 -- dal default (precedenza all'istanza del suo BA); poi in anagrafica
--- quell'indirizzo passa di nuovo alla fornitura di B.
+-- quell'indirizzo passa di nuovo all'altra fornitura di A.
 UPDATE anagrafiche.indirizzi
    SET istanza_utility_id = (SELECT istanza_utility_id FROM _c WHERE lato = 'A')
  WHERE id = (SELECT fatt_ist_a FROM _ist);
@@ -325,7 +347,7 @@ UPDATE anagrafiche.indirizzi
 SELECT vendite.fn_doc_indirizzo_default('DDT_VENDITA', (SELECT ddt_em FROM _d));
 
 UPDATE anagrafiche.indirizzi
-   SET istanza_utility_id = (SELECT istanza_utility_id FROM _c WHERE lato = 'B')
+   SET istanza_utility_id = (SELECT ist_a2 FROM _ist2)
  WHERE id = (SELECT fatt_ist_a FROM _ist);
 
 SELECT ok(

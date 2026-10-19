@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BB: IL RUOLO E' DI UN ALTRO SOGGETTO?
+#   anagrafiche.fn_ruolo_di_altro_soggetto(ruolo, soggetto) risponde col
+#   soggetto del ruolo quando NON e' quello dato, NULL altrimenti. Gemello di
+#   fn_istanza_di_altro_soggetto (20261019-80), stessa forma e stesse ragioni.
+#   R-BE-15, D-17a e D-17b di Tid, brief-db-processi-accensione-per-ambiente
+#   §6.17.1.
+#
+# -- REGOLA DEL 2 ---------------------------------------------------------------
+#   Il confronto era scritto nella regola 3 del contesto delle pratiche e serve
+#   ai contatti (soggetto_id della riga contro il ruolo). Lettori: 20261019-83
+#   (contatti), -85 (pratiche).
+#
+# -- LA FORMA ---------------------------------------------------------------------
+#   Come il gemello: un predicato; ruolo NULL, ruolo che non esiste, soggetto
+#   NULL: NULL (il ruolo che manca lo rifiuta la FK). soggetti_ruoli non ha RLS
+#   (2026-10-19): INVOKER basta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261019-81-create-fn-ruolo-di-altro-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261019-81-create-fn-ruolo-di-altro-soggetto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Crea anagrafiche.fn_ruolo_di_altro_soggetto: il soggetto del ruolo quando non e' quello
+        dato, NULL altrimenti. BB comune ai guard di contatti e pratiche. R-BE-15, D-17a e D-17b
+        di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_ruolo_di_altro_soggetto(
+                  p_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_soggetto_id       anagrafiche.soggetti_ruoli.soggetto_id%TYPE)
+               RETURNS anagrafiche.soggetti_ruoli.soggetto_id%TYPE
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+                  SELECT sr.soggetto_id
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = p_soggetto_ruolo_id
+                     AND p_soggetto_id IS NOT NULL
+                     AND sr.soggetto_id IS DISTINCT FROM p_soggetto_id;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_ruolo_di_altro_soggetto(
+                  anagrafiche.soggetti_ruoli.id%TYPE,
+                  anagrafiche.soggetti_ruoli.soggetto_id%TYPE) IS
+                  'BB (2026-10-19): il soggetto del ruolo (soggetti_ruoli.soggetto_id) quando NON e'' p_soggetto_id; NULL quando e'' lo stesso, o quando non c''e'' niente da confrontare (ruolo NULL o che non esiste, soggetto NULL: il ruolo che manca lo rifiuta la FK). Un predicato: il rifiuto lo solleva il chiamante, col suo codice e il suo campo. Gemello di anagrafiche.fn_istanza_di_altro_soggetto. Lettori: anagrafiche.trgfn_contatti_guard_contesto_soggetto, pratiche.trgfn_pratiche_guard_contesto. Regola del 2: il confronto era scritto nella regola 3 delle pratiche. R-BE-15, D-17a e D-17b di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS anagrafiche.fn_ruolo_di_altro_soggetto(anagrafiche.soggetti_ruoli.id%TYPE, anagrafiche.soggetti_ruoli.soggetto_id%TYPE);
