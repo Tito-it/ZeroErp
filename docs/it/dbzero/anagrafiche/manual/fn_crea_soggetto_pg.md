@@ -21,10 +21,12 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 14-03-2026)
+(latest review 20-10-2026)
 Building block atomico per la creazione di un soggetto Persona Giuridica
-con contatto default obbligatorio e dati societari (condizionali alla
-`dati_societari_policy` del tipo soggetto).
+con contatto default obbligatorio e dati societari (se la natura li pretende
+o se passati: lo decide
+[fn_scrivi_dati_societari_alla_nascita](/dbzero/anagrafiche/manual/fn_scrivi_dati_societari_alla_nascita),
+lo stesso BB della porta delle persone fisiche).
 
 Riceve `p_tipo_soggetto_dettaglio_id` perche' societa' ed enti hanno nature
 diverse (SP, SC, ENC) — il chiamante deve risolvere il tipo.
@@ -54,7 +56,7 @@ obbligatori dalla matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
 | `p_email`                      | `text`                                      |      Si      | —       | Usata per il contatto default.                   |
 | `p_codice_fiscale`             | `soggetti.codice_fiscale%TYPE`              |      No      | `NULL`  | Guard PG decide se obbligatorio. UPPER(TRIM).    |
 | `p_partita_iva`                | `soggetti.partita_iva%TYPE`                 |      No      | `NULL`  | Guard PG decide se obbligatoria. UPPER(TRIM).    |
-| `p_stato_iso2`                 | `config.stati.codice_iso2%TYPE`             |      No      | `'IT'`  | ISO2 per nazionalita'.                           |
+| `p_stato_iso2`                 | `config.stati.codice_iso2%TYPE`             |      No      | `NULL`  | ISO2 per nazionalita'; NULL = lo stato proposto (rev 2026-10-18). |
 | `p_forma_giuridica_id`         | `dati_societari.forma_giuridica_id%TYPE`    |      No      | `NULL`  | FK forme_giuridiche.                             |
 | `p_id_prov_iscri_rea`          | `dati_societari.id_prov_iscri_rea%TYPE`     |   DS req.    | `NULL`  | Provincia iscrizione REA (FK province).          |
 | `p_iscrizione_rea`             | `dati_societari.iscrizione_rea%TYPE`        |   DS req.    | `NULL`  | Numero iscrizione REA.                           |
@@ -64,13 +66,15 @@ obbligatori dalla matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
 | `p_destinatario_fe`            | `dati_societari.destinatario_fe%TYPE`       |   DS req.    | `NULL`  | Canale FE: 'P' = PEC, 'C' = Codice SDI.         |
 | `p_pec_fatturazione`           | `dati_societari.pec_fatturazione%TYPE`      |      No      | `NULL`  | PEC fatturazione (unique).                       |
 | `p_codice_sdi`                 | `dati_societari.codice_sdi%TYPE`            |      No      | `NULL`  | Codice destinatario SDI (unique).                |
+| `p_tipo_contatto_id`           | `config.tipi_contatti.id%TYPE`              |      No      | `NULL`  | NULL = il primo di `config.tipi_contatti`.       |
+| `p_data_costituzione`          | `dati_societari.data_costituzione%TYPE`     |      No      | `NULL`  | ⭐ Rev 20261020-02, in coda: prima si perdeva.   |
 
 **Legenda obbligatorieta':**
 
 - **Si** = guard esplicito nella funzione, errore `E_ADMIN_VALIDAZIONE`
 - **No** = sempre opzionale
-- **DS req.** = obbligatorio solo quando i dati societari vengono creati
-  (policy REQUIRED, oppure OPTIONAL con almeno un campo DS valorizzato)
+- **DS req.** = lo pretende la forma giuridica (REA e capitale) o il canale FE
+  (PEC o codice SDI), nei trigger di `dati_societari`, quando la sezione si scrive
 
 ---
 
@@ -94,14 +98,17 @@ obbligatori dalla matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`
   `stato_id`, `tipo_soggetto_dettaglio_id`, `attivo = true`.
 * **INSERT contatto default:** con `nominativo = ragione_sociale`,
   `email = p_email`, `is_default = true`.
-* **INSERT dati_societari (condizionale):**
-    - Se `dati_societari_policy = 'REQUIRED'` → sempre creato
-    - Se `dati_societari_policy = 'OPTIONAL'` → creato solo se almeno un
-      campo DS e' valorizzato
-    - Se `dati_societari_policy = 'NONE'` → mai creato
-    - Quando si crea, guard espliciti su campi NOT NULL di `dati_societari`:
-      `p_id_prov_iscri_rea`, `p_iscrizione_rea`, `p_capitale_sociale`,
-      `p_destinatario_fe`
+* **Dati societari (rev 20261020-02):** li scrive il BB
+  [fn_scrivi_dati_societari_alla_nascita](/dbzero/anagrafiche/manual/fn_scrivi_dati_societari_alla_nascita),
+  che decide e poi chiama il verbo `fn_scrivi_dati_societari` (stato intero):
+    - `dati_societari_policy = 'REQUIRED'` → sempre;
+    - altrimenti, se la sezione c'e': almeno un campo con un valore fra forma,
+      REA, capitale, canale FE, PEC, codice SDI e data di costituzione (socio
+      unico e liquidazione da soli non contano);
+    - ⚠️ una sezione passata a una natura `NONE` non si scarta piu' in silenzio:
+      la rifiuta il guard della natura (`E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO`).
+  Le regole (forma ammessa, REA e capitale dalla forma, canale FE) stanno nei
+  trigger della tabella: niente controlli qui (rev 20261011-01).
 
 ---
 

@@ -1,24 +1,25 @@
 # Brief DB — Dati societari in creazione: la porta di creazione non scrive tutta la sezione
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-14
+## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: Tid, per E-1 (§4). Poi il team DB scrive (§5), e dopo l'apply la sessione BE/FE si allinea (§6).**
+**Riparte: la sessione BE/FE (§6). Il lato DB è finito: applicato e verde il 2026-10-19; al DB resta solo la chiusura (passo 6).**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | Tid | decide E-1 (dove si scrive la sezione per la ditta individuale) | §4 | — |
-| 2 | team DB | changeSet, pgTAP, manuali | §5 | 1 |
-| 3 | Tid | apply e corsa pgTAP | — | 2 |
-| 4 | sessione BE/FE | `crea_soggetto_pg` / `_create_pf`, via la prop `showDataCostituzione` | §6 | 3 |
+| 1 | ~~Tid~~ | ~~decide E-1~~ ✅ **(a)**, 2026-10-19 | §4 | — |
+| 2 | ~~team DB~~ | ~~changeSet `20261020-01…03`, pgTAP, manuali~~ ✅ 2026-10-19 | §5 | — |
+| 3 | ~~Tid~~ | ~~apply e corsa pgTAP~~ ✅ 2026-10-19 (dbdev e scratch, pgTAP verde) | §5.1 | — |
+| 4 | sessione BE/FE | `crea_soggetto_pg` / `_create_pf`, via la prop `showDataCostituzione` | §6 | — |
 | 5 | Tid | collaudo a video: SC e DI create con la sezione intera | §6 | 4 |
 | 6 | chi chiude | archiviazione, riga di PROJECT_CONTEXT, D34 nel registro DB | — | 5 |
 
-Decisioni aperte di Tid: **E-1**. Lavoro da committare: questo file (2026-10-14).
+Decisioni aperte di Tid: nessuna (D-1 in §3.1, della sessione, è applicata). Lavoro da committare: questo file, i tre changeSet, il pgTAP nuovo e quattro manuali (§5.1), applicati.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-14, chiudendo
 > `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md` (§9.5, richiesta della sessione BE).
 > **A chi:** team DB; poi BE/FE (§6).
-> **Stato:** 📝 aperto, non iniziato.
+> **Stato:** ✅ lato DB chiuso il 2026-10-19 (E-1 (a)): applicato su dbdev e scratch, pgTAP verde.
+> 🔜 BE/FE (§6), poi collaudo e chiusura.
 
 ## 1. Il difetto, sul modello
 
@@ -32,7 +33,9 @@ d'origine). In modifica la sezione arriva intera. **In creazione no**, per due s
 | DI (ditta individuale, `dati_societari_policy = OPTIONAL`) | `anagrafiche.fn_crea_soggetto_pf` | **tutta la sezione**: la funzione non conosce i dati societari |
 
 Fonti: corpo vivo di `fn_crea_soggetto_pg` (rev `20261011-01`) e firma di `fn_crea_soggetto_pf` (rev
-`20261009-26`), doc auto-gen letta il 2026-10-14.
+`20261009-26`), doc auto-gen letta il 2026-10-14. Riletto il 2026-10-19: le due funzioni sono state
+riscritte il 18-10 per lo stato (`20261018-89` pf, `-91` pg), il difetto è lo stesso; corpo vivo =
+YAML su dbdev e sullo scratch.
 
 ### 1.1 Ditta individuale: la sezione si perde in silenzio
 
@@ -70,13 +73,33 @@ diventa ambigua. Dopo il `DROP` vanno rimessi `COMMENT` e privilegi. Censire i c
 `test-fn-scrivi-dati-societari-v1`, `test-emittenti-fiscali`, `dbops/test-character-n-v1`). Nessuna
 funzione del DB la chiama (doc auto-gen, 2026-10-14).
 
-**Per la ditta individuale:** E-1.
+**Per la ditta individuale:** E-1 (a), decisa da Tid il 2026-10-19 (§4).
+
+### 3.1 D-1 della sessione: la regola «quando si scrive alla nascita» diventa un BB
+
+`fn_crea_soggetto_pg` decide da sé se chiamare il verbo: policy `REQUIRED`, oppure `OPTIONAL` con almeno
+un campo della sezione. Con E-1 (a) la stessa decisione serve a `fn_crea_soggetto_pf`: è la **seconda
+copia**, e per la regola del 2 si estrae nello stesso giro in
+**`anagrafiche.fn_scrivi_dati_societari_alla_nascita`** (`20261020-01`), che le due porte chiamano al
+posto del verbo. Il BB non aggiunge regole: legge la policy del soggetto e, se la sezione va scritta,
+passa lo stato intero al verbo.
+
+- **La sezione «c'è»** quando almeno un campo ha un valore: forma, provincia o numero REA, capitale,
+  canale FE, PEC, codice SDI, data di costituzione. I testi vuoti non contano, perché il verbo li
+  scriverebbe comunque `NULL`. Socio unico e liquidazione da soli **non** contano: hanno sempre un
+  valore (default dai parametri) e il form li manda anche quando la sezione è vuota. È la regola già
+  in uso in `fn_crea_soggetto_pg`, a cui si aggiunge la data.
+- **`REQUIRED`** → si scrive sempre (senza forma, la riga la rifiuta il `NOT NULL` della forma, come oggi).
+- **Sezione passata a una natura `NONE`** → si scrive, e la rifiuta il guard della natura
+  (`E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO`). ⚠️ Per `fn_crea_soggetto_pg` è un **cambio**: oggi
+  scarta la sezione in silenzio. Il seed non ha nature PG `NONE` (dato del 2026-10-19), ma il modello
+  le ammette, e scartare in silenzio è il difetto di §1.1. Una regola sola per le due porte.
 
 ## 4. Decisioni attese da Tid
 
 | # | Domanda | Proposta della sessione DB |
 | --- | --- | --- |
-| **E-1** | **Dove si scrive la sezione di una DI che nasce.** | **(a)** `fn_crea_soggetto_pf` riceve i dati societari, con parametri in coda, e chiama il verbo come `fn_crea_soggetto_pg` (B-4): la creazione è **una** chiamata, atomica nel DB, e le due porte si comportano allo stesso modo. **(b)** Il BE, nella stessa transazione, crea la persona fisica e poi chiama il verbo: niente firma nuova, ma la creazione di una DI diventa un'orchestrazione del BE, e le due porte divergono. ⭐ Proposta: **(a)**. È la stessa scelta già fatta per le società, e il «soggetto più la sua sezione» resta una sola operazione del DB. |
+| **E-1** ✅ (a), Tid 2026-10-19 | **Dove si scrive la sezione di una DI che nasce.** | **(a)** `fn_crea_soggetto_pf` riceve i dati societari, con parametri in coda, e chiama il verbo come `fn_crea_soggetto_pg` (B-4): la creazione è **una** chiamata, atomica nel DB, e le due porte si comportano allo stesso modo. **(b)** Il BE, nella stessa transazione, crea la persona fisica e poi chiama il verbo: niente firma nuova, ma la creazione di una DI diventa un'orchestrazione del BE, e le due porte divergono. ⭐ Proposta: **(a)**. È la stessa scelta già fatta per le società, e il «soggetto più la sua sezione» resta una sola operazione del DB. |
 
 ## 5. Lavoro DB (dopo E-1)
 
@@ -89,17 +112,68 @@ funzione del DB la chiama (doc auto-gen, 2026-10-14).
   rifiuto dal guard della natura, come oggi in modifica;
 - manuali `fn_crea_soggetto_pg`, `fn_crea_soggetto_pf`, `dati_societari`.
 
+### 5.1 Fatto (2026-10-19)
+
+| changeSet | Cosa |
+| --- | --- |
+| `20_code/anagrafiche/20261020-01-create-fn-scrivi-dati-societari-alla-nascita` | il BB della nascita (§3.1), `SECURITY INVOKER`, scrive col verbo; nello stesso changeSet il COMMENT del verbo (fra i chiamanti il BB al posto di `fn_crea_soggetto_pg`), che il rollback ripristina |
+| `…/20261020-02-update-fn-crea-soggetto-pg-data-costituzione` | `p_data_costituzione` in coda, Step 3 dal BB; DROP della firma vecchia (preCondition: 16 argomenti) |
+| `…/20261020-03-update-fn-crea-soggetto-pf-dati-societari` | i dieci campi in coda, stessi nomi di pg; Step 3 dal BB dopo il contatto; DROP della firma vecchia (preCondition: 11 argomenti) |
+
+Il 20-10 perché il 19 era pieno fino al `-99`. Corpo dagli YAML del 18-10 (`-91`/`-89`),
+verificati identici al vivo (`prosrc`) su dbdev e scratch; firma, `RETURNS`, `DECLARE`, `DROP` e
+`COMMENT` ancorati con `%TYPE`; nessuna clausola `SET`/`COST` da ripetere; nessun GRANT da rimettere
+(INVOKER, mai GRANT espliciti, come `20261009-26`).
+
+**pgTAP nuovo:** `db/pgtap/anagrafiche/test-dati-societari-alla-nascita-v1.sql` (plan 18): struttura
+(nessun overload, INVOKER, parametri in coda, regola del 2 sul corpo), il BB sul soggetto, SRL con
+la data, ente con i soli socio/liquidazione senza riga, DI con la sezione intera, DI senza sezione,
+testi vuoti, atomicità (canale C senza SDI → il soggetto non nasce), sezione senza forma (23502),
+PR con la sezione → `E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO`, PR senza sezione.
+⚠️ Il PR del test 17 passa la sola data: con una forma parlerebbe prima il guard BEFORE ROW della
+forma (`E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO`, ordine per nome). Il rifiuto c'è in
+entrambi i casi.
+
+**Prova pre-apply** (scratch `zeroerp_ruoli`, owner, SQL ESTRATTO dagli YAML in transazione
+annullata, md5 di corpo e COMMENT controllati dopo: scratch pulito):
+- il pgTAP nuovo: **18/18** con l'SQL estratto; senza, 5 rossi e la corsa si ferma (vede il difetto);
+- regressione, senza/con, su 31 pgTAP che chiamano le due porte, `fn_crea_operatore*` o il verbo,
+  più `dbops/test-riferimenti-morti-v1` (plpgsql_check su ogni funzione): **identici** prima e dopo.
+  Rossi preesistenti e uguali nelle due corse: `test-fn-scrivi-dati-societari-v1` #22 e
+  `test-soggetti-titoli-iva-tipo-soggetto-v1` #14 (rossi da owner, dichiarati),
+  `test-identita-digitali-guard-coerenza` (in baseline, la fixture muore prima: cieco qui);
+- non provato: `test-soggetti-indirizzi-required` (quattro transazioni nel file, la composizione
+  con l'SQL estratto non si fa alla cieca) → lo dice la corsa di Tid;
+- firme dopo l'SQL estratto: una funzione per nome; il rollback del `-01` toglie il BB e rimette
+  il COMMENT del verbo;
+- guardrail del repo: verdi sui file nuovi (`pgtap_preambolo` è rosso per un file già committato
+  e non di questo cantiere, `dbops/test-automazioni-guasto-ambiente-rilanciato-v1.sql`).
+
+⚠️ Il rollback di `-02`/`-03` è forward-only (`SELECT 1`, come `20261009-26`): tornando indietro
+da qui pg e pf resterebbero col corpo nuovo e, dopo il rollback del `-01`, senza il BB.
+
 ## 6. Ricadute BE/FE (dopo l'apply)
 
-- **BE:** `crea_soggetto_pg` e `_create_pg` passano `data_costituzione`. Con E-1 (a), `_create_pf`
-  legge la chiave `dati_societari` (stesso contratto di `_valida_dati_societari`) e la passa a
-  `crea_soggetto_pf` con parametri nominati. Test sul DB vero: SC con data, DI con la sezione.
+- **BE:** `crea_soggetto_pg` e `_create_pg` passano `data_costituzione` (`p_data_costituzione`).
+  Con E-1 (a), `_create_pf` legge la chiave `dati_societari` (stesso contratto di
+  `_valida_dati_societari`) e la passa a `crea_soggetto_pf` con parametri nominati: **gli stessi
+  nomi** di `fn_crea_soggetto_pg` (`p_forma_giuridica_id`, `p_id_prov_iscri_rea`, `p_iscrizione_rea`,
+  `p_capitale_sociale`, `p_socio_unico`, `p_liquidazione`, `p_destinatario_fe`, `p_pec_fatturazione`,
+  `p_codice_sdi`, `p_data_costituzione`). Test sul DB vero: SC con data, DI con la sezione.
+  Le chiamate di oggi restano valide anche prima dell'allineamento (parametri nuovi con DEFAULT).
+- **BE, da sapere:** una sezione inviata per un privato (natura `NONE`) ora si **rifiuta**
+  (`E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO`, già a catalogo) invece di sparire. Il FE oggi non
+  la mostra per il privato; se il payload la porta lo stesso con i soli socio unico e liquidazione
+  di default, quei due **non** fanno la sezione e non si rifiuta niente.
 - **FE:** via la prop `showDataCostituzione` (il campo si mostra sempre, come gli altri della
   sezione). Il ramo di creazione di `handleSave` già manda la sezione: niente da cambiare.
-- ⛔ Finché il DB non è pronto, BE/FE non toccano niente.
+- ✅ Il DB è pronto dal 2026-10-19 (`20261020-01…03` applicati): BE/FE possono partire.
 
 ## 7. Registro
 
 | Data | Cosa |
 | --- | --- |
 | 2026-10-14 | Aperto chiudendo `brief-db-dati-fiscali-e-societari-del-soggetto` (§9.5, richiesta della sessione BE sulla data di costituzione). Rileggendo la creazione: anche la DI perde la sezione (§1.1), entra qui. In attesa di E-1. |
+| 2026-10-19 | Tid decide E-1 (a) e dà il via. Ripreso dalle revisioni del 18-10 (`20261018-89`/`-91`, stato dal BB). D-1 della sessione (§3.1): la regola della nascita va in un BB, `20261020-01`; `-02` pg, `-03` pf. |
+| 2026-10-19 | Lato DB scritto e provato pre-apply (§5.1): `20261020-01…03`, pgTAP nuovo 18/18, regressione identica su 32 file. Riparte Tid per l'apply. |
+| 2026-10-19 | Tid applica `20261020-01…03` (dbdev 16:59:25, scratch 16:59:46, `databasechangelog`: EXECUTED) e la corsa pgTAP è verde. Lato DB finito; riparte BE/FE (§6). |

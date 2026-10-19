@@ -60,8 +60,8 @@
 - [fn_crea_indirizzo_soggetto](funzioni/fn_crea_indirizzo_soggetto.md) — (latest review 18-10-2026)
 - [fn_crea_operatore_v2](funzioni/fn_crea_operatore_v2.md)
 - [fn_crea_risorsa_umana_v2](funzioni/fn_crea_risorsa_umana_v2.md)
-- [fn_crea_soggetto_pf](funzioni/fn_crea_soggetto_pf.md) — (latest review 09-10-2026) Building block atomico per la creazione di un soggetto **persona fisica** — privato (PR) o ditta individuale (DI) — con contatto default obbligatorio.
-- [fn_crea_soggetto_pg](funzioni/fn_crea_soggetto_pg.md) — (latest review 14-03-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (condizionali alla `dati_societari_policy` del tipo soggetto).
+- [fn_crea_soggetto_pf](funzioni/fn_crea_soggetto_pf.md) — (latest review 20-10-2026) Building block atomico per la creazione di un soggetto **persona fisica** — privato (PR) o ditta individuale (DI) — con contatto default obbligatorio e, per la ditta individuale, i suoi **dati societari** nella stessa chiamata.
+- [fn_crea_soggetto_pg](funzioni/fn_crea_soggetto_pg.md) — (latest review 20-10-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (se la natura li pretende o se passati: lo decide [fn_scrivi_dati_societari_alla_nascita](/dbzero/anagrafiche/manual/fn_scrivi_dati_societari_alla_nascita), lo stesso BB della porta delle persone fisiche).
 - [fn_crea_veste_portale](funzioni/fn_crea_veste_portale.md)
 - [fn_create_indirizzo](funzioni/fn_create_indirizzo.md) — (latest review 08-07-2026)
 - [fn_forma_giuridica_ammessa](funzioni/fn_forma_giuridica_ammessa.md)
@@ -90,6 +90,7 @@
 - [fn_provisiona_dati_di_sviluppo](funzioni/fn_provisiona_dati_di_sviluppo.md)
 - [fn_ruolo_di_altro_soggetto](funzioni/fn_ruolo_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a e D-17b di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [fn_scrivi_dati_societari](funzioni/fn_scrivi_dati_societari.md)
+- [fn_scrivi_dati_societari_alla_nascita](funzioni/fn_scrivi_dati_societari_alla_nascita.md)
 - [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
 - [fn_sync_auth_user_expired](funzioni/fn_sync_auth_user_expired.md) — (latest review 18-04-2026)
 - [fn_sync_auth_user_is_active](funzioni/fn_sync_auth_user_is_active.md) — (latest review 20-04-2026 — semantica OR multi-veste)

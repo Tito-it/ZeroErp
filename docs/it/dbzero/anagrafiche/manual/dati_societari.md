@@ -152,8 +152,20 @@ erDiagram
 
 L'applicazione **legge** `anagrafiche.dati_societari` ma non la scrive. Scrive soltanto il verbo
 `anagrafiche.fn_scrivi_dati_societari` (`SECURITY DEFINER`), che **crea o aggiorna** la riga del
-soggetto. Lo chiamano `fn_crea_soggetto_pg`, il backend quando si modifica un soggetto e le fixture
-pgTAP.
+soggetto. Lo chiamano il backend quando si modifica un soggetto, le fixture pgTAP e, alla nascita
+di un soggetto, il BB
+[fn_scrivi_dati_societari_alla_nascita](/dbzero/anagrafiche/manual/fn_scrivi_dati_societari_alla_nascita).
+
+### Alla nascita: le due porte di creazione (dal 2026-10-20)
+
+Una società o un ente (`fn_crea_soggetto_pg`) e una persona fisica (`fn_crea_soggetto_pf`) nascono
+**con** la loro sezione, nella stessa chiamata: soggetto e dati societari nascono insieme o non
+nascono. Le due porte ricevono gli stessi campi, data di costituzione compresa, e lasciano decidere
+**quando** scriverli allo stesso BB: se la natura li pretende (`REQUIRED`), oppure se la sezione
+c'è, cioè almeno un campo con un valore (socio unico e liquidazione da soli non contano: hanno
+sempre un valore). Una sezione passata a una natura che non la ammette (il privato) viene
+rifiutata, non scartata. Fino al 2026-10-19 la ditta individuale perdeva la sezione in creazione,
+e la data di costituzione si perdeva per tutti (brief-db-dati-societari-in-creazione).
 
 * Il verbo riceve lo **stato intero** della sezione: un valore assente scrive `NULL` dove la
   colonna lo ammette. Socio unico e liquidazione, che sono obbligatori, prendono il default dei
