@@ -458,7 +458,11 @@ L'attivazione fallisce (oltre alle guard trigger) se:
   is_draft`). I contratti **DRAFT** (oltre agli ANNULLATO) **non** partecipano al
   vincolo: l'esclusività scatta **solo all'attivazione**, quindi due DRAFT
   sovrapposti — e un DRAFT sovrapposto a un ATTIVO — sono ammessi (abilita la
-  preparazione delle bozze di successione)
+  preparazione delle bozze di successione). Sulla bozza sovrapposta il pulsante
+  «Attiva» è **spento** e dice quale contratto è in conflitto; chi prova comunque
+  riceve `E_CONTRATTO_OVERLAP_ESISTENTE`, col numero di quel contratto. La regola
+  sta in [`script.fn_check_contratto_sovrapposto`](/dbzero/script/funzioni/fn_check_contratto_sovrapposto),
+  e il vincolo di esclusione resta la difesa dura
 * il contratto è "negoziato puro" (senza listino) e non ha **almeno una riga
   AGGIUNTA con prezzo valorizzato**
 * ci sono approvazioni prezzo PENDING non risolte

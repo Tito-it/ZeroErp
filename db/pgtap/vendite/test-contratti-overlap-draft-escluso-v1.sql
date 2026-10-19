@@ -14,7 +14,9 @@
 --   Comportamento:
 --   4) due DRAFT sovrapposti (stessa quadrupla) -> ammessi
 --   5) DRAFT sovrapposto a un ATTIVO -> ammesso (prepara successione)
---   6) attivazione di un contratto sovrapposto a un ATTIVO -> bloccata (23P01)
+--   6) attivazione di un contratto sovrapposto a un ATTIVO -> bloccata (P0001: dal
+--      2026-10-20 la ferma il guard di transizione, col codice; la difesa dura
+--      dell'EXCLUDE e' provata in test-contratto-attiva-spento-se-sovrapposto-v1)
 --   7) fn_contratto_sovrapposto: NULL se l'unico "conflitto" e' un DRAFT
 --   8) fn_contratto_sovrapposto: ritorna l'incumbent quando e' ATTIVO
 --
@@ -138,14 +140,18 @@ INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, p
 SELECT c.id, ctx.articolo_id, 'AGGIUNTA', 100.00, 1.00, 'UNA_TANTUM'
   FROM vendite.contratti c, tmp_ovl_ctx ctx WHERE c.numero='PGTAP_OVL_B2';
 
--- 6) Attivazione del DRAFT sovrapposto all'ATTIVO -> bloccata (23P01)
+-- 6) Attivazione del DRAFT sovrapposto all'ATTIVO -> bloccata.
+--    ⚠️ Rev 2026-10-20 (20261020-21): prima la fermava l'EXCLUDE (23P01). Ora il
+--    guard di transizione, che scatta prima, solleva E_CONTRATTO_OVERLAP_ESISTENTE
+--    (P0001) col numero del contratto in conflitto: il codice e il motivo di
+--    «Attiva» sono provati in test-contratto-attiva-spento-se-sovrapposto-v1.
 SELECT throws_ok(
     $$UPDATE vendite.contratti
          SET stato_doc_contratto_id = (SELECT id_attivo FROM tmp_ovl_ctx)
        WHERE numero = 'PGTAP_OVL_B2'$$,
-    '23P01',
+    'P0001',
     NULL,
-    '6) Attivazione di un contratto sovrapposto a un ATTIVO: bloccata (exclusion_violation)'
+    '6) Attivazione di un contratto sovrapposto a un ATTIVO: bloccata dal guard di transizione'
 );
 
 -- 7) fn_contratto_sovrapposto: NULL se il solo "conflitto" e' un DRAFT (W1)
