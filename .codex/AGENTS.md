@@ -120,7 +120,7 @@ Chi lo apre deve sapere **a chi tocca** senza leggerlo tutto.
   si ricopia qui.
 
 Esempio:
-[brief-db-indirizzi-documento-seguono-il-cliente](../docs/it/dev/work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md).
+[brief-db-indirizzi-documento-seguono-il-cliente](../docs/it/dev/work-done/brief-db-indirizzi-documento-seguono-il-cliente.md).
 
 ## Dove sta cosa
 

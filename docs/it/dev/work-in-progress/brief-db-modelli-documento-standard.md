@@ -1,8 +1,9 @@
 # Brief DB — I modelli di documento standard: un emittente nuovo emette dal primo giorno
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-19
+## ⏭️ Chi riparte — aggiornato al 2026-10-19 (verifica della sessione BE)
 
-**Riparte: il BE, con la risoluzione a due livelli e i codici nuovi (§6); il lato DB è chiuso.**
+**Riparte: il BE, con la risoluzione a due livelli (§6, «Stato al 2026-10-19»); il lato DB è chiuso
+e committato.**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -14,12 +15,12 @@
 | 6 | **Tid** | ✅ Contenuti (D-3) e testi fissi: proposte accettate (2026-10-19) | §8.2 | — |
 | 7 | **team DB** | ✅ Tranche 2: il seed dei sei standard (`20261020-13` … `-18`), provato sullo scratch e su dbdev | §8.2 | 6 |
 | 8 | **Tid** | ✅ Apply della tranche 2, pgTAP verdi (2026-10-19) | §8.2 | 7 |
-| 9 | **BE/FE** | La risoluzione a due livelli, i codici nuovi e la lista Modelli documento | §6 | 5 |
+| 9 | **BE/FE** | La risoluzione a due livelli e la lista Modelli documento (policy dei codici nuovi già rigenerate) | §6 | 5 |
 | 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard) | §7 | 8, 9 |
 | 11 | **Tid** | Archiviazione in `work-done/` | — | 10 |
 
-**Decisioni aperte di Tid: nessuna.** Da committare: tranche 1 e tranche 2 (entrambe applicate) e
-questo documento.
+**Decisioni aperte di Tid: nessuna.** Tranche 1 e tranche 2 committate (`560d5d97e`, PR #1899) e
+già nel branch `dev/backend-tid`.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-18. **A chi:** Tid (§5), poi il team DB;
 > la §6 al BE/FE.
@@ -27,8 +28,8 @@ questo documento.
 > (§9). L'emittente di prova A, creato dal verbo di sviluppo, non emette nessun documento: non ha
 > modelli. Proposta di Tid (2026-10-18): «la cosa migliorativa è fornire un set di modelli
 > standard».
-> **Stato:** ✅ lato DB chiuso: tranche 1 e tranche 2 (seed) applicate, pgTAP verdi (2026-10-19).
-> Resta il BE/FE (§6) e il giro degli smoke (§7). Dettaglio nel §8.
+> **Stato:** ✅ lato DB chiuso: tranche 1 e tranche 2 (seed) applicate, pgTAP verdi, committate
+> (2026-10-19). Resta il BE/FE (§6) e il giro degli smoke (§7). Dettaglio nel §8.
 
 ## 1. Il caso
 
@@ -354,6 +355,36 @@ degli stati, perimetro RLS e storico scope (la colonna nuova sulle versioni ha u
   Sulle copie, lo stato di `vw_template_personalizzati_scarto` (§4.1 Q-5).
 * **Documento generato.** Lo storico (`documenti_generati`) punta già alla versione usata: nessun
   cambio.
+
+### Stato al 2026-10-19 (verifica della sessione BE, prima di iniziare)
+
+**Il DB, verificato su dbdev:** `documenti.fn_risolvi_template_applicabile(bigint, bigint, bigint)`
+e `documenti.vw_template_personalizzati_scarto` esistono; i sei standard ci sono (id 2728-2733),
+predefiniti e attivi, ognuno con la versione 1 `PUBBLICATA`.
+
+**Il BE, già fatto:** le policy dei sei codici nuovi sono rigenerate in `error_policies_generated.py`
+ed `error_messages_fallback.py`.
+
+**Il BE, da fare** (nessuno di questi punti è iniziato):
+
+1. `DocumentiRepository.find_template_applicabile` filtra ancora per emittente e chiude con
+   `ORDER BY t.id LIMIT 1`, quindi lo standard non si usa mai. Deve chiamare
+   `fn_risolvi_template_applicabile`.
+2. `count_templates_attivi_no_default` e il suo ramo in
+   `DocumentGenerationService._resolve_template` si ritirano.
+3. Il tipo di output non lo passa nessun chiamante di `genera_documento`
+   (`stampa_coda_drainer_service`, `sorgente_documenti_views`). Va passato dove il BE lo conosce.
+4. Il filtro `emittente_ids_scope` delle letture (lista, dettaglio, versioni, asset) deve lasciar
+   passare lo standard.
+5. L'azione «personalizza», che scrive `derivata_da_versione_id`.
+6. Si allineano i test dei due metodi (`test_document_generation_service*.py`,
+   `test_documenti_repository_render.py`) e lo smoke `smoke-fatturazione-render-stampa.py`, che
+   li usano.
+
+**Il FE, da fare:** in `ModelliDocumentiTemplatesView`, `TemplateDocumentiSearchTable` e
+`TemplateDocumentoDrawer`, le cose elencate sopra: il badge «standard» in sola lettura, la riga
+«si usa lo standard», la segnalazione dell'emittente senza predefinito, l'azione «personalizza» nel
+kebab e lo stato dello scarto sulle copie.
 
 ## 7. Ricaduta sugli smoke
 

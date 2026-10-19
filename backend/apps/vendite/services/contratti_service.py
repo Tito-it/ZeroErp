@@ -46,6 +46,7 @@ from apps.config.sorgenti import SORGENTE_CONTRATTO
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.vendite.services._cliente_coppia_documento import (
     coppia_cambiata,
@@ -106,7 +107,14 @@ E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
 E_VENDITE_NOT_FOUND = "E_VENDITE_NOT_FOUND"
 E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_FK = "E_VENDITE_FK"
-E_VENDITE_CONTRATTO_OVERLAP = "E_VENDITE_CONTRATTO_OVERLAP"
+# ⭐ La sovrapposizione con un contratto vincolante ha UN codice, quello del
+#    guard del DB (`script.fn_check_contratto_sovrapposto`, 2026-10-19). L'EXCLUDE
+#    `ex_contratti_no_overlap` (`partecipa_overlap_snapshot`, cioe' vincolante) e'
+#    la stessa regola, sulla corsa: risponde con lo stesso codice e lo stesso
+#    testo del ripiego (senza il numero del contratto, che il vincolo non da').
+#    Fino ad allora rispondeva con `E_VENDITE_CONTRATTO_OVERLAP` e un testo suo.
+E_CONTRATTO_OVERLAP_ESISTENTE = "E_CONTRATTO_OVERLAP_ESISTENTE"
+_MESSAGGIO_OVERLAP = USER_MESSAGE_FALLBACK[E_CONTRATTO_OVERLAP_ESISTENTE]
 
 
 # Whitelist order_by: DERIVATA dalle chiavi del mapping SQL del repository
@@ -405,18 +413,8 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     # ex_* nome post-fix overlap parziale 2026-05-21 (migration 20260521-01..03,
     # EXCLUDE gist partial WHERE NOT is_abortito_snapshot). Entrambi mappati
     # per resilienza a futuri rename DB.
-    "uq_contratti_no_overlap": (
-        E_VENDITE_CONTRATTO_OVERLAP,
-        "Esiste gia' un contratto valido in questo periodo per lo stesso "
-        "cliente e punto di fornitura. Annulla o cessa quello esistente "
-        "prima di crearne uno nuovo.",
-    ),
-    "ex_contratti_no_overlap": (
-        E_VENDITE_CONTRATTO_OVERLAP,
-        "Esiste gia' un contratto valido in questo periodo per lo stesso "
-        "cliente e punto di fornitura. Annulla o cessa quello esistente "
-        "prima di crearne uno nuovo.",
-    ),
+    "uq_contratti_no_overlap": (E_CONTRATTO_OVERLAP_ESISTENTE, _MESSAGGIO_OVERLAP),
+    "ex_contratti_no_overlap": (E_CONTRATTO_OVERLAP_ESISTENTE, _MESSAGGIO_OVERLAP),
     "uq_contratti_utilities_contratto_id": (
         E_VENDITE_DUPLICATO,
         "Questo contratto ha gia' una riga utility associata.",
@@ -1013,29 +1011,15 @@ class ContrattiService:
     #        accesso diretto al repository.
     def emetti(self, contratto_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
-        # Guard proattivo overlap (§3.3 refactor-overlap): se esiste gia' un
-        # contratto ATTIVO sovrapposto sulla stessa quintupla, blocca
-        # l'attivazione con un messaggio che NOMINA il contratto in conflitto,
-        # prima che l'EXCLUDE `ex_contratti_no_overlap` sollevi un errore
-        # generico. La fn DB ignora i DRAFT (esclusivita' solo all'attivazione,
-        # brief §3.4) -> preparare bozze sovrapposte resta lecito; il blocco
-        # scatta solo qui, all'emissione. L'EXCLUDE resta la difesa dura.
-        incumbent = self._repo.get_contratto_sovrapposto(contratto_id)
-        if incumbent is not None:
-            ErrorManager.raise_error(
-                code=E_VENDITE_CONTRATTO_OVERLAP,
-                message=(
-                    f"Impossibile attivare: il contratto {incumbent['numero']} "
-                    "e' gia' attivo e sovrapposto per lo stesso cliente e punto "
-                    "di fornitura nel periodo indicato. Cessa o chiudi quello "
-                    "esistente prima di attivare questo."
-                ),
-                context={
-                    "contratto_id": contratto_id,
-                    "incumbent_id": incumbent["id"],
-                    "incumbent_numero": incumbent["numero"],
-                },
-            )
+        # ⭐ La sovrapposizione con un contratto vincolante la dice il DB, in un
+        #    posto solo (2026-10-19, `script.fn_check_contratto_sovrapposto`):
+        #    la capability spegne «Attiva» col motivo che nomina il contratto in
+        #    conflitto, e il guard della transizione rifiuta con
+        #    `E_CONTRATTO_OVERLAP_ESISTENTE`, che passa com'e' (il codice del
+        #    catalogo vince in `_map_db_errors`). Fino ad allora qui c'era una
+        #    copia Python della regola, con un testo suo, che scattava solo alla
+        #    conferma della stampa: «Attiva» restava acceso (collaudo di Tid).
+        #    L'EXCLUDE `ex_contratti_no_overlap` resta la difesa dura.
         target_stato_id = self._repo.get_stato_id_by_codice("ATTIVO")
         ErrorManager.require(
             target_stato_id is not None,

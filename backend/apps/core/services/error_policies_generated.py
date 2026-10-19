@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1111, di cui 120 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1117, di cui 120 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -648,7 +648,19 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOCUMENTI_NOT_FOUND": "NON_TROVATO",
     "E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO": "DATO_ERRATO",
     "E_DOCUMENTI_RENDER_FAILED": "TECNICO",
+    # documenti.fn_risolvi_template_applicabile (2026-10-20): argomenti NULL o <= 0 dove non ammessi. Solo un chiamante rotto li produce -> TECNICO; il messaggio nomina il parametro.
+    "E_DOCUMENTI_RISOLVI_TEMPLATE_INPUT_INVALIDO": "TECNICO",
     "E_DOCUMENTI_STORAGE_FAILED": "TECNICO",
+    # documenti.fn_risolvi_template_applicabile (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-2): chiamata senza tipo di documento su una sorgente che ne ha piu' d'uno fra i modelli attivi. Fino a qui il BE sceglieva l'id piu' basso (ORDER BY t.id LIMIT 1). Difetto del chiamante -> TECNICO. Valori: codice della sorgente.
+    "E_DOCUMENTI_TEMPLATE_AMBIGUO": "TECNICO",
+    # Guard documenti.trgfn_template_documenti_versioni_guard_derivata_da (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-5): derivata_da_versione_id deve puntare a una versione di un modello standard con lo stesso tipo e la stessa sorgente, e la versione che la porta non e' di uno standard. La scrive l'azione «personalizza» del BE -> TECNICO. Valori: id della versione d'origine.
+    "E_DOCUMENTI_TEMPLATE_DERIVAZIONE_INVALIDA": "TECNICO",
+    # documenti.fn_risolvi_template_applicabile (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-2): l'emittente non ha modelli attivi per (tipo, sorgente) e non c'e' uno standard predefinito attivo. Prende il posto, per la risoluzione, del generico E_DOCUMENTI_NOT_FOUND che il BE sollevava. Valori: descrizione del tipo di documento.
+    "E_DOCUMENTI_TEMPLATE_NON_RISOLTO": "NON_TROVATO",
+    # documenti.fn_risolvi_template_applicabile (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-2, strada B di Tid): l'emittente ha modelli attivi per (tipo, sorgente) ma nessuno predefinito. Lo standard NON entra: un modello attivo dell'emittente dice «uso i miei». Il rimedio e' dell'operatore (segnare un predefinito). Valori: descrizione del tipo di documento.
+    "E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO": "CONFLITTO_STATO",
+    # Guard documenti.trgfn_template_standard_guard_sola_lettura (2026-10-20, brief-db-modelli-documento-standard D-2): il modello standard e le sue versioni si scrivono solo dal proprietario della tabella (seed e changeSet, script.fn_is_proprietario_tabella). NON_PERMESSO: e' un diritto che l'applicazione non ha, non uno stato che cambia riprovando. Valori: codice del modello.
+    "E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA": "NON_PERMESSO",
     "E_DOCUMENTI_VALIDATION": "DATO_ERRATO",
     # Valore numerico non finito (NaN, Infinity, -Infinity) arrivato alla generazione di un documento, sollevato dal BACKEND (apps/documenti/services/context_builders/_number_formatting.py, format_misura e format_importo) - decisione di Tid del 2026-10-09 (opzione C: la generazione si ferma, non si stampa «NaN» e non lo si nasconde). Nessuna funzione a DB lo nomina: questa riga e' cio' che lo rende un codice registrato. * TECNICO e non DATO_ERRATO (D-3): dal 20261009-10 … -18 ogni colonna numeric porta il CHECK «finito», quindi un valore cosi' in un documento e' un'INVARIANTE ROTTA, come E_VENDITE_PRICING_ESITO_ASSENTE; e nessuno lo corregge da un form - su un documento emesso il dato e' bloccato. Resta raggiungibile dalla ristampa: i CHECK non vedono dentro documenti_generati.context_json, che un contesto congelato porta come la stringa "NaN". * LA FRASE E' SENZA SEGNAPOSTO: a riempire un %s e' script.fn_log_and_raise_error, e un codice che nessuna funzione PL/pgSQL solleva da li' non ci passa mai - il %s uscirebbe grezzo a video. Campo e valore li porta il ServiceError del BE (context.field + detail). Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.3).
     "E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO": "TECNICO",

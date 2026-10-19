@@ -10,7 +10,9 @@ import { clienteCambiato } from './clienteCambiato'
 
 describe('clienteCambiato', () => {
   it('stesso BA: non cambiato, anche se uno e\' numero e l\'altro stringa', () => {
+    expect(clienteCambiato({ billing_account_id: 7 }, { billing_account_id: 7 })).toBe(false)
     expect(clienteCambiato({ billing_account_id: 7 }, { billing_account_id: '7' })).toBe(false)
+    expect(clienteCambiato({ billing_account_id: ' 7 ' }, { billing_account_id: 7 })).toBe(false)
   })
 
   it('BA diverso: cambiato', () => {

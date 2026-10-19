@@ -454,7 +454,7 @@ def _get_riga_or_raise(
 #        UNIQUE → E_VENDITE_DUPLICATO (409), FK → E_VENDITE_FK (400),
 #        CHECK → E_VENDITE_VALIDATION (400), overlap versioni →
 #        E_VENDITE_LISTINO_VERSIONE_OVERLAP (409, pattern simmetrico a
-#        E_VENDITE_PROMO_OVERLAP / E_VENDITE_CONTRATTO_OVERLAP), temporal FK
+#        E_VENDITE_PROMO_OVERLAP / E_CONTRATTO_OVERLAP_ESISTENTE), temporal FK
 #        coerenza BoM (PG18) → E_LISTINO_RIGA_COMP_BOM_INCOERENTE (400,
 #        sostituisce guard 6 trigger rimosso con migration 20260514-13).
 def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entity: str) -> NoReturn:

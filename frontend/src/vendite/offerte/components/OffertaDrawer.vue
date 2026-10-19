@@ -25,7 +25,7 @@ import Tag from 'primevue/tag'
 
 import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
 import { ripristinaBillingAccount } from '../../../core/utils/ripristinaLookup'
-import { clienteCambiato } from '../../_shared/cliente/clienteCambiato'
+import { useCambioClienteDocumento } from '../../_shared/cliente/useCambioClienteDocumento'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
@@ -495,13 +495,10 @@ async function handleSave() {
   const utilityInline = buildUtilityInline()
   // I dati della fornitura viaggiano solo se si cambiano ancora
   // (`can_edit_utility` della capability: il lock dei satelliti del DB).
-  // ⛔ Non con un CAMBIO DI CLIENTE: la scheda la rifa' il DB dal contatore
-  //    nuovo, e quella del form e' del contatore di prima (R-BE-6 di
-  //    brief-db-indirizzi-documento-seguono-il-cliente; il BE la scarta
-  //    comunque). Dopo il salvataggio il dettaglio riletto porta la scheda
-  //    nuova nel form (R-FE-4).
-  const cambiaCliente = isEdit.value && clienteCambiato(form.value, detail.value)
-  if (utilityInline && !cambiaCliente && (!isEdit.value || caps.flag('can_edit_utility'))) {
+  // Un cambio di cliente qui non arriva: si e' gia' salvato alla scelta, con la
+  // conferma (BB `useCambioClienteDocumento`, 2026-10-19), e la scheda del form
+  // e' gia' quella del cliente nuovo.
+  if (utilityInline && (!isEdit.value || caps.flag('can_edit_utility'))) {
     payload.utility = utilityInline
   }
 
@@ -546,6 +543,23 @@ async function refreshDetail() {
   // (`:versione` della barra): push contratto e genera ordine creano archi e
   // passano TUTTI da qui — e cosi' anche le azioni future.
 }
+
+// ⭐ Il cambio di cliente in modifica si salva subito, con conferma (BB
+//    `useCambioClienteDocumento`, decisione di Tid 2026-10-19): il DB rifa'
+//    indirizzi e scheda, e pannello e «Indirizzi» mostrano subito quelli del
+//    cliente nuovo. La scheda non salvata del cliente vecchio si scarta.
+useCambioClienteDocumento({
+  form,
+  detail,
+  attivo: () => isEdit.value && detail.value != null && !testata.bloccato('billing_account_id'),
+  salva: (corpo) => execute(
+    () => store.update(props.offertaId, corpo),
+    { successMessage: t('vendite.offerte.salvata') },
+  ),
+  ricarica: refreshDetail,
+  scartaDipendenti: () => Object.assign(form.value, schedaDaFornitura(detail.value?.utility)),
+  messaggio: 'vendite.cliente.cambio_messaggio_con_fornitura',
+})
 
 // Reload revisioni dopo un'azione che cambia lo stato di una riga della
 // catena (emissione, esito, annullo): solo se il tab e' gia' agganciato a
@@ -1163,8 +1177,7 @@ const footerDrawer = useFooterDocumento({
             :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
             :istanza-utility-id="detail?.istanza_utility_id ?? null"
             :readonly="parentReadonly"
-            :capabilities="capabilities"
-            :cliente-da-salvare="clienteCambiato(form, detail)" />
+            :capabilities="capabilities" />
 
           <!-- Motivazione (sola lettura, valorizzata su RIFIUTATA/ANNULLATA) -->
           <template v-if="isEdit && detail?.motivazione_rifiuto">

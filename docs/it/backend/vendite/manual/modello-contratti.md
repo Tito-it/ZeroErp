@@ -209,10 +209,11 @@ AND NOT draft` (refactor overlap 2026-06-02, migration `20260602-17..22`):
   dell'incumbent, nella stessa transazione (close-before-activate).
 
 Difesa a due livelli: il backstop duro e' l'EXCLUDE gist parziale
-`ex_contratti_no_overlap` (`WHERE partecipa_overlap_snapshot`); davanti, il
-service esegue un **pre-check proattivo** (`fn_contratto_sovrapposto`) in
-`emetti()` che solleva `E_VENDITE_CONTRATTO_OVERLAP` (409) **nominando** il
-contratto incumbent in conflitto. `ambito` resta nella chiave: forniture di
+`ex_contratti_no_overlap` (`WHERE partecipa_overlap_snapshot`); davanti, il DB
+(`script.fn_check_contratto_sovrapposto`) spegne «Attiva» nella capability col
+motivo che **nomina** il contratto in conflitto, e il guard della transizione
+rifiuta con `E_CONTRATTO_OVERLAP_ESISTENTE` (409). L'EXCLUDE, sulla corsa,
+risponde con lo stesso codice (senza il numero, che il vincolo non da'). `ambito` resta nella chiave: forniture di
 ambiti diversi (es. COMMERCIO vs COMMODITY) sullo stesso punto coesistono
 legittimamente.
 

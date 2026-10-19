@@ -934,11 +934,13 @@ alle righe di contratto via `target_riga_id`.
    vincolo (colonna generata `partecipa_overlap_snapshot = NOT abortito AND
    NOT draft`). Conseguenze: due bozze sovrapposte sono ammesse, e una bozza
    puo' sovrapporsi a un contratto attivo (preparazione della successione);
-   il blocco scatta **solo all'attivazione** (`POST .../emetti/`). All'emissione
-   il service esegue un **pre-check proattivo** (`fn_contratto_sovrapposto`) che,
-   se trova un incumbent attivo sovrapposto, solleva `E_VENDITE_CONTRATTO_OVERLAP`
-   con un messaggio che **nomina il contratto in conflitto** (es. "il contratto
-   CNT0000027 e' gia' attivo..."), prima che l'EXCLUDE sollevi l'errore generico.
+   il blocco scatta **solo all'attivazione** (`POST .../emetti/`). La regola la
+   dice il DB, in un posto solo (`script.fn_check_contratto_sovrapposto`,
+   2026-10-19): la capability spegne «Attiva» col motivo che **nomina il
+   contratto in conflitto** (`reason_key`
+   `vendite.contratti.azione_reason.contratto_sovrapposto`), e il guard della
+   transizione rifiuta con `E_CONTRATTO_OVERLAP_ESISTENTE`. Il backend non ha una
+   copia della regola.
 10. `categoria_cliente_id_snapshot` e' congelato alla creazione del
     contratto (dal trigger DB, che lo popola dal BA). Rappresenta la
     categoria commerciale del cliente al momento della stipula. Non e'
@@ -972,7 +974,7 @@ alle righe di contratto via `target_riga_id`.
 | `E_VENDITE_NOT_FOUND` | 404 | Service (contratto/riga/componente; anti-tampering URL componenti) | — |
 | `E_VENDITE_DUPLICATO` | 400 | UNIQUE `uq_contratti_numero` o `uq_contratti_utilities_contratto_id` o `uq_contrighe_one_eccezione_per_articolo` o `uq_contrighe_one_aggiunta_per_articolo` | — |
 | `E_VENDITE_FK` | 400 | FK su BA/istanza/utility/listino/listino_versione/parent/stato/articolo/UoM/tipo/classe utenza/categoria cliente snapshot | — |
-| `E_VENDITE_CONTRATTO_OVERLAP` | 409 | Pre-check service `fn_contratto_sovrapposto` su `emetti()` (messaggio che nomina l'incumbent) **oppure** backstop EXCLUDE gist `ex_contratti_no_overlap`. Scatta all'**attivazione** (DRAFT esclusi dal vincolo, vedi Regole §9) | — |
+| `E_CONTRATTO_OVERLAP_ESISTENTE` | 409 | Il guard della transizione verso ATTIVO (messaggio che nomina il contratto in conflitto) **oppure**, sulla corsa, l'EXCLUDE gist `ex_contratti_no_overlap` (testo del ripiego, senza il numero). Scatta all'**attivazione** (DRAFT esclusi dal vincolo, vedi Regole §9). Fino al 2026-10-19 era `E_VENDITE_CONTRATTO_OVERLAP` | `script.fn_check_contratto_sovrapposto` |
 | `E_DOC_DATI_COLLEGATI_NON_BOZZA` | 409 | DB P0001 (2026-10-11) — **utility e indirizzi** su contratto fuori bozza (create/update utility, indirizzi). Al posto di `E_CONTRATTO_NON_MODIFICABILE`, che il service sollevava come copia della regola e non solleva piu' | `trgfn_doc_righe_lock_fuori_bozza` (montato sui satelliti) |
 | `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
 | `E_DATA_AL_MINORE_DAL` | 400 | DB P0001, campo `valido_al` — `valido_al < valido_dal` in create, PATCH testata e cessazione. Il service non lo anticipa (dal 2026-09-23). Frase del catalogo con le due date, soluzione in `hint`: `raise_from_database_error` fa vincere il codice del DB anche fuori da `_KNOWN_DB_ERROR_MARKERS` | `script.trgfn_guard_date_validita` (automazione `DATE_VALIDITA`) |

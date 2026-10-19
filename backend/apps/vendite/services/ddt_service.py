@@ -138,7 +138,8 @@ _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 # Col BA il destinatario lo scrive il DB (e rifiuta un valore diverso); senza
 # BA e' obbligatorio (NOT NULL: il 23502 arriva col campo). ⛔ `utility_id`
 # NON c'e': e' una copia del BA (CHECK «tutti e due o nessuno»), la scrive il
-# DB — un client vecchio che la manda la vede scartata.
+# DB. ⛔ Una chiave fuori whitelist e' un 400, come in modifica (2026-10-19,
+# scelta di Tid): fino ad allora la creazione la SCARTAVA in silenzio.
 CREATE_KEYS_DDT: frozenset[str] = frozenset({
     "billing_account_id", "destinatario_soggetto_ruolo_id",
     "emittente_fiscale_id",
@@ -165,6 +166,10 @@ CREATE_KEYS_DDT: frozenset[str] = frozenset({
 # BA il destinatario non toccato segue il BA nuovo; un BA tolto toglie la
 # utility e lascia il destinatario (`trgfn_ddt_normalize`). ⛔ `utility_id`
 # fuori, come in create.
+# ⛔ Una chiave fuori whitelist e' un 400, in modifica come in creazione (dal
+#    2026-10-19, scelta di Tid, come preventivo, offerta e contratto). Fino ad
+#    allora si SCARTAVA in silenzio, per tollerare un client vecchio: la
+#    risposta era ok e il valore non arrivava, senza che nessuno lo sapesse.
 UPDATE_KEYS_DDT: frozenset[str] = frozenset({
     "billing_account_id", "destinatario_soggetto_ruolo_id",
     "valuta_id", "mittente_soggetto_ruolo_id",
@@ -177,14 +182,19 @@ UPDATE_KEYS_DDT: frozenset[str] = frozenset({
     # decide il risolutore, e la casella a video e' spenta. Rimetterla qui
     # riaprirebbe la seconda risposta alla stessa domanda che tutto questo
     # cantiere e' servito a togliere.
-    # ⚠️ Una chiave fuori whitelist viene SCARTATA, non respinta: un client
-    # vecchio che la manda ancora non riceve un errore — il valore semplicemente
-    # non arriva. E' voluto, ed e' il motivo per cui BE e FE vanno insieme.
+    # ⛔ Una chiave fuori whitelist e' un 400 anche sulle RIGHE (2026-10-19,
+    #    scelta di Tid: la stessa regola della testata, come il contratto).
+    #    Fino ad allora `gestisci_riga` e `aggiorna_riga` la SCARTAVANO in
+    #    silenzio.
 CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
     "uom_operativa_id", "factor_to_base", "prezzo_unitario", "sconto_percentuale",
     "meta",
 })
+# Le chiavi AMMESSE nella creazione di una riga: le colonne qui sopra piu' la
+# mappa degli override dei prezzi dei componenti, che non e' una colonna e si
+# legge a parte (`normalize_componenti_overrides`).
+CREATE_PAYLOAD_RIGA: frozenset[str] = CREATE_KEYS_RIGA | {"componenti_overrides"}
 UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
@@ -351,7 +361,11 @@ def list_riepilogo_iva(ddt_id: int) -> list[dict[str, Any]]:
 #        senza va indicato (terzista, deposito). Vedi la NOTA cliente in testa.
 def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     repo = DdtRepository()
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_DDT}
+    # Una chiave fuori whitelist e' un 400 (vedi CREATE_KEYS_DDT).
+    _V.validate_allowed_keys(
+        payload, allowed=CREATE_KEYS_DDT, function_name=f"{_FN}.crea_ddt",
+    )
+    data = {k: empty_to_none(v) for k, v in payload.items()}
     _coerci_id_controparte(data, op="crea_ddt")
 
     stato_bozza_id = repo.get_stato_id_by_codice(_STATO_BOZZA)
@@ -414,11 +428,16 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
 # senza BA non l'avrebbe mai ricevuto (brief-db-esecutivi-ba-coppia §9.6).
 def aggiorna_ddt(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = DdtRepository()
-    # Prima la testata: fuori perimetro o inesistente e' un 404. Basta sapere
+    # Una chiave fuori whitelist e' un 400, prima di qualunque lettura (vedi
+    # UPDATE_KEYS_DDT): da qui in giu' il payload contiene solo chiavi ammesse.
+    _V.validate_allowed_keys(
+        payload, allowed=UPDATE_KEYS_DDT, function_name=f"{_FN}.aggiorna_ddt",
+    )
+    # Poi la testata: fuori perimetro o inesistente e' un 404. Basta sapere
     # che esiste: il lettore leggero, non la testata intera.
     _get_testata_or_raise(repo, ddt_id, op="aggiorna_ddt", getter=repo.get_stato_codice)
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_DDT}
+    data = {k: empty_to_none(v) for k, v in payload.items()}
     _coerci_id_controparte(data, op="aggiorna_ddt")
     _V.require_campi_da_aggiornare(
         data,
@@ -548,6 +567,11 @@ def emetti(ddt_id: int) -> dict[str, Any]:
 def gestisci_riga(
     ddt_id: int, payload: dict[str, Any], *, auth_user_id: int | None = None,
 ) -> dict[str, Any]:
+    # Una chiave fuori whitelist e' un 400, prima di qualunque lettura (vedi
+    # CREATE_KEYS_RIGA).
+    _V.validate_allowed_keys(
+        payload, allowed=CREATE_PAYLOAD_RIGA, function_name=f"{_FN}.gestisci_riga",
+    )
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="gestisci_riga")
     richiedi_righe_in_bozza(
@@ -683,6 +707,11 @@ def aggiorna_riga(
     ddt_id: int, riga_id: int, payload: dict[str, Any],
     *, auth_user_id: int | None = None,
 ) -> dict[str, Any]:
+    # Una chiave fuori whitelist e' un 400, prima di qualunque lettura (vedi
+    # CREATE_KEYS_RIGA): da qui in giu' il payload contiene solo chiavi ammesse.
+    _V.validate_allowed_keys(
+        payload, allowed=UPDATE_KEYS_RIGA, function_name=f"{_FN}.aggiorna_riga",
+    )
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="aggiorna_riga")
     richiedi_righe_in_bozza(
@@ -690,7 +719,7 @@ def aggiorna_riga(
         function_name=f"{_FN}.aggiorna_riga",
     )
     _get_riga_or_raise(repo, ddt_id, riga_id, op="aggiorna_riga")
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
+    data = {k: empty_to_none(v) for k, v in payload.items()}
     _V.require_campi_da_aggiornare(
         data,
         message="Nessun campo aggiornabile nel payload riga.",

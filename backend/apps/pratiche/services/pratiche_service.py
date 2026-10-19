@@ -128,7 +128,7 @@ def _campo_per_codice_db(code: str) -> tuple[str, ...] | None:
 # Mapping vincoli DB sospensioni -> codici errore applicativi.
 # L'EXCLUDE ex_sospensioni_no_overlap (framework dbops.automazione_overlap)
 # solleva un native 23P01 IntegrityError: lo mappiamo per nome constraint,
-# pattern speculare a ex_contratti_no_overlap -> E_VENDITE_CONTRATTO_OVERLAP.
+# pattern speculare a ex_contratti_no_overlap -> E_CONTRATTO_OVERLAP_ESISTENTE.
 _SOSPENSIONE_OVERLAP_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "ex_sospensioni_no_overlap": (
         "E_SOSPENSIONE_OVERLAP",

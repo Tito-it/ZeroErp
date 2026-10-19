@@ -412,13 +412,17 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   se la causale manda merce a un cliente, il reso ha quello del suo DDT; utility e ruolo legati al BA, un solo
   BA lungo la catena, BA/destinatario/emittente fermi dopo la bozza. DB `20261009-62…-92` e `20261010-02…-07`,
   BE/FE §12. Collaudo a video dei form di DDT e ordine da fare (Tid). Ciò che la chiusura ha trovato è D27 (sotto).
-- 📝 **Gli indirizzi del documento seguono il cliente**
-  (`work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md`, D27, 2026-10-10): su DDT, preventivo
-  e offerta il cliente si cambia in bozza ma gli indirizzi presi dall'anagrafica del cliente di prima restano,
-  e l'emissione non lo vede. Decisioni chiuse il 2026-10-10: regola e auto-assegnazione dello slot di default
-  nel DB, motivo d'emissione nuovo; il BE ritira i suoi helper. ✅ DB applicato e verde il 2026-10-11 (`20261011-43…-61`): slot di default come dato, guard d'origine sulle sei `*_indirizzi`,
-  cambio di cliente in bozza a trigger, codice `E_INDIRIZZO_DOC_NON_DEL_CLIENTE` nei gate; alla creazione il
-  default lo chiama chi crea (D-2-bis di Tid). ⏳ Tocca a BE/FE (§6, nello stesso giro: chiave i18n e policy del codice); D-4 fatta (la revisione dell'offerta copia gli indirizzi).
+- ✅ **Gli indirizzi del documento seguono il cliente: chiuso il 2026-10-19**
+  (`work-done/brief-db-indirizzi-documento-seguono-il-cliente.md`, D27): un indirizzo preso dall'anagrafica e'
+  del cliente del documento. Nel DB: slot di default come dato, guard d'origine sulle `*_indirizzi`, al cambio di
+  cliente in bozza il DB toglie gli indirizzi del cliente di prima e riempie lo slot dal nuovo, scheda di
+  fornitura che segue il cliente (offerta, contratto), emittente e utility ferme anche in bozza su preventivo,
+  offerta e contratto (lock di testata «ferma sempre»). BE/FE: helper ritirati, rifiuto delle colonne ferme sul
+  campo (`rifiuta_colonne_ferme`), chiavi ignote rifiutate sui PATCH di preventivo e DDT, il cambio di cliente
+  in modifica si salva subito con conferma (`useCambioClienteDocumento`), lookup del cliente ricostruito
+  (`ripristinaBillingAccount`). Collaudo di Tid superato (2026-10-19). Nato nel collaudo e fatto lo stesso giorno,
+  fuori dal brief: «Attiva» del contratto spento sopra un contratto vincolante sovrapposto (DB `161ac98af`, BE/FE),
+  da collaudare a video.
 - ✅ **Le righe di un DDT nato da un ordine: chiuso il 2026-10-11**
   (`work-done/brief-db-ddt-righe-evase-dall-ordine.md`, D28): la riga evasa (da ordine o da reso da
   ri-consegnare) e' ferma, la quantita' si corregge solo dal verbo `vendite.fn_ddt_riga_correggi_qta_evasa`,
