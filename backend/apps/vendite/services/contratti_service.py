@@ -52,7 +52,6 @@ from apps.vendite.services._cliente_coppia_documento import (
     risolvi_cliente_coppia,
 )
 from apps.vendite.services._annullo_con_legami import (
-    DOCUMENTO_CONTRATTO,
     STATO_ANNULLATO,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
@@ -1001,7 +1000,7 @@ class ContrattiService:
         self._get_contratto_or_raise(
             contratto_id, op="get_legami", getter=self._repo.get_stato_codice,
         )
-        return legami_del_documento(DOCUMENTO_CONTRATTO, contratto_id)
+        return legami_del_documento(SORGENTE_CONTRATTO, contratto_id)
 
     # Scopo: DRAFT -> ATTIVO. Solo la transizione di stato: la view multipart
     #        ApiContrattoEmetti incapsula questa chiamata insieme a
@@ -1124,7 +1123,7 @@ class ContrattiService:
     ) -> None:
         contratto = self._get_contratto_or_raise(contratto_id, op=function_name)
         richiedi_righe_in_bozza(
-            contratto, documento="Contratto", documento_id=contratto_id, verbo=verbo,
+            contratto, documento=SORGENTE_CONTRATTO, documento_id=contratto_id, verbo=verbo,
             function_name=f"contratti_service.{function_name}",
         )
 
@@ -1596,7 +1595,7 @@ class ContrattiService:
         # stessa policy delle righe padre (solo in bozza). Lo stato e il
         # numero sono gia' nella tupla del JOIN — nessun round-trip extra.
         richiedi_righe_in_bozza(
-            scope, documento="Contratto", documento_id=contratto_id, verbo=verbo,
+            scope, documento=SORGENTE_CONTRATTO, documento_id=contratto_id, verbo=verbo,
             function_name=function_name,
         )
 

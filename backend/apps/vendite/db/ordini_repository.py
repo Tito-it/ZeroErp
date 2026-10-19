@@ -140,7 +140,7 @@ class OrdiniRepository(
     _indirizzi_table = "vendite.ordini_indirizzi"
     _indirizzi_fk_documento = "ordine_id"
     _indirizzi_ambito = "ORDINI"
-    _indirizzi_documento = "ORDINE"
+    _indirizzi_documento = SORGENTE_ORDINE_VENDITA
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ordini_lista)

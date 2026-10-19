@@ -40,8 +40,9 @@ _DOC_COMUNE = """Situazione della merce del documento (sola lettura).
 
 Un round-trip solo, quattro sezioni piu' il contesto:
 
-* `contesto` — `"ORDINE"` o `"DDT"`: **quale delle due liste e' il saldo di
-  questo documento**. Dedurlo dal fatto che `righe_ordine` sia vuota non e' piu'
+* `contesto` — `"ORDINE_VENDITA"` o `"DDT_VENDITA"` (i codici di
+  `config.sorgenti`; fino al 2026-10-19 `"ORDINE"` o `"DDT"`): **quale delle
+  due liste e' il saldo di questo documento**. Dedurlo dal fatto che `righe_ordine` sia vuota non e' piu'
   possibile (e' popolata su entrambi i lati), e sbagliarlo significa contare sul
   DDT il saldo dell'intera riga d'ordine invece che di questa spedizione.
 * `righe_ordine` — il riassunto per riga d'ordine:

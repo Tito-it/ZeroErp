@@ -44,9 +44,14 @@ class IndirizziDocumentoRepositoryMixin:
     - ``_indirizzi_fk_documento``: colonna FK al documento (es. ``"ddt_id"``).
     - ``_indirizzi_ambito``: ambito whitelist in config.tipi_indirizzi_allowed
       (es. ``"DDT"``).
-    - ``_indirizzi_documento``: il documento per i building block DB
-      (``DDT`` | ``ORDINE`` | ``PREVENTIVO`` | ``OFFERTA`` | ``CONTRATTO``),
-      selettore di ``vendite.fn_doc_indirizzo_default``.
+    - ``_indirizzi_documento``: il documento per i building block DB, col
+      codice di ``config.sorgenti`` (costanti ``SORGENTE_*`` di
+      ``apps/config/sorgenti.py``), selettore di
+      ``vendite.fn_doc_indirizzo_default``. Dal 2026-10-19
+      (brief-db-grammatica-unica-documenti, lotto 2a) la grammatica delle
+      testate e' quella delle sorgenti: ``DDT_VENDITA``, ``ORDINE_VENDITA``,
+      ``OFFERTA_COMMERCIALE``, ``PREVENTIVO``, ``CONTRATTO``. ⚠️
+      ``_indirizzi_ambito`` e' un altro vocabolario, e resta fino al 2d.
 
     Chi e' il cliente del documento non lo sa piu' il mixin: lo legge il DB
     (``script.fn_get_cliente_testata_documento``), che tiene anche la regola

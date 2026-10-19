@@ -170,13 +170,12 @@ export const STATO_COMMESSA = Object.freeze({
 })
 
 // I codici del lettore dei legami (`vendite.fn_documento_legami`) che la
-// finestra di conferma dell'annullo distingue: il documento che si annulla,
-// la natura del legame (CONSUMO e PROVENIENZA si riaprono, ANNULLO si annulla
-// con il documento: gli oneri della commessa) e le origini con una frase
-// propria (il reso torna da accreditare).
-export const DOCUMENTO_LEGAMI = Object.freeze({
-  COMMESSA: 'COMMESSA',
-})
+// finestra di conferma dell'annullo distingue: la natura del legame (CONSUMO e
+// PROVENIENZA si riaprono, ANNULLO si annulla con il documento: gli oneri della
+// commessa) e le origini con una frase propria (il reso torna da accreditare).
+// ⛔ Il documento che si annulla NON si nomina qui: dal 2026-10-19 (lotto 2a
+// della grammatica unica) e' il codice di `config.sorgenti`, cioe'
+// `SORGENTE_CODES` di `documenti/constants` (`DOCUMENTO_LEGAMI` ritirato).
 export const NATURA_LEGAME = Object.freeze({
   CONSUMO: 'CONSUMO',
   PROVENIENZA: 'PROVENIENZA',

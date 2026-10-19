@@ -129,7 +129,7 @@ class DdtRepository(
     _indirizzi_table = "vendite.ddt_indirizzi"
     _indirizzi_fk_documento = "ddt_id"
     _indirizzi_ambito = "DDT"
-    _indirizzi_documento = "DDT"
+    _indirizzi_documento = SORGENTE_DDT_VENDITA
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ddt_lista)

@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: la sessione BE/FE** (il §11.4: il DB del 2a è applicato su dbdev, pgTAP verdi come app; finché il
-backend non passa i codici delle sorgenti, gli indirizzi dei documenti e la finestra dell'annullo con legami
-rispondono con un errore). I lotti 0 e 1 sono chiusi su DB, BE e FE.
+**Riparte: il team DB col sotto-giro 2b** (o un altro fra 2b … 2e, o il lotto 3), al via di Tid. Il 2a è
+chiuso su DB, BE e FE (§11.6): il backend passa i codici delle sorgenti, il dev è ricaricato. I lotti 0 e 1 sono
+chiusi su DB, BE e FE.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -23,12 +23,12 @@ rispondono con un errore). I lotti 0 e 1 sono chiusi su DB, BE e FE.
 | 6-quater | ✅ team DB | Piano del lotto 2: perimetro misurato, proposta di cinque sotto-giri (2026-10-19) | §10 | — |
 | 6-quinquies | ✅ **Tid** | L2-1: sì ai cinque sotto-giri, via al 2a (2026-10-19) | §10.3 | 6-quater |
 | 6-sexies-a | ✅ team DB | Lotto 2a scritto e provato in transazione: `20261019-40` … `-79` | §11 | — |
-| 6-sexies-b | sessione BE/FE | Il giro BE/FE del 2a (mixin indirizzi, annullo con legami, due risposte API) | §11.4 | 6-sexies-a |
+| 6-sexies-b | ✅ sessione BE/FE | Il giro BE/FE del 2a (mixin indirizzi, annullo con legami, due risposte API), chiamata reale su dbdev (2026-10-19) | §11.4, §11.6 | 6-sexies-a |
 | 6-sexies-c | ✅ **Tid** | Apply del 2a su dbdev e corsa dei pgTAP come app: verdi, dopo l'adeguamento di un test (2026-10-19) | §11.5 | 6-sexies-a |
 | 6-sexies | team DB + sessione BE/FE | Sotto-giri 2b … 2e (DB e backend nello stesso giro; col 2e il SQL a mano delle chiavi, G-8), e lotto 3 (anticipabile) | §10, §5 G-4 | 6-sexies-b |
 | 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6-sexies |
 
-**Decisioni aperte di Tid:** nessuna (L2-1 decisa il 2026-10-19, §10.3). Da committare: niente lato DB (il 2a è nel commit del 2026-10-19). ⚠️ Mancano ancora i rimandi del §6.1 in
+**Decisioni aperte di Tid:** nessuna (L2-1 decisa il 2026-10-19, §10.3). Da committare: niente (il giro BE/FE del 2a, §11.6 e §11.6.1, è nel commit del 2026-10-19 su `dev/backend-tid`). ⚠️ Mancano ancora i rimandi del §6.1 in
 [brief-db-indirizzi-documento-seguono-il-cliente](brief-db-indirizzi-documento-seguono-il-cliente.md) (R-BE-1) e in
 [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md): oggi rimanda qui solo
 quello degli articoli ammessi.
@@ -845,3 +845,76 @@ Il frontend: le due risposte API sopra (le chiavi di traduzione e i confronti ch
   prima/dopo non poteva vederlo. Adeguato, 13/13 come app. Ricercate di nuovo in tutti i pgTAP e nel
   backend le chiamate coi codici corti, anche su più righe: nessuna (resta, voluta, la chiamata con
   `'ORDINE'` che `test-testata-dopo-emissione-rdb-v1` usa per provare il rifiuto).
+
+### 11.6 Il giro BE/FE (sessione BE/FE, 2026-10-19)
+
+* **Indirizzi**: `_indirizzi_documento` dei cinque repository è la costante `SORGENTE_*` di
+  `apps/config/sorgenti.py` (anche per preventivo e contratto, già uguali nel valore). `_indirizzi_ambito`
+  resta fino al 2d.
+* **Annullo con legami**: le costanti `DOCUMENTO_*` di `_annullo_con_legami.py` sono **ritirate**, non
+  ridefinite: coi codici delle sorgenti sarebbero state un secondo nome dello stesso codice. I cinque service
+  passano `SORGENTE_*`; la traduzione verso il tipo del lineage (`_TIPO_LINEAGE_DEL_DOCUMENTO`) è ritirata,
+  resta quella dell'`origine` (`_TIPO_LINEAGE_DELL_ORIGINE`) fino al 2b. Il campo `documento` della risposta
+  dei legami porta ora il codice della sorgente: il frontend legge solo `COMMESSA`, invariato.
+* **IVA**: `TIPI_DOCUMENTO_AMMESSI` e i loader sono `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`; i tre
+  `*RigaForm.vue` passano `SORGENTE_CODES.*`. Presidio nuovo in `test_iva_contesto_documento` (12): i corti
+  sono un rifiuto col campo `documento_tipo`.
+* **Situazione merce**: `contesto` vale `ORDINE_VENDITA` / `DDT_VENDITA`; lato FE `CONTESTO_MERCE` legge i
+  valori da `SORGENTE_CODES`, i consumatori non cambiano.
+* `apps/config/sorgenti.py`: il commento non mette più il `p_documento` di `fn_documento_legami` fra i
+  vocabolari diversi (lo è l'`origine`, fino al 2b), e dice che la grammatica delle testate è questa.
+* Test adeguati: `test_annullo_con_legami`, `test_situazione_merce_service`, `test_ddt_service` e
+  `test_ordini_service` (le chiamate attese al BB), `test_indirizzi_seguono_cliente_db` (la sonda della firma:
+  `character varying`, non più `text`), lo spec del dialog dei legami. Doc: `api_iva_resolve.md`,
+  `api_situazione_merce.md`, voce `legami_del_documento` del catalogo BB. Gli smoke non passano codici del 2a
+  (`smoke-test-ordini-giro-commessa.sh` legge l'`origine`, del 2b).
+* Prova: 2516 test Django di `vendite` e `config`, 207 e2e di `vendite/tests/db` su dbdev (nessuno saltato),
+  mypy a cricchetto pulito, 136 test FE di `vendite` e `documenti`, lint, `npm run guards`, build. Chiamata
+  **reale** su dbdev, in transazione annullata: `fn_documento_legami` e `fn_doc_indirizzo_default` accettano i
+  cinque codici delle sorgenti, e rifiutano `DDT`, `ORDINE`, `OFFERTA`. ⚠️ ruff non è installato in locale: lo
+  vede il pre-commit. Worker gunicorn del dev ricaricati.
+* Da vedere a video (Tid): pannello indirizzi alla creazione di ordine, offerta e bolla; finestra dell'annullo
+  con legami di bolla e ordine; IVA proposta nel form di riga di preventivo, ordine e bolla; pannello situazione
+  merce dall'ordine e dalla bolla (il conto deve uscire: con un `contesto` non riconosciuto il FE conta zero).
+
+#### 11.6.1 Revisione critica dello stesso giro (2026-10-19)
+
+* 🔴 **Un punto che il §11.4 non elencava**: `richiedi_righe_in_bozza` (`_righe_bozza_guard.py`), il pre-check
+  Python di `E_RIGA_DOC_NON_BOZZA`, scrive nel `context` «le chiavi e i valori del trigger»
+  `trgfn_doc_righe_lock_fuori_bozza`. Ricavava `documento` dal maiuscolo della parola dell'etichetta
+  («Ordine» → `ORDINE`); dopo il `20261019-69` il trigger scrive `ORDINE_VENDITA`, e lo stesso rifiuto
+  arrivava al diario in due lingue. Ora il chiamante passa il codice della sorgente (`SORGENTE_*`, tipo
+  `DocumentoRighe`), che va nel contesto com'è; la parola dell'etichetta è `PAROLA_ETICHETTA`, una tabella
+  sola al posto dei 17 letterali nei chiamanti (DDT, ordini, preventivi, contratti, resi).
+* 🔴 **Divergenza già esistente, corretta nello stesso modulo**: il DB scrive «Preventivo <numero> rev. <rev>»,
+  il Python scriveva «Preventivo <numero>». Ora porta la revisione; `load_componente_with_scope` del
+  preventivo legge anche `p.rev`. L'etichetta si compone solo sul ramo del rifiuto (in bozza non serve).
+* `legami_del_documento(documento: DocumentoLegami, …)`: ritirate le `DOCUMENTO_*`, l'elenco dei documenti
+  che il lettore conosce resta come tipo. Controprova: `"DDT"`, `SORGENTE_FATTURA` e `"Ordine"` passati ai due
+  BB sono errori di mypy.
+* IVA: `TIPI_DOCUMENTO_AMMESSI` è `tuple(_LOADER)`; i tre codici erano scritti due volte (chiavi del registro e
+  whitelist). Il registro è una mappa costante di loader con import locali; ritirato `_registry()`.
+* Due fixture di test portavano ancora `documento: "DDT"` (`test_ddt_service`, `test_ddt_api`).
+* Presidi nuovi in `test_righe_bozza_guard`: documento fuori catalogo, revisione del preventivo,
+  `PAROLA_ETICHETTA` ⇔ `DocumentoRighe`, e (e2e) ogni `DocumentoRighe` accettato da
+  `script.fn_get_stato_testata_documento` sul DB vero.
+* Prova finale sullo stato committato: 2521 test di `vendite` e `config`, 220 e2e su dbdev (compresi i tre del
+  guard), mypy a cricchetto pulito; 136 test FE di `vendite` e `documenti`, lint. Worker gunicorn ricaricati.
+* ✅ **La copia dell'etichetta ha il suo presidio** (stesso giorno, ok Tid): `RigheBozzaGuardEtichettaE2ETests`
+  in `test_righe_bozza_guard` costruisce una testata per ciascun `DocumentoRighe` (ordine e preventivo dagli
+  stampi `dbops.fn_pgtap_crea_*`, DDT dal service, contratto con un INSERT come nei pgTAP, reso sopra una
+  bolla consegnata) e confronta la frase del guard con quella composta sull'`etichetta` di
+  `script.fn_get_stato_testata_documento` per la stessa riga. Un documento nel `Literal` senza stampo è
+  rosso, non saltato. Prove di mutazione: una parola cambiata («Ordine» → «Ordini», «Reso» → «Resi»), la
+  revisione cambiata, il `numero` ignorato: ciascuna rossa (il ramo col numero lo coprono ordine, preventivo
+  e contratto; DDT e reso nascono senza numero e provano il ripiego `#id`).
+* Regola del 2: la bolla consegnata dei test sul DB è lo stampo `vendite/tests/db/_ddt_consegnato.py`
+  (`crea_ddt_consegnato`, voce nel catalogo BB backend); `test_resi_create_db` lo usa e la sua copia è
+  ritirata. ⚠️ Lascia tabelle temporanee: una chiamata per transazione.
+* Nello stesso giro: la descrizione OpenAPI di `contesto` (`situazione_merce_views.py`) dice i codici delle
+  sorgenti; lato FE `DOCUMENTO_LEGAMI` è ritirato, il dialog dei legami confronta `SORGENTE_CODES.COMMESSA`
+  (aggiunto a `SORGENTE_CODES`, con la voce del catalogo BB frontend).
+* ⚠️ **Limite dichiarato**: il presidio legge la testata dalla tabella, non dai lettori del backend. Prova
+  che l'etichetta si compone come nel DB, non che ogni lettura usata dai service porti `numero` e `rev`. Una
+  lettura del preventivo senza `rev` è un `KeyError` (rumoroso); una lettura senza `numero` ripiegherebbe su
+  `#id` senza errore.

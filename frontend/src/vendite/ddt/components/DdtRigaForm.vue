@@ -37,6 +37,7 @@ import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 import { motivoDaCodiceBlocco } from '../../../core/utils/bloccoMotivo'
 import DdtCorreggiQtaEvasaDialog from './dialogs/DdtCorreggiQtaEvasaDialog.vue'
 
@@ -57,7 +58,7 @@ const {
   origineLabel: ivaOrigineLabel,
   risolviPer: risolviIvaPer,
   reset: resetIva,
-} = useIvaRisolta({ documentoTipo: 'DDT', documentoId: () => props.ddtId })
+} = useIvaRisolta({ documentoTipo: SORGENTE_CODES.DDT_VENDITA, documentoId: () => props.ddtId })
 
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 

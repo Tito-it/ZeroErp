@@ -14,10 +14,14 @@
 #
 # ⛔ SOLO il vocabolario di `config.sorgenti`. Molti altri vocabolari usano le
 #    stesse parole e NON sono questo: le partizioni delle note (`target_tipo`,
-#    dove l'ordine e' "ORDINE"), il `p_documento` di `fn_documento_legami`, i
+#    dove l'ordine e' "ORDINE"), l'`origine` di `fn_documento_legami`, i
 #    tipi di `config.tipi_entita` (`fn_offerta_documenti_vivi`), la fonte del
 #    prezzo, l'entita' dei log. Che oggi alcuni coincidano e' un caso: legarli a
 #    queste costanti li farebbe cambiare insieme il giorno in cui divergono.
+# ⭐ La grammatica delle TESTATE (il `p_documento` dei lettori di testata, dei
+#    building block degli indirizzi e di `fn_documento_legami`) e' invece
+#    QUESTO vocabolario dal 2026-10-19 (brief-db-grammatica-unica-documenti,
+#    lotto 2a): a DB `p_documento` e' `config.sorgenti.codice_interno%TYPE`.
 # ⭐ Il NOME e' `SORGENTE_<codice_interno>`, sempre: lo presidia
 #    `config/tests/test_sorgenti_seed.py`, insieme all'esistenza e all'attivita'
 #    del codice nel seed. Un codice nuovo si aggiunge qui quando un modulo lo

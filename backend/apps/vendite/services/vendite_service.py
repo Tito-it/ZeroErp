@@ -2574,7 +2574,11 @@ def get_situazione_merce(
         # significa contare, sul DDT, il saldo dell'INTERA riga d'ordine
         # (tutte le sue spedizioni) al posto di questa. Il consumatore riceve la
         # risposta, non l'indovinello.
-        "contesto": "ORDINE" if ordine_id is not None else "DDT",
+        # Il valore e' il codice di `config.sorgenti` del documento (dal
+        # 2026-10-19, brief-db-grammatica-unica-documenti lotto 2a).
+        "contesto": (
+            SORGENTE_ORDINE_VENDITA if ordine_id is not None else SORGENTE_DDT_VENDITA
+        ),
         "righe_ordine": righe_ordine,
         "partite": repository.list_partite_merce(
             ordine_id=ordine_id, ddt_id=ddt_id

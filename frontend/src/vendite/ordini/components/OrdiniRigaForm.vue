@@ -30,6 +30,7 @@ import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 import { DATE_FORMAT } from '../../../core/constants'
 import { parseIsoDate, toDateString } from '../../../core/utils/date'
 
@@ -51,7 +52,7 @@ const {
   origineLabel: ivaOrigineLabel,
   risolviPer: risolviIvaPer,
   reset: resetIva,
-} = useIvaRisolta({ documentoTipo: 'ORDINE', documentoId: () => props.ordineId })
+} = useIvaRisolta({ documentoTipo: SORGENTE_CODES.ORDINE_VENDITA, documentoId: () => props.ordineId })
 
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 

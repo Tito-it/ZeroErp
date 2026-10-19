@@ -11,8 +11,14 @@
 //        backend (`GET /documenti/context-builders/`).
 // ------------------------------------------------------------
 
-// Codici sorgente documentale registrati lato BE
-// (`apps.documenti.services.context_builders.registry`).
+// I codici di `config.sorgenti` che il frontend CONFRONTA o MANDA: le sorgenti
+// del motore documentale registrate lato BE
+// (`apps.documenti.services.context_builders.registry`) e, dal 2026-10-19
+// (grammatica unica, lotto 2a: un vocabolario solo per i tipi di documento),
+// il tipo di documento della risoluzione IVA (`documento_tipo`), il `contesto`
+// della situazione merce e il `documento` del lettore dei legami.
+// ⚠️ Non e' l'elenco dei builder registrati (COMMESSA non ne ha uno): quello si
+//    legge da `GET /documenti/context-builders/`.
 // ⭐ La chiave E' il codice (`config.sorgenti.codice_interno`), come il nome
 //    `SORGENTE_<codice>` lato BE: una chiave corta (`DDT`) e' un vocabolario
 //    in piu' (brief-db-grammatica-unica-documenti). Lo presidia constants.spec.js.
@@ -27,6 +33,9 @@ export const SORGENTE_CODES = Object.freeze({
   // Fattura: sesto dominio del motore documentale, context builder FATTURA
   // registrato lato BE. Stampa/ristampa (nessuna emissione da UI).
   FATTURA: 'FATTURA',
+  // Commessa: il documento che si annulla nella finestra dei legami
+  // (`vendite.fn_documento_legami`), dove ha una frase sua.
+  COMMESSA: 'COMMESSA',
 })
 
 // Modalita' PDF di uno stato documento, capability `pdf.mode` esposta da

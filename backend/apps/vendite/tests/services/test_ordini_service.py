@@ -212,7 +212,7 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         bb.assert_not_called()
         repo.get_stato_codice.return_value = "CONFERMATO"
         ordini_service.get_legami(7)
-        bb.assert_called_once_with("ORDINE", 7)
+        bb.assert_called_once_with("ORDINE_VENDITA", 7)
 
     @patch(_REPO)
     def test_cambia_stato_codice_inesistente(self, repo_cls) -> None:
