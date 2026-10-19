@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: la sessione BE, con R-DB-14a (§6.14), R-DB-11a (§6.15), R-DB-16a e R-DB-16b (§6.16): il lavoro DB è tutto applicato su dbdev, pgTAP verdi, e committato (2026-10-19). Poi chi chiude, con l'archiviazione (riga 11).** ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
+**Riparte: Tid, col commit del lavoro BE (R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b fatti il 2026-10-19, §6.14 … §6.16, test verdi); poi chi chiude, con l'archiviazione (riga 11).** ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
 fatta (2026-10-18, §6.10): il backend crea emittente, fornitore, cliente, veste portale, magazzino, profilo,
 legame SUPER_ADMIN, override, emittente attivo e accende la veste dalle madri del DB; restano due scritture
 che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione è chiusa.
@@ -26,17 +26,17 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 9-quinquies | Tid | ✅ apply del lotto 1, pgTAP verdi (2026-10-17) | §5-ter.2 | — |
 | 9-sexies | Tid | ✅ apply dei lotti 2 e 3 (`-11` … `-17`), pgTAP verdi (2026-10-17) | §5-ter.2 | — |
 | 9-ter | sessione BE | ✅ (2026-10-18) 2b-2: il backend passa ai BB, le sue copie si ritirano | §6.10 | — |
-| 9-ter-bis-11 | team DB, poi Tid, poi BE | ✅ R-BE-11: `20261019-16` (lettore `config.fn_profilo_super_admin_id`) e `-17` (la madre lo usa), applicati su dbdev (2026-10-18 23:59), pgTAP verdi, committati. Resta R-DB-11a (BE ritira la sua query) | §6.15 | — |
+| 9-ter-bis-11 | team DB, poi Tid, poi BE | ✅ R-BE-11: `20261019-16` (lettore `config.fn_profilo_super_admin_id`) e `-17` (la madre lo usa), applicati su dbdev (2026-10-18 23:59), pgTAP verdi, committati. ✅ R-DB-11a (2026-10-19): il BE ritira la sua query | §6.15 | — |
 | 9-ter-bis | team DB | ✅ (2026-10-19) R-BE-6, R-BE-7, R-BE-12: decisioni D-16a … D-16c di Tid col via allo sviluppo; `20261019-33` … `-39` scritti e provati sullo scratch, due pgTAP nuovi. R-BE-11 ha la sua riga (9-ter-bis-11) | §6.10, §6.16 | — |
 | 9-ter-bis-16 | Tid | ✅ apply di `20261019-33` … `-39` su dbdev (2026-10-19 00:26), pgTAP verdi compreso `test-fn-provisiona-dati-di-sviluppo-v1` corretto; committati | §6.16 | — |
-| 9-ter-bis-16-be | sessione BE | R-DB-16a (i legami di profilo dalle madri) e R-DB-16b (gli indirizzi dalle madri, ritirati la INSERT e la procedura) | §6.16 | 9-ter-bis-16 |
+| 9-ter-bis-16-be | sessione BE | ✅ (2026-10-19) R-DB-16a (i legami di profilo dalle madri) e R-DB-16b (gli indirizzi dalle madri, ritirati la INSERT e la procedura); da committare | §6.16 | — |
 | 9-ter-ter | team DB | ✅ (2026-10-18, D-1 … D-4 di Tid, `20261018-80` … `-99`, `20261019-01` … `-04`, applicati) l'indirizzo libero: R-BE-8 (lo stato proposto, `script.fn_stato_proposto_id`), R-BE-9 (il guard `trgfn_indirizzi_guard_forma_libera` col codice e il campo), R-BE-10 (la forma estera nella madre del soggetto, `fn_crea_indirizzo_soggetto(soggetto, jsonb)`); la regione alleggerita (`-82`: forma estera = località sola) | §6.11, §6.12 | — |
 | 9-ter-quater | sessione BE/FE | ✅ (2026-10-18) firma jsonb della madre del soggetto, `postal_code`, tendina degli stati, form in due forme, codici; provato sul DB vero dopo l'apply | §6.12 | — |
 | 9-ter-quinquies | Tid | ✅ apply di `20261018-80 … -99` e `20261019-01 … -04` su dbdev, pgTAP verdi (2026-10-18) | §6.12 | — |
 | 9-ter-sexies | team DB, poi Tid | ✅ R-BE-13: `fn_stato_proposto_id` non applicava l'override per utente (né per gruppo ed emittente). D-13a e D-13b di Tid; `20261019-05` (BB `fn_get_parameter_di_sessione`) e `-06` scritti e provati, applicati su dbdev (2026-10-18 22:45), pgTAP verdi; resta il commit | §6.12, §6.13 | — |
 | 9-ter-septies | team DB, poi Tid | R-BE-14: l'emittente di prova del provisioning non è attrezzato per lavorare. Tre pezzi (§6.12): ✅ **registri** in questo brief; **template di default** in [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md), D-1 … D-3 di Tid aperte; ✅ **giacenza** nello smoke (BE). Registri: ✅ (2026-10-18) D-14a … D-14d prese, via allo sviluppo dato; `20261019-07` … `-12`, codice `E_REGISTRO_COPPIA_GIA_COPERTA`, pgTAP nuovo e `test-registri-motore-trasloco` adeguato, scritti e provati sullo scratch | §6.12, §6.14 | — |
 | 9-ter-octies | Tid | ✅ apply di `20261019-07` … `-12` e dei due CSV dei codici su dbdev (2026-10-18 23:35), pgTAP verdi, compreso `test-numero-prefisso-registro-v1` corretto; resta il commit | §6.14 | — |
-| 9-ter-nonies | sessione BE | R-DB-14a: ripiego e policy del codice `E_REGISTRO_COPPIA_GIA_COPERTA` | §6.14 | — |
+| 9-ter-nonies | sessione BE | ✅ (2026-10-19) R-DB-14a: ripiego e policy del codice `E_REGISTRO_COPPIA_GIA_COPERTA`; da committare | §6.14 | — |
 | 9-quater | team DB | ✅ 2b-3 scritta e provata (2026-10-18): etichette, guard, verbo, presidio, `fn_accendi_veste` (`20261018-55` … `-64`) | §5-ter.3 | — |
 | 9-octies | Tid | ✅ (2026-10-18, pgTAP verdi) apply della 2b-3 (`20261018-55` … `-64`, i due CSV dei codici, `presidi.csv`, `presidi_testi.csv`, il loop `20260205-41`); pgTAP `dbops/test-etichette-di-prova-v1`, `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1`, chi usa `fn_pgtap_crea_operatore_umano`, i presidi trasversali | §5-ter.3 | — |
 | 9-novies | sessione BE | ✅ (2026-10-18) ricaduta della 2b-3: codici, command `provision_utenti_sviluppo`, lista Operatori (BE e FE), smoke e run-book | §6.9 | — |
@@ -48,7 +48,7 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 10-bis-env | Tid | ✅ tolta la riga `SMOKE_NOTTURNO_CONSENTITO` da `backend/.env.systemd` di backend-dev (2026-10-18) | §6.8 | — |
 | 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10, 10-quater |
 
-Decisioni aperte di Tid: nessuna (D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18, §6.14). La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
+Decisioni aperte di Tid: nessuna (D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18, §6.14). Resta un «trovato, non toccato» da instradare: l'istanza dell'indirizzo di ruolo di un altro soggetto (§6.16). ✅ `count_admin_attivi` (§6.15) ritirato il 2026-10-19, ok di Tid. ⚠️ Il lavoro BE del 2026-10-19 (R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b) è **da committare** su `dev/backend-tid`. La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
 2b-2 (§6.10) e le richieste R-BE-11, R-BE-12 sono committate su `dev/backend-tid` (`08cc15a61`, 2026-10-18,
 mergiato in `Tito-dev` con la PR #1881). ✅ La ricaduta BE/FE delle due forme dell'indirizzo libero (§6.12) è
 committata (`bd7946224`, mergiata in `Tito-dev` con la PR #1884). ✅ Committati su `dev/db-tid` (2026-10-19): R-BE-13 lato DB (§6.13), R-BE-14 (§6.14), R-BE-11 (§6.15) e R-BE-6, R-BE-7, R-BE-12 (§6.16). ✅ Il lavoro
@@ -1934,6 +1934,10 @@ allineati (ORD-134419 9 = 9; gli altri quattro con gli stessi valori di prima). 
 * niente nel verbo di sviluppo; lo smoke `push-termine-documento-commessa` torna a fatturare su `DEVA` dopo
   l'apply (la sistemazione `-11` copre gli emittenti già creati).
 
+✅ **Fatto (sessione BE, 2026-10-19):** R-DB-14a. Ripiego senza segnaposto in `error_messages_fallback.py`;
+`error_policies_generated.py` rigenerato (una voce in più, `CONFLITTO_STATO`, nessuna classe spostata; `--check`
+pulito). Il campo del contesto arriva al client dalla traduzione generica: nessuna mappa per codice. Da committare.
+
 ### 6.15 Risposta del team DB a R-BE-11: il profilo SUPER_ADMIN si risolve in una sede (2026-10-18)
 
 **La richiesta** è nel §6.10 (R-BE-11, regola del 2, ok Tid 2026-10-18): la regola «per `tipo`, fra i profili
@@ -1982,7 +1986,12 @@ sviluppo le passa il flag; i guard «ultimo super admin» e `script.fn_is_super_
   ritira la sua query (righe ~391-409): l'errore e il messaggio sono gli stessi (`E_CONFIG_MANCANTE`, «trovati
   N»). Il presidio BE c'è già: `test_operatore_altre_vesti_db` 3b.
 
-**Trovato, da decidere (non toccato):** `AmmSoftwareRepository.count_admin_attivi` conta i super admin attivi con
+✅ **Fatto (sessione BE, 2026-10-19):** R-DB-11a. `_set_super_admin_binding` chiede il profilo a
+`config.fn_profilo_super_admin_id()`, in tutti e due i rami (legare e slegare, R-DB-16a), prima di cercare la veste:
+una configurazione rotta si dice anche a chi non ha una veste operatore. L'errore ora sale dal DB come
+`DatabaseError` e lo traduce il middleware (era un `ServiceError` del backend): il test 3b lo legge così.
+
+**Trovato (chiuso il 2026-10-19: ritirato, era codice morto, §6.16 revisione critica):** `AmmSoftwareRepository.count_admin_attivi` conta i super admin attivi con
 una query sua; nel DB c'è `script.fn_check_almeno_un_super_admin_attivo`. Se dicono la stessa cosa sono due
 copie (regola del 2); va confrontato il significato, non il testo.
 
@@ -2050,6 +2059,38 @@ scritte lì. Progressivi da Tid: dal `20261019-33`.
   chiama `anagrafiche.fn_crea_indirizzi_soggetto(soggetto, indirizzi, auto_clone)` e ritira
   `_apply_auto_clone` e `_create_indirizzi_batch`. Il tipo già presente ora si **salta** (come per il ruolo),
   invece del duplicato tradotto da `create_with_dedup`.
+
+✅ **Fatto (sessione BE, 2026-10-19), da committare:**
+
+* **R-DB-16a.** `put_profilo_reparto` lega con `config.fn_lega_profilo_reparto` (ritirato l'`UPSERT`);
+  `_set_super_admin_binding` slega con `config.fn_slega_profilo_identita` sul profilo del lettore (ritirato il
+  `DELETE`, che toglieva i legami verso **ogni** profilo SUPER_ADMIN, spenti compresi). Ripetere lo slegare non è un
+  errore (la madre ritorna 0).
+* **R-DB-16b.** `SoggettiRepository.crea_indirizzo_ruolo(ruolo, indirizzo)` chiama
+  `anagrafiche.fn_crea_indirizzo_ruolo` e rilegge la riga per id **in un'istruzione a parte** (la riga scritta
+  dalla funzione non è visibile allo snapshot dell'istruzione che la chiama). La view `RuoloIndirizziView.post` non
+  risolve più tipo e via: passa da `SoggettiService.create_indirizzo_ruolo`, con gli stessi pre-check dell'indirizzo
+  di soggetto (`indirizzo_per_madre`) e il duplicato tradotto da `create_with_dedup`; il contratto della risposta
+  (la riga) è invariato. `create_soggetto` chiama `SoggettiRepository.crea_indirizzi_soggetto` →
+  `anagrafiche.fn_crea_indirizzi_soggetto(soggetto, indirizzi, auto_clone)`. Ritirati `_apply_auto_clone`,
+  `_create_indirizzi_batch`, `_resolve_indirizzo_dettaglio`, `resolve_tipo_indirizzo_id` e la dipendenza del
+  service da `LookupRepository`. Il FE non cambia: il drawer manda già la grammatica della madre.
+* **Test.** Unitari: la suite intera verde (6287). Sul DB vero (`ZEROERP_TEST_DB_E2E=1`, dbdev, transazioni
+  annullate): `test_creazioni_dalle_madri_db` 3b (singolare del ruolo: forma estera, la riga, il duplicato), 3c e
+  3d (plurale del soggetto con e senza copia, guard differito che passa), `test_operatore_altre_vesti_db` 3-bis
+  (slegare, due volte) e 3b adeguato; `test_profilo_reparto_secondo_fattore_db` passa dalla madre del reparto (tre
+  `PUT` sullo stesso reparto: l'idempotenza). `apps.anagrafiche`, `apps.amm_software`, `apps.core` e2e verdi;
+  mypy a cricchetto e ruff puliti. Worker gunicorn di dev ricaricati.
+* **Catalogo BB backend**: voci di `create_indirizzi_ruolo` e di `GeoService.crea_dettaglio_indirizzo` aggiornate.
+* **Revisione critica (2026-10-19, stessa sessione):** la plurale del soggetto e quella del ruolo passano da
+  `create_with_dedup` (una FK o un CHECK violati dentro la madre erano un 500 `E_DATABASE`; prima della madre ogni
+  indirizzo del soggetto era tradotto); `auto_clone` letto come booleano (`"false"` stringa accendeva la copia); gli
+  indirizzi della creazione validati **prima** di scrivere e senza scarti silenziosi (`indirizzi_per_madre`); la
+  rilettura dell'indirizzo di ruolo restituisce anche i campi della forma estera (colonne dalla whitelist
+  dell'update); pre-check delle singolari in `indirizzo_singolo_per_madre`; schema OpenAPI della grammatica in
+  `campi_indirizzo_madre` (cinque endpoint). ✅ Ritirato (ok di Tid) `AmmSoftwareRepository.count_admin_attivi`:
+  nessun chiamante, nemmeno nei test (codice morto), e contava i super admin «attivi» dove la regola del DB
+  (`script.fn_check_almeno_un_super_admin_attivo`) chiede «senza scadenza».
 
 **Collaudo, rosso non di questo giro (2026-10-19):** `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1` test 3
 su dbdev, «have 20|0, want 20|20». Il verbo è giusto: su dbdev le 20 radici di prova esistono dal command del

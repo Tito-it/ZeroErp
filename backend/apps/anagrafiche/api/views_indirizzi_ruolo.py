@@ -20,12 +20,11 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
 from apps.core.api.payload_validators import corpo_oggetto
 from apps.core.services.error_manager import ErrorManager
+from apps.anagrafiche.api.schema_indirizzo import campi_indirizzo_madre
 from apps.anagrafiche.db._helpers import resolve_soggetto_id
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND
-from apps.anagrafiche.services._validators import create_with_dedup
-from apps.core.services.service_errors import ServiceError
 
 _repo = SoggettiRepository()
 
@@ -169,64 +168,23 @@ class RuoloIndirizziView(DomainAPIView):
         })
 
     @extend_schema(
-        request=inline_serializer(name="RuoloIndirizzoCreateReq", fields={
-            "tipo_indirizzo_codice": serializers.CharField(help_text="Codice tipo indirizzo (es. RES, DOM)"),
-            "istanza_utility_id": serializers.IntegerField(required=False),
-            "indirizzo_dettaglio_id": serializers.IntegerField(required=False),
-            "indirizzo_libero": serializers.CharField(required=False),
-            "stato_id": serializers.IntegerField(required=False),
-            "comune_id": serializers.IntegerField(required=False),
-            "codice_postale_id": serializers.IntegerField(required=False),
-        }),
+        request=inline_serializer(name="RuoloIndirizzoCreateReq", fields=campi_indirizzo_madre(
+            istanza_utility_id=serializers.IntegerField(required=False),
+        )),
         responses={200: inline_serializer(
             name="RuoloIndirizzoCreateResp",
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Crea indirizzo associato al ruolo.
-    #        Accetta tipo_indirizzo_codice (risolto a id internamente),
-    #        modalita' normalizzata (indirizzo_dettaglio_id)
-    #        o libera (indirizzo_libero + stato_id).
-    #        Il trigger DB valida tipo_indirizzo_id contro la matrice ammessi.
+    # Scopo: Crea indirizzo associato al ruolo (anche di un'istanza): tipo per
+    #        codice, forma libera, dettaglio gia' risolto o via da risolvere.
+    #        Lo scrive la madre del DB `anagrafiche.fn_crea_indirizzo_ruolo`,
+    #        dal service (R-DB-16b, 2026-10-19).
     def post(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
-        def _handler(payload: dict) -> dict:
-            # Risolvi tipo_indirizzo_codice → tipo_indirizzo_id
-            tipo_codice = payload.get("tipo_indirizzo_codice")
-            if not tipo_codice:
-                raise ServiceError(code="E_ANAG_VALIDAZIONE", message="tipo_indirizzo_codice obbligatorio.")
-            tipo_id = _repo.resolve_tipo_indirizzo_id(tipo_codice)
-            if tipo_id is None:
-                raise ServiceError(code="E_ANAG_VALIDAZIONE", message=f"Tipo indirizzo '{tipo_codice}' non trovato.")
-
-            istanza_utility_id = payload.get("istanza_utility_id")
-            if istanza_utility_id is not None:
-                istanza_utility_id = int(istanza_utility_id)
-
-            # Risolvi indirizzo: normalizzato (stradario → dettaglio) o libero
-            indirizzo_libero = (payload.get("indirizzo_libero") or "").strip() or None
-            if indirizzo_libero:
-                # Modalita' libera
-                indirizzo_dettaglio_id = None
-            else:
-                # Modalita' normalizzata — risolvi stradario → indirizzo_dettaglio
-                svc = SoggettiService()
-                indirizzo_dettaglio_id = svc._resolve_indirizzo_dettaglio(payload)
-
-            result = create_with_dedup(
-                lambda: _repo.crea_indirizzo_ruolo(
-                    soggetto_ruolo_id,
-                    tipo_indirizzo_id=tipo_id,
-                    istanza_utility_id=istanza_utility_id,
-                    indirizzo_dettaglio_id=indirizzo_dettaglio_id,
-                    indirizzo_libero=indirizzo_libero,
-                    stato_id=payload.get("stato_id"),
-                    comune_id=payload.get("comune_id"),
-                    codice_postale_id=payload.get("codice_postale_id"),
-                ),
-                "Indirizzo con questo tipo gia' presente per il ruolo/istanza.",
-            )
-            return result
-        return handle_post_json(request, handler=_handler)
+        return handle_post_json(
+            request,
+            handler=lambda payload: SoggettiService().create_indirizzo_ruolo(soggetto_ruolo_id, payload),
+        )
 
 
 # =================================================================

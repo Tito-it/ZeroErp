@@ -25,7 +25,6 @@ from apps.anagrafiche.db.soggetti_repository import (
     SoggettiRepository,
 )
 from apps.anagrafiche.db.titoli_iva_repository import TitoliIvaRepository
-from apps.core.db.lookup_repository import LookupRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
     E_ANAG_VALIDAZIONE,
@@ -39,7 +38,7 @@ from apps.anagrafiche.services._validators import (
     update_with_dedup,
 )
 from apps.anagrafiche.services.cf_validator_it import genera_cf_it, valida_cf_congruenza_it
-from apps.anagrafiche.services.geo_service import GeoService, richiedi_via
+from apps.anagrafiche.services.geo_service import richiedi_via
 from apps.anagrafiche.services.contatti_service import (
     crea_contatto_validato,
     richiedi_contatto_valido,
@@ -122,6 +121,17 @@ def indirizzo_per_madre(ind: Any) -> dict[str, Any]:
     return pulito
 
 
+# Scopo: UN indirizzo per le madri singolari (`fn_crea_indirizzo_soggetto`,
+#        `fn_crea_indirizzo_ruolo`): il codice del tipo e' obbligatorio (il form
+#        manda sempre quello) e poi `indirizzo_per_madre`. Sede unica del
+#        pre-check delle due singolari (regola del 2, 2026-10-19).
+def indirizzo_singolo_per_madre(payload: Any) -> dict[str, Any]:
+    # Il tipo prima della via: e' il campo che dice che cosa si sta scrivendo.
+    if isinstance(payload, dict):
+        require_str(payload, "tipo_indirizzo_codice", "Codice tipo indirizzo obbligatorio.")
+    return indirizzo_per_madre(payload)
+
+
 # Scopo: Gli indirizzi di un ruolo per la madre: `indirizzo_per_madre` per
 #        elemento. `None` o un elenco vuoto: nessun indirizzo; un elenco che
 #        non e' una lista e' un 400 (era un TypeError, cioe' un 500).
@@ -143,7 +153,6 @@ class SoggettiService:
         self._ind = IndirizziRepository()
         self._conti = ContiBancariRepository()
         self._titoli_iva = TitoliIvaRepository()
-        self._lookup = LookupRepository()
 
     # =================================================================
     # Lista e dettaglio
@@ -224,7 +233,10 @@ class SoggettiService:
 
     # Scopo: Crea soggetto completo (PF o PG) con contatto e indirizzi.
     #        Determina il path (PF/PG) dal tipo_soggetto_dettaglio_id.
-    #        Se auto_clone=True, clona il primo indirizzo per i tipi obbligatori mancanti.
+    #        Gli indirizzi li scrive la madre plurale del DB
+    #        `anagrafiche.fn_crea_indirizzi_soggetto`: con auto_clone (vero di
+    #        default) i tipi obbligatori del tipo di soggetto che mancano
+    #        ricevono una copia del primo; un tipo gia' presente si salta.
     #        Tutto in una transazione: i trigger DEFERRED verificano al COMMIT.
     #        Risultato: UUID del soggetto creato.
     def create_soggetto(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -240,16 +252,25 @@ class SoggettiService:
                              message="Tipo soggetto non valido.")
         assert natura is not None
 
+        # I pre-check degli indirizzi PRIMA di scrivere, come in `assign_ruolo`.
+        indirizzi = self._collect_indirizzi(payload)
+        # ⚠️ Assente = vero; un valore non booleano e' un 400 (prima
+        #    `bool(...)`: la stringa "false" accendeva la copia).
+        copia_obbligatori = _V.optional_bool(payload, "auto_clone") is not False
+
         with transaction.atomic():
             if natura == "PF":
                 soggetto_id = self._create_pf(payload, tipo_id)
             else:
                 soggetto_id = self._create_pg(payload, tipo_id)
 
-            indirizzi = self._collect_indirizzi(payload)
-            if payload.get("auto_clone", True) and indirizzi:
-                self._apply_auto_clone(indirizzi, tipo_id)
-            self._create_indirizzi_batch(soggetto_id, indirizzi)
+            if indirizzi:
+                create_with_dedup(
+                    lambda: self._repo.crea_indirizzi_soggetto(
+                        soggetto_id, indirizzi, copia_obbligatori=copia_obbligatori,
+                    ),
+                    "Indirizzo duplicato per questo soggetto.",
+                )
 
         return {"id": soggetto_id}
 
@@ -902,41 +923,17 @@ class SoggettiService:
                 "note": optional_str(contatto, "note"),
             })
 
-    # Scopo: Raccoglie indirizzi dal payload (supporta sia "indirizzi" array che "indirizzo" singolo).
+    # Scopo: Raccoglie indirizzi dal payload ("indirizzi" array e/o "indirizzo"
+    #        singolo) nella forma delle madri, coi pre-check di
+    #        `indirizzi_per_madre`.
+    # ⛔ Fino al 2026-10-19 un elenco che non era una lista e gli elementi che
+    #    non erano oggetti si SCARTAVANO in silenzio: il soggetto nasceva senza
+    #    gli indirizzi chiesti e la risposta era ok. Ora sono un 400.
     def _collect_indirizzi(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
-        raw = payload.get("indirizzi")
-        indirizzi = list(raw) if isinstance(raw, list) else []
-        indirizzo_singolo = payload.get("indirizzo")
-        if indirizzo_singolo and isinstance(indirizzo_singolo, dict):
-            indirizzi.append(indirizzo_singolo)
-        return [ind for ind in indirizzi if isinstance(ind, dict)]
-
-    # Scopo: Auto-clona il primo indirizzo per i tipi obbligatori mancanti.
-    #        Policy di dominio: se l'utente compila solo un indirizzo,
-    #        gli obbligatori non compilati ricevono una copia.
-    def _apply_auto_clone(self, indirizzi: list[dict[str, Any]], tipo_id: int) -> None:
-        matrice = self._lookup.list_matrice_indirizzi(tipo_id)
-        tipi_presenti = {ind.get("tipo_indirizzo_codice") for ind in indirizzi}
-        primo = indirizzi[0]
-        for m in matrice:
-            if m["obbligatorio"] and m["codice"] not in tipi_presenti:
-                indirizzi.append({**primo, "tipo_indirizzo_codice": m["codice"]})
-
-    # Scopo: Crea gli indirizzi del soggetto, uno per elemento: ognuno risolve
-    #        il SUO dettaglio. Un clone porta lo stesso payload del primo, e la
-    #        madre `fn_create_indirizzo` (get_or_create) gli ritrova lo stesso
-    #        dettaglio da se'.
-    # ⛔ Fino al 2026-10-18 il primo dettaglio risolto si riusava per OGNI
-    #    indirizzo successivo senza dettaglio, non solo per i cloni: due vie
-    #    diverse finivano sullo stesso dettaglio (lo stesso difetto ritirato con
-    #    la saga degli indirizzi di ruolo, 2b-2).
-    # ⚠️ Auto-clone e batch restano una saga del backend finche' il DB non ha la
-    #    madre plurale degli indirizzi di SOGGETTO, gemella di
-    #    `fn_crea_indirizzi_ruolo` (R-BE-12 di
-    #    brief-db-processi-accensione-per-ambiente §6.10).
-    def _create_indirizzi_batch(self, soggetto_id: str, indirizzi: list[dict[str, Any]]) -> None:
-        for ind in indirizzi:
-            self._create_indirizzo(soggetto_id, ind)
+        indirizzi = indirizzi_per_madre(payload.get("indirizzi"))
+        if payload.get("indirizzo") is not None:
+            indirizzi.append(indirizzo_per_madre(payload["indirizzo"]))
+        return indirizzi
 
     # Scopo: Crea UN indirizzo del soggetto con la madre del DB
     #        `anagrafiche.fn_crea_indirizzo_soggetto(soggetto, indirizzo jsonb)`:
@@ -949,8 +946,7 @@ class SoggettiService:
     #    risolveva da se' la via. Ora un oggetto, la stessa grammatica della
     #    gemella del ruolo.
     def _create_indirizzo(self, soggetto_id: str, payload: dict[str, Any]) -> int:
-        require_str(payload, "tipo_indirizzo_codice", "Codice tipo indirizzo obbligatorio.")
-        indirizzo = indirizzo_per_madre(payload)
+        indirizzo = indirizzo_singolo_per_madre(payload)
         return create_with_dedup(
             lambda: self._repo.crea_indirizzo_soggetto(soggetto_id, indirizzo),
             "Indirizzo duplicato per questo soggetto.",
@@ -976,17 +972,30 @@ class SoggettiService:
         indirizzi = indirizzi_per_madre(indirizzi_data)
         if not indirizzi:
             return 0
-        return self._repo.crea_indirizzi_ruolo(soggetto_ruolo_id, indirizzi)
+        # Una FK o un CHECK violati dentro la madre sono un 400, come per le
+        # singolari: senza traduzione uscivano `E_DATABASE` (500).
+        return create_with_dedup(
+            lambda: self._repo.crea_indirizzi_ruolo(soggetto_ruolo_id, indirizzi),
+            "Indirizzo con questo tipo gia' presente per il ruolo/istanza.",
+        )
 
-    # Scopo: Il dettaglio di un indirizzo normalizzato: quello del payload, o
-    #        la via risolta dalla madre atomica (`GeoService`, pre-check
-    #        compreso). Per gli indirizzi di SOGGETTO e per quello singolo di
-    #        ruolo (`RuoloIndirizziView.post`).
-    def _resolve_indirizzo_dettaglio(self, payload: dict[str, Any]) -> int:
-        det_id = optional_int(payload, "indirizzo_dettaglio_id")
-        if det_id is not None:
-            return det_id
-        return GeoService().crea_dettaglio_indirizzo(payload)
+    # Scopo: Crea UN indirizzo di un ruolo, anche di un'istanza
+    #        (`istanza_utility_id`), con la madre del DB
+    #        `anagrafiche.fn_crea_indirizzo_ruolo`: la stessa grammatica e gli
+    #        stessi pre-check dell'indirizzo di soggetto
+    #        (`indirizzo_singolo_per_madre`).
+    #        Un tipo gia' presente sul ruolo (o sull'istanza) lo rifiuta il
+    #        vincolo. Ritorna la riga scritta.
+    # ⭐ Dal 2026-10-19 (R-DB-16b): fino ad allora la view risolveva tipo e via
+    #    e il repository scriveva la riga con una INSERT sua.
+    def create_indirizzo_ruolo(
+        self, soggetto_ruolo_id: int, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        indirizzo = indirizzo_singolo_per_madre(payload)
+        return create_with_dedup(
+            lambda: self._repo.crea_indirizzo_ruolo(soggetto_ruolo_id, indirizzo),
+            "Indirizzo con questo tipo gia' presente per il ruolo/istanza.",
+        )
 
     # Scopo: Validazione congruenza CF italiano con dati anagrafici (data, sesso, comune).
     #        Non blocca se i dati opzionali non sono forniti — valida solo quelli presenti.

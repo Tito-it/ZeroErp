@@ -116,7 +116,8 @@ export function useIndirizzoSoggettoForm() {
   }
 
   // Scopo: Converte snapshot salvati in array payload.
-  // Auto-clone NON avviene qui — e' gestito dal backend (_apply_auto_clone).
+  // Auto-clone NON avviene qui — lo fa la madre del DB
+  // `anagrafiche.fn_crea_indirizzi_soggetto` (flag `auto_clone` del payload).
   function toPayloadArray() {
     multiTipo.salvaSnapshot()
     const salvati = { ...multiTipo.indirizziSalvati.value }

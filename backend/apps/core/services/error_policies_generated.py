@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1107, di cui 120 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1108, di cui 120 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1346,6 +1346,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RECONCILE_AMBIGUO": "CONFLITTO_STATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_REFRESH_LOCK_TIMEOUT": "CONFLITTO_STATO",
+    # Guard vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica e vendite.trgfn_registri_fatturazione_guard_coppia_unica (2026-10-18): una coppia (tipo documento fiscale, natura) ha gia' un registro delle fatture per lo stesso emittente e la stessa utility, e fn_lookup_registro_id non saprebbe sceglierne uno. Contesto: campo registro_id (collegamento) o utility_id / emittente_soggetto_ruolo_id (registro), registro_occupante_id; VARIADIC natura, tipo documento, codice del registro che copre gia' la coppia. R-BE-14, D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.
+    "E_REGISTRO_COPPIA_GIA_COPERTA": "CONFLITTO_STATO",
     # vendite.trgfn_registri_fatturazione_guard_forma_numero: la forma del numero di un sezionale (prefisso, suffisso, lunghezza_numero) non si cambia dopo che il registro ha consegnato il primo numero. Il contatore NON riparte quando cambia la forma: prosegue, quindi sullo stesso sezionale convivrebbero due forme con numeri consecutivi e nessun vincolo se ne accorge, perche' la coppia (forma, numero) non e' vincolata da nessuna parte. E' la stessa specie di difetto riparato dal cantiere del prefisso (2026-08-31, difetto A) presa dal verso opposto: la' la forma restava identica mentre il contatore ripartiva da 1. Il predicato e' 'esiste un progressivo con last_numero > 0', cioe' 'ha gia' consegnato un numero': piu' stretto di quello della disattivazione, che guarda attivo a prescindere dal contatore. serie_default resta FUORI dal divieto, e per due ragioni: entra nella chiave del contatore (cambiarla apre una serie nuova che distingue i documenti, ed e' il modo legittimo di farlo) e il mirror CSV registri_fatturazione.csv la riscrive a ogni migrate. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 8.
     "E_REGISTRO_FORMA_NUMERO_IMMUTABILE": "CONFLITTO_STATO",
     # vendite.trgfn_registri_fatturazione_guard_serie_ammessa: un registro non puo' avere un serie_default se la sua famiglia non dichiara una colonna serie sul documento (vendite.famiglie_documento.colonna_serie IS NULL). La serie entra nella chiave del contatore, quindi cambiarla apre un secchio nuovo che riparte da 1: se il documento non registra la serie e non ce l'ha nel proprio vincolo di unicita' (resi, commesse), quel numero collide con uno gia' emesso e il documento non si numera piu'. Classe DATO_ERRATO e non CONFLITTO_STATO: il valore in conflitto lo ha scelto l'operatore in un form, e c'e' un campo da correggere - serie_default. Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 5.
