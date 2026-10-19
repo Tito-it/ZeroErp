@@ -26,8 +26,10 @@
 --       OFFERTA_COMMERCIALE; quelli del contratto CONTRATTO
 -- 10) nessun montaggio del guard passa piu' OFFERTA
 -- 11) il contesto dell'articolo per un'offerta non porta piu' doc_listino
--- 12) …e la sua etichetta viene ancora dalla grammatica delle testate
---       (ponte residuo, lotto 2): «Offerta #<id>» per un'offerta che non c'e'
+-- 12) …e la sua etichetta, per un'offerta che non c'e', e' il codice in
+--       chiaro: «Offerta Commerciale #<id>» (rev 2026-10-19, lotto 2a: il ponte
+--       A-8 non c'e' piu', fn_get_stato_testata_documento parla il codice della
+--       sorgente)
 --
 -- ⭐ Non serve un'offerta vera: i rami si distinguono dal codice. Il
 --   comportamento sulle offerte vere lo provano i pgTAP della famiglia
@@ -134,8 +136,8 @@ SELECT ok(
     '11) il contesto di un''offerta non porta doc_listino');
 SELECT is(
     script.fn_articolo_riga_contesto('OFFERTA_COMMERCIALE', -1, 'AGGIUNTA') ->> 'etichetta',
-    'Offerta #-1',
-    '12) l''etichetta viene dalla grammatica delle testate (ponte residuo, lotto 2)');
+    'Offerta Commerciale #-1',
+    '12) l''etichetta di ripiego e'' il codice in chiaro (niente ponte, lotto 2a)');
 
 SELECT * FROM finish();
 ROLLBACK;

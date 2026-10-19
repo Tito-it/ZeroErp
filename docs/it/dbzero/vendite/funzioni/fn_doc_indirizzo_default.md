@@ -1,16 +1,17 @@
 # ⚙️ Funzione `fn_doc_indirizzo_default`
 
 ```sql
-CREATE FUNCTION fn_doc_indirizzo_default(p_documento text, p_testata_id bigint)
+CREATE FUNCTION fn_doc_indirizzo_default(p_documento character varying, p_testata_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_doc_indirizzo_default(p_documento text, p_testata_id bigint)
+CREATE OR REPLACE FUNCTION vendite.fn_doc_indirizzo_default(p_documento character varying, p_testata_id bigint)
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
+
 -- ⚠️ Tipi nudi DICHIARATI: p_documento e' un selettore senza colonna
 --   di vocabolario; p_testata_id e' POLIMORFO (l'id di cinque testate);
 --   il boolean di ritorno e' un esito, non il riflesso di una colonna.
@@ -116,8 +117,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION vendite.fn_doc_indirizzo_default(p_documento text, p_testata_id bigint)
-IS 'Riempie lo slot di default di un documento (DDT | ORDINE | PREVENTIVO | OFFERTA | CONTRATTO; FATTURA non ha slot di default) dall''anagrafica del suo cliente, SOLO se lo slot e'' vuoto: la cascata dalla sorgente e la scelta dell''operatore vincono sempre. Lo slot e il ripiego sono dati: config.tipi_indirizzi_allowed.slot_default e ripiego_tipo_indirizzo_id. Risoluzione con script.fn_resolve_indirizzo_documento (RUOLO con precedenza all''istanza, poi SOGGETTO), prima sul tipo dello slot e poi sul ripiego; cliente da script.fn_get_cliente_testata_documento. Torna true se ha scritto. Nessun errore se non c''e'' niente da scrivere: un default mancante non e'' un errore, l''obbligo lo dice l''emissione. INVOKER: scrive sotto la RLS di chi chiama. Chi la chiama (decisione di Tid del 2026-10-11): alla creazione chi crea — il backend dopo le sue INSERT e dopo i verbi con cascata, vendite.fn_create_contratto dentro di se'' —, al cambio di cliente in bozza vendite.trgfn_doc_indirizzi_seguono_cliente. Sostituisce l''helper Python auto_assegna_indirizzo_default. ⚠️ Rispetto al Python lo slot si riempie dal suo tipo e dal suo ripiego, non dalla catena fissa CON -> FATT: identico su tutti gli ambiti di oggi (slot CON, ripiego FATT). Brief: brief-db-indirizzi-documento-seguono-il-cliente (D-2, §7.2).';
+COMMENT ON FUNCTION vendite.fn_doc_indirizzo_default(p_documento character varying, p_testata_id bigint)
+IS 'Riempie lo slot di default di un documento (DDT | ORDINE | PREVENTIVO | OFFERTA | CONTRATTO; FATTURA non ha slot di default) dall''anagrafica del suo cliente, SOLO se lo slot e'' vuoto: la cascata dalla sorgente e la scelta dell''operatore vincono sempre. Lo slot e il ripiego sono dati: config.tipi_indirizzi_allowed.slot_default e ripiego_tipo_indirizzo_id. Risoluzione con script.fn_resolve_indirizzo_documento (RUOLO con precedenza all''istanza, poi SOGGETTO), prima sul tipo dello slot e poi sul ripiego; cliente da script.fn_get_cliente_testata_documento. Torna true se ha scritto. Nessun errore se non c''e'' niente da scrivere: un default mancante non e'' un errore, l''obbligo lo dice l''emissione. INVOKER: scrive sotto la RLS di chi chiama. Chi la chiama (decisione di Tid del 2026-10-11): alla creazione chi crea — il backend dopo le sue INSERT e dopo i verbi con cascata, vendite.fn_create_contratto dentro di se'' —, al cambio di cliente in bozza vendite.trgfn_doc_indirizzi_seguono_cliente. Sostituisce l''helper Python auto_assegna_indirizzo_default. ⚠️ Rispetto al Python lo slot si riempie dal suo tipo e dal suo ripiego, non dalla catena fissa CON -> FATT: identico su tutti gli ambiti di oggi (slot CON, ripiego FATT). Brief: brief-db-indirizzi-documento-seguono-il-cliente (D-2, §7.2). ⭐ rev 2026-10-19 (20261019-47, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
 ```
 
 ---

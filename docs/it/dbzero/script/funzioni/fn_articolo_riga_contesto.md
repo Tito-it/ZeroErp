@@ -14,12 +14,9 @@ CREATE OR REPLACE FUNCTION script.fn_articolo_riga_contesto(p_documento text, p_
  STABLE
 AS $function$
 
+
 DECLARE
     v_contesto     jsonb;
-    -- ⚠️ v_doc_testata nudo: la grammatica delle testate (OFFERTA |
-    --   CONTRATTO) di script.fn_get_stato_testata_documento. E' quel che
-    --   resta del ponte A-8: lo ritira il lotto 2 della grammatica unica.
-    v_doc_testata  text;
     v_listino_id   vendite.listini.id%TYPE;
     v_versione_id  vendite.listini_versioni.id%TYPE;
     v_etichetta    text;
@@ -105,17 +102,13 @@ BEGIN
     -- Offerta e contratto: il listino operativo e la sua versione
     -- ESPANSA, una volta.
     IF p_documento IN ('OFFERTA_COMMERCIALE', 'CONTRATTO') THEN
-        v_doc_testata := CASE p_documento
-                             WHEN 'OFFERTA_COMMERCIALE' THEN 'OFFERTA'
-                             ELSE 'CONTRATTO' END;
-
         SELECT lo.listino_id, lo.listino_versione_id
           INTO v_listino_id, v_versione_id
           FROM vendite.fn_documento_listino_operativo(p_documento, p_documento_id) lo;
 
         SELECT t.etichetta INTO v_etichetta
-          FROM script.fn_get_stato_testata_documento(v_doc_testata, p_documento_id) t;
-        v_etichetta := COALESCE(v_etichetta, initcap(v_doc_testata) || ' #' || p_documento_id::text);
+          FROM script.fn_get_stato_testata_documento(p_documento, p_documento_id) t;
+        v_etichetta := COALESCE(v_etichetta, initcap(replace(lower(p_documento), '_', ' ')) || ' #' || p_documento_id::text);
 
         -- «Nel listino» = una riga della versione espansa: standalone
         -- E bundle (il bundle sta nel listino coi suoi componenti, non
@@ -137,7 +130,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_articolo_riga_contesto(p_documento text, p_documento_id bigint, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_articolo_padre_id uuid)
-IS 'Il lato DOCUMENTO di script.fn_check_articolo_riga, letto una volta: valida i parametri (p_documento fra PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO | LISTINO_VERSIONE | ARTICOLO | PROMO_ARTICOLO, altrimenti E_DOC_TIPO_NON_GESTITO; p_tipo_eccezione obbligatorio per offerta e contratto e p_articolo_padre_id per ARTICOLO, altrimenti E_PARAMETRO_INVALIDO) e restituisce il contesto jsonb che riceve script.fn_check_articolo_riga_su_contesto. Sempre: documento, documento_id, tipo_eccezione, articolo_padre_id. LISTINO_VERSIONE: listino_tipologia_id. ARTICOLO (la distinta): padre_codice, padre_iva_id, padre_aliquota. OFFERTA_COMMERCIALE e CONTRATTO: listino_id, listino_versione_id, etichetta, articoli_listino (gli articolo_id di vendite.fn_espandi_listino_versione, standalone e bundle; [] senza versione). documento_id non e'' obbligatorio: preventivo, ordine, bolla e promo non leggono il documento (l''obbligo di A-1 e'' del picker catalogo.fn_articoli_ammessi). Nasce per R-5: il picker valuta molti articoli sullo stesso documento, e rileggere il listino espanso per ognuno costava piu'' del giudizio. Sotto RLS (SECURITY INVOKER): un documento che l''operatore non vede da'' un contesto senza listino. Nasce il 2026-10-14, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-31, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Il ponte A-8 si restringe: il listino operativo riceve il codice com''e'' (OFFERTA_COMMERCIALE), e la chiave doc_listino esce dal contesto (era una copia di documento). Traduce ancora, in un punto solo, verso script.fn_get_stato_testata_documento (l''etichetta): grammatica delle testate, lotto 2.';
+IS 'Il lato DOCUMENTO di script.fn_check_articolo_riga, letto una volta: valida i parametri (p_documento fra PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO | LISTINO_VERSIONE | ARTICOLO | PROMO_ARTICOLO, altrimenti E_DOC_TIPO_NON_GESTITO; p_tipo_eccezione obbligatorio per offerta e contratto e p_articolo_padre_id per ARTICOLO, altrimenti E_PARAMETRO_INVALIDO) e restituisce il contesto jsonb che riceve script.fn_check_articolo_riga_su_contesto. Sempre: documento, documento_id, tipo_eccezione, articolo_padre_id. LISTINO_VERSIONE: listino_tipologia_id. ARTICOLO (la distinta): padre_codice, padre_iva_id, padre_aliquota. OFFERTA_COMMERCIALE e CONTRATTO: listino_id, listino_versione_id, etichetta, articoli_listino (gli articolo_id di vendite.fn_espandi_listino_versione, standalone e bundle; [] senza versione). documento_id non e'' obbligatorio: preventivo, ordine, bolla e promo non leggono il documento (l''obbligo di A-1 e'' del picker catalogo.fn_articoli_ammessi). Nasce per R-5: il picker valuta molti articoli sullo stesso documento, e rileggere il listino espanso per ognuno costava piu'' del giudizio. Sotto RLS (SECURITY INVOKER): un documento che l''operatore non vede da'' un contesto senza listino. Nasce il 2026-10-14, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-31, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Il ponte A-8 si restringe: il listino operativo riceve il codice com''e'' (OFFERTA_COMMERCIALE), e la chiave doc_listino esce dal contesto (era una copia di documento). Traduce ancora, in un punto solo, verso script.fn_get_stato_testata_documento (l''etichetta): grammatica delle testate, lotto 2. ⭐ rev 2026-10-19 (20261019-53, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. Il ponte A-8 non c''e'' piu'': nessuna traduzione fra il vocabolario delle entita'' e quello delle testate.';
 ```
 
 ---

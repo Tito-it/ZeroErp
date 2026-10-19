@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_doc_guard_annullo_con_legami()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+
 -- =========================================================
 -- Scopo: l'AVVISO. Entrare in uno stato abortito con legami
 --   e' rifiutato con E_DOC_ANNULLO_CON_LEGAMI; l'annullo vero
@@ -41,7 +42,7 @@ BEGIN
     v_vocabolario := TG_ARGV[2];
 
     IF TG_OP <> 'UPDATE' OR TG_NARGS <> 3
-       OR v_documento NOT IN ('DDT', 'ORDINE', 'PREVENTIVO', 'CONTRATTO', 'COMMESSA')
+       OR v_documento NOT IN ('DDT_VENDITA', 'ORDINE_VENDITA', 'PREVENTIVO', 'CONTRATTO', 'COMMESSA')
        OR NOT (to_jsonb(NEW) ? v_col_stato) THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', TG_NAME::text, 'E_VENDITE_CHIAMATA_NON_VALIDA',
@@ -50,7 +51,7 @@ BEGIN
                                'evento',  TG_OP,
                                'tg_argv', TG_ARGV),
             NULL::uuid, 'vendite.trgfn_doc_guard_annullo_con_legami',
-            'montaggio: BEFORE UPDATE, [0] documento (DDT, ORDINE, PREVENTIVO, CONTRATTO, COMMESSA), [1] colonna di stato, [2] vocabolario');
+            'montaggio: BEFORE UPDATE, [0] documento (DDT_VENDITA, ORDINE_VENDITA, PREVENTIVO, CONTRATTO, COMMESSA), [1] colonna di stato, [2] vocabolario');
     END IF;
 
     v_stato_new := (to_jsonb(NEW) ->> v_col_stato)::bigint;
@@ -110,7 +111,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_doc_guard_annullo_con_legami()
-IS 'BB (2026-10-11, brief-db-annullo-documento-con-legami D-1/D-4/D-5): l''AVVISO. Entrare in uno stato abortito (is_abortito dal vocabolario) con legami (vendite.fn_documento_legami) e'' rifiutato con E_DOC_ANNULLO_CON_LEGAMI (valori: etichetta del documento, numero di legami; contesto documento, id, legami, consumi), su ogni strada che cambia lo stato. L''annullo vero passa dal verbo del documento (vendite.fn_annulla_ddt, fn_annulla_ordine, fn_annulla_preventivo, fn_annulla_contratto), che fa confermare, ritira i CONSUMI e apre la porta. Un consumo ancora presente rifiuta sempre; la sola PROVENIENZA (l''offerta di contratto e ordine, che non si ritira) passa con la porta del ritiro aperta per la testata (vendite.fn_doc_porta_ritiro_ammette), cioe'' dopo la conferma. Fascia _m10_: dopo i guard _a10_ (matrice, righe di commessa EMESSA, figli vivi), perche'' prima parla cio'' che vieta e poi cio'' che chiede conferma. Montaggio: BEFORE UPDATE, [0] documento (DDT, ORDINE, PREVENTIVO, CONTRATTO), [1] colonna di stato, [2] vocabolario; sbagliato: E_VENDITE_CHIAMATA_NON_VALIDA. Generalizza la Regola 4 di vendite.trgfn_ddt_guard_transizione e prende il posto del ritiro automatico dalla commessa (vendite.trgfn_doc_ritira_commessa_attivita). ⭐ rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, D-2 di Tid): + COMMESSA (montato su vendite.commesse, 20261012-21; verbo vendite.fn_annulla_commessa). Il conteggio di cio'' che va ritirato prima dell''annullo e'' ogni legame che non e'' PROVENIENZA: CONSUMO e, sulla commessa, ANNULLO (l''onere, che non riapre niente ma si annulla con lei). Per i quattro documenti di prima e'' lo stesso numero. Sulla commessa, a valle della matrice e di script.fn_check_commessa_annullabile (trgfn_commesse_guard_transizione, _a10_): prima parlano le righe EMESSA, poi la conferma.';
+IS 'BB (2026-10-11, brief-db-annullo-documento-con-legami D-1/D-4/D-5): l''AVVISO. Entrare in uno stato abortito (is_abortito dal vocabolario) con legami (vendite.fn_documento_legami) e'' rifiutato con E_DOC_ANNULLO_CON_LEGAMI (valori: etichetta del documento, numero di legami; contesto documento, id, legami, consumi), su ogni strada che cambia lo stato. L''annullo vero passa dal verbo del documento (vendite.fn_annulla_ddt, fn_annulla_ordine, fn_annulla_preventivo, fn_annulla_contratto), che fa confermare, ritira i CONSUMI e apre la porta. Un consumo ancora presente rifiuta sempre; la sola PROVENIENZA (l''offerta di contratto e ordine, che non si ritira) passa con la porta del ritiro aperta per la testata (vendite.fn_doc_porta_ritiro_ammette), cioe'' dopo la conferma. Fascia _m10_: dopo i guard _a10_ (matrice, righe di commessa EMESSA, figli vivi), perche'' prima parla cio'' che vieta e poi cio'' che chiede conferma. Montaggio: BEFORE UPDATE, [0] documento (DDT, ORDINE, PREVENTIVO, CONTRATTO), [1] colonna di stato, [2] vocabolario; sbagliato: E_VENDITE_CHIAMATA_NON_VALIDA. Generalizza la Regola 4 di vendite.trgfn_ddt_guard_transizione e prende il posto del ritiro automatico dalla commessa (vendite.trgfn_doc_ritira_commessa_attivita). ⭐ rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, D-2 di Tid): + COMMESSA (montato su vendite.commesse, 20261012-21; verbo vendite.fn_annulla_commessa). Il conteggio di cio'' che va ritirato prima dell''annullo e'' ogni legame che non e'' PROVENIENZA: CONSUMO e, sulla commessa, ANNULLO (l''onere, che non riapre niente ma si annulla con lei). Per i quattro documenti di prima e'' lo stesso numero. Sulla commessa, a valle della matrice e di script.fn_check_commessa_annullabile (trgfn_commesse_guard_transizione, _a10_): prima parlano le righe EMESSA, poi la conferma. ⭐ rev 2026-10-19 (20261019-68, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
 ```
 
 ---

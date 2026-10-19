@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 -- Test: fn_list_ddt_da_pushare — eleggibilita' DALLO stato-trigger IN POI,
 --       senza aprire il DDT annullato — step 5,
 --       brief-db-fatturazione-ddt-resi §3e/§9-5.
@@ -121,7 +126,7 @@ BEGIN
     --   da vendite.fn_documento_legami, come fa la finestra di conferma
     --   (rev 2026-10-11, brief-db-annullo-documento-con-legami D-4).
     PERFORM vendite.fn_annulla_ddt(v_ddt,
-        (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT', v_ddt) l));
+        (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT_VENDITA', v_ddt) l));
   ELSIF p_stato_finale <> r.stato_ddt_emesso_id THEN
     UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id WHERE id=v_ddt;
     IF p_stato_finale <> r.stato_ddt_spedito_id THEN

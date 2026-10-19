@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 --
 -- Test: gli indirizzi del documento seguono il cliente. Un indirizzo preso
 --   dall'anagrafica e' del cliente del documento; se il cliente cambia in
@@ -200,7 +205,7 @@ SELECT is(
 --   sola l'ordine di valutazione delle due sottoquery non e' garantito, e la
 --   riga si leggerebbe prima che venga scritta.
 CREATE TEMP TABLE _r5 AS
-SELECT vendite.fn_doc_indirizzo_default('DDT', (SELECT ddt_a FROM _d)) AS scritto;
+SELECT vendite.fn_doc_indirizzo_default('DDT_VENDITA', (SELECT ddt_a FROM _d)) AS scritto;
 
 SELECT is(
     (SELECT scritto::text FROM _r5)
@@ -213,7 +218,7 @@ SELECT is(
     '5) il building block riempie la CON dal ripiego: la Fatturazione di ruolo di A');
 
 SELECT is(
-    vendite.fn_doc_indirizzo_default('DDT', (SELECT ddt_a FROM _d)),
+    vendite.fn_doc_indirizzo_default('DDT_VENDITA', (SELECT ddt_a FROM _d)),
     false,
     '6) a slot pieno non scrive niente');
 
@@ -317,7 +322,7 @@ UPDATE anagrafiche.indirizzi
    SET istanza_utility_id = (SELECT istanza_utility_id FROM _c WHERE lato = 'A')
  WHERE id = (SELECT fatt_ist_a FROM _ist);
 
-SELECT vendite.fn_doc_indirizzo_default('DDT', (SELECT ddt_em FROM _d));
+SELECT vendite.fn_doc_indirizzo_default('DDT_VENDITA', (SELECT ddt_em FROM _d));
 
 UPDATE anagrafiche.indirizzi
    SET istanza_utility_id = (SELECT istanza_utility_id FROM _c WHERE lato = 'B')
@@ -370,7 +375,7 @@ WITH o AS (
     RETURNING id)
 SELECT id AS rev1 FROM o;
 
-SELECT vendite.fn_doc_indirizzo_default('OFFERTA', (SELECT rev1 FROM _o));
+SELECT vendite.fn_doc_indirizzo_default('OFFERTA_COMMERCIALE', (SELECT rev1 FROM _o));
 
 INSERT INTO vendite.offerte_commerciali_indirizzi (offerta_id, tipo_indirizzo_id, snapshot)
 SELECT o.rev1, t.id, '{"via": "Via della Residenza 2", "citta": "Roma"}'

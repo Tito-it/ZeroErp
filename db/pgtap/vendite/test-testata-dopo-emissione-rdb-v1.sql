@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 --
 -- Test: le richieste R-DB-1 … R-DB-4 del brief e il congelamento del listino
 --   all'uscita dalla bozza.
@@ -125,12 +130,12 @@ SELECT is(
 
 CREATE TEMP TABLE _sat (tabella text, documento text, fk text, bozza text);
 INSERT INTO _sat VALUES
-    ('vendite.ddt_indirizzi',                 'DDT',        'ddt_id',        'DRAFT'),
-    ('vendite.ordini_indirizzi',              'ORDINE',     'ordine_id',     'DRAFT'),
+    ('vendite.ddt_indirizzi',                 'DDT_VENDITA',        'ddt_id',        'DRAFT'),
+    ('vendite.ordini_indirizzi',              'ORDINE_VENDITA',     'ordine_id',     'DRAFT'),
     ('vendite.preventivi_indirizzi',          'PREVENTIVO', 'preventivo_id', 'DRAFT'),
-    ('vendite.offerte_commerciali_indirizzi', 'OFFERTA',    'offerta_id',    'BOZZA'),
+    ('vendite.offerte_commerciali_indirizzi', 'OFFERTA_COMMERCIALE',    'offerta_id',    'BOZZA'),
     ('vendite.contratti_indirizzi',           'CONTRATTO',  'contratto_id',  'DRAFT'),
-    ('vendite.offerte_commerciali_utilities', 'OFFERTA',    'offerta_id',    'BOZZA'),
+    ('vendite.offerte_commerciali_utilities', 'OFFERTA_COMMERCIALE',    'offerta_id',    'BOZZA'),
     ('vendite.contratti_utilities',           'CONTRATTO',  'contratto_id',  'DRAFT');
 
 SELECT set_eq(

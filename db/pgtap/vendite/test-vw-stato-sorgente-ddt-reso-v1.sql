@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 -- Test: rami DDT e RESO della proiezione di stato (vw_stato_sorgente_*)
 --       — step 6b, brief-db-fatturazione-ddt-resi §4a.
 -- (changeset 20260718-09/-10)
@@ -138,7 +143,7 @@ BEGIN
     --   da vendite.fn_documento_legami, come fa la finestra di conferma
     --   (rev 2026-10-11, brief-db-annullo-documento-con-legami D-4).
     PERFORM vendite.fn_annulla_ddt(v_ddt,
-        (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT', v_ddt) l));
+        (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT_VENDITA', v_ddt) l));
   ELSIF p_stato <> r.stato_ddt_emesso_id THEN
     UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id WHERE id=v_ddt;
     IF p_stato <> r.stato_ddt_spedito_id THEN

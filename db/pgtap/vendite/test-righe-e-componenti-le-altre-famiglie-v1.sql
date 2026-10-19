@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 --
 -- Test: righe e componenti di preventivo, ordine e DDT allineati a contratto
 --   e offerta. ChangeSet 20261008-30 … -35.
@@ -266,9 +271,9 @@ SELECT is(
     concat_ws(',',
         script.fn_get_testata_id_di_riga('PREVENTIVO', (SELECT riga_id FROM _doc WHERE famiglia = 'PREVENTIVO'))
             = (SELECT testata_id FROM _doc WHERE famiglia = 'PREVENTIVO'),
-        script.fn_get_testata_id_di_riga('ORDINE', (SELECT riga_id FROM _doc WHERE famiglia = 'ORDINE'))
+        script.fn_get_testata_id_di_riga('ORDINE_VENDITA', (SELECT riga_id FROM _doc WHERE famiglia = 'ORDINE'))
             = (SELECT testata_id FROM _doc WHERE famiglia = 'ORDINE'),
-        script.fn_get_testata_id_di_riga('DDT', (SELECT riga_id FROM _doc WHERE famiglia = 'DDT'))
+        script.fn_get_testata_id_di_riga('DDT_VENDITA', (SELECT riga_id FROM _doc WHERE famiglia = 'DDT'))
             = (SELECT testata_id FROM _doc WHERE famiglia = 'DDT')),
     't,t,t',
     '1) fn_get_testata_id_di_riga: PREVENTIVO, ORDINE e DDT danno la testata della riga'
@@ -277,8 +282,8 @@ SELECT is(
 SELECT is(
     concat_ws(',',
         script.fn_get_testata_id_di_riga('PREVENTIVO', 9223372036854775806) IS NULL,
-        script.fn_get_testata_id_di_riga('ORDINE', 9223372036854775806) IS NULL,
-        script.fn_get_testata_id_di_riga('DDT', 9223372036854775806) IS NULL),
+        script.fn_get_testata_id_di_riga('ORDINE_VENDITA', 9223372036854775806) IS NULL,
+        script.fn_get_testata_id_di_riga('DDT_VENDITA', 9223372036854775806) IS NULL),
     't,t,t',
     '2) fn_get_testata_id_di_riga: NULL per una riga che non c''e'' (il lock la legge come cascade)'
 );

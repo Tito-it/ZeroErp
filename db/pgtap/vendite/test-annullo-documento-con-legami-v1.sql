@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 -- Test: annullare un documento con legami — si riapre l'origine, con conferma
 --   vendite.fn_documento_legami, vendite.fn_documento_ritira_legami,
 --   vendite.fn_doc_porta_ritiro_ammette, vendite.trgfn_doc_guard_annullo_con_legami,
@@ -292,7 +297,7 @@ SELECT ok(
             AND bool_and(l.origine = 'PREVENTIVO' AND l.natura = 'CONSUMO'
                          AND l.origine_id = pg_temp.al_fix('b_prev')
                          AND l.origine_riga_id = pg_temp.al_fix('b_prev_riga'))
-         FROM vendite.fn_documento_legami('ORDINE', pg_temp.al_fix('b1_ord')) l),
+         FROM vendite.fn_documento_legami('ORDINE_VENDITA', pg_temp.al_fix('b1_ord')) l),
   '6) il push: ordine in bozza, preventivo EVASO, un legame PREVENTIVO di consumo');
 
 SELECT pg_temp.al_prova('7_ord_diretto',
@@ -484,7 +489,7 @@ SELECT 'b3_ord', vendite.fn_push_preventivo_a_ordine(pg_temp.al_fix('b_prev'));
 DO $g$ BEGIN
   PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', pg_temp.al_fix('b3_ord'), 'CONFERMATO');
 END $g$;
-SELECT set_config('zeroerp.doc_ritira_legami', 'ORDINE:' || pg_temp.al_fix('b3_ord'), true);
+SELECT set_config('zeroerp.doc_ritira_legami', 'ORDINE_VENDITA:' || pg_temp.al_fix('b3_ord'), true);
 SELECT pg_temp.al_prova('27_porta_a_mano',
   format('UPDATE vendite.ordini_righe SET preventivo_riga_id = NULL WHERE ordine_id = %s',
          pg_temp.al_fix('b3_ord')));

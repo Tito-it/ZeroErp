@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 2a (le testate): i montaggi
+# di vendite.trgfn_doc_testata_lock_fuori_bozza
+#   Brief: brief-db-grammatica-unica-documenti §11 (G-1, G-4 di Tid; L2-1).
+#
+#   Il primo argomento del trigger e' il documento nella grammatica delle
+#   testate, che passa ai codici di config.sorgenti (DDT -> DDT_VENDITA,
+#   ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO ->
+#   RESO_VENDITA). Gli argomenti di un trigger si cambiano solo smontando e
+#   rimontando: 4 montaggi, rigenerati da pg_get_triggerdef su dbdev
+#   (2026-10-19) con il solo primo argomento cambiato. Stesso nome, fase,
+#   eventi, WHEN e argomenti successivi. I montaggi con CONTRATTO,
+#   PREVENTIVO, COMMESSA o FATTURA non cambiano e non si toccano.
+#
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-72-remount-trg-doc-testata-lock-fuori-bozza-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261019-72-remount-trg-doc-testata-lock-fuori-bozza-codice-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rimonta i 4 montaggi di vendite.trgfn_doc_testata_lock_fuori_bozza col documento nel codice della sorgente. Grammatica unica, lotto 2a.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a05_lock_fuori_bozza_upd ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.ddt FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('DDT_VENDITA', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'serie', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'causale_trasporto_id', 'E_DDT_CAUSALE_IMMUTABILE', '', 'billing_account_id', 'E_DDT_CLIENTE_IMMUTABILE', '', 'utility_id', 'E_DDT_CLIENTE_IMMUTABILE', '', 'destinatario_soggetto_ruolo_id', 'E_DDT_CLIENTE_IMMUTABILE', '', 'magazzino_id', 'E_DDT_MAGAZZINO_IMMUTABILE', '', 'magazzino_arrivo_id', 'E_DDT_MAGAZZINO_IMMUTABILE', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'mittente_soggetto_ruolo_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'vettore_soggetto_ruolo_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'aspetto_bene_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'modalita_addebito_trasporto_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'num_colli', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'peso_lordo', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'peso_netto', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'volume', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'targa', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'autista', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'data_ora_partenza', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'data_ora_consegna_prev', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'tracking_code', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'meta', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO');
+
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a05_lock_fuori_bozza_upd ON vendite.offerte_commerciali;
+              CREATE TRIGGER trg_offerte_commerciali_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.offerte_commerciali FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('OFFERTA_COMMERCIALE', 'BOZZA', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'billing_account_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'istanza_utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'utility_id', 'E_DOC_UTILITY_IMMUTABILE', '-', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_IMMUTABILE', '-', 'listino_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'listino_versione_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'tipo_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'valore_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'validita_dal', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'validita_al', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'meta', 'E_DOC_CHIUSO', 'EMESSA,ACCETTATA', 'motivazione_rifiuto', 'E_DOC_CHIUSO', 'EMESSA,ACCETTATA');
+
+              DROP TRIGGER IF EXISTS trg_ordini_a05_lock_fuori_bozza_upd ON vendite.ordini;
+              CREATE TRIGGER trg_ordini_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.ordini FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('ORDINE_VENDITA', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'tasso_cambio', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'serie', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'modalita_pagamento_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'termine_pagamento_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'agente_soggetto_ruolo_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'fatturazione_trigger', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'documento_origine_tipo', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'documento_origine_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'meta', 'E_DOC_CHIUSO', 'CONFERMATO,PARZIALMENTE_EVASO,ALLOCATO,SPEDITO,CONSEGNATO,EVASO');
+
+              DROP TRIGGER IF EXISTS trg_resi_a05_lock_fuori_bozza_upd ON vendite.resi;
+              CREATE TRIGGER trg_resi_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.resi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('RESO_VENDITA', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'magazzino_id', 'E_RESO_MAGAZZINO_IMMUTABILE', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'meta', 'E_DOC_CHIUSO', 'CONFERMATO');
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a05_lock_fuori_bozza_upd ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.ddt FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('DDT', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'serie', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'causale_trasporto_id', 'E_DDT_CAUSALE_IMMUTABILE', '', 'billing_account_id', 'E_DDT_CLIENTE_IMMUTABILE', '', 'utility_id', 'E_DDT_CLIENTE_IMMUTABILE', '', 'destinatario_soggetto_ruolo_id', 'E_DDT_CLIENTE_IMMUTABILE', '', 'magazzino_id', 'E_DDT_MAGAZZINO_IMMUTABILE', '', 'magazzino_arrivo_id', 'E_DDT_MAGAZZINO_IMMUTABILE', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'mittente_soggetto_ruolo_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'vettore_soggetto_ruolo_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'aspetto_bene_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'modalita_addebito_trasporto_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'num_colli', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'peso_lordo', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'peso_netto', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'volume', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'targa', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'autista', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'data_ora_partenza', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'data_ora_consegna_prev', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'tracking_code', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO', 'meta', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO');
+
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a05_lock_fuori_bozza_upd ON vendite.offerte_commerciali;
+              CREATE TRIGGER trg_offerte_commerciali_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.offerte_commerciali FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('OFFERTA', 'BOZZA', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'billing_account_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'istanza_utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'utility_id', 'E_DOC_UTILITY_IMMUTABILE', '-', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_IMMUTABILE', '-', 'listino_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'listino_versione_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'tipo_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'valore_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'validita_dal', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'validita_al', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'meta', 'E_DOC_CHIUSO', 'EMESSA,ACCETTATA', 'motivazione_rifiuto', 'E_DOC_CHIUSO', 'EMESSA,ACCETTATA');
+
+              DROP TRIGGER IF EXISTS trg_ordini_a05_lock_fuori_bozza_upd ON vendite.ordini;
+              CREATE TRIGGER trg_ordini_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.ordini FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('ORDINE', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'tasso_cambio', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'serie', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'modalita_pagamento_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'termine_pagamento_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'agente_soggetto_ruolo_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'fatturazione_trigger', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'documento_origine_tipo', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'documento_origine_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'meta', 'E_DOC_CHIUSO', 'CONFERMATO,PARZIALMENTE_EVASO,ALLOCATO,SPEDITO,CONSEGNATO,EVASO');
+
+              DROP TRIGGER IF EXISTS trg_resi_a05_lock_fuori_bozza_upd ON vendite.resi;
+              CREATE TRIGGER trg_resi_a05_lock_fuori_bozza_upd BEFORE UPDATE ON vendite.resi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('RESO', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'magazzino_id', 'E_RESO_MAGAZZINO_IMMUTABILE', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'meta', 'E_DOC_CHIUSO', 'CONFERMATO');
+

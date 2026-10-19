@@ -7,6 +7,11 @@
 --   E' il criterio 2 di scripts/testpgtap.sh. Dal contesto in poi si lavora
 --   nei panni dell'operatore costruito.
 -- pgTAP test — una DATA DI CONSEGNA non viene prima della DATA DEL DOCUMENTO
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 --   script.fn_data_consegna_ammessa (la regola), script.fn_doc_date_consegna_anteriori
 --   (il lettore DEFINER), script.trgfn_doc_righe_guard_data_consegna (riga),
 --   script.trgfn_doc_testata_guard_data_consegna_righe (testata), e le due copie di
@@ -208,7 +213,7 @@ SELECT jsonb_build_object('attivo', true, 'ordine_id', o.ordine_id,
 SELECT is(
   (SELECT count(*)::int
      FROM _ord o, _j j,
-          script.fn_doc_date_consegna_anteriori('ORDINE', o.ordine_id, NULL,
+          script.fn_doc_date_consegna_anteriori('ORDINE_VENDITA', o.ordine_id, NULL,
               j.riga || jsonb_build_object('data_consegna_confermata', pg_temp.gg(4)),
               j.riga) a),
   0,
@@ -218,18 +223,18 @@ SELECT is(
   (SELECT string_agg(x.tag || '=' || x.n::text, ', ' ORDER BY x.tag)
      FROM (SELECT 'a_cambiata' AS tag, count(*) AS n
              FROM _ord o, _j j,
-                  script.fn_doc_date_consegna_anteriori('ORDINE', o.ordine_id, NULL,
+                  script.fn_doc_date_consegna_anteriori('ORDINE_VENDITA', o.ordine_id, NULL,
                       j.riga || jsonb_build_object('data_consegna_richiesta_cliente', pg_temp.gg(-2)),
                       j.riga) a
            UNION ALL
            SELECT 'b_riaccesa', count(*)
              FROM _ord o, _j j,
-                  script.fn_doc_date_consegna_anteriori('ORDINE', o.ordine_id, NULL,
+                  script.fn_doc_date_consegna_anteriori('ORDINE_VENDITA', o.ordine_id, NULL,
                       j.riga, j.riga || '{"attivo": false}'::jsonb) a
            UNION ALL
            SELECT 'c_spenta', count(*)
              FROM _ord o, _j j,
-                  script.fn_doc_date_consegna_anteriori('ORDINE', o.ordine_id, NULL,
+                  script.fn_doc_date_consegna_anteriori('ORDINE_VENDITA', o.ordine_id, NULL,
                       j.riga || '{"attivo": false}'::jsonb, NULL) a) x),
   'a_cambiata=1, b_riaccesa=1, c_spenta=0',
   '6) cambiata si rigiudica; la riga che torna attiva si rigiudica tutta; una riga spenta non si giudica');

@@ -1,0 +1,63 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 2a (le testate): i montaggi
+# di vendite.trgfn_doc_indirizzi_guard_cliente
+#   Brief: brief-db-grammatica-unica-documenti §11 (G-1, G-4 di Tid; L2-1).
+#
+#   Il primo argomento del trigger e' il documento nella grammatica delle
+#   testate, che passa ai codici di config.sorgenti (DDT -> DDT_VENDITA,
+#   ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO ->
+#   RESO_VENDITA). Gli argomenti di un trigger si cambiano solo smontando e
+#   rimontando: 3 montaggi, rigenerati da pg_get_triggerdef su dbdev
+#   (2026-10-19) con il solo primo argomento cambiato. Stesso nome, fase,
+#   eventi, WHEN e argomenti successivi. I montaggi con CONTRATTO,
+#   PREVENTIVO, COMMESSA o FATTURA non cambiano e non si toccano.
+#
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-73-remount-trg-doc-indirizzi-guard-cliente-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261019-73-remount-trg-doc-indirizzi-guard-cliente-codice-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rimonta i 3 montaggi di vendite.trgfn_doc_indirizzi_guard_cliente col documento nel codice della sorgente. Grammatica unica, lotto 2a.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_indirizzi_a10_guard_origine_ins_upd ON vendite.ddt_indirizzi;
+              CREATE TRIGGER trg_ddt_indirizzi_a10_guard_origine_ins_upd BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, ddt_id ON vendite.ddt_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('DDT_VENDITA');
+
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_indirizzi_a10_guard_origine_ins_upd ON vendite.offerte_commerciali_indirizzi;
+              CREATE TRIGGER trg_offerte_commerciali_indirizzi_a10_guard_origine_ins_upd BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, offerta_id ON vendite.offerte_commerciali_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('OFFERTA_COMMERCIALE');
+
+              DROP TRIGGER IF EXISTS trg_ordini_indirizzi_a10_guard_origine_ins_upd ON vendite.ordini_indirizzi;
+              CREATE TRIGGER trg_ordini_indirizzi_a10_guard_origine_ins_upd BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, ordine_id ON vendite.ordini_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('ORDINE_VENDITA');
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_indirizzi_a10_guard_origine_ins_upd ON vendite.ddt_indirizzi;
+              CREATE TRIGGER trg_ddt_indirizzi_a10_guard_origine_ins_upd BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, ddt_id ON vendite.ddt_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('DDT');
+
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_indirizzi_a10_guard_origine_ins_upd ON vendite.offerte_commerciali_indirizzi;
+              CREATE TRIGGER trg_offerte_commerciali_indirizzi_a10_guard_origine_ins_upd BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, offerta_id ON vendite.offerte_commerciali_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('OFFERTA');
+
+              DROP TRIGGER IF EXISTS trg_ordini_indirizzi_a10_guard_origine_ins_upd ON vendite.ordini_indirizzi;
+              CREATE TRIGGER trg_ordini_indirizzi_a10_guard_origine_ins_upd BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, ordine_id ON vendite.ordini_indirizzi FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('ORDINE');
+

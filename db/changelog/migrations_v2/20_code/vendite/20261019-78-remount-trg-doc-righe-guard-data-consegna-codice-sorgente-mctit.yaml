@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 2a (le testate): i montaggi
+# di script.trgfn_doc_righe_guard_data_consegna
+#   Brief: brief-db-grammatica-unica-documenti §11 (G-1, G-4 di Tid; L2-1).
+#
+#   Il primo argomento del trigger e' il documento nella grammatica delle
+#   testate, che passa ai codici di config.sorgenti (DDT -> DDT_VENDITA,
+#   ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO ->
+#   RESO_VENDITA). Gli argomenti di un trigger si cambiano solo smontando e
+#   rimontando: 1 montaggi, rigenerati da pg_get_triggerdef su dbdev
+#   (2026-10-19) con il solo primo argomento cambiato. Stesso nome, fase,
+#   eventi, WHEN e argomenti successivi. I montaggi con CONTRATTO,
+#   PREVENTIVO, COMMESSA o FATTURA non cambiano e non si toccano.
+#
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-78-remount-trg-doc-righe-guard-data-consegna-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261019-78-remount-trg-doc-righe-guard-data-consegna-codice-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rimonta i 1 montaggi di script.trgfn_doc_righe_guard_data_consegna col documento nel codice della sorgente. Grammatica unica, lotto 2a.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a10_guard_data_consegna_vs_doc_ins_upd ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a10_guard_data_consegna_vs_doc_ins_upd BEFORE INSERT OR UPDATE ON vendite.ordini_righe FOR EACH ROW EXECUTE FUNCTION script.trgfn_doc_righe_guard_data_consegna('ORDINE_VENDITA', 'ordine_id');
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a10_guard_data_consegna_vs_doc_ins_upd ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a10_guard_data_consegna_vs_doc_ins_upd BEFORE INSERT OR UPDATE ON vendite.ordini_righe FOR EACH ROW EXECUTE FUNCTION script.trgfn_doc_righe_guard_data_consegna('ORDINE', 'ordine_id');
+

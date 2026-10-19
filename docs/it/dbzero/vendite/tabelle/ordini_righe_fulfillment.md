@@ -40,10 +40,10 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_riga_id', 'DRAFT', 'RIGA')` |
-| trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_riga_id', 'DRAFT', 'RIGA')` |
-| trg_ordini_righe_fulfillment_a05_guard_legame_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_ddt_riga_legame_guard('qta_evasa', 'ordine_riga_id')` |
+| trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_riga_id', 'DRAFT', 'RIGA')` |
+| trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_riga_id', 'DRAFT', 'RIGA')` |
 | trg_ordini_righe_fulfillment_a05_guard_legame_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ddt_riga_legame_guard('qta_evasa', 'ordine_riga_id')` |
+| trg_ordini_righe_fulfillment_a05_guard_legame_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_ddt_riga_legame_guard('qta_evasa', 'ordine_riga_id')` |
 | trg_ordini_righe_fulfillment_a10_ddt_righe_require_attiv_ae2869 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ddt_righe', 'attivo', 'ddt_riga_id', 'id')` |
 | trg_ordini_righe_fulfillment_a10_ddt_righe_require_attiv_ae2869 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ddt_righe', 'attivo', 'ddt_riga_id', 'id')` |
 | trg_ordini_righe_fulfillment_a10_guard_consistenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()` |

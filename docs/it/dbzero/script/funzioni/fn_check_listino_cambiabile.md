@@ -2,17 +2,18 @@
 # ⚙️ Funzione `fn_check_listino_cambiabile`
 
 ```sql
-CREATE FUNCTION fn_check_listino_cambiabile(p_documento text, p_documento_id bigint, p_listino_da bigint, p_listino_a bigint)
+CREATE FUNCTION fn_check_listino_cambiabile(p_documento character varying, p_documento_id bigint, p_listino_da bigint, p_listino_a bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_check_listino_cambiabile(p_documento text, p_documento_id bigint, p_listino_da bigint, p_listino_a bigint)
+CREATE OR REPLACE FUNCTION script.fn_check_listino_cambiabile(p_documento character varying, p_documento_id bigint, p_listino_da bigint, p_listino_a bigint)
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE
 AS $function$
+
 -- ⚠️ Tipi nudi DICHIARATI: p_documento e' un selettore (CONTRATTO |
 --   OFFERTA) senza colonna di vocabolario; p_documento_id e' POLIMORFO
 --   (l'id di due testate diverse). I conteggi sono calcolati.
@@ -45,7 +46,7 @@ BEGIN
     --   l'OFFERTA — le stesse righe, la stessa regola (D-11 di
     --   brief-db-testata-dopo-emissione).
     -- =========================================================
-    IF p_documento IS NULL OR p_documento NOT IN ('CONTRATTO', 'OFFERTA') THEN
+    IF p_documento IS NULL OR p_documento NOT IN ('CONTRATTO', 'OFFERTA_COMMERCIALE') THEN
         -- Errore di CHIAMANTE, non di dato (stesso codice dei lettori
         -- di documento, script.fn_get_stato_testata_documento).
         PERFORM script.fn_log_and_raise_error(
@@ -114,8 +115,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_check_listino_cambiabile(p_documento text, p_documento_id bigint, p_listino_da bigint, p_listino_a bigint)
-IS 'Check pura (2026-10-11, brief-db-testata-dopo-emissione §11, R-DB-4 e D-11 di Tid): i motivi per cui il listino di un documento (CONTRATTO: vendite.contratti_righe; OFFERTA: vendite.offerte_commerciali_eccezioni) non puo'' passare da p_listino_da a p_listino_a. ''[]'' = puo''. Motivi in ordine: 1) E_DOC_LISTINO_CAMBIO_CON_RIGHE (reason LISTINO_CON_RIGHE): un listino nuovo, messo o sostituito, su un documento con righe attive, caricate contro il listino di prima; 2) E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI (reason LISTINO_RIMOZIONE_CON_ECCEZIONI): il listino tolto con eccezioni OVERRIDE o ESCLUSIONE attive (le AGGIUNTE valgono anche senza listino). Campo listino_id in dettaglio.campo; valori: l''etichetta del documento e il conteggio. Listino invariato: nessun motivo; p_documento fuori da CONTRATTO | OFFERTA: E_DOC_TIPO_NON_GESTITO (errore di chiamante). Le due regole vivevano solo nel backend del contratto (contratti_service.update_contratto, E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE ed E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI, ritirati), e l''offerta, con le stesse righe, non ne aveva nessuna. Lettore: script.trgfn_doc_guard_listino_con_righe (solleva il primo motivo). Fuori bozza il listino e'' gia'' fermo dal lock di testata: le due regole contano in bozza.';
+COMMENT ON FUNCTION script.fn_check_listino_cambiabile(p_documento character varying, p_documento_id bigint, p_listino_da bigint, p_listino_a bigint)
+IS 'Check pura (2026-10-11, brief-db-testata-dopo-emissione §11, R-DB-4 e D-11 di Tid): i motivi per cui il listino di un documento (CONTRATTO: vendite.contratti_righe; OFFERTA: vendite.offerte_commerciali_eccezioni) non puo'' passare da p_listino_da a p_listino_a. ''[]'' = puo''. Motivi in ordine: 1) E_DOC_LISTINO_CAMBIO_CON_RIGHE (reason LISTINO_CON_RIGHE): un listino nuovo, messo o sostituito, su un documento con righe attive, caricate contro il listino di prima; 2) E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI (reason LISTINO_RIMOZIONE_CON_ECCEZIONI): il listino tolto con eccezioni OVERRIDE o ESCLUSIONE attive (le AGGIUNTE valgono anche senza listino). Campo listino_id in dettaglio.campo; valori: l''etichetta del documento e il conteggio. Listino invariato: nessun motivo; p_documento fuori da CONTRATTO | OFFERTA: E_DOC_TIPO_NON_GESTITO (errore di chiamante). Le due regole vivevano solo nel backend del contratto (contratti_service.update_contratto, E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE ed E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI, ritirati), e l''offerta, con le stesse righe, non ne aveva nessuna. Lettore: script.trgfn_doc_guard_listino_con_righe (solleva il primo motivo). Fuori bozza il listino e'' gia'' fermo dal lock di testata: le due regole contano in bozza. ⭐ rev 2026-10-19 (20261019-45, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
 ```
 
 ---

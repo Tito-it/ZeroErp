@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a): la finestra di
+--   conferma chiede i legami col codice della sorgente (ORDINE_VENDITA, DDT_VENDITA).
 -- pgTAP test per Zero ERP
 --
 -- Test: il PERCHE' arriva davvero all'operatore — le capability espongono i
@@ -557,7 +559,7 @@ BEGIN
   FOR v_ord IN SELECT id FROM _ord_ann LOOP
     PERFORM vendite.fn_annulla_ordine(
         v_ord,
-        (SELECT count(*)::integer FROM vendite.fn_documento_legami('ORDINE', v_ord) l));
+        (SELECT count(*)::integer FROM vendite.fn_documento_legami('ORDINE_VENDITA', v_ord) l));
   END LOOP;
 END $ord$;
 
@@ -618,7 +620,7 @@ BEGIN
   FOR v_ddt IN SELECT ddt_id FROM _ddt_ann LOOP
     PERFORM vendite.fn_annulla_ddt(
         v_ddt,
-        (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT', v_ddt) l));
+        (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT_VENDITA', v_ddt) l));
   END LOOP;
 END $ann$;
 

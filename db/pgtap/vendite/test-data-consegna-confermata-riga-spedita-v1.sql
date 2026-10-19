@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
+--   il documento passato ai lettori delle testate, ai legami e ai montaggi del
+--   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
+--   OFFERTA_COMMERCIALE, RESO_VENDITA). Restano corti i prefissi delle chiavi
+--   (G-8), l'origine dei legami (V7) e l'ambito degli indirizzi (G-6).
 -- Test: la data di consegna confermata di una riga d'ordine gia' spedita e' ferma
 --   vendite.fn_ordine_riga_spedita, script.fn_check_ordine_riga_data_consegna_confermata,
 --   vendite.trgfn_ordini_righe_guard_data_consegna_spedita, la colonna
@@ -278,7 +283,7 @@ SELECT is(
   'E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA|RIGA_SPEDITA|vendite.ordini.data_consegna_confermata_reason.riga_spedita|'
   || pg_temp.dc_fix('a_r1')::text || '|'
   || jsonb_build_array(
-         (SELECT t.etichetta FROM script.fn_get_stato_testata_documento('ORDINE', pg_temp.dc_fix('a_ord')) t),
+         (SELECT t.etichetta FROM script.fn_get_stato_testata_documento('ORDINE_VENDITA', pg_temp.dc_fix('a_ord')) t),
          '1')::text,
   '6) DDT EMESSO per una parte della riga (P-1): un motivo solo, RIGA_SPEDITA, coi suoi valori');
 
