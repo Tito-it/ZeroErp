@@ -51,7 +51,7 @@ registri, altro) e di dire, per ciascuna voce, se nasce con l'emittente o ha uno
 censimento si fa sulla struttura (funzioni di risoluzione, FK, guard), non sulle righe di dbdev.
 
 ➡️ **La voce «registri» ha la sua risposta** (team DB, 2026-10-18): è R-BE-14, in
-[brief-db-processi-accensione-per-ambiente §6.14](brief-db-processi-accensione-per-ambiente.md). Nessun
+[brief-db-processi-accensione-per-ambiente §6.14](../work-done/brief-db-processi-accensione-per-ambiente.md). Nessun
 emittente nasceva col registro delle fatture. ✅ Fatto il 2026-10-18 (`20261019-07` … `-12`, applicati su
 dbdev, pgTAP verdi): il registro delle fatture standard nasce con l'emittente, dallo stesso meccanismo che crea già
 i registri delle altre famiglie. Le altre voci del censimento restano da fare.
@@ -163,7 +163,7 @@ Con lo standard, l'emittente di prova A (DEVA) emette senza configurazione. Gli 
 fermano su `E_DOCUMENTI_NOT_FOUND` (preventivi, smistamento-ordine, contratti-addebito,
 listini-v5 dal passo 16, pratica-preventivi-bivio, resi-vendita sul modello delle bolle) arrivano in
 fondo. L'elenco aggiornato è la tabella di R-BE-14 in
-[brief-db-processi-accensione-per-ambiente §6.12](brief-db-processi-accensione-per-ambiente.md)
+[brief-db-processi-accensione-per-ambiente §6.12](../work-done/brief-db-processi-accensione-per-ambiente.md)
 (2026-10-19): lì il BE ha chiesto registri e template insieme; i template sono di questo brief. Gli smoke della fatturazione, che cercano un'attività
 fatturabile esistente, restano un lavoro loro: si costruiscono la materia (brief BE utenti di
 sviluppo, §9, T-7).

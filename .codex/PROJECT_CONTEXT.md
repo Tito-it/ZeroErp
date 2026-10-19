@@ -478,14 +478,18 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   il 2026-10-10 (§9) e collaudati in-app il 2026-10-11, con due difetti trovati e corretti: il lookup delle forme
   falliva sempre (colonna inesistente) e il cambio di natura in modifica non arrivava al DB. Archiviato il
   2026-10-14: la data di costituzione in creazione è nel brief qui sopra, gli altri residui in § «Aperto — Media priorità».
-- 📝 **Quali processi sono accesi: per ambiente, a mano, i non spegnibili**
-  (`work-in-progress/brief-db-processi-accensione-per-ambiente.md`, 2026-10-15/16): l'ambiente dell'installazione
-  in `dbops.installazione` (scelto alla fase `post` del provisioning con `-v ambiente=`, nessun default, immutabile;
-  lettori `script.fn_ambiente_installazione()` / `fn_ambiente_dichiarato()`); default per ambiente e «spegnibile» in
-  `dbops.processi` (sette mai spegnibili), scelta a mano in `dbops.processi_accensione`, la sveglia
-  `maintenance.fn_sveglia_accesa` nel passo di ogni job pgAgent, stato `SPENTO` nel panorama. Giro 1
-  (`20261016-15…-32`) applicato e verde il 16-10, dbdev e scratch dichiarati `SVILUPPO`; tocca al BE/FE (§6). Giro 2 (R-4: etichette sulle radici dei dati di sviluppo, verbo del provisioning di
-  sviluppo, `smoke` → `dev.smoke`) aspetta dal BE l'elenco di ciò che crea.
+- **Quali processi sono accesi: per ambiente, a mano, i non spegnibili: chiuso**
+  (`work-done/brief-db-processi-accensione-per-ambiente.md`, archiviato il 2026-10-19): l'ambiente
+  dell'installazione è un dato del DB (`dbops.installazione`, scelto al provisioning, immutabile, lettori
+  `script.fn_ambiente_installazione()` / `fn_ambiente_dichiarato()`); default per ambiente e «spegnibile» in
+  `dbops.processi` (sette mai spegnibili), scelta a mano in `dbops.processi_accensione`, cancello
+  `maintenance.fn_sveglia_accesa` su pgAgent e systemd, stato `SPENTO` nel panorama. Dati di sviluppo dal verbo
+  `fn_provisiona_dati_di_sviluppo` con le etichette (rifiutati in `PRODUZIONE`), `smoke` → `dev.smoke`. Strada (b):
+  prima i building block, poi le copie del backend ritirate (emittente, cliente, fornitore, veste portale,
+  magazzino, profilo e legami, override, emittente attivo, indirizzi singolari e plurali). Ultimi giri: registro
+  delle fatture che nasce con l'emittente (R-BE-14), profilo SUPER_ADMIN da un lettore (R-BE-11), l'istanza di
+  indirizzi, contatti e conti del ruolo è del soggetto del ruolo e il soggetto di un ruolo non cambia (R-BE-15).
+  Fuori da qui: i template di default dell'emittente, in `brief-db-modelli-documento-standard`.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

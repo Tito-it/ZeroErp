@@ -371,6 +371,9 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # sollevato da script.fn_snapshot_indirizzo (flusso picker) quando
     # origine_indirizzo_id non esiste piu' in anagrafiche.indirizzi.
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
+    # Indirizzi, contatti e conti del ruolo con l'istanza (o il ruolo) di un
+    # altro soggetto: il DB dice il campo (R-DB-17a, 2026-10-19).
+    "E_ISTANZA_ALTRO_SOGGETTO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_IVA_CONTO_ACQ_ERR": "highlight_form_fields",  # classe DATO_ERRATO
     "E_IVA_CONTO_VEN_ERR": "highlight_form_fields",  # classe DATO_ERRATO
     "E_JWT_SENZA_IDENTITA": "redirect_login",  # classe NON_AUTENTICATO
@@ -543,6 +546,7 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # ripeteva la regola del guard (`E_VENDITE_RIGA_GIA_PROPAGATA`, ritirato).
     "E_RIGA_LISTINO_PROPAGATA": "show_toast_error",  # classe CONFLITTO_STATO
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "highlight_form_fields",  # classe DATO_ERRATO
+    "E_RUOLO_ALTRO_SOGGETTO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_SESSIONE_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     # §8.4.3/§8.4.4/§8.4.5: endpoint shop rispondono 501 finche' PR-C
     # non porta il MVP. Codice dedicato (non E_TASK_NOT_IMPLEMENTED
