@@ -1,0 +1,51 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 2a (le testate): i montaggi
+# di vendite.trgfn_doc_fornitura_segue_cliente
+#   Brief: brief-db-grammatica-unica-documenti §11 (G-1, G-4 di Tid; L2-1).
+#
+#   Il primo argomento del trigger e' il documento nella grammatica delle
+#   testate, che passa ai codici di config.sorgenti (DDT -> DDT_VENDITA,
+#   ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO ->
+#   RESO_VENDITA). Gli argomenti di un trigger si cambiano solo smontando e
+#   rimontando: 1 montaggi, rigenerati da pg_get_triggerdef su dbdev
+#   (2026-10-19) con il solo primo argomento cambiato. Stesso nome, fase,
+#   eventi, WHEN e argomenti successivi. I montaggi con CONTRATTO,
+#   PREVENTIVO, COMMESSA o FATTURA non cambiano e non si toccano.
+#
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-77-remount-trg-doc-fornitura-segue-cliente-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261019-77-remount-trg-doc-fornitura-segue-cliente-codice-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rimonta i 1 montaggi di vendite.trgfn_doc_fornitura_segue_cliente col documento nel codice della sorgente. Grammatica unica, lotto 2a.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_m50_fornitura_segue_cliente_upd ON vendite.offerte_commerciali;
+              CREATE TRIGGER trg_offerte_commerciali_m50_fornitura_segue_cliente_upd AFTER UPDATE ON vendite.offerte_commerciali FOR EACH ROW WHEN (((old.istanza_utility_id IS DISTINCT FROM new.istanza_utility_id) OR (old.utility_id IS DISTINCT FROM new.utility_id))) EXECUTE FUNCTION vendite.trgfn_doc_fornitura_segue_cliente('OFFERTA_COMMERCIALE');
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_m50_fornitura_segue_cliente_upd ON vendite.offerte_commerciali;
+              CREATE TRIGGER trg_offerte_commerciali_m50_fornitura_segue_cliente_upd AFTER UPDATE ON vendite.offerte_commerciali FOR EACH ROW WHEN (((old.istanza_utility_id IS DISTINCT FROM new.istanza_utility_id) OR (old.utility_id IS DISTINCT FROM new.utility_id))) EXECUTE FUNCTION vendite.trgfn_doc_fornitura_segue_cliente('OFFERTA');
+

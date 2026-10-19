@@ -11,6 +11,7 @@ CREATE OR REPLACE FUNCTION config.trgfn_email_allegato_guard_solo_bozza()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+
 DECLARE
   v_riga      config.email_allegato%ROWTYPE;   -- NEW, o OLD sul DELETE
   -- ⚠️ bigint[] nudo: `%TYPE[]` non e' sintassi PostgreSQL. E' un
@@ -84,7 +85,7 @@ BEGIN
 
     SELECT t.stato, t.etichetta
       INTO v_stato, v_etichetta
-      FROM script.fn_get_stato_testata_documento('EMAIL_BOZZA', v_bozza_id) AS t;
+      FROM script.fn_get_stato_testata_documento('EMAIL', v_bozza_id) AS t;
 
     -- Assente: CASCADE dalla bozza (gia' ammesso solo in DRAFT
     -- dal guard della bozza), o FK che parlera'. Si passa.
@@ -110,7 +111,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION config.trgfn_email_allegato_guard_solo_bozza()
-IS 'Gli allegati di una mail si aggiungono, modificano e tolgono solo finche'' la sua bozza (config.email_outbox) e'' DRAFT: dopo l''invio l''allegato e'' anche storia del log. Unica eccezione: l''aggancio al log, cioe'' un UPDATE che cambia solo email_log_id verso un valore — il backend lo fa a bozza READY e lo rifa'' a ogni nuovo tentativo. Bozza assente = CASCADE dalla bozza (ammesso solo in DRAFT da vendite.trgfn_doc_guard_delete_solo_bozza) o FK che parlera'': passa. Allegato con log e senza bozza: storia, rifiutato. Lo stato si legge da script.fn_get_stato_testata_documento (SECURITY DEFINER), perche'' la bozza ha la RLS. Codice E_EMAIL_ALLEGATO_NON_BOZZA. Brief: brief-db-email-visibilita-per-ambito. rev 2026-09-25.';
+IS 'Gli allegati di una mail si aggiungono, modificano e tolgono solo finche'' la sua bozza (config.email_outbox) e'' DRAFT: dopo l''invio l''allegato e'' anche storia del log. Unica eccezione: l''aggancio al log, cioe'' un UPDATE che cambia solo email_log_id verso un valore — il backend lo fa a bozza READY e lo rifa'' a ogni nuovo tentativo. Bozza assente = CASCADE dalla bozza (ammesso solo in DRAFT da vendite.trgfn_doc_guard_delete_solo_bozza) o FK che parlera'': passa. Allegato con log e senza bozza: storia, rifiutato. Lo stato si legge da script.fn_get_stato_testata_documento (SECURITY DEFINER), perche'' la bozza ha la RLS. Codice E_EMAIL_ALLEGATO_NON_BOZZA. Brief: brief-db-email-visibilita-per-ambito. rev 2026-09-25. ⭐ rev 2026-10-19 (20261019-63, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
 ```
 
 ---

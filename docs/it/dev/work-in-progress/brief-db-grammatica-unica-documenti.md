@@ -2,8 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: il team DB coi lotti 2 e 3**, al via di Tid, insieme alla sessione BE/FE (stesso giro). Il lotto 1 è
-chiuso anche lato BE (§9.6): il backend passa i codici delle sorgenti, e il dev è ricaricato.
+**Riparte: la sessione BE/FE** (il §11.4: il DB del 2a è applicato su dbdev, pgTAP verdi come app; finché il
+backend non passa i codici delle sorgenti, gli indirizzi dei documenti e la finestra dell'annullo con legami
+rispondono con un errore). I lotti 0 e 1 sono chiusi su DB, BE e FE.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -19,10 +20,15 @@ chiuso anche lato BE (§9.6): il backend passa i codici delle sorgenti, e il dev
 | 6 | ✅ team DB | Lotto 1 scritto e provato in transazione: `20261019-18` … `-32`, pgTAP (2026-10-19) | §9 | — |
 | 6-bis | ✅ sessione BE | Il giro BE del lotto 1: `DocumentoEccezioni` e i due service sui codici delle sorgenti, chiamata reale su dbdev (2026-10-19) | §9.4, §9.6 | 6 |
 | 6-ter | ✅ **Tid** | Apply del lotto 1 su dbdev e corsa dei pgTAP come app: nessuna regressione (2026-10-19) | §9.5 | 6 |
-| 6-quater | team DB + sessione BE/FE | Lotti 2 e 3 (il 3 anticipabile): DB e backend nello stesso giro; col lotto 2 il SQL a mano delle chiavi (G-8) | §5 G-4, §3.2, §7.9 | 6-bis |
-| 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6-quater |
+| 6-quater | ✅ team DB | Piano del lotto 2: perimetro misurato, proposta di cinque sotto-giri (2026-10-19) | §10 | — |
+| 6-quinquies | ✅ **Tid** | L2-1: sì ai cinque sotto-giri, via al 2a (2026-10-19) | §10.3 | 6-quater |
+| 6-sexies-a | ✅ team DB | Lotto 2a scritto e provato in transazione: `20261019-40` … `-79` | §11 | — |
+| 6-sexies-b | sessione BE/FE | Il giro BE/FE del 2a (mixin indirizzi, annullo con legami, due risposte API) | §11.4 | 6-sexies-a |
+| 6-sexies-c | ✅ **Tid** | Apply del 2a su dbdev e corsa dei pgTAP come app: verdi, dopo l'adeguamento di un test (2026-10-19) | §11.5 | 6-sexies-a |
+| 6-sexies | team DB + sessione BE/FE | Sotto-giri 2b … 2e (DB e backend nello stesso giro; col 2e il SQL a mano delle chiavi, G-8), e lotto 3 (anticipabile) | §10, §5 G-4 | 6-sexies-b |
+| 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6-sexies |
 
-**Decisioni aperte di Tid:** nessuna (K-1 e i nomi decisi il 2026-10-19, §8.3). Da committare: il giro BE del lotto 1 (§9.6, `dev/backend-tid`). ⚠️ Mancano ancora i rimandi del §6.1 in
+**Decisioni aperte di Tid:** nessuna (L2-1 decisa il 2026-10-19, §10.3). Da committare: niente lato DB (il 2a è nel commit del 2026-10-19). ⚠️ Mancano ancora i rimandi del §6.1 in
 [brief-db-indirizzi-documento-seguono-il-cliente](brief-db-indirizzi-documento-seguono-il-cliente.md) (R-BE-1) e in
 [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md): oggi rimanda qui solo
 quello degli articoli ammessi.
@@ -700,3 +706,142 @@ selettore.
   tre dialog di emissione e tre liste scrivevano a mano il codice sorgente invece di usare
   `SORGENTE_CODES`, e la chiave `SORGENTE_CODES.DDT` diventa `DDT_VENDITA` (la chiave è il codice);
   presidio `documenti/constants.spec.js`.
+
+## 10. Lotto 2 — il piano (team DB, 2026-10-19)
+
+### 10.1 Il perimetro misurato (catalogo vivo di dbdev, 2026-10-19; struttura, non popolazione)
+
+* **42 funzioni** scrivono un codice corto (`DDT`, `ORDINE`, `OFFERTA`, `RESO`, `EMAIL_BOZZA`) come
+  letterale fuori dai commenti: i lettori della grammatica delle testate (§7.3), i verbi di annullo e del
+  reso, i generatori di bolla, i guard di bolla, ordine e reso, i numeratori, i lettori delle note, un
+  builder pgTAP.
+* **18 funzioni trigger** portano codici corti negli argomenti, per **76 montaggi**. Il lock delle righe
+  fuori bozza da solo ne ha 22, quello delle testate 6, i due degli indirizzi 10, l'annullo con legami 5.
+  Ogni montaggio si cambia solo smontando e rimontando.
+* Dentro questo perimetro stanno pezzi che le decisioni hanno messo in **sedi diverse**: le note
+  (`trgfn_note_validate_generic`, `fn_scope_note_*`) sono del **lotto 3**; i numeratori sono di **G-5**;
+  `trgfn_tipi_indirizzi_only_allowed` e `config.sorgenti.area` di **G-6**; `documento_origine_tipo` e
+  `destinazione_tipo` di **V7** (G-3); `segment_key` di **G-8**.
+* Lato backend: il mixin degli indirizzi dei cinque repository, `_annullo_con_legami.py` (le due
+  traduzioni), `_iva_contesto_documento.py` (le `choices` di un endpoint), il `contesto` della situazione
+  merce, `ordini_service` (`documento_origine.tipo` nella risposta): tre risposte API toccano il frontend.
+
+Messo tutto in un giro sarebbero un centinaio di changeSet e tre risposte API in un solo apply, coordinato
+con BE e FE. G-4 chiede che ogni lotto sia chiuso in sé: un lotto così grande non lo è nei fatti.
+
+### 10.2 La proposta: cinque sotto-giri, ciascuno chiuso (L2-1, per Tid)
+
+| Sotto-giro | Che cosa | ChangeSet (stima) | Backend / frontend |
+| --- | --- | --- | --- |
+| **2a. Testate** | la grammatica delle testate passa ai codici delle sorgenti (`DDT_VENDITA`, `ORDINE_VENDITA`, `OFFERTA_COMMERCIALE`, `RESO_VENDITA`, `EMAIL`; gli altri sono già uguali): i lettori (`fn_get_stato_testata_documento` e i fratelli), i verbi e i guard coi letterali, i montaggi dei trigger. **Muore il ponte** di `fn_articolo_riga_contesto` | ~55 (circa 35 funzioni, una per changeSet, più un changeSet di rimontaggio per funzione trigger) | il mixin indirizzi passa un codice solo per il documento; `_annullo_con_legami.py` perde le due traduzioni |
+| **2b. Origine e destinazione** (V7) | `vendite.ordini.documento_origine_tipo` e `config.nature_vendita.destinazione_tipo`: dal `CHECK` alla FK verso `config.sorgenti`; i dati di oggi convertiti; l'`origine` di `fn_documento_legami` | ~6 + CSV | `ordini_service` scrive `OFFERTA_COMMERCIALE`; **risposta API** `documento_origine.tipo` (FE) |
+| **2c. Famiglie** (G-5) | `vendite.famiglie_documento` con identità FK verso le sorgenti, `schema_tabella`/`nome_tabella` ritirati, numeratori e `fn_crea_famiglia_documento` | ~10 + CSV | da censire nel giro (le famiglie si gestiscono dal CRUD) |
+| **2d. Aree** (G-6) | `config.tipi_indirizzi_allowed.ambito` → codice della sorgente con FK; `config.sorgenti.area` ritirata e `in_dashboard` esplicita; viste `vw_dash_*` | ~10 + CSV | mixin indirizzi (l'ambito), costanti `DASH_*_AREE`; **dashboard** (FE) |
+| **2e. Chiavi del push** (G-8) | il builder unico di `segment_key`, «è merce?» da `sorgente_tipo_id`, le copie a mano ritirate | ~8 | SQL una tantum sulle chiavi dei database di sviluppo, **insieme all'apply** |
+
+Ordine proposto: **2a** per primo (il nucleo, e il ponte che muore); poi 2b, 2c, 2d, 2e in qualunque
+ordine: dipendono solo dal lotto 0. Il lotto 3 (note) resta anticipabile, anche fra un sotto-giro e
+l'altro. Ogni sotto-giro chiude con la sua consegna BE/FE, come il lotto 1.
+
+Le **risposte API** che portano un codice di tipo documento (`choices` dell'IVA, `contesto` della
+situazione merce) cambiano nel sotto-giro che cambia il loro produttore: 2a per la situazione merce e
+per l'IVA, che usano i codici delle testate.
+
+### 10.3 La decisione (Tid, 2026-10-19)
+
+✅ **L2-1: sì ai cinque sotto-giri, si parte dal 2a** («ok parti come da tuo piano»), con `%TYPE` in firma,
+`DECLARE` e `RETURNS TABLE`, e la numerazione che oltre `-99` passa al `20261020-01`.
+
+## 11. Lotto 2a — le testate (team DB, 2026-10-19)
+
+Numeri `20261019-40` … `-79`. Scritto, provato in transazione e ✅ **applicato su dbdev il 2026-10-19** (pgTAP
+verdi come app). ⚠️ Andava applicato **insieme**
+al giro BE del §11.4: dopo l'apply i lettori delle testate rifiutano `DDT`, `ORDINE`, `OFFERTA`, `RESO`,
+`EMAIL_BOZZA`.
+
+### 11.1 Che cosa contiene
+
+La grammatica delle testate (V3) passa ai codici delle sorgenti: `DDT` → `DDT_VENDITA`, `ORDINE` →
+`ORDINE_VENDITA`, `OFFERTA` → `OFFERTA_COMMERCIALE`, `RESO` → `RESO_VENDITA`, `EMAIL_BOZZA` → `EMAIL`.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-40` … `-52` | **i lettori**, `DROP` + `CREATE` con `p_documento` ancorato a `config.sorgenti.codice_interno%TYPE`: `script.fn_get_stato_testata_documento`, `fn_get_testata_id_di_riga`, `fn_get_cliente_testata_documento`, `fn_doc_indirizzi_sede`, `fn_doc_date_consegna_anteriori`, `fn_check_listino_cambiabile`, `fn_check_indirizzi_documento_cliente`; `vendite.fn_doc_indirizzo_default`, `fn_doc_fornitura_sede`, `fn_doc_fornitura_da_anagrafica`, `fn_doc_porta_ritiro_ammette`, `fn_documento_legami`, `fn_documento_ritira_legami` |
+| `-53` | **muore il ponte A-8**: `script.fn_articolo_riga_contesto` chiede l'etichetta col codice com'è |
+| `-54` … `-67` | **i chiamanti coi letterali** (`CREATE OR REPLACE`): capability dell'offerta, check della bolla e dell'ordine, accredito del reso, i verbi di annullo di bolla e ordine, i guard di transizione dell'offerta, dell'allegato email, dei legami di bolla, della riga evasa, delle cancellazioni |
+| `-68` … `-71` | funzioni trigger col commento o i valori ammessi da aggiornare, **più i loro montaggi**: annullo con legami (2), lock delle righe fuori bozza (15), i due guard del listino (2 + 1) |
+| `-72` … `-79` | **solo i montaggi**: lock della testata (4), indirizzi (3 + 2), emittente (1), fornitura (1 + 1), date di consegna (1 + 1) |
+
+Montaggi rimontati: **34**, rigenerati da `pg_get_triggerdef` di dbdev col solo primo argomento cambiato.
+Quelli con `CONTRATTO`, `PREVENTIVO`, `COMMESSA`, `FATTURA` non cambiano e non si toccano.
+
+### 11.2 Le scelte
+
+* **Proprietà ripetute dal catalogo vivo**: volatilità, `SECURITY DEFINER`, `SET search_path`. Un
+  `CREATE OR REPLACE` senza `SET` avrebbe tolto il `search_path` alle `DEFINER`.
+* **Postura**: `fn_documento_legami` e `fn_documento_ritira_legami` restano senza `EXECUTE` a PUBLIC (il
+  `DROP` + `CREATE` lo ridarebbe): `REVOKE` nello stesso changeSet, come nei `20261011-77`/`-84`.
+* **La GUC del ritiro** (`zeroerp.doc_ritira_legami = '<DOCUMENTO>:<id>'`): scrittore
+  (`fn_documento_ritira_legami`) e lettore (`fn_doc_porta_ritiro_ammette`) cambiano insieme; dentro il
+  ritiro sparisce la traduzione `DDT` → `DDT_VENDITA` verso `config.sorgenti`.
+* **`meta.accredito_da`** della riga di commessa scrive `RESO_VENDITA`: nessun lettore (cercato in DB,
+  backend, frontend, pgTAP); le righe già scritte portano `RESO`.
+* **Il ponte A-8 non c'è più.** L'etichetta di ripiego, quando la testata non si vede, è il codice in
+  chiaro («Offerta Commerciale #id»).
+
+### 11.3 Restano ad altri giri (e perché) — i codici corti che il 2a lascia
+
+| Dove | Codice | Giro |
+| --- | --- | --- |
+| `vendite.fn_documento_legami` (colonna `origine`), `fn_documento_ritira_legami` (`l.origine IN (…)`), `vendite.ordini.documento_origine_tipo`, `fn_offerta_documenti_vivi`, `vw_ordini_lista`, `vw_dash_fatturazione_offerte` | `ORDINE`, `RESO`, `OFFERTA` | **2b** (V7) |
+| `config.nature_vendita.destinazione_tipo` e i suoi lettori (`trgfn_articoli_guard_onere_natura`, `fn_check_articolo_riga_su_contesto`, le viste di smistamento del preventivo) | `ORDINE` | **2b** |
+| numeratori (`p_famiglia_documento => 'DDT'`, `'ORDINE'`, `'RESO'`) | | **2c** (G-5) |
+| ambito degli indirizzi (`fn_indirizzi_obbligatori_mancanti('DDT', …)`, `a.ambito = 'DDT'`, la quinta colonna di `fn_doc_indirizzi_sede`, `trgfn_tipi_indirizzi_only_allowed`), `area` delle viste `vw_dash_*` | | **2d** (G-6) |
+| note (`trgfn_note_validate_generic`, `fn_scope_note_*`) | | **lotto 3** |
+| il testo dei messaggi per l'operatore (`'DDT'` come parola nei guard di bolla e reso) | | resta: non è un codice |
+
+### 11.4 Richiesta al backend (stesso apply)
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `_indirizzi_documento` dei cinque repository (`ordini`, `offerte`, `ddt`; `preventivi` e `contratti` già uguali) | `"ORDINE"`, `"OFFERTA"`, `"DDT"` | `SORGENTE_ORDINE_VENDITA`, `SORGENTE_OFFERTA_COMMERCIALE`, `SORGENTE_DDT_VENDITA` (`apps/config/sorgenti.py`). `_indirizzi_ambito` resta fino al 2d |
+| `_annullo_con_legami.py`: `DOCUMENTO_DDT`, `DOCUMENTO_ORDINE` passati a `vendite.fn_documento_legami` | `"DDT"`, `"ORDINE"` | i codici delle sorgenti; **la traduzione V3 → V1** (righe 63-70) **si ritira**. La traduzione dell'`origine` (righe 77-86) resta fino al 2b |
+| `_iva_contesto_documento.py`: loader e `TIPI_DOCUMENTO_AMMESSI` (le `choices` di `views_iva.py`) | `"ORDINE"`, `"DDT"` | `ORDINE_VENDITA`, `DDT_VENDITA`. ⚠️ **cambia una risposta API** (FE) |
+| `vendite_service.py:2577`, il `contesto` della situazione merce | `"ORDINE"`, `"DDT"` | `ORDINE_VENDITA`, `DDT_VENDITA`. ⚠️ **cambia una risposta API** (FE) |
+| test Django e smoke che passano i codici corti a questi punti | | da adeguare |
+
+Il frontend: le due risposte API sopra (le chiavi di traduzione e i confronti che leggono quei valori).
+
+### 11.5 La prova (2026-10-19, scratch `zeroerp_ruoli`, come owner, in transazione annullata)
+
+* **Censimento dal catalogo vivo** di dbdev: 55 funzioni che scrivono un codice corto o portano montaggi
+  coi codici corti, più le tre che ricevono `p_documento` e lo passano
+  (`fn_check_indirizzi_documento_cliente`, `fn_doc_indirizzo_default`, `fn_doc_fornitura_da_anagrafica`).
+  Ogni letterale classificato (124 righe): nel 2a la grammatica delle testate; il resto nel §11.3.
+  Nessun seed, nessun `CHECK` e nessuna vista del 2a (quelli trovati sono di 2b, 2d, lotto 3).
+* SQL estratto dei 40 changeSet: applicato senza errori. Le 13 funzioni ricreate hanno una sola firma,
+  `character varying`; **i `RETURNS` di tutte e 40 identici a quelli vivi** (`pg_get_function_result`
+  prima e dopo); `plpgsql_check` a zero errori; `search_path`, `SECURITY DEFINER` e postura (`EXECUTE`
+  revocato a PUBLIC per i due dei legami) come prima; nessun montaggio col primo argomento corto, fuori da
+  note e ambito.
+* ⚠️ **Due difetti trovati dalla prova e corretti prima della consegna**: il `RETURNS` di
+  `fn_get_stato_testata_documento` era preso da uno YAML vecchio (mancava `nata_in_transazione`, aggiunta
+  l'11-10: il `DROP` + `CREATE` non l'avrebbe segnalato, l'ha visto `plpgsql_check`); il `REVOKE` a PUBLIC
+  non usciva perché il generatore cercava `=X/` e lo trovava dentro `zeroerp_owner=X/`.
+* **113 pgTAP** (ogni file che nomina una funzione, un montaggio o un codice corto del 2a, più i presidi
+  trasversali), prima e dopo. **13 regressioni, tutte dei test** che passavano i codici corti (le chiamate
+  dirette ai lettori e ai legami, la GUC del ritiro, i montaggi attesi del lock, la firma inchiodata di
+  `fn_get_testata_id_di_riga`): adeguati, ciascuno con la nota di revisione in testa. Dopo: **esiti identici
+  a prima** in tutti i 113. Il test 12 del pgTAP del lotto 1 passa all'etichetta senza ponte.
+* Rossi **già prima**, uguali dopo (fixture o scope da owner, non dal lotto): fra gli altri
+  `script/test-fn-available-actions-ddt-reason-catch-all-v1` (16), `vendite/test-annullo-documento-con-legami-v1`
+  (27), `vendite/test-fn-list-ddt-da-pushare-v1`, `test-fn-resolve-prezzo-listino-v2-v1`,
+  `test-vw-dash-fatturazione-v1`, `test-vw-preventivi-smistamento-v1`.
+* Cancelli statici verdi.
+* Non provato prima dell'apply: i pgTAP **come app** (li lancia Tid) e il giro BE/FE del §11.4.
+* **Dopo l'apply su dbdev (2026-10-19), corsa di Tid come app**: `script/test-capability-motivi-e-nessuna-azione-v1`
+  rosso, perché passava `'ORDINE'`/`'DDT'` a `fn_documento_legami`. Era nel censimento ma non fra le
+  regressioni della prova: sullo scratch, da owner, era rosso già prima per la fixture, e il confronto
+  prima/dopo non poteva vederlo. Adeguato, 13/13 come app. Ricercate di nuovo in tutti i pgTAP e nel
+  backend le chiamate coi codici corti, anche su più righe: nessuna (resta, voluta, la chiamata con
+  `'ORDINE'` che `test-testata-dopo-emissione-rdb-v1` usa per provare il rifiuto).

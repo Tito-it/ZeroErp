@@ -1,0 +1,290 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 2a (le testate): vendite.trgfn_ddt_riga_legame_guard
+#   Brief: brief-db-grammatica-unica-documenti §11 (G-1, G-4 di Tid; L2-1 del
+#   2026-10-19: il lotto 2 in cinque sotto-giri, questo e' il primo).
+#
+#   La grammatica delle testate (V3 del censimento) passa ai codici di
+#   config.sorgenti: DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA,
+#   OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL.
+#   PREVENTIVO, CONTRATTO, COMMESSA, FATTURA sono gia' i codici delle sorgenti.
+#
+#   Chiama i lettori delle testate e la porta del ritiro con DDT_VENDITA.
+#
+#   Corpo dalla definizione viva (dbdev, 2026-10-19); firma e RETURNS
+#   dall'ultimo YAML che li ha ancorati (funzione trigger, nessun parametro); proprieta' (volatilita',
+#   SECURITY, SET search_path) dal catalogo vivo, ripetute. COMMENT vivo con la
+#   nota di revisione in coda.
+#
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-64-update-trgfn-ddt-riga-legame-guard-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261019-64-update-trgfn-ddt-riga-legame-guard-codice-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_ddt_riga_legame_guard: Chiama i lettori delle testate e la porta del ritiro con DDT_VENDITA. Grammatica unica, lotto 2a.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_riga_legame_guard()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+
+              -- =========================================================
+              -- Scopo: il legame di una riga di DDT con la sua origine (riga
+              --   d'ordine, riga di reso da ri-consegnare) non si scrive a mano
+              --   (D-2, D-3, D-4, D-7 di brief-db-ddt-righe-evase-dall-ordine).
+              --   UPDATE della quantita': solo dal verbo
+              --     vendite.fn_ddt_riga_correggi_qta_evasa (GUC
+              --     zeroerp.ddt_riga_correggi_qta = ddt_riga_id E proprietario).
+              --   UPDATE dei due capi: mai.
+              --   DELETE: solo dal ritiro (vendite.fn_ddt_riga_ritira_legami: GUC
+              --     zeroerp.ddt_riga_ritira_legame = ddt_riga_id), e solo con la bolla
+              --     in bozza (D-3) o dentro l'annullo confermato (la porta del ritiro
+              --     dei legami, vendite.fn_doc_porta_ritiro_ammette: D-8, e D-4 di
+              --     brief-db-annullo-documento-con-legami, rev 2026-10-11).
+              -- Argomenti: [0] colonna della quantita', [1] colonna del capo a
+              --   monte. Il capo a valle e' ddt_riga_id.
+              -- Uso: BEFORE UPDATE OR DELETE FOR EACH ROW, fascia _a05_.
+              -- =========================================================
+              DECLARE
+                  -- Nomi di colonna dal montaggio, e la riga come jsonb: due
+                  -- tabelle diverse, nessuna colonna da ancorare.
+                  v_col_qta      text;
+                  v_col_capo     text;
+                  v_vecchia      jsonb;
+                  v_nuova        jsonb;
+                  v_ddt_riga_id  vendite.ddt_righe.id%TYPE;
+                  v_porta_aperta boolean;
+                  v_origine      text;
+                  v_ddt_id       vendite.ddt.id%TYPE;
+                  -- Lo stato dal lettore del lock (RETURNS TABLE di text).
+                  v_stato_ddt    text;
+              BEGIN
+                  v_col_qta  := TG_ARGV[0];
+                  v_col_capo := TG_ARGV[1];
+                  v_vecchia  := to_jsonb(OLD);
+                  v_nuova    := CASE WHEN TG_OP = 'UPDATE' THEN to_jsonb(NEW) END;
+
+                  -- Montaggio: due argomenti, due colonne che la riga ha.
+                  IF TG_NARGS <> 2
+                     OR NOT (v_vecchia ? v_col_qta)
+                     OR NOT (v_vecchia ? v_col_capo)
+                     OR NOT (v_vecchia ? 'ddt_riga_id') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('trigger', TG_NAME,
+                                             'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'tg_argv', TG_ARGV),
+                          NULL::uuid, 'vendite.trgfn_ddt_riga_legame_guard',
+                          'montaggio: [0] colonna della quantita'', [1] colonna del capo a monte, e la riga deve avere ddt_riga_id');
+                  END IF;
+
+                  v_ddt_riga_id := (v_vecchia ->> 'ddt_riga_id')::bigint;
+
+                  IF TG_OP = 'DELETE' THEN
+                      -- La porta del ritiro (vendite.fn_ddt_riga_ritira_legami) e', in
+                      -- piu', una di queste due (D-8, rev 2026-10-11):
+                      --   * la bolla della riga e' in bozza, o non c'e' piu' (cascade
+                      --     dalla testata, che si elimina solo in bozza): D-3;
+                      --   * fuori bozza, la porta del ritiro dei legami della bolla
+                      --     (vendite.fn_doc_porta_ritiro_ammette: GUC
+                      --     zeroerp.doc_ritira_legami = 'DDT:<id>', aperta dal BB
+                      --     vendite.fn_documento_ritira_legami dopo la conferma, dal
+                      --     proprietario): D-8. rev 2026-10-11, D-4 di
+                      --     brief-db-annullo-documento-con-legami: la GUC della sola bolla
+                      --     (zeroerp.ddt_annullo) diventa la porta comune.
+                      -- Stato e testata dai lettori DEFINER: righe e testate hanno RLS.
+                      v_porta_aperta := COALESCE(current_setting('zeroerp.ddt_riga_ritira_legame', true), '')
+                                        = v_ddt_riga_id::text;
+                      IF v_porta_aperta THEN
+                          v_ddt_id := script.fn_get_testata_id_di_riga('DDT_VENDITA', v_ddt_riga_id);
+                          SELECT t.stato INTO v_stato_ddt
+                            FROM script.fn_get_stato_testata_documento('DDT_VENDITA', v_ddt_id) AS t;
+                          v_porta_aperta :=
+                                 v_ddt_id IS NULL
+                              OR v_stato_ddt IS NULL
+                              OR v_stato_ddt = 'DRAFT'
+                              OR vendite.fn_doc_porta_ritiro_ammette('DDT_VENDITA', v_ddt_id, TG_RELID::regclass);
+                      END IF;
+                  ELSIF (v_nuova -> v_col_capo)      IS DISTINCT FROM (v_vecchia -> v_col_capo)
+                     OR (v_nuova -> 'ddt_riga_id')   IS DISTINCT FROM (v_vecchia -> 'ddt_riga_id') THEN
+                      -- I due capi non si spostano: nessuna porta.
+                      v_porta_aperta := false;
+                  ELSIF (v_nuova -> v_col_qta) IS DISTINCT FROM (v_vecchia -> v_col_qta) THEN
+                      v_porta_aperta := COALESCE(current_setting('zeroerp.ddt_riga_correggi_qta', true), '')
+                                        = v_ddt_riga_id::text
+                                        AND script.fn_is_proprietario_tabella(TG_RELID);
+                  ELSE
+                      -- Note, meta: libere.
+                      RETURN NEW;
+                  END IF;
+
+                  IF NOT v_porta_aperta THEN
+                      v_origine := CASE TG_TABLE_NAME
+                                     WHEN 'ordini_righe_fulfillment' THEN 'riga d''ordine '
+                                     WHEN 'resi_righe_riconsegne'    THEN 'riga di reso '
+                                     ELSE TG_TABLE_NAME || ' '
+                                   END || (v_vecchia ->> v_col_capo);
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_DDT_LEGAME_EVASIONE_SOLO_DA_VERBO',
+                          jsonb_build_object('table',       TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'id',          v_vecchia ->> 'id',
+                                             'ddt_riga_id', v_ddt_riga_id,
+                                             v_col_capo,    v_vecchia -> v_col_capo,
+                                             'operazione',  TG_OP),
+                          (v_vecchia ->> 'tx_id')::uuid,
+                          v_ddt_riga_id::text,
+                          v_origine);
+                  END IF;
+
+                  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_riga_legame_guard() IS
+                'Building block (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-2, D-3, D-4, D-7): il LEGAME di una riga di DDT con la sua origine non si scrive a mano. Montato su vendite.ordini_righe_fulfillment (qta_evasa, ordine_riga_id) e vendite.resi_righe_riconsegne (qta, resi_riga_id): TG_ARGV [0] colonna della quantita'', [1] colonna del capo a monte; il capo a valle e'' ddt_riga_id. UPDATE della quantita'' solo dal verbo vendite.fn_ddt_riga_correggi_qta_evasa (GUC transazionale zeroerp.ddt_riga_correggi_qta = ddt_riga_id E proprietario della tabella, script.fn_is_proprietario_tabella); UPDATE di un capo mai; DELETE solo dal ritiro (BB vendite.fn_ddt_riga_ritira_legami, GUC zeroerp.ddt_riga_ritira_legame = ddt_riga_id) e solo con la bolla in bozza o appena cancellata (D-3: la riga si toglie; porta della sola GUC, il ritiro parte da un trigger che gira come chi cancella, famiglia Q-2 di D17), oppure fuori bozza dentro l''annullo (D-8: GUC zeroerp.ddt_annullo = id della bolla E proprietario, cioe'' il verbo DEFINER vendite.fn_annulla_ddt). Stato e testata dai lettori DEFINER. GUC mai impostata = porta chiusa (COALESCE). Note e meta libere. Rifiuto E_DDT_LEGAME_EVASIONE_SOLO_DA_VERBO (TECNICO; valori: id della riga di DDT, origine come «riga d''ordine N» / «riga di reso N»). Montaggio sbagliato: E_VENDITE_CHIAMATA_NON_VALIDA. Su INSERT e UPDATE fuori bozza parla prima il lock delle righe montato sui due legami (D-4, D-6); il DELETE lo governa solo questo guard. Scrive l''invariante «il legame fotografa cio'' che e'' spedito», che fino a qui nessun lock presidiava. rev 2026-10-11 (20261011-80, brief-db-annullo-documento-con-legami D-4): fuori bozza il DELETE passa dalla porta comune del ritiro dei legami (vendite.fn_doc_porta_ritiro_ammette, GUC zeroerp.doc_ritira_legami = ''DDT:<id>'', dal proprietario), aperta dal BB vendite.fn_documento_ritira_legami dopo la conferma; la GUC zeroerp.ddt_annullo si ritira. ⭐ rev 2026-10-19 (20261019-64, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_riga_legame_guard()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+
+              -- =========================================================
+              -- Scopo: il legame di una riga di DDT con la sua origine (riga
+              --   d'ordine, riga di reso da ri-consegnare) non si scrive a mano
+              --   (D-2, D-3, D-4, D-7 di brief-db-ddt-righe-evase-dall-ordine).
+              --   UPDATE della quantita': solo dal verbo
+              --     vendite.fn_ddt_riga_correggi_qta_evasa (GUC
+              --     zeroerp.ddt_riga_correggi_qta = ddt_riga_id E proprietario).
+              --   UPDATE dei due capi: mai.
+              --   DELETE: solo dal ritiro (vendite.fn_ddt_riga_ritira_legami: GUC
+              --     zeroerp.ddt_riga_ritira_legame = ddt_riga_id), e solo con la bolla
+              --     in bozza (D-3) o dentro l'annullo confermato (la porta del ritiro
+              --     dei legami, vendite.fn_doc_porta_ritiro_ammette: D-8, e D-4 di
+              --     brief-db-annullo-documento-con-legami, rev 2026-10-11).
+              -- Argomenti: [0] colonna della quantita', [1] colonna del capo a
+              --   monte. Il capo a valle e' ddt_riga_id.
+              -- Uso: BEFORE UPDATE OR DELETE FOR EACH ROW, fascia _a05_.
+              -- =========================================================
+              DECLARE
+                  -- Nomi di colonna dal montaggio, e la riga come jsonb: due
+                  -- tabelle diverse, nessuna colonna da ancorare.
+                  v_col_qta      text;
+                  v_col_capo     text;
+                  v_vecchia      jsonb;
+                  v_nuova        jsonb;
+                  v_ddt_riga_id  vendite.ddt_righe.id%TYPE;
+                  v_porta_aperta boolean;
+                  v_origine      text;
+                  v_ddt_id       vendite.ddt.id%TYPE;
+                  -- Lo stato dal lettore del lock (RETURNS TABLE di text).
+                  v_stato_ddt    text;
+              BEGIN
+                  v_col_qta  := TG_ARGV[0];
+                  v_col_capo := TG_ARGV[1];
+                  v_vecchia  := to_jsonb(OLD);
+                  v_nuova    := CASE WHEN TG_OP = 'UPDATE' THEN to_jsonb(NEW) END;
+
+                  -- Montaggio: due argomenti, due colonne che la riga ha.
+                  IF TG_NARGS <> 2
+                     OR NOT (v_vecchia ? v_col_qta)
+                     OR NOT (v_vecchia ? v_col_capo)
+                     OR NOT (v_vecchia ? 'ddt_riga_id') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('trigger', TG_NAME,
+                                             'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'tg_argv', TG_ARGV),
+                          NULL::uuid, 'vendite.trgfn_ddt_riga_legame_guard',
+                          'montaggio: [0] colonna della quantita'', [1] colonna del capo a monte, e la riga deve avere ddt_riga_id');
+                  END IF;
+
+                  v_ddt_riga_id := (v_vecchia ->> 'ddt_riga_id')::bigint;
+
+                  IF TG_OP = 'DELETE' THEN
+                      -- La porta del ritiro (vendite.fn_ddt_riga_ritira_legami) e', in
+                      -- piu', una di queste due (D-8, rev 2026-10-11):
+                      --   * la bolla della riga e' in bozza, o non c'e' piu' (cascade
+                      --     dalla testata, che si elimina solo in bozza): D-3;
+                      --   * fuori bozza, la porta del ritiro dei legami della bolla
+                      --     (vendite.fn_doc_porta_ritiro_ammette: GUC
+                      --     zeroerp.doc_ritira_legami = 'DDT:<id>', aperta dal BB
+                      --     vendite.fn_documento_ritira_legami dopo la conferma, dal
+                      --     proprietario): D-8. rev 2026-10-11, D-4 di
+                      --     brief-db-annullo-documento-con-legami: la GUC della sola bolla
+                      --     (zeroerp.ddt_annullo) diventa la porta comune.
+                      -- Stato e testata dai lettori DEFINER: righe e testate hanno RLS.
+                      v_porta_aperta := COALESCE(current_setting('zeroerp.ddt_riga_ritira_legame', true), '')
+                                        = v_ddt_riga_id::text;
+                      IF v_porta_aperta THEN
+                          v_ddt_id := script.fn_get_testata_id_di_riga('DDT', v_ddt_riga_id);
+                          SELECT t.stato INTO v_stato_ddt
+                            FROM script.fn_get_stato_testata_documento('DDT', v_ddt_id) AS t;
+                          v_porta_aperta :=
+                                 v_ddt_id IS NULL
+                              OR v_stato_ddt IS NULL
+                              OR v_stato_ddt = 'DRAFT'
+                              OR vendite.fn_doc_porta_ritiro_ammette('DDT', v_ddt_id, TG_RELID::regclass);
+                      END IF;
+                  ELSIF (v_nuova -> v_col_capo)      IS DISTINCT FROM (v_vecchia -> v_col_capo)
+                     OR (v_nuova -> 'ddt_riga_id')   IS DISTINCT FROM (v_vecchia -> 'ddt_riga_id') THEN
+                      -- I due capi non si spostano: nessuna porta.
+                      v_porta_aperta := false;
+                  ELSIF (v_nuova -> v_col_qta) IS DISTINCT FROM (v_vecchia -> v_col_qta) THEN
+                      v_porta_aperta := COALESCE(current_setting('zeroerp.ddt_riga_correggi_qta', true), '')
+                                        = v_ddt_riga_id::text
+                                        AND script.fn_is_proprietario_tabella(TG_RELID);
+                  ELSE
+                      -- Note, meta: libere.
+                      RETURN NEW;
+                  END IF;
+
+                  IF NOT v_porta_aperta THEN
+                      v_origine := CASE TG_TABLE_NAME
+                                     WHEN 'ordini_righe_fulfillment' THEN 'riga d''ordine '
+                                     WHEN 'resi_righe_riconsegne'    THEN 'riga di reso '
+                                     ELSE TG_TABLE_NAME || ' '
+                                   END || (v_vecchia ->> v_col_capo);
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_DDT_LEGAME_EVASIONE_SOLO_DA_VERBO',
+                          jsonb_build_object('table',       TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'id',          v_vecchia ->> 'id',
+                                             'ddt_riga_id', v_ddt_riga_id,
+                                             v_col_capo,    v_vecchia -> v_col_capo,
+                                             'operazione',  TG_OP),
+                          (v_vecchia ->> 'tx_id')::uuid,
+                          v_ddt_riga_id::text,
+                          v_origine);
+                  END IF;
+
+                  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_riga_legame_guard() IS
+                'Building block (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-2, D-3, D-4, D-7): il LEGAME di una riga di DDT con la sua origine non si scrive a mano. Montato su vendite.ordini_righe_fulfillment (qta_evasa, ordine_riga_id) e vendite.resi_righe_riconsegne (qta, resi_riga_id): TG_ARGV [0] colonna della quantita'', [1] colonna del capo a monte; il capo a valle e'' ddt_riga_id. UPDATE della quantita'' solo dal verbo vendite.fn_ddt_riga_correggi_qta_evasa (GUC transazionale zeroerp.ddt_riga_correggi_qta = ddt_riga_id E proprietario della tabella, script.fn_is_proprietario_tabella); UPDATE di un capo mai; DELETE solo dal ritiro (BB vendite.fn_ddt_riga_ritira_legami, GUC zeroerp.ddt_riga_ritira_legame = ddt_riga_id) e solo con la bolla in bozza o appena cancellata (D-3: la riga si toglie; porta della sola GUC, il ritiro parte da un trigger che gira come chi cancella, famiglia Q-2 di D17), oppure fuori bozza dentro l''annullo (D-8: GUC zeroerp.ddt_annullo = id della bolla E proprietario, cioe'' il verbo DEFINER vendite.fn_annulla_ddt). Stato e testata dai lettori DEFINER. GUC mai impostata = porta chiusa (COALESCE). Note e meta libere. Rifiuto E_DDT_LEGAME_EVASIONE_SOLO_DA_VERBO (TECNICO; valori: id della riga di DDT, origine come «riga d''ordine N» / «riga di reso N»). Montaggio sbagliato: E_VENDITE_CHIAMATA_NON_VALIDA. Su INSERT e UPDATE fuori bozza parla prima il lock delle righe montato sui due legami (D-4, D-6); il DELETE lo governa solo questo guard. Scrive l''invariante «il legame fotografa cio'' che e'' spedito», che fino a qui nessun lock presidiava. rev 2026-10-11 (20261011-80, brief-db-annullo-documento-con-legami D-4): fuori bozza il DELETE passa dalla porta comune del ritiro dei legami (vendite.fn_doc_porta_ritiro_ammette, GUC zeroerp.doc_ritira_legami = ''DDT:<id>'', dal proprietario), aperta dal BB vendite.fn_documento_ritira_legami dopo la conferma; la GUC zeroerp.ddt_annullo si ritira.';
