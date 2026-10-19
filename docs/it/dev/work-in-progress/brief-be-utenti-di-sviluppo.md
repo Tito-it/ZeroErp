@@ -35,7 +35,7 @@ utenti dei portali non hanno un PF loro (la veste sta sul ruolo del cliente o de
 > **Origine:** proposta di Tid (2026-10-15) di dare agli utenti degli smoke e dello sviluppo una
 > nomenclatura standard, sul modello dei ruoli di sistema
 > ([brief-db-ruoli-di-sistema](brief-db-ruoli-di-sistema.md) §1). Il modello è stato chiuso con
-> il team DB in [brief-db-processi-accensione-per-ambiente](brief-db-processi-accensione-per-ambiente.md) §4-ter (R-2, R-4), decisioni di Tid del
+> il team DB in [brief-db-processi-accensione-per-ambiente](../work-done/brief-db-processi-accensione-per-ambiente.md) §4-ter (R-2, R-4), decisioni di Tid del
 > 2026-10-16.
 > **Stato:** ✅ T-1 … T-6 fatti (2026-10-18); 🔨 T-7, gli smoke senza i dati di `EMITEST` (§9).
 
@@ -69,7 +69,7 @@ scartata (Tid, 2026-10-15):
 
 ## 2. Il modello (deciso, lato DB)
 
-Fatti presi dalle risposte del team DB ([brief-db-processi-accensione-per-ambiente](brief-db-processi-accensione-per-ambiente.md) §4-ter, 2026-10-16).
+Fatti presi dalle risposte del team DB ([brief-db-processi-accensione-per-ambiente](../work-done/brief-db-processi-accensione-per-ambiente.md) §4-ter, 2026-10-16).
 
 | Pezzo | Com'è |
 | --- | --- |
@@ -137,14 +137,14 @@ secondo passo.
 ## 6. Domande al team DB
 
 * ✅ **D-1 — I command headless del backend sono «spegnibili»?** Sì, risposta dal giro 1
-  ([brief DB §6.0](brief-db-processi-accensione-per-ambiente.md)): la sveglia systemd chiede al DB
+  ([brief DB §6.0](../work-done/brief-db-processi-accensione-per-ambiente.md)): la sveglia systemd chiede al DB
   con un `ExecCondition` su `maintenance.fn_sveglia_accesa('<processo_codice>')`, «Esegui ora» legge
   la stessa funzione, `abilita` si ritira da `sveglie.json`. È lavoro BE, ma **non di questo brief**:
   sta nel §6 del brief DB, con gli altri sei punti del giro 1.
 
 ## 7. Che cosa crea il verbo — l'elenco per il giro 2
 
-> Risponde al [brief DB §5-ter](brief-db-processi-accensione-per-ambiente.md): «serve dal BE
+> Risponde al [brief DB §5-ter](../work-done/brief-db-processi-accensione-per-ambiente.md): «serve dal BE
 > l'elenco di che cosa crea». Fatti datati 2026-10-16, letti dalla doc `dbzero` e dal backend.
 
 ### 7.1 Le regole del verbo

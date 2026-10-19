@@ -1,8 +1,8 @@
 # Brief DB — Quali processi sono accesi: per ambiente, a mano, e quelli che non si spengono
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-19
+## ⏭️ Chi riparte — aggiornato al 2026-10-19 (chiuso)
 
-**Riparte: Tid, col commit di R-DB-17a (fatta dal BE il 2026-10-19, §6.17.3, test verdi); poi chi chiude, con l'archiviazione (riga 11).** ✅ R-BE-15 lato DB committata e mergiata (`e515c73af`, PR #1896). ✅ Il lavoro BE di R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b è fatto e committato (`615281b6c`, 2026-10-19). ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
+**Riparte: nessuno. ✅ Chiuso e archiviato il 2026-10-19** (riga 11): R-DB-17a committata (`85bcc9a4a`), riga in PROJECT_CONTEXT, brief in `work-done/`. ✅ R-BE-15 lato DB committata e mergiata (`e515c73af`, PR #1896). ✅ Il lavoro BE di R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b è fatto e committato (`615281b6c`, 2026-10-19). ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
 fatta (2026-10-18, §6.10): il backend crea emittente, fornitore, cliente, veste portale, magazzino, profilo,
 legame SUPER_ADMIN, override, emittente attivo e accende la veste dalle madri del DB; restano due scritture
 che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione è chiusa.
@@ -15,7 +15,7 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 4 | sessione BE/FE | ✅ punti 1-6 del §6.0, pushati (`f811719d1`, 2026-10-17); codici d'errore nel commit `843166c88`. ✅ Dopo l'incidente delle 23:45, i tetti di rete e delle sveglie (2026-10-17, `295737a90`) | §6.1, §6.4 | — |
 | 4-bis | team DB | le richieste del BE: ✅ R-BE-1 e R-BE-3 (giro 2a, §6.3), ✅ R-BE-2 sciolta da S-1 (§6.2); ✅ R-BE-4, la tolleranza di `smoke_notturno` = 1560 in `processi.csv`, applicata (§6.0 punto 7) | §6.2, §6.3, §6.5 | — |
 | 4-ter | Tid | ✅ sveglie reinstallate su dbdev (`sudo backend/bin/install-timers.sh`, 2026-10-17): le unit installate hanno i tetti `TimeoutStartSec` del §6.4 | §6.1, §6.4 | — |
-| 5 | sessione BE | ✅ che cosa crea il provisioning di sviluppo: l'elenco è in [brief-be-utenti-di-sviluppo §7](brief-be-utenti-di-sviluppo.md) (2026-10-16), decisioni di Tid del §7.4 prese (emittenti nuovi dal verbo, niente `dev.shop` per ora, portale senza contratto) | §5-ter | — |
+| 5 | sessione BE | ✅ che cosa crea il provisioning di sviluppo: l'elenco è in [brief-be-utenti-di-sviluppo §7](../work-in-progress/brief-be-utenti-di-sviluppo.md) (2026-10-16), decisioni di Tid del §7.4 prese (emittenti nuovi dal verbo, niente `dev.shop` per ora, portale senza contratto) | §5-ter | — |
 | 6 | Tid | ✅ decisioni S-1 (storia delle scelte, R-BE-2) e S-2 (smoke, §6.0 punto 7): proposte del team DB accolte (2026-10-17) | §6.2 | — |
 | 7 | Tid | ✅ il via allo sviluppo del giro DB 2 (2026-10-17) | — | — |
 | 8 | team DB | ✅ giro 2a scritto e provato sullo scratch: R-BE-1, R-BE-3, S-1 (`20261017-02` … `-04`) | §6.3 | — |
@@ -30,12 +30,12 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 9-ter-bis | team DB | ✅ (2026-10-19) R-BE-6, R-BE-7, R-BE-12: decisioni D-16a … D-16c di Tid col via allo sviluppo; `20261019-33` … `-39` scritti e provati sullo scratch, due pgTAP nuovi. R-BE-11 ha la sua riga (9-ter-bis-11) | §6.10, §6.16 | — |
 | 9-ter-bis-16 | Tid | ✅ apply di `20261019-33` … `-39` su dbdev (2026-10-19 00:26), pgTAP verdi compreso `test-fn-provisiona-dati-di-sviluppo-v1` corretto; committati | §6.16 | — |
 | 9-ter-bis-16-be | sessione BE | ✅ (2026-10-19) R-DB-16a (i legami di profilo dalle madri) e R-DB-16b (gli indirizzi dalle madri, ritirati la INSERT e la procedura); committato `615281b6c` | §6.16 | — |
-| 9-ter-bis-17 | team DB, poi Tid, poi BE | ✅ **R-BE-15** (D-17a … D-17d, via di Tid): `20261019-80` … `-86`, tre codici, il lock; applicati da Tid su dbdev e sullo scratch (2026-10-19 11:10), pgTAP verdi su dbdev. ✅ Committato (`e515c73af`). ✅ **R-DB-17a** fatta dal BE (2026-10-19), da committare | §6.17.2, §6.17.3 | — |
+| 9-ter-bis-17 | team DB, poi Tid, poi BE | ✅ **R-BE-15** (D-17a … D-17d, via di Tid): `20261019-80` … `-86`, tre codici, il lock; applicati da Tid su dbdev e sullo scratch (2026-10-19 11:10), pgTAP verdi su dbdev. ✅ Committato (`e515c73af`). ✅ **R-DB-17a** fatta dal BE (2026-10-19), committata `85bcc9a4a` | §6.17.2, §6.17.3 | — |
 | 9-ter-ter | team DB | ✅ (2026-10-18, D-1 … D-4 di Tid, `20261018-80` … `-99`, `20261019-01` … `-04`, applicati) l'indirizzo libero: R-BE-8 (lo stato proposto, `script.fn_stato_proposto_id`), R-BE-9 (il guard `trgfn_indirizzi_guard_forma_libera` col codice e il campo), R-BE-10 (la forma estera nella madre del soggetto, `fn_crea_indirizzo_soggetto(soggetto, jsonb)`); la regione alleggerita (`-82`: forma estera = località sola) | §6.11, §6.12 | — |
 | 9-ter-quater | sessione BE/FE | ✅ (2026-10-18) firma jsonb della madre del soggetto, `postal_code`, tendina degli stati, form in due forme, codici; provato sul DB vero dopo l'apply | §6.12 | — |
 | 9-ter-quinquies | Tid | ✅ apply di `20261018-80 … -99` e `20261019-01 … -04` su dbdev, pgTAP verdi (2026-10-18) | §6.12 | — |
 | 9-ter-sexies | team DB, poi Tid | ✅ R-BE-13: `fn_stato_proposto_id` non applicava l'override per utente (né per gruppo ed emittente). D-13a e D-13b di Tid; `20261019-05` (BB `fn_get_parameter_di_sessione`) e `-06` scritti e provati, applicati su dbdev (2026-10-18 22:45), pgTAP verdi; resta il commit | §6.12, §6.13 | — |
-| 9-ter-septies | team DB, poi Tid | R-BE-14: l'emittente di prova del provisioning non è attrezzato per lavorare. Tre pezzi (§6.12): ✅ **registri** in questo brief; **template di default** in [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md), D-1 … D-3 di Tid aperte; ✅ **giacenza** nello smoke (BE). Registri: ✅ (2026-10-18) D-14a … D-14d prese, via allo sviluppo dato; `20261019-07` … `-12`, codice `E_REGISTRO_COPPIA_GIA_COPERTA`, pgTAP nuovo e `test-registri-motore-trasloco` adeguato, scritti e provati sullo scratch | §6.12, §6.14 | — |
+| 9-ter-septies | team DB, poi Tid | R-BE-14: l'emittente di prova del provisioning non è attrezzato per lavorare. Tre pezzi (§6.12): ✅ **registri** in questo brief; **template di default** in [brief-db-modelli-documento-standard](../work-in-progress/brief-db-modelli-documento-standard.md), D-1 … D-3 di Tid aperte; ✅ **giacenza** nello smoke (BE). Registri: ✅ (2026-10-18) D-14a … D-14d prese, via allo sviluppo dato; `20261019-07` … `-12`, codice `E_REGISTRO_COPPIA_GIA_COPERTA`, pgTAP nuovo e `test-registri-motore-trasloco` adeguato, scritti e provati sullo scratch | §6.12, §6.14 | — |
 | 9-ter-octies | Tid | ✅ apply di `20261019-07` … `-12` e dei due CSV dei codici su dbdev (2026-10-18 23:35), pgTAP verdi, compreso `test-numero-prefisso-registro-v1` corretto; resta il commit | §6.14 | — |
 | 9-ter-nonies | sessione BE | ✅ (2026-10-19) R-DB-14a: ripiego e policy del codice `E_REGISTRO_COPPIA_GIA_COPERTA`; committato `615281b6c` | §6.14 | — |
 | 9-quater | team DB | ✅ 2b-3 scritta e provata (2026-10-18): etichette, guard, verbo, presidio, `fn_accendi_veste` (`20261018-55` … `-64`) | §5-ter.3 | — |
@@ -47,9 +47,9 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 10-quater | Tid | ✅ apply di R-BE-5 (`20261018-10` … `-14`) su dbdev, pgTAP senza regressioni (2026-10-18) | §6.7.4 | — |
 | 10 | sessione BE | ✅ (2026-10-18) codice nuovo e ripiego, capability di «Accendi» dal predicato del guard, consenso ritirato da command, test, unit e `sveglie.json`, nota della tolleranza riscritta | §6.8 | — |
 | 10-bis-env | Tid | ✅ tolta la riga `SMOKE_NOTTURNO_CONSENTITO` da `backend/.env.systemd` di backend-dev (2026-10-18) | §6.8 | — |
-| 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 9-ter-bis-17 (R-DB-17a compresa) |
+| 11 | chi chiude | ✅ (2026-10-19) archiviazione, riga di PROJECT_CONTEXT | — | — |
 
-Decisioni aperte di Tid: nessuna. ✅ D-17a … D-17d prese e sviluppate il 2026-10-19 (R-BE-15, §6.17.2); ✅ il lavoro DB è committato (`e515c73af`, PR #1896); ⚠️ R-DB-17a (BE) è da committare. D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18 (§6.14). L'ultimo «trovato, non toccato» è diventato R-BE-15 (§6.17, riga 9-ter-bis-17). ✅ `count_admin_attivi` (§6.15) ritirato il 2026-10-19, ok di Tid. ✅ Il lavoro BE del 2026-10-19 (R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b) è committato e pushato su `dev/backend-tid` (`615281b6c`, mergiato con la PR #1893). La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
+Decisioni aperte di Tid: nessuna. ✅ D-17a … D-17d prese e sviluppate il 2026-10-19 (R-BE-15, §6.17.2); ✅ il lavoro DB è committato (`e515c73af`, PR #1896); ✅ R-DB-17a (BE) committata (`85bcc9a4a`). D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18 (§6.14). L'ultimo «trovato, non toccato» è diventato R-BE-15 (§6.17, riga 9-ter-bis-17). ✅ `count_admin_attivi` (§6.15) ritirato il 2026-10-19, ok di Tid. ✅ Il lavoro BE del 2026-10-19 (R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b) è committato e pushato su `dev/backend-tid` (`615281b6c`, mergiato con la PR #1893). La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
 2b-2 (§6.10) e le richieste R-BE-11, R-BE-12 sono committate su `dev/backend-tid` (`08cc15a61`, 2026-10-18,
 mergiato in `Tito-dev` con la PR #1881). ✅ La ricaduta BE/FE delle due forme dell'indirizzo libero (§6.12) è
 committata (`bd7946224`, mergiata in `Tito-dev` con la PR #1884). ✅ Committati su `dev/db-tid` (2026-10-19): R-BE-13 lato DB (§6.13), R-BE-14 (§6.14), R-BE-11 (§6.15) e R-BE-6, R-BE-7, R-BE-12 (§6.16). ✅ Il lavoro
@@ -65,7 +65,7 @@ le copie del binding nei pgTAP e questo brief. ⚠️ `codici_errore.csv`, `mess
 > la stessa idea agli altri processi, deciderne l'accensione anche da interfaccia, e stabilire quali non
 > si possono mai spegnere.
 > **Ricadute BE/FE:** sì (§6).
-> **Stato:** 📝 decisioni prese, proposte da confermare, codice non iniziato.
+> **Stato:** ✅ chiuso e archiviato il 2026-10-19.
 
 ## 1. Il caso
 
@@ -197,7 +197,7 @@ spegne `listen_permessi` lascia agli utenti i diritti tolti, senza che nessuno s
     scelta è del team DB scrivendo, col pgTAP di postura che la prova;
   * la riga dice chi l'ha scritta e quando (audit); un cambio non esiste (immutabile).
 * ✅ **R-4 — gli utenti e i dati di sviluppo non stanno in un database `PRODUZIONE`** (requisito del
-  BE e decisioni di Tid, 2026-10-16). Lato BE: [brief-be-utenti-di-sviluppo](brief-be-utenti-di-sviluppo.md). Gli utenti `dev.*` sono in preparazione: non ne esiste ancora
+  BE e decisioni di Tid, 2026-10-16). Lato BE: [brief-be-utenti-di-sviluppo](../work-in-progress/brief-be-utenti-di-sviluppo.md). Gli utenti `dev.*` sono in preparazione: non ne esiste ancora
   nessuno, e il segno si sceglie prima che nascano.
   * **Un'etichetta, non il nome.** Il prefisso `dev.` si sbaglia a mano in tutti e due i versi
     (`dev_mario` sfugge, una persona vera `dev.qualcosa` suona per niente): resta una convenzione di
@@ -412,7 +412,7 @@ non dichiarato dà rossi puliti (4, 5, 6, 7, 8, 10), e dichiarato 23/23. Dichiar
 ## 5-ter. Giro 2 (R-4): i dati di sviluppo — da scrivere
 
 > Il lato BE (il command, gli smoke, la lista Operatori) e l'elenco di che cosa crea il verbo stanno
-> in [brief-be-utenti-di-sviluppo](brief-be-utenti-di-sviluppo.md).
+> in [brief-be-utenti-di-sviluppo](../work-in-progress/brief-be-utenti-di-sviluppo.md).
 
 Le etichette (credenziale, soggetto) coi loro guard, il verbo del provisioning di sviluppo che in
 `PRODUZIONE` non parte, il presidio delle radici etichettate in un database `PRODUZIONE`, la colonna
@@ -423,7 +423,7 @@ Prima di quell'elenco il verbo sarebbe una forma vuota.
 
 ### 5-ter.1 Disegno del giro 2b (team DB, 2026-10-17) — ⏳ una decisione di Tid prima del codice
 
-> L'elenco è arrivato ([brief-be-utenti-di-sviluppo §7](brief-be-utenti-di-sviluppo.md)). Ricognizione
+> L'elenco è arrivato ([brief-be-utenti-di-sviluppo §7](../work-in-progress/brief-be-utenti-di-sviluppo.md)). Ricognizione
 > dei building block fatta il 2026-10-17 sulla doc auto-gen e sul backend.
 
 **Il nodo: sette pezzi su dieci non hanno un verbo DB.** Il verbo deve creare questi pezzi:
@@ -723,7 +723,7 @@ Scelte dichiarate:
   con uno stato indicato le date sono di chi chiama, e le pretende `trgfn_clienti_guard_stato_date`. I
   builder fanno nascere clienti anche `PR` e `CH`, e il grafo degli stati non ammette `AT → PR`: la madre
   deve accettare lo stato. ⚠️ **Il modello non dice in quali stati un cliente può nascere**: è lo stesso
-  buco di D32 ([brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md),
+  buco di D32 ([brief-db-documento-nasce-nello-stato-iniziale](../work-in-progress/brief-db-documento-nasce-nello-stato-iniziale.md),
   decisione N aperta). La madre non lo allarga né lo chiude: lo rende visibile in un punto solo;
 * **il legame all'emittente**: con un operatore in sessione lo scrive `z90`; senza sessione (provisioning,
   owner) lo scrive il BB. Un legame discorde è una chiamata sbagliata: `E_SCRIPT_CHIAMATA_NON_VALIDA`, nessun
@@ -1444,7 +1444,7 @@ non ancora applicato): il mirror carica le due colonne insieme, quindi i due gir
 
 ### 6.9 Ricaduta della 2b-3 fatta (sessione BE, 2026-10-18)
 
-Il dettaglio sta nel [brief BE §8](brief-be-utenti-di-sviluppo.md). In breve:
+Il dettaglio sta nel [brief BE §8](../work-in-progress/brief-be-utenti-di-sviluppo.md). In breve:
 
 * **codici**: i tre della 2b-3 nella policy generata e nei ripieghi;
 * **il command** `manage.py provision_utenti_sviluppo [--nuove-password]` chiama
@@ -1679,7 +1679,7 @@ Proposta, in due pezzi diversi:
 * **registri**: risposta e consegna nel §6.14, ✅ applicati su dbdev il 2026-10-18 (23:35). Lo smoke
   `push-termine-documento-commessa` deve tornare a fatturare su `DEVA`: da confermare al prossimo giro di smoke;
 * **template di default**: non si apre una sede nuova. È il difetto di
-  [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) (un emittente nasce senza
+  [brief-db-modelli-documento-standard](../work-in-progress/brief-db-modelli-documento-standard.md) (un emittente nasce senza
   modelli), che ha già la sua decisione aperta (D-1 … D-3 di Tid, §5) e la ricaduta sugli smoke (§7). I sei
   smoke della tabella che si fermano su `E_DOCUMENTI_NOT_FOUND` aspettano quel brief;
 * **giacenza**: ✅ nello smoke, come sopra.
@@ -1796,7 +1796,7 @@ trigger propongono lo stesso stato allo stesso utente, salvo un override per fun
 ### 6.14 Risposta del team DB a R-BE-14: un emittente nasce senza registro delle fatture (2026-10-18)
 
 > Questo paragrafo risponde al pezzo **registri** di R-BE-14. I template di default stanno in
-> [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) (§6.12, «Dove va ciascun pezzo»).
+> [brief-db-modelli-documento-standard](../work-in-progress/brief-db-modelli-documento-standard.md) (§6.12, «Dove va ciascun pezzo»).
 
 **La richiesta** è nel §6.12 (R-BE-14): su `DEVA` `vendite.fn_get_registro_id(1, NULL, NULL, <sr>)` solleva
 `E_CONFIG_MANCANTE` «registro non risolto per tipo_doc 1 e natura 1». Il BE propone che il verbo del
@@ -1804,7 +1804,7 @@ provisioning, oppure la madre dell'emittente, lasci l'emittente di prova complet
 
 **Il caso, sul modello.** Il difetto non è dell'emittente di prova: **nessun emittente nasce col registro delle
 fatture**, quello di un'installazione nuova compreso. È lo stesso difetto che
-[brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §2 descrive per i modelli («un
+[brief-db-modelli-documento-standard](../work-in-progress/brief-db-modelli-documento-standard.md) §2 descrive per i modelli («un
 emittente è un'identità completa solo se può emettere»), su un'altra configurazione. Quel brief chiede al team
 DB il censimento di ciò che serve per emettere: i registri sono questa voce.
 
@@ -2061,7 +2061,7 @@ scritte lì. Progressivi da Tid: dal `20261019-33`.
   `_apply_auto_clone` e `_create_indirizzi_batch`. Il tipo già presente ora si **salta** (come per il ruolo),
   invece del duplicato tradotto da `create_with_dedup`.
 
-✅ **Fatto (sessione BE, 2026-10-19), da committare:**
+✅ **Fatto (sessione BE, 2026-10-19), committato `615281b6c`:**
 
 * **R-DB-16a.** `put_profilo_reparto` lega con `config.fn_lega_profilo_reparto` (ritirato l'`UPSERT`);
   `_set_super_admin_binding` slega con `config.fn_slega_profilo_identita` sul profilo del lettore (ritirato il
