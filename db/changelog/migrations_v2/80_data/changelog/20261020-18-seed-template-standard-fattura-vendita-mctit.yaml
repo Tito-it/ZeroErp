@@ -1,0 +1,748 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MODELLO STANDARD: FATTURA DI VENDITA (FATTURA_VENDITA / sorgente FATTURA)
+#   Brief: brief-db-modelli-documento-standard, §8.2 (tranche 2), D-3
+#
+# -- IL CONTENUTO (D-3) ------------------------------------------------------------
+#   Dalla versione pubblicata 7 del modello dell'emittente 32 su dbdev (letta il
+#   2026-10-19), riletta da Tid. Modifiche, scelte di Tid del 2026-10-19:
+#   * tolto il pie' di pagina a sinistra (@bottom-left «Zero ERP…»): un testo
+#     fisso del software sulla carta dell'azienda;
+#   Nessun richiamo ad asset (Q-4): lo standard stampa per qualunque emittente.
+#
+# -- LA FORMA ------------------------------------------------------------------------
+#   Non un CSV: template_documenti e' una tabella mista (i modelli degli emittenti
+#   nascono dall'applicazione). Un mirror con id espliciti collide con gli id
+#   dell'applicazione; uno sulla chiave naturale aggiornerebbe le copie degli
+#   emittenti con lo stesso codice interno. Lo standard nasce qui, forward-only, e
+#   si fa evolvere con changeSet nuovi (una bozza e la sua pubblicazione), cercato
+#   per (standard, sorgente, codice_interno).
+#   Idempotente: se lo standard c'e' gia', non fa niente. La pubblicazione passa
+#   da documenti.fn_pubblica_template_documento_versione, che verifica anche la
+#   forma dei dati (5). Valido dal 2000-01-01: da sempre.
+#   Scritto dal proprietario della tabella (il migrate): il guard di sola lettura
+#   (20261020-07) lo lascia passare, e il default dell'emittente lo salta (-06).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261020-18-seed-template-standard-fattura-vendita-mctit.yaml
+
+  - changeSet:
+      id: 20261020-18-seed-template-standard-fattura-vendita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Seed del modello standard «Fattura di vendita» (FATTURA_VENDITA / FATTURA, codice interno fattura_vendita): riga in
+        documenti.template_documenti senza emittente, una versione pubblicata (forma dei dati 5).
+        Idempotente. Brief: brief-db-modelli-documento-standard §8.2, D-3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: documenti
+                tableName: template_documenti
+                columnName: standard
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'documenti'
+                     AND p.proname = 'fn_pubblica_template_documento_versione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $seed$
+              DECLARE
+                  v_tipo     documenti.template_documenti.tipo_documento_output_id%TYPE;
+                  v_sorg     documenti.template_documenti.sorgente_tipo_id%TYPE;
+                  v_render   documenti.template_documenti_versioni.render_engine_id%TYPE;
+                  v_tpl      documenti.template_documenti.id%TYPE;
+                  v_versione documenti.template_documenti_versioni.id%TYPE;
+              BEGIN
+                  SELECT o.id INTO v_tipo FROM documenti.tipi_documento_output o WHERE o.codice_interno = 'FATTURA_VENDITA';
+                  SELECT s.id INTO v_sorg FROM config.sorgenti s WHERE s.codice_interno = 'FATTURA';
+                  SELECT e.id INTO v_render FROM documenti.render_engine_documento e WHERE e.codice_interno = 'WEASYPRINT';
+                  IF v_tipo IS NULL OR v_sorg IS NULL OR v_render IS NULL THEN
+                      RAISE EXCEPTION 'seed standard fattura_vendita: vocabolario mancante (tipo FATTURA_VENDITA=%, sorgente FATTURA=%, render WEASYPRINT=%)',
+                          v_tipo, v_sorg, v_render;
+                  END IF;
+
+                  -- Idempotente: lo standard si trova per chiave (standard, sorgente,
+                  -- codice_interno), la stessa con cui lo troveranno le evoluzioni.
+                  IF EXISTS (SELECT 1 FROM documenti.template_documenti t
+                              WHERE t.standard AND t.sorgente_tipo_id = v_sorg AND t.codice_interno = 'fattura_vendita') THEN
+                      RETURN;
+                  END IF;
+
+                  INSERT INTO documenti.template_documenti (
+                      tipo_documento_output_id, codice, codice_interno, descrizione, sorgente_tipo_id,
+                      context_builder_code, file_name_pattern, standard, is_default, attivo, meta)
+                  VALUES (
+                      v_tipo, 'FATTURA_VENDITA', 'fattura_vendita', 'Fattura di vendita (standard)', v_sorg,
+                      'FATTURA', 'fattura-.pdf', true, true, true,
+                      jsonb_build_object('brief', 'brief-db-modelli-documento-standard', 'origine', 'D-3'))
+                  RETURNING id INTO v_tpl;
+
+                  INSERT INTO documenti.template_documenti_versioni (
+                      template_documento_id, versione, stato, titolo, formato_template, html_template, css_template,
+                      render_engine_id, page_format, page_orientation,
+                      margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
+                      versione_contesto, meta)
+                  VALUES (
+                      v_tpl, 1, 'BOZZA', 'Fattura di vendita', 'HTML',
+              $tpl$
+              <!doctype html>
+              <html lang="it">
+              <head>
+                <meta charset="utf-8">
+                <title>Fattura {{ fattura.numero or fattura.id }}</title>
+              </head>
+              <body>
+                <main class="document">
+                  <header class="header">
+                    <div class="brand">
+                      <div class="brand-mark">ZE</div>
+                      <div class="brand-name">
+                        {{ fattura.emittente.denominazione or ("Emittente fiscale " ~ (fattura.emittente.codice or "demo")) }}
+                      </div>
+                      <div class="brand-meta">
+                        {% if fattura.emittente.piva %}P.IVA {{ fattura.emittente.piva }}{% endif %}
+                        {% if fattura.emittente.cf %} · C.F. {{ fattura.emittente.cf }}{% endif %}
+                        {% if fattura.emittente.sede %}<br>{{ fattura.emittente.sede }}{% endif %}
+                      </div>
+                    </div>
+
+                    <div class="doc-title">
+                      <h1>FATTURA</h1>
+                      <div class="doc-number">
+                        N. {{ fattura.numero or ("ID " ~ fattura.id) }}
+                        {% if fattura.serie %} / Serie {{ fattura.serie }}{% endif %}
+                        {% if fattura.anno %} / {{ fattura.anno }}{% endif %}
+                      </div>
+                      <div class="status-pill">
+                        {{ fattura.stato.descrizione or fattura.stato.codice_interno or "stato non indicato" }}
+                      </div>
+                    </div>
+                  </header>
+
+                  <section class="section two-columns">
+                    <div class="column">
+                      <div class="label">Destinatario</div>
+                      <div class="box">
+                        <div class="box-strong">{{ cliente.denominazione or "Cliente non indicato" }}</div>
+                        {% if cliente.id_fiscale %}
+                          <div class="muted">P.IVA / C.F.: {{ cliente.id_fiscale }}</div>
+                        {% endif %}
+                        {% if cliente.indirizzo %}
+                          <div class="muted">{{ cliente.indirizzo }}</div>
+                        {% endif %}
+                        {% if cliente.ba_codice or cliente.billing_account_id %}
+                          <div class="muted">
+                            Billing account:
+                            {{ cliente.ba_codice or ("ID " ~ cliente.billing_account_id) }}
+                          </div>
+                        {% endif %}
+                      </div>
+                    </div>
+
+                    <div class="column">
+                      <div class="label">Dati fattura</div>
+                      <div class="box">
+                        <table class="facts">
+                          <tbody>
+                            <tr>
+                              <th>Data</th>
+                              <td>{{ fattura.data or "-" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Utility</th>
+                              <td>{{ fattura.utility.descrizione or fattura.utility.codice or "-" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Pagamento</th>
+                              <td>
+                                {{ fattura.pagamento.modalita_codice or "-" }}
+                                {% if fattura.pagamento.termine_codice %} / {{ fattura.pagamento.termine_codice }}{% endif %}
+                              </td>
+                            </tr>
+                            {% if fattura.agente_denominazione %}
+                              <tr>
+                                <th>Agente</th>
+                                <td>{{ fattura.agente_denominazione }}</td>
+                              </tr>
+                            {% endif %}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </section>
+
+                  {% if fattura.origine.tipo or fattura.origine.codice %}
+                    <section class="section">
+                      <div class="label">Origine documento</div>
+                      <div class="box">
+                        <strong>{{ fattura.origine.tipo or "Documento origine" }}</strong>
+                        {% if fattura.origine.codice %}
+                          <span class="muted"> - {{ fattura.origine.codice }}</span>
+                        {% endif %}
+                      </div>
+                    </section>
+                  {% endif %}
+
+                  <section class="section">
+                    <div class="table-title">Righe fattura</div>
+                    <table class="lines">
+                      <thead>
+                        <tr>
+                          <th style="width: 6%;">#</th>
+                          <th>Descrizione</th>
+                          <th class="num" style="width: 10%;">Q.ta</th>
+                          <th style="width: 8%;">UoM</th>
+                          <th class="num" style="width: 13%;">Prezzo</th>
+                          <th class="num" style="width: 10%;">Sconto</th>
+                          <th class="num" style="width: 10%;">IVA</th>
+                          <th class="num" style="width: 15%;">Importo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {# Forma dei dati 3 (versione_contesto = 3, dal 2026-10-02): le righe
+                           arrivano da vendite.vw_fattura_righe_lista, il SOLO primo livello
+                           della rappresentazione del documento (vw_fattura_righe_esposte):
+                           righe NORMALE, PARTE_PLAFOND e KIT_PADRE. Un kit e' UNA riga, e i
+                           suoi componenti esposti stanno DENTRO la riga (`r.componenti`,
+                           lista vuota fuori dai kit) e si stampano sotto il padre, rientrati.
+                           Un componente ha un modo (`c.esposizione`):
+                             DESCRITTIVO — riga senza prezzo ne' importo: il suo valore sta
+                                           nel totale del padre;
+                             VALORIZZATO — riga con prezzo, sconto e importo suoi, FUORI dal
+                                           totale del padre, ma sempre legata al suo kit.
+                           Il padre porta la somma dei componenti non valorizzati; se sono
+                           tutti valorizzati («kit senza resto») resta come intestazione
+                           SENZA importo: celle vuote, non «-» ne' zero, che direbbe omaggio.
+                           Il totale del documento non cambia al variare del modo.
+                           La forma 2 non portava i numeri dei componenti: questa versione
+                           non la legge.
+                           Forma 5 (versione_contesto = 5, v7, dal 2026-10-02 —
+                           brief-db-bom-flag-quantita-e-kit-in-fattura): ogni riga di primo
+                           livello porta il suo periodo (`competenza_dal`, `competenza_al`,
+                           gia' in italiano) e `ha_periodo`, deciso dalla vista (dal != al):
+                           il periodo si stampa sotto la descrizione solo quando e' vero —
+                           sulle righe normali e sul padre del kit, non sui componenti, che
+                           stanno sotto il loro kit. Lo stesso kit su due periodi sono due
+                           padri. La quantita' del kit e' quella della riga padre del
+                           documento, nella SUA unita'; e' NULL quando i componenti non
+                           dicono lo stesso numero di kit (nota di credito parziale): allora
+                           quantita' e prezzo restano vuoti — non «-» — e resta l'importo. #}
+                        {% for r in righe %}
+                          <tr>
+                            <td>{{ r.get("riga_nr") or loop.index }}</td>
+                            <td>
+                              <div class="row-description">
+                                {{ r.get("descrizione") or r.get("articolo_descrizione") or "Riga fattura" }}
+                              </div>
+                              {% if r.get("articolo_codice") %}
+                                <div class="row-note">Articolo: {{ r.get("articolo_codice") }}</div>
+                              {% endif %}
+                              {% if r.get("ha_periodo") %}
+                                <div class="row-note">Periodo: dal {{ r.get("competenza_dal") }} al {{ r.get("competenza_al") }}</div>
+                              {% endif %}
+                            </td>
+                            {% set kit_senza_qta = r.get("tipo_riga") == "KIT_PADRE" and r.get("quantita") is none %}
+                            <td class="num">{% if r.get("quantita") is not none %}{{ r.get("quantita") }}{% elif not kit_senza_qta %}-{% endif %}</td>
+                            <td>{{ r.get("uom_codice") or "-" }}</td>
+                            {% set kit_senza_resto = r.get("tipo_riga") == "KIT_PADRE" and r.get("importo_riga") is none %}
+                            {% if kit_senza_resto or kit_senza_qta %}
+                              <td class="num"></td>
+                              <td class="num"></td>
+                            {% else %}
+                              <td class="num">{% if r.get("prezzo_unitario") is not none %}{{ r.get("prezzo_unitario") }}{% else %}-{% endif %}</td>
+                              <td class="num">
+                                {% if r.get("sconto_percentuale") is not none %}
+                                  {{ r.get("sconto_percentuale") }}%
+                                {% else %}
+                                  -
+                                {% endif %}
+                              </td>
+                            {% endif %}
+                            <td class="num">
+                              {{ r.get("iva_codice") or r.get("iva_descrizione") or "-" }}
+                              {% if r.get("iva_aliquota") is not none %}
+                                <br><span class="muted">{{ r.get("iva_aliquota") }}%</span>
+                              {% endif %}
+                            </td>
+                            <td class="num">{% if r.get("importo_riga") is not none %}{{ r.get("importo_riga") }}{% elif not kit_senza_resto %}-{% endif %}</td>
+                          </tr>
+                          {# Su un componente DESCRITTIVO prezzo, sconto, IVA e importo restano
+                             vuoti invece di "-", che farebbe leggere "componente a costo
+                             zero". Il VALORIZZATO li stampa: l'IVA e' quella del padre, perche'
+                             la vista costruisce un padre per aliquota (un kit con aliquote
+                             diverse ha due righe padre, ognuna coi suoi componenti). #}
+                          {% for c in r.get("componenti") or [] %}
+                            <tr class="row-componente">
+                              <td></td>
+                              <td>
+                                <div class="row-description">
+                                  {{ c.get("descrizione") or c.get("articolo_codice") or "Componente" }}
+                                </div>
+                                {% if c.get("articolo_codice") %}
+                                  <div class="row-note">Articolo: {{ c.get("articolo_codice") }}</div>
+                                {% endif %}
+                              </td>
+                              <td class="num">{% if c.get("quantita") is not none %}{{ c.get("quantita") }}{% else %}-{% endif %}</td>
+                              <td>{{ c.get("uom_codice") or "-" }}</td>
+                              {% if c.get("esposizione") == "VALORIZZATO" %}
+                                <td class="num">{% if c.get("prezzo_unitario") is not none %}{{ c.get("prezzo_unitario") }}{% else %}-{% endif %}</td>
+                                <td class="num">
+                                  {% if c.get("sconto_percentuale") is not none %}
+                                    {{ c.get("sconto_percentuale") }}%
+                                  {% else %}
+                                    -
+                                  {% endif %}
+                                </td>
+                                <td class="num">
+                                  {{ r.get("iva_codice") or r.get("iva_descrizione") or "-" }}
+                                  {% if r.get("iva_aliquota") is not none %}
+                                    <br><span class="muted">{{ r.get("iva_aliquota") }}%</span>
+                                  {% endif %}
+                                </td>
+                                <td class="num">{% if c.get("importo_riga") is not none %}{{ c.get("importo_riga") }}{% else %}-{% endif %}</td>
+                              {% else %}
+                                <td class="num"></td>
+                                <td class="num"></td>
+                                <td class="num"></td>
+                                <td class="num"></td>
+                              {% endif %}
+                            </tr>
+                          {% endfor %}
+                        {% else %}
+                          <tr>
+                            <td colspan="8" class="muted">Nessuna riga disponibile nel context.</td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </section>
+
+                  {% if riepilogo_iva %}
+                    <section class="section">
+                      <div class="table-title">Riepilogo IVA</div>
+                      <table class="lines">
+                        <thead>
+                          <tr>
+                            <th style="width: 18%;">IVA</th>
+                            <th>Descrizione</th>
+                            <th class="num" style="width: 16%;">Imponibile</th>
+                            <th class="num" style="width: 16%;">Imposta</th>
+                            <th class="num" style="width: 16%;">Totale</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for iva in riepilogo_iva %}
+                            <tr>
+                              <td>
+                                {{ iva.get("iva_codice") or "-" }}
+                                {% if iva.get("iva_aliquota") is not none %}
+                                  <br><span class="muted">{{ iva.get("iva_aliquota") }}%</span>
+                                {% endif %}
+                              </td>
+                              <td>
+                                {{ iva.get("iva_descrizione") or "IVA non descritta" }}
+                                {% if iva.get("natura_codice") %}
+                                  <div class="row-note">Natura: {{ iva.get("natura_codice") }}</div>
+                                {% endif %}
+                              </td>
+                              <td class="num">
+                                {{ iva.get("imponibile") if iva.get("imponibile") is not none else "-" }}
+                                {{ fattura.totali.valuta_codice or "" }}
+                              </td>
+                              <td class="num">
+                                {{ iva.get("imposta") if iva.get("imposta") is not none else "-" }}
+                                {{ fattura.totali.valuta_codice or "" }}
+                              </td>
+                              <td class="num">
+                                {{ iva.get("totale_riga") if iva.get("totale_riga") is not none else "-" }}
+                                {{ fattura.totali.valuta_codice or "" }}
+                              </td>
+                            </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </section>
+                  {% endif %}
+
+                  <table class="totals">
+                    <tbody>
+                      <tr>
+                        <th>Imponibile</th>
+                        <td>{% if fattura.totali.imponibile is not none %}{{ fattura.totali.imponibile }}{% else %}-{% endif %} {{ fattura.totali.valuta_codice or "" }}</td>
+                      </tr>
+                      <tr>
+                        <th>Sconto</th>
+                        <td>{% if fattura.totali.sconto is not none %}{{ fattura.totali.sconto }}{% else %}-{% endif %} {{ fattura.totali.valuta_codice or "" }}</td>
+                      </tr>
+                      <tr>
+                        <th>IVA</th>
+                        <td>{% if fattura.totali.iva is not none %}{{ fattura.totali.iva }}{% else %}-{% endif %} {{ fattura.totali.valuta_codice or "" }}</td>
+                      </tr>
+                      <tr class="grand-total">
+                        <th>Totale</th>
+                        <td>{% if fattura.totali.documento is not none %}{{ fattura.totali.documento }}{% else %}-{% endif %} {{ fattura.totali.valuta_codice or "" }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {# Forma 4: le annotazioni di legge del documento (IVA per cassa, art. 32-bis
+                     DL 83/2012, ...). Le decide il database (vendite.fn_annotazioni_fattura):
+                     qui si stampano e basta, nell'ordine dato. Lista vuota = nessun blocco. #}
+                  {% if annotazioni %}
+                    <section class="section">
+                      <div class="label">Annotazioni</div>
+                      <div class="box">
+                        {% for a in annotazioni %}
+                          <div>{{ a.testo }}</div>
+                        {% endfor %}
+                      </div>
+                    </section>
+                  {% endif %}
+
+                  {% if scadenze %}
+                    <section class="section">
+                      <div class="table-title">Scadenze pagamento</div>
+                      <table class="lines">
+                        <thead>
+                          <tr>
+                            <th style="width: 8%;">#</th>
+                            <th style="width: 22%;">Data scadenza</th>
+                            <th>Modalita</th>
+                            <th class="num" style="width: 20%;">Importo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for s in scadenze %}
+                            <tr>
+                              <td>{{ s.get("nr") or loop.index }}</td>
+                              <td>{{ s.get("data") or "-" }}</td>
+                              <td>{{ s.get("modalita_codice") or fattura.pagamento.modalita_codice or "-" }}</td>
+                              <td class="num">{{ s.get("importo") or "-" }} {{ fattura.totali.valuta_codice or "" }}</td>
+                            </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </section>
+                  {% endif %}
+
+                  <section class="conditions">
+                    <strong>Copia di cortesia.</strong>
+                    Documento leggibile prodotto dal document context FATTURA (nessuna query o chiamata
+                    esterna). Il documento fiscale valido è la fattura elettronica trasmessa al Sistema di
+                    Interscambio (SdI).
+                  </section>
+                </main>
+              </body>
+              </html>
+              $tpl$,
+              $tpl$
+              @page {
+                size: A4;
+                margin: 18mm 16mm 18mm 16mm;
+
+
+                @bottom-right {
+                  content: "Pagina " counter(page) " di " counter(pages);
+                  color: #6b7280;
+                  font-size: 8pt;
+                }
+              }
+
+              * {
+                box-sizing: border-box;
+              }
+
+              body {
+                margin: 0;
+                color: #1f2937;
+                font-family: "DejaVu Sans", Arial, sans-serif;
+                font-size: 10pt;
+                line-height: 1.45;
+              }
+
+              .document {
+                width: 100%;
+              }
+
+              .header {
+                display: table;
+                width: 100%;
+                padding-bottom: 14px;
+                border-bottom: 2px solid #111827;
+              }
+
+              .brand,
+              .doc-title {
+                display: table-cell;
+                vertical-align: top;
+              }
+
+              .brand {
+                width: 52%;
+              }
+
+              .brand-mark {
+                display: inline-block;
+                min-width: 36px;
+                min-height: 36px;
+                padding: 8px 10px;
+                background: #111827;
+                color: #ffffff;
+                font-size: 15pt;
+                font-weight: 700;
+                letter-spacing: 0;
+                text-align: center;
+              }
+
+              .brand-name {
+                margin-top: 8px;
+                font-size: 12pt;
+                font-weight: 700;
+              }
+
+              .brand-meta {
+                margin-top: 2px;
+                color: #6b7280;
+                font-size: 8.5pt;
+              }
+
+              .doc-title {
+                width: 48%;
+                text-align: right;
+              }
+
+              h1 {
+                margin: 0;
+                color: #111827;
+                font-size: 22pt;
+                font-weight: 700;
+                letter-spacing: 0;
+              }
+
+              .doc-number {
+                margin-top: 6px;
+                font-size: 11pt;
+                font-weight: 700;
+              }
+
+              .status-pill {
+                display: inline-block;
+                margin-top: 8px;
+                padding: 3px 8px;
+                border: 1px solid #9ca3af;
+                border-radius: 999px;
+                color: #374151;
+                font-size: 8pt;
+                text-transform: uppercase;
+              }
+
+              .section {
+                margin-top: 18px;
+              }
+
+              .two-columns {
+                display: table;
+                width: 100%;
+                table-layout: fixed;
+              }
+
+              .column {
+                display: table-cell;
+                width: 50%;
+                vertical-align: top;
+              }
+
+              .column + .column {
+                padding-left: 18px;
+              }
+
+              .label {
+                margin-bottom: 4px;
+                color: #6b7280;
+                font-size: 8pt;
+                font-weight: 700;
+                text-transform: uppercase;
+              }
+
+              .box {
+                min-height: 62px;
+                padding: 10px 12px;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                background: #ffffff;
+              }
+
+              .box-strong {
+                font-size: 11pt;
+                font-weight: 700;
+              }
+
+              .muted {
+                color: #6b7280;
+              }
+
+              table {
+                width: 100%;
+                border-collapse: collapse;
+              }
+
+              thead {
+                display: table-header-group;
+              }
+
+              tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+              }
+
+              th,
+              td {
+                padding: 7px 6px;
+                border-bottom: 1px solid #e5e7eb;
+                vertical-align: top;
+              }
+
+              th {
+                background: #f3f4f6;
+                color: #374151;
+                font-size: 8pt;
+                font-weight: 700;
+                text-align: left;
+                text-transform: uppercase;
+              }
+
+              .facts th,
+              .facts td {
+                padding: 5px 0;
+                border-bottom: 1px solid #e5e7eb;
+              }
+
+              .facts th {
+                width: 42%;
+                background: transparent;
+                color: #6b7280;
+                font-size: 8.5pt;
+              }
+
+              .facts td {
+                text-align: right;
+              }
+
+              .table-title {
+                margin: 22px 0 8px;
+                color: #111827;
+                font-size: 11pt;
+                font-weight: 700;
+              }
+
+              .lines {
+                page-break-inside: auto;
+              }
+
+              .num {
+                text-align: right;
+                white-space: nowrap;
+              }
+
+              .row-description {
+                font-weight: 700;
+              }
+
+              .row-note {
+                margin-top: 2px;
+                color: #6b7280;
+                font-size: 8.5pt;
+              }
+
+              /* Componente di kit: riga descrittiva sotto il padre, che porta il totale.
+                 Rientro e peso ridotto per rendere evidente che non e' una riga a se'. */
+              .row-componente td {
+                color: #4b5563;
+              }
+
+              .row-componente td:nth-child(2) {
+                padding-left: 18px;
+              }
+
+              .row-componente .row-description {
+                font-weight: 500;
+              }
+
+              .totals {
+                width: 42%;
+                margin-top: 18px;
+                margin-left: auto;
+              }
+
+              .totals th,
+              .totals td {
+                padding: 6px 0;
+                border-bottom: 1px solid #e5e7eb;
+              }
+
+              .totals th {
+                background: transparent;
+                color: #374151;
+                font-weight: 700;
+                text-align: left;
+                text-transform: none;
+              }
+
+              .totals td {
+                font-weight: 700;
+                text-align: right;
+                white-space: nowrap;
+              }
+
+              .grand-total th,
+              .grand-total td {
+                padding-top: 10px;
+                border-bottom: 2px solid #111827;
+                color: #111827;
+                font-size: 13pt;
+              }
+
+              .conditions {
+                margin-top: 24px;
+                padding-top: 12px;
+                border-top: 1px solid #d1d5db;
+                color: #4b5563;
+                font-size: 8.5pt;
+              }
+              $tpl$,
+                      v_render, 'A4', 'PORTRAIT',
+                      15, 15, 15, 15,
+                      5, jsonb_build_object('brief', 'brief-db-modelli-documento-standard', 'origine', 'D-3'))
+                  RETURNING id INTO v_versione;
+
+                  -- Valida da sempre: la stampa sceglie la versione valida alla data
+                  -- operativa, e un documento con una data passata deve trovarla.
+                  PERFORM documenti.fn_pubblica_template_documento_versione(v_versione, DATE '2000-01-01', 5, NULL);
+              END
+              $seed$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le versioni non si cancellano (trgfn_template_documenti_versioni_block_delete):
+              -- per ritirare lo standard si spegne con un changeSet nuovo.
+              SELECT 1;

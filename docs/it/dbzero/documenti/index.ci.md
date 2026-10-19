@@ -15,6 +15,7 @@
 ## ⚙️ Funzioni (manuale)
 - [fn_guard_versione_contesto](manual/fn_guard_versione_contesto.md)
 - [fn_pubblica_template_documento_versione](manual/fn_pubblica_template_documento_versione.md) — (latest review 30-09-2026 — il patto versione/forma dei dati: brief-db-documenti-versione-contesto-template)
+- [fn_risolvi_template_applicabile](manual/fn_risolvi_template_applicabile.md)
 - [trgfn_documenti_generati_block_delete](manual/trgfn_documenti_generati_block_delete.md)
 - [trgfn_documenti_generati_check_coerenza](manual/trgfn_documenti_generati_check_coerenza.md)
 - [trgfn_documenti_generati_eventi_block_delete](manual/trgfn_documenti_generati_eventi_block_delete.md)
@@ -26,3 +27,6 @@
 - [trgfn_template_asset_protect_file](manual/trgfn_template_asset_protect_file.md)
 - [trgfn_template_documenti_versioni_block_delete](manual/trgfn_template_documenti_versioni_block_delete.md)
 - [trgfn_template_documenti_versioni_protect_pubblicata](manual/trgfn_template_documenti_versioni_protect_pubblicata.md)
+
+## 🔍 Views (manuale)
+- [vw_template_personalizzati_scarto](manual/vw_template_personalizzati_scarto.md)

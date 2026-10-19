@@ -1,0 +1,161 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA COPIA DERIVA SOLO DA UNO STANDARD DELLO STESSO DOCUMENTO
+#   documenti.trgfn_template_documenti_versioni_guard_derivata_da()
+#   trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd
+#   Brief: brief-db-modelli-documento-standard, §4.1 Q-5
+#
+# -- LE DUE REGOLE ---------------------------------------------------------------
+#   1. derivata_da_versione_id punta a una versione di un modello STANDARD, con lo
+#      stesso tipo di documento e la stessa sorgente del modello della versione,
+#      e la versione che la porta non e' a sua volta di uno standard (lo standard
+#      non deriva da niente) -> E_DOCUMENTI_TEMPLATE_DERIVAZIONE_INVALIDA (TECNICO:
+#      il valore lo scrive l'azione «personalizza» del BE, non l'operatore).
+#   2. Fuori dalla bozza non cambia: il guard della versione pubblicata
+#      (trgfn_template_documenti_versioni_protect_pubblicata) elenca le sue
+#      colonne a mano e questa non c'e'. Si chiude qui, con lo stesso codice
+#      (E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE), invece di rimontare quel
+#      trigger: e' la stessa regola detta per una colonna nuova.
+#
+# -- LA FORMA -------------------------------------------------------------------
+#   BEFORE INSERT OR UPDATE OF derivata_da_versione_id, template_documento_id:
+#   nessun altro trigger BEFORE scrive queste colonne (linee-guida-trigger,
+#   «UPDATE OF»), e il corpo confronta OLD e NEW perche' OF scatta anche a
+#   valore uguale. Lettura delle righe d'origine senza RLS (le tabelle non ne
+#   hanno): SECURITY INVOKER.
+#
+# Dipendenze: 20261020-05 (colonna). Verifica:
+#   db/pgtap/documenti/test-documenti-template-standard-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261020-10-create-trgfn-template-versioni-guard-derivata-da-mctit.yaml
+
+  - changeSet:
+      id: 20261020-10-create-trgfn-template-versioni-guard-derivata-da
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.trgfn_template_documenti_versioni_guard_derivata_da e il suo trigger a10: la versione di
+        origine di una copia e' di uno standard dello stesso tipo e della stessa sorgente, e non cambia fuori
+        dalla bozza. Brief: brief-db-modelli-documento-standard §4.1 Q-5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: documenti
+                tableName: template_documenti_versioni
+                columnName: derivata_da_versione_id
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'documenti.template_documenti_versioni'::regclass
+                     AND tgname = 'trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION documenti.trgfn_template_documenti_versioni_guard_derivata_da()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: la versione di origine di una copia personalizzata
+              --   (derivata_da_versione_id) e' una versione di un modello standard
+              --   dello stesso tipo e della stessa sorgente, e non cambia fuori
+              --   dalla bozza.
+              DECLARE
+                  v_tipo           documenti.template_documenti.tipo_documento_output_id%TYPE;
+                  v_sorgente       documenti.template_documenti.sorgente_tipo_id%TYPE;
+                  v_standard       documenti.template_documenti.standard%TYPE;
+                  v_orig_tipo      documenti.template_documenti.tipo_documento_output_id%TYPE;
+                  v_orig_sorgente  documenti.template_documenti.sorgente_tipo_id%TYPE;
+                  v_orig_standard  documenti.template_documenti.standard%TYPE;
+              BEGIN
+                  -- 2) Fuori dalla bozza l'origine non cambia.
+                  IF TG_OP = 'UPDATE' THEN
+                      IF NEW.derivata_da_versione_id IS NOT DISTINCT FROM OLD.derivata_da_versione_id
+                         AND NEW.template_documento_id IS NOT DISTINCT FROM OLD.template_documento_id THEN
+                          RETURN NEW;
+                      END IF;
+                      IF NEW.derivata_da_versione_id IS DISTINCT FROM OLD.derivata_da_versione_id
+                         AND OLD.stato IS DISTINCT FROM 'BOZZA' THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'documenti', 'trgfn_template_documenti_versioni_guard_derivata_da',
+                              'E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE',
+                              jsonb_build_object(
+                                  'template_documento_id', OLD.template_documento_id,
+                                  'versione',              OLD.versione,
+                                  'stato',                 OLD.stato,
+                                  'column',                'derivata_da_versione_id'),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]);
+                      END IF;
+                  END IF;
+
+                  IF NEW.derivata_da_versione_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- 1) L'origine e' di uno standard dello stesso documento, e chi
+                  --    la porta non e' uno standard.
+                  SELECT t.tipo_documento_output_id, t.sorgente_tipo_id, t.standard
+                    INTO v_tipo, v_sorgente, v_standard
+                    FROM documenti.template_documenti t
+                   WHERE t.id = NEW.template_documento_id;
+
+                  SELECT t.tipo_documento_output_id, t.sorgente_tipo_id, t.standard
+                    INTO v_orig_tipo, v_orig_sorgente, v_orig_standard
+                    FROM documenti.template_documenti_versioni v
+                    JOIN documenti.template_documenti t ON t.id = v.template_documento_id
+                   WHERE v.id = NEW.derivata_da_versione_id;
+
+                  IF v_orig_standard IS NOT TRUE
+                     OR v_standard IS NOT FALSE
+                     OR v_orig_tipo IS DISTINCT FROM v_tipo
+                     OR v_orig_sorgente IS DISTINCT FROM v_sorgente THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'trgfn_template_documenti_versioni_guard_derivata_da',
+                          'E_DOCUMENTI_TEMPLATE_DERIVAZIONE_INVALIDA',
+                          jsonb_build_object(
+                              'template_documento_id',   NEW.template_documento_id,
+                              'derivata_da_versione_id', NEW.derivata_da_versione_id,
+                              'origine_standard',        v_orig_standard,
+                              'copia_standard',          v_standard,
+                              'stesso_tipo',             v_orig_tipo IS NOT DISTINCT FROM v_tipo,
+                              'stessa_sorgente',         v_orig_sorgente IS NOT DISTINCT FROM v_sorgente),
+                          NULL::uuid,
+                          NEW.derivata_da_versione_id::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_guard_derivata_da() IS
+                  'Guard BEFORE INSERT/UPDATE OF derivata_da_versione_id, template_documento_id su documenti.template_documenti_versioni (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-5). L''origine di una copia personalizzata e'' una versione di un modello standard con lo stesso tipo di documento e la stessa sorgente, e la versione che la porta non e'' di uno standard -> E_DOCUMENTI_TEMPLATE_DERIVAZIONE_INVALIDA (TECNICO: la scrive l''azione «personalizza»). Fuori dalla bozza l''origine non cambia -> E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE (la colonna non e'' nell''elenco di trgfn_template_documenti_versioni_protect_pubblicata).';
+
+              CREATE TRIGGER trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd
+                  BEFORE INSERT OR UPDATE OF derivata_da_versione_id, template_documento_id
+                  ON documenti.template_documenti_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_guard_derivata_da();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd
+                  ON documenti.template_documenti_versioni;
+              DROP FUNCTION IF EXISTS documenti.trgfn_template_documenti_versioni_guard_derivata_da();
