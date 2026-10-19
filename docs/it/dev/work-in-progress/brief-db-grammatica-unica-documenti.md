@@ -2,11 +2,11 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: la sessione BE/FE col giro del 2b** (§12.4). Il DB del 2b è ✅ applicato su dbdev e i pgTAP sono
-verdi come app (§12.6). ⚠️ Finché il backend non scrive `OFFERTA_COMMERCIALE`, l'ordine da offerta è rifiutato
-dalla FK, e legami e smistamento rispondono coi codici delle sorgenti a un frontend che aspetta quelli corti.
-Poi il team DB coi sotto-giri 2c … 2e (o il lotto 3), al via di Tid. Il 2a è chiuso su DB, BE e FE (§11.6). I
-lotti 0 e 1 sono chiusi su DB, BE e FE.
+**Riparte: il team DB** col §12.9 (L2b-1 = (a), decisa da Tid): la colonna `config.sorgenti.etichetta` e i
+modelli di stampa dell'ordine ripubblicati con l'etichetta. Poi la sessione BE (il contesto di stampa la porta),
+e Tid con la prova a video del 2b (§12.7). Il §12.8 (l'`origine` della partita) è pronto per il team DB ma
+aspetta il quando di Tid. Il 2b è chiuso su DB e BE/FE, revisione compresa, e riprovato sullo stato attuale
+(§12.7). Il 2a è chiuso su DB, BE e FE (§11.6). I lotti 0 e 1 sono chiusi su DB, BE e FE.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -28,14 +28,23 @@ lotti 0 e 1 sono chiusi su DB, BE e FE.
 | 6-sexies-b | ✅ sessione BE/FE | Il giro BE/FE del 2a (mixin indirizzi, annullo con legami, due risposte API), chiamata reale su dbdev (2026-10-19) | §11.4, §11.6 | 6-sexies-a |
 | 6-sexies-c | ✅ **Tid** | Apply del 2a su dbdev e corsa dei pgTAP come app: verdi, dopo l'adeguamento di un test (2026-10-19) | §11.5 | 6-sexies-a |
 | 6-septies-a | ✅ team DB | Lotto 2b scritto e provato in transazione: `20261019-87` … `-99`, tre CSV, 16 pgTAP (uno nuovo) | §12 | — |
-| 6-septies-b | sessione BE/FE | Il giro BE/FE del 2b: origine dell'ordine da offerta, origine dei legami, destinazione dello smistamento (tre risposte API) | §12.4 | 6-septies-a |
+| 6-septies-b | ✅ sessione BE/FE | Il giro BE/FE del 2b: origine dell'ordine da offerta, origine dei legami, destinazione dello smistamento (tre risposte API), e2e sul DB vero (2026-10-19) | §12.4, §12.7 | 6-septies-a |
+| 6-septies-d | **Tid** | Prova a video del 2b (§12.7); ✅ L2b-1 decisa: (a), etichetta in una colonna a DB (2026-10-19) | §12.7, §12.9 | 6-septies-b |
+| 6-septies-f | team DB | `config.sorgenti.etichetta` (colonna, CSV), modelli di stampa dell'ordine ripubblicati con l'etichetta, pgTAP | §12.9 | 6-septies-d |
+| 6-septies-g | sessione BE | Il contesto di stampa dell'ordine porta `origine.etichetta` (JOIN su `config.sorgenti`), test | §12.9 | 6-septies-f |
 | 6-septies-c | ✅ **Tid** | Apply del 2b su dbdev e corsa dei pgTAP come app: verdi (2026-10-19) | §12.6 | 6-septies-a |
+| 6-septies-e | team DB, poi sessione BE | Correzione dell'`origine` della partita (`fn_partite_merce`, `ORDINE` → `ORDINE_VENDITA`): changeSet + pgTAP, poi commento BE e doc | §12.8 | il quando di Tid |
 | 6-sexies | team DB + sessione BE/FE | Sotto-giri 2c … 2e (DB e backend nello stesso giro; col 2e il SQL a mano delle chiavi, G-8), e lotto 3 (anticipabile); censimento su `pg_get_functiondef`, non su `prosrc` (§12.3) | §10, §5 G-4 | 6-septies-b |
 | 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6-sexies |
 
-**Decisioni aperte di Tid:** nessuna (L2-1 decisa il 2026-10-19, §10.3; il 2b applica G-3 così com'è, §12.2).
-Da committare su `dev/db-tid`: il 2b (13 changeSet, tre CSV, 16 pgTAP, il pgTAP del lotto 1 col preambolo),
-il §5c di `linee-guida-sql.md` e questo brief. ⚠️ Mancano ancora i rimandi del §6.1 in
+**Decisioni aperte di Tid:** il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in
+fondo); il momento della correzione
+dell'`origine` della partita (§12.8: la correzione è decisa, resta il quando). L2-1 decisa il 2026-10-19
+(§10.3); il 2b applica G-3 così com'è (§12.2); L2b-1 decisa il 2026-10-19: (a), colonna a DB (§12.9). Il giro BE/FE
+del 2b con la sua revisione (§12.7) e questo brief sono committati su `dev/backend-tid` (2026-10-19). Nello
+stesso commit c'è anche un lavoro **fuori da questo brief**: `core/utils/ripristinaLookup.js`,
+`vendite/_shared/cliente/` e i cinque drawer di vendita (preventivo, offerta, ordine, DDT, contratto) — il
+cliente riaperto mostrava il solo codice (collaudo di Tid, regola del 2), coi due BB nel catalogo BB frontend. ⚠️ Mancano ancora i rimandi del §6.1 in
 [brief-db-indirizzi-documento-seguono-il-cliente](brief-db-indirizzi-documento-seguono-il-cliente.md) (R-BE-1) e in
 [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md): oggi rimanda qui solo
 quello degli articoli ammessi.
@@ -929,9 +938,7 @@ Il frontend: le due risposte API sopra (le chiavi di traduzione e i confronti ch
 ## 12. Lotto 2b — origine e destinazione (team DB, 2026-10-19)
 
 Numeri `20261019-87` … `-99`. Scritto, provato in transazione e ✅ **applicato su dbdev il 2026-10-19** (pgTAP
-verdi come app, §12.6). ⚠️ Il giro BE/FE del §12.4 è ancora da fare: dopo l'apply la FK rifiuta l'origine
-`OFFERTA` che `ordini_service` scrive oggi, e i lettori dei legami e dello smistamento rispondono coi codici
-delle sorgenti.
+verdi come app, §12.6). Il giro BE/FE del §12.4 è ✅ fatto lo stesso giorno (§12.7).
 
 ### 12.1 Che cosa contiene
 
@@ -994,7 +1001,7 @@ revisione in testa a ciascuno).
   | --- | --- | --- |
   | `vendite.fn_ddt_push_diagnosi` | `'RESO'` | lo stato `RESO` della bolla, non un tipo di documento: resta |
   | `vendite.fn_af_merce_per_riga` | `'DDT'` | il prefisso di `segment_key`: **2e** (G-8) |
-  | `vendite.fn_partite_merce` | `corsia = 'DDT'`; `origine` `NESSUNA` \| `MULTIPLA` \| `ORDINE` | la corsia viene dal `segment_key` (**2e**); l'`origine` è il vocabolario della situazione merce, da classificare nel 2e |
+  | `vendite.fn_partite_merce` | `corsia = 'DDT'`; `origine` `NESSUNA` \| `MULTIPLA` \| `ORDINE` | la corsia viene dal `segment_key` (**2e**); l'`origine`: **correzione decisa da Tid, §12.8** (`ORDINE` → `ORDINE_VENDITA`) |
 
   Chi censisce i sotto-giri successivi legge `pg_get_functiondef`, non `prosrc`.
 
@@ -1008,7 +1015,7 @@ revisione in testa a ciascuno).
 | `preventivi_repository.py:1214` (righe dello smistamento, `destinazione_tipo`) | `ORDINE` | `ORDINE_VENDITA`. ⚠️ **Cambia una risposta API** (FE) |
 | `catalogo_repository.py:205` (`natura_vendita_destinazione_tipo`) | `ORDINE` | `ORDINE_VENDITA`: da controllare chi lo legge a video |
 | FE `constants.js`: `DESTINAZIONE_SMISTAMENTO.ORDINE`, `ORIGINE_LEGAME.RESO` | `'ORDINE'`, `'RESO'` | i codici delle sorgenti (`SORGENTE_CODES`); il routing di «Smista selezionate» confronta la destinazione |
-| FE dialog dei legami: il ripiego `vendite.annullo_legami.origine_<origine>` quando l'origine non è un documento da aprire | chiavi dei codici corti (`origine_ordine`, `origine_reso`, `origine_offerta`, `origine_ddt`, `origine_consumi`…) | chiavi dei codici delle sorgenti (almeno `origine_attivita_consumi`; per `ONERE` oggi non c'è una chiave). ⚠️ **Cambia una risposta API** (il campo `origine` dei legami) |
+| FE dialog dei legami: il ripiego `vendite.annullo_legami.origine_<origine>` quando l'origine non è un documento da aprire | chiavi dei codici corti (`origine_ordine`, `origine_reso`, `origine_offerta`, `origine_ddt`, `origine_consumi`…) | il vocabolario del lineage, `vendite.lineage.tipo_<sorgente>` (per i consumi `tipo_attivita_consumi`; `ONERE` non è una sorgente e non ha chiave). ⚠️ **Cambia una risposta API** (il campo `origine` dei legami) |
 | `error_policies_generated.py` | testo di due codici | si rigenera dal CSV |
 | test Django, `smoke-test-ordini-giro-commessa.sh` (legge l'`origine`) | codici corti | da adeguare |
 
@@ -1048,7 +1055,182 @@ revisione in testa a ciascuno).
 ### 12.6 L'apply (Tid, 2026-10-19)
 
 * Applicato su dbdev: i 13 changeSet `20261019-87` … `-99` sono in `databasechangelog`. pgTAP come app: verdi.
-* Da qui il DB parla i codici delle sorgenti anche per origine e destinazione. Il giro BE/FE del §12.4 non è
-  ancora fatto: fino ad allora la creazione di un ordine da offerta (`ordini_service`, `"OFFERTA"`) è rifiutata
-  da `fk_ordini_documento_origine_tipo_sorgenti`, e il dialog dei legami e quello dello smistamento ricevono
-  valori che il frontend non riconosce ancora (`ORIGINE_LEGAME.RESO`, `DESTINAZIONE_SMISTAMENTO.ORDINE`).
+* Da qui il DB parla i codici delle sorgenti anche per origine e destinazione. Fino al giro BE/FE del §12.4
+  (✅ §12.7, stesso giorno) la creazione di un ordine da offerta (`ordini_service`, `"OFFERTA"`) era rifiutata
+  da `fk_ordini_documento_origine_tipo_sorgenti`, e il dialog dei legami e quello dello smistamento ricevevano
+  valori che il frontend non riconosceva (`ORIGINE_LEGAME.RESO`, `DESTINAZIONE_SMISTAMENTO.ORDINE`).
+
+### 12.7 Il giro BE/FE (sessione BE/FE, 2026-10-19)
+
+* **Origine dell'ordine da offerta**: `crea_ordine_da_offerta` scrive e risponde `SORGENTE_OFFERTA_COMMERCIALE`
+  (`documento_origine.tipo` della risposta API). Il preventivo era già `SORGENTE_PREVENTIVO`.
+* **Legami**: `_TIPO_LINEAGE_DELL_ORIGINE` è **ritirata**. Al suo posto `_ORIGINI_DOCUMENTO`, l'elenco delle
+  origini che sono un documento da aprire (ordine, reso, preventivo, offerta, commessa, contratto, bolla): per
+  queste il tipo del lineage è l'origine stessa. Fuori `ATTIVITA_CONSUMI` e `ONERE`, e ogni sorgente nuova che il
+  lettore imparasse a dare finché non si dichiara qui (senza tipo la finestra la nomina, senza link).
+* **Smistamento**: il backend passa `destinazione_tipo` com'è (nessun codice nel Python, solo commenti); lato
+  FE `DESTINAZIONE_SMISTAMENTO` legge i valori da `SORGENTE_CODES` (`ORDINE_VENDITA`, `COMMESSA`): il routing di
+  «Smista selezionate» e il tag della colonna confrontano la costante, i consumatori non cambiano.
+* **Dialog dei legami**: `ORIGINE_LEGAME` è **ritirata** (come `DOCUMENTO_LEGAMI` nel 2a); il reso «da
+  accreditare» confronta `SORGENTE_CODES.RESO_VENDITA` (aggiunto, con la voce del catalogo BB frontend). Il
+  vocabolario di ripiego `vendite.annullo_legami.origine_*` è **ritirato** per intero (revisione dello stesso
+  giorno): dal 2b l'origine è un codice di `config.sorgenti`, come il tipo del lineage, e tenere due vocabolari
+  della stessa cosa era una seconda copia (regola del 2). Ogni origine si nomina con `lineageDocumentoLabel`; i
+  consumi con `vendite.lineage.tipo_attivita_consumi` («Consumi»), spostata lì da `origine_attivita_consumi`. `origine_onere`, aggiunta nello stesso giro, è
+  **tolta** nella revisione dello stesso giorno (sotto): i legami `ONERE` hanno natura `ANNULLO`, esistono solo
+  sulla commessa, e lì la finestra li conta a parte (`oneri_annullati`) senza mai nominarli.
+* `catalogo_repository` (`natura_vendita_destinazione_tipo`): nessun lettore a video né nel backend; cambia solo
+  il valore della risposta, documentato in `api_catalogo.md`.
+* `error_policies_generated.py` rigenerato dal DB: cambiano solo i commenti di due codici.
+* `apps/config/sorgenti.py`: il commento non mette più l'`origine` dei legami fra i vocabolari diversi, e dice che
+  origine e destinazione sono questo vocabolario dal 2b.
+* **Due punti che il §12.4 non elencava**, entrambi silenziosi: `_smoke_documenti.sh` (`smoke_articolo_merce`,
+  il BB che dà l'articolo merce agli smoke) e `smoke-push-termine-documento-commessa.py` cercavano la natura con
+  destinazione `ORDINE`: dopo l'apply non avrebbero trovato più nessun articolo. Adeguati, con
+  `smoke-test-ordini-giro-commessa.sh`.
+* **Presidio nuovo, sul DB vero** (`vendite/tests/db/test_origine_ordine_sorgente_db.py`): su un ordine dello
+  stampo, la provenienza scritta da `set_documento_origine` con `SORGENTE_OFFERTA_COMMERCIALE` è accettata e i
+  legami del BB la riportano col tipo da aprire; `OFFERTA` è rifiutato da
+  `fk_ordini_documento_origine_tipo_sorgenti`. In `test_annullo_con_legami` un caso nuovo: una sorgente fuori
+  da `_ORIGINI_DOCUMENTO` resta senza tipo e senza nome anche se il lineage la vede. Nello spec del dialog: i
+  consumi della commessa si nominano con `vendite.lineage.tipo_attivita_consumi` (con la chiave sbagliata
+  uscirebbe il codice grezzo). Il test sul DB vero usa i BB di `db_e2e` (`apri_transazione_annullata`), non un
+  `Annulla` ricopiato.
+* Doc: `api_offerte`, `api_ordini`, `api_preventivi`, `api_ddt`, `api_contratti`, `api_commessa_stato`,
+  `push_preventivo_handler`, `api_catalogo`, le guide di ordini e offerte, i due cataloghi BB.
+* Prova: 2574 test Django di `vendite`, `config`, `catalogo`; e2e di `vendite/tests/db` e `config` su dbdev
+  (nessuno saltato; i 5 saltati sono di `catalogo`, per il DB usa-e-getta); mypy a cricchetto pulito; 137 test FE
+  di `vendite` e `documenti`, lint, `npm run guards`, `check_i18n_keys`, build. Worker gunicorn ricaricati.
+  ⚠️ Gli smoke bash non sono stati lanciati (scrivono dati veri): `smoke-test-ordini-giro-commessa.sh` è quello
+  che passa dai legami della commessa.
+* ⚠️ **L2b-1, per Tid — la provenienza nella stampa dell'ordine.** Le versioni di modello «stampa ordine
+  vendita» (le pubblicate sono la 264 e la 3113 su dbdev) stampano `{{ ordine.origine.tipo }}` così com'è: sulla
+  carta usciva già un **codice** (`PREVENTIVO`, `OFFERTA`), e dal 2b esce `OFFERTA_COMMERCIALE`. Non è un difetto
+  nuovo del 2b, che lo rende solo più visibile. Strade: (a) il context builder dell'ordine porta anche
+  l'etichetta della sorgente (`origine.etichetta`, dalla descrizione di `config.sorgenti`) e i modelli la usano;
+  (b) si lascia il codice. La (a) cambia il contratto di stampa e i modelli a DB: non l'ho fatta senza il tuo via.
+  ✅ **Decisa da Tid il 2026-10-19: (a)**, con l'etichetta in una colonna a DB (§12.9).
+* Da vedere a video (Tid): «Genera ordine» da un'offerta accettata (prima del giro era un rifiuto della FK); la
+  finestra dell'annullo con legami di un ordine nato da offerta («Offerta …, torna trasformabile», col link) e di
+  una commessa con righe da reso e da consumi; il pannello di smistamento di un preventivo misto (tag
+  Ordine/Commessa, «Smista tutto» / «Smista selezionate» e il routing verso ordine e commessa).
+* **Revisione critica dello stesso giro** (2026-10-19, su richiesta di Tid):
+  * `ordini_service._crea_testata_ordine_da_origine` è **rientrato** in `crea_ordine_da_offerta`. Si diceva
+    «condiviso da preventivo e offerta (regola del 2)», ma il preventivo passa da
+    `vendite.fn_push_preventivo_a_ordine`, che la provenienza la scrive da sé: un BB con un solo consumatore.
+    Col 2b il nome dell'operazione nei log si costruiva dal codice d'origine (`crea_ordine_da_offerta_commerciale`)
+    e non era più quello della funzione; ora è fisso (`crea_ordine_da_offerta`). I due test mockano `crea_ordine`
+    e provano che `set_documento_origine` riceve `OFFERTA_COMMERCIALE`.
+  * Il commento prometteva un errore «parlante» se la FK rifiuta il tipo: la FK e il `CHECK` di co-presenza non
+    sono nelle mappe del traduttore e cadono sul fallback generico. Scritto com'è, col motivo: il tipo è una
+    costante del codice, un rifiuto è un difetto del codice e non dell'operatore.
+  * `origine_onere` tolta da `it.json`/`en.json` (sopra); commenti stantii (`(OFFERTA, id)`, una riga lunga in
+    `sorgenti.py`); nel presidio e2e un `getattr(…, None)` che non proteggeva niente.
+* **Prova sullo stato attuale** (dopo la revisione, 2026-10-19): 2448 test Django di `vendite` e `config`, 211
+  e2e di `vendite/tests/db` su dbdev (nessuno saltato), 697 test FE di `vendite`, `documenti` e `core`, lint:
+  verdi.
+
+### 12.8 Correzione richiesta: l'`origine` della partita (`vendite.fn_partite_merce`) — team DB
+
+> **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-19, su decisione di Tid. **A chi:** il team DB, poi la
+> sessione BE per la ricaduta.
+
+**Il caso.** `vendite.fn_partite_merce` (e la sua proiezione `vendite.vw_partite_merce`) restituisce per ogni
+partita un'`origine` a tre valori, calcolata nel `SELECT` finale:
+
+| Valore | Che cosa dice |
+| --- | --- |
+| `NESSUNA` | la riga di DDT non evade nessuna riga d'ordine |
+| `MULTIPLA` | la riga di DDT evade più righe d'ordine |
+| `ORDINE` | la riga di DDT evade una riga d'ordine |
+
+Il §12.3 la lasciava «da classificare nel 2e». Classificata: **`ORDINE` nomina un tipo di documento** (il
+documento da cui la merce parte) ed è il codice corto di `ORDINE_VENDITA`, lo stesso caso dell'`origine` dei
+legami chiusa in questo lotto. Non ha niente del `segment_key` (quella è la `corsia`, che resta al 2e).
+`NESSUNA` e `MULTIPLA` **non** sono sorgenti: dicono l'assenza e l'ambiguità dell'origine, come `ONERE` nei
+legami (§12.2), e restano.
+
+**Che cosa si chiede (changeSet in `20_code`, nuovo file).**
+
+* Nel `CASE` di `origine`: `'ORDINE'` → `'ORDINE_VENDITA'`. `NESSUNA` e `MULTIPLA` invariati.
+* L'`origine` diventa quindi «il codice della sorgente, oppure `NESSUNA` | `MULTIPLA`»: va scritto nel commento
+  del corpo e nel COMMENT, come per `fn_documento_legami`. Il tipo in `RETURNS TABLE` segue la stessa scelta
+  del `-95` (ancorato a `config.sorgenti.codice_interno%TYPE` col motivo accanto, o nudo col motivo): la decide
+  il team DB, purché sia la stessa delle due funzioni.
+* Corpo **dal catalogo vivo** (`pg_get_functiondef`), non da uno YAML. Se `vw_partite_merce` va ricreata
+  (cambia solo un letterale, non il tipo, quindi probabilmente no), nella stessa corsa.
+* **Censimento dei lettori su `pg_get_functiondef`** (§12.3): chi confronta `origine = 'ORDINE'` o
+  `<> 'ORDINE'` cambia nello stesso changeSet. Già noto: `vendite.fn_situazione_merce_ordine` legge solo
+  `origine = 'MULTIPLA'` (non cambia).
+* pgTAP: un caso che **costruisce** una riga di DDT legata a una riga d'ordine e verifica `ORDINE_VENDITA`
+  (rosso senza la correzione); i file che leggono l'`origine` delle partite
+  (`test-fn-partite-merce-chiusura-v1`, `test-vw-partite-merce-v1`, quelli della situazione merce) rilanciati,
+  con nota di revisione dove cambia un'attesa.
+
+**Ricaduta sul backend e sul frontend (stesso apply).**
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `vendite_repository.py` (proiezione `partite`, campo `origine`) | passa il valore com'è | nessun codice da cambiare. ⚠️ **Cambia una risposta API**: `partite[].origine` della situazione merce |
+| `vendite_service.py:2563` (commento) | `origine <> 'ORDINE'` | `origine <> 'ORDINE_VENDITA'` |
+| `api_situazione_merce.md:87` (esempio), `dbzero/vendite/manual/fn_partite_merce.md` | `origine ORDINE` | `origine ORDINE_VENDITA` |
+| Frontend | non legge il valore (il pannello usa `stato`, `misurabile`, `differenza`) | nessuna modifica; da riverificare con un grep al giro |
+| `apps/config/sorgenti.py` (commento dei vocabolari) | non nomina l'origine della partita | aggiungerla fra quelle che sono questo vocabolario (tranne `NESSUNA`/`MULTIPLA`) |
+
+**Quando.** È un residuo del 2b (lo stesso vocabolario V7, origine), indipendente dai sotto-giri 2c … 2e: si può
+fare da solo prima del 2c. Il momento lo decide Tid.
+
+### 12.9 L2b-1: l'etichetta della sorgente nella stampa (team DB, poi sessione BE)
+
+> **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-19. **Decisione di Tid:** L2b-1 = (a), e
+> l'etichetta sta **in una colonna a DB** (non nel backend, non nella `descrizione` ripulita). **A chi:** il team
+> DB, poi la sessione BE.
+
+**Il caso.** Le versioni pubblicate del modello «Ordini vendita» (su dbdev la 264, `template_documento_id` 75, e
+la 3113, `template_documento_id` 2531; `context_schema` vuoto) stampano la provenienza così:
+
+```
+{% if ordine.origine.tipo or ordine.origine.codice %}
+      <strong>{{ ordine.origine.tipo or "Documento origine" }}</strong>
+```
+
+`ordine.origine.tipo` è `vendite.ordini.documento_origine_tipo`, cioè un **codice**: sulla carta usciva
+`PREVENTIVO`/`OFFERTA`, dal 2b esce `OFFERTA_COMMERCIALE`. Nessuna fonte di oggi va bene per la carta:
+`config.sorgenti.descrizione` è una nota tecnica («Offerta commerciale (testata)», «Commessa (root pipeline
+attivita fatturabili)»), e l'etichetta leggibile c'è solo nel frontend (`config.tipi_entita.*` nei locales): il
+backend non ha traduzioni per la stampa, e una mappa in Python sarebbe la seconda copia delle stesse
+etichette. La stampa prende le parole dal catalogo del DB, come fa già la fattura col suo tipo
+(`tipo_doc_fiscale.descrizione`).
+
+**Che cosa si chiede al team DB.**
+
+* **`config.sorgenti.etichetta`**: il nome del tipo di documento come lo legge una persona, sulla carta
+  («Preventivo», «Offerta», «Ordine», «DDT», «Reso», «Contratto», «Commessa», «Fattura», …). Il nome della colonna
+  lo decide il team DB secondo le linee guida; qui la chiamo `etichetta`.
+  * **`NOT NULL`, per ogni riga** (anche `RIGA` e le altre categorie): una sorgente nuova senza il suo nome non
+    deve poter entrare. Il valore sta nel CSV `sorgenti.csv` (`80_data`), non in un `UPDATE`.
+  * `descrizione` resta com'è: è la nota tecnica.
+  * Una sola lingua, l'italiano, come le altre parole di stampa nel catalogo. Il giorno delle stampe in più
+    lingue è un cantiere suo, non di questa colonna.
+* **I modelli dell'ordine**, nuova versione e pubblicazione come nei `20260816-01`/`-02`: nelle due righe sopra
+  `ordine.origine.tipo` diventa `ordine.origine.etichetta` (nell'`if` e nel testo). Il ripiego «Documento origine»
+  resta. Se le versioni pubblicate sono più di quelle due nel momento del changeSet, si leggono tutte quelle
+  di codice «Ordini vendita» che usano `origine.tipo`.
+* pgTAP: la colonna è `NOT NULL` e ogni riga del seed ha un'etichetta; la versione pubblicata del modello
+  dell'ordine non legge più `origine.tipo`.
+
+**Ricaduta sul backend (dopo l'apply).**
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `OrdiniRepository.get_ordine` (la testata della stampa e del dettaglio) | `v.*` di `vw_ordini_lista` | + `LEFT JOIN config.sorgenti` su `documento_origine_tipo`, colonna `documento_origine_etichetta` (NULL quando l'ordine non ha origine) |
+| `ordine_document_context_builder._shape_ordine` | `origine: {tipo, codice}` | + `etichetta`; `tipo` resta (il codice, per chi lo confronta) |
+| test del builder, `api_ordini.md` (contratto di stampa) | | il campo nuovo |
+
+Il frontend non cambia: il dettaglio dell'ordine non mostra il tipo dell'origine.
+
+**Fuori da questa richiesta, trovato strada facendo.** Anche i modelli della fattura (le pubblicate 2334 e 3097
+su dbdev) hanno il blocco `fattura.origine.tipo`, ma `VenditeRepository.get_fattura_testata` non porta né
+`origine_tipo` né `origine_codice`: il blocco non si vede mai. Una fattura può nascere da più documenti, quindi
+non è «la stessa correzione»: è da decidere a parte (togliere il blocco dal modello, o dire che cosa una fattura
+chiama «origine»).

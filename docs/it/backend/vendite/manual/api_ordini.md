@@ -36,12 +36,13 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
   back-office sempre `ADMIN`.
 - **Estensioni modello 2026-06-03**: **agente** (`agente_soggetto_ruolo_id`,
   nullable) ed **origine documento** (A1: `documento_origine_tipo` ∈
-  {`PREVENTIVO`,`OFFERTA`} + `documento_origine_id`). Valorizzate dalla
+  {`PREVENTIVO`,`OFFERTA_COMMERCIALE`} + `documento_origine_id`; FK verso
+  `config.sorgenti` dal 2026-10-19, brief-db-grammatica-unica-documenti lotto 2b). Valorizzate dalla
   **conversione upstream** (fatte 2026-06-04): `documento_origine = ('PREVENTIVO',
   id)` da `ordini_service.crea_ordine_da_preventivo` (copia 1:1 righe piatte) e
-  `('OFFERTA', id)` da `crea_ordine_da_offerta` (righe espanse via fn DB
+  `('OFFERTA_COMMERCIALE', id)` da `crea_ordine_da_offerta` (righe espanse via fn DB
   `fn_offerta_righe_espanse`, prezzi negoziati preservati). **Univocità (rev.
-  2026-06-07)**: per `OFFERTA` vale **1:1** — un'offerta genera al massimo un
+  2026-06-07)**: per `OFFERTA_COMMERCIALE` vale **1:1** — un'offerta genera al massimo un
   ordine (UNIQUE parziale `uq_ordini_v_documento_origine_offerta` + guard BE
   `E_ORD_OFFERTA_GIA_CONVERTITA`, **reversal parziale di A1** «senza UNIQUE»);
   `PREVENTIVO` resta **1:N** (split per riga, nessun vincolo). Endpoint sui domini
@@ -253,7 +254,7 @@ torna trasformabile, le righe di commessa da emettere si annullano.
 
 ### Legami `GET /<id>/legami/` (factory `build_legami_view`, BB
 `_annullo_con_legami.legami_del_documento`): `{documento, id, legami, righe}`,
-una riga per legame di `vendite.fn_documento_legami` con `origine`, `natura`
+una riga per legame di `vendite.fn_documento_legami` con `origine` (codice di `config.sorgenti`), `natura`
 (CONSUMO/PROVENIENZA), `origine_id` e il nome del documento dall'altra parte
 dal lineage (`origine_tipo_codice_interno`, `origine_codice`). `legami` e' il
 numero da dichiarare. Alimenta la finestra di conferma dell'annullo.

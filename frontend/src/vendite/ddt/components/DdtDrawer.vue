@@ -37,7 +37,8 @@ import { createDdt } from '../api/ddtApi'
 import { getDdtFormDefaults } from '../../api/formDefaults'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
-import { getBillingAccountLookupById } from '../../../core/apiCore'
+import { ripristinaBillingAccount } from '../../../core/utils/ripristinaLookup'
+import { CLIENTE_BA, clienteCambiato } from '../../_shared/cliente/clienteCambiato'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
@@ -100,6 +101,10 @@ const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumen
 })
 const modificatoDocumento = documento.modificato
 const detail = ref(null)
+// Il cliente del DDT: il billing account, o il destinatario senza BA (D-1 di
+// brief-db-indirizzi-documento-seguono-il-cliente). Per l'avviso del pannello
+// indirizzi prima di Salva (BB `clienteCambiato`).
+const CAMPI_CLIENTE_DDT = Object.freeze([...CLIENTE_BA, 'destinatario_soggetto_ruolo_id'])
 
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_ddt_riepilogo_iva_dettaglio`).
 // Auto-popolato a ogni loadDetail e ogni `@changed` delle righe: la vista DB
@@ -319,7 +324,7 @@ async function loadDetail(id = null) {
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     utility_id: data.utility_id ?? null,
     billing_account_id: data.billing_account_id ?? null,
-    billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
+    billing_account_obj: null,  // popolato sotto da ripristinaBillingAccount
     // Restore ricco dalla denominazione denormalizzata della vista, come
     // mittente e vettore.
     destinatario_soggetto_ruolo_id: data.destinatario_soggetto_ruolo_id ?? null,
@@ -357,16 +362,8 @@ async function loadDetail(id = null) {
   // avrebbe cancellato.
   applicaModifiche()
   await nextTick()
-  // Restore BillingAccountLookup _obj per visualizzazione ricca. Best-effort.
-  if (data.billing_account_id) {
-    try {
-      const res = await getBillingAccountLookupById(data.billing_account_id)
-      const ba = res?.data?.data
-      if (ba) form.value.billing_account_obj = ba
-    } catch {
-      // Resto: l'autocomplete parte vuoto, l'operatore puo' ri-selezionare.
-    }
-  }
+  // Il cliente per l'etichetta del lookup (BB `ripristinaBillingAccount`).
+  await ripristinaBillingAccount(form.value, data.billing_account_id)
   // Riepilogo IVA: la vista DB ricalcola dalle righe attive valorizzate a ogni
   // mutazione; qui leggiamo lo stato corrente (best-effort).
   await loadRiepilogoIva(targetId)
@@ -803,6 +800,7 @@ const drawerActions = computed(() => {
         :readonly="isReadonlyPuro"
         :capabilities="capabilities"
         @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }"
+        :cliente-da-salvare="clienteCambiato(form, detail, CAMPI_CLIENTE_DDT)"
         :bordo="false" />
 
       <Divider />

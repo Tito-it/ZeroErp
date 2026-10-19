@@ -208,13 +208,15 @@ Errori:
 > (brief-db-annullo-documento-con-legami): un meccanismo solo.
 
 Annullare una commessa **riapre a monte** ciò che l'ha riempita, e non in silenzio. Un
-**legame** per ogni riga **non ancora emessa** (`vendite.fn_documento_legami('COMMESSA', id)`):
+**legame** per ogni riga **non ancora emessa** (`vendite.fn_documento_legami('COMMESSA', id)`).
+`origine` è il codice di `config.sorgenti` (dal 2026-10-19, brief-db-grammatica-unica-documenti
+lotto 2b), tranne `ONERE`, che non è una sorgente:
 
 | `origine` | `natura` | Che cosa succede annullando |
 | --- | --- | --- |
-| `PREVENTIVO`, `ORDINE`, `CONTRATTO`, `DDT` | `CONSUMO` | la riga esce dalla commessa (`ANNULLATA`, col registro) e il documento torna **da mandare in commessa**. Il preventivo EVASO torna ACCETTATO (dal DB); l'**ordine non cambia stato** (D-6: «Evaso» lo dicono solo le bolle) |
-| `CONSUMI` | `CONSUMO` | il consumo torna da mandare |
-| `RESO` | `CONSUMO` | la rettifica del reso esce, l'accredito si annulla: il reso torna **da accreditare** |
+| `PREVENTIVO`, `ORDINE_VENDITA`, `CONTRATTO`, `DDT_VENDITA` | `CONSUMO` | la riga esce dalla commessa (`ANNULLATA`, col registro) e il documento torna **da mandare in commessa**. Il preventivo EVASO torna ACCETTATO (dal DB); l'**ordine non cambia stato** (D-6: «Evaso» lo dicono solo le bolle) |
+| `ATTIVITA_CONSUMI` | `CONSUMO` | il consumo torna da mandare |
+| `RESO_VENDITA` | `CONSUMO` | la rettifica del reso esce, l'accredito si annulla: il reso torna **da accreditare** |
 | `ONERE` | `ANNULLO` | niente a monte: l'onere **si annulla** con la commessa |
 
 Il giro (`useForzaturaConfermata` + `DocumentoAnnulloLegamiDialog` a video):

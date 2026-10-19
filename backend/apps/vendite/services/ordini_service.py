@@ -24,7 +24,11 @@ from typing import Any
 
 from django.db import transaction
 
-from apps.config.sorgenti import SORGENTE_ORDINE_VENDITA, SORGENTE_PREVENTIVO
+from apps.config.sorgenti import (
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+)
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
@@ -462,8 +466,8 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
             fatturazione_immediata=data.get("fatturazione_immediata"),
         )
         # Slot di default dall'anagrafica del cliente: lo decide il DB
-        # (`vendite.fn_doc_indirizzo_default`). Copre anche le conversioni da
-        # offerta (passano da _crea_testata_ordine_da_origine).
+        # (`vendite.fn_doc_indirizzo_default`). Copre anche la conversione da
+        # offerta (`crea_ordine_da_offerta` passa da qui).
         repo.riempi_indirizzo_default(int(creato["id"]))
     return creato
 
@@ -510,30 +514,11 @@ def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 _STATI_OFFERTA_CONVERTIBILI: frozenset[str] = frozenset({"ACCETTATA"})
 
 
-# Scopo: Crea la testata ordine DRAFT da un documento upstream + valorizza la
-#        provenienza `documento_origine`. Condiviso da preventivo/offerta →
-#        ordine (regola del 2). Ritorna (ordine_id, numero). Da chiamare DENTRO
-#        una transaction.atomic del caller (che orchestra anche la copia righe).
-def _crea_testata_ordine_da_origine(
-    header: dict[str, Any], tipo_origine: str, origine_id: int,
-) -> tuple[int, str | None]:
-    creato = crea_ordine(header)
-    ordine_id = int(creato["id"])
-    # Coerenza con le altre scritture del modulo: errori DB tradotti in
-    # ServiceError parlante (CHECK vocabolario/co-presenza documento origine)
-    # invece di propagare un 500 grezzo.
-    with _db_errors(f"crea_ordine_da_{tipo_origine.lower()}"):
-        OrdiniRepository().set_documento_origine(
-            ordine_id, tipo_origine, int(origine_id),
-        )
-    return ordine_id, creato.get("numero")
-
-
 # Scopo: Smistamento MERCE → ordine da un preventivo ACCETTATO (modello split,
 #        brief-preventivi-ordini.md D8). NON più copia-tutto 1:1: delega alla
 #        primitiva DB vendite.fn_push_preventivo_a_ordine (via
 #        PreventiviRepository.push_a_ordine), che:
-#          - copia SOLO le righe con natura destinazione_tipo='ORDINE' (i servizi
+#          - copia SOLO le righe con natura destinazione_tipo='ORDINE_VENDITA' (i servizi
 #            una-tantum vanno a commessa via push_a_commessa; il ricorrente è
 #            bloccato a monte, D9);
 #          - mantiene lo snapshot prezzi + componenti BoM;
@@ -665,7 +650,8 @@ def _copia_riga_offerta_espansa(
 #        righe «effettive» (listino + variazione + eccezioni, con BoM) sono
 #        prodotte dalla fn DB `fn_offerta_righe_espanse` (ordine-ready). Copia
 #        testata (cliente/utility/valuta/emittente) + righe espanse PRESERVANDO i
-#        prezzi negoziati (anche componenti) + documento_origine = (OFFERTA, id).
+#        prezzi negoziati (anche componenti) + documento_origine =
+#        (OFFERTA_COMMERCIALE, id).
 def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
     from apps.vendite.db.offerte_repository import OfferteRepository
 
@@ -733,9 +719,19 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
     }
 
     with transaction.atomic():
-        ordine_id, numero = _crea_testata_ordine_da_origine(
-            header, "OFFERTA", offerta_id,
-        )
+        creato = crea_ordine(header)
+        ordine_id = int(creato["id"])
+        numero = creato.get("numero")
+        # La provenienza: il tipo e' il codice della sorgente, dal 2026-10-19
+        # con la FK verso `config.sorgenti` (brief-db-grammatica-unica-documenti,
+        # lotto 2b; il codice corto `OFFERTA` di prima e' un rifiuto). FK e
+        # CHECK di co-presenza non sono nelle mappe del traduttore: cadono sul
+        # fallback generico, ed e' giusto — il tipo e' una costante, non un
+        # input, e un rifiuto qui e' un difetto del codice.
+        with _db_errors("crea_ordine_da_offerta"):
+            repo.set_documento_origine(
+                ordine_id, SORGENTE_OFFERTA_COMMERCIALE, int(offerta_id),
+            )
         # emittente SR + data riferimento dalla testata ordine creata (per il
         # pricing/data-snapshot dei componenti BoM).
         testata_ord = _get_testata_or_raise(
@@ -754,7 +750,7 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
         "ordine_id": ordine_id,
         "numero": numero,
         "righe_create": len(righe),
-        "documento_origine": {"tipo": "OFFERTA", "id": int(offerta_id)},
+        "documento_origine": {"tipo": SORGENTE_OFFERTA_COMMERCIALE, "id": int(offerta_id)},
     }
 
 

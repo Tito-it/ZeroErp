@@ -4,6 +4,7 @@
 // `config.azioni_processo`).
 
 import { aspettoAzione } from '../core/aspettoAzioni'
+import { SORGENTE_CODES } from '../documenti/constants'
 
 // Stati di workflow approvazione prezzo applicabili al campo
 // `vendite.preventivi_righe.stato_approvazione_prezzo` (ENUM nativo
@@ -132,9 +133,12 @@ export const STATO_PREVENTIVO = Object.freeze({
 // (`config.nature_vendita.destinazione_tipo`, natura NULL = pregresso →
 // COMMESSA lato DB). Guida il ROUTING di "Smista selezionate" nel
 // PreventiviSmistamentoDialog: merce → ordine, servizi → commessa.
+// ⭐ I valori sono codici di `config.sorgenti` (FK dal 2026-10-19,
+//    brief-db-grammatica-unica-documenti lotto 2b): si leggono da
+//    `SORGENTE_CODES`, non si riscrivono. Le chiavi dicono il ramo.
 export const DESTINAZIONE_SMISTAMENTO = Object.freeze({
-  ORDINE: 'ORDINE',
-  COMMESSA: 'COMMESSA',
+  ORDINE: SORGENTE_CODES.ORDINE_VENDITA,
+  COMMESSA: SORGENTE_CODES.COMMESSA,
 })
 
 // Stato autorevole di smistamento riga preventivo (colonna derivata
@@ -169,20 +173,18 @@ export const STATO_COMMESSA = Object.freeze({
   ANNULLATA: 'ANNULLATA',
 })
 
-// I codici del lettore dei legami (`vendite.fn_documento_legami`) che la
-// finestra di conferma dell'annullo distingue: la natura del legame (CONSUMO e
-// PROVENIENZA si riaprono, ANNULLO si annulla con il documento: gli oneri della
-// commessa) e le origini con una frase propria (il reso torna da accreditare).
-// ⛔ Il documento che si annulla NON si nomina qui: dal 2026-10-19 (lotto 2a
-// della grammatica unica) e' il codice di `config.sorgenti`, cioe'
-// `SORGENTE_CODES` di `documenti/constants` (`DOCUMENTO_LEGAMI` ritirato).
+// La natura del legame del lettore dei legami (`vendite.fn_documento_legami`),
+// che la finestra di conferma dell'annullo distingue: CONSUMO e PROVENIENZA si
+// riaprono, ANNULLO si annulla con il documento (gli oneri della commessa).
+// ⛔ Il documento che si annulla e l'origine del legame NON si nominano qui:
+// sono codici di `config.sorgenti`, cioe' `SORGENTE_CODES` di
+// `documenti/constants` (dal 2026-10-19, grammatica unica: lotto 2a il
+// documento, `DOCUMENTO_LEGAMI` ritirato; lotto 2b l'origine, `ORIGINE_LEGAME`
+// ritirato).
 export const NATURA_LEGAME = Object.freeze({
   CONSUMO: 'CONSUMO',
   PROVENIENZA: 'PROVENIENZA',
   ANNULLO: 'ANNULLO',
-})
-export const ORIGINE_LEGAME = Object.freeze({
-  RESO: 'RESO',
 })
 
 // Forma di un contratto, DERIVATA (non persistita) da `contratti.listino_id`:

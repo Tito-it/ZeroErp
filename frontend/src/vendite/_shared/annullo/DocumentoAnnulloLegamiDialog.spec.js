@@ -26,6 +26,7 @@
 //  6) le tre forme: riga, provenienza, commessa
 //  7) commessa: righe contate per documento, oneri a parte, dichiara il numero del lettore
 //  8) commessa: documenti senza nome dal lineage restano distinti
+//  8-bis) commessa: i consumi si nominano dall'origine (codice della sorgente)
 //  9) dentro un drawer bloccato per STATO la conferma c'e' (AppDialog vero)
 // ------------------------------------------------------------
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -57,20 +58,20 @@ function legami(righe, documento = 'ORDINE_VENDITA') {
 
 function legame(extra) {
   return {
-    riga_id: null, riga_nr: null, origine: 'ORDINE', natura: 'CONSUMO', origine_id: 12,
+    riga_id: null, riga_nr: null, origine: 'ORDINE_VENDITA', natura: 'CONSUMO', origine_id: 12,
     origine_riga_id: 5, origine_tipo_codice_interno: 'ORDINE_VENDITA', origine_codice: 'ORD1', qta: '10',
     ...extra,
   }
 }
 
-async function montaDialog() {
+async function montaDialog(messages = {}) {
   const wrapper = monta(
     DocumentoAnnulloLegamiDialog,
     {
       visible: true, basePath: '/vendite/ordini', docId: 7, header: 'Annulla', readonly: false,
       domanda: { messaggio: 'Annullando ORD 7 si riaprono 2 legami' },
     },
-    { global: { stubs: { AppDialog: CorniceFinta, DocumentoDrawerHost: true } } },
+    { messages, global: { stubs: { AppDialog: CorniceFinta, DocumentoDrawerHost: true } } },
   )
   await flushPromises()
   return wrapper
@@ -94,7 +95,7 @@ describe('DocumentoAnnulloLegamiDialog — la dichiarazione', () => {
   it('due legami sulla stessa riga contano due', async () => {
     rispostaLegami = legami([
       legame({ riga_nr: 1 }),
-      legame({ riga_nr: 1, origine: 'RESO', origine_tipo_codice_interno: 'RESO_VENDITA', origine_id: 9 }),
+      legame({ riga_nr: 1, origine: 'RESO_VENDITA', origine_tipo_codice_interno: 'RESO_VENDITA', origine_id: 9 }),
     ])
     const wrapper = await montaDialog()
     wrapper.findComponent(CorniceFinta).vm.$emit('save')
@@ -127,7 +128,7 @@ describe('DocumentoAnnulloLegamiDialog — la dichiarazione', () => {
   it('le tre forme: riga, provenienza, commessa', async () => {
     rispostaLegami = legami([
       legame({ riga_nr: 1, origine: 'PREVENTIVO', origine_tipo_codice_interno: 'PREVENTIVO' }),
-      legame({ origine: 'OFFERTA', natura: 'PROVENIENZA', origine_tipo_codice_interno: 'OFFERTA_COMMERCIALE', qta: null }),
+      legame({ origine: 'OFFERTA_COMMERCIALE', natura: 'PROVENIENZA', origine_tipo_codice_interno: 'OFFERTA_COMMERCIALE', qta: null }),
       legame({ origine: 'COMMESSA', origine_tipo_codice_interno: 'COMMESSA', qta: null }),
     ])
     const wrapper = await montaDialog()
@@ -147,7 +148,7 @@ describe('DocumentoAnnulloLegamiDialog — la dichiarazione', () => {
         origine_tipo_codice_interno: 'PREVENTIVO', origine_codice: 'PRV3', qta: '1' }),
       legame({ riga_id: 2, origine: 'PREVENTIVO', origine_id: 3, origine_riga_id: null,
         origine_tipo_codice_interno: 'PREVENTIVO', origine_codice: 'PRV3', qta: '2' }),
-      legame({ riga_id: 3, origine: 'RESO', origine_id: 9, origine_riga_id: 4,
+      legame({ riga_id: 3, origine: 'RESO_VENDITA', origine_id: 9, origine_riga_id: 4,
         origine_tipo_codice_interno: 'RESO_VENDITA', origine_codice: null, qta: '1' }),
       legame({ riga_id: 4, origine: 'ONERE', natura: 'ANNULLO', origine_id: null,
         origine_riga_id: null, origine_tipo_codice_interno: null, origine_codice: null, qta: '1' }),
@@ -178,13 +179,32 @@ describe('DocumentoAnnulloLegamiDialog — la dichiarazione', () => {
     rispostaLegami = legami([
       legame({ ...senzaNome, riga_id: 1, origine_id: 3 }),
       legame({ ...senzaNome, riga_id: 2, origine_id: 4 }),
-      legame({ riga_id: 3, origine: 'CONSUMI', origine_id: 41, origine_riga_id: null,
+      legame({ riga_id: 3, origine: 'ATTIVITA_CONSUMI', origine_id: 41, origine_riga_id: null,
         origine_tipo_codice_interno: null, origine_codice: null, qta: '1' }),
-      legame({ riga_id: 4, origine: 'CONSUMI', origine_id: 42, origine_riga_id: null,
+      legame({ riga_id: 4, origine: 'ATTIVITA_CONSUMI', origine_id: 42, origine_riga_id: null,
         origine_tipo_codice_interno: null, origine_codice: null, qta: '1' }),
     ], 'COMMESSA')
     const wrapper = await montaDialog()
     expect(wrapper.findAll('li')).toHaveLength(3)
+  })
+
+  // ⭐ Un'origine che non e' un documento da aprire (il backend non da' il
+  //    tipo) si nomina dal codice della sorgente, col vocabolario del lineage
+  //    (`vendite.lineage.tipo_attivita_consumi`): dal lotto 2b della grammatica
+  //    unica non c'e' piu' un secondo vocabolario delle origini. Una chiave
+  //    sbagliata non da' errore: a video uscirebbe il codice grezzo, e questo
+  //    test lo vede.
+  it('commessa: i consumi si nominano dal codice della sorgente', async () => {
+    rispostaLegami = legami([
+      legame({ riga_id: 1, origine: 'ATTIVITA_CONSUMI', origine_id: 41, origine_riga_id: null,
+        origine_tipo_codice_interno: null, origine_codice: null, qta: '1' }),
+    ], 'COMMESSA')
+    const wrapper = await montaDialog({
+      vendite: { lineage: { tipo_attivita_consumi: 'Consumi' } },
+    })
+    const testo = wrapper.text()
+    expect(testo).toContain('Consumi')
+    expect(testo).not.toContain('ATTIVITA_CONSUMI')
   })
 })
 

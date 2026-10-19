@@ -336,7 +336,7 @@ def list_righe_pagina(preventivo_id: int, **opzioni: Any) -> tuple[list[dict[str
     )
 
 
-# Scopo: Righe MERCE smistabili a ordine (natura destinazione_tipo='ORDINE' non
+# Scopo: Righe MERCE smistabili a ordine (natura destinazione_tipo='ORDINE_VENDITA' non
 #        ancora allocate). Alimenta il dialog di smistamento riga-per-riga
 #        preventivo→ordine: il FE preseleziona tutte e invia il sottoinsieme
 #        scelto a POST /genera-ordine/ {righe_ids}. Le righe sono esattamente

@@ -16,7 +16,9 @@
 // (`apps.documenti.services.context_builders.registry`) e, dal 2026-10-19
 // (grammatica unica, lotto 2a: un vocabolario solo per i tipi di documento),
 // il tipo di documento della risoluzione IVA (`documento_tipo`), il `contesto`
-// della situazione merce e il `documento` del lettore dei legami.
+// della situazione merce e il `documento` del lettore dei legami. Dal lotto 2b
+// (stesso giorno) anche l'`origine` dei legami (tranne ONERE, che non e' una
+// sorgente) e la destinazione dello smistamento del preventivo.
 // ⚠️ Non e' l'elenco dei builder registrati (COMMESSA non ne ha uno): quello si
 //    legge da `GET /documenti/context-builders/`.
 // ⭐ La chiave E' il codice (`config.sorgenti.codice_interno`), come il nome
@@ -30,6 +32,9 @@ export const SORGENTE_CODES = Object.freeze({
   // DDT di vendita (DDT accompagnatorio): quinto dominio del motore
   // documentale, context builder DDT_VENDITA registrato lato BE.
   DDT_VENDITA: 'DDT_VENDITA',
+  // Reso di vendita: l'origine di un legame della commessa (il reso torna da
+  // accreditare), nella finestra dei legami.
+  RESO_VENDITA: 'RESO_VENDITA',
   // Fattura: sesto dominio del motore documentale, context builder FATTURA
   // registrato lato BE. Stampa/ristampa (nessuna emissione da UI).
   FATTURA: 'FATTURA',

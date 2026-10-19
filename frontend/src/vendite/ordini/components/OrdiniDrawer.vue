@@ -37,7 +37,7 @@ import { getOrdineFormDefaults } from '../../api/formDefaults'
 import { createOrdine } from '../api/ordiniApi'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
-import { getBillingAccountLookupById } from '../../../core/apiCore'
+import { ripristinaBillingAccount } from '../../../core/utils/ripristinaLookup'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
@@ -334,7 +334,7 @@ async function loadDetail(id = null) {
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     utility_id: data.utility_id ?? null,
     billing_account_id: data.billing_account_id ?? null,
-    billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
+    billing_account_obj: null,  // popolato sotto da ripristinaBillingAccount
     valuta_id: data.valuta_id ?? null,
     modalita_pagamento_id: data.modalita_pagamento_id ?? null,
     termine_pagamento_id: data.termine_pagamento_id ?? null,
@@ -346,16 +346,8 @@ async function loadDetail(id = null) {
   // avrebbe cancellato (BB useDrawerFormPreserve).
   applicaModifiche()
   await nextTick()
-  // Restore BillingAccountLookup _obj per visualizzazione ricca. Best-effort.
-  if (data.billing_account_id) {
-    try {
-      const res = await getBillingAccountLookupById(data.billing_account_id)
-      const ba = res?.data?.data
-      if (ba) form.value.billing_account_obj = ba
-    } catch {
-      // Resto: l'autocomplete parte vuoto, l'operatore puo' ri-selezionare.
-    }
-  }
+  // Il cliente per l'etichetta del lookup (BB `ripristinaBillingAccount`).
+  await ripristinaBillingAccount(form.value, data.billing_account_id)
   // Riepilogo IVA: il trigger DB mantiene i totali in sync con le righe a ogni
   // mutazione; qui leggiamo lo stato corrente (best-effort).
   await loadRiepilogoIva(targetId)

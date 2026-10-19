@@ -37,6 +37,8 @@ import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDr
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import ListinoDocumentoSelect from './ListinoDocumentoSelect.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
+import { ripristinaBillingAccount } from '../../core/utils/ripristinaLookup'
+import { clienteCambiato } from '../_shared/cliente/clienteCambiato'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
@@ -266,17 +268,17 @@ function resetForm() {
 }
 
 function populateFromDetail(d) {
+  const stessoCliente = form.value.billing_account_id === d.billing_account_id
+    && form.value.billing_account_obj != null
   form.value = {
     emittente_fiscale_id: d.emittente_fiscale_id,
     billing_account_id: d.billing_account_id,
-    billing_account_obj: d.ba_ragione_sociale ? {
-      id: d.billing_account_id,
-      codice: d.ba_codice,
-      ragione_sociale: d.ba_ragione_sociale,
-      utility_codice: d.utility_codice,
-      utility_descrizione: d.utility_descrizione,
-      pdp: d.pdp || null,
-    } : null,
+    // Il cliente per il lookup: lo stesso oggetto se il cliente non e' cambiato
+    // (niente lampeggio alla ricarica), altrimenti lo rilegge
+    // `ripristinaBillingAccount` qui sotto. ⛔ Fino al 2026-10-19 si costruiva a
+    // mano dai campi del dettaglio, con la chiave sbagliata della ragione
+    // sociale: riaperto, il campo mostrava il solo codice (collaudo di Tid).
+    billing_account_obj: stessoCliente ? form.value.billing_account_obj : null,
     istanza_utility_id: d.istanza_utility_id,
     utility_id: d.utility_id,
     ambito: d.ambito || 'COMMODITY',
@@ -295,6 +297,7 @@ function populateFromDetail(d) {
     valuta_id: d.valuta_id,
     ...schedaDaFornitura(d.utility),
   }
+  if (!stessoCliente) ripristinaBillingAccount(form.value, d.billing_account_id)
 }
 
 // Forma derivata (refactor modalita 2026-05-15): "con_listino" se l'operatore
@@ -550,8 +553,7 @@ function buildCodiciAttoPayload(f) {
 async function handleSave() {
   if (isEdit.value) {
     const payload = buildPayload()
-    const cambiaCliente = !isContractLocked.value && detail.value !== null
-      && form.value.billing_account_id !== detail.value.billing_account_id
+    const cambiaCliente = !isContractLocked.value && clienteCambiato(form.value, detail.value)
     if (cambiaCliente) {
       // Il cliente si cambia in bozza, in coppia: BA e istanza insieme (B-1 di
       // Tid, brief-db-indirizzi-documento-seguono-il-cliente §8.3). Solo se
@@ -1125,7 +1127,8 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
     :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
     :istanza-utility-id="detail?.istanza_utility_id ?? null"
     :readonly="readonly || parentReadonly"
-    :capabilities="capabilities" />
+    :capabilities="capabilities"
+    :cliente-da-salvare="clienteCambiato(form, detail)" />
 
   <!-- === Pricing (refactor modalita 2026-05-15) === -->
   <!-- Niente piu' SelectButton A/B/C: l'operatore compila campi opzionali

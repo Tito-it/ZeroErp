@@ -7,8 +7,10 @@
 #        (brief-db-annullo-documento-con-legami R-1, R-2).
 # rev 2026-10-19 (brief-db-grammatica-unica-documenti lotto 2a): il documento
 #        si nomina col codice di `config.sorgenti` (`DDT_VENDITA`,
-#        `ORDINE_VENDITA`), lo stesso che va al lineage; l'`origine` dei legami
-#        resta coi codici corti fino al 2b.
+#        `ORDINE_VENDITA`), lo stesso che va al lineage.
+# rev 2026-10-19 (stesso brief, lotto 2b): anche l'`origine` dei legami e' il
+#        codice della sorgente (tranne ONERE); il tipo del lineage e' l'origine
+#        stessa, per le sole origini che sono un documento da aprire.
 # ------------------------------------------------------------
 
 """
@@ -22,6 +24,7 @@ AnnulloConLegamiBBTests
  5) test_dichiarazione_assente                  — None al primo tentativo
  5-bis) test_commessa_nomi_dal_lineage          — la commessa: origini «indietro» anche
                                                    contratto e bolla; consumo e onere senza tipo
+ 5-ter) test_origine_fuori_elenco_senza_tipo    — una sorgente non dichiarata non si apre
 
 PreventivoAnnulloTests
  6) test_annullo_passa_dal_verbo                — repo.annulla, forma di fn_cambia_stato_preventivo
@@ -43,7 +46,7 @@ _PREV_REPO = "apps.vendite.services.preventivi_service.PreventiviRepository"
 
 
 def _legame(**k):
-    base = {"riga_id": None, "riga_nr": None, "origine": "ORDINE", "natura": "CONSUMO",
+    base = {"riga_id": None, "riga_nr": None, "origine": "ORDINE_VENDITA", "natura": "CONSUMO",
             "origine_id": 12, "origine_riga_id": 5, "qta": Decimal("10")}
     return {**base, **k}
 
@@ -55,8 +58,8 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
         # Una riga di ri-consegna da un reso nato da un ordine porta DUE legami:
         # la conferma dichiara il count(*) del lettore, come il verbo.
         repo_cls.return_value.list_documento_legami.return_value = [
-            _legame(riga_id=31, riga_nr=1, origine="ORDINE"),
-            _legame(riga_id=31, riga_nr=1, origine="RESO", origine_id=9),
+            _legame(riga_id=31, riga_nr=1, origine="ORDINE_VENDITA"),
+            _legame(riga_id=31, riga_nr=1, origine="RESO_VENDITA", origine_id=9),
         ]
         out = bb.legami_del_documento("DDT_VENDITA", 7)
         self.assertEqual(out["legami"], 2)
@@ -68,9 +71,9 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
     def test_nomi_dal_lineage_nelle_due_direzioni(self, repo_cls, passaggi) -> None:
         repo_cls.return_value.list_documento_legami.return_value = [
             _legame(riga_id=40, riga_nr=1, origine="PREVENTIVO", origine_id=3),
-            _legame(origine="OFFERTA", natura="PROVENIENZA", origine_id=4, origine_riga_id=None),
+            _legame(origine="OFFERTA_COMMERCIALE", natura="PROVENIENZA", origine_id=4, origine_riga_id=None),
             _legame(origine="COMMESSA", origine_id=50),
-            _legame(origine="ORDINE", origine_id=77),  # il lineage non lo vede
+            _legame(origine="ORDINE_VENDITA", origine_id=77),  # il lineage non lo vede
         ]
         passaggi.return_value = {
             "indietro": [
@@ -100,15 +103,15 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
     # ⭐ La commessa (brief-db-annullo-a-valle-riapre-a-monte D-2): i suoi
     #    legami vengono da preventivo, ordine, contratto, bolla (lineage
     #    «indietro» della commessa), dal reso dell'accredito e dai consumi; gli
-    #    oneri non hanno niente a monte. CONSUMI e ONERE restano senza tipo:
+    #    oneri non hanno niente a monte. ATTIVITA_CONSUMI e ONERE restano senza tipo:
     #    la finestra li nomina senza link.
     @patch(_PASSAGGI)
     @patch(_REPO_V)
     def test_commessa_nomi_dal_lineage(self, repo_cls, passaggi) -> None:
         repo_cls.return_value.list_documento_legami.return_value = [
             _legame(riga_id=1, origine="CONTRATTO", origine_id=21, origine_riga_id=None),
-            _legame(riga_id=2, origine="DDT", origine_id=31, origine_riga_id=None),
-            _legame(riga_id=3, origine="CONSUMI", origine_id=41, origine_riga_id=None),
+            _legame(riga_id=2, origine="DDT_VENDITA", origine_id=31, origine_riga_id=None),
+            _legame(riga_id=3, origine="ATTIVITA_CONSUMI", origine_id=41, origine_riga_id=None),
             _legame(riga_id=4, origine="ONERE", natura="ANNULLO", origine_id=None,
                     origine_riga_id=None),
         ]
@@ -126,6 +129,26 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
             [(r["origine_tipo_codice_interno"], r["origine_codice"]) for r in out["righe"]],
             [("CONTRATTO", "CT-21"), ("DDT_VENDITA", "DDT-31"), (None, None), (None, None)],
         )
+
+    # ⭐ Che un'origine sia un documento da aprire lo dichiara il backend
+    #    (`_ORIGINI_DOCUMENTO`), non il fatto che sia una sorgente: una
+    #    sorgente che il lettore imparasse a dare resta senza tipo (la finestra
+    #    la nomina, senza link) e senza nome, anche se il lineage la vede.
+    @patch(_PASSAGGI)
+    @patch(_REPO_V)
+    def test_origine_fuori_elenco_senza_tipo(self, repo_cls, passaggi) -> None:
+        repo_cls.return_value.list_documento_legami.return_value = [
+            _legame(riga_id=1, origine="FATTURA", origine_id=61, origine_riga_id=None),
+        ]
+        passaggi.return_value = {
+            "indietro": [
+                {"from_tipo_codice_interno": "FATTURA", "from_doc_id": 61, "from_codice": "FT-61"},
+            ],
+            "avanti": [],
+        }
+        riga = bb.legami_del_documento("COMMESSA", 9)["righe"][0]
+        self.assertIsNone(riga["origine_tipo_codice_interno"])
+        self.assertIsNone(riga["origine_codice"])
 
     def test_dichiarazione_non_numerica(self) -> None:
         with self.assertRaises(ServiceError) as cm:

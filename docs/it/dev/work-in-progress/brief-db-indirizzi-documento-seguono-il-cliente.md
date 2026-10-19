@@ -2,13 +2,13 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: Tid, col commit di R-BE-9 e R-BE-10 (fatte il 2026-10-19, §8.7.5) e poi il collaudo (riga 3).**
+**Riparte: Tid, col commit del lavoro del 2026-10-19 (R-BE-9, R-BE-10 §8.7.5; i tre difetti del collaudo §8.8) e poi la ripresa del collaudo (riga 3: preventivo e offerta, e il punto B).**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | **Tid** | ✅ Apply di `20261018-65` … `-68` e dei due codici su dbdev (2026-10-18 17:05-17:10; verificato il 2026-10-19 da `databasechangelog` e dai montaggi: `utility_id` ed `emittente_fiscale_id` con `-` su preventivo, offerta e contratto) | §8.7.4 | — |
 | 2 | **BE** | ✅ R-BE-8 (policy e ripiego dei due codici), entrata con `08cc15a61` (2026-10-18). ✅ **R-BE-9** e **R-BE-10** (2026-10-19): le due colonne rifiutate sul campo dal BB `rifiuta_colonne_ferme` sui tre documenti, il drawer dell'offerta non le manda piu' in modifica; da committare | §8.7.3, §8.7.5 | — |
-| 3 | **Tid** | Collaudo in-app: slot di default e cambio di cliente in bozza su DDT, preventivo e offerta (§8.5); scheda precompilata e cambio di cliente del contratto (§8.6.4); emittente e utility spenti in modifica su preventivo, offerta e contratto (R-FE-5) | §8.5, §8.6.4, §8.7.3 | 1, 2 |
+| 3 | **Tid** | 🔄 (2026-10-19, primo giro: §8.8) Collaudo in-app: slot di default e cambio di cliente in bozza su DDT, preventivo e offerta (§8.5); scheda precompilata e cambio di cliente del contratto (§8.6.4); emittente e utility spenti in modifica su preventivo, offerta e contratto (R-FE-5) | §8.5, §8.6.4, §8.7.3 | 1, 2 |
 | 4 | **Tid** | Archiviazione in `work-done/` | — | 3 |
 
 **Decisioni aperte di Tid: nessuna.** R-BE-10 decisa da Tid il 2026-10-19: il BE rifiuta le due chiavi
@@ -716,4 +716,25 @@ stesso modo.
   sparita nel frattempo diventava un `KeyError`, 500, ora che la utility si indicizza); nel preventivo
   `E_PREV_VALIDAZIONE` e' una costante del modulo (era 35 letterali); nel contratto il dettaglio di
   `reject_keys` non ripete piu' a mano l'elenco delle chiavi vietate (si era gia' disallineato).
+
+### 8.8 Collaudo di Tid, primo giro (2026-10-19), e correzioni
+
+**Esito.** DDT (punto A) tutto ok. Tre rilievi, corretti lo stesso giorno (sessione BE/FE):
+
+| Rilievo | Causa | Correzione |
+| --- | --- | --- |
+| **Preventivo: il cliente non si cambia, nemmeno in bozza** (la prova non si poteva fare) | nel `PreventiviDrawer` una regola del solo FE, «a preventivo esistente BA e istanza bloccati», scavalcava la capability del DB (che in bozza li lascia aperti, D-1) | tolta: i campi bloccati sono quelli della capability; resta il blocco dei campi ereditati da una pratica |
+| **Offerta: riaperta, il cliente mostra il solo codice** (anche il contratto) | offerta e contratto ricostruivano l'oggetto del lookup a mano dai campi del dettaglio, con la chiave sbagliata della ragione sociale (`ragione_sociale` invece di `ragione_sociale_completa`); preventivo, DDT e ordine lo rileggevano dal server, con quattro copie dello stesso `try/catch` | BB `ripristinaBillingAccount` / `ripristinaIstanzaUtility` (`core/utils/ripristinaLookup.js`, ok Tid): rilegge dal server e scrive solo se il form punta ancora a quell'id; usato dai cinque drawer, copie ritirate |
+| **DDT: l'indirizzo nuovo si vede solo dopo Salva** | comportamento deciso (B-3: gli indirizzi li rifa' il DB al salvataggio); il pannello pero' non lo diceva | scelta di Tid: un avviso nel pannello (`clienteDaSalvare` di `DocumentoIndirizziSection`) quando il cliente del form e' diverso da quello salvato, su preventivo, offerta, contratto e DDT (col destinatario). BB `clienteCambiato` (`vendite/_shared/cliente/`), che ritira anche le due copie del confronto nel salvataggio di offerta e contratto |
+
+Trovato rileggendo: nell'**offerta** `onBaSelected` riscriveva la utility anche in modifica (pulito il cliente, il
+lookup passava alla utility di default e si poteva scegliere un cliente che il backend rifiuta). Ora solo in
+creazione, come nel contratto.
+
+**Prove:** spec nuovi dei due BB (6 e 5 test); vitest di `vendite` e `core/utils` 233 verdi; eslint, oxlint, guard,
+chiavi i18n e build verdi. Catalogo BB frontend aggiornato.
+
+**Da riprendere nel collaudo:** preventivo e offerta (cambio di cliente in bozza, punti 4 e 5 del §8.5), il
+cliente che resta leggibile alla riapertura su offerta e contratto, l'avviso del pannello prima di Salva; poi il
+punto B (§8.6.4) e il punto C (§8.7).
 

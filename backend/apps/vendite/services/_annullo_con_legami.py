@@ -64,24 +64,30 @@ DocumentoLegami = Literal[
 STATO_ANNULLATO = "ANNULLATO"
 STATO_ANNULLATA = "ANNULLATA"
 
-# Il tipo del lineage dell'ORIGINE di un legame (`origine` del lettore). Serve
-# al gesto «vai al documento»: il lettore porta l'id della testata dall'altra
-# parte ma, per decisione di Tid, non il nome, che lo da' il lineage.
-# CONTRATTO e DDT sono origini dei soli legami della commessa (i documenti che
-# le hanno spinto righe). ⚠️ CONSUMI e ONERE non ci sono, di proposito: il
-# consumo non e' un nodo del lineage e l'onere non ha niente a monte. Senza
-# tipo la finestra mostra la sola origine, senza link.
-# ⚠️ Questa traduzione RESTA fino al sotto-giro 2b (V7) della grammatica unica:
-#    la colonna `origine` del lettore porta ancora i codici corti.
-_TIPO_LINEAGE_DELL_ORIGINE: dict[str, str] = {
-    "ORDINE": SORGENTE_ORDINE_VENDITA,
-    "RESO": SORGENTE_RESO_VENDITA,
-    "PREVENTIVO": SORGENTE_PREVENTIVO,
-    "OFFERTA": SORGENTE_OFFERTA_COMMERCIALE,
-    "COMMESSA": SORGENTE_COMMESSA,
-    "CONTRATTO": SORGENTE_CONTRATTO,
-    "DDT": SORGENTE_DDT_VENDITA,
-}
+# Le ORIGINI di un legame che sono un documento del lineage: per queste
+# l'`origine` del lettore e' anche il tipo del lineage, e serve al gesto «vai al
+# documento» (il lettore porta l'id della testata dall'altra parte ma, per
+# decisione di Tid, non il nome, che lo da' il lineage). CONTRATTO e DDT sono
+# origini dei soli legami della commessa (i documenti che le hanno spinto
+# righe).
+# ⭐ Dal 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b) l'`origine`
+#    E' il codice della sorgente, ancorato a `config.sorgenti.codice_interno`:
+#    la traduzione dai codici corti (`ORDINE`, `RESO`, `OFFERTA`, `DDT`) e'
+#    ritirata. Resta da dire QUALI origini si aprono.
+# ⚠️ Fuori, di proposito: ATTIVITA_CONSUMI (il consumo non e' un nodo del
+#    lineage) e ONERE (non e' una sorgente: e' l'assenza di un documento a
+#    monte, detta con un nome). Fuori anche ogni sorgente nuova che il lettore
+#    imparasse a dare: senza tipo la finestra mostra la sola origine, senza
+#    link, finche' qui non si dichiara che e' un documento da aprire.
+_ORIGINI_DOCUMENTO: frozenset[str] = frozenset({
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_RESO_VENDITA,
+    SORGENTE_PREVENTIVO,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_COMMESSA,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+})
 
 _CAMPO_DICHIARAZIONE = "legami_confermati"
 
@@ -114,7 +120,7 @@ def legami_del_documento(documento: DocumentoLegami, documento_id: int) -> dict[
     righe = VenditeRepository().list_documento_legami(documento, documento_id)
     nomi = _nomi_dal_lineage(documento, documento_id) if righe else {}
     for riga in righe:
-        tipo = _TIPO_LINEAGE_DELL_ORIGINE.get(riga["origine"])
+        tipo = riga["origine"] if riga["origine"] in _ORIGINI_DOCUMENTO else None
         riga["origine_tipo_codice_interno"] = tipo
         riga["origine_codice"] = nomi.get((tipo, riga["origine_id"]))
     return {

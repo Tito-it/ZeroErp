@@ -1781,8 +1781,8 @@ class TestPreventiviService(unittest.TestCase):
             "righe_emesse_af": 0, "righe_fatturate": 0, "righe_residue": 2,
         }
         self.mock_repo.list_righe_smistamento.return_value = [
-            {"riga_id": 10, "destinazione_tipo": "ORDINE", "stato_smistamento": "A_ORDINE"},
-            {"riga_id": 11, "destinazione_tipo": "ORDINE", "stato_smistamento": "RESIDUA"},
+            {"riga_id": 10, "destinazione_tipo": "ORDINE_VENDITA", "stato_smistamento": "A_ORDINE"},
+            {"riga_id": 11, "destinazione_tipo": "ORDINE_VENDITA", "stato_smistamento": "RESIDUA"},
             {"riga_id": 12, "destinazione_tipo": "COMMESSA", "stato_smistamento": "RESIDUA"},
         ]
 

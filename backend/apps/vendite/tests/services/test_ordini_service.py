@@ -525,7 +525,7 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
     @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
     @patch(f"{_SVC}._get_testata_or_raise",
            return_value={"id": 7, "emittente_fiscale_id": 3})
-    @patch(f"{_SVC}._crea_testata_ordine_da_origine", return_value=(7, "ORD7"))
+    @patch(f"{_SVC}.crea_ordine", return_value={"id": 7, "numero": "ORD7"})
     @patch(_REPO)
     @patch(_OFF_REPO)
     def test_crea_ordine_da_offerta_ok(
@@ -549,11 +549,13 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
         self.assertEqual(out["ordine_id"], 7)
         self.assertEqual(out["numero"], "ORD7")
         self.assertEqual(out["righe_create"], 2)
-        self.assertEqual(out["documento_origine"], {"tipo": "OFFERTA", "id": 55})
-        # testata creata via helper condiviso con tipo/origine corretti
-        header, tipo, origine_id = crea_testata.call_args.args
-        self.assertEqual(tipo, "OFFERTA")
-        self.assertEqual(origine_id, 55)
+        self.assertEqual(out["documento_origine"], {"tipo": "OFFERTA_COMMERCIALE", "id": 55})
+        # testata creata dal verbo di creazione; provenienza scritta col
+        # codice della sorgente (FK verso config.sorgenti, lotto 2b)
+        (header,) = crea_testata.call_args.args
+        ord_cls.return_value.set_documento_origine.assert_called_once_with(
+            7, "OFFERTA_COMMERCIALE", 55,
+        )
         self.assertEqual(header["billing_account_id"], 10)
         # offerta non ha termine/modalita pagamento → non nel header
         self.assertNotIn("termine_pagamento_id", header)
@@ -621,7 +623,7 @@ class OrdiniConversioneOffertaTests(SimpleTestCase):
     @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
     @patch(f"{_SVC}._get_testata_or_raise",
            return_value={"id": 8, "emittente_fiscale_id": 3})
-    @patch(f"{_SVC}._crea_testata_ordine_da_origine", return_value=(8, "ORD8"))
+    @patch(f"{_SVC}.crea_ordine", return_value={"id": 8, "numero": "ORD8"})
     @patch(_REPO)
     @patch(_OFF_REPO)
     def test_crea_ordine_da_offerta_dopo_annullo_ammesso(

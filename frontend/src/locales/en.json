@@ -3177,6 +3177,7 @@
       "usa_come_tipo": "Address type",
       "impostati_titolo": "Set on this document",
       "altri_count": "+{n} more",
+      "cliente_da_salvare": "The customer has changed: the addresses will follow the new customer when you save.",
       "mancante_obbligatorio": "Delivery address missing — required for issuing.",
       "non_impostato": "No address set.",
       "titolo": "Addresses",
@@ -3230,6 +3231,7 @@
       "tipo_fattura": "Invoice",
       "tipo_commessa": "Job",
       "tipo_reso_vendita": "Return",
+      "tipo_attivita_consumi": "Consumption",
       "natura_fattura": "Invoice",
       "natura_nota_credito": "Credit note",
       "natura_nota_debito": "Debit note"
@@ -3246,15 +3248,7 @@
       "si_annulla": "What is cancelled",
       "oneri_annullati": "charges cancelled with the job: {n}",
       "spiegazione_commessa": "If you confirm, the job is cancelled: the lines not yet issued leave the job, the documents they come from can be sent to a job again, the return is to be credited again, the charges are cancelled.",
-      "nessun_legame": "The links with other documents are no longer there: if you confirm, the document is cancelled without withdrawing anything.",
-      "origine_ordine": "Order",
-      "origine_reso": "Return",
-      "origine_preventivo": "Quote",
-      "origine_offerta": "Offer",
-      "origine_commessa": "Job",
-      "origine_contratto": "Contract",
-      "origine_ddt": "Delivery note",
-      "origine_consumi": "Consumption"
+      "nessun_legame": "The links with other documents are no longer there: if you confirm, the document is cancelled without withdrawing anything."
     },
     "listini": {
       "search_placeholder": "Search by price list code or description...",

@@ -25,7 +25,8 @@ import { getPreventivoFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
-import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
+import { ripristinaBillingAccount, ripristinaIstanzaUtility } from '../../../core/utils/ripristinaLookup'
+import { clienteCambiato } from '../../_shared/cliente/clienteCambiato'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
@@ -263,17 +264,16 @@ const smistamentoReason = computed(() => {
   return [...new Set(keys.map(k => t(k)))].join('\n')
 })
 // Per PreventiviForm passiamo l'array originale (no Set): il prop e' typed Array.
-// Quando il drawer ha gia' un detail (CREATE post auto-save bozza o EDIT classico)
-// blocchiamo lato UX il cambio di billing_account_id e istanza_utility_id: il
-// preventivo a quel punto e' agganciato al BA/istanza scelti e si sta gestendo
-// il dettaglio righe; un cambio sarebbe un nuovo preventivo, non una modifica
-// della testata. utility_id era gia' immutabile via metadata BE.
+// Quali campi si cambiano lo dice la capability (`testata.campiBloccati`, dal
+// lock di testata del DB): in bozza il cliente (BA e istanza, in coppia) si
+// cambia, e gli indirizzi lo seguono (D-1 di brief-db-indirizzi-documento-
+// seguono-il-cliente); utility ed emittente mai.
+// ⛔ Fino al 2026-10-19 qui c'era una regola del solo FE, «a preventivo
+//    esistente BA e istanza sono bloccati», che scavalcava la capability: il
+//    cambio di cliente in bozza, deciso e gestito dal backend, era impossibile
+//    da video (trovato nel collaudo di Tid).
 const nonEditableFields = computed(() => {
   const base = testata.campiBloccati.value
-  // Post auto-save bozza / EDIT: cambiare BA o istanza sarebbe un altro
-  // preventivo, non una modifica → entrambi bloccati. utility_id è già
-  // immutabile via metadata BE.
-  if (hasDetail.value) return [...base, 'billing_account_id', 'istanza_utility_id']
   // Aperto da pratica: blocca SOLO i campi effettivamente ereditati (passati,
   // non-null) dal contesto — "se passati da esterno → valorizzati e non
   // modificabili". Un campo assente (es. pratica senza BA) resta editabile:
@@ -322,12 +322,12 @@ function defaultForm() {
     billing_account_id: null,
     // _obj per BillingAccountLookup AutoComplete (pattern restore lookup ricco,
     // memoria feedback_autocomplete_restore). Popolato da onBaSelected (FE)
-    // o da loadDetail() via getBillingAccountLookupById in edit.
+    // o da loadDetail() da ripristinaBillingAccount in edit.
     billing_account_obj: null,
     istanza_utility_id: null,
     // _obj per IstanzaUtilityLookup AutoComplete (pattern restore lookup ricco).
     // Popolato da onIstanzaSelected (FE) o da prefillFromPratica() via
-    // getIstanzaUtilityLookupById (pratica senza BA). Un preventivo salvato ha
+    // ripristinaIstanzaUtility (pratica senza BA). Un preventivo salvato ha
     // sempre il BA (brief-db-istanza-nasce-col-ba, R-2): l'istanza e' derivata
     // e il picker e' nascosto.
     istanza_utility_obj: null,
@@ -428,7 +428,7 @@ async function loadDetail(id = null) {
     utility_id: data.utility_id,
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
     billing_account_id: data.billing_account_id,
-    billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
+    billing_account_obj: null,  // popolato sotto da ripristinaBillingAccount
     istanza_utility_id: data.istanza_utility_id,
     istanza_utility_obj: null,  // il BA c'e' sempre: l'istanza e' derivata, picker nascosto
     valuta_id: data.valuta_id,
@@ -449,15 +449,7 @@ async function loadDetail(id = null) {
   // ⚠️ Il ramo «preventivo prospect senza BA», che ripristinava il picker
   //    istanza, e' stato tolto il 2026-10-08: il BA e' NOT NULL
   //    (brief-db-istanza-nasce-col-ba, R-2).
-  if (data.billing_account_id) {
-    try {
-      const res = await getBillingAccountLookupById(data.billing_account_id)
-      const ba = res?.data?.data
-      if (ba) form.value.billing_account_obj = ba
-    } catch {
-      // Resto: form parte senza _obj, l'utente puo' rieseguire la ricerca.
-    }
-  }
+  await ripristinaBillingAccount(form.value, data.billing_account_id)
   // Riepilogo IVA aggregato: il trigger DB lo mantiene in sync con le righe
   // su ogni mutazione, qui leggiamo lo stato corrente. Best-effort: in caso
   // di failure il pannello resta vuoto, i totali aggregati nella testata
@@ -478,18 +470,10 @@ async function prefillFromPratica() {
   if (ctx.billingAccountId) {
     // BA-first, istanza derivata dal BA (picker istanza nascosto).
     form.value.billing_account_id = ctx.billingAccountId
-    try {
-      const res = await getBillingAccountLookupById(ctx.billingAccountId)
-      const ba = res?.data?.data
-      if (ba) form.value.billing_account_obj = ba
-    } catch { /* best-effort: il campo resta col solo id, comunque bloccato */ }
+    await ripristinaBillingAccount(form.value, ctx.billingAccountId)
   } else if (ctx.istanzaUtilityId) {
     // Pratica con la sola istanza: picker istanza visibile, disabilitato.
-    try {
-      const res = await getIstanzaUtilityLookupById(ctx.istanzaUtilityId)
-      const iu = res?.data?.data
-      if (iu) form.value.istanza_utility_obj = iu
-    } catch { /* best-effort */ }
+    await ripristinaIstanzaUtility(form.value, ctx.istanzaUtilityId)
   }
 }
 
@@ -1138,6 +1122,7 @@ const drawerActions = computed(() => {
               :istanza-utility-id="detail?.istanza_utility_id ?? null"
               :readonly="isReadonlyPuro"
               :capabilities="capabilities"
+              :cliente-da-salvare="clienteCambiato(form, detail)"
               :bordo="false" />
 
             <Divider />

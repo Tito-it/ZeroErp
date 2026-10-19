@@ -28,7 +28,7 @@
 #       che falliva in silenzio.
 #   smoke_articolo_merce                           # -> ARTICOLO_ID
 #       Un articolo che puo' stare in un ORDINE o in una BOLLA: attivo, non
-#       composito, con natura di vendita a destinazione ORDINE (la regola di
+#       composito, con natura di vendita a destinazione ORDINE_VENDITA (la regola di
 #       script.fn_check_articolo_riga, E_RIGA_NATURA_NON_AMMESSA: un servizio
 #       non si spedisce). Fino al 2026-10-13 gli smoke prendevano «il primo
 #       articolo del catalogo», e il giorno che era un servizio l'ordine veniva
@@ -119,7 +119,7 @@ smoke_articolo_merce() {
 import sys, json
 try:
     rows = json.load(sys.stdin).get('data', {}).get('results') or []
-    r = next((x for x in rows if x.get('natura_vendita_destinazione_tipo') == 'ORDINE'
+    r = next((x for x in rows if x.get('natura_vendita_destinazione_tipo') == 'ORDINE_VENDITA'
               and not x.get('is_composito') and x.get('attivo') is not False), None)
     print(r['id'] if r else ('' if len(rows) == 100 else 'FINE'))
 except Exception:
@@ -128,6 +128,6 @@ except Exception:
         [[ "$ARTICOLO_ID" == "FINE" ]] && { ARTICOLO_ID=""; break; }
         [[ -n "$ARTICOLO_ID" ]] && break
     done
-    [[ -z "$ARTICOLO_ID" ]] && echo "  [_smoke_documenti] nessun articolo merce (natura a destinazione ORDINE) nel catalogo" >&2
+    [[ -z "$ARTICOLO_ID" ]] && echo "  [_smoke_documenti] nessun articolo merce (natura a destinazione ORDINE_VENDITA) nel catalogo" >&2
     return 0
 }
