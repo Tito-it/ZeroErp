@@ -11,7 +11,7 @@
 > giro 2 (§9, §11); lato BE/FE fatto (§12, commit `062b06368`). Il debito fuori perimetro e' in tre
 > brief: [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md) (D22, chiuso),
 > [brief-db-testata-dopo-emissione](../work-done/brief-db-testata-dopo-emissione.md) (D26) e
-> [brief-db-indirizzi-documento-seguono-il-cliente](../work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md)
+> [brief-db-indirizzi-documento-seguono-il-cliente](brief-db-indirizzi-documento-seguono-il-cliente.md)
 > (D27, dal §12.3). Il collaudo a video dei form di DDT e ordine resta di Tid (§12.2).
 > **Dettaglio:** 31 changeSet
 > `20261009-62…-92`, tutti `EXECUTED` nel `databasechangelog` di dbdev (`-62…-82` alle 19:19, `-83…-85`
@@ -938,7 +938,7 @@ Dentro il giro:
   snapshot gia' scritto non si riallinea. Non l'ho toccato: se va riallineato, la sede e' il DB (o
   l'auto-assegnazione all'UPDATE del BA), e la domanda e' di modello.
   ➡️ **Deciso da Tid il 2026-10-10, passato a un brief nuovo**:
-  [brief-db-indirizzi-documento-seguono-il-cliente](../work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md)
+  [brief-db-indirizzi-documento-seguono-il-cliente](brief-db-indirizzi-documento-seguono-il-cliente.md)
   (D27). L'istruttoria ha trovato lo stesso buco su preventivo e offerta, e il gate d'emissione che
   non guarda l'origine dell'indirizzo. La regola va nel DB, e con lei l'auto-assegnazione dello slot
   di default.

@@ -2592,7 +2592,8 @@
       "tipo_erogazione_orario": "Hourly",
       "erogazioni_articolo_non_ammesso": "This item cannot be sold on this document: its type is not among those allowed by the utility.",
       "azione_reason": {
-        "listino_senza_versione_in_vigore": "The price list has no version in force today: the contract cannot be activated."
+        "listino_senza_versione_in_vigore": "The price list has no version in force today: the contract cannot be activated.",
+        "contratto_sovrapposto": "The period overlaps contract {0}, already binding for the same customer and supply point: change the dates or close that contract first."
       },
       "pdf": {
         "label_anteprima": "Preview",
@@ -3165,6 +3166,11 @@
       "collegamento_cliente": "Invoices for {valore} — no date limit.",
       "collegamento_rimuovi": "Clear filter"
     },
+    "cliente": {
+      "cambio_titolo": "Change customer",
+      "cambio_messaggio": "The document's customer changes right away: the addresses move to the new customer. Your other changes still need saving.",
+      "cambio_messaggio_con_fornitura": "The document's customer changes right away: addresses and supply details move to the new customer. Your other changes still need saving."
+    },
     "indirizzi": {
       "da_soggetto": "from subject",
       "tt_slot": "{tipo} address set on this document",
@@ -3177,7 +3183,6 @@
       "usa_come_tipo": "Address type",
       "impostati_titolo": "Set on this document",
       "altri_count": "+{n} more",
-      "cliente_da_salvare": "The customer has changed: the addresses will follow the new customer when you save.",
       "mancante_obbligatorio": "Delivery address missing — required for issuing.",
       "non_impostato": "No address set.",
       "titolo": "Addresses",

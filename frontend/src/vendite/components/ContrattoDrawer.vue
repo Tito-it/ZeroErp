@@ -38,7 +38,8 @@ import LookupSelect from '../../core/components/LookupSelect.vue'
 import ListinoDocumentoSelect from './ListinoDocumentoSelect.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import { ripristinaBillingAccount } from '../../core/utils/ripristinaLookup'
-import { clienteCambiato } from '../_shared/cliente/clienteCambiato'
+import { CLIENTE_BA } from '../_shared/cliente/clienteCambiato'
+import { useCambioClienteDocumento } from '../_shared/cliente/useCambioClienteDocumento'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
@@ -318,7 +319,8 @@ function onListinoChange(nuovoListinoId) {
   }
   // Selezione listino non-null: nessun pre-fill di tipo. Il pre-fill produceva
   // coppia incoerente (tipo=PERCENTUALE, valore=null) che in edit mascherava
-  // E_VENDITE_CONTRATTO_OVERLAP con un generico "Payload contratto non valido"
+  // il rifiuto della sovrapposizione (oggi E_CONTRATTO_OVERLAP_ESISTENTE) con un
+  // generico "Payload contratto non valido"
   // perche' il BE rifiutava la coppia prima del DB check. Il pre-fill del tipo
   // avviene gia' in `onValoreVariazioneChange` quando l'operatore inizia a
   // valorizzare il delta — coerente con la regola BE "entrambi presenti o
@@ -553,20 +555,13 @@ function buildCodiciAttoPayload(f) {
 async function handleSave() {
   if (isEdit.value) {
     const payload = buildPayload()
-    const cambiaCliente = !isContractLocked.value && clienteCambiato(form.value, detail.value)
-    if (cambiaCliente) {
-      // Il cliente si cambia in bozza, in coppia: BA e istanza insieme (B-1 di
-      // Tid, brief-db-indirizzi-documento-seguono-il-cliente §8.3). Solo se
-      // cambia: lo stesso cliente non ha niente da risolvere.
-      payload.billing_account_id = form.value.billing_account_id
-      payload.istanza_utility_id = form.value.istanza_utility_id
-    }
+    // Il cliente NON viaggia: il cambio si e' gia' salvato alla scelta, con la
+    // conferma (BB `useCambioClienteDocumento`, 2026-10-19), e la scheda del
+    // form e' gia' quella del cliente nuovo. Fino ad allora qui si mandava la
+    // coppia BA/istanza e si tratteneva la scheda del cliente vecchio.
     // La scheda di fornitura viaggia se si cambia ancora (`can_edit_utility`:
-    // il lock dei satelliti del DB). ⛔ Non con un CAMBIO DI CLIENTE: la scheda
-    // la rifa' il DB dal contatore nuovo, e quella del form e' del contatore di
-    // prima (R-BE-6/R-BE-7; il BE la scarta comunque). Dopo il salvataggio il
-    // dettaglio riletto porta la scheda nuova nel form (R-FE-4).
-    if (!cambiaCliente && caps.flag('can_edit_utility')) {
+    // il lock dei satelliti del DB).
+    if (caps.flag('can_edit_utility')) {
       payload.utility = schedaDaForm(form.value)
     }
     const result = await execute(
@@ -618,6 +613,28 @@ async function refreshDetail() {
   populateFromDetail(d)
   applica()
 }
+
+// ⭐ Il cambio di cliente in modifica si salva subito, con conferma (BB
+//    `useCambioClienteDocumento`, decisione di Tid 2026-10-19): il DB rifa'
+//    indirizzi e scheda, e pannello e «Indirizzi» mostrano subito quelli del
+//    cliente nuovo. La scheda non salvata del cliente vecchio si scarta.
+useCambioClienteDocumento({
+  form,
+  detail,
+  // La categoria la pre-compila la scelta del BA (`onBaSelected`): un Annulla
+  // la riporta al salvato con BA e istanza, o resterebbe quella del cliente
+  // scartato. A conferma resta nel form, correggibile, e si salva col Salva.
+  colonne: [...CLIENTE_BA, 'istanza_utility_id', 'categoria_cliente_id_snapshot'],
+  // La stessa condizione che spegne il lookup del cliente nel form.
+  attivo: () => isEdit.value && detail.value != null && !isLocked('billing_account_id'),
+  salva: (corpo) => execute(
+    () => store.update(props.contrattoId, corpo),
+    { successMessage: t('vendite.contratti.contratto_salvato') },
+  ),
+  ricarica: refreshDetail,
+  scartaDipendenti: () => Object.assign(form.value, schedaDaFornitura(detail.value?.utility)),
+  messaggio: 'vendite.cliente.cambio_messaggio_con_fornitura',
+})
 
 // Stato dialog cessazione: una azione con `requires_date=true` apre il dialog
 // con `default_date` e `min_date` arrivati dal BE
@@ -1127,8 +1144,7 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
     :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
     :istanza-utility-id="detail?.istanza_utility_id ?? null"
     :readonly="readonly || parentReadonly"
-    :capabilities="capabilities"
-    :cliente-da-salvare="clienteCambiato(form, detail)" />
+    :capabilities="capabilities" />
 
   <!-- === Pricing (refactor modalita 2026-05-15) === -->
   <!-- Niente piu' SelectButton A/B/C: l'operatore compila campi opzionali

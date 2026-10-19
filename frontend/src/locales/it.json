@@ -2592,7 +2592,8 @@
       "tipo_erogazione_orario": "A ore",
       "erogazioni_articolo_non_ammesso": "Questo articolo non si vende su questo documento: la sua tipologia non è fra quelle previste dalla utility.",
       "azione_reason": {
-        "listino_senza_versione_in_vigore": "Il listino non ha una versione in vigore oggi: il contratto non si può attivare."
+        "listino_senza_versione_in_vigore": "Il listino non ha una versione in vigore oggi: il contratto non si può attivare.",
+        "contratto_sovrapposto": "Il periodo si sovrappone al contratto {0}, già vincolante per lo stesso cliente e punto di fornitura: cambia le date o chiudi prima quel contratto."
       },
       "pdf": {
         "label_anteprima": "Anteprima",
@@ -3165,6 +3166,11 @@
       "collegamento_cliente": "Fatture di {valore} — senza limite di data.",
       "collegamento_rimuovi": "Togli il filtro"
     },
+    "cliente": {
+      "cambio_titolo": "Cambia cliente",
+      "cambio_messaggio": "Il cliente del documento cambia subito: gli indirizzi passano al nuovo cliente. Le altre modifiche restano da salvare.",
+      "cambio_messaggio_con_fornitura": "Il cliente del documento cambia subito: indirizzi e scheda di fornitura passano al nuovo cliente. Le altre modifiche restano da salvare."
+    },
     "indirizzi": {
       "da_soggetto": "da soggetto",
       "tt_slot": "Indirizzo di {tipo} impostato su questo documento",
@@ -3177,7 +3183,6 @@
       "usa_come_tipo": "Tipo indirizzo",
       "impostati_titolo": "Impostati su questo documento",
       "altri_count": "+{n} altri",
-      "cliente_da_salvare": "Il cliente è cambiato: gli indirizzi seguiranno il nuovo cliente al salvataggio.",
       "mancante_obbligatorio": "Indirizzo di consegna mancante — obbligatorio per l'emissione.",
       "non_impostato": "Nessun indirizzo impostato.",
       "titolo": "Indirizzi",

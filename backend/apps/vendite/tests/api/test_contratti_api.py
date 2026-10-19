@@ -244,14 +244,14 @@ class TestPost(_BaseApiTest):
     @patch(_SVC)
     def test_post_create_overlap_409(self, svc_cls, _auth):
         svc_cls.return_value.create_contratto.side_effect = ServiceError(
-            code="E_VENDITE_CONTRATTO_OVERLAP",
+            code="E_CONTRATTO_OVERLAP_ESISTENTE",
             message="Contratto sovrapposto.",
         )
         resp = self.client.post(
             _BASE, data=json.dumps(self._OK), content_type="application/json",
         )
         self.assertEqual(resp.status_code, 409)
-        self.assertEqual(resp.json()["error"]["code"], "E_VENDITE_CONTRATTO_OVERLAP")
+        self.assertEqual(resp.json()["error"]["code"], "E_CONTRATTO_OVERLAP_ESISTENTE")
 
 
 class TestPatch(_BaseApiTest):

@@ -43,6 +43,13 @@
 from django.db import connection, transaction
 
 from apps.core.db._helpers import coerce_jsonb_dict, row_to_dict
+from apps.config.sorgenti import (
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+)
 from scripts.tests._smoke_indirizzo import crea_indirizzo_libero_ruolo
 
 from apps.vendite.db.contratti_repository import ContrattiRepository
@@ -309,10 +316,15 @@ with transaction.atomic():
     transaction.set_rollback(True)
 
 # --- 6) lo slot di default e' del DB, per tutti e 5 i domini ---------------
+# Il documento e' il codice della SORGENTE (grammatica unica, brief-db-
+# grammatica-unica-documenti §11.4): dal 2026-10-19 non piu' i codici corti
+# OFFERTA/ORDINE/DDT, che qui restavano scritti a mano e davano rosso.
 repos = {
-    "PREVENTIVO": PreventiviRepository, "OFFERTA": OfferteRepository,
-    "ORDINE": OrdiniRepository, "DDT": DdtRepository,
-    "CONTRATTO": ContrattiRepository,
+    SORGENTE_PREVENTIVO: PreventiviRepository,
+    SORGENTE_OFFERTA_COMMERCIALE: OfferteRepository,
+    SORGENTE_ORDINE_VENDITA: OrdiniRepository,
+    SORGENTE_DDT_VENDITA: DdtRepository,
+    SORGENTE_CONTRATTO: ContrattiRepository,
 }
 # Attributi DI CLASSE del mixin: si leggono dalla classe, senza istanziare.
 errati = {n: getattr(cls, "_indirizzi_documento", None)

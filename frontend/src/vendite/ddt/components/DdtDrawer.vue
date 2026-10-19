@@ -38,7 +38,8 @@ import { getDdtFormDefaults } from '../../api/formDefaults'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
 import { ripristinaBillingAccount } from '../../../core/utils/ripristinaLookup'
-import { CLIENTE_BA, clienteCambiato } from '../../_shared/cliente/clienteCambiato'
+import { CLIENTE_BA } from '../../_shared/cliente/clienteCambiato'
+import { useCambioClienteDocumento } from '../../_shared/cliente/useCambioClienteDocumento'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
@@ -102,8 +103,7 @@ const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumen
 const modificatoDocumento = documento.modificato
 const detail = ref(null)
 // Il cliente del DDT: il billing account, o il destinatario senza BA (D-1 di
-// brief-db-indirizzi-documento-seguono-il-cliente). Per l'avviso del pannello
-// indirizzi prima di Salva (BB `clienteCambiato`).
+// brief-db-indirizzi-documento-seguono-il-cliente).
 const CAMPI_CLIENTE_DDT = Object.freeze([...CLIENTE_BA, 'destinatario_soggetto_ruolo_id'])
 
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_ddt_riepilogo_iva_dettaglio`).
@@ -328,9 +328,7 @@ async function loadDetail(id = null) {
     // Restore ricco dalla denominazione denormalizzata della vista, come
     // mittente e vettore.
     destinatario_soggetto_ruolo_id: data.destinatario_soggetto_ruolo_id ?? null,
-    destinatario_obj: data.destinatario_soggetto_ruolo_id
-      ? { soggetto_ruolo_id: data.destinatario_soggetto_ruolo_id, ragione_sociale_completa: data.destinatario_denominazione }
-      : null,
+    destinatario_obj: destinatarioObj(data),
     valuta_id: data.valuta_id ?? null,
     fatturazione_immediata: data.fatturazione_immediata ?? false,
     data: parseIsoDate(data.data),
@@ -368,6 +366,51 @@ async function loadDetail(id = null) {
   // mutazione; qui leggiamo lo stato corrente (best-effort).
   await loadRiepilogoIva(targetId)
   if (prelieviGiaMontati) prelieviRef.value?.carica()
+}
+
+// ⭐ Il cambio di cliente in modifica si salva subito, con conferma (BB
+//    `useCambioClienteDocumento`, decisione di Tid 2026-10-19): il DB rifa' gli
+//    indirizzi, e pannello e «Indirizzi» mostrano subito quelli del cliente
+//    nuovo. Il cliente e' il BA o, senza BA, il destinatario; senza BA si scrive
+//    il destinatario, come nel salvataggio (`buildTestataPayload`).
+useCambioClienteDocumento({
+  form,
+  detail,
+  campi: CAMPI_CLIENTE_DDT,
+  // La utility la scrive nel form la scelta del BA (`DdtForm`): un Annulla la
+  // riporta al salvato insieme al cliente.
+  colonne: [...CAMPI_CLIENTE_DDT, 'utility_id'],
+  attivo: () => detail.value != null && testata.modificabile.value
+    && !testata.bloccato('billing_account_id'),
+  payload: () => (form.value.billing_account_id != null
+    ? { billing_account_id: form.value.billing_account_id }
+    : { billing_account_id: null, destinatario_soggetto_ruolo_id: form.value.destinatario_soggetto_ruolo_id }),
+  salva: (corpo) => execute(
+    () => store.update(effectiveDdtId.value, corpo),
+    { successMessage: t('vendite.ddt.ddt_salvato') },
+  ),
+  ricarica: () => loadDetail(),
+  ripristina: () => ripristinaDestinatario(detail.value),
+  // Utility e, col BA, destinatario sono copie che scrive il DB (non viaggiano
+  // nel payload): quelle che la scelta del BA ha messo nel form vanno scartate
+  // prima della ricarica, o `preserva` le rimetterebbe sopra quelle del server.
+  scartaDipendenti: () => {
+    form.value.utility_id = detail.value?.utility_id ?? null
+    if (form.value.billing_account_id == null) return
+    form.value.destinatario_soggetto_ruolo_id = detail.value?.destinatario_soggetto_ruolo_id ?? null
+    ripristinaDestinatario(detail.value)
+  },
+})
+
+// Scopo: l'oggetto del lookup destinatario dal dettaglio (la denominazione
+//        denormalizzata della vista), come in `loadDetail`.
+function destinatarioObj(d) {
+  return d?.destinatario_soggetto_ruolo_id
+    ? { soggetto_ruolo_id: d.destinatario_soggetto_ruolo_id, ragione_sociale_completa: d.destinatario_denominazione }
+    : null
+}
+function ripristinaDestinatario(d) {
+  form.value.destinatario_obj = destinatarioObj(d)
 }
 
 // Scopo: Carica il riepilogo IVA aggregato (best-effort: in caso di errore il
@@ -800,7 +843,6 @@ const drawerActions = computed(() => {
         :readonly="isReadonlyPuro"
         :capabilities="capabilities"
         @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }"
-        :cliente-da-salvare="clienteCambiato(form, detail, CAMPI_CLIENTE_DDT)"
         :bordo="false" />
 
       <Divider />

@@ -45,7 +45,7 @@ del 2b con la sua revisione (§12.7) e questo brief sono committati su `dev/back
 stesso commit c'è anche un lavoro **fuori da questo brief**: `core/utils/ripristinaLookup.js`,
 `vendite/_shared/cliente/` e i cinque drawer di vendita (preventivo, offerta, ordine, DDT, contratto) — il
 cliente riaperto mostrava il solo codice (collaudo di Tid, regola del 2), coi due BB nel catalogo BB frontend. ⚠️ Mancano ancora i rimandi del §6.1 in
-[brief-db-indirizzi-documento-seguono-il-cliente](brief-db-indirizzi-documento-seguono-il-cliente.md) (R-BE-1) e in
+[brief-db-indirizzi-documento-seguono-il-cliente](../work-done/brief-db-indirizzi-documento-seguono-il-cliente.md) (R-BE-1) e in
 [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md): oggi rimanda qui solo
 quello degli articoli ammessi.
 
@@ -218,7 +218,7 @@ migrazione resta chiuso invece di crescere a ogni giro.
 
 | Brief | Oggetti in comune | Che cosa si fa |
 | --- | --- | --- |
-| [brief-db-indirizzi-documento-seguono-il-cliente](brief-db-indirizzi-documento-seguono-il-cliente.md) | `vendite.fn_doc_indirizzo_default` coi selettori `DDT`, `ORDINE`, `PREVENTIVO`, `OFFERTA`, `CONTRATTO` (R-BE-1, il BE li passa da quattro service e dai verbi con cascata); `script.fn_doc_lock_regola` e il lock delle testate del §8.7 (`20261018-65`); `fn_get_cliente_testata_documento`, `fn_doc_indirizzi_sede` | rimando in R-BE-1; i selettori entrano nel censimento come consumatori della grammatica delle testate |
+| [brief-db-indirizzi-documento-seguono-il-cliente](../work-done/brief-db-indirizzi-documento-seguono-il-cliente.md) | `vendite.fn_doc_indirizzo_default` coi selettori `DDT`, `ORDINE`, `PREVENTIVO`, `OFFERTA`, `CONTRATTO` (R-BE-1, il BE li passa da quattro service e dai verbi con cascata); `script.fn_doc_lock_regola` e il lock delle testate del §8.7 (`20261018-65`); `fn_get_cliente_testata_documento`, `fn_doc_indirizzi_sede` | rimando in R-BE-1; i selettori entrano nel censimento come consumatori della grammatica delle testate |
 | [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md) | i guard di transizione delle testate (`trg_<doc>_a10_guard_transizione_upd`), gli stati iniziali per famiglia | non iniziato: se introduce un registro per tipo di documento, nasce sulla grammatica decisa in G-1 |
 | [brief-db-articoli-ammessi-per-documento](brief-db-articoli-ammessi-per-documento.md) | il ponte di `script.fn_articolo_riga_contesto`, la famiglia del §9.8.3 | il ponte resta fino al lotto che lo rende inutile: lo ritira chi chiude questo brief |
 

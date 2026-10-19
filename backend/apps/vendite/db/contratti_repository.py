@@ -747,43 +747,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             row = cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0
 
-    # Scopo: Pre-check applicativo overlap per l'attivazione manuale del
-    #        contratto (guard §3.3 brief refactor-overlap). Delega alla fn di
-    #        dominio `vendite.fn_contratto_sovrapposto` (firma invariata,
-    #        semantica DRAFT-escluso dal 2026-06-02) passando gli attributi del
-    #        contratto STESSO. Ritorna l'incumbent ATTIVO sovrapposto
-    #        (id + numero + validita') o None. Read-only: non tenta l'INSERT/
-    #        UPDATE, serve solo a dare un messaggio che NOMINA il contratto in
-    #        conflitto prima che l'EXCLUDE `ex_contratti_no_overlap` sollevi
-    #        all'attivazione (defense-in-depth, l'EXCLUDE resta la difesa dura).
-    #        Il contratto stesso (DRAFT in attivazione) non si auto-conflitta:
-    #        la fn ignora i DRAFT.
-    def get_contratto_sovrapposto(self, contratto_id: int) -> dict[str, Any] | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT inc.id, inc.numero, inc.valido_dal, inc.valido_al
-                  FROM vendite.contratti c
-                  JOIN vendite.contratti inc
-                    ON inc.id = vendite.fn_contratto_sovrapposto(
-                           c.billing_account_id,
-                           c.istanza_utility_id,
-                           c.utility_id,
-                           c.ambito,
-                           c.valido_dal,
-                           c.valido_al
-                       )
-                   -- Safeguard: se emetti() fosse invocato su un contratto gia'
-                   -- ATTIVO (re-emit), la fn potrebbe restituire se stesso ->
-                   -- escludo l'auto-match. Nel caso normale (contratto DRAFT in
-                   -- attivazione) la fn ignora gia' i DRAFT, quindi e' un no-op.
-                   AND inc.id <> c.id
-                 WHERE c.id = %s
-                """,
-                [contratto_id],
-            )
-            return row_to_dict(cursor)
-
     # =================================================================
     # Contratti_righe
     # =================================================================

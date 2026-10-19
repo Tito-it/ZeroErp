@@ -1,15 +1,15 @@
 # Brief DB — Gli indirizzi del documento seguono il cliente
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-19
+## ⏭️ Chi riparte — aggiornato al 2026-10-19 (chiuso)
 
-**Riparte: Tid, col commit del lavoro del 2026-10-19 (R-BE-9, R-BE-10 §8.7.5; i tre difetti del collaudo §8.8) e poi la ripresa del collaudo (riga 3: preventivo e offerta, e il punto B).**
+**Riparte: nessuno. ✅ Chiuso e archiviato il 2026-10-19** (riga 4): collaudo A, B e C ok, lavoro BE/FE committato, riga di PROJECT_CONTEXT e D27 del registro dei difetti chiusi.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | **Tid** | ✅ Apply di `20261018-65` … `-68` e dei due codici su dbdev (2026-10-18 17:05-17:10; verificato il 2026-10-19 da `databasechangelog` e dai montaggi: `utility_id` ed `emittente_fiscale_id` con `-` su preventivo, offerta e contratto) | §8.7.4 | — |
 | 2 | **BE** | ✅ R-BE-8 (policy e ripiego dei due codici), entrata con `08cc15a61` (2026-10-18). ✅ **R-BE-9** e **R-BE-10** (2026-10-19): le due colonne rifiutate sul campo dal BB `rifiuta_colonne_ferme` sui tre documenti, il drawer dell'offerta non le manda piu' in modifica; da committare | §8.7.3, §8.7.5 | — |
-| 3 | **Tid** | 🔄 (2026-10-19, primo giro: §8.8) Collaudo in-app: slot di default e cambio di cliente in bozza su DDT, preventivo e offerta (§8.5); scheda precompilata e cambio di cliente del contratto (§8.6.4); emittente e utility spenti in modifica su preventivo, offerta e contratto (R-FE-5) | §8.5, §8.6.4, §8.7.3 | 1, 2 |
-| 4 | **Tid** | Archiviazione in `work-done/` | — | 3 |
+| 3 | **Tid** | ✅ (2026-10-19, due giri: §8.8) Collaudo in-app: slot di default e cambio di cliente in bozza su DDT, preventivo e offerta (§8.5); scheda precompilata e cambio di cliente del contratto (§8.6.4); emittente e utility spenti in modifica su preventivo, offerta e contratto (R-FE-5) | §8.5, §8.6.4, §8.7.3 | 1, 2 |
+| 4 | **Tid** | ✅ (2026-10-19) Archiviazione in `work-done/` | — | — |
 
 **Decisioni aperte di Tid: nessuna.** R-BE-10 decisa da Tid il 2026-10-19: il BE rifiuta le due chiavi
 sul campo, su tutti e tre i documenti; il lock del DB resta la regola per gli altri scrittori (§8.7.5).
@@ -154,7 +154,7 @@ Non controlla l'origine.
 
 | # | Lato | Che cosa |
 | --- | --- | --- |
-| **R-BE-1** | BE | Al posto di `auto_assegna_indirizzo_default` il BE chiama **`SELECT vendite.fn_doc_indirizzo_default(<documento>, <id>)`** negli stessi punti: dopo la creazione di DDT, ordine, preventivo e offerta (`ddt_service:365`, `ordini_service:457`, `preventivi_service:557`, `offerte_service:572`) e dopo i verbi con cascata (`crea_ddt_da_ordine`, push preventivo → ordine, push offerta → contratto). Selettori: `DDT`, `ORDINE`, `PREVENTIVO`, `OFFERTA`, `CONTRATTO`. Dopo `create_contratto_atomico` **non** serve: `vendite.fn_create_contratto` lo fa da sé. Si ritirano `auto_assegna_indirizzo_default`, `_tipo_default` e `auto_assegna_indirizzo_default_contratto`: la priorita' fra i tipi e' ora un dato (§7.2 a). ⚠️ Non e' piu' best-effort: un errore del DB (non uno slot vuoto, che torna `false`) sale come gli altri. 📌 I selettori si usano **come sono**: questo giro si chiude coi codici corti, e li migra il lotto 2 di [brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md) (§5 G-4, Tid 2026-10-18) |
+| **R-BE-1** | BE | Al posto di `auto_assegna_indirizzo_default` il BE chiama **`SELECT vendite.fn_doc_indirizzo_default(<documento>, <id>)`** negli stessi punti: dopo la creazione di DDT, ordine, preventivo e offerta (`ddt_service:365`, `ordini_service:457`, `preventivi_service:557`, `offerte_service:572`) e dopo i verbi con cascata (`crea_ddt_da_ordine`, push preventivo → ordine, push offerta → contratto). Selettori: `DDT`, `ORDINE`, `PREVENTIVO`, `OFFERTA`, `CONTRATTO`. Dopo `create_contratto_atomico` **non** serve: `vendite.fn_create_contratto` lo fa da sé. Si ritirano `auto_assegna_indirizzo_default`, `_tipo_default` e `auto_assegna_indirizzo_default_contratto`: la priorita' fra i tipi e' ora un dato (§7.2 a). ⚠️ Non e' piu' best-effort: un errore del DB (non uno slot vuoto, che torna `false`) sale come gli altri. 📌 I selettori si usano **come sono**: questo giro si chiude coi codici corti, e li migra il lotto 2 di [brief-db-grammatica-unica-documenti](../work-in-progress/brief-db-grammatica-unica-documenti.md) (§5 G-4, Tid 2026-10-18) |
 | **R-BE-2** | BE | Codice nuovo **`E_INDIRIZZO_DOC_NON_DEL_CLIENTE`** (`DATO_ERRATO`, campo `tipo_indirizzo_id`): policy rigenerata e frase di ripiego. Si ritira il guard d'origine di `upsert_indirizzo_documento` (i due `ErrorManager.require` sull'ownership, picker e una-tantum dichiarato): decide il guard DB e il BE mappa il codice |
 | **R-BE-3** | BE | La fotografia del Python era la sola ancora del guard: `get_soggetto_ruolo_documento` resta solo se serve ad altro (il picker del FE) |
 | **R-FE-1** | FE | `reason_key` nuova **`common.azione_reason.indirizzo_non_del_cliente`** nei locales (it, en): la emettono la check della bolla, quella del preventivo e le capability di offerta e contratto |
@@ -493,7 +493,7 @@ trigger e' sparito: un record precontrattuale per coppia
 | **R-FE-3** | FE | Condizione di Tid su D-7: in **creazione** di contratto e offerta, scelti BA/istanza, il drawer **precompila** la scheda di fornitura da R-BE-5 e l'operatore la vede e la corregge. Il contratto ora si crea anche su un contatore con dati precontrattuali e la scheda compilata (prima: «Questo contratto ha gia' una riga utility associata») |
 | **R-BE-6** | BE | ⚠️ `offerte_service.aggiorna_offerta` aggiorna la testata e **poi** fa l'upsert della scheda (`_upsert_utility_inline`) nella stessa richiesta. Se la richiesta cambia la coppia, il trigger ha appena rifatto la scheda dal contatore nuovo e l'upsert ci scriverebbe sopra i valori del form, cioe' quelli del contatore di prima: D-5 svanirebbe in silenzio. Con un cambio di coppia la scheda del payload non si applica (o il FE non la manda). Lo stesso vale per il contratto quando il §8.3 apre il cambio di cliente |
 | **R-FE-4** | FE | Dopo il salvataggio di un cambio di cliente in bozza (offerta; contratto col §8.3) la sezione della scheda di fornitura si **ricarica**, come gli indirizzi (R-FE-2) |
-| ↳ *stato* | — | ✅ **Offerta, R-BE-6 e R-FE-4 fatti il 2026-10-13** (sessione BE, giro C2 di [piano-be-fe-magazzino-lotto-3](piano-be-fe-magazzino-lotto-3.md)): il cliente dell'offerta si cambia in bozza, `aggiorna_offerta` non applica la scheda del payload quando la coppia cambia, il form non la manda e rilegge il dettaglio. ✅ **R-BE-4 c'era gia'** (policy e ripiego dei due codici). ✅ **R-BE-5, R-FE-3 e R-BE-7 fatti il 2026-10-14** (§8.6) |
+| ↳ *stato* | — | ✅ **Offerta, R-BE-6 e R-FE-4 fatti il 2026-10-13** (sessione BE, giro C2 di [piano-be-fe-magazzino-lotto-3](../work-in-progress/piano-be-fe-magazzino-lotto-3.md)): il cliente dell'offerta si cambia in bozza, `aggiorna_offerta` non applica la scheda del payload quando la coppia cambia, il form non la manda e rilegge il dettaglio. ✅ **R-BE-4 c'era gia'** (policy e ripiego dei due codici). ✅ **R-BE-5, R-FE-3 e R-BE-7 fatti il 2026-10-14** (§8.6) |
 | **R-BE-7** | BE | Il §8.3 non e' piu' bloccato: il cambio di cliente del contratto lascia al DB la scheda di fornitura (la rifa' il trigger) |
 
 ### 8.5 Prove
@@ -734,7 +734,87 @@ creazione, come nel contratto.
 **Prove:** spec nuovi dei due BB (6 e 5 test); vitest di `vendite` e `core/utils` 233 verdi; eslint, oxlint, guard,
 chiavi i18n e build verdi. Catalogo BB frontend aggiornato.
 
+**Secondo rilievo di Tid sul DDT (2026-10-19):** la nota non basta. Con il cliente cambiato e non salvato il
+pannello resta indietro, e il pulsante «Indirizzi» apre gli indirizzi del cliente **vecchio**: per correggere
+quelli del nuovo si doveva prima salvare. **Decisione di Tid: il cambio di cliente si salva subito, con
+conferma.** BB `useCambioClienteDocumento` (`vendite/_shared/cliente/`): scelto un cliente diverso dal salvato,
+un dialog («Cambia cliente»); confermato, si scrive il **solo** cliente e si ricarica, cosi' il DB rifa'
+indirizzi (e scheda di fornitura su offerta e contratto) e il pannello li mostra subito; annullato, o fallito il
+salvataggio, il form torna al cliente salvato. Le altre modifiche non salvate restano nel form. La nota del
+pannello (`clienteDaSalvare`) e' ritirata. Su preventivo, offerta, contratto e DDT (col destinatario senza BA);
+l'ordine ha il cliente fermo. Spec del BB (7 test); vitest `vendite` + `core/utils` 240 verdi; lint, guard,
+chiavi i18n e build verdi.
+
+**DDT, il PATCH della testata (2026-10-19, scelta di Tid):** come il preventivo, una chiave fuori whitelist e' un
+400 (`E_DDT_VALIDAZIONE` con le chiavi ignote), non piu' uno scarto silenzioso (il commento lo dichiarava voluto,
+per i client vecchi). Censiti i chiamanti: drawer, `useCambioClienteDocumento`, smoke dei resi; tutti dentro la
+whitelist. Test adeguato (`test_aggiorna_ddt_utility_rifiutata`). Esteso alla **creazione** (stessa scelta di Tid,
+simmetria): `crea_ddt` scartava in silenzio; chiamanti censiti (drawer, test DB; gli smoke creano dall'ordine).
+Test `test_crea_ddt_utility_rifiutata`.
+
+**Revisione critica del 2026-10-19 (decisioni di Tid):** (1) un cliente **tolto** e non sostituito non apre la
+conferma: sul DDT, tolto il BA, il destinatario rimasto e' quello del BA tolto e non una scelta, e il dialog
+salvava una bolla senza BA; (2) la creazione del DDT come sopra; (3) `clienteCambiato` confronta gli id come
+testo, come il gemello BE (un falso «cambiato» apriva la conferma che salva); (4) ritirati i rami «cambio di
+cliente» del Salva di offerta e contratto, irraggiungibili. Correzioni dello stesso giro: l'Annulla riporta
+anche la categoria del contratto e la utility del DDT; sul DDT utility e destinatario col BA si scartano prima
+della ricarica; il testo della conferma e' un'opzione esplicita; il blocco «un dialog alla volta» si spegne
+anche se la ricarica solleva.
+
 **Da riprendere nel collaudo:** preventivo e offerta (cambio di cliente in bozza, punti 4 e 5 del §8.5), il
-cliente che resta leggibile alla riapertura su offerta e contratto, l'avviso del pannello prima di Salva; poi il
+cliente che resta leggibile alla riapertura su offerta e contratto, il cambio di cliente col dialog e gli indirizzi
+subito aggiornati (anche dentro «Indirizzi»), l'Annulla che riporta il cliente salvato; poi il
 punto B (§8.6.4) e il punto C (§8.7).
+
+**Collaudo chiuso (Tid, 2026-10-19):** A (DDT, preventivo, offerta), B (contratto) e C (emittente e utility
+ferme) tutti ok dopo le correzioni del §8.8. Fuori da questo brief, trovato durante il collaudo: «Attiva» del
+contratto acceso su un cliente che ha gia' un contratto attivo sovrapposto, con l'errore solo alla conferma della
+stampa: segnalato al team DB in chat (2026-10-19), nessun brief. ✅ Fatto lo stesso giorno: lato DB `161ac98af`
+(`script.fn_check_contratto_sovrapposto` nella capability e nel guard); lato BE/FE ritirato il pre-check Python di
+`emetti` e `ContrattiRepository.get_contratto_sovrapposto`, ripiego di `E_CONTRATTO_OVERLAP_ESISTENTE` allineato,
+traduzione della `reason_key`, e2e `test_contratto_attiva_sovrapposto_db` (commit `d54d67041`). ✅ Collaudato da Tid
+il 2026-10-19: «Attiva» spento col motivo che nomina il contratto in conflitto, nessun dialog della stampa.
+
+**Revisione critica del codice non committato (2026-10-19, su richiesta di Tid).**
+
+* 🔴 **Una regola, due codici.** Ritirato il pre-check Python, la sovrapposizione restava detta in due modi:
+  il guard del DB con `E_CONTRATTO_OVERLAP_ESISTENTE`, e l'EXCLUDE `ex_contratti_no_overlap` (la stessa regola,
+  `partecipa_overlap_snapshot` = vincolante, sulla corsa) tradotto da `contratti_service` in
+  `E_VENDITE_CONTRATTO_OVERLAP`, con un testo suo che diceva «prima di crearne uno nuovo» (scatta
+  all'attivazione, non alla creazione). Ora l'EXCLUDE risponde col codice del guard e col testo del suo ripiego,
+  preso da `USER_MESSAGE_FALLBACK` e non ricopiato (come `_cliente_dal_ba`). Test, doc (`api_contratti.md`,
+  `modello-contratti.md`, che descrivevano ancora il pre-check di `emetti`) e due commenti adeguati.
+  ⏭️ **Al team DB:** `E_VENDITE_CONTRATTO_OVERLAP` resta nel catalogo senza nessuno che lo sollevi (la sua nota
+  nomina i guard `trgfn_contratti_guard_modalita_c_*`, che nella doc auto-generata non lo sollevano): da
+  dichiarare ritirato (`obsoleto_dal`) nel CSV, se la ricerca su `pg_get_functiondef` lo conferma.
+* 🟠 **Un commento che mentiva sul DDT.** Il «400 per una chiave fuori whitelist» era stato scritto sopra
+  `CREATE_KEYS_RIGA`, nel blocco delle **righe**, dove il commento di prima descriveva lo scarto silenzioso delle
+  righe; ma le righe (`gestisci_riga`, `aggiorna_riga`) scartano ancora. Il commento delle righe ora dice il
+  vero, e il 400 sta accanto alla whitelist della testata.
+  ✅ **Asimmetria risolta (decisione di Tid, stesso giorno):** anche le righe del DDT respingono una chiave fuori
+  whitelist (`gestisci_riga`, `aggiorna_riga`: 400 `E_DDT_VALIDAZIONE` con `unknown_keys`, prima di qualunque
+  lettura), come il contratto. La creazione ammette anche `componenti_overrides` (`CREATE_PAYLOAD_RIGA`: la mappa
+  degli override non è una colonna, si legge a parte). Chiamanti censiti: il solo `DdtRigaForm` (via le due
+  view), dentro la whitelist. Il test I6 diventa `test_i6_iva_del_payload_respinta` (`iva_id` è un 400, e senza
+  la chiave l'aliquota resta del risolutore); tre test nuovi; `api_ddt.md`.
+* 🟡 **Per Tid — il preventivo dopo l'auto-save della bozza.** Lì `useCambioClienteDocumento` è attivo
+  (`hasDetail`) ma il drawer è ancora in creazione, quindi alla scelta del BA gira anche `useBaFormDefaults`, che
+  scrive nel form la valuta (vince il BA) e il termine di pagamento se vuoto. Con «Annulla» il BA torna al
+  salvato e il watch rilancia i default sul BA salvato, e la valuta torna giusta; **il termine no** se prima era
+  vuoto: resta quello del cliente scartato, e il prossimo Salva lo scrive. Strade: mettere
+  `termine_pagamento_id` fra le `colonne` del preventivo (l'Annulla lo riporta al salvato, anche se l'operatore
+  l'aveva toccato senza salvare), oppure non applicare i default del BA quando il documento esiste già.
+  ✅ **Decisa e fatta (stesso giorno): la seconda.** Il guard del watch di `useBaFormDefaults` nel
+  `PreventiviDrawer` è «modifica, o documento già salvato» (`isEdit || hasDetail`): un cambio di cliente su un
+  documento che esiste passa da `useCambioClienteDocumento`, come in modifica. Corregge termine e valuta insieme,
+  e non tocca le modifiche non salvate dell'operatore. L'apertura dalla pratica (`applicaDefaultsBa` esplicito)
+  non cambia.
+* Verificato e in ordine: in tutti i drawer `detail` e `form` si assegnano nello stesso blocco sincrono (nessun
+  falso «cliente cambiato» fra le due assegnazioni); il payload della testata del DDT e quello del BB stanno dentro
+  la whitelist; nessun residuo di `clienteDaSalvare`.
+* Prova (dopo le due decisioni): 2723 test Django di `vendite`, `pratiche`, `config`; 212 e2e di
+  `vendite/tests/db` su dbdev; mypy a cricchetto pulito; 708 test FE di `vendite`, `core`, `documenti`, lint,
+  `npm run guards`. Worker gunicorn ricaricati. Da vedere a video (Tid): un preventivo nuovo, dopo l'auto-save,
+  con un cambio di cliente annullato (il termine di pagamento resta quello di prima); l'aggiunta e la modifica di
+  una riga di DDT, anche di un articolo composito con gli override dei componenti.
 

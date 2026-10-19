@@ -20,11 +20,15 @@ DdtServiceGuardsTests
  2) test_cambia_stato_ddt_not_found        — E_DDT_NOT_FOUND se stato None (guard leggero)
  3) test_aggiorna_ddt_stato_non_draft      — E_DDT_STATO_TRANSIZIONE se != DRAFT
  4) test_gestisci_riga_stato_non_draft     — E_RIGA_DOC_NON_BOZZA se != DRAFT (il codice del DB, frase a catalogo)
+ 4b) test_gestisci_riga_chiave_ignota_rifiutata — fuori whitelist: 400 prima di leggere (2026-10-19)
+ 4c) test_gestisci_riga_ammette_componenti_overrides — la mappa degli override non e' una colonna, ma e' ammessa
+ 4d) test_aggiorna_riga_chiave_ignota_rifiutata — fuori whitelist: 400 prima di leggere (2026-10-19)
  5) test_elimina_riga_stato_non_draft      — E_RIGA_DOC_NON_BOZZA se != DRAFT
  5b) test_update_componente_stato_non_draft — E_RIGA_DOC_NON_BOZZA; l'etichetta prende `numero` dallo scope del componente
 
 DdtCreaTests
- 6) test_crea_ddt_col_ba_lascia_le_copie_al_db — col BA destinatario None, utility scartata + DRAFT
+ 6) test_crea_ddt_col_ba_lascia_le_copie_al_db — col BA destinatario None + DRAFT
+ 6a) test_crea_ddt_utility_rifiutata         — utility fuori whitelist: 400, non piu' scartata (2026-10-19)
  6b) test_crea_ddt_errore_del_default_sale   — slot di default dal DB: l'errore non si ingoia
  7) test_crea_ddt_destinatario_esplicito    — destinatario passato arriva al repo
  8) test_crea_ddt_senza_destinatario_ne_ba  — nessun guard Python: il NOT NULL lo dice il DB
@@ -35,7 +39,7 @@ DdtCreaTests
 
 DdtAggiornaTests
  9) test_aggiorna_ddt_cambio_ba_in_bozza    — il BA arriva al DB (D-2: si sceglie in bozza)
-10) test_aggiorna_ddt_utility_scartata      — utility fuori whitelist: e' copia del BA
+10) test_aggiorna_ddt_utility_rifiutata     — utility fuori whitelist: 400, non piu' scartata (2026-10-19)
 10b) test_aggiorna_ddt_ba_tolto             — BA a None arriva al DB, destinatario intatto
 11) test_aggiorna_ddt_ba_non_numerico       — E_DDT_VALIDAZIONE (no 500)
 
@@ -174,6 +178,40 @@ class DdtServiceGuardsTests(SimpleTestCase):
         )
         repo.create_riga.assert_not_called()
 
+    # Scopo: dal 2026-10-19 (scelta di Tid, la regola della testata) una chiave
+    #        fuori whitelist della riga e' un 400 con le chiavi ignote, prima di
+    #        qualunque lettura; fino ad allora si scartava in silenzio.
+    @patch(_REPO)
+    def test_gestisci_riga_chiave_ignota_rifiutata(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.gestisci_riga(7, {"articolo_id": "ART1", "iva_id": 3})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("unknown_keys"), ["iva_id"])
+        repo.get_ddt.assert_not_called()
+        repo.create_riga.assert_not_called()
+
+    # Scopo: `componenti_overrides` non e' una colonna (si legge a parte) ma e'
+    #        ammessa: la validazione la lascia passare, e la chiamata arriva al
+    #        guard della bozza.
+    @patch(_REPO)
+    def test_gestisci_riga_ammette_componenti_overrides(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ddt.return_value = {"numero": "2026/00007", "stato_codice_interno": "EMESSO"}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.gestisci_riga(7, {"articolo_id": "KIT1", "componenti_overrides": {}})
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
+
+    @patch(_REPO)
+    def test_aggiorna_riga_chiave_ignota_rifiutata(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.aggiorna_riga(7, 3, {"quantita": 2, "articolo_id": "ART2"})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("unknown_keys"), ["articolo_id"])
+        repo.get_ddt.assert_not_called()
+        repo.update_riga.assert_not_called()
+
     @patch(_REPO)
     def test_elimina_riga_stato_non_draft(self, repo_cls) -> None:
         repo = repo_cls.return_value
@@ -224,7 +262,7 @@ class DdtCreaTests(SimpleTestCase):
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 7, "uid": "u", "numero": None}
 
-        out = ddt_service.crea_ddt({"billing_account_id": 3, "utility_id": 1})
+        out = ddt_service.crea_ddt({"billing_account_id": 3})
 
         self.assertEqual(out["id"], 7)
         kwargs = repo.create_ddt.call_args.kwargs
@@ -236,6 +274,19 @@ class DdtCreaTests(SimpleTestCase):
         self.assertEqual(kwargs["stato_doc_ddt_id"], 1)
         # Lo slot di default lo riempie il DB, sul DDT appena nato (R-BE-1).
         repo.riempi_indirizzo_default.assert_called_once_with(7)
+
+    @patch(_REPO)
+    def test_crea_ddt_utility_rifiutata(self, repo_cls) -> None:
+        # La utility e' una copia del BA (la scrive il DB): fuori whitelist. Dal
+        # 2026-10-19 e' un 400 con le chiavi ignote, prima di qualunque lettura;
+        # fino ad allora si scartava in silenzio.
+        repo = repo_cls.return_value
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.crea_ddt({"billing_account_id": 3, "utility_id": 1})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("unknown_keys"), ["utility_id"])
+        repo.get_stato_id_by_codice.assert_not_called()
+        repo.create_ddt.assert_not_called()
 
     @patch(_REPO)
     def test_crea_ddt_errore_del_default_sale(self, repo_cls) -> None:
@@ -340,13 +391,17 @@ class DdtAggiornaTests(SimpleTestCase):
         self.assertEqual(repo.update_ddt.call_args.kwargs, {"billing_account_id": 99})
 
     @patch(_REPO)
-    def test_aggiorna_ddt_utility_scartata(self, repo_cls) -> None:
-        # La utility e' una copia del BA: fuori whitelist, si scarta.
+    def test_aggiorna_ddt_utility_rifiutata(self, repo_cls) -> None:
+        # La utility e' una copia del BA (la scrive il DB): fuori whitelist. Dal
+        # 2026-10-19 una chiave fuori whitelist e' un 400 con le chiavi ignote,
+        # prima di leggere la testata; fino ad allora si scartava in silenzio.
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
-        ddt_service.aggiorna_ddt(7, {"billing_account_id": 3, "utility_id": 9})
-        kwargs = repo.update_ddt.call_args.kwargs
-        self.assertEqual(kwargs, {"billing_account_id": 3})
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.aggiorna_ddt(7, {"billing_account_id": 3, "utility_id": 9})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("unknown_keys"), ["utility_id"])
+        repo.get_stato_codice.assert_not_called()
+        repo.update_ddt.assert_not_called()
 
     @patch(_REPO)
     def test_aggiorna_ddt_ba_tolto(self, repo_cls) -> None:
@@ -630,7 +685,7 @@ class DdtFatturazioneImmediataTests(SimpleTestCase):
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 9, "uid": "u", "numero": None}
         ddt_service.crea_ddt({
-            "billing_account_id": 3, "utility_id": 1, "fatturazione_immediata": True,
+            "billing_account_id": 3, "fatturazione_immediata": True,
         })
         self.assertIs(
             repo.create_ddt.call_args.kwargs["fatturazione_immediata"], True,
@@ -728,20 +783,19 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         self.assertEqual(scritta["meta"]["iva_origine"], "TITOLO")
 
 
-    # Scopo: ⛔ `I6` — LA CASELLA E' CHIUSA. Un client che manda ancora
-    #        `iva_id` nel payload deve vederlo IGNORATO: a decidere l'aliquota
-    #        e' il risolutore, e la scelta manuale non esiste piu'.
-    # ⚠️ E il valore non viene RESPINTO, viene SCARTATO: una chiave fuori
-    #        whitelist non solleva. Senza questo caso la rimozione della chiave
-    #        sarebbe invisibile — la suite e' restata verde quando e' stata
-    #        fatta, perche' nessun presidio copriva «il payload vince».
+    # Scopo: ⛔ `I6` — LA CASELLA E' CHIUSA. A decidere l'aliquota e' il
+    #        risolutore, e la scelta manuale non esiste piu'. Un client che manda
+    #        ancora `iva_id` nel payload riceve un 400 con la chiave ignota (dal
+    #        2026-10-19, scelta di Tid: la whitelist della riga respinge, come
+    #        quella della testata). Fino ad allora la chiave si SCARTAVA in
+    #        silenzio.
     # ⛔ E il risolutore va interrogato con `payload_iva_id=None`: passargli il
     #        valore del client lo farebbe scendere sul ramo di AUDIT, dove gli
     #        errori sono best-effort — cioe' una riga si salverebbe anche
     #        quando l'IVA non e' determinabile.
     @patch(_PRICING)
     @patch(_REPO)
-    def test_i6_iva_del_payload_ignorata(self, repo_cls, pricing_cls) -> None:
+    def test_i6_iva_del_payload_respinta(self, repo_cls, pricing_cls) -> None:
         repo = repo_cls.return_value
         repo.get_ddt.return_value = self._testata()
         repo.is_articolo_composito.return_value = False
@@ -750,18 +804,19 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
         self.iva.return_value = (9, {"iva_origine": "TITOLO", "iva_titolo_id": 4})
 
-        ddt_service.gestisci_riga(7, {
-            "articolo_id": "ART1", "uom_operativa_id": 5, "prezzo_unitario": "10",
-            "iva_id": 999,
-        })
-
-        # ⭐ E' la WHITELIST il cancello vero: `iva_id` non e' in
-        #    `CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
-        #    asserzione morde ANCHE se qualcuno rimettesse la chiave, perche'
-        #    allora `payload_iva_id` tornerebbe 999.
-        self.assertIsNone(self.iva.call_args.kwargs["payload_iva_id"])
-        self.assertNotIn("iva_id", ddt_service.CREATE_KEYS_RIGA)
+        riga = {"articolo_id": "ART1", "uom_operativa_id": 5, "prezzo_unitario": "10"}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.gestisci_riga(7, {**riga, "iva_id": 999})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("unknown_keys"), ["iva_id"])
+        self.iva.assert_not_called()
+        repo.create_riga.assert_not_called()
+        self.assertNotIn("iva_id", ddt_service.CREATE_PAYLOAD_RIGA)
         self.assertNotIn("iva_id", ddt_service.UPDATE_KEYS_RIGA)
+
+        # Senza la chiave la riga si salva, e l'aliquota e' del risolutore.
+        ddt_service.gestisci_riga(7, riga)
+        self.assertIsNone(self.iva.call_args.kwargs["payload_iva_id"])
         self.assertEqual(repo.create_riga.call_args.kwargs["iva_id"], 9)
 
 

@@ -52,11 +52,6 @@ const props = defineProps({
   // attaccate si leggevano come una doppia riga (rilievo di Tid, 2026-09-28).
   // Offerta e contratto non hanno il Divider: li' la linea e' il separatore.
   bordo: { type: Boolean, default: true },
-  // Il cliente nel form non e' quello salvato (BB `clienteCambiato`): gli
-  // indirizzi mostrati sono ancora del cliente salvato, e li rifa' il DB al
-  // salvataggio (B-3 di Tid). La sezione lo dice, invece di sembrare indietro
-  // (collaudo di Tid, 2026-10-19).
-  clienteDaSalvare: { type: Boolean, default: false },
 })
 const emit = defineEmits(['changed', 'state'])
 
@@ -175,14 +170,6 @@ async function onChanged() {
         class="app-action-btn indirizzi-section-btn"
         @click="gestioneVisible = true" />
     </div>
-
-    <Message
-      v-if="clienteDaSalvare"
-      class="indirizzi-section-warn"
-      severity="info"
-      :closable="false">
-      {{ t('vendite.indirizzi.cliente_da_salvare') }}
-    </Message>
 
     <DocumentoIndirizziDrawer
       v-model:visible="gestioneVisible"

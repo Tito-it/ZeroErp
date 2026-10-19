@@ -531,7 +531,7 @@ errore.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D16, D24, D27, D31, D32, D34, D36.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D16, D24, D31, D32, D34, D36.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -954,20 +954,6 @@ Dettaglio, censimento e decisioni P-1…P-3 nel brief
 [brief-db-perimetro-una-volta-famiglie-residue.md](brief-db-perimetro-una-volta-famiglie-residue.md).
 Aperto, non iniziato.
 
-### 🟠 D27 — Gli indirizzi del documento non seguono il cliente
-
-Trovato il 2026-10-10 chiudendo il lato BE/FE di D21 (§12.3 di `brief-db-esecutivi-ba-coppia`). Sul
-DDT, sul preventivo e sull'offerta il cliente si cambia in bozza, ma gli indirizzi gia' scritti
-dall'anagrafica del cliente di prima restano. La regola «l'indirizzo e' del cliente del documento» la
-tiene solo il backend, e solo quando l'indirizzo viene scritto. Il gate d'emissione guarda che
-l'indirizzo ci sia, non di chi e': una bolla si emette con la Consegna del cliente di prima.
-
-Dettaglio e decisioni di Tid (chiuse il 2026-10-10: la regola e l'auto-assegnazione dello slot di
-default vanno nel DB) nel brief
-[brief-db-indirizzi-documento-seguono-il-cliente.md](brief-db-indirizzi-documento-seguono-il-cliente.md).
-📝 Aperto, nessun codice. ⚠️ La sezione era andata persa nella rinumerazione del 2026-10-10 (restava
-solo la riga della checklist): ripristinata lo stesso giorno.
-
 ### 🟠 D31 — Le righe di contratto CANONE, ORARIO e CONSUMO non hanno la loro generazione
 
 Trovato il 2026-10-13 dalla segnalazione BE del push batch CONTRATTO (un contratto senza scadenza
@@ -1208,8 +1194,8 @@ D6 e il registro dei rossi in CI.
       `20261010-02…-07`, BE/FE §12).
 * [x] **D25** — i residui di «l'istanza nasce col billing account»: brief
       `work-done/brief-db-istanza-nasce-col-ba-residui` — chiuso e archiviato il 2026-10-10 (DB `20261010-50…-59`, FE/BE §4).
-* [ ] **D27** — gli indirizzi del documento seguono il cliente: brief
-      `brief-db-indirizzi-documento-seguono-il-cliente` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
+* [x] **D27** — gli indirizzi del documento seguono il cliente: brief
+      `work-done/brief-db-indirizzi-documento-seguono-il-cliente` — chiuso e archiviato il 2026-10-19 (DB, BE/FE, collaudo di Tid).
 * [x] **D26-2** — le funzioni che ripianificano a ogni chiamata: brief
       `work-done/brief-db-plancache-funzioni-con-query-incorporate` — chiuso e archiviato il 2026-10-18
       (DB `20261010-44`, `20261011-42`, `20261012-03`, `20261018-15 … -33`, `-48 … -52`; verbo dell'accredito
@@ -1750,6 +1736,17 @@ bloccava solo dei pezzi. Che cosa è cambiato nel sistema:
 Dettaglio nel brief
 [brief-db-testata-dopo-emissione.md](../work-done/brief-db-testata-dopo-emissione.md) (archiviato il
 2026-10-11; DB, BE/FE, collaudo a video di Tid).
+
+### ✅ D27 — Gli indirizzi del documento seguono il cliente — chiuso il 2026-10-19
+
+Sul DDT, sul preventivo e sull'offerta il cliente si cambiava in bozza, ma gli indirizzi presi dall'anagrafica
+del cliente di prima restavano, e il gate d'emissione guardava che ci fossero, non di chi fossero. Ora la regola
+«l'indirizzo e' del cliente del documento» sta nel DB: slot di default come dato, guard d'origine, cambio di
+cliente a trigger (indirizzi, e scheda di fornitura su offerta e contratto), emittente e utility ferme anche in
+bozza. Nel FE il cambio di cliente in modifica si salva subito, con conferma, cosi' gli indirizzi nuovi si vedono e
+si correggono senza salvare prima. Brief
+[brief-db-indirizzi-documento-seguono-il-cliente.md](../work-done/brief-db-indirizzi-documento-seguono-il-cliente.md)
+(archiviato il 2026-10-19; DB, BE/FE, collaudo di Tid).
 
 ### ✅ D28 — Le righe evase di un DDT da ordine — chiuso il 2026-10-11
 

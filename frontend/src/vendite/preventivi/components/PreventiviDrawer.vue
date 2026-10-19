@@ -26,7 +26,7 @@ import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { createPreventivo, getContestoPricing } from '../api/preventiviApi'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
 import { ripristinaBillingAccount, ripristinaIstanzaUtility } from '../../../core/utils/ripristinaLookup'
-import { clienteCambiato } from '../../_shared/cliente/clienteCambiato'
+import { useCambioClienteDocumento } from '../../_shared/cliente/useCambioClienteDocumento'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
@@ -457,6 +457,22 @@ async function loadDetail(id = null) {
   await loadRiepilogoIva(targetId)
 }
 
+// ⭐ Il cambio di cliente in modifica si salva subito, con conferma (BB
+//    `useCambioClienteDocumento`, decisione di Tid 2026-10-19): il DB rifa' gli
+//    indirizzi, e pannello e «Indirizzi» mostrano subito quelli del cliente
+//    nuovo. Vale anche dopo l'auto-save della bozza (c'e' il dettaglio).
+useCambioClienteDocumento({
+  form,
+  detail,
+  attivo: () => hasDetail.value && testata.modificabile.value
+    && !nonEditableFields.value.includes('billing_account_id'),
+  salva: (corpo) => execute(
+    () => store.update(effectivePreventivoId.value, corpo),
+    { successMessage: t('vendite.preventivi.preventivo_salvato') },
+  ),
+  ricarica: () => loadDetail(),
+})
+
 // Scopo: in CREATE da pratica, pre-compila cliente/istanza dal contesto pratica
 // e ne ripristina gli _obj per i lookup (stesso restore di loadDetail). I campi
 // sono già bloccati da nonEditableFields (props.praticaContext). La pratica
@@ -609,9 +625,15 @@ const { close } = useDrawerAutosaveBozza({
 //    risolutore (I2), non un default copiato dall'anagrafica.
 // Watcher BA→defaults condiviso (guard token + valuta BA-wins nel composable).
 // Extra preventivo: termine pagamento (solo se l'operatore non l'ha scelto).
+// ⛔ Il guard del watch non e' `isEdit` ma «il documento esiste» (2026-10-19,
+//    decisione di Tid): dopo l'auto-save della bozza il drawer e' ancora in
+//    creazione, ma un cambio di cliente passa da `useCambioClienteDocumento`
+//    (si salva subito, o si annulla) come in modifica. Coi default applicati,
+//    un «Annulla» lasciava nel form il termine di pagamento del cliente
+//    scartato (se prima era vuoto), e il Salva successivo lo scriveva.
 const { applicaDefaults: applicaDefaultsBa, inCorso: defaultsClienteInCorso } = useBaFormDefaults({
   form,
-  isEdit,
+  isEdit: computed(() => isEdit.value || hasDetail.value),
   fetchDefaults: getPreventivoFormDefaults,
   apply: (data, f) => {
     if (f.termine_pagamento_id == null && data.termine_pagamento_id != null) {
@@ -1122,7 +1144,6 @@ const drawerActions = computed(() => {
               :istanza-utility-id="detail?.istanza_utility_id ?? null"
               :readonly="isReadonlyPuro"
               :capabilities="capabilities"
-              :cliente-da-salvare="clienteCambiato(form, detail)"
               :bordo="false" />
 
             <Divider />

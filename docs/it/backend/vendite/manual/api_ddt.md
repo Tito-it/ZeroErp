@@ -88,6 +88,11 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
 - Lista configurabile delle righe `GET /<id>/righe/lista/` (+ `export/`): BB condiviso, vedi [api_righe_documento.md](api_righe_documento.md).
 - Righe `GET/POST /<id>/righe/`, `PATCH/DELETE /<id>/righe/<riga_id>/` — solo
   DRAFT; `prezzo_unitario`/`iva_id` nullable (DDT anche solo di trasporto).
+  ⛔ Una chiave fuori whitelist è un `400 E_DDT_VALIDAZIONE` con le chiavi ignote
+  (`unknown_keys`), sulla testata come sulle righe (dal 2026-10-19; prima si
+  scartava in silenzio). In creazione della riga è ammessa anche
+  `componenti_overrides`; `iva_id` non si manda: l'aliquota la decide il
+  risolutore.
   ⭐ **Il DDT è l'unico documento dove il prezzo mancante non è un errore**:
   vedi la sezione dedicata più sotto.
   Sulla riga **evasa** (`evasa = true` nella lista: legata a una riga d'ordine o
