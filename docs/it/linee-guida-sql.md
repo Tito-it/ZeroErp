@@ -367,6 +367,45 @@ delle scritture precedenti sopravviva).
 
 ---
 
+### 5c. Funzioni SQL `BEGIN ATOMIC`: perché, come si cambiano, come si cercano
+
+Una funzione `LANGUAGE sql` si scrive col corpo **`BEGIN ATOMIC … END`**, non come stringa,
+quando legge tabelle che altri possono rinominare o mettere sotto RLS. Così le sue dipendenze
+stanno in `pg_depend`: una rinomina a monte viene **rifiutata** (il presidio dei riferimenti morti
+compila solo il plpgsql), e la catena vista → funzione → tabelle resta leggibile dal criterio di
+`rls/test-rls-viste-security-invoker`. Nasce col `20260921-21` (`fn_partite_merce`,
+[brief-db-partita-merce-per-documento](/dev/work-done/brief-db-partita-merce-per-documento) §2-bis.3);
+oggi la usano la partita e la situazione merce, la lineage, la diagnosi del push, i lettori delle
+vesti.
+
+**Restano `BEGIN ATOMIC` anche quando si cambiano.** Il prezzo della scelta sono tre regole:
+
+* **Come si scrive il changeSet.** pgjdbc esegue un `BEGIN ATOMIC` solo se sta **da solo** nel suo
+  `sql:`: il `COMMENT ON FUNCTION` e il `GRANT` vanno in un secondo `sql:` dello stesso changeSet
+  (`20260921-21`, `20261011-92`). Le clausole `SET` (`plan_cache_mode`, `jit`) si ripetono, §13.7.
+* **⛔ Blocca `ALTER COLUMN … TYPE`, come una vista.** Una colonna letta da una `BEGIN ATOMIC` è una
+  dipendenza, e `ALTER TYPE` la rifiuta. Per cambiare il tipo di quella colonna la funzione si
+  **toglie** nel changeSet di `00_schema` (con le viste che la leggono) e si **ricrea**, sempre
+  `BEGIN ATOMIC`, in un changeSet di `20_code` con numero più alto, nella stessa corsa. Il COMMENT
+  va riscritto per intero: il `DROP` lo porta via. Caso: `fn_documento_lineage_archi`,
+  `20261019-87` → `-89`. Chi dipende da cosa si legge da `pg_depend` (classid `pg_proc` e
+  `pg_rewrite`), non dagli YAML. Per una modifica che non tocca il tipo di una colonna basta
+  `CREATE OR REPLACE`, come per ogni funzione.
+* **⛔ Il corpo NON sta in `prosrc`.** Per una `BEGIN ATOMIC` `pg_proc.prosrc` è vuoto: il corpo è
+  in `prosqlbody`, un albero e non un testo. Un censimento di letterali o di colonne fatto su
+  `prosrc` **non vede queste funzioni** e risponde «zero occorrenze». Si cerca nel testo di
+  `pg_get_functiondef(oid)`, che le copre tutte. Successo al censimento del lotto 2a della
+  grammatica unica: quattro funzioni mai viste
+  ([brief-db-grammatica-unica-documenti](/dev/work-in-progress/brief-db-grammatica-unica-documenti)
+  §12.3).
+
+⚠️ `pg_get_functiondef` di una `BEGIN ATOMIC` stampa i nomi relativi al `search_path` della sessione
+(`sorgenti`, non `config.sorgenti`). Per ricopiarne il corpo in un changeSet si prende l'ultimo YAML
+che l'ha scritta e lo si **verifica uguale al vivo**, oppure si legge il vivo con
+`SET search_path = pg_catalog`, che qualifica tutto.
+
+---
+
 ### 6. Viste (Views)
 
 * **Applicative**: `vw_<descrittivo>` in schema `script`, es. `vw_clienti_attivi`

@@ -1,0 +1,525 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 2b: la catena della dashboard di fatturazione
+#   vw_dash_fatturazione_offerte, vw_dash_fatturazione_preventivi,
+#   vw_dash_fatturazione_documenti, vw_dash_backlog_documenti,
+#   vw_dash_aperto_documenti, vw_dash_backlog_riepilogo, vw_dash_aperto_riepilogo
+#   Brief: brief-db-grammatica-unica-documenti §12.
+#
+#   Tolte da 20261019-87 (vw_dash_fatturazione_offerte legge
+#   ordini.documento_origine_tipo, le altre la leggono a cascata) e da -88
+#   (vw_dash_fatturazione_preventivi legge vw_preventivi_smistamento_righe,
+#   ricreata da -92). Cambia solo vw_dash_fatturazione_offerte: gli ordini
+#   figli di un'offerta si riconoscono da OFFERTA_COMMERCIALE. Le altre tornano
+#   identiche. L'area (DDT, ORDINE, OFFERTA come voci della dashboard) e' G-6,
+#   il sotto-giro 2d: qui non si tocca. In quest'ordine: ognuna dopo quelle che
+#   legge.
+#
+#   Definizione dal catalogo vivo di dbdev (pg_get_viewdef con search_path
+#   vuoto, quindi coi nomi qualificati; 2026-10-19): la stessa vista, colonna per
+#   colonna. La prova confronta pg_get_viewdef prima e dopo, a meno dei
+#   letterali qui sotto. COMMENT di vista e di colonna ripetuti (il DROP li ha
+#   portati via); security_invoker come prima. Nessun GRANT: lo danno le ALTER
+#   DEFAULT PRIVILEGES del loop di 90_end, come a ogni vista nuova.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-93-recreate-viste-dash-fatturazione-origine-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261019-93-recreate-viste-dash-fatturazione-origine-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La catena delle viste della dashboard di fatturazione ricreata (tolta da 20261019-87 e -88):
+        gli ordini figli di un'offerta si riconoscono da OFFERTA_COMMERCIALE; le altre identiche.
+        Grammatica unica, lotto 2b.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_class c
+               WHERE c.relkind = 'v'
+                 AND c.relname IN ('vw_dash_fatturazione_offerte', 'vw_dash_fatturazione_preventivi', 'vw_dash_fatturazione_documenti', 'vw_dash_backlog_documenti', 'vw_dash_aperto_documenti', 'vw_dash_backlog_riepilogo', 'vw_dash_aperto_riepilogo')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_dash_fatturazione_offerte WITH (security_invoker=on) AS
+               SELECT 'OFFERTE'::character varying AS area,
+                  date_trunc('month'::text, COALESCE(o.validita_dal, script.fn_giorno_operativo(o.data_emissione), script.fn_giorno_operativo(o.data_insert))::timestamp with time zone)::date AS competenza_mese,
+                  o.id AS documento_id,
+                  o.uid::text AS documento_uid,
+                  o.codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  NULL::numeric AS valore_totale,
+                  NULL::numeric AS valore_transitato,
+                  1 AS unita_totali,
+                      CASE
+                          WHEN ct.vivo OR fo.vivo THEN 1
+                          ELSE 0
+                      END AS unita_transitate,
+                  ct.vivo OR fo.vivo AS is_transitato,
+                  COALESCE(sdo.esito::text = 'NEGATIVO'::text, false) AS is_abortito,
+                      CASE
+                          WHEN COALESCE(sdo.esito::text = 'NEGATIVO'::text, false) THEN NULL::text
+                          WHEN ct.vivo OR fo.vivo THEN NULL::text
+                          WHEN ct.esiste OR fo.esiste THEN 'FIGLIO_ABORTITO'::text
+                          WHEN sdo.codice_interno::text = 'BOZZA'::text THEN 'DOC_BOZZA'::text
+                          WHEN sdo.codice_interno::text = 'EMESSA'::text THEN 'IN_ATTESA_ACCETTAZIONE'::text
+                          ELSE 'SENZA_FIGLIO'::text
+                      END::character varying AS motivo_fermo,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.codice AS stato_codice,
+                  sdo.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  COALESCE(script.fn_giorno_operativo(o.data_emissione), o.validita_dal, script.fn_giorno_operativo(o.data_insert)) AS data_riferimento
+                 FROM vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
+                   CROSS JOIN LATERAL ( SELECT count(*) > 0 AS esiste,
+                          COALESCE(bool_or(NOT c.is_abortito_snapshot), false) AS vivo
+                         FROM vendite.contratti c
+                        WHERE c.offerta_id = o.id) ct
+                   CROSS JOIN LATERAL ( SELECT count(*) > 0 AS esiste,
+                          COALESCE(bool_or(sdor.esito::text IS DISTINCT FROM 'NEGATIVO'::text), false) AS vivo
+                         FROM vendite.ordini od
+                           JOIN config.stati_doc_ordini sdor ON sdor.id = od.stato_doc_ordine_id
+                        WHERE od.documento_origine_tipo::text = 'OFFERTA_COMMERCIALE'::text AND od.documento_origine_id = o.id) fo
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = o.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_offerte IS
+                  'Dashboard fatturazione: resolver area OFFERTE, a conteggi (D-2). Transitata = figlio vivo '
+                  '(contratto via offerta_id NOT is_abortito_snapshot, o ordine documento_origine OFFERTA esito != '
+                  'NEGATIVO). FIGLIO_ABORTITO = figlio annullato (XOR permanente). cliente_display=ragione sociale '
+                  'intestatario istanza (path vw_offerte_commerciali_lista). Consumata da '
+                  'vw_dash_fatturazione_documenti. rev 2026-10-11 (20261011-76, '
+                  'brief-db-annullo-documento-con-legami D-6): un''offerta ha al piu'' un figlio VIVO ma puo'' avere '
+                  'piu'' figli annullati; i figli si riassumono in una riga per lato (esiste, vivo), cosi'' l''offerta'
+                  ' non si duplica e un figlio morto non nasconde quello vivo. FIGLIO_ABORTITO resta il caso «figli'
+                  ' solo annullati», che ora si sblocca rigenerando. ⭐ rev 2026-10-19 (20261019-93, '
+                  'brief-db-grammatica-unica-documenti lotto 2b, G-3 di Tid): ricreata dopo l''allargamento della '
+                  'colonna; il codice di origine o di destinazione e'' quello di config.sorgenti (OFFERTA -> '
+                  'OFFERTA_COMMERCIALE, ORDINE -> ORDINE_VENDITA).';
+
+              COMMENT ON COLUMN vendite.vw_dash_fatturazione_offerte.data_riferimento IS
+                  'Anzianita'' backlog (due lenti): data emissione offerta, fallback validita_dal/data_insert '
+                  '("fermo da...", proxy v1).';
+
+              CREATE VIEW vendite.vw_dash_fatturazione_preventivi WITH (security_invoker=on) AS
+               WITH righe AS (
+                       SELECT sr.preventivo_id,
+                          sr.riga_id,
+                          script.fn_imponibile_riga(COALESCE(sr.quantita, 0::numeric), sr.prezzo_unitario, pr.sconto_percentuale) AS valore_riga,
+                          sr.stato_smistamento <> 'RESIDUA'::text AS transitata
+                         FROM vendite.vw_preventivi_smistamento_righe sr
+                           JOIN vendite.preventivi_righe pr ON pr.id = sr.riga_id
+                      )
+               SELECT 'PREVENTIVI'::character varying AS area,
+                  COALESCE(p.competenza_mese, date_trunc('month'::text, p.validita_dal::timestamp with time zone)::date, date_trunc('month'::text, p.data::timestamp with time zone)::date) AS competenza_mese,
+                  p.id AS documento_id,
+                  p.uid::text AS documento_uid,
+                  p.numero::text AS codice,
+                  p.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  COALESCE(sum(r.valore_riga), 0::numeric) AS valore_totale,
+                  COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), 0::numeric) AS valore_transitato,
+                  count(r.riga_id)::integer AS unita_totali,
+                  count(r.riga_id) FILTER (WHERE r.transitata)::integer AS unita_transitate,
+                  count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) AS is_transitato,
+                  COALESCE(sdp.esito::text = 'NEGATIVO'::text, false) AS is_abortito,
+                      CASE
+                          WHEN COALESCE(sdp.esito::text = 'NEGATIVO'::text, false) THEN NULL::text
+                          WHEN count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) THEN NULL::text
+                          WHEN sdp.codice_interno::text = 'DRAFT'::text THEN 'DOC_BOZZA'::text
+                          WHEN sdp.codice_interno::text = 'EMESSO'::text THEN 'IN_ATTESA_ACCETTAZIONE'::text
+                          ELSE 'RIGA_RESIDUA'::text
+                      END::character varying AS motivo_fermo,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.codice AS stato_codice,
+                  sdp.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  p.data AS data_riferimento
+                 FROM vendite.vw_preventivi p
+                   JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   LEFT JOIN righe r ON r.preventivo_id = p.id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                WHERE p.is_attiva
+                GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal, p.data, p.emittente_fiscale_id, sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito, s.ragione_sociale_completa;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_preventivi IS
+                  'Dashboard fatturazione: resolver area PREVENTIVI. Valore imponibile totale vs transitato '
+                  '(vw_preventivi_smistamento_righe, ramo commessa EMESSA). Competenza COALESCE(competenza_mese, '
+                  'mese validita_dal, mese data). is_abortito=esito NEGATIVO (null-safe). cliente_display=ragione '
+                  'sociale intestatario istanza (path vw_preventivi_lista). Consumata da '
+                  'vw_dash_fatturazione_documenti.';
+
+              COMMENT ON COLUMN vendite.vw_dash_fatturazione_preventivi.data_riferimento IS
+                  'Anzianita'' backlog (due lenti): data documento del preventivo ("fermo da...", proxy v1).';
+
+              CREATE VIEW vendite.vw_dash_fatturazione_documenti WITH (security_invoker=on) AS
+               SELECT d.area,
+                  d.competenza_mese,
+                  d.documento_id,
+                  d.documento_uid,
+                  d.codice,
+                  d.emittente_fiscale_id,
+                  d.emittente_soggetto_ruolo_id,
+                  d.valore_totale,
+                  d.valore_transitato,
+                  d.unita_totali,
+                  d.unita_transitate,
+                  d.is_transitato,
+                  d.is_abortito,
+                  d.motivo_fermo,
+                  d.stato_codice_interno,
+                  d.stato_codice,
+                  d.fase,
+                  d.cliente_display,
+                  d.data_riferimento,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM ( SELECT p.area,
+                          p.competenza_mese,
+                          p.documento_id,
+                          p.documento_uid,
+                          p.codice,
+                          p.emittente_fiscale_id,
+                          p.emittente_soggetto_ruolo_id,
+                          p.valore_totale,
+                          p.valore_transitato,
+                          p.unita_totali,
+                          p.unita_transitate,
+                          p.is_transitato,
+                          p.is_abortito,
+                          p.motivo_fermo,
+                          p.stato_codice_interno,
+                          p.stato_codice,
+                          p.fase,
+                          p.cliente_display,
+                          p.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_preventivi p
+                      UNION ALL
+                       SELECT o.area,
+                          o.competenza_mese,
+                          o.documento_id,
+                          o.documento_uid,
+                          o.codice,
+                          o.emittente_fiscale_id,
+                          o.emittente_soggetto_ruolo_id,
+                          o.valore_totale,
+                          o.valore_transitato,
+                          o.unita_totali,
+                          o.unita_transitate,
+                          o.is_transitato,
+                          o.is_abortito,
+                          o.motivo_fermo,
+                          o.stato_codice_interno,
+                          o.stato_codice,
+                          o.fase,
+                          o.cliente_display,
+                          o.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_ordini o
+                      UNION ALL
+                       SELECT f.area,
+                          f.competenza_mese,
+                          f.documento_id,
+                          f.documento_uid,
+                          f.codice,
+                          f.emittente_fiscale_id,
+                          f.emittente_soggetto_ruolo_id,
+                          f.valore_totale,
+                          f.valore_transitato,
+                          f.unita_totali,
+                          f.unita_transitate,
+                          f.is_transitato,
+                          f.is_abortito,
+                          f.motivo_fermo,
+                          f.stato_codice_interno,
+                          f.stato_codice,
+                          f.fase,
+                          f.cliente_display,
+                          f.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_offerte f
+                      UNION ALL
+                       SELECT c.area,
+                          c.competenza_mese,
+                          c.documento_id,
+                          c.documento_uid,
+                          c.codice,
+                          c.emittente_fiscale_id,
+                          c.emittente_soggetto_ruolo_id,
+                          c.valore_totale,
+                          c.valore_transitato,
+                          c.unita_totali,
+                          c.unita_transitate,
+                          c.is_transitato,
+                          c.is_abortito,
+                          c.motivo_fermo,
+                          c.stato_codice_interno,
+                          c.stato_codice,
+                          c.fase,
+                          c.cliente_display,
+                          c.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_contratti c
+                      UNION ALL
+                       SELECT m.area,
+                          m.competenza_mese,
+                          m.documento_id,
+                          m.documento_uid,
+                          m.codice,
+                          m.emittente_fiscale_id,
+                          m.emittente_soggetto_ruolo_id,
+                          m.valore_totale,
+                          m.valore_transitato,
+                          m.unita_totali,
+                          m.unita_transitate,
+                          m.is_transitato,
+                          m.is_abortito,
+                          m.motivo_fermo,
+                          m.stato_codice_interno,
+                          m.stato_codice,
+                          m.fase,
+                          m.cliente_display,
+                          m.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_commesse m
+                      UNION ALL
+                       SELECT t.area,
+                          t.competenza_mese,
+                          t.documento_id,
+                          t.documento_uid,
+                          t.codice,
+                          t.emittente_fiscale_id,
+                          t.emittente_soggetto_ruolo_id,
+                          t.valore_totale,
+                          t.valore_transitato,
+                          t.unita_totali,
+                          t.unita_transitate,
+                          t.is_transitato,
+                          t.is_abortito,
+                          t.motivo_fermo,
+                          t.stato_codice_interno,
+                          t.stato_codice,
+                          t.fase,
+                          t.cliente_display,
+                          t.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_ddt t) d
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = d.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = COALESCE(d.emittente_soggetto_ruolo_id, ef.soggetto_ruolo_id)
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_documenti IS
+                  'Union dei resolver per la dashboard fatturazione: preventivi, ordini, offerte, contratti, '
+                  'commesse e — dal 2026-07-18 (step 6, brief-db-fatturazione-ddt-resi §4a) — DDT. Le due lenti '
+                  'derivano da qui: il serbatoio filtra fase <> CHIUSO, il backlog filtra classe <> FISIOLOGICO. '
+                  'security_invoker=on (ri-specificato a ogni REPLACE: la reloption non e'' visibile in '
+                  'pg_get_viewdef e verrebbe azzerata in silenzio -> bypass RLS). ⭐ Rev 2026-08-18 (R-4, brief '
+                  'perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. ⚠️ Rev 2026-08-18 '
+                  '(-74, CORREZIONE): la prima stesura risolveva il nome da `emittente_soggetto_ruolo_id` dando per'
+                  ' buono che «i sei resolver la portano tutti». NON e'' vero: cinque su sei la scrivono '
+                  'NULL::bigint a mano (solo commesse ha il valore), quindi la colonna usciva vuota su 274 righe su'
+                  ' 274 — e su vw_dash_aperto_documenti, che esclude l''area COMMESSE, sarebbe stata vuota per '
+                  'sempre. Ora la chiave si risolve con COALESCE(emittente_soggetto_ruolo_id, '
+                  'emittenti_fiscali.soggetto_ruolo_id): stessa cura gia'' adottata in -63 per il ramo resi, e una '
+                  'sola catena di JOIN. ⚠️ La colonna `emittente_soggetto_ruolo_id` esposta resta NULL sui cinque '
+                  'rami: cambiarne la semantica e'' una decisione a parte, non una correzione. Chi filtra su quella '
+                  'colonna ottiene zero righe su cinque aree su sei — per il perimetro emittente si usa '
+                  '`emittente_fiscale_id`.';
+
+              COMMENT ON COLUMN vendite.vw_dash_fatturazione_documenti.data_riferimento IS
+                  'Anzianita'' backlog (due lenti): data "fermo da..." per area (preventivi/ordini: data documento; '
+                  'offerte: emissione con fallback; contratti/commesse: mese della riga).';
+
+              CREATE VIEW vendite.vw_dash_backlog_documenti WITH (security_invoker=on) AS
+               WITH base AS (
+                       SELECT d.area,
+                          d.competenza_mese,
+                          d.documento_id,
+                          d.documento_uid,
+                          d.codice,
+                          d.cliente_display,
+                          d.emittente_fiscale_id,
+                          d.emittente_soggetto_ruolo_id,
+                          d.valore_totale - d.valore_transitato AS valore_fermo,
+                          d.unita_totali - d.unita_transitate AS unita_ferme,
+                          d.motivo_fermo,
+                          d.data_riferimento,
+                          d.stato_codice_interno,
+                          d.stato_codice,
+                          d.fase
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE d.motivo_fermo IS NOT NULL
+                      UNION ALL
+                       SELECT 'RESI'::character varying AS area,
+                          date_trunc('month'::text, q.data::timestamp with time zone)::date AS competenza_mese,
+                          q.reso_id AS documento_id,
+                          q.reso_uid::text AS documento_uid,
+                          q.reso_numero::text AS codice,
+                          q.destinatario_denominazione AS cliente_display,
+                          q.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          count(*)::integer AS unita_ferme,
+                          'RICONSEGNA_NON_ESEGUITA'::character varying AS motivo_fermo,
+                          q.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM vendite.vw_resi_da_riconsegnare q
+                           JOIN vendite.resi r2 ON r2.id = q.reso_id
+                           JOIN config.stati_doc_reso sdr ON sdr.id = r2.stato_doc_reso_id
+                        GROUP BY q.reso_id, q.reso_uid, q.reso_numero, q.data, q.destinatario_denominazione, q.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      UNION ALL
+                       SELECT 'RESI'::character varying AS area,
+                          date_trunc('month'::text, a.data::timestamp with time zone)::date AS competenza_mese,
+                          a.reso_id AS documento_id,
+                          a.reso_uid::text AS documento_uid,
+                          a.reso_numero::text AS codice,
+                          a.destinatario_denominazione AS cliente_display,
+                          a.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          count(*)::integer AS unita_ferme,
+                          'MERCE_RESA_GIA_FATTURATA'::character varying AS motivo_fermo,
+                          a.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM vendite.vw_resi_da_accreditare a
+                           JOIN vendite.resi r3 ON r3.id = a.reso_id
+                           JOIN config.stati_doc_reso sdr ON sdr.id = r3.stato_doc_reso_id
+                        WHERE a.etichetta::text = 'DOVUTA'::text
+                        GROUP BY a.reso_id, a.reso_uid, a.reso_numero, a.data, a.destinatario_denominazione, a.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      )
+               SELECT b.area,
+                  b.competenza_mese,
+                  b.documento_id,
+                  b.documento_uid,
+                  b.codice,
+                  b.cliente_display,
+                  b.emittente_fiscale_id,
+                  b.emittente_soggetto_ruolo_id,
+                  b.valore_fermo,
+                  b.unita_ferme,
+                  b.motivo_fermo,
+                  COALESCE(mf.classe, 'ANOMALIA'::character varying) AS classe,
+                  mf.azione,
+                  b.data_riferimento,
+                  (( SELECT script.fn_data_operativa() AS fn_data_operativa)) - b.data_riferimento AS anzianita_giorni,
+                  b.stato_codice_interno,
+                  b.stato_codice,
+                  b.fase,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM base b
+                   LEFT JOIN config.motivi_fermo mf ON mf.codice_interno::text = b.motivo_fermo::text AND mf.attivo IS TRUE
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = b.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = COALESCE(b.emittente_soggetto_ruolo_id, ef.soggetto_ruolo_id)
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                WHERE COALESCE(mf.classe, 'ANOMALIA'::character varying)::text <> 'FISIOLOGICO'::text;
+
+              COMMENT ON VIEW vendite.vw_dash_backlog_documenti IS
+                  'Backlog fatturazione (lente 2). rev 2026-07-18 (step 9, DL-24): la vista E'' una UNION — ramo '
+                  'documenti (da vw_dash_fatturazione_documenti, invariato) + DUE rami resi a grana (reso x '
+                  'motivo): RICONSEGNA_NON_ESEGUITA (RECUPERABILE) da vw_resi_da_riconsegnare e '
+                  'MERCE_RESA_GIA_FATTURATA da vw_resi_da_accreditare con etichetta DOVUTA (le facoltative sono '
+                  'opzione, non arretrato). I resi NON stanno nella union pre-commessa: REVERSE_FLOW. Misura a '
+                  'conteggi (DL-11): valore_fermo NULL, mai 0. Classe/azione risolte UNA volta a valle su '
+                  'config.motivi_fermo, filtro classe <> FISIOLOGICO per tutti i rami. Deroga dichiarata: unica '
+                  'area dove un documento (reso misto) puo'' comparire due volte. security_invoker=on + RLS. ⭐ Rev '
+                  '2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda '
+                  '`emittente_ragione_sociale`. ⚠️ Due trappole, entrambe silenziose: (1) la proiezione e'' a '
+                  'colonne esplicite, quindi la colonna NON si eredita dalla vista a monte — va elencata, e il '
+                  'backend legge questa; (2) i due rami RESI non hanno emittente_soggetto_ruolo_id (NULL) ma hanno '
+                  'emittente_fiscale_id: risolvere solo dal soggetto-ruolo avrebbe lasciato muto l''INTERO blocco '
+                  'resi, che essendo minoritario sarebbe passato per «qualche riga senza emittente». Si risolve con'
+                  ' un COALESCE sulla CHIAVE (emittente_soggetto_ruolo_id, altrimenti '
+                  'emittenti_fiscali.soggetto_ruolo_id, che e'' NOT NULL + UNIQUE): una sola catena di JOIN, un solo'
+                  ' posto da tenere allineato. ⚠️ emittente_soggetto_ruolo_id sui rami resi resta NULL come prima: '
+                  'valorizzarla e'' un cambio di semantica di una colonna esistente e va deciso a parte.';
+
+              CREATE VIEW vendite.vw_dash_aperto_documenti WITH (security_invoker=on) AS
+               SELECT area,
+                  documento_id,
+                  documento_uid,
+                  codice,
+                  emittente_fiscale_id,
+                  emittente_soggetto_ruolo_id,
+                  cliente_display,
+                  fase,
+                  stato_codice_interno,
+                  stato_codice,
+                  valore_totale,
+                  unita_totali,
+                  motivo_fermo,
+                  data_riferimento,
+                  emittente_ragione_sociale
+                 FROM vendite.vw_dash_fatturazione_documenti d
+                WHERE area::text <> 'COMMESSE'::text AND NOT is_abortito AND is_transitato IS DISTINCT FROM true AND fase::text <> 'CHIUSO'::text;
+
+              COMMENT ON VIEW vendite.vw_dash_aperto_documenti IS
+                  'Situazione aperta v2 (serbatoio pre-commessa): stock dei documenti APERTI E NON CONCLUSI delle 4'
+                  ' aree (PREVENTIVI/ORDINI/OFFERTE/CONTRATTI — no COMMESSE, coperte dalla Lente 1), SENZA asse '
+                  'temporale. Perimetro (DL-15): area<>COMMESSE AND NOT is_abortito AND is_transitato IS DISTINCT '
+                  'FROM true AND fase<>CHIUSO. Eliminato il concetto "transitato" (DL-14): via '
+                  'is_transitato/is_aperto(col)/valore_transitato/unita_transitate dalla proiezione. Perimetro '
+                  'unico per vw_dash_aperto_riepilogo e per il drill-down BE (il filtro "aperti da oltre N giorni" '
+                  'e'' BE-side su data_riferimento). security_invoker=on (scope emittente RLS). ⭐ Rev 2026-08-18 '
+                  '(R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`, che '
+                  'arriva gia'' risolta da vw_dash_fatturazione_documenti. ⚠️ Andava ELENCATA: la proiezione e'' a '
+                  'colonne esplicite e non eredita nulla dalla vista a monte — il brief dava questa lista per '
+                  '«eredita» e sarebbe uscita una colonna vuota senza nessun errore a segnalarlo.';
+
+              CREATE VIEW vendite.vw_dash_backlog_riepilogo WITH (security_invoker=on) AS
+               SELECT classe,
+                  area,
+                  count(*)::integer AS n_documenti,
+                  COALESCE(sum(valore_fermo), 0::numeric) AS valore_fermo_tot,
+                  COALESCE(sum(unita_ferme), 0::bigint)::integer AS unita_ferme_tot,
+                  max(anzianita_giorni) AS anzianita_max_giorni
+                 FROM vendite.vw_dash_backlog_documenti
+                GROUP BY classe, area;
+
+              COMMENT ON VIEW vendite.vw_dash_backlog_riepilogo IS
+                  'Lente 2 Backlog: contatori di testata per classe x area '
+                  '(RECUPERABILE/ANOMALIA/SOLLECITO_CLIENTE; il FISIOLOGICO e'' escluso a monte). n documenti, '
+                  'valore fermo totale (NULL-safe: 0 per aree a conteggi), unita'' ferme, anzianita'' massima in '
+                  'giorni. Scope ereditato. security_invoker=on.';
+
+              CREATE VIEW vendite.vw_dash_aperto_riepilogo WITH (security_invoker=on) AS
+               SELECT area,
+                  fase,
+                  count(*)::integer AS n_documenti,
+                  sum(valore_totale) AS valore_totale
+                 FROM vendite.vw_dash_aperto_documenti
+                GROUP BY area, fase;
+
+              COMMENT ON VIEW vendite.vw_dash_aperto_riepilogo IS
+                  'Situazione aperta v2: card area x fase sullo stock aperti-non-conclusi (vw_dash_aperto_documenti'
+                  ' v2). n_documenti = tutti aperti della cella; valore_totale NULL per OFFERTE/CONTRATTI (aree a '
+                  'conteggi, DL-11). Via n_aperti (=n_documenti nel perimetro v2) e valore_transitato (concetto '
+                  'transito eliminato, DL-14). Fasi presenti: APERTO/IN_ATTESA/IN_CORSO (CHIUSO escluso a monte). '
+                  'Nessun asse temporale. security_invoker=on.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW vendite.vw_dash_aperto_riepilogo;
+              DROP VIEW vendite.vw_dash_backlog_riepilogo;
+              DROP VIEW vendite.vw_dash_aperto_documenti;
+              DROP VIEW vendite.vw_dash_backlog_documenti;
+              DROP VIEW vendite.vw_dash_fatturazione_documenti;
+              DROP VIEW vendite.vw_dash_fatturazione_preventivi;
+              DROP VIEW vendite.vw_dash_fatturazione_offerte;

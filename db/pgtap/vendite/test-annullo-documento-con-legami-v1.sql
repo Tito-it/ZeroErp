@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
+--   l'ordine da offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, e il legame di
+--   provenienza ha origine OFFERTA_COMMERCIALE (il codice della sorgente, era OFFERTA).
 -- pgTAP test per Zero ERP
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
@@ -278,7 +281,7 @@ BEGIN
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
       stato_doc_ordine_id, valuta_id, data, storicizza, documento_origine_tipo, documento_origine_id)
   VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.emittente_fiscale_id, r.ord_draft_id,
-          r.valuta_id, script.fn_data_operativa(), false, 'OFFERTA', p_offerta)
+          r.valuta_id, script.fn_data_operativa(), false, 'OFFERTA_COMMERCIALE', p_offerta)
   RETURNING id INTO v_ord;
   RETURN v_ord;
 END $$ LANGUAGE plpgsql;
@@ -351,7 +354,7 @@ SELECT 'c1_contr', vendite.fn_push_offerta_a_contratto(pg_temp.al_fix('c_off'), 
 
 SELECT ok(
   (SELECT count(*) = 1
-          AND bool_and(l.origine = 'OFFERTA' AND l.natura = 'PROVENIENZA'
+          AND bool_and(l.origine = 'OFFERTA_COMMERCIALE' AND l.natura = 'PROVENIENZA'
                        AND l.origine_id = pg_temp.al_fix('c_off') AND l.riga_id IS NULL)
      FROM vendite.fn_documento_legami('CONTRATTO', pg_temp.al_fix('c1_contr')) l),
   '12) il legame del contratto e'' l''offerta da cui nasce, di PROVENIENZA');
@@ -404,7 +407,7 @@ SELECT is(vendite.fn_annulla_ordine(pg_temp.al_fix('d1_ord'), 1), 1,
   '19a) confermato l''annullo del primo ordine: un legame (l''offerta)');
 SELECT ok(
   (SELECT s.codice_interno = 'ANNULLATO' AND o.is_abortito_snapshot
-          AND o.documento_origine_tipo = 'OFFERTA' AND o.documento_origine_id = pg_temp.al_fix('d_off')
+          AND o.documento_origine_tipo = 'OFFERTA_COMMERCIALE' AND o.documento_origine_id = pg_temp.al_fix('d_off')
      FROM vendite.ordini o JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
     WHERE o.id = pg_temp.al_fix('d1_ord')),
   '19) ANNULLATO, snapshot abortito, provenienza conservata');

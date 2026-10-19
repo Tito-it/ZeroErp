@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
+--   la destinazione della merce e' ORDINE_VENDITA, il codice della sorgente (era ORDINE).
 -- pgTAP test per Zero ERP
 --
 -- Test: viste smistamento preventivi (20260612-05):
@@ -219,7 +221,7 @@ SELECT is(
 -- ============================================================
 SELECT ok(
   (SELECT v.stato_smistamento = 'A_ORDINE'
-      AND v.destinazione_tipo = 'ORDINE'
+      AND v.destinazione_tipo = 'ORDINE_VENDITA'
       AND v.ordine_riga_id IS NOT NULL
       AND v.ordine_id IS NOT NULL
      FROM vendite.vw_preventivi_smistamento_righe v

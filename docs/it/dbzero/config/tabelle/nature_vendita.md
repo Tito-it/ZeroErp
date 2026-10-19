@@ -12,7 +12,7 @@
 | codice_interno | character varying(40) | NO |  |
 | codice | character varying(40) | NO |  |
 | descrizione | character varying(255) | YES |  |
-| destinazione_tipo | character varying(20) | NO |  |
+| destinazione_tipo | character varying(50) | NO |  |
 | attivo | boolean | NO | true |
 | ordine | smallint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -25,7 +25,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_nature_vendita_destinazione_tipo |  |
+| FOREIGN KEY | fk_nature_vendita_destinazione_tipo_sorgenti | destinazione_tipo |
 | PRIMARY KEY | pk_nature_vendita | id |
 | UNIQUE | uq_nature_vendita_codice | codice |
 | UNIQUE | uq_nature_vendita_codice_interno | codice_interno |

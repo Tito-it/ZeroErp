@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 2b: vendite.fn_offerta_documenti_vivi
+#   Brief: brief-db-grammatica-unica-documenti §12.
+#
+#   Gli ordini vivi nati da un'offerta si riconoscono da
+#   ordini.documento_origine_tipo = 'OFFERTA_COMMERCIALE' (era 'OFFERTA'):
+#   20261019-87 ha portato la colonna ai codici delle sorgenti. E' il predicato
+#   di uq_ordini_v_documento_origine_offerta, riscritto nello stesso modo.
+#
+#   %TYPE in firma e in RETURNS TABLE (scritti qui la prima volta: il
+#   20261011-73 li aveva nudi): p_offerta_id su vendite.offerte_commerciali.id,
+#   tipo su config.tipi_entita.codice (il COMMENT dice che e' quel codice).
+#   documento_id resta nudo: polimorfo (contratto o ordine). I tipi risolti non
+#   cambiano (bigint, text): CREATE OR REPLACE, privilegi e dipendenti intatti.
+#   LANGUAGE sql senza BEGIN ATOMIC, com'era. Corpo dalla definizione viva
+#   (dbdev, 2026-10-19); COMMENT vivo con la revisione in coda.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-97-update-fn-offerta-documenti-vivi-origine-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261019-97-update-fn-offerta-documenti-vivi-origine-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_offerta_documenti_vivi: l'ordine nato dall'offerta si riconosce da
+        documento_origine_tipo = OFFERTA_COMMERCIALE; %TYPE in firma e RETURNS TABLE. Grammatica
+        unica, lotto 2b.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_offerta_documenti_vivi(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+              -- tipo: il codice di config.tipi_entita del documento vivo (CONTRATTO,
+              -- ORDINE_VENDITA); documento_id: polimorfo (contratto o ordine), tipo nudo.
+              RETURNS TABLE(
+                  tipo         config.tipi_entita.codice%TYPE,
+                  documento_id bigint)
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  SELECT 'CONTRATTO'::text, c.id
+                    FROM vendite.contratti c
+                   WHERE c.offerta_id = p_offerta_id
+                     AND NOT c.is_abortito_snapshot
+                  UNION ALL
+                  SELECT 'ORDINE_VENDITA'::text, o.id
+                    FROM vendite.ordini o
+                   WHERE o.documento_origine_tipo = 'OFFERTA_COMMERCIALE'
+                     AND o.documento_origine_id   = p_offerta_id
+                     AND NOT o.is_abortito_snapshot
+                   ORDER BY 1, 2;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_offerta_documenti_vivi(vendite.offerte_commerciali.id%TYPE) IS
+                  'I contratti e gli ordini VIVI (non abortiti) nati da un''offerta (2026-10-11, '
+                  'brief-db-annullo-documento-con-legami D-3/D-6): risponde a «l''offerta e'' gia'' trasformata?». Un '
+                  'documento annullato conserva la provenienza ma non consuma l''offerta. tipo = codice di '
+                  'config.tipi_entita (CONTRATTO, ORDINE_VENDITA), lo stesso del bersaglio dell''errore. Vivi da '
+                  'is_abortito_snapshot, la colonna dei due indici unici parziali (uq_contratti_offerta_id, '
+                  'uq_ordini_v_documento_origine_offerta). Sede unica per vendite.fn_push_offerta_a_contratto, '
+                  'script.fn_available_actions_offerta e il backend (crea ordine da offerta). documento_id '
+                  'polimorfo: tipo nudo dichiarato. SECURITY INVOKER. ⭐ rev 2026-10-19 (20261019-97, '
+                  'brief-db-grammatica-unica-documenti lotto 2b): l''ordine nato dall''offerta si riconosce da '
+                  'documento_origine_tipo = OFFERTA_COMMERCIALE, il codice della sorgente (era OFFERTA).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_offerta_documenti_vivi(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+              -- tipo: il codice di config.tipi_entita del documento vivo (CONTRATTO,
+              -- ORDINE_VENDITA); documento_id: polimorfo (contratto o ordine), tipo nudo.
+              RETURNS TABLE(
+                  tipo         config.tipi_entita.codice%TYPE,
+                  documento_id bigint)
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  SELECT 'CONTRATTO'::text, c.id
+                    FROM vendite.contratti c
+                   WHERE c.offerta_id = p_offerta_id
+                     AND NOT c.is_abortito_snapshot
+                  UNION ALL
+                  SELECT 'ORDINE_VENDITA'::text, o.id
+                    FROM vendite.ordini o
+                   WHERE o.documento_origine_tipo = 'OFFERTA'
+                     AND o.documento_origine_id   = p_offerta_id
+                     AND NOT o.is_abortito_snapshot
+                   ORDER BY 1, 2;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_offerta_documenti_vivi(vendite.offerte_commerciali.id%TYPE) IS
+                  'I contratti e gli ordini VIVI (non abortiti) nati da un''offerta (2026-10-11, '
+                  'brief-db-annullo-documento-con-legami D-3/D-6): risponde a «l''offerta e'' gia'' trasformata?». Un '
+                  'documento annullato conserva la provenienza ma non consuma l''offerta. tipo = codice di '
+                  'config.tipi_entita (CONTRATTO, ORDINE_VENDITA), lo stesso del bersaglio dell''errore. Vivi da '
+                  'is_abortito_snapshot, la colonna dei due indici unici parziali (uq_contratti_offerta_id, '
+                  'uq_ordini_v_documento_origine_offerta). Sede unica per vendite.fn_push_offerta_a_contratto, '
+                  'script.fn_available_actions_offerta e il backend (crea ordine da offerta). documento_id '
+                  'polimorfo: tipo nudo dichiarato. SECURITY INVOKER.';

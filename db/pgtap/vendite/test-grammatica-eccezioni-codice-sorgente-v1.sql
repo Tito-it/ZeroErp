@@ -40,6 +40,10 @@
 
 BEGIN;
 
+-- Vincoli differiti: scattano a fine istruzione, non al COMMIT che qui non
+-- arriva (rev 2026-10-19, lotto 2b: lo chiede guardrail_pgtap_preambolo).
+SET CONSTRAINTS ALL IMMEDIATE;
+
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(12);

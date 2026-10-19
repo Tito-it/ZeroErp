@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
+--   l'ordine collegato all'offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, il
+--   codice della sorgente (era OFFERTA: ora la FK verso config.sorgenti lo rifiuta).
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id) (Step 8).
@@ -180,7 +183,7 @@ WITH ins AS (
 SELECT id FROM ins;
 
 -- Offerta in ACCETTATA con ORDINE gia' generato (per test 9): INSERT diretto in
--- ACCETTATA + ordine collegato via documento_origine ('OFFERTA', id).
+-- ACCETTATA + ordine collegato via documento_origine ('OFFERTA_COMMERCIALE', id).
 CREATE TEMP TABLE tmp_push_offerta_ord AS
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -226,7 +229,7 @@ SELECT
     (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1),
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
     DATE '2102-01-02', false,
-    'OFFERTA', (SELECT id FROM tmp_push_offerta_ord)
+    'OFFERTA_COMMERCIALE', (SELECT id FROM tmp_push_offerta_ord)
   FROM tmp_push_ctx ctx;
 
 -- ============================================================
@@ -338,7 +341,7 @@ SELECT throws_ok(
 -- ============================================================
 -- 9) Push da ACCETTATA con ordine gia' generato (mutua esclusivita') ->
 --    throws E_OFFERTA_ORDINE_GIA_GENERATO. Contratto e ordine sono alternativi:
---    l'offerta ha gia' un ordine ('OFFERTA', id) -> il push a contratto fallisce.
+--    l'offerta ha gia' un ordine ('OFFERTA_COMMERCIALE', id) -> il push a contratto fallisce.
 -- ============================================================
 SELECT throws_ok(
     format(

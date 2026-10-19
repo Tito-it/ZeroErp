@@ -39,7 +39,7 @@
 | utility_id | integer | NO |  |
 | emittente_fiscale_id | bigint | NO |  |
 | agente_soggetto_ruolo_id | bigint | YES |  |
-| documento_origine_tipo | character varying(20) | YES |  |
+| documento_origine_tipo | character varying(50) | YES |  |
 | documento_origine_id | bigint | YES |  |
 | fatturazione_immediata | boolean | NO | false |
 | registro_id | bigint | YES |  |
@@ -49,7 +49,6 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ordini_documento_origine_copres |  |
-| CHECK | chk_ordini_documento_origine_tipo |  |
 | CHECK | chk_ordini_fatturazione_trigger |  |
 | CHECK | chk_ordini_imponibile_tot_finito |  |
 | CHECK | chk_ordini_iva_tot_finito |  |
@@ -57,6 +56,7 @@
 | CHECK | chk_ordini_tasso_cambio_finito |  |
 | CHECK | chk_ordini_totale_doc_finito |  |
 | FOREIGN KEY | fk_ordini_ba_cliente | billing_account_id, soggetto_ruolo_id, utility_id |
+| FOREIGN KEY | fk_ordini_documento_origine_tipo_sorgenti | documento_origine_tipo |
 | FOREIGN KEY | fk_ordini_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_ordini_registro | registro_id |
 | FOREIGN KEY | fk_ordini_termini_pagamento | termine_pagamento_id |
@@ -80,7 +80,7 @@
 | ix_vendite_ordini_stato_doc_ordine_id | `CREATE INDEX ix_vendite_ordini_stato_doc_ordine_id ON vendite.ordini USING btree (stato_doc_ordine_id)` |
 | pk_ordini | `CREATE UNIQUE INDEX pk_ordini ON vendite.ordini USING btree (id)` |
 | uq_ordini_v_anno_serie_numero | `CREATE UNIQUE INDEX uq_ordini_v_anno_serie_numero ON vendite.ordini USING btree (registro_id, anno, serie, numero) NULLS NOT DISTINCT WHERE (numero IS NOT NULL)` |
-| uq_ordini_v_documento_origine_offerta | `CREATE UNIQUE INDEX uq_ordini_v_documento_origine_offerta ON vendite.ordini USING btree (documento_origine_tipo, documento_origine_id) WHERE (((documento_origine_tipo)::text = 'OFFERTA'::text) AND (NOT is_abortito_snapshot))` |
+| uq_ordini_v_documento_origine_offerta | `CREATE UNIQUE INDEX uq_ordini_v_documento_origine_offerta ON vendite.ordini USING btree (documento_origine_tipo, documento_origine_id) WHERE (((documento_origine_tipo)::text = 'OFFERTA_COMMERCIALE'::text) AND (NOT is_abortito_snapshot))` |
 | uq_ordini_v_sorgente_fk | `CREATE UNIQUE INDEX uq_ordini_v_sorgente_fk ON vendite.ordini USING btree (sorgente_tipo_id, sorgente_uid) WITH (fillfactor='100', deduplicate_items='true') WHERE (sorgente_tipo_id IS NOT NULL)` |
 | uq_ordini_v_uid | `CREATE UNIQUE INDEX uq_ordini_v_uid ON vendite.ordini USING btree (uid)` |
 
