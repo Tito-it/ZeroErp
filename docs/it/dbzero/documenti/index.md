@@ -18,6 +18,7 @@
 ## ⚙️ Funzioni
 - [fn_guard_versione_contesto](funzioni/fn_guard_versione_contesto.md)
 - [fn_pubblica_template_documento_versione](funzioni/fn_pubblica_template_documento_versione.md) — (latest review 30-09-2026 — il patto versione/forma dei dati: brief-db-documenti-versione-contesto-template)
+- [fn_risolvi_template_applicabile](funzioni/fn_risolvi_template_applicabile.md)
 - [trgfn_documenti_generati_block_delete](funzioni/trgfn_documenti_generati_block_delete.md)
 - [trgfn_documenti_generati_check_coerenza](funzioni/trgfn_documenti_generati_check_coerenza.md)
 - [trgfn_documenti_generati_eventi_block_delete](funzioni/trgfn_documenti_generati_eventi_block_delete.md)
@@ -28,6 +29,9 @@
 - [trgfn_template_asset_block_delete](funzioni/trgfn_template_asset_block_delete.md)
 - [trgfn_template_asset_protect_file](funzioni/trgfn_template_asset_protect_file.md)
 - [trgfn_template_documenti_versioni_block_delete](funzioni/trgfn_template_documenti_versioni_block_delete.md)
+- [trgfn_template_documenti_versioni_guard_derivata_da](funzioni/trgfn_template_documenti_versioni_guard_derivata_da.md)
 - [trgfn_template_documenti_versioni_protect_pubblicata](funzioni/trgfn_template_documenti_versioni_protect_pubblicata.md)
+- [trgfn_template_standard_guard_sola_lettura](funzioni/trgfn_template_standard_guard_sola_lettura.md)
 
 ## 🔍 Views
+- [vw_template_personalizzati_scarto](views/vw_template_personalizzati_scarto.md)

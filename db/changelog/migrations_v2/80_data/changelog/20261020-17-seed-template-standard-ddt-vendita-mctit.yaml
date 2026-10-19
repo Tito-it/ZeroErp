@@ -1,0 +1,631 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MODELLO STANDARD: DDT DI VENDITA (DDT_VENDITA / sorgente DDT_VENDITA)
+#   Brief: brief-db-modelli-documento-standard, §8.2 (tranche 2), D-3
+#
+# -- IL CONTENUTO (D-3) ------------------------------------------------------------
+#   Dalla versione pubblicata 3 del modello dell'emittente 32 su dbdev (letta il
+#   2026-10-19), riletta da Tid. Modifiche, scelte di Tid del 2026-10-19:
+#   * tolto il pie' di pagina a sinistra (@bottom-left «Zero ERP…»): un testo
+#     fisso del software sulla carta dell'azienda;
+#   Nessun richiamo ad asset (Q-4): lo standard stampa per qualunque emittente.
+#
+# -- LA FORMA ------------------------------------------------------------------------
+#   Non un CSV: template_documenti e' una tabella mista (i modelli degli emittenti
+#   nascono dall'applicazione). Un mirror con id espliciti collide con gli id
+#   dell'applicazione; uno sulla chiave naturale aggiornerebbe le copie degli
+#   emittenti con lo stesso codice interno. Lo standard nasce qui, forward-only, e
+#   si fa evolvere con changeSet nuovi (una bozza e la sua pubblicazione), cercato
+#   per (standard, sorgente, codice_interno).
+#   Idempotente: se lo standard c'e' gia', non fa niente. La pubblicazione passa
+#   da documenti.fn_pubblica_template_documento_versione, che verifica anche la
+#   forma dei dati (2). Valido dal 2000-01-01: da sempre.
+#   Scritto dal proprietario della tabella (il migrate): il guard di sola lettura
+#   (20261020-07) lo lascia passare, e il default dell'emittente lo salta (-06).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261020-17-seed-template-standard-ddt-vendita-mctit.yaml
+
+  - changeSet:
+      id: 20261020-17-seed-template-standard-ddt-vendita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Seed del modello standard «DDT di vendita» (DDT_VENDITA / DDT_VENDITA, codice interno ddt_vendita): riga in
+        documenti.template_documenti senza emittente, una versione pubblicata (forma dei dati 2).
+        Idempotente. Brief: brief-db-modelli-documento-standard §8.2, D-3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: documenti
+                tableName: template_documenti
+                columnName: standard
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'documenti'
+                     AND p.proname = 'fn_pubblica_template_documento_versione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $seed$
+              DECLARE
+                  v_tipo     documenti.template_documenti.tipo_documento_output_id%TYPE;
+                  v_sorg     documenti.template_documenti.sorgente_tipo_id%TYPE;
+                  v_render   documenti.template_documenti_versioni.render_engine_id%TYPE;
+                  v_tpl      documenti.template_documenti.id%TYPE;
+                  v_versione documenti.template_documenti_versioni.id%TYPE;
+              BEGIN
+                  SELECT o.id INTO v_tipo FROM documenti.tipi_documento_output o WHERE o.codice_interno = 'DDT_VENDITA';
+                  SELECT s.id INTO v_sorg FROM config.sorgenti s WHERE s.codice_interno = 'DDT_VENDITA';
+                  SELECT e.id INTO v_render FROM documenti.render_engine_documento e WHERE e.codice_interno = 'WEASYPRINT';
+                  IF v_tipo IS NULL OR v_sorg IS NULL OR v_render IS NULL THEN
+                      RAISE EXCEPTION 'seed standard ddt_vendita: vocabolario mancante (tipo DDT_VENDITA=%, sorgente DDT_VENDITA=%, render WEASYPRINT=%)',
+                          v_tipo, v_sorg, v_render;
+                  END IF;
+
+                  -- Idempotente: lo standard si trova per chiave (standard, sorgente,
+                  -- codice_interno), la stessa con cui lo troveranno le evoluzioni.
+                  IF EXISTS (SELECT 1 FROM documenti.template_documenti t
+                              WHERE t.standard AND t.sorgente_tipo_id = v_sorg AND t.codice_interno = 'ddt_vendita') THEN
+                      RETURN;
+                  END IF;
+
+                  INSERT INTO documenti.template_documenti (
+                      tipo_documento_output_id, codice, codice_interno, descrizione, sorgente_tipo_id,
+                      context_builder_code, file_name_pattern, standard, is_default, attivo, meta)
+                  VALUES (
+                      v_tipo, 'DDT_VENDITA', 'ddt_vendita', 'DDT di vendita (standard)', v_sorg,
+                      'DDT_VENDITA', NULL, true, true, true,
+                      jsonb_build_object('brief', 'brief-db-modelli-documento-standard', 'origine', 'D-3'))
+                  RETURNING id INTO v_tpl;
+
+                  INSERT INTO documenti.template_documenti_versioni (
+                      template_documento_id, versione, stato, titolo, formato_template, html_template, css_template,
+                      render_engine_id, page_format, page_orientation,
+                      margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
+                      versione_contesto, meta)
+                  VALUES (
+                      v_tpl, 1, 'BOZZA', 'DDT di vendita', 'HTML',
+              $tpl$
+              <!doctype html>
+              <html lang="it">
+              <head>
+                <meta charset="utf-8">
+                <title>DDT {{ ddt.numero or ddt.id }}</title>
+              </head>
+              <body>
+                <main class="document">
+                  <header class="header">
+                    <div class="brand">
+                      <div class="brand-mark">ZE</div>
+                      <div class="brand-name">{{ ddt.emittente.get("denominazione") or ddt.emittente.get("codice") or "Emittente fiscale" }}</div>
+                    </div>
+
+                    <div class="doc-title">
+                      <h1>DOCUMENTO DI TRASPORTO</h1>
+                      <div class="doc-number">
+                        {% if ddt.numero %}
+                          N. {{ ddt.numero }}
+                          {% if ddt.serie %} / Serie {{ ddt.serie }}{% endif %}
+                          {% if ddt.anno %} / {{ ddt.anno }}{% endif %}
+                        {% else %}
+                          BOZZA (ID {{ ddt.id }}) — numero assegnato all'emissione
+                        {% endif %}
+                      </div>
+                      <div class="status-pill">
+                        {{ ddt.stato.descrizione or ddt.stato.codice_interno or "stato non indicato" }}
+                      </div>
+                    </div>
+                  </header>
+
+                  <section class="section two-columns">
+                    <div class="column">
+                      <div class="label">Destinatario</div>
+                      <div class="box">
+                        <div class="box-strong">{{ destinatario.denominazione or "Destinatario non indicato" }}</div>
+                        {% if destinatario.id_fiscale %}
+                          <div class="muted">ID fiscale: {{ destinatario.id_fiscale }}</div>
+                        {% endif %}
+                        {% if destinatario.ba_codice or destinatario.billing_account_id %}
+                          <div class="muted">
+                            Billing account:
+                            {{ destinatario.ba_codice or ("ID " ~ destinatario.billing_account_id) }}
+                          </div>
+                        {% endif %}
+                        {% if indirizzi.consegna %}
+                          <div class="muted">Luogo di consegna:</div>
+                          {% if indirizzi.consegna.intestazione %}
+                            <div>{{ indirizzi.consegna.intestazione }}</div>
+                          {% endif %}
+                          {% if indirizzi.consegna.via %}
+                            <div>{{ indirizzi.consegna.via }}</div>
+                          {% elif indirizzi.consegna.display %}
+                            <div>{{ indirizzi.consegna.display }}</div>
+                          {% endif %}
+                          {% if indirizzi.consegna.cap or indirizzi.consegna.citta or indirizzi.consegna.prov %}
+                            <div>
+                              {{ [indirizzi.consegna.cap, indirizzi.consegna.citta] | select | join(" ") }}
+                              {%- if indirizzi.consegna.prov %} ({{ indirizzi.consegna.prov }}){% endif %}
+                            </div>
+                          {% endif %}
+                          {% if indirizzi.consegna.stato %}
+                            <div>{{ indirizzi.consegna.stato }}</div>
+                          {% endif %}
+                        {% endif %}
+                      </div>
+                    </div>
+
+                    <div class="column">
+                      <div class="label">Dati trasporto</div>
+                      <div class="box">
+                        <table class="facts">
+                          <tbody>
+                            <tr>
+                              <th>Data DDT</th>
+                              <td>{{ ddt.data or "-" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Causale trasporto</th>
+                              <td>{{ trasporto.causale.descrizione or trasporto.causale.codice or "-" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Aspetto dei beni</th>
+                              <td>{{ trasporto.aspetto_beni.descrizione or trasporto.aspetto_beni.codice or "-" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Porto</th>
+                              <td>{{ trasporto.porto_codice or "-" }}</td>
+                            </tr>
+                            {% if ddt.origine.ordine_numero %}
+                              <tr>
+                                <th>Ordine di origine</th>
+                                <td>{{ ddt.origine.ordine_numero }}</td>
+                              </tr>
+                            {% endif %}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="section two-columns">
+                    <div class="column">
+                      <div class="label">Mittente / luogo di partenza</div>
+                      <div class="box">
+                        <div class="box-strong">{{ trasporto.mittente_denominazione or "Sede emittente" }}</div>
+                        {% if trasporto.data_ora_partenza %}
+                          <div class="muted">Partenza: {{ trasporto.data_ora_partenza }}</div>
+                        {% endif %}
+                      </div>
+                    </div>
+
+                    <div class="column">
+                      <div class="label">Vettore</div>
+                      <div class="box">
+                        <div class="box-strong">{{ trasporto.vettore_denominazione or "Mezzo proprio" }}</div>
+                        {% if trasporto.targa %}
+                          <div class="muted">Targa: {{ trasporto.targa }}</div>
+                        {% endif %}
+                        {% if trasporto.autista %}
+                          <div class="muted">Autista: {{ trasporto.autista }}</div>
+                        {% endif %}
+                        {% if trasporto.tracking_code %}
+                          <div class="muted">Tracking: {{ trasporto.tracking_code }}</div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="section">
+                    <div class="table-title">Merce trasportata</div>
+                    <table class="lines">
+                      <thead>
+                        <tr>
+                          <th style="width: 6%;">#</th>
+                          <th style="width: 16%;">Articolo</th>
+                          <th>Descrizione</th>
+                          <th class="num" style="width: 12%;">Q.ta</th>
+                          <th style="width: 10%;">UoM</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for r in righe %}
+                          <tr>
+                            <td>{{ r.get("riga_nr") or loop.index }}</td>
+                            <td>{{ r.get("articolo_codice") or "-" }}</td>
+                            <td>
+                              <div class="row-description">
+                                {{ r.get("descrizione") or r.get("articolo_descrizione") or "Riga DDT" }}
+                              </div>
+                            </td>
+                            {# `is not none` esplicito: una quantita' 0 e' un dato reale, non
+                               un assente — con `or` renderebbe "-" (falsy-zero). #}
+                            <td class="num">
+                              {%- if r.get("qta_operativa") is not none -%}
+                                {{ r.get("qta_operativa") }}
+                              {%- elif r.get("quantita") is not none -%}
+                                {{ r.get("quantita") }}
+                              {%- else -%}
+                                -
+                              {%- endif -%}
+                            </td>
+                            <td>{{ r.get("uom_codice") or "-" }}</td>
+                          </tr>
+                        {% else %}
+                          <tr>
+                            <td colspan="5" class="muted">Nessuna riga disponibile nel context.</td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </section>
+
+                  <section class="section">
+                    <div class="table-title">Riepilogo colli e pesi</div>
+                    <table class="lines">
+                      <thead>
+                        <tr>
+                          <th class="num" style="width: 20%;">N. colli</th>
+                          <th class="num" style="width: 20%;">Peso lordo (kg)</th>
+                          <th class="num" style="width: 20%;">Peso netto (kg)</th>
+                          <th class="num" style="width: 20%;">Volume (m³)</th>
+                          <th style="width: 20%;">Consegna prevista</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {# `is not none` esplicito sui numerici: 0 colli / 0 kg sono dati
+                           reali da stampare, non assenti (falsy-zero con `or`). #}
+                        <tr>
+                          <td class="num">{{ trasporto.num_colli if trasporto.num_colli is not none else "-" }}</td>
+                          <td class="num">{{ trasporto.peso_lordo if trasporto.peso_lordo is not none else "-" }}</td>
+                          <td class="num">{{ trasporto.peso_netto if trasporto.peso_netto is not none else "-" }}</td>
+                          <td class="num">{{ trasporto.volume if trasporto.volume is not none else "-" }}</td>
+                          <td>{{ trasporto.data_ora_consegna_prev or "-" }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </section>
+
+                  <section class="section signatures">
+                    <div class="signature-cell">
+                      <div class="label">Firma conducente</div>
+                      <div class="signature-line"></div>
+                    </div>
+                    <div class="signature-cell">
+                      <div class="label">Firma vettore</div>
+                      <div class="signature-line"></div>
+                    </div>
+                    <div class="signature-cell">
+                      <div class="label">Firma destinatario</div>
+                      <div class="signature-line"></div>
+                    </div>
+                  </section>
+
+                  <section class="conditions">
+                    <strong>Documento di trasporto</strong> emesso ai sensi del D.P.R. 472/96.
+                    Il presente documento non costituisce fattura. Template HTML basato sul
+                    document context DDT_VENDITA: nessuna query o chiamata esterna.
+                  </section>
+                </main>
+              </body>
+              </html>
+              $tpl$,
+              $tpl$
+              @page {
+                size: A4;
+                margin: 18mm 16mm 18mm 16mm;
+
+
+                @bottom-right {
+                  content: "Pagina " counter(page) " di " counter(pages);
+                  color: #6b7280;
+                  font-size: 8pt;
+                }
+              }
+
+              * {
+                box-sizing: border-box;
+              }
+
+              body {
+                margin: 0;
+                color: #1f2937;
+                font-family: "DejaVu Sans", Arial, sans-serif;
+                font-size: 10pt;
+                line-height: 1.45;
+              }
+
+              .document {
+                width: 100%;
+              }
+
+              .header {
+                display: table;
+                width: 100%;
+                padding-bottom: 14px;
+                border-bottom: 2px solid #111827;
+              }
+
+              .brand,
+              .doc-title {
+                display: table-cell;
+                vertical-align: top;
+              }
+
+              .brand {
+                width: 52%;
+              }
+
+              .brand-mark {
+                display: inline-block;
+                min-width: 36px;
+                min-height: 36px;
+                padding: 8px 10px;
+                background: #111827;
+                color: #ffffff;
+                font-size: 15pt;
+                font-weight: 700;
+                letter-spacing: 0;
+                text-align: center;
+              }
+
+              .brand-name {
+                margin-top: 8px;
+                font-size: 12pt;
+                font-weight: 700;
+              }
+
+              .brand-meta {
+                margin-top: 2px;
+                color: #6b7280;
+                font-size: 8.5pt;
+              }
+
+              .doc-title {
+                width: 48%;
+                text-align: right;
+              }
+
+              h1 {
+                margin: 0;
+                color: #111827;
+                font-size: 22pt;
+                font-weight: 700;
+                letter-spacing: 0;
+              }
+
+              .doc-number {
+                margin-top: 6px;
+                font-size: 11pt;
+                font-weight: 700;
+              }
+
+              .status-pill {
+                display: inline-block;
+                margin-top: 8px;
+                padding: 3px 8px;
+                border: 1px solid #9ca3af;
+                border-radius: 999px;
+                color: #374151;
+                font-size: 8pt;
+                text-transform: uppercase;
+              }
+
+              .section {
+                margin-top: 18px;
+              }
+
+              .two-columns {
+                display: table;
+                width: 100%;
+                table-layout: fixed;
+              }
+
+              .column {
+                display: table-cell;
+                width: 50%;
+                vertical-align: top;
+              }
+
+              .column + .column {
+                padding-left: 18px;
+              }
+
+              .label {
+                margin-bottom: 4px;
+                color: #6b7280;
+                font-size: 8pt;
+                font-weight: 700;
+                text-transform: uppercase;
+              }
+
+              .box {
+                min-height: 62px;
+                padding: 10px 12px;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                background: #ffffff;
+              }
+
+              .box-strong {
+                font-size: 11pt;
+                font-weight: 700;
+              }
+
+              .muted {
+                color: #6b7280;
+              }
+
+              table {
+                width: 100%;
+                border-collapse: collapse;
+              }
+
+              thead {
+                display: table-header-group;
+              }
+
+              tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+              }
+
+              th,
+              td {
+                padding: 7px 6px;
+                border-bottom: 1px solid #e5e7eb;
+                vertical-align: top;
+              }
+
+              th {
+                background: #f3f4f6;
+                color: #374151;
+                font-size: 8pt;
+                font-weight: 700;
+                text-align: left;
+                text-transform: uppercase;
+              }
+
+              .facts th,
+              .facts td {
+                padding: 5px 0;
+                border-bottom: 1px solid #e5e7eb;
+              }
+
+              .facts th {
+                width: 42%;
+                background: transparent;
+                color: #6b7280;
+                font-size: 8.5pt;
+              }
+
+              .facts td {
+                text-align: right;
+              }
+
+              .table-title {
+                margin: 22px 0 8px;
+                color: #111827;
+                font-size: 11pt;
+                font-weight: 700;
+              }
+
+              .lines {
+                page-break-inside: auto;
+              }
+
+              .num {
+                text-align: right;
+                white-space: nowrap;
+              }
+
+              .row-description {
+                font-weight: 700;
+              }
+
+              .row-note {
+                margin-top: 2px;
+                color: #6b7280;
+                font-size: 8.5pt;
+              }
+
+              .totals {
+                width: 42%;
+                margin-top: 18px;
+                margin-left: auto;
+              }
+
+              .totals th,
+              .totals td {
+                padding: 6px 0;
+                border-bottom: 1px solid #e5e7eb;
+              }
+
+              .totals th {
+                background: transparent;
+                color: #374151;
+                font-weight: 700;
+                text-align: left;
+                text-transform: none;
+              }
+
+              .totals td {
+                font-weight: 700;
+                text-align: right;
+                white-space: nowrap;
+              }
+
+              .grand-total th,
+              .grand-total td {
+                padding-top: 10px;
+                border-bottom: 2px solid #111827;
+                color: #111827;
+                font-size: 13pt;
+              }
+
+              .conditions {
+                margin-top: 24px;
+                padding-top: 12px;
+                border-top: 1px solid #d1d5db;
+                color: #4b5563;
+                font-size: 8.5pt;
+              }
+
+              /* Blocco firme DDT (conducente / vettore / destinatario) */
+              .signatures {
+                display: table;
+                width: 100%;
+                margin-top: 28px;
+                table-layout: fixed;
+                page-break-inside: avoid;
+              }
+
+              .signature-cell {
+                display: table-cell;
+                width: 33.33%;
+                vertical-align: bottom;
+              }
+
+              .signature-cell + .signature-cell {
+                padding-left: 18px;
+              }
+
+              .signature-line {
+                height: 34px;
+                border-bottom: 1px solid #374151;
+              }
+              $tpl$,
+                      v_render, 'A4', 'PORTRAIT',
+                      15, 15, 15, 15,
+                      2, jsonb_build_object('brief', 'brief-db-modelli-documento-standard', 'origine', 'D-3'))
+                  RETURNING id INTO v_versione;
+
+                  -- Valida da sempre: la stampa sceglie la versione valida alla data
+                  -- operativa, e un documento con una data passata deve trovarla.
+                  PERFORM documenti.fn_pubblica_template_documento_versione(v_versione, DATE '2000-01-01', 2, NULL);
+              END
+              $seed$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le versioni non si cancellano (trgfn_template_documenti_versioni_block_delete):
+              -- per ritirare lo standard si spegne con un changeSet nuovo.
+              SELECT 1;

@@ -1,0 +1,683 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MODELLO STANDARD: OFFERTA COMMERCIALE (OFFERTA_COMMERCIALE / sorgente OFFERTA_COMMERCIALE)
+#   Brief: brief-db-modelli-documento-standard, §8.2 (tranche 2), D-3
+#
+# -- IL CONTENUTO (D-3) ------------------------------------------------------------
+#   Dalla versione pubblicata 3 del modello dell'emittente 32 su dbdev (letta il
+#   2026-10-19), riletta da Tid. Modifiche, scelte di Tid del 2026-10-19:
+#   * tolto il pie' di pagina a sinistra (@bottom-left «Zero ERP…»): un testo
+#     fisso del software sulla carta dell'azienda;
+#   Nessun richiamo ad asset (Q-4): lo standard stampa per qualunque emittente.
+#
+# -- LA FORMA ------------------------------------------------------------------------
+#   Non un CSV: template_documenti e' una tabella mista (i modelli degli emittenti
+#   nascono dall'applicazione). Un mirror con id espliciti collide con gli id
+#   dell'applicazione; uno sulla chiave naturale aggiornerebbe le copie degli
+#   emittenti con lo stesso codice interno. Lo standard nasce qui, forward-only, e
+#   si fa evolvere con changeSet nuovi (una bozza e la sua pubblicazione), cercato
+#   per (standard, sorgente, codice_interno).
+#   Idempotente: se lo standard c'e' gia', non fa niente. La pubblicazione passa
+#   da documenti.fn_pubblica_template_documento_versione, che verifica anche la
+#   forma dei dati (2). Valido dal 2000-01-01: da sempre.
+#   Scritto dal proprietario della tabella (il migrate): il guard di sola lettura
+#   (20261020-07) lo lascia passare, e il default dell'emittente lo salta (-06).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261020-15-seed-template-standard-offerta-commerciale-mctit.yaml
+
+  - changeSet:
+      id: 20261020-15-seed-template-standard-offerta-commerciale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Seed del modello standard «Offerta commerciale» (OFFERTA_COMMERCIALE / OFFERTA_COMMERCIALE, codice interno offerta_commerciale): riga in
+        documenti.template_documenti senza emittente, una versione pubblicata (forma dei dati 2).
+        Idempotente. Brief: brief-db-modelli-documento-standard §8.2, D-3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: documenti
+                tableName: template_documenti
+                columnName: standard
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'documenti'
+                     AND p.proname = 'fn_pubblica_template_documento_versione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $seed$
+              DECLARE
+                  v_tipo     documenti.template_documenti.tipo_documento_output_id%TYPE;
+                  v_sorg     documenti.template_documenti.sorgente_tipo_id%TYPE;
+                  v_render   documenti.template_documenti_versioni.render_engine_id%TYPE;
+                  v_tpl      documenti.template_documenti.id%TYPE;
+                  v_versione documenti.template_documenti_versioni.id%TYPE;
+              BEGIN
+                  SELECT o.id INTO v_tipo FROM documenti.tipi_documento_output o WHERE o.codice_interno = 'OFFERTA_COMMERCIALE';
+                  SELECT s.id INTO v_sorg FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE';
+                  SELECT e.id INTO v_render FROM documenti.render_engine_documento e WHERE e.codice_interno = 'WEASYPRINT';
+                  IF v_tipo IS NULL OR v_sorg IS NULL OR v_render IS NULL THEN
+                      RAISE EXCEPTION 'seed standard offerta_commerciale: vocabolario mancante (tipo OFFERTA_COMMERCIALE=%, sorgente OFFERTA_COMMERCIALE=%, render WEASYPRINT=%)',
+                          v_tipo, v_sorg, v_render;
+                  END IF;
+
+                  -- Idempotente: lo standard si trova per chiave (standard, sorgente,
+                  -- codice_interno), la stessa con cui lo troveranno le evoluzioni.
+                  IF EXISTS (SELECT 1 FROM documenti.template_documenti t
+                              WHERE t.standard AND t.sorgente_tipo_id = v_sorg AND t.codice_interno = 'offerta_commerciale') THEN
+                      RETURN;
+                  END IF;
+
+                  INSERT INTO documenti.template_documenti (
+                      tipo_documento_output_id, codice, codice_interno, descrizione, sorgente_tipo_id,
+                      context_builder_code, file_name_pattern, standard, is_default, attivo, meta)
+                  VALUES (
+                      v_tipo, 'OFFERTA_COMMERCIALE', 'offerta_commerciale', 'Offerta commerciale (standard)', v_sorg,
+                      'OFFERTA_COMMERCIALE', 'offerta-comm.pdf', true, true, true,
+                      jsonb_build_object('brief', 'brief-db-modelli-documento-standard', 'origine', 'D-3'))
+                  RETURNING id INTO v_tpl;
+
+                  INSERT INTO documenti.template_documenti_versioni (
+                      template_documento_id, versione, stato, titolo, formato_template, html_template, css_template,
+                      render_engine_id, page_format, page_orientation,
+                      margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
+                      versione_contesto, meta)
+                  VALUES (
+                      v_tpl, 1, 'BOZZA', 'Offerta commerciale', 'HTML',
+              $tpl$
+              <!doctype html>
+              <html lang="it">
+              <head>
+                <meta charset="utf-8">
+                <title>Offerta {{ offerta.codice or offerta.id }}</title>
+                <style>
+                  @page {
+                    size: A4;
+                    margin: 18mm 16mm 18mm 16mm;
+
+
+                    @bottom-right {
+                      content: "Pagina " counter(page) " di " counter(pages);
+                      color: #6b7280;
+                      font-size: 8pt;
+                    }
+                  }
+
+                  * { box-sizing: border-box; }
+
+                  body {
+                    margin: 0;
+                    color: #1f2937;
+                    font-family: "DejaVu Sans", Arial, sans-serif;
+                    font-size: 10pt;
+                    line-height: 1.45;
+                  }
+
+                  .document { width: 100%; }
+
+                  .header {
+                    display: table;
+                    width: 100%;
+                    padding-bottom: 14px;
+                    border-bottom: 2px solid #111827;
+                  }
+
+                  .brand,
+                  .doc-title {
+                    display: table-cell;
+                    vertical-align: top;
+                  }
+
+                  .brand { width: 52%; }
+
+                  .brand-mark {
+                    display: inline-block;
+                    min-width: 36px;
+                    min-height: 36px;
+                    padding: 8px 10px;
+                    background: #111827;
+                    color: #ffffff;
+                    font-size: 15pt;
+                    font-weight: 700;
+                    letter-spacing: 0;
+                    text-align: center;
+                  }
+
+                  .brand-name {
+                    margin-top: 8px;
+                    font-size: 12pt;
+                    font-weight: 700;
+                  }
+
+                  .brand-meta {
+                    margin-top: 2px;
+                    color: #6b7280;
+                    font-size: 8.5pt;
+                  }
+
+                  .doc-title {
+                    width: 48%;
+                    text-align: right;
+                  }
+
+                  h1 {
+                    margin: 0;
+                    color: #111827;
+                    font-size: 22pt;
+                    font-weight: 700;
+                    letter-spacing: 0;
+                  }
+
+                  .doc-number {
+                    margin-top: 6px;
+                    font-size: 11pt;
+                    font-weight: 700;
+                  }
+
+                  .doc-revision {
+                    margin-top: 2px;
+                    color: #6b7280;
+                    font-size: 9pt;
+                  }
+
+                  .status-pill {
+                    display: inline-block;
+                    margin-top: 8px;
+                    padding: 3px 8px;
+                    border: 1px solid #9ca3af;
+                    border-radius: 999px;
+                    color: #374151;
+                    font-size: 8pt;
+                    text-transform: uppercase;
+                  }
+
+                  .section { margin-top: 18px; }
+
+                  .two-columns {
+                    display: table;
+                    width: 100%;
+                    table-layout: fixed;
+                  }
+
+                  .column {
+                    display: table-cell;
+                    width: 50%;
+                    vertical-align: top;
+                  }
+
+                  .column + .column { padding-left: 18px; }
+
+                  .label {
+                    margin-bottom: 4px;
+                    color: #6b7280;
+                    font-size: 8pt;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                  }
+
+                  .box {
+                    min-height: 62px;
+                    padding: 10px 12px;
+                    border: 1px solid #d1d5db;
+                    border-radius: 4px;
+                    background: #ffffff;
+                  }
+
+                  .box-strong {
+                    font-size: 11pt;
+                    font-weight: 700;
+                  }
+
+                  .muted { color: #6b7280; }
+
+                  .facts {
+                    width: 100%;
+                    border-collapse: collapse;
+                  }
+
+                  .facts th,
+                  .facts td {
+                    padding: 5px 0;
+                    border-bottom: 1px solid #e5e7eb;
+                    text-align: left;
+                    vertical-align: top;
+                  }
+
+                  .facts th {
+                    width: 42%;
+                    color: #6b7280;
+                    font-size: 8.5pt;
+                    font-weight: 700;
+                  }
+
+                  .facts td { text-align: right; }
+
+                  .table-title {
+                    margin: 22px 0 8px;
+                    color: #111827;
+                    font-size: 11pt;
+                    font-weight: 700;
+                  }
+
+                  .table-subtitle {
+                    margin: 0 0 8px;
+                    color: #6b7280;
+                    font-size: 8.5pt;
+                  }
+
+                  table.lines {
+                    width: 100%;
+                    border-collapse: collapse;
+                    page-break-inside: auto;
+                  }
+
+                  table.lines thead { display: table-header-group; }
+
+                  table.lines tr {
+                    page-break-inside: avoid;
+                    page-break-after: auto;
+                  }
+
+                  table.lines th,
+                  table.lines td {
+                    padding: 7px 6px;
+                    border-bottom: 1px solid #e5e7eb;
+                    vertical-align: top;
+                  }
+
+                  table.lines th {
+                    background: #f3f4f6;
+                    color: #374151;
+                    font-size: 8pt;
+                    font-weight: 700;
+                    text-align: left;
+                    text-transform: uppercase;
+                  }
+
+                  .num {
+                    text-align: right;
+                    white-space: nowrap;
+                  }
+
+                  .row-description { font-weight: 700; }
+
+                  .row-note {
+                    margin-top: 2px;
+                    color: #6b7280;
+                    font-size: 8.5pt;
+                  }
+
+                  .tipo-pill {
+                    display: inline-block;
+                    margin-left: 6px;
+                    padding: 1px 6px;
+                    border-radius: 999px;
+                    font-size: 7.5pt;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    vertical-align: middle;
+                  }
+
+                  .tipo-pill.override   { background: #fef3c7; color: #92400e; }
+                  .tipo-pill.aggiunta   { background: #dcfce7; color: #166534; }
+                  .tipo-pill.esclusione { background: #fee2e2; color: #991b1b; }
+
+                  .componenti {
+                    margin: 6px 0 0 14px;
+                    padding-left: 10px;
+                    border-left: 2px solid #e5e7eb;
+                    color: #4b5563;
+                    font-size: 8.5pt;
+                  }
+
+                  .componenti-row { padding: 1px 0; }
+
+                  .conditions {
+                    margin-top: 24px;
+                    padding-top: 12px;
+                    border-top: 1px solid #d1d5db;
+                    color: #4b5563;
+                    font-size: 8.5pt;
+                  }
+                </style>
+              </head>
+              <body>
+                <main class="document">
+                  <header class="header">
+                    <div class="brand">
+                      <div class="brand-mark">ZE</div>
+                      <div class="brand-name">
+                        {{ offerta.emittente_fiscale.get("ragione_sociale") or offerta.emittente_fiscale.get("descrizione") or "Emittente fiscale" }}
+                      </div>
+                      <div class="brand-meta">
+                        {% if offerta.emittente_fiscale.codice %}
+                          Codice emittente: {{ offerta.emittente_fiscale.codice }}
+                        {% endif %}
+                      </div>
+                    </div>
+
+                    <div class="doc-title">
+                      <h1>OFFERTA COMMERCIALE</h1>
+                      <div class="doc-number">N. {{ offerta.codice or ("ID " ~ offerta.id) }}</div>
+                      {% if offerta.revisione_numero and offerta.revisione_numero > 1 %}
+                        <div class="doc-revision">Revisione {{ offerta.revisione_numero }}</div>
+                      {% endif %}
+                      <div class="status-pill">
+                        {{ offerta.stato.descrizione or offerta.stato.codice or "stato non indicato" }}
+                      </div>
+                    </div>
+                  </header>
+
+                  <section class="section two-columns">
+                    <div class="column">
+                      <div class="label">Cliente</div>
+                      <div class="box">
+                        <div class="box-strong">{{ cliente.denominazione or "Cliente non indicato" }}</div>
+                        {% if cliente.id_fiscale %}
+                          <div class="muted">{{ cliente.id_fiscale }}</div>
+                        {% endif %}
+                        {% if cliente.billing_account_codice %}
+                          <div class="muted">Billing account: {{ cliente.billing_account_codice }}</div>
+                        {% elif cliente.billing_account_id %}
+                          <div class="muted">Billing account ID: {{ cliente.billing_account_id }}</div>
+                        {% endif %}
+                        {% if indirizzi.consegna %}
+                          <div class="muted">Luogo di consegna:</div>
+                          {% if indirizzi.consegna.intestazione %}
+                            <div>{{ indirizzi.consegna.intestazione }}</div>
+                          {% endif %}
+                          {% if indirizzi.consegna.via %}
+                            <div>{{ indirizzi.consegna.via }}</div>
+                          {% elif indirizzi.consegna.display %}
+                            <div>{{ indirizzi.consegna.display }}</div>
+                          {% endif %}
+                          {% if indirizzi.consegna.cap or indirizzi.consegna.citta or indirizzi.consegna.prov %}
+                            <div>
+                              {{ [indirizzi.consegna.cap, indirizzi.consegna.citta] | select | join(" ") }}
+                              {%- if indirizzi.consegna.prov %} ({{ indirizzi.consegna.prov }}){% endif %}
+                            </div>
+                          {% endif %}
+                          {% if indirizzi.consegna.stato %}
+                            <div>{{ indirizzi.consegna.stato }}</div>
+                          {% endif %}
+                        {% endif %}
+                      </div>
+                    </div>
+
+                    <div class="column">
+                      <div class="label">Dati offerta</div>
+                      <div class="box">
+                        <table class="facts">
+                          <tbody>
+                            <tr>
+                              <th>Data emissione</th>
+                              <td>{{ offerta.data_emissione or "-" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Validita</th>
+                              <td>{{ offerta.validita_dal or "-" }} - {{ offerta.validita_al or "aperto" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Utility</th>
+                              <td>{{ offerta.utility_ref.descrizione or offerta.utility_ref.codice or "-" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Modalita pricing</th>
+                              <td>{{ offerta.pricing.modalita or "-" }}</td>
+                            </tr>
+                            {% if offerta.contratto.id %}
+                              <tr>
+                                <th>Contratto generato</th>
+                                <td>{{ offerta.contratto.numero or offerta.contratto.id }}</td>
+                              </tr>
+                            {% endif %}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="section two-columns">
+                    <div class="column">
+                      <div class="label">Listino e condizioni</div>
+                      <div class="box">
+                        <table class="facts">
+                          <tbody>
+                            <tr>
+                              <th>Listino</th>
+                              <td>{{ offerta.listino.codice or offerta.listino.descrizione or "-" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Versione</th>
+                              <td>{{ offerta.listino.versione_codice or "-" }}</td>
+                            </tr>
+                            <tr>
+                              <th>Variazione globale</th>
+                              <td>
+                                {% if offerta.pricing.tipo_variazione_globale %}
+                                  {{ offerta.pricing.tipo_variazione_globale }} {{ offerta.pricing.valore_variazione_globale or "" }}
+                                {% else %}
+                                  -
+                                {% endif %}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div class="column">
+                      <div class="label">Dati utility</div>
+                      <div class="box">
+                        {% if utility %}
+                          <table class="facts">
+                            <tbody>
+                              <tr>
+                                <th>Tipo utenza</th>
+                                <td>{{ utility.get("tipo_utenza_descrizione") or utility.get("tipo_utenza_codice") or "-" }}</td>
+                              </tr>
+                              <tr>
+                                <th>Classe utenza</th>
+                                <td>{{ utility.get("classe_utenza_descrizione") or utility.get("classe_utenza_codice") or "-" }}</td>
+                              </tr>
+                              <tr>
+                                <th>Parametro</th>
+                                <td>{{ utility.get("param_1_num") or utility.get("param_2_txt") or "-" }}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        {% else %}
+                          <span class="muted">Nessun dettaglio utility disponibile.</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="section">
+                    <div class="table-title">Condizioni economiche — deviazioni dal listino</div>
+                    <div class="table-subtitle">
+                      Le voci elencate rappresentano le sole eccezioni negoziate rispetto al
+                      listino di riferimento. Per le voci non elencate si applicano le
+                      condizioni standard del listino indicato.
+                    </div>
+                    <table class="lines">
+                      <thead>
+                        <tr>
+                          <th style="width: 6%;">#</th>
+                          <th>Articolo</th>
+                          <th class="num" style="width: 12%;">Q.ta</th>
+                          <th class="num" style="width: 12%;">UoM</th>
+                          <th class="num" style="width: 18%;">Prezzo</th>
+                          <th class="num" style="width: 14%;">Erogazione</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for r in eccezioni %}
+                          <tr>
+                            <td>{{ r.get("ordine") or loop.index }}</td>
+                            <td>
+                              <div class="row-description">
+                                {{ r.get("articolo_descrizione") or r.get("articolo_codice") or "Eccezione offerta" }}
+                                {% set tipo = r.get("tipo_eccezione") %}
+                                {% if tipo %}
+                                  <span class="tipo-pill {{ tipo|lower }}">{{ tipo }}</span>
+                                {% endif %}
+                              </div>
+                              {% if r.get("articolo_codice") and r.get("articolo_descrizione") %}
+                                <div class="row-note">Codice: {{ r.get("articolo_codice") }}</div>
+                              {% endif %}
+                              {% if r.get("periodicita") or r.get("tipo_erogazione") %}
+                                <div class="row-note">
+                                  {{ r.get("tipo_erogazione") or "" }}
+                                  {% if r.get("periodicita") %} - {{ r.get("periodicita") }}{% endif %}
+                                </div>
+                              {% endif %}
+
+                              {% if r.get("is_composito") and r.get("componenti") %}
+                                <div class="componenti">
+                                  <strong>Componenti BoM:</strong>
+                                  {% for c in r.get("componenti") %}
+                                    <div class="componenti-row">
+                                      - {{ c.get("componente_descrizione") or c.get("componente_codice") or "componente" }}
+                                      {% if c.get("quantita") %} x {{ c.get("quantita") }}{% endif %}
+                                      {% if c.get("uom_codice") %} {{ c.get("uom_codice") }}{% endif %}
+                                      {% if c.get("prezzo_unitario") %} @ {{ c.get("prezzo_unitario") }}{% endif %}
+                                    </div>
+                                  {% endfor %}
+                                </div>
+                              {% endif %}
+                            </td>
+                            <td class="num">{{ r.get("qta_operativa") or r.get("quantita") or "-" }}</td>
+                            <td class="num">{{ r.get("uom_codice") or "-" }}</td>
+                            <td class="num">
+                              {% if r.get("tipo_eccezione") == "ESCLUSIONE" %}
+                                <span class="muted">esclusa</span>
+                              {% else %}
+                                {{ r.get("prezzo_unitario") or "-" }}
+                              {% endif %}
+                            </td>
+                            <td class="num">{{ r.get("tipo_erogazione") or "-" }}</td>
+                          </tr>
+                        {% else %}
+                          <tr>
+                            <td colspan="6" class="muted">
+                              Nessuna eccezione negoziata: si applicano integralmente le
+                              condizioni standard del listino indicato.
+                            </td>
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </section>
+
+                  <section class="conditions">
+                    <strong>Note demo.</strong>
+                    Template HTML di prova per stampa offerta commerciale. Il contenuto usa
+                    solo il document context `OFFERTA_COMMERCIALE` e non esegue query o
+                    chiamate esterne. La validita' della presente offerta e' quella indicata
+                    nell'intestazione; salvo accettazione entro la data di scadenza, le
+                    condizioni qui riportate decadono.
+                  </section>
+                </main>
+              </body>
+              </html>
+              $tpl$,
+              $tpl$
+              @page {
+                size: A4;
+                margin: 18mm 16mm 18mm 16mm;
+
+
+                @bottom-right {
+                  content: "Pagina " counter(page) " di " counter(pages);
+                  color: #6b7280;
+                  font-size: 8pt;
+                }
+              }
+
+              * {
+                box-sizing: border-box;
+              }
+
+              body {
+                margin: 0;
+                color: #1f2937;
+                font-family: "DejaVu Sans", Arial, sans-serif;
+                font-size: 10pt;
+                line-height: 1.45;
+              }
+
+              table {
+                width: 100%;
+                border-collapse: collapse;
+              }
+
+              thead {
+                display: table-header-group;
+              }
+
+              tr {
+                page-break-inside: avoid;
+              }
+
+              th {
+                background: #f3f4f6;
+                color: #374151;
+                font-size: 8pt;
+                font-weight: 700;
+                text-align: left;
+                text-transform: uppercase;
+              }
+
+              th,
+              td {
+                padding: 7px 6px;
+                border-bottom: 1px solid #e5e7eb;
+                vertical-align: top;
+              }
+
+              .num {
+                text-align: right;
+                white-space: nowrap;
+              }
+
+              .muted {
+                color: #6b7280;
+              }
+              $tpl$,
+                      v_render, 'A4', 'PORTRAIT',
+                      15, 15, 15, 15,
+                      2, jsonb_build_object('brief', 'brief-db-modelli-documento-standard', 'origine', 'D-3'))
+                  RETURNING id INTO v_versione;
+
+                  -- Valida da sempre: la stampa sceglie la versione valida alla data
+                  -- operativa, e un documento con una data passata deve trovarla.
+                  PERFORM documenti.fn_pubblica_template_documento_versione(v_versione, DATE '2000-01-01', 2, NULL);
+              END
+              $seed$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le versioni non si cancellano (trgfn_template_documenti_versioni_block_delete):
+              -- per ritirare lo standard si spegne con un changeSet nuovo.
+              SELECT 1;

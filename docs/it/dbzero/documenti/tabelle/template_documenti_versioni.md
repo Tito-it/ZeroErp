@@ -37,6 +37,7 @@
 | user_update | text | NO | CURRENT_USER |
 | validita | daterange | NO |  |
 | versione_contesto | integer | NO |  |
+| derivata_da_versione_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -53,6 +54,7 @@
 | CHECK | chk_template_documenti_versioni_valido_dal_pubblicata |  |
 | CHECK | chk_template_documenti_versioni_versione_contesto_pos |  |
 | CHECK | chk_template_documenti_versioni_versione_pos |  |
+| FOREIGN KEY | fk_template_documenti_versioni_derivata_da | derivata_da_versione_id |
 | FOREIGN KEY | fk_template_documenti_versioni_formati_pagina | page_format |
 | FOREIGN KEY | fk_template_documenti_versioni_formati_template | formato_template |
 | FOREIGN KEY | fk_template_documenti_versioni_orientamenti_pagina | page_orientation |
@@ -73,15 +75,23 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_template_standard_guard_sola_lettura()` |
+| trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION documenti.trgfn_template_standard_guard_sola_lettura()` |
+| trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_template_standard_guard_sola_lettura()` |
 | trg_template_documenti_versioni_a10_block_delete_protected_dlt | BEFORE | DELETE | `EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_block_delete()` |
 | trg_template_documenti_versioni_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_template_documenti_versioni_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_template_documenti_versioni_a10_documenti_generati_b_8557e2 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'documenti_generati', 'template_versione_id', 'id', 'attivo')` |
+| trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_guard_derivata_da()` |
+| trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_guard_derivata_da()` |
 | trg_template_documenti_versioni_a10_protect_pubblicata_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata()` |
-| trg_template_documenti_versioni_a10_render_engine_docume_fac063 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'render_engine_documento', 'attivo', 'render_engine_id', 'id')` |
 | trg_template_documenti_versioni_a10_render_engine_docume_fac063 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'render_engine_documento', 'attivo', 'render_engine_id', 'id')` |
+| trg_template_documenti_versioni_a10_render_engine_docume_fac063 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'render_engine_documento', 'attivo', 'render_engine_id', 'id')` |
 | trg_template_documenti_versioni_a10_template_documenti_r_6d5768 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
 | trg_template_documenti_versioni_a10_template_documenti_r_6d5768 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
+| trg_template_documenti_versioni_a10_template_documenti_v_6e0d39 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'template_documenti_versioni', 'derivata_da_versione_id', 'id', 'attivo')` |
+| trg_template_documenti_versioni_a10_template_documenti_v_718a3d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti_versioni', 'attivo', 'derivata_da_versione_id', 'id')` |
+| trg_template_documenti_versioni_a10_template_documenti_v_718a3d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti_versioni', 'attivo', 'derivata_da_versione_id', 'id')` |
 | trg_template_documenti_versioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_template_documenti_versioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_template_documenti_versioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

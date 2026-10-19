@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MODELLO STANDARD: documenti.template_documenti.standard
+#   Brief: brief-db-modelli-documento-standard, §4.1 Q-1 (D-1 ripiego, D-2 solo i changeSet)
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Un emittente nasce senza modelli, e senza modelli non emette. Lo standard e'
+#   il modello DI SISTEMA che fa da ripiego per chi non ne ha uno suo: una riga
+#   senza emittente, scritta dal seed e fatta evolvere dai changeSet.
+#
+# -- LA FORMA -------------------------------------------------------------------
+#   * `standard boolean NOT NULL DEFAULT false` e l'emittente nullable, legati da
+#     `chk_template_documenti_standard_senza_emittente`: il NULL e' ammesso SOLO
+#     sullo standard, e lo standard non ha mai un emittente. ⛔ Non il solo NULL:
+#     un NULL che vuol dire «standard» e' un significato nascosto in un valore
+#     assente, e il trigger del default dell'emittente (che riempie i NULL dalla
+#     sessione) non lo saprebbe leggere. Il flag lo legge il suo WHEN (-06).
+#   * Gli unici si rifanno NULLS NOT DISTINCT, con lo STESSO nome (il backend
+#     traduce i 23505 per nome di vincolo): con i NULL distinti due standard
+#     predefiniti per la stessa coppia convivrebbero in silenzio.
+#     - due UNIQUE di tabella: DROP CONSTRAINT + ADD CONSTRAINT;
+#     - l'indice parziale del predefinito: in PostgreSQL l'unicita' parziale
+#       esiste solo come indice, quindi DROP INDEX + CREATE UNIQUE INDEX con lo
+#       stesso predicato di prima.
+#   ⚠️ Righe esistenti: tutte con emittente, quindi standard = false soddisfa
+#     il CHECK; le unicita' non cambiano per righe con emittente valorizzato.
+#
+# Dipendenze: nessuna nuova. Seguono: -05 (derivazione), -06 (trigger default),
+#   -07 (guard sola lettura). Verifica:
+#   db/pgtap/documenti/test-documenti-template-standard-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261020-04-alter-template-documenti-standard-mctit.yaml
+
+  - changeSet:
+      id: 20261020-04-alter-template-documenti-standard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.template_documenti: colonna standard (boolean NOT NULL DEFAULT false), emittente_fiscale_id
+        nullable solo sullo standard (chk_template_documenti_standard_senza_emittente), unici su codice,
+        codice_interno e predefinito attivo rifatti NULLS NOT DISTINCT con lo stesso nome.
+        Brief: brief-db-modelli-documento-standard §4.1 Q-1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: documenti
+                tableName: template_documenti
+            - not:
+                - columnExists:
+                    schemaName: documenti
+                    tableName: template_documenti
+                    columnName: standard
+            - sqlCheck:
+                expectedResult: 3
+                sql: |
+                  SELECT count(*)
+                    FROM pg_class c
+                    JOIN pg_index i ON i.indexrelid = c.oid
+                   WHERE i.indrelid = 'documenti.template_documenti'::regclass
+                     AND c.relname IN ('uq_template_documenti_emittente_sorgente_codice',
+                                       'uq_template_documenti_emittente_sorgente_codice_interno',
+                                       'uq_template_documenti_default_attivo');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.template_documenti
+                  ADD COLUMN standard boolean NOT NULL DEFAULT false;
+
+              ALTER TABLE documenti.template_documenti
+                  ALTER COLUMN emittente_fiscale_id DROP NOT NULL;
+
+              ALTER TABLE documenti.template_documenti
+                  ADD CONSTRAINT chk_template_documenti_standard_senza_emittente
+                  CHECK (standard = (emittente_fiscale_id IS NULL));
+
+              ALTER TABLE documenti.template_documenti
+                  DROP CONSTRAINT uq_template_documenti_emittente_sorgente_codice;
+              ALTER TABLE documenti.template_documenti
+                  ADD CONSTRAINT uq_template_documenti_emittente_sorgente_codice
+                  UNIQUE NULLS NOT DISTINCT (emittente_fiscale_id, sorgente_tipo_id, codice);
+
+              ALTER TABLE documenti.template_documenti
+                  DROP CONSTRAINT uq_template_documenti_emittente_sorgente_codice_interno;
+              ALTER TABLE documenti.template_documenti
+                  ADD CONSTRAINT uq_template_documenti_emittente_sorgente_codice_interno
+                  UNIQUE NULLS NOT DISTINCT (emittente_fiscale_id, sorgente_tipo_id, codice_interno);
+
+              DROP INDEX documenti.uq_template_documenti_default_attivo;
+              CREATE UNIQUE INDEX uq_template_documenti_default_attivo
+                  ON documenti.template_documenti (tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id)
+                  NULLS NOT DISTINCT
+                  WHERE (is_default IS TRUE) AND (attivo IS TRUE);
+
+              COMMENT ON COLUMN documenti.template_documenti.standard IS
+                  'Modello standard, di sistema: vale per ogni emittente che non ha modelli suoi attivi per lo stesso tipo di documento e la stessa sorgente (risoluzione: documenti.fn_risolvi_template_applicabile). Non ha emittente (chk_template_documenti_standard_senza_emittente). Lo scrivono solo il seed e i changeSet: dall''applicazione si legge e basta (guard trg_template_documenti_a05_guard_standard_ins_upd_dlt). Non cambia dopo la nascita (lock di colonna). Brief: brief-db-modelli-documento-standard.';
+
+              COMMENT ON COLUMN documenti.template_documenti.emittente_fiscale_id IS
+                  'Emittente a cui il modello appartiene. NULL solo sul modello standard (colonna standard), che vale per tutti: il CHECK chk_template_documenti_standard_senza_emittente lega le due colonne. Su una riga d''operatore senza emittente lo riempie la sessione (trg_template_documenti_a10_default_emittente_ins).';
+
+              COMMENT ON CONSTRAINT chk_template_documenti_standard_senza_emittente
+                  ON documenti.template_documenti IS
+                  'Il modello standard non ha emittente, e solo lo standard puo'' non averlo. Brief: brief-db-modelli-documento-standard §4.1 Q-1.';
+
+              COMMENT ON CONSTRAINT uq_template_documenti_emittente_sorgente_codice
+                  ON documenti.template_documenti IS
+                  'Codice unico per emittente e sorgente. NULLS NOT DISTINCT: fra i modelli standard (emittente NULL) il codice e'' unico per sorgente.';
+
+              COMMENT ON CONSTRAINT uq_template_documenti_emittente_sorgente_codice_interno
+                  ON documenti.template_documenti IS
+                  'Codice interno unico per emittente e sorgente. NULLS NOT DISTINCT: fra i modelli standard (emittente NULL) il codice interno e'' unico per sorgente, ed e'' la chiave con cui i changeSet di evoluzione trovano lo standard. Uno standard e la copia di un emittente possono avere lo stesso codice interno.';
+
+              COMMENT ON INDEX documenti.uq_template_documenti_default_attivo IS
+                  'Un solo predefinito attivo per tipo di documento, sorgente ed emittente. NULLS NOT DISTINCT: anche un solo standard predefinito attivo per tipo e sorgente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX documenti.uq_template_documenti_default_attivo;
+              CREATE UNIQUE INDEX uq_template_documenti_default_attivo
+                  ON documenti.template_documenti (tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id)
+                  WHERE (is_default IS TRUE) AND (attivo IS TRUE);
+              ALTER TABLE documenti.template_documenti
+                  DROP CONSTRAINT uq_template_documenti_emittente_sorgente_codice_interno;
+              ALTER TABLE documenti.template_documenti
+                  ADD CONSTRAINT uq_template_documenti_emittente_sorgente_codice_interno
+                  UNIQUE (emittente_fiscale_id, sorgente_tipo_id, codice_interno);
+              ALTER TABLE documenti.template_documenti
+                  DROP CONSTRAINT uq_template_documenti_emittente_sorgente_codice;
+              ALTER TABLE documenti.template_documenti
+                  ADD CONSTRAINT uq_template_documenti_emittente_sorgente_codice
+                  UNIQUE (emittente_fiscale_id, sorgente_tipo_id, codice);
+              ALTER TABLE documenti.template_documenti
+                  DROP CONSTRAINT IF EXISTS chk_template_documenti_standard_senza_emittente;
+              ALTER TABLE documenti.template_documenti
+                  ALTER COLUMN emittente_fiscale_id SET NOT NULL;
+              ALTER TABLE documenti.template_documenti
+                  DROP COLUMN IF EXISTS standard;

@@ -23,7 +23,13 @@ AS $function$
 --   3. template_documento_id.sorgente_tipo_id ==
 --      sorgente_tipo_id
 --   4. template_documento_id.emittente_fiscale_id ==
---      emittente_fiscale_id
+--      emittente_fiscale_id, OPPURE il modello e' standard
+--      (template_documenti.standard: vale per ogni emittente).
+--
+-- ⛔ IS DISTINCT FROM e non !=: l'emittente del modello e' NULL
+--   sullo standard, e un confronto nudo con un NULL passa in
+--   silenzio. Lo standard si esclude per nome, non per effetto
+--   del NULL.
 --
 -- Se una di queste fallisce il record nasce inconsistente,
 -- rendendo inaffidabile l'audit tramite context_json snapshot.
@@ -35,23 +41,20 @@ DECLARE
   v_tv_tipo_id documenti.template_documenti.tipo_documento_output_id%TYPE;
   v_tv_sorgente_id documenti.template_documenti.sorgente_tipo_id%TYPE;
   v_tv_emittente_id documenti.template_documenti.emittente_fiscale_id%TYPE;
+  v_tv_standard documenti.template_documenti.standard%TYPE;
 BEGIN
-  SELECT
-    template_documento_id,
-    (SELECT tipo_documento_output_id
-       FROM documenti.template_documenti
-      WHERE id = template_documento_id) AS tipo_id,
-    (SELECT sorgente_tipo_id
-       FROM documenti.template_documenti
-      WHERE id = template_documento_id) AS sorgente_id,
-    (SELECT emittente_fiscale_id
-       FROM documenti.template_documenti
-      WHERE id = template_documento_id) AS emittente_id
-    INTO v_tv_template_id, v_tv_tipo_id, v_tv_sorgente_id, v_tv_emittente_id
-    FROM documenti.template_documenti_versioni
-   WHERE id = NEW.template_versione_id;
+  SELECT v.template_documento_id,
+         t.tipo_documento_output_id,
+         t.sorgente_tipo_id,
+         t.emittente_fiscale_id,
+         t.standard
+    INTO v_tv_template_id, v_tv_tipo_id, v_tv_sorgente_id,
+         v_tv_emittente_id, v_tv_standard
+    FROM documenti.template_documenti_versioni v
+    LEFT JOIN documenti.template_documenti t ON t.id = v.template_documento_id
+   WHERE v.id = NEW.template_versione_id;
 
-  IF v_tv_template_id != NEW.template_documento_id THEN
+  IF v_tv_template_id IS DISTINCT FROM NEW.template_documento_id THEN
     PERFORM script.fn_log_and_raise_error(
       'documenti', 'trgfn_documenti_generati_check_coerenza',
       'E_DOCUMENTI_GENERATO_COERENZA',
@@ -65,7 +68,7 @@ BEGIN
     );
   END IF;
 
-  IF v_tv_tipo_id != NEW.tipo_documento_output_id THEN
+  IF v_tv_tipo_id IS DISTINCT FROM NEW.tipo_documento_output_id THEN
     PERFORM script.fn_log_and_raise_error(
       'documenti', 'trgfn_documenti_generati_check_coerenza',
       'E_DOCUMENTI_GENERATO_COERENZA',
@@ -79,7 +82,7 @@ BEGIN
     );
   END IF;
 
-  IF v_tv_sorgente_id != NEW.sorgente_tipo_id THEN
+  IF v_tv_sorgente_id IS DISTINCT FROM NEW.sorgente_tipo_id THEN
     PERFORM script.fn_log_and_raise_error(
       'documenti', 'trgfn_documenti_generati_check_coerenza',
       'E_DOCUMENTI_GENERATO_COERENZA',
@@ -93,7 +96,8 @@ BEGIN
     );
   END IF;
 
-  IF v_tv_emittente_id != NEW.emittente_fiscale_id THEN
+  IF v_tv_standard IS NOT TRUE
+     AND v_tv_emittente_id IS DISTINCT FROM NEW.emittente_fiscale_id THEN
     PERFORM script.fn_log_and_raise_error(
       'documenti', 'trgfn_documenti_generati_check_coerenza',
       'E_DOCUMENTI_GENERATO_COERENZA',
@@ -112,7 +116,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_check_coerenza()
-IS 'Guard A6: valida coerenza referenziale tra template_versione_id, template_documento_id, tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id.';
+IS 'Guard A6: valida coerenza referenziale tra template_versione_id, template_documento_id, tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id. Regola 4: l''emittente del modello e'' quello del documento, oppure il modello e'' standard (rev 2026-10-20, 20261020-08, brief-db-modelli-documento-standard §4.1 Q-3). Confronti in IS DISTINCT FROM: l''emittente del modello e'' NULL sullo standard, e un != lascerebbe passare tutto.';
 ```
 
 ---

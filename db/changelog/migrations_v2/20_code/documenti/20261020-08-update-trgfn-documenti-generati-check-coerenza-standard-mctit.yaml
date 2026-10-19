@@ -1,0 +1,192 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# COERENZA DEL DOCUMENTO GENERATO: «stesso emittente, OPPURE modello standard»
+#   documenti.trgfn_documenti_generati_check_coerenza (regola 4)
+#   Brief: brief-db-modelli-documento-standard, §4.1 Q-3
+#
+# -- PERCHE' ---------------------------------------------------------------------
+#   Un documento dell'emittente A reso col modello standard ha l'emittente A e
+#   un modello senza emittente: la regola 4 di oggi («l'emittente del modello e'
+#   quello del documento») lo rifiuterebbe. Diventa: il modello e' dell'emittente
+#   del documento, OPPURE e' lo standard. Il modello di un ALTRO emittente resta
+#   rifiutato.
+#
+# ⛔ E IL GUARD DI OGGI SI SAREBBE APERTO DA SOLO. Il confronto era
+#   `v_tv_emittente_id != NEW.emittente_fiscale_id`: con l'emittente del modello
+#   a NULL vale NULL, l'IF non scatta e passa QUALUNQUE documento. Rendere la
+#   colonna nullable (-04) senza riscrivere la regola l'avrebbe spenta in
+#   silenzio, e il pgTAP «modello di un altro emittente rifiutato» sarebbe
+#   rimasto verde, perche' quel caso ha l'emittente valorizzato. Quindi:
+#   * la regola 4 esclude lo standard ESPLICITAMENTE (`IS NOT TRUE`), non per
+#     effetto del NULL;
+#   * tutti e quattro i confronti passano a IS DISTINCT FROM: se la versione non
+#     si trovasse (la FK lo impedisce, ma un guard non ne dipende) le variabili
+#     sarebbero NULL, e oggi la regola 1 passerebbe invece di fermarsi.
+#   Le quattro letture del modello diventano un JOIN solo: stesso risultato.
+#
+# Corpo di partenza: doc auto-gen (20260805-02); %TYPE in DECLARE invariati;
+#   SECURITY INVOKER dichiarato. Verifica:
+#   db/pgtap/documenti/test-documenti-template-standard-v1.sql,
+#   db/pgtap/documenti/test-documenti-generati.sql (regressione)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261020-08-update-trgfn-documenti-generati-check-coerenza-standard-mctit.yaml
+
+  - changeSet:
+      id: 20261020-08-update-trgfn-documenti-generati-check-coerenza-standard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.trgfn_documenti_generati_check_coerenza: regola 4 «emittente del modello = emittente del
+        documento, oppure modello standard», e i quattro confronti in IS DISTINCT FROM (con l'emittente del
+        modello nullable il != avrebbe spento la regola in silenzio).
+        Brief: brief-db-modelli-documento-standard §4.1 Q-3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: documenti
+                tableName: template_documenti
+                columnName: standard
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'documenti'
+                     AND p.proname = 'trgfn_documenti_generati_check_coerenza';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo:
+              --   Valida la coerenza referenziale del documento generato.
+              --
+              -- Regole:
+              --   1. template_versione_id.template_documento_id ==
+              --      template_documento_id
+              --   2. template_documento_id.tipo_documento_output_id ==
+              --      tipo_documento_output_id
+              --   3. template_documento_id.sorgente_tipo_id ==
+              --      sorgente_tipo_id
+              --   4. template_documento_id.emittente_fiscale_id ==
+              --      emittente_fiscale_id, OPPURE il modello e' standard
+              --      (template_documenti.standard: vale per ogni emittente).
+              --
+              -- ⛔ IS DISTINCT FROM e non !=: l'emittente del modello e' NULL
+              --   sullo standard, e un confronto nudo con un NULL passa in
+              --   silenzio. Lo standard si esclude per nome, non per effetto
+              --   del NULL.
+              --
+              -- Se una di queste fallisce il record nasce inconsistente,
+              -- rendendo inaffidabile l'audit tramite context_json snapshot.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_GENERATO_COERENZA
+              DECLARE
+                v_tv_template_id documenti.template_documenti_versioni.template_documento_id%TYPE;
+                v_tv_tipo_id documenti.template_documenti.tipo_documento_output_id%TYPE;
+                v_tv_sorgente_id documenti.template_documenti.sorgente_tipo_id%TYPE;
+                v_tv_emittente_id documenti.template_documenti.emittente_fiscale_id%TYPE;
+                v_tv_standard documenti.template_documenti.standard%TYPE;
+              BEGIN
+                SELECT v.template_documento_id,
+                       t.tipo_documento_output_id,
+                       t.sorgente_tipo_id,
+                       t.emittente_fiscale_id,
+                       t.standard
+                  INTO v_tv_template_id, v_tv_tipo_id, v_tv_sorgente_id,
+                       v_tv_emittente_id, v_tv_standard
+                  FROM documenti.template_documenti_versioni v
+                  LEFT JOIN documenti.template_documenti t ON t.id = v.template_documento_id
+                 WHERE v.id = NEW.template_versione_id;
+
+                IF v_tv_template_id IS DISTINCT FROM NEW.template_documento_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_versione_id', NEW.template_versione_id,
+                      'template_documento_id_atteso', v_tv_template_id,
+                      'template_documento_id_fornito', NEW.template_documento_id
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                IF v_tv_tipo_id IS DISTINCT FROM NEW.tipo_documento_output_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_documento_id', NEW.template_documento_id,
+                      'tipo_documento_output_id_atteso', v_tv_tipo_id,
+                      'tipo_documento_output_id_fornito', NEW.tipo_documento_output_id
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                IF v_tv_sorgente_id IS DISTINCT FROM NEW.sorgente_tipo_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_documento_id', NEW.template_documento_id,
+                      'sorgente_tipo_id_atteso', v_tv_sorgente_id,
+                      'sorgente_tipo_id_fornito', NEW.sorgente_tipo_id
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                IF v_tv_standard IS NOT TRUE
+                   AND v_tv_emittente_id IS DISTINCT FROM NEW.emittente_fiscale_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_documento_id', NEW.template_documento_id,
+                      'emittente_fiscale_id_atteso', v_tv_emittente_id,
+                      'emittente_fiscale_id_fornito', NEW.emittente_fiscale_id
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_check_coerenza() IS
+                  'Guard A6: valida coerenza referenziale tra template_versione_id, template_documento_id, tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id. Regola 4: l''emittente del modello e'' quello del documento, oppure il modello e'' standard (rev 2026-10-20, 20261020-08, brief-db-modelli-documento-standard §4.1 Q-3). Confronti in IS DISTINCT FROM: l''emittente del modello e'' NULL sullo standard, e un != lascerebbe passare tutto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' in 20260805-02: si ripristina da li'
+              -- con un changeSet nuovo, non da qui (con lo standard in tabella
+              -- la regola 4 di prima rifiuterebbe i documenti resi con lo
+              -- standard).
+              SELECT 1;
