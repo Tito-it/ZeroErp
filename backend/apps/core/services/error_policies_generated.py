@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1108, di cui 120 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1111, di cui 120 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -888,6 +888,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_INVALID_SNAPSHOT": "TECNICO",
     "E_INVITO_OPERATORE": "DATO_ERRATO",
     "E_INVITO_PORTALE": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_guard_istanza_del_ruolo (indirizzi, soggetti_ruoli_conti_bancari) e anagrafiche.trgfn_contatti_guard_contesto_soggetto (2026-10-19): l'istanza della riga (istanza_utility_id) e' di un soggetto diverso da quello del ruolo, o del contatto. Il confronto dal BB anagrafiche.fn_istanza_di_altro_soggetto. Contesto: campo istanza_utility_id, tabella, soggetto_id, soggetto_id_istanza; VARIADIC il codice dell'istanza. R-BE-15, D-17a e D-17c di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.
+    "E_ISTANZA_ALTRO_SOGGETTO": "DATO_ERRATO",
     # Guard anagrafiche.fn_guard_istanza_ba_emittente: due billing account della stessa istanza risolvono a emittenti fiscali diversi. Regola di Tid del 2026-10-08 (D-4): un'istanza ha billing account di un solo emittente, cosi' la regola di scope «un'istanza e' dell'emittente del suo BA» ha una risposta sola. L'emittente confrontato e' quello RISOLTO, con la stessa check del guard dell'albero (anagrafiche.fn_check_ba_coppia_emittente_omogenea). CONFLITTO_STATO e non DATO_ERRATO come il gemello sull'albero (E_ALBERO_EMITTENTE_MISTO): li' c'e' un campo da correggere (parent_account_id), qui no - e' l'operazione (creare il BA sotto un'altra azienda, spostarne il collegamento) a non essere ammessa. Nessun campo nel contesto. Il VARIADIC porta i codici dei due billing account e quello dell'istanza. Brief: brief-db-istanza-nasce-col-ba (R-7).
     "E_ISTANZA_EMITTENTI_DIVERSI": "CONFLITTO_STATO",
     # Guard anagrafiche.fn_guard_istanza_ha_ba, chiamato al COMMIT da due constraint trigger: alla nascita dell'istanza (trg_istanze_utilities_z90_require_utility_dichiarata_ins) e alla cancellazione di un billing account (trg_billing_account_z90_require_istanza_ha_ba_dlt). Regola di Tid del 2026-10-08: istanza e billing account nascono insieme, e un'istanza non resta mai senza billing account. CONFLITTO_STATO come il codice che sostituisce (E_ISTANZA_UTILITY_SENZA_UTILITY): non c'e' un campo da correggere, e' l'operazione a lasciare il dato fuori regola. Nessun campo nel contesto. Il VARIADIC porta il codice dell'istanza, che l'operatore riconosce. Brief: brief-db-istanza-nasce-col-ba (R-1).
@@ -1476,6 +1478,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "ERRORE_PARAMETRI": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-05
     "ERRORE_PARAMETRI_TABELLA": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_contatti_guard_contesto_soggetto (2026-10-19): il ruolo del contatto (soggetto_ruolo_id) e' di un soggetto diverso da quello del contatto (soggetto_id). Il confronto dal BB anagrafiche.fn_ruolo_di_altro_soggetto. Contesto: campo soggetto_ruolo_id, tabella, soggetto_id, soggetto_id_ruolo; VARIADIC l'id del ruolo. R-BE-15, D-17a e D-17c di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.
+    "E_RUOLO_ALTRO_SOGGETTO": "DATO_ERRATO",
     # anagrafiche.trgfn_identita_digitali_guard_coerenza, ramo ELSE: · qualcuno ha esteso l'enum dei ruoli applicativi senza scrivere la · regola, e il guard «non apre per omissione». Non e' un errore di · chi compila: manca una regola nel sistema, e il 500 lo dice a chi · legge i log invece di nasconderlo fra i 400. · ⚠️ Il 500 NON nasconde il messaggio del DB: `is_technical_code` e' · una lista chiusa di tre codici, non dipende dallo status.
     "E_RUOLO_APPLICATIVO_NON_GESTITO": "TECNICO",
     # anagrafiche.trgfn_identita_digitali_guard_coerenza, ramo 0: qualcuno scrive il ruolo applicativo DISABILITATO su anagrafiche.identita_digitali. Dal 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1) non e' piu' un tipo di veste: una veste si spegne con attivo = false e tiene il tipo. La tabella viva lo rifiuta anche col CHECK chk_identita_digitali_ruolo_non_ritirato; il guard parla prima del CHECK con questo codice, che dice il rimedio. TECNICO: lo scrive solo un chiamante rimasto indietro (lo spegnimento dell'operatore nel backend fino al giro BE di R-DB-1), non chi compila un modulo. Gemello di E_RUOLO_APPLICATIVO_NON_GESTITO. Il valore resta nell'enum perche' lo porta storico.identita_digitali.
@@ -1546,6 +1550,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SOGGETTO_NULL": "DATO_ERRATO",
     # Un verbo ha ricevuto un soggetto_ruolo_id che non esiste (o che l'operatore non vede). Primo uso: anagrafiche.fn_crea_indirizzi_ruolo, che legge dal ruolo il tipo per la matrice degli indirizzi obbligatori. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 2).
     "E_SOGGETTO_RUOLO_NON_TROVATO": "NON_TROVATO",
+    # Lock di colonna (dbops.automation_lock_columns) su anagrafiche.soggetti_ruoli.soggetto_id - D-17d di Tid (2026-10-19, brief-db-processi-accensione-per-ambiente §6.17.1): un ruolo e' il ruolo di un soggetto (uq_soggetto_ruolo) e non passa a un altro; quello creato sul soggetto sbagliato si ritira e si ricrea. Chiude la porta dal lato del ruolo della regola «l'istanza e' del soggetto del ruolo» (indirizzi, contatti, conti del ruolo, billing account), come E_ISTANZA_SOGGETTO_IMMUTABILE la chiude dal lato dell'istanza. CONFLITTO_STATO come gli altri lock; VARIADIC il nome della colonna, come nella famiglia.
+    "E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE": "CONFLITTO_STATO",
     # RITIRATO il 2026-08-26, lo stesso giorno in cui e' nato (changeSet 20260826-43 -> 20260826-50). Il nome nominava il CLIENTE, e la domanda non e' quella: l'emittente si legge dal documento, che ce l'ha sempre (emittente_fiscale_id NOT NULL su tutte e sei le tabelle sorgente), non dal suo billing account, che su quattro di quelle sei e' nullable. Sostituito da E_SORG_EMITTENTE_NON_RISOLTO. ⛔ NON si cancella, e il tentativo di farlo e' fallito dicendo la cosa giusta: error_log ha una FK verso messaggi_errore e quel codice ERA GIA' STATO SOLLEVATO — cancellarlo vorrebbe dire riscrivere il giornale per far tornare i conti a una rinomina. E' il pattern obsoleto_dal, lo stesso di qualunque voce di catalogo gia' referenziata.
     # ⚠️ RITIRATO il 2026-08-26
     "E_SORG_BA_NON_RISOLTO": "TECNICO",

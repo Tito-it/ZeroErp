@@ -22,6 +22,9 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 3c) IndirizziSoggettoPluraleDbTests.test_gli_obbligatori_copiati_dal_primo — `fn_crea_indirizzi_soggetto`
    dalla creazione del soggetto; il guard differito passa
 3d) IndirizziSoggettoPluraleDbTests.test_senza_auto_clone_solo_quello_dato — `auto_clone: false`
+3e) IstanzaDelloStessoSoggettoDbTests.test_creare_con_l_istanza_di_un_altro_soggetto — 400
+   `E_ISTANZA_ALTRO_SOGGETTO` sul campo `istanza_utility_id`; l'istanza dello stesso soggetto passa (R-DB-17a)
+3f) IstanzaDelloStessoSoggettoDbTests.test_spostare_sull_istanza_di_un_altro_soggetto — la modifica, lo stesso rifiuto
 4) VestePortaleDbTests.test_veste_portale_dalla_madre — spenta come la crea l'invito; una veste
    OPERATORE non nasce da qui
 5) PreferenzeDbTests.test_emittente_attivo_dalla_madre — la scelta e il suo cambio, una riga
@@ -38,6 +41,7 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 """
 from __future__ import annotations
 
+import json
 import unittest
 import uuid
 from decimal import Decimal
@@ -323,6 +327,80 @@ class IndirizziSoggettoPluraleDbTests(_MondoCostruito):
         primo = sorted(obbligatori)[0]
         soggetto_id = self._crea(tipo_id, primo, auto_clone=False)
         self.assertEqual({primo}, self._presenti(soggetto_id))
+
+
+class IstanzaDelloStessoSoggettoDbTests(_MondoCostruito):
+    """L'istanza di un indirizzo di ruolo e' del soggetto del ruolo (R-BE-15,
+    guard del DB dal 2026-10-19): il rifiuto arriva dal percorso del backend
+    col codice e il campo, e il middleware ne fa un 400 sul campo (R-DB-17a)."""
+
+    # ⚠️ Il mondo come nei test di `pagamenti`: azienda e operatore, il
+    #    contesto di QUELL'operatore (il BA vuole un emittente su cui lavorare,
+    #    e la sua RLS lo legge dal contesto), poi i due clienti.
+    def setUp(self) -> None:
+        apri_transazione_annullata(self)
+        with connection.cursor() as cur:
+            cur.execute(
+                "CREATE TEMP TABLE _mondo_istanza AS"
+                " SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m"
+            )
+            cur.execute(
+                "SELECT script.fn_pgtap_set_contesto_operatore("
+                "(SELECT auth_user_id FROM _mondo_istanza))"
+            )
+            cur.execute(
+                "SELECT soggetto_ruolo_id, istanza_utility_id"
+                "  FROM dbops.fn_pgtap_crea_cliente_ba('e2e istanza stesso soggetto A')"
+            )
+            self.sr_a, self.ist_a = cur.fetchone()
+            cur.execute(
+                "SELECT istanza_utility_id FROM dbops.fn_pgtap_crea_cliente_ba('e2e istanza stesso soggetto B')"
+            )
+            self.ist_b = cur.fetchone()[0]
+            # Un indirizzo libero italiano nella forma che il guard pretende.
+            cur.execute(
+                "SELECT to_jsonb(fm) FROM dbops.fn_pgtap_indirizzo_libero_forma("
+                "script.fn_stato_id_da_iso2('IT')) fm"
+            )
+            forma = {k: v for k, v in json.loads(cur.fetchone()[0]).items() if v is not None}
+            cur.execute("SELECT script.fn_stato_id_da_iso2('IT')")
+            self.indirizzo = {
+                "tipo_indirizzo_codice": "POSTA", "indirizzo_libero": "Via e2e istanza 1",
+                "stato_id": cur.fetchone()[0], **forma,
+            }
+
+    # Scopo: il rifiuto come lo vede il client: codice, status e campo.
+    def _rifiuto_sul_campo(self, azione) -> None:
+        from apps.core.services.error_translator import ErrorTranslator
+
+        with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+            azione()
+        errore = ErrorTranslator.to_api_error(ctx.exception)
+        self.assertEqual(
+            ("E_ISTANZA_ALTRO_SOGGETTO", 400, ["istanza_utility_id"]),
+            (errore.code, ErrorTranslator.get_http_status(errore), list(errore.fields or [])),
+        )
+
+    def test_creare_con_l_istanza_di_un_altro_soggetto(self):
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        self._rifiuto_sul_campo(lambda: SoggettiService().create_indirizzo_ruolo(
+            self.sr_a, {**self.indirizzo, "istanza_utility_id": self.ist_b},
+        ))
+        riga = SoggettiService().create_indirizzo_ruolo(
+            self.sr_a, {**self.indirizzo, "istanza_utility_id": self.ist_a},
+        )
+        self.assertEqual(self.ist_a, riga["istanza_utility_id"])
+
+    def test_spostare_sull_istanza_di_un_altro_soggetto(self):
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        riga = SoggettiService().create_indirizzo_ruolo(
+            self.sr_a, {**self.indirizzo, "istanza_utility_id": self.ist_a},
+        )
+        self._rifiuto_sul_campo(lambda: SoggettiService().update_indirizzo_ruolo(
+            self.sr_a, riga["id"], {"istanza_utility_id": self.ist_b},
+        ))
 
 
 class VestePortaleDbTests(unittest.TestCase):

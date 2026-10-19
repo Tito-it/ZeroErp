@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: Tid, col commit della R-BE-15 (riga 9-ter-bis-17, §6.17.2: applicata il 2026-10-19, pgTAP verdi su dbdev); poi il BE con R-DB-17a. Poi chi chiude, con l'archiviazione (riga 11).** ✅ Il lavoro BE di R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b è fatto e committato (`615281b6c`, 2026-10-19). ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
+**Riparte: Tid, col commit di R-DB-17a (fatta dal BE il 2026-10-19, §6.17.3, test verdi); poi chi chiude, con l'archiviazione (riga 11).** ✅ R-BE-15 lato DB committata e mergiata (`e515c73af`, PR #1896). ✅ Il lavoro BE di R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b è fatto e committato (`615281b6c`, 2026-10-19). ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
 fatta (2026-10-18, §6.10): il backend crea emittente, fornitore, cliente, veste portale, magazzino, profilo,
 legame SUPER_ADMIN, override, emittente attivo e accende la veste dalle madri del DB; restano due scritture
 che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione è chiusa.
@@ -30,7 +30,7 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 9-ter-bis | team DB | ✅ (2026-10-19) R-BE-6, R-BE-7, R-BE-12: decisioni D-16a … D-16c di Tid col via allo sviluppo; `20261019-33` … `-39` scritti e provati sullo scratch, due pgTAP nuovi. R-BE-11 ha la sua riga (9-ter-bis-11) | §6.10, §6.16 | — |
 | 9-ter-bis-16 | Tid | ✅ apply di `20261019-33` … `-39` su dbdev (2026-10-19 00:26), pgTAP verdi compreso `test-fn-provisiona-dati-di-sviluppo-v1` corretto; committati | §6.16 | — |
 | 9-ter-bis-16-be | sessione BE | ✅ (2026-10-19) R-DB-16a (i legami di profilo dalle madri) e R-DB-16b (gli indirizzi dalle madri, ritirati la INSERT e la procedura); committato `615281b6c` | §6.16 | — |
-| 9-ter-bis-17 | team DB, poi Tid, poi BE | ✅ **R-BE-15** (D-17a … D-17d, via di Tid): `20261019-80` … `-86`, tre codici, il lock; applicati da Tid su dbdev e sullo scratch (2026-10-19 11:10), pgTAP verdi su dbdev. Restano: il commit (Tid), **R-DB-17a** al BE (i tre codici) | §6.17.2 | — |
+| 9-ter-bis-17 | team DB, poi Tid, poi BE | ✅ **R-BE-15** (D-17a … D-17d, via di Tid): `20261019-80` … `-86`, tre codici, il lock; applicati da Tid su dbdev e sullo scratch (2026-10-19 11:10), pgTAP verdi su dbdev. ✅ Committato (`e515c73af`). ✅ **R-DB-17a** fatta dal BE (2026-10-19), da committare | §6.17.2, §6.17.3 | — |
 | 9-ter-ter | team DB | ✅ (2026-10-18, D-1 … D-4 di Tid, `20261018-80` … `-99`, `20261019-01` … `-04`, applicati) l'indirizzo libero: R-BE-8 (lo stato proposto, `script.fn_stato_proposto_id`), R-BE-9 (il guard `trgfn_indirizzi_guard_forma_libera` col codice e il campo), R-BE-10 (la forma estera nella madre del soggetto, `fn_crea_indirizzo_soggetto(soggetto, jsonb)`); la regione alleggerita (`-82`: forma estera = località sola) | §6.11, §6.12 | — |
 | 9-ter-quater | sessione BE/FE | ✅ (2026-10-18) firma jsonb della madre del soggetto, `postal_code`, tendina degli stati, form in due forme, codici; provato sul DB vero dopo l'apply | §6.12 | — |
 | 9-ter-quinquies | Tid | ✅ apply di `20261018-80 … -99` e `20261019-01 … -04` su dbdev, pgTAP verdi (2026-10-18) | §6.12 | — |
@@ -49,7 +49,7 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 10-bis-env | Tid | ✅ tolta la riga `SMOKE_NOTTURNO_CONSENTITO` da `backend/.env.systemd` di backend-dev (2026-10-18) | §6.8 | — |
 | 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 9-ter-bis-17 (R-DB-17a compresa) |
 
-Decisioni aperte di Tid: nessuna. ✅ D-17a … D-17d prese e sviluppate il 2026-10-19 (R-BE-15, §6.17.2); ⚠️ il lavoro DB è **da committare** su `dev/db-tid`. D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18 (§6.14). L'ultimo «trovato, non toccato» è diventato R-BE-15 (§6.17, riga 9-ter-bis-17). ✅ `count_admin_attivi` (§6.15) ritirato il 2026-10-19, ok di Tid. ✅ Il lavoro BE del 2026-10-19 (R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b) è committato su `dev/backend-tid` (`615281b6c`), da pushare. La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
+Decisioni aperte di Tid: nessuna. ✅ D-17a … D-17d prese e sviluppate il 2026-10-19 (R-BE-15, §6.17.2); ✅ il lavoro DB è committato (`e515c73af`, PR #1896); ⚠️ R-DB-17a (BE) è da committare. D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18 (§6.14). L'ultimo «trovato, non toccato» è diventato R-BE-15 (§6.17, riga 9-ter-bis-17). ✅ `count_admin_attivi` (§6.15) ritirato il 2026-10-19, ok di Tid. ✅ Il lavoro BE del 2026-10-19 (R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b) è committato e pushato su `dev/backend-tid` (`615281b6c`, mergiato con la PR #1893). La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
 2b-2 (§6.10) e le richieste R-BE-11, R-BE-12 sono committate su `dev/backend-tid` (`08cc15a61`, 2026-10-18,
 mergiato in `Tito-dev` con la PR #1881). ✅ La ricaduta BE/FE delle due forme dell'indirizzo libero (§6.12) è
 committata (`bd7946224`, mergiata in `Tito-dev` con la PR #1884). ✅ Committati su `dev/db-tid` (2026-10-19): R-BE-13 lato DB (§6.13), R-BE-14 (§6.14), R-BE-11 (§6.15) e R-BE-6, R-BE-7, R-BE-12 (§6.16). ✅ Il lavoro
@@ -2239,7 +2239,7 @@ scratch che scrivono un'istanza (`test-pratiche-sorgenti-flusso`, `test-proiezio
 `test-guard-contesto-pratica`): coppie coerenti o pratiche col solo soggetto, nessun altro caso.
 
 ✅ **Applicato** da Tid su dbdev (11:10:21) e sullo scratch (11:10:44): due BB, tre guard, il lock montato
-su tutti e due. ✅ **pgTAP verdi su dbdev** (Tid, 2026-10-19): il test nuovo e i due corretti (`test-indirizzi-documento-seguono-cliente-v1`, `test-conto-incasso-un-solo-soggetto`). **Resta a Tid:** il commit.
+su tutti e due. ✅ **pgTAP verdi su dbdev** (Tid, 2026-10-19): il test nuovo e i due corretti (`test-indirizzi-documento-seguono-cliente-v1`, `test-conto-incasso-un-solo-soggetto`). ✅ Committato da Tid (`e515c73af`, PR #1896).
 
 **Dopo il DB, BE (richiesta):**
 
@@ -2249,3 +2249,20 @@ su tutti e due. ✅ **pgTAP verdi su dbdev** (Tid, 2026-10-19): il test nuovo e 
   `E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE` (`CONFLITTO_STATO`, il lock): policy e ripiego. Nessun pre-check nel
   backend, nessun cambio di contratto degli endpoint. Da sapere: anche la modifica di un **contatto** e di
   un **conto del ruolo** ora può rifiutare l'istanza (o il ruolo) di un altro soggetto.
+
+#### 6.17.3 Fatto (sessione BE, 2026-10-19): R-DB-17a
+
+* `error_policies_generated.py` rigenerato dal CSV in git: tre voci in più (`E_ISTANZA_ALTRO_SOGGETTO` e
+  `E_RUOLO_ALTRO_SOGGETTO` `DATO_ERRATO`, `E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE` `CONFLITTO_STATO`), nessuna classe
+  spostata; `--check` pulito.
+* Ripieghi senza segnaposto per i tre codici in `error_messages_fallback.py`; `highlight_form_fields` in
+  `error_ui_overrides.py` per i due `DATO_ERRATO`, come `E_BA_SOGGETTO_INCOERENTE_ISTANZA`. Il codice del lock segue
+  il gemello `E_ISTANZA_SOGGETTO_IMMUTABILE` (nessun override).
+* Nessun pre-check e nessun cambio di contratto: il campo arriva dal canale `COLUMN`. Nessun service di indirizzi,
+  contatti o conti intercetta `DatabaseError`, quindi il codice arriva intatto al middleware.
+* **Prova sul DB vero** (`test_creazioni_dalle_madri_db` 3e, 3f, nuovi): due clienti dai builder, l'indirizzo del
+  ruolo di A con l'istanza di B, in creazione (`create_indirizzo_ruolo`) e in modifica (`update_indirizzo_ruolo`):
+  **400 `E_ISTANZA_ALTRO_SOGGETTO` sul campo `istanza_utility_id`**, calcolati da `ErrorTranslator` come per il
+  client; l'istanza dello stesso soggetto passa. Suite unitaria completa verde (6294); e2e di `core`, `anagrafiche`,
+  `amm_software` verdi (1974), cancelli del catalogo compresi; mypy e ruff puliti.
+
