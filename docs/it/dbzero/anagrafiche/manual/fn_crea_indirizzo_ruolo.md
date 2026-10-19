@@ -46,10 +46,13 @@ istanze, e la grammatica è la stessa per i due livelli.
 | una chiave che la grammatica non conosce | `E_CAMPO_NON_AMMESSO` |
 | un tipo che il ruolo ha già (o che quell'istanza ha già) | il vincolo unico, col suo nome |
 | un tipo che il ruolo non ammette, un indirizzo libero incompleto | i controlli della tabella |
+| un'istanza di un altro soggetto | `E_ISTANZA_ALTRO_SOGGETTO`, dal controllo della tabella |
 
-⚠️ **Non controlla che l'istanza sia dello stesso soggetto del ruolo.** È una regola della
-tabella, che vale anche per le modifiche: andrà in un controllo sulla tabella (trovato il
-19-10-2026, non ancora fatto).
+L'istanza deve essere dello stesso soggetto del ruolo (`E_ISTANZA_ALTRO_SOGGETTO`, campo
+`istanza_utility_id`). Non lo controlla questa funzione: è una regola della tabella, che vale
+anche per le modifiche, e la tiene
+[`trgfn_guard_istanza_del_ruolo`](/dbzero/anagrafiche/manual/trgfn_guard_istanza_del_ruolo)
+(dal 19-10-2026, R-BE-15).
 
 ---
 

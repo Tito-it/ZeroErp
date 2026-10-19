@@ -31,6 +31,12 @@ AS $function$
 --   5. billing_account_id deve essere del soggetto_ruolo_id
 --      (l'istanza la lega la FK composta, la presenza dell'istanza
 --      chk_pratiche_ba_con_istanza)
+-- rev 2026-10-19 (D-17b di brief-db-processi-accensione-per-
+--   ambiente §6.17.1): le regole 3 e 4 dai BB
+--   anagrafiche.fn_ruolo_di_altro_soggetto e
+--   fn_istanza_di_altro_soggetto, comuni ai guard di indirizzi,
+--   contatti, conti del ruolo e BA. Un ruolo o un'istanza che
+--   non esistono li rifiuta la FK, non piu' queste regole.
 DECLARE
     v_soggetto_id_ruolo   anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
     v_soggetto_id_istanza anagrafiche.istanze_utilities.soggetto_id%TYPE;
@@ -67,51 +73,43 @@ BEGIN
     END IF;
 
     -- Regola 3: ruolo deve appartenere al soggetto
-    IF NEW.soggetto_ruolo_id IS NOT NULL THEN
-        SELECT sr.soggetto_id INTO v_soggetto_id_ruolo
-          FROM anagrafiche.soggetti_ruoli sr
-         WHERE sr.id = NEW.soggetto_ruolo_id;
+    v_soggetto_id_ruolo := anagrafiche.fn_ruolo_di_altro_soggetto(
+        NEW.soggetto_ruolo_id, NEW.soggetto_id);
 
-        IF v_soggetto_id_ruolo IS NULL
-           OR v_soggetto_id_ruolo IS DISTINCT FROM NEW.soggetto_id THEN
-            PERFORM script.fn_log_and_raise_error(
-                'pratiche',
-                'pratiche.trgfn_pratiche_guard_contesto',
-                'E_PRATICHE_RUOLO_NON_COERENTE',
-                jsonb_build_object(
-                    'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
-                    'soggetto_id', NEW.soggetto_id,
-                    'soggetto_id_ruolo', v_soggetto_id_ruolo
-                ),
-                NULL::uuid,
-                NEW.soggetto_ruolo_id::text,
-                NEW.soggetto_id::text
-            );
-        END IF;
+    IF v_soggetto_id_ruolo IS NOT NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'pratiche',
+            'pratiche.trgfn_pratiche_guard_contesto',
+            'E_PRATICHE_RUOLO_NON_COERENTE',
+            jsonb_build_object(
+                'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+                'soggetto_id', NEW.soggetto_id,
+                'soggetto_id_ruolo', v_soggetto_id_ruolo
+            ),
+            NULL::uuid,
+            NEW.soggetto_ruolo_id::text,
+            NEW.soggetto_id::text
+        );
     END IF;
 
     -- Regola 4: istanza deve appartenere al soggetto
-    IF NEW.istanza_utility_id IS NOT NULL THEN
-        SELECT iu.soggetto_id INTO v_soggetto_id_istanza
-          FROM anagrafiche.istanze_utilities iu
-         WHERE iu.id = NEW.istanza_utility_id;
+    v_soggetto_id_istanza := anagrafiche.fn_istanza_di_altro_soggetto(
+        NEW.istanza_utility_id, NEW.soggetto_id);
 
-        IF v_soggetto_id_istanza IS NULL
-           OR v_soggetto_id_istanza IS DISTINCT FROM NEW.soggetto_id THEN
-            PERFORM script.fn_log_and_raise_error(
-                'pratiche',
-                'pratiche.trgfn_pratiche_guard_contesto',
-                'E_PRATICHE_ISTANZA_NON_COERENTE',
-                jsonb_build_object(
-                    'istanza_utility_id', NEW.istanza_utility_id,
-                    'soggetto_id', NEW.soggetto_id,
-                    'soggetto_id_istanza', v_soggetto_id_istanza
-                ),
-                NULL::uuid,
-                NEW.istanza_utility_id::text,
-                NEW.soggetto_id::text
-            );
-        END IF;
+    IF v_soggetto_id_istanza IS NOT NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'pratiche',
+            'pratiche.trgfn_pratiche_guard_contesto',
+            'E_PRATICHE_ISTANZA_NON_COERENTE',
+            jsonb_build_object(
+                'istanza_utility_id', NEW.istanza_utility_id,
+                'soggetto_id', NEW.soggetto_id,
+                'soggetto_id_istanza', v_soggetto_id_istanza
+            ),
+            NULL::uuid,
+            NEW.istanza_utility_id::text,
+            NEW.soggetto_id::text
+        );
     END IF;
 
     -- Regola 5: il BA della pratica e' del ruolo della pratica.
@@ -146,7 +144,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_guard_contesto()
-IS 'BEFORE INSERT OR UPDATE su pratiche.pratiche: coerenza del contesto anagrafico (soggetto / soggetto_ruolo / istanza_utility / billing_account). Codici rinominati il 2026-08-05 (20260805-20): E_PRATICHE_RUOLO_SENZA_SOGGETTO (846), E_PRATICHE_RUOLO_NON_COERENTE (847), E_PRATICHE_ISTANZA_NON_COERENTE (848), E_PRATICHE_ISTANZA_SENZA_SOGGETTO (849). I vecchi nomi senza prefisso restano a catalogo, ritirati con obsoleto_dal. rev 2026-10-08 (20261008-66): regola 5, il billing account della pratica e'' del suo ruolo (E_PRATICHE_BA_NON_COERENTE); il trigger scatta anche su billing_account_id. Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).';
+IS 'BEFORE INSERT OR UPDATE su pratiche.pratiche: coerenza del contesto anagrafico (soggetto / soggetto_ruolo / istanza_utility / billing_account). Codici rinominati il 2026-08-05 (20260805-20): E_PRATICHE_RUOLO_SENZA_SOGGETTO (846), E_PRATICHE_RUOLO_NON_COERENTE (847), E_PRATICHE_ISTANZA_NON_COERENTE (848), E_PRATICHE_ISTANZA_SENZA_SOGGETTO (849). I vecchi nomi senza prefisso restano a catalogo, ritirati con obsoleto_dal. rev 2026-10-08 (20261008-66): regola 5, il billing account della pratica e'' del suo ruolo (E_PRATICHE_BA_NON_COERENTE); il trigger scatta anche su billing_account_id. Brief: brief-db-istanza-nasce-col-ba (R-8, D-9). rev 2026-10-19 (20261019-85, D-17b di brief-db-processi-accensione-per-ambiente §6.17.1): regole 3 e 4 dai BB anagrafiche.fn_ruolo_di_altro_soggetto e fn_istanza_di_altro_soggetto (regola del 2); un ruolo o un''istanza che non esistono li rifiuta la FK.';
 ```
 
 ---

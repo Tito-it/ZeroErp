@@ -144,6 +144,17 @@ preCondition `sqlCheck` del changeSet `20260502-16-01`.
 
 ---
 
+### Revisione del 19-10-2026 — il confronto dal BB
+
+Il confronto fra il soggetto del ruolo e quello dell'istanza passa da
+[`fn_istanza_di_altro_soggetto`](/dbzero/anagrafiche/manual/fn_istanza_di_altro_soggetto), la
+stessa domanda che usano i controlli di indirizzi, contatti, conti del ruolo e pratiche (regola
+del 2). Codice, campo e frase non cambiano. Il soggetto di un ruolo ora è bloccato
+(`E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE`): la regola non si aggira più cambiando il ruolo invece del
+billing account. Brief: `brief-db-processi-accensione-per-ambiente` §6.17 (D-17b, D-17d).
+
+---
+
 {% include-markdown "signature-core.md" %}
 
 ---

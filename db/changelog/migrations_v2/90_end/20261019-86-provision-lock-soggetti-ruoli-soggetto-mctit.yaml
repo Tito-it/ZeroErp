@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PROVISIONA SUBITO IL LOCK DI anagrafiche.soggetti_ruoli.soggetto_id
+#   D-17d di Tid (2026-10-19, brief-db-processi-accensione-per-ambiente
+#   §6.17.1): un ruolo e' il ruolo di un soggetto e non passa a un altro. La
+#   riga e' in 80_data/sql/dbops/automation_lock_columns.csv, il codice
+#   E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE nei due CSV dei codici.
+#
+# -- PERCHE' SUBITO -----------------------------------------------------------------
+#   Il lock e' la seconda meta' della regola «l'istanza e' del soggetto del
+#   ruolo»: i guard di indirizzi, contatti, conti del ruolo e billing account
+#   (20261019-82 … -84) giudicano le righe che si scrivono, e un UPDATE del
+#   soggetto del ruolo li aggirerebbe tutti. Su dbdev il ci_apply non rigira
+#   le automazioni (il job dei lock e' serale): senza questo passo la regola
+#   resterebbe aperta fino alla sera, e il pgTAP del giro rosso.
+#   Da zero il ci_apply lo monterebbe comunque; qui il runner lo trova gia'
+#   fatto, o lo fa prima. E' un runner che converge (crea, rigenera, toglie):
+#   rigirarlo non fa danni.
+#
+# -- LA FORMA -------------------------------------------------------------------------
+#   ⭐ Si chiama il RUNNER, non si scrive un CREATE TRIGGER a mano: un trigger
+#   scritto a mano sembrerebbe governato dal registro senza esserlo (stessa
+#   scelta di 20260901-21). Solo lo schema anagrafiche: il 2026-10-19
+#   dbops.fn_lock_columns_divergenze('AUTO', ARRAY['anagrafiche']) non dava
+#   nessuna divergenza su dbdev e sullo scratch, quindi il runner tocca solo
+#   soggetti_ruoli.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261019-86-provision-lock-soggetti-ruoli-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261019-86-provision-lock-soggetti-ruoli-soggetto
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      comment: >
+        Provisiona subito il lock di colonna su anagrafiche.soggetti_ruoli.soggetto_id
+        (E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE) chiamando il runner dei lock sullo schema
+        anagrafiche. D-17d di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # La riga del registro deve esserci e essere accesa: senza, il
+            # runner non crea niente e il changeSet sarebbe un verde a vuoto.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM dbops.automation_lock_columns
+                   WHERE enabled IS TRUE
+                     AND upper(btrim(exec_mode)) = 'AUTO'
+                     AND (target_schema, target_table, column_name)
+                         = ('anagrafiche', 'soggetti_ruoli', 'soggetto_id')
+                     AND error_code = 'E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE';
+            # Il codice deve essere vivo, o il lock risponderebbe con un
+            # segnaposto irrisolto invece che con la sua frase.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*) FROM config.codici_errore
+                   WHERE codice = 'E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE'
+                     AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['anagrafiche'], false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il trigger lo governa il registro: per toglierlo si spegne la
+              -- riga di automation_lock_columns e si rigira il runner, che
+              -- converge. Qui non si tocca niente.
+              SELECT 1;

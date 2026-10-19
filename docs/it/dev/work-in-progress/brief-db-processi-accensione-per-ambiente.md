@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: il team DB, con R-BE-15 (riga 9-ter-bis-17, §6.17): l'istanza di un indirizzo di ruolo può essere di un altro soggetto. Poi chi chiude, con l'archiviazione (riga 11).** ✅ Il lavoro BE di R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b è fatto e committato (`615281b6c`, 2026-10-19). ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
+**Riparte: Tid, col commit della R-BE-15 (riga 9-ter-bis-17, §6.17.2: applicata il 2026-10-19, pgTAP verdi su dbdev); poi il BE con R-DB-17a. Poi chi chiude, con l'archiviazione (riga 11).** ✅ Il lavoro BE di R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b è fatto e committato (`615281b6c`, 2026-10-19). ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
 fatta (2026-10-18, §6.10): il backend crea emittente, fornitore, cliente, veste portale, magazzino, profilo,
 legame SUPER_ADMIN, override, emittente attivo e accende la veste dalle madri del DB; restano due scritture
 che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione è chiusa.
@@ -30,7 +30,7 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 9-ter-bis | team DB | ✅ (2026-10-19) R-BE-6, R-BE-7, R-BE-12: decisioni D-16a … D-16c di Tid col via allo sviluppo; `20261019-33` … `-39` scritti e provati sullo scratch, due pgTAP nuovi. R-BE-11 ha la sua riga (9-ter-bis-11) | §6.10, §6.16 | — |
 | 9-ter-bis-16 | Tid | ✅ apply di `20261019-33` … `-39` su dbdev (2026-10-19 00:26), pgTAP verdi compreso `test-fn-provisiona-dati-di-sviluppo-v1` corretto; committati | §6.16 | — |
 | 9-ter-bis-16-be | sessione BE | ✅ (2026-10-19) R-DB-16a (i legami di profilo dalle madri) e R-DB-16b (gli indirizzi dalle madri, ritirati la INSERT e la procedura); committato `615281b6c` | §6.16 | — |
-| 9-ter-bis-17 | team DB, poi Tid | **R-BE-15**: l'istanza di un indirizzo di ruolo appartiene allo stesso soggetto del ruolo (trovato dal team DB in §6.16, non toccato) | §6.17 | — |
+| 9-ter-bis-17 | team DB, poi Tid, poi BE | ✅ **R-BE-15** (D-17a … D-17d, via di Tid): `20261019-80` … `-86`, tre codici, il lock; applicati da Tid su dbdev e sullo scratch (2026-10-19 11:10), pgTAP verdi su dbdev. Restano: il commit (Tid), **R-DB-17a** al BE (i tre codici) | §6.17.2 | — |
 | 9-ter-ter | team DB | ✅ (2026-10-18, D-1 … D-4 di Tid, `20261018-80` … `-99`, `20261019-01` … `-04`, applicati) l'indirizzo libero: R-BE-8 (lo stato proposto, `script.fn_stato_proposto_id`), R-BE-9 (il guard `trgfn_indirizzi_guard_forma_libera` col codice e il campo), R-BE-10 (la forma estera nella madre del soggetto, `fn_crea_indirizzo_soggetto(soggetto, jsonb)`); la regione alleggerita (`-82`: forma estera = località sola) | §6.11, §6.12 | — |
 | 9-ter-quater | sessione BE/FE | ✅ (2026-10-18) firma jsonb della madre del soggetto, `postal_code`, tendina degli stati, form in due forme, codici; provato sul DB vero dopo l'apply | §6.12 | — |
 | 9-ter-quinquies | Tid | ✅ apply di `20261018-80 … -99` e `20261019-01 … -04` su dbdev, pgTAP verdi (2026-10-18) | §6.12 | — |
@@ -47,9 +47,9 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 10-quater | Tid | ✅ apply di R-BE-5 (`20261018-10` … `-14`) su dbdev, pgTAP senza regressioni (2026-10-18) | §6.7.4 | — |
 | 10 | sessione BE | ✅ (2026-10-18) codice nuovo e ripiego, capability di «Accendi» dal predicato del guard, consenso ritirato da command, test, unit e `sveglie.json`, nota della tolleranza riscritta | §6.8 | — |
 | 10-bis-env | Tid | ✅ tolta la riga `SMOKE_NOTTURNO_CONSENTITO` da `backend/.env.systemd` di backend-dev (2026-10-18) | §6.8 | — |
-| 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 9-ter-bis-17 |
+| 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 9-ter-bis-17 (R-DB-17a compresa) |
 
-Decisioni aperte di Tid: nessuna (D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18, §6.14). L'ultimo «trovato, non toccato» è diventato R-BE-15 (§6.17, riga 9-ter-bis-17). ✅ `count_admin_attivi` (§6.15) ritirato il 2026-10-19, ok di Tid. ✅ Il lavoro BE del 2026-10-19 (R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b) è committato su `dev/backend-tid` (`615281b6c`), da pushare. La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
+Decisioni aperte di Tid: nessuna. ✅ D-17a … D-17d prese e sviluppate il 2026-10-19 (R-BE-15, §6.17.2); ⚠️ il lavoro DB è **da committare** su `dev/db-tid`. D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18 (§6.14). L'ultimo «trovato, non toccato» è diventato R-BE-15 (§6.17, riga 9-ter-bis-17). ✅ `count_admin_attivi` (§6.15) ritirato il 2026-10-19, ok di Tid. ✅ Il lavoro BE del 2026-10-19 (R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b) è committato su `dev/backend-tid` (`615281b6c`), da pushare. La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
 2b-2 (§6.10) e le richieste R-BE-11, R-BE-12 sono committate su `dev/backend-tid` (`08cc15a61`, 2026-10-18,
 mergiato in `Tito-dev` con la PR #1881). ✅ La ricaduta BE/FE delle due forme dell'indirizzo libero (§6.12) è
 committata (`bd7946224`, mergiata in `Tito-dev` con la PR #1884). ✅ Committati su `dev/db-tid` (2026-10-19): R-BE-13 lato DB (§6.13), R-BE-14 (§6.14), R-BE-11 (§6.15) e R-BE-6, R-BE-7, R-BE-12 (§6.16). ✅ Il lavoro
@@ -2125,3 +2125,127 @@ risoluzione degli indirizzi (istanza → ruolo → soggetto) restituirebbe a un 
 
 **Ricaduta BE attesa:** ripiego del codice nuovo e policy rigenerate; nessun pre-check nel backend.
 
+#### 6.17.1 Risposta del team DB: ricognizione e proposta (2026-10-19)
+
+**Ricognizione (struttura, doc auto-generata e codice del BE, 2026-10-19).** La regola «il soggetto del ruolo è il
+soggetto dell'istanza» vale per **ogni** riga che porta tutti e due; oggi:
+
+| Tabella | Ruolo + istanza | La regola c'è? |
+| --- | --- | --- |
+| `billing_account` | NOT NULL tutti e due | ✅ `trgfn_billing_account_guard_soggetto_coerenza_istanza` (fascia `a20`, `E_BA_SOGGETTO_INCOERENTE_ISTANZA`, campo `istanza_utility_id`) |
+| `clienti` | NOT NULL tutti e due | ✅ per costruzione: FK composte sul BA (`billing_account_id, istanza_utility_id` e `billing_account_id, soggetto_ruolo_id, utility_id`), colonne bloccate |
+| `pratiche.pratiche` | facoltativi | ✅ regola 4 di `trgfn_pratiche_guard_contesto` (istanza del `soggetto_id` della pratica) |
+| **`indirizzi`** | ruolo NOT NULL, istanza facoltativa | ❌ **R-BE-15**. Scrittori in `UPDATE`: il backend (`soggetti_repository.py`, whitelist con `istanza_utility_id`) |
+| **`contatti`** | `soggetto_id` NOT NULL, ruolo e istanza facoltativi | ❌ né istanza↔soggetto, né ruolo↔soggetto (`soggetto_id` della riga) |
+| **`soggetti_ruoli_conti_bancari`** | ruolo NOT NULL, istanza facoltativa | ❌ il guard della tabella guarda solo il conto attivo. Il backend scrive `istanza_utility_id` in `UPDATE` (`LEGAME_RUOLO_UPDATE_COLS`, `conti_bancari_repository.py`) |
+
+E le **due porte** dall'altro lato della regola:
+
+* `istanze_utilities.soggetto_id` è bloccato (`E_ISTANZA_SOGGETTO_IMMUTABILE`, D-7 del 2026-10-09): ✅;
+* ⚠️ **`soggetti_ruoli.soggetto_id` non è bloccato.** Un `UPDATE` del soggetto di un ruolo porta su un altro
+  soggetto i suoi indirizzi e contatti d'istanza, i conti, **e i BA**: il guard del BA scatta solo su
+  `billing_account`, quindi anche la regola che c'è ha la porta aperta. Nessuno lo scrive oggi (né il backend né
+  una funzione del DB), ma il modello lo ammette.
+
+**Dati (fatto datato, non motivo):** dbdev, 2026-10-19 10:40, **nessuna riga viola** la regola in nessuna delle tre
+tabelle (indirizzi con istanza 4, contatti con istanza 3, contatti con ruolo 10, conti con istanza 2). Non c'è
+niente da bonificare prima del controllo, e quindi niente da decidere su questo punto.
+
+**Proposta del team DB.** ✅ **Decisa da Tid il 2026-10-19: accolte tutte e quattro** (D-17a (B) tre tabelle, D-17b BB comune col BA nello stesso giro, D-17c codice condiviso, D-17d lock del soggetto del ruolo). Resta il via allo sviluppo, coi progressivi.
+
+* **D-17a — il perimetro.** (A) Solo `indirizzi`, come chiede la R-BE-15. (B, **proposta**) `indirizzi`,
+  `contatti` e `soggetti_ruoli_conti_bancari` nello stesso giro: è la stessa regola sulla stessa coppia di colonne,
+  e il difetto è identico. Con (A) le altre due restano un debito noto, da scrivere in un brief
+  prima di archiviare questo.
+* **D-17b — un BB, regola del 2.** Il guard del BA è la prima copia, gli indirizzi la seconda: si estrae
+  `anagrafiche.fn_guard_istanza_del_soggetto(istanza, soggetto, codice, contesto)` (confronta
+  `istanze_utilities.soggetto_id` col soggetto dato; istanza NULL = niente da dire) e il guard del BA lo chiama
+  **nello stesso giro**, col suo codice di oggi (il BE lo consuma: `error_ui_overrides`, il ripiego). Ogni tabella
+  ha il suo guard sottile, che risolve il soggetto (dal ruolo, o da `soggetto_id` per i contatti) e chiama il BB.
+  Fascia `a10`, `INSERT` e `UPDATE`; in `UPDATE` esce se ruolo, istanza (e `soggetto_id` dei contatti) non sono
+  cambiati, come `guard_forma_libera`. Nessun trigger `BEFORE` delle tre tabelle scrive quelle colonne.
+* **D-17c — il codice.** Un codice solo per le tabelle nuove: `E_ISTANZA_ALTRO_SOGGETTO`, `DATO_ERRATO`, contesto
+  `campo = istanza_utility_id` e `tabella`, così il BE lo mostra sul form senza tradurlo. Il BA tiene il suo. Per i
+  contatti serve anche il ruolo di un altro soggetto (`campo = soggetto_ruolo_id`): `E_RUOLO_ALTRO_SOGGETTO`, solo
+  se (B).
+* **D-17d — la porta del ruolo.** Bloccare `soggetti_ruoli.soggetto_id` con una riga di
+  `dbops.automation_lock_columns` (`E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE`, `CONFLITTO_STATO`, come l'istanza): un
+  ruolo è «il ruolo X del soggetto S» (`uq_soggetto_ruolo`), e il ruolo creato sul soggetto sbagliato si ritira e si
+  ricrea. Chiude la porta per le tre tabelle e per il BA. Senza, il guard delle righe va messo anche su
+  `soggetti_ruoli` (un `UPDATE` del soggetto che rilegge tutte le figlie): più caro, per un caso che il modello non
+  vuole.
+
+**pgTAP previsto:** `anagrafiche/test-istanza-dello-stesso-soggetto-v1.sql`, che fabbrica due soggetti con le loro
+istanze: per ogni tabella del perimetro, rifiutati l'`INSERT` e l'`UPDATE` (ruolo e istanza, separatamente) con
+l'istanza dell'altro soggetto, col codice e il campo; ammessi la stessa istanza, nessuna istanza, e l'`UPDATE` che
+non tocca le due colonne; il BA che rifiuta come prima (regressione dal BB); con D-17d, l'`UPDATE` del soggetto di
+un ruolo rifiutato. Regressione: i pgTAP di indirizzi, contatti, conti e BA.
+
+**Ricaduta BE (dopo l'apply):** il codice nuovo in `error_policies_generated` (dal CSV), il ripiego in
+`error_messages_fallback` e `highlight_form_fields` in `error_ui_overrides`, come per
+`E_BA_SOGGETTO_INCOERENTE_ISTANZA`; con D-17d, il codice del lock. Nessun cambio di contratto degli endpoint.
+
+#### 6.17.2 Fatto (team DB, 2026-10-19), applicato da Tid
+
+Via allo sviluppo di Tid (2026-10-19), progressivi dal `20261019-80`.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/anagrafiche/20261019-80-create-fn-istanza-di-altro-soggetto` | BB `anagrafiche.fn_istanza_di_altro_soggetto(istanza, soggetto)`: il soggetto dell'istanza quando non è quello dato, `NULL` altrimenti (anche senza istanza o soggetto, o con un'istanza che non esiste: la rifiuta la FK). Un predicato: il rifiuto resta nel chiamante, col suo codice e il campo scritti nella chiamata (il presidio del canale li legge lì) |
+| `20_code/anagrafiche/20261019-81-create-fn-ruolo-di-altro-soggetto` | il gemello per il ruolo |
+| `20_code/anagrafiche/20261019-82-create-trgfn-guard-istanza-del-ruolo` | un guard per `indirizzi` e `soggetti_ruoli_conti_bancari` (a10, `INSERT` e `UPDATE`, esce se ruolo e istanza non cambiano): `E_ISTANZA_ALTRO_SOGGETTO`, campo `istanza_utility_id` |
+| `20_code/anagrafiche/20261019-83-create-trgfn-contatti-guard-contesto-soggetto` | il guard dei contatti: prima il ruolo (`E_RUOLO_ALTRO_SOGGETTO`, campo `soggetto_ruolo_id`), poi l'istanza (`E_ISTANZA_ALTRO_SOGGETTO`), tutti e due contro `soggetto_id` della riga |
+| `20_code/anagrafiche/20261019-84-update-trgfn-billing-account-guard-coerenza-istanza-dal-bb` | il guard del BA passa dal BB (regola del 2); codice, contesto e frase invariati |
+| `20_code/pratiche/20261019-85-update-trgfn-pratiche-guard-contesto-dai-bb` | regole 3 e 4 delle pratiche dai due BB: era la terza copia, trovata scrivendo, ritirata nello stesso giro. ⚠️ Un ruolo o un'istanza che **non esistono** non sono più «non coerenti»: li rifiuta la FK, che dice la causa giusta (nessun pgTAP lo provava) |
+| `90_end/20261019-86-provision-lock-soggetti-ruoli-soggetto` | chiama il runner dei lock sullo schema `anagrafiche`: monta subito `trg_soggetti_ruoli_a10_lock_columns_upd` (su dbdev il ci_apply non rigira le automazioni). Il 2026-10-19 il runner non aveva altre divergenze su `anagrafiche` |
+| CSV | `codici_errore.csv` e `messaggi_errore.csv` (id 1368 … 1370): `E_ISTANZA_ALTRO_SOGGETTO` e `E_RUOLO_ALTRO_SOGGETTO` (`DATO_ERRATO`), `E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE` (`CONFLITTO_STATO`); `automation_lock_columns.csv`, la riga di `soggetti_ruoli.soggetto_id` |
+
+Firme e `RETURNS` dei due BB ancorati con `%TYPE` (anche in `COMMENT` e `DROP`); `SECURITY INVOKER`
+esplicito su tutti e sei: `istanze_utilities` e `soggetti_ruoli` non hanno RLS (2026-10-19), la lettura
+risponde sempre.
+
+* **pgTAP nuovo:** `anagrafiche/test-istanza-dello-stesso-soggetto-v1.sql` (plan 17): i due BB, i guard
+  montati, indirizzi (madre e `UPDATE` di istanza e di ruolo, rifiutati e ammessi), conti del ruolo,
+  contatti (ruolo e istanza d'altri, `UPDATE` del soggetto), il lock del ruolo. Asserisce il codice (canale
+  `CONSTRAINT`) e il campo (canale `COLUMN`), non un `P0001` qualsiasi.
+* **pgTAP corretto:** `vendite/test-indirizzi-documento-seguono-cliente-v1.sql` costruiva proprio il
+  difetto: per far diventare d'altri una riga del preventivo spostava in anagrafica un indirizzo del ruolo di
+  A sulla fornitura di B. Ora lo sposta su una **seconda fornitura di A** (dalla madre
+  `fn_crea_billing_account`, nella finestra dei differiti): il predicato risponde `ALTRA_FORNITURA` come prima,
+  la check ha lo stesso motivo. 18/18.
+* **Doc:** manual nuove `fn_istanza_di_altro_soggetto`, `fn_ruolo_di_altro_soggetto`,
+  `trgfn_guard_istanza_del_ruolo`, `trgfn_contatti_guard_contesto_soggetto`; note in `fn_crea_indirizzo_ruolo`
+  (il ⚠️ «non controlla» è chiuso), nel guard del BA e nel contesto delle pratiche.
+
+**Prova (scratch `zeroerp_ruoli`, come `zeroerp_owner`).** Il test nuovo con l'SQL estratto: 17/17.
+Regressione su 79 file (i pgTAP che scrivono indirizzi, contatti, conti del ruolo, pratiche o i due guard
+rivisti, più i presidi `test-catalogo-messaggi-errore-completo`, `test-vw-codici-errore-motivo-nominato`,
+`test-punti-canale-campo-v1`, `test-riferimenti-morti-v1`, `test-lock-columns-convergenza`): la corsa
+«con l'estratto» è stata invalidata a metà dall'apply di Tid sullo scratch (11:10), quindi il confronto vero
+è **prima dell'apply (11:09-11:10) contro dopo l'apply**: due file cambiano, il test nuovo (rosso → 17/17) e
+`test-indirizzi-documento-seguono-cliente-v1` (18/18 → 12/18, il fixture del difetto, corretto come sopra).
+Gli altri rossi dello scratch sono identici prima e dopo, non di questo giro. `plpgsql_check` pulito sui
+cinque montaggi (i due guard nuovi sulle loro tabelle, BA, pratiche).
+
+⚠️ **Regressione trovata da Tid su dbdev (2026-10-19), sfuggita alla prova:**
+`anagrafiche/test-conto-incasso-un-solo-soggetto.sql` test 4, `E_ISTANZA_ALTRO_SOGGETTO`. La fixture
+**pescava** «il primo ruolo» e «la prima istanza» del database, senza legame fra loro: il test metteva sul
+ruolo di un soggetto l'istanza di un altro, cioè la riga che il guard ora rifiuta. Sullo scratch il file
+moriva già al test 1 (la pesca non trova la filiale), prima e dopo: lo stesso esito ha nascosto la
+regressione nel confronto. Corretto: due clienti e la filiale costruiti dai builder, l'istanza è quella del
+soggetto del primo ruolo; 10/10 sullo scratch. Poi riletti uno per uno gli altri rossi preesistenti dello
+scratch che scrivono un'istanza (`test-pratiche-sorgenti-flusso`, `test-proiezione-stato-sorgente`,
+`test-vw-dash-competenza-gruppi-cliente-v1`, `test-esecutivi-ba-coppia-v1`, i due `test-snapshot-indirizzi-*`,
+`test-guard-contesto-pratica`): coppie coerenti o pratiche col solo soggetto, nessun altro caso.
+
+✅ **Applicato** da Tid su dbdev (11:10:21) e sullo scratch (11:10:44): due BB, tre guard, il lock montato
+su tutti e due. ✅ **pgTAP verdi su dbdev** (Tid, 2026-10-19): il test nuovo e i due corretti (`test-indirizzi-documento-seguono-cliente-v1`, `test-conto-incasso-un-solo-soggetto`). **Resta a Tid:** il commit.
+
+**Dopo il DB, BE (richiesta):**
+
+* **R-DB-17a — i tre codici nuovi.** `E_ISTANZA_ALTRO_SOGGETTO` e `E_RUOLO_ALTRO_SOGGETTO` (`DATO_ERRATO`,
+  col campo nel canale `COLUMN`): policy rigenerate dal CSV, ripiego in `error_messages_fallback`,
+  `highlight_form_fields` in `error_ui_overrides`, come per `E_BA_SOGGETTO_INCOERENTE_ISTANZA`.
+  `E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE` (`CONFLITTO_STATO`, il lock): policy e ripiego. Nessun pre-check nel
+  backend, nessun cambio di contratto degli endpoint. Da sapere: anche la modifica di un **contatto** e di
+  un **conto del ruolo** ora può rifiutare l'istanza (o il ruolo) di un altro soggetto.
