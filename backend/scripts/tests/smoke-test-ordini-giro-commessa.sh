@@ -36,7 +36,7 @@
 #  9) Re-push → 4xx (le righe sono gia' in commessa: niente da mandare)
 # 10) GET push log (consultazione operativa)
 # 11) Annullo commessa senza conferma → 409 E_DOC_ANNULLO_CON_LEGAMI
-# 12) GET legami della commessa → >= 1, origine ORDINE verso l'ordine
+# 12) GET legami della commessa → >= 1, origine ORDINE_VENDITA verso l'ordine
 # 13) Annullo con la conferma (legami_confermati) → ANNULLATA
 # 14) Ordine: stato CONFERMATO, e di nuovo da mandare (re-push COMPLETATO)
 # ------------------------------------------------------------
@@ -312,7 +312,7 @@ if [[ "$PUSH_OK" == "1" && -n "${COMMESSA_ID:-}" && "$COMMESSA_ID" != "None" ]];
 import sys, json
 try:
     righe = json.load(sys.stdin).get('data', {}).get('righe') or []
-    print(sum(1 for r in righe if r.get('origine') == 'ORDINE' and str(r.get('origine_id')) == '$ORDINE_ID'))
+    print(sum(1 for r in righe if r.get('origine') == 'ORDINE_VENDITA' and str(r.get('origine_id')) == '$ORDINE_ID'))
 except Exception:
     print(0)
 " 2>/dev/null)

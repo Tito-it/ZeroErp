@@ -79,7 +79,7 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
   legami si ritirano (ordine da evadere, reso da ri-consegnare).
 - Legami `GET /<id>/legami/` (factory `build_legami_view`, BB
   `_annullo_con_legami.legami_del_documento`): `{documento, id, legami, righe}`,
-  una riga per legame di `vendite.fn_documento_legami` con `origine`, `natura`
+  una riga per legame di `vendite.fn_documento_legami` con `origine` (codice di `config.sorgenti`), `natura`
   (CONSUMO/PROVENIENZA), `origine_id` e il nome del documento dall'altra parte
   dal lineage (`origine_tipo_codice_interno`, `origine_codice`). `legami` e' il
   numero da dichiarare. Alimenta la finestra di conferma dell'annullo.

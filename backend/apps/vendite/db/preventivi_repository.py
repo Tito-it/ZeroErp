@@ -1068,7 +1068,7 @@ class PreventiviRepository(
 
     # Scopo: Ramo MERCE dello split preventivo (brief-preventivi-ordini.md D8):
     #        delega a vendite.fn_push_preventivo_a_ordine. Copia le righe con
-    #        natura destinazione_tipo='ORDINE' ancora residue verso un nuovo
+    #        natura destinazione_tipo='ORDINE_VENDITA' ancora residue verso un nuovo
     #        ordine DRAFT (snapshot prezzi + BoM), con idempotenza A LIVELLO RIGA
     #        (ordini_righe.preventivo_riga_id). Se `pratica_id` e' valorizzato la
     #        fn DB aggancia anche pratiche_sorgenti (preventivo ROOT + ordine
@@ -1135,7 +1135,7 @@ class PreventiviRepository(
             return rows_to_list(cursor)
 
     # Scopo: Predicato residuo MERCE (D6) — TRUE se restano righe natura
-    #        destinazione_tipo='ORDINE' non ancora allocate a un ordine.
+    #        destinazione_tipo='ORDINE_VENDITA' non ancora allocate a un ordine.
     #        Condiviso tra il dispatch del ramo ordine (decide se invocare
     #        push_a_ordine) e il gate EVASO (evadi solo a residuo nullo).
     def preventivo_ha_residuo_ordine(self, preventivo_id: int) -> bool:

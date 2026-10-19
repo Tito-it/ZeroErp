@@ -171,7 +171,8 @@ immutabilita' (Fase 5):
 - Natura di vendita (2026-06-10, da `vw_articoli_dettaglio`):
   `natura_vendita_id`, `natura_vendita_codice_interno`,
   `natura_vendita_descrizione`, `natura_vendita_destinazione_tipo`
-  (`ORDINE` / `COMMESSA` / `CONTRATTO`). Il FE inizializza il Select
+  (`ORDINE_VENDITA` / `COMMESSA` / `CONTRATTO`: codici di `config.sorgenti`,
+  FK dal 2026-10-19, brief-db-grammatica-unica-documenti lotto 2b). Il FE inizializza il Select
   "Natura di vendita" del drawer da `natura_vendita_id`; gli stessi campi
   sono disponibili anche nelle righe della lista (§1.1).
 - Approvvigionamento (2026-09-14, da `vw_articoli_dettaglio`):

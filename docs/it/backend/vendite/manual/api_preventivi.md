@@ -190,7 +190,7 @@ tutti ritirati
 
 ### 5a. Legami `GET /<id>/legami/` (factory `build_legami_view`, BB
 `_annullo_con_legami.legami_del_documento`): `{documento, id, legami, righe}`,
-una riga per legame di `vendite.fn_documento_legami` con `origine`, `natura`
+una riga per legame di `vendite.fn_documento_legami` con `origine` (codice di `config.sorgenti`), `natura`
 (CONSUMO/PROVENIENZA), `origine_id` e il nome del documento dall'altra parte
 dal lineage (`origine_tipo_codice_interno`, `origine_codice`). `legami` e' il
 numero da dichiarare. Alimenta la finestra di conferma dell'annullo.
@@ -288,7 +288,7 @@ Nuovo endpoint 2026-05-28. Mirror di `GET /api/v1/vendite/offerte/<id>/revisioni
 
 **Modello split per natura** (brief [brief-preventivi-ordini.md](../../../dev/work-done/brief-preventivi-ordini.md) D8 — sostituisce il vecchio copia-tutto 1:1).
 Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
-(natura con `destinazione_tipo='ORDINE'`), valorizzando `documento_origine =
+(natura con `destinazione_tipo='ORDINE_VENDITA'`), valorizzando `documento_origine =
 ('PREVENTIVO', preventivo_id)` sull'ordine.
 
 - View `ApiPreventivoGeneraOrdine` (area `vendite`) → delega a
@@ -298,7 +298,7 @@ Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
   righe da smistare (smistamento selettivo). **Assente/null** = tutte le righe
   MERCE residue; **lista vuota** = `E_PREV_VALIDAZIONE` (non degrada a "tutte").
 - **Cosa fa la fn DB** (non più orchestrazione Python):
-  - copia **solo** le righe natura `ORDINE` (i **servizi una-tantum** vanno a
+  - copia **solo** le righe natura `ORDINE_VENDITA` (i **servizi una-tantum** vanno a
     commessa via push commessa; il **ricorrente** è bloccato a monte, D9);
   - **snapshot prezzi** + componenti BoM (`fn_ordine_riga_componenti_init`);
   - scrive il **link di riga** `ordini_righe.preventivo_riga_id` → **idempotenza
@@ -345,7 +345,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
   `preventivi_service.list_righe_smistabili_ordine` →
   `PreventiviRepository.list_righe_smistabili_ordine`.
 - **Criterio**: legge dalla **vista** `vendite.vw_preventivi_righe_smistabili_ordine`
-  — la **fonte unica** del predicato (natura `destinazione_tipo='ORDINE'`, riga
+  — la **fonte unica** del predicato (natura `destinazione_tipo='ORDINE_VENDITA'`, riga
   attiva, **non ancora allocata** a un ordine), consumata anche da
   `fn_preventivo_ha_residuo_ordine` e `fn_push_preventivo_a_ordine`
   (consolidamento DB 2026-06-10). Le righe restituite sono quindi **esattamente**
@@ -601,7 +601,7 @@ natura-aware il 2026-06-12: `vw_preventivi_smistamento` + `_righe`, le vecchie
     "righe": [
       { "riga_id": 10, "riga_descrizione": "...", "articolo_codice": "ART1",
         "qta_operativa": "2", "uom_codice": "PZ", "natura_vendita_codice": "MERCE",
-        "destinazione_tipo": "ORDINE", "stato_smistamento": "A_ORDINE",
+        "destinazione_tipo": "ORDINE_VENDITA", "stato_smistamento": "A_ORDINE",
         "ordine_id": 7, "ordine_numero": "ORD-0007" }
     ]
   }
@@ -859,7 +859,7 @@ righe di preventivo.
 | `E_DOCUMENTI_VALIDATION` | 400/422 | Endpoint §5b + §18: emittente non risolto, sorgente PREVENTIVO non attiva, template assente/non applicabile, MIME allegato non ammesso, size oltre limite. Sollevato da `apps.documenti.api.contesto_helpers.resolve_contesto_documentale` o da `DocumentGenerationService` |
 | `E_DOCUMENTI_NOT_FOUND` | 404 | Endpoint §5b + §18: preventivo o documento atteso non trovato dal resolver di contesto |
 | `E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO` | 409 | §6c genera-ordine: preventivo non `ACCETTATO`. Sollevato dalla fn DB `fn_push_preventivo_a_ordine` |
-| `E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE` | 422 | §6c genera-ordine: nessuna riga **merce** residua da smistare (nessuna riga natura `ORDINE`, o tutte già allocate a un ordine — idempotenza di riga). Sollevato dalla fn DB `fn_push_preventivo_a_ordine` |
+| `E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE` | 422 | §6c genera-ordine: nessuna riga **merce** residua da smistare (nessuna riga natura `ORDINE_VENDITA`, o tutte già allocate a un ordine — idempotenza di riga). Sollevato dalla fn DB `fn_push_preventivo_a_ordine` |
 
 ## Integrazione pricing v5
 

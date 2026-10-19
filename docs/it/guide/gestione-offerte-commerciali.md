@@ -452,7 +452,7 @@ l'offerta in un **ordine di vendita** one-shot (vendita puntuale).
 L'ordine nasce in **DRAFT** ereditando le **righe espanse** dell'offerta (listino +
 variazione globale + eccezioni, con i componenti BoM), preservando i **prezzi
 negoziati/override**. Sull'ordine viene registrata l'origine
-(`documento_origine = ('OFFERTA', id)`). L'offerta resta **ACCETTATA**.
+(`documento_origine = ('OFFERTA_COMMERCIALE', id)`). L'offerta resta **ACCETTATA**.
 
 Da lì l'ordine segue il proprio ciclo di vita (conferma, push a commessa); vedi
 [Gestione Ordini di vendita](/guide/gestione-ordini).

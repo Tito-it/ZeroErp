@@ -8,7 +8,7 @@ primo handler reale del motore pratiche. Al passaggio del flusso `CONFERMA` in
 destinazioni operative (modello split, brief
 [brief-preventivi-ordini.md](../../../dev/work-done/brief-preventivi-ordini.md)):
 
-- righe **MERCE** (natura `destinazione_tipo='ORDINE'`) → **ordine DRAFT** via
+- righe **MERCE** (natura `destinazione_tipo='ORDINE_VENDITA'`) → **ordine DRAFT** via
   `fn_push_preventivo_a_ordine` (idempotenza di riga, BoM, snapshot prezzi);
 - righe **SERVIZIO una-tantum** (`destinazione_tipo='COMMESSA'`) → **commessa
   diretta**, applicando la politica di fatturazione (`IMMEDIATA`/`DIFFERITA`) presa
@@ -55,7 +55,7 @@ def execute(self, flusso_id: int, pratica_id: int,
    distingue "già smistato" (esistono ordine/commessa pregressi →
    `E_VENDITA_PREVENTIVO_GIA_PUSHATO`) da "preventivo vuoto" (`E_PREV_NESSUNA_RIGA`);
 5. **ramo MERCE** (se residuo): `push_a_ordine(preventivo_id, pratica_id)` →
-   `fn_push_preventivo_a_ordine`. La fn DB copia solo le righe `ORDINE` (con la
+   `fn_push_preventivo_a_ordine`. La fn DB copia solo le righe `ORDINE_VENDITA` (con la
    `data_consegna_richiesta_cliente` della riga; la confermata nasce `NULL`),
    scrive il link di riga e aggancia `pratiche_sorgenti` (preventivo `ROOT` +
    ordine `COLLEGATO`);

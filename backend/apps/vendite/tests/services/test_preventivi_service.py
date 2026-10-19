@@ -11,6 +11,8 @@ Indice test eseguiti:
 2) test_crea_preventivo_utility_mancante — validazione utility obbligatoria
 3) test_aggiorna_preventivo_ok — aggiornamento in BOZZA
 4) test_aggiorna_preventivo_fuori_bozza_decide_il_db — EMESSO: nessun guard Python, decide il lock DB
+4b) test_aggiorna_preventivo_colonne_ferme_sul_campo — utility ed emittente: 400 sul campo (R-BE-10)
+4c) test_aggiorna_preventivo_chiave_ignota_rifiutata — una chiave fuori whitelist e' un 400, non uno scarto
 5) test_gestisci_riga_ok — aggiunta riga in BOZZA con ricalcolo totali
 5b) test_gestisci_riga_padre_composito_prezzo_default_zero — composito senza prezzo → 0 placeholder
 5c) test_gestisci_riga_non_composito_senza_prezzo_solleva — non composito + prezzo None → E_PREV_VALIDAZIONE
@@ -867,6 +869,36 @@ class TestPreventiviService(unittest.TestCase):
             aggiorna_preventivo(1, {"billing_account_id": 42})
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
         self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
+        self.mock_repo.update_preventivo.assert_not_called()
+
+    # Scopo: utility ed emittente non si cambiano in modifica (R-BE-10,
+    #        2026-10-19): un 400 sul campo, con la frase del lock del DB, prima
+    #        di leggere la testata. Fino ad allora si SCARTAVANO in silenzio.
+    def test_aggiorna_preventivo_colonne_ferme_sul_campo(self):
+        from apps.core.services.error_policies import ErrorPolicyRegistry
+        from apps.vendite.services.preventivi_service import aggiorna_preventivo
+
+        for chiave, codice_db in (
+            ("utility_id", "E_DOC_UTILITY_IMMUTABILE"),
+            ("emittente_fiscale_id", "E_DOC_EMITTENTE_IMMUTABILE"),
+        ):
+            with self.subTest(chiave=chiave), self.assertRaises(ServiceError) as ctx:
+                aggiorna_preventivo(1, {chiave: 7, "validita_dal": "2026-04-01"})
+            self.assertEqual(
+                (ctx.exception.code, ctx.exception.context.get("field"), ctx.exception.message),
+                ("E_PREV_VALIDAZIONE", chiave, ErrorPolicyRegistry.resolve(codice_db).user_message),
+            )
+        self.mock_repo.update_preventivo.assert_not_called()
+
+    # Scopo: una chiave fuori dalla whitelist e' un 400 (R-BE-10, 2026-10-19):
+    #        prima si scartava e la risposta era ok.
+    def test_aggiorna_preventivo_chiave_ignota_rifiutata(self):
+        from apps.vendite.services.preventivi_service import aggiorna_preventivo
+
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_preventivo(1, {"numero": "X"})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.assertEqual(ctx.exception.context.get("unknown_keys"), ["numero"])
         self.mock_repo.update_preventivo.assert_not_called()
 
     # Scopo: Preventivo EMESSO: quali colonne si cambiano lo dice il lock di
@@ -1749,8 +1781,8 @@ class TestPreventiviService(unittest.TestCase):
             "righe_emesse_af": 0, "righe_fatturate": 0, "righe_residue": 2,
         }
         self.mock_repo.list_righe_smistamento.return_value = [
-            {"riga_id": 10, "destinazione_tipo": "ORDINE", "stato_smistamento": "A_ORDINE"},
-            {"riga_id": 11, "destinazione_tipo": "ORDINE", "stato_smistamento": "RESIDUA"},
+            {"riga_id": 10, "destinazione_tipo": "ORDINE_VENDITA", "stato_smistamento": "A_ORDINE"},
+            {"riga_id": 11, "destinazione_tipo": "ORDINE_VENDITA", "stato_smistamento": "RESIDUA"},
             {"riga_id": 12, "destinazione_tipo": "COMMESSA", "stato_smistamento": "RESIDUA"},
         ]
 

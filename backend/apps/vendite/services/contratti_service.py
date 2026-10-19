@@ -49,6 +49,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.vendite.services._cliente_coppia_documento import (
     coppia_cambiata,
+    rifiuta_colonne_ferme,
     risolvi_cliente_coppia,
 )
 from apps.vendite.services._annullo_con_legami import (
@@ -271,20 +272,19 @@ UPDATE_KEYS_CONTRATTO: frozenset[str] = UPDATE_KEYS_TESTATA | {"utility"}
 # come gating FE / warning, non come hard guard BE.
 
 # In create: numero e stato_doc_contratto_id sono impostati dal service,
-# mai in payload. In update: oltre a questi, utility ed emittente (vedi sotto).
+# mai in payload. In update anche utility ed emittente, rifiutate sul campo da
+# `rifiuta_colonne_ferme` (BB comune a preventivo e offerta).
 _FORBIDDEN_TESTATA_CREATE: frozenset[str] = frozenset({
     "numero",
     "stato_doc_contratto_id",
 })
+# ⭐ Dal 2026-10-19 (R-BE-10) utility ed emittente non stanno piu' qui: le
+#    rifiuta `rifiuta_colonne_ferme`, sul campo e con la frase del lock del DB
+#    (prima: messaggio suo, senza campo). Si cambia il cliente, cioe' BA e
+#    istanza in coppia, dentro la stessa utility (B-4 di Tid, 2026-10-12); un BA
+#    di un altro emittente lo dice il guard `script.trgfn_doc_guard_emittente_ba`.
 _FORBIDDEN_TESTATA_UPDATE: frozenset[str] = frozenset({
     "numero",
-    # Utility ed emittente non si cambiano in modifica, come sul preventivo
-    # (B-4 di Tid, 2026-10-12): si cambia il cliente, cioe' BA e istanza in
-    # coppia, dentro la stessa utility. Se il BA nuovo non e' dell'emittente
-    # del contratto lo dice il guard DB `script.trgfn_doc_guard_emittente_ba`
-    # (`E_DOC_EMITTENTE_BA_INCOERENTE`).
-    "utility_id",
-    "emittente_fiscale_id",
     "stato_doc_contratto_id",
 })
 
@@ -700,10 +700,9 @@ class ContrattiService:
             payload,
             forbidden=_FORBIDDEN_TESTATA_CREATE,
             reason="Campi gestiti dal sistema non modificabili in payload create.",
-            detail_prefix=(
-                "numero e stato_doc_contratto_id sono assegnati dal service. "
-                "Campi rifiutati"
-            ),
+            # Le chiavi presenti le aggiunge `reject_keys`: l'elenco non si
+            # ripete qui (e' l'insieme `forbidden`, e si e' gia' disallineato).
+            detail_prefix="Campi rifiutati",
         )
         self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_TESTATA, message=_MESSAGE)
 
@@ -750,14 +749,16 @@ class ContrattiService:
         auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
+        rifiuta_colonne_ferme(
+            payload, code=E_VENDITE_VALIDATION, function_name=f"{__name__}.update_contratto",
+        )
         self._v.reject_keys(
             payload,
             forbidden=_FORBIDDEN_TESTATA_UPDATE,
             reason="Identificativi contratto non modificabili.",
-            detail_prefix=(
-                "numero, utility_id, emittente_fiscale_id e "
-                "stato_doc_contratto_id non modificabili. Campi rifiutati"
-            ),
+            # Le chiavi presenti le aggiunge `reject_keys`: l'elenco non si
+            # ripete qui (e' l'insieme `forbidden`, e si e' gia' disallineato).
+            detail_prefix="Campi rifiutati",
             context_extra={"contratto_id": contratto_id},
         )
         self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_CONTRATTO, message=_MESSAGE)

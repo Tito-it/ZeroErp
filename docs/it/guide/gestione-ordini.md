@@ -121,7 +121,7 @@ naturali sono il preventivo e l'offerta, con due logiche diverse di conversione.
 Un preventivo raccoglie articoli di **natura mista**. Quando viene accettato, le
 sue righe non finiscono tutte nello stesso posto:
 
-- le righe di **merce** (natura con destinazione "ORDINE") vengono **smistate in un
+- le righe di **merce** (natura con destinazione `ORDINE_VENDITA`) vengono **smistate in un
   ordine di vendita**;
 - i **servizi una tantum** vanno invece in **commessa** (push commessa);
 - i **servizi ricorrenti** non possono nemmeno stare su un preventivo: si gestiscono
@@ -176,8 +176,8 @@ Contiene il contesto del documento:
 - **da dove arriva** (`canale_origine`: `ADMIN` | `PORTALE` | `SHOP`) — in
   back-office è sempre `ADMIN` e non si cambia.
 - **chi ha venduto** (`agente_soggetto_ruolo_id`) — agente/venditore, opzionale.
-- **origine documentale** (`documento_origine_tipo` ∈ {`PREVENTIVO`, `OFFERTA`} +
-  `documento_origine_id`) — valorizzata in automatico dalla conversione; NULL se
+- **origine documentale** (`documento_origine_tipo` ∈ {`PREVENTIVO`, `OFFERTA_COMMERCIALE`},
+  codici di `config.sorgenti`, + `documento_origine_id`) — valorizzata in automatico dalla conversione; NULL se
   l'ordine è creato a mano.
 - **identità e stato** (`numero`/`serie`/`anno`, `uid`, `stato_doc_ordine_id`) e i
   **totali** (`imponibile_tot`, `iva_tot`, `totale_doc`), tenuti aggiornati dai

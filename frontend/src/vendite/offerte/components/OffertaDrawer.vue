@@ -24,6 +24,8 @@ import TabPanels from 'primevue/tabpanels'
 import Tag from 'primevue/tag'
 
 import BillingAccountLookup from '../../../core/components/BillingAccountLookup.vue'
+import { ripristinaBillingAccount } from '../../../core/utils/ripristinaLookup'
+import { clienteCambiato } from '../../_shared/cliente/clienteCambiato'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DocumentoIndirizziSection from '../../_shared/indirizzi/DocumentoIndirizziSection.vue'
@@ -270,16 +272,17 @@ function resetForm() {
 }
 
 function populateFromDetail(d) {
+  const stessoCliente = form.value.billing_account_id === d.billing_account_id
+    && form.value.billing_account_obj != null
   form.value = {
     emittente_fiscale_id: d.emittente_fiscale_id,
     billing_account_id: d.billing_account_id,
-    billing_account_obj: d.billing_account_display ? {
-      id: d.billing_account_id,
-      ragione_sociale: d.billing_account_display,
-      utility_codice: d.utility_codice || null,
-      utility_descrizione: d.utility_display || null,
-      pdp: d.pdp || null,
-    } : null,
+    // Il cliente per il lookup: lo stesso oggetto se il cliente non e' cambiato
+    // (niente lampeggio alla ricarica), altrimenti lo rilegge
+    // `ripristinaBillingAccount` qui sotto. ⛔ Fino al 2026-10-19 si costruiva a
+    // mano dai campi del dettaglio, con la chiave sbagliata della ragione
+    // sociale: riaperto, il campo mostrava il solo codice (collaudo di Tid).
+    billing_account_obj: stessoCliente ? form.value.billing_account_obj : null,
     istanza_utility_id: d.istanza_utility_id,
     utility_id: d.utility_id,
     listino_id: d.listino_id,
@@ -291,6 +294,7 @@ function populateFromDetail(d) {
     validita_al: d.validita_al,
     ...schedaDaFornitura(d.utility),
   }
+  if (!stessoCliente) ripristinaBillingAccount(form.value, d.billing_account_id)
 }
 
 function toIsoDate(d) {
@@ -319,6 +323,11 @@ function onListinoChange(nuovoListinoId) {
   }
 }
 
+// ⛔ In modifica la utility dell'offerta non si cambia (E-3 di Tid, lock del DB
+//    «ferma sempre»): il cliente si cambia DENTRO la stessa utility, che filtra
+//    il lookup. Fino al 2026-10-19 qui si riscriveva sempre: pulito il cliente,
+//    il filtro passava alla utility di default e si poteva scegliere un cliente
+//    che il backend rifiuta. Come il ContrattoDrawer.
 function onBaSelected(item) {
   if (!item) {
     form.value.billing_account_id = null
@@ -328,13 +337,13 @@ function onBaSelected(item) {
     // mantiene il filtro lookup BA sull'utility tipica del proprio EF
     // invece di tornare a "vedo tutti i BA". Coerente col `defaultForm()`
     // che pre-popola `utility_id` da `utilityDefaultId.value` in CREATE.
-    form.value.utility_id = utilityDefaultId.value
+    if (!isEdit.value) form.value.utility_id = utilityDefaultId.value
     return
   }
   form.value.billing_account_id = item.id
   form.value.billing_account_obj = item
   form.value.istanza_utility_id = item.istanza_utility_id || null
-  form.value.utility_id = item.utility_id || null
+  if (!isEdit.value) form.value.utility_id = item.utility_id || null
 }
 
 // Auto-fill valuta dal form-defaults BE (BB resolve_valuta_default), al cambio
@@ -443,10 +452,16 @@ function buildPayload() {
   // dict vuoto per safety, evitando PATCH inutili.
   if (isEdit.value && !testata.modificabile.value) return {}
   return {
-    emittente_fiscale_id: f.emittente_fiscale_id,
+    // Emittente e utility SOLO in CREATE: si scelgono alla nascita e non si
+    // cambiano, nemmeno in bozza (lock del DB «ferma sempre»); in EDIT il BE
+    // le rifiuta sul campo (R-BE-9, brief-db-indirizzi-documento-seguono-il-
+    // cliente §8.7.3). Come il ContrattoDrawer.
+    ...(isEdit.value ? {} : {
+      emittente_fiscale_id: f.emittente_fiscale_id,
+      utility_id: f.utility_id,
+    }),
     billing_account_id: f.billing_account_id,
     istanza_utility_id: f.istanza_utility_id,
-    utility_id: f.utility_id,
     listino_id: f.listino_id,
     listino_versione_id: f.listino_versione_id || null,
     // Valuta inviata SOLO in CREATE: snapshot immutabile post-INSERT.
@@ -485,8 +500,7 @@ async function handleSave() {
   //    brief-db-indirizzi-documento-seguono-il-cliente; il BE la scarta
   //    comunque). Dopo il salvataggio il dettaglio riletto porta la scheda
   //    nuova nel form (R-FE-4).
-  const cambiaCliente = isEdit.value && detail.value !== null
-    && form.value.billing_account_id !== detail.value.billing_account_id
+  const cambiaCliente = isEdit.value && clienteCambiato(form.value, detail.value)
   if (utilityInline && !cambiaCliente && (!isEdit.value || caps.flag('can_edit_utility'))) {
     payload.utility = utilityInline
   }
@@ -1149,7 +1163,8 @@ const footerDrawer = useFooterDocumento({
             :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
             :istanza-utility-id="detail?.istanza_utility_id ?? null"
             :readonly="parentReadonly"
-            :capabilities="capabilities" />
+            :capabilities="capabilities"
+            :cliente-da-salvare="clienteCambiato(form, detail)" />
 
           <!-- Motivazione (sola lettura, valorizzata su RIFIUTATA/ANNULLATA) -->
           <template v-if="isEdit && detail?.motivazione_rifiuto">

@@ -12,7 +12,10 @@
 #            il trigger: quella del form non le si scrive sopra (R-BE-6/7);
 #          · senza cambio di coppia la scheda del form si scrive (il difetto
 #            della PATCH che non la portava);
-#          · il BB `risolvi_cliente_coppia` col repository vero: BA d'altri.
+#          · il BB `risolvi_cliente_coppia` col repository vero: BA d'altri;
+#          · utility ed emittente non si cambiano in modifica (§8.7, R-BE-9 e
+#            R-BE-10): l'offerta cambia cliente con la utility della testata, e
+#            le due chiavi sono un 400 sul campo su offerta e contratto.
 # Note: ⚠️ Il mondo si COSTRUISCE, come il pgTAP del team DB
 #       (`test-fornitura-documento-segue-cliente-v1`): emittente e operatore da
 #       `dbops.fn_pgtap_crea_emittente_operatore`, due clienti da
@@ -27,6 +30,10 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 3) ContrattoClienteFornituraDbTests.test_cambio_cliente_la_scheda_la_rifa_il_db
 4) ContrattoClienteFornituraDbTests.test_stesso_cliente_la_scheda_del_form_si_scrive
 5) ContrattoClienteFornituraDbTests.test_ba_di_un_altra_istanza_rifiutato_sul_ba
+6) ContrattoClienteFornituraDbTests.test_offerta_cambio_cliente_senza_utility_nel_payload — R-BE-9: la utility
+   della coppia viene dalla testata (2026-10-19)
+7) ContrattoClienteFornituraDbTests.test_utility_ed_emittente_rifiutati_sul_campo — offerta e contratto:
+   400 sul campo con la frase del lock del DB, la testata non cambia (R-BE-9, R-BE-10)
 """
 from __future__ import annotations
 
@@ -36,10 +43,13 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import row_to_dict
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.db._documento_eccezioni_repo import fornitura_da_anagrafica
+from apps.vendite.db.offerte_repository import OfferteRepository
 from apps.vendite.services.contratti_service import ContrattiService
+from apps.vendite.services.offerte_service import OfferteService
 from apps.vendite.services.vendite_form_defaults_service import fn_get_contratto_form_defaults
 
 
@@ -156,3 +166,63 @@ class ContrattoClienteFornituraDbTests(unittest.TestCase):
             })
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
+
+    # Scopo: un'offerta in bozza sul cliente del lato, col listino della sua
+    #        utility (builder, dell'emittente di chi agisce).
+    def _offerta_di(self, lato: str) -> int:
+        c = self.clienti[lato]
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT listino_id FROM dbops.fn_pgtap_crea_listino(%s, 'e2e colonne ferme')",
+                [c["utility_id"]],
+            )
+            listino_id = cur.fetchone()[0]
+        repo = OfferteRepository()
+        return int(repo.create_offerta({
+            "emittente_fiscale_id": self.emittente_fiscale_id,
+            "billing_account_id": c["billing_account_id"],
+            "istanza_utility_id": c["istanza_utility_id"],
+            "utility_id": c["utility_id"],
+            "listino_id": listino_id,
+            "validita_dal": "2061-01-01",
+            "stato_doc_offerta_id": repo.get_stato_id_by_codice("BOZZA"),
+        }))
+
+    # 6. R-BE-9: il cliente dell'offerta cambia dentro la utility della testata,
+    #    che il payload non porta piu' (il drawer non la manda in modifica).
+    def test_offerta_cambio_cliente_senza_utility_nel_payload(self) -> None:
+        oid = self._offerta_di("A")
+        b = self.clienti["B"]
+        OfferteService().aggiorna_offerta(oid, {"billing_account_id": b["billing_account_id"]})
+        coppia = OfferteRepository().get_coppia(oid)
+        assert coppia is not None
+        self.assertEqual(
+            (coppia["billing_account_id"], coppia["istanza_utility_id"], coppia["utility_id"]),
+            (b["billing_account_id"], b["istanza_utility_id"], b["utility_id"]),
+        )
+
+    # 7. R-BE-9 e R-BE-10: utility ed emittente in modifica sono un 400 sul
+    #    campo, con la frase del codice del lock del DB; la testata non cambia.
+    def test_utility_ed_emittente_rifiutati_sul_campo(self) -> None:
+        oid = self._offerta_di("A")
+        cid = self._contratto_di("A")
+        casi = (
+            ("offerta", lambda chiave: OfferteService().aggiorna_offerta(oid, {chiave: 1})),
+            ("contratto", lambda chiave: ContrattiService().update_contratto(cid, {chiave: 1})),
+        )
+        for chiave, codice_db in (
+            ("utility_id", "E_DOC_UTILITY_IMMUTABILE"),
+            ("emittente_fiscale_id", "E_DOC_EMITTENTE_IMMUTABILE"),
+        ):
+            for documento, azione in casi:
+                with self.subTest(documento=documento, chiave=chiave):
+                    with self.assertRaises(ServiceError) as ctx:
+                        azione(chiave)
+                    self.assertEqual(
+                        (ctx.exception.code, ctx.exception.context.get("field"), ctx.exception.message),
+                        ("E_VENDITE_VALIDATION", chiave, ErrorPolicyRegistry.resolve(codice_db).user_message),
+                    )
+        coppia = OfferteRepository().get_coppia(oid)
+        assert coppia is not None
+        self.assertEqual(coppia["utility_id"], self.clienti["A"]["utility_id"])
+

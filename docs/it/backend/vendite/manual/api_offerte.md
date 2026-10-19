@@ -679,7 +679,9 @@ gia' presenti su `revisione_padre_id`.
 
 Conversione upstream (§7.4 analisi-ordini-vendita, 2026-06-04): crea un **ordine
 di vendita DRAFT** dall'offerta, copiando testata + righe + componenti BoM e
-valorizzando `documento_origine = ('OFFERTA', offerta_id)` sull'ordine.
+valorizzando `documento_origine = ('OFFERTA_COMMERCIALE', offerta_id)` sull'ordine
+(il codice della sorgente: dal 2026-10-19 la colonna ha la FK verso `config.sorgenti`,
+brief-db-grammatica-unica-documenti lotto 2b; prima `OFFERTA`).
 
 - View `ApiOffertaGeneraOrdine` (area `vendite`) → delega a
   `ordini_service.crea_ordine_da_offerta(offerta_id)` (stesso app vendite).
@@ -697,7 +699,7 @@ valorizzando `documento_origine = ('OFFERTA', offerta_id)` sull'ordine.
   Guard BE fail-fast `E_ORD_OFFERTA_GIA_CONVERTITA` (409) + rete strutturale
   UNIQUE parziale `uq_ordini_v_documento_origine_offerta` (mappata via
   `map_integrity_error` allo stesso codice per la race concorrente). È il
-  **reversal parziale di A1** «senza UNIQUE», solo per `OFFERTA` (`PREVENTIVO`
+  **reversal parziale di A1** «senza UNIQUE», solo per `OFFERTA_COMMERCIALE` (`PREVENTIVO`
   resta 1:N). Specchio della guard data-driven `can_genera_ordine`.
 - **Mutua esclusività `contratto` XOR `ordine` (rev. 2026-06-08)**: un'offerta
   `ACCETTATA` si materializza in **una sola** forma a valle — o contratto o
@@ -709,7 +711,7 @@ valorizzando `documento_origine = ('OFFERTA', offerta_id)` sull'ordine.
   La capability riflette già l'XOR: `can_push_contratto`/`can_genera_ordine` sono
   abilitate solo se non esiste né l'una né l'altra materializzazione.
 - Output `200`: `{ "ordine_id": int, "numero": str, "righe_create": int,
-  "documento_origine": {"tipo": "OFFERTA", "id": int} }`.
+  "documento_origine": {"tipo": "OFFERTA_COMMERCIALE", "id": int} }`.
 - Errori: `E_VENDITE_NOT_FOUND` (404) se inesistente; `E_ORD_ORIGINE_NON_CONVERTIBILE`
   (409) se non `ACCETTATA`; `E_ORD_OFFERTA_GIA_CONVERTITA` (409) se un ordine è
   già stato generato da questa offerta; `E_OFFERTA_CONTRATTO_GIA_GENERATO` (409)

@@ -235,7 +235,7 @@ with transaction.atomic():
         template_id, ba_id = row
 
         # L'articolo deve essere una MERCE: in un ordine (e in una bolla) vanno
-        # solo articoli la cui natura di vendita ha destinazione ORDINE
+        # solo articoli la cui natura di vendita ha destinazione ORDINE_VENDITA
         # (script.fn_check_articolo_riga, E_RIGA_NATURA_NON_AMMESSA). Fino al
         # 2026-10-13 si prendeva la riga piu' recente di qualunque natura, e il
         # giorno che era un servizio l'ordine nuovo veniva rifiutato.
@@ -246,7 +246,7 @@ with transaction.atomic():
               JOIN catalogo.articoli a
                 ON a.id = r.articolo_id AND a.is_composito IS FALSE
               JOIN config.nature_vendita nv
-                ON nv.id = a.natura_vendita_id AND nv.destinazione_tipo = 'ORDINE'
+                ON nv.id = a.natura_vendita_id AND nv.destinazione_tipo = 'ORDINE_VENDITA'
              WHERE r.attivo AND r.quantita > 0
              ORDER BY r.id DESC LIMIT 1
             """

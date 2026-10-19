@@ -3177,6 +3177,7 @@
       "usa_come_tipo": "Tipo indirizzo",
       "impostati_titolo": "Impostati su questo documento",
       "altri_count": "+{n} altri",
+      "cliente_da_salvare": "Il cliente è cambiato: gli indirizzi seguiranno il nuovo cliente al salvataggio.",
       "mancante_obbligatorio": "Indirizzo di consegna mancante — obbligatorio per l'emissione.",
       "non_impostato": "Nessun indirizzo impostato.",
       "titolo": "Indirizzi",
@@ -3230,6 +3231,7 @@
       "tipo_fattura": "Fattura",
       "tipo_commessa": "Commessa",
       "tipo_reso_vendita": "Reso",
+      "tipo_attivita_consumi": "Consumi",
       "natura_fattura": "Fattura",
       "natura_nota_credito": "Nota di credito",
       "natura_nota_debito": "Nota di debito"
@@ -3246,15 +3248,7 @@
       "si_annulla": "Che cosa si annulla",
       "oneri_annullati": "oneri che si annullano con la commessa: {n}",
       "spiegazione_commessa": "Confermando, la commessa si annulla: le righe non ancora emesse escono dalla commessa, i documenti da cui vengono tornano da mandare in commessa, il reso torna da accreditare, gli oneri si annullano.",
-      "nessun_legame": "I legami con altri documenti non ci sono più: confermando, il documento si annulla senza ritirare niente.",
-      "origine_ordine": "Ordine",
-      "origine_reso": "Reso",
-      "origine_preventivo": "Preventivo",
-      "origine_offerta": "Offerta",
-      "origine_commessa": "Commessa",
-      "origine_contratto": "Contratto",
-      "origine_ddt": "DDT",
-      "origine_consumi": "Consumi"
+      "nessun_legame": "I legami con altri documenti non ci sono più: confermando, il documento si annulla senza ritirare niente."
     },
     "listini": {
       "search_placeholder": "Cerca per codice o descrizione listino...",

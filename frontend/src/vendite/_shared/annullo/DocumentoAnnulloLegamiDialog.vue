@@ -49,9 +49,8 @@ import DocumentoDrawerHost from '../../../core/components/DocumentoDrawerHost.vu
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useDocumentoDrawer } from '../../../core/composables/useDocumentoDrawer'
 import { formatNumber } from '../../../core/utils/format'
-import { labelOrCode } from '../../../core/utils/i18nLabel'
 import { SORGENTE_CODES } from '../../../documenti/constants'
-import { NATURA_LEGAME, ORIGINE_LEGAME } from '../../constants'
+import { NATURA_LEGAME } from '../../constants'
 import { lineageDocumentoLabel } from '../lineage/lineageLabels'
 import { getLegami } from './legamiApi'
 
@@ -129,12 +128,14 @@ const oneriAnnullati = computed(() => (
 // I legami sono spariti dopo la domanda: si annulla senza dichiarare niente.
 const senzaLegami = computed(() => dati.value != null && !dati.value.legami)
 
-// Scopo: il documento dall'altra parte, a parole: tipo dal lineage (o, se il
-//        lineage non lo vede, dall'origine del legame) e codice.
+// Scopo: il documento dall'altra parte, a parole: tipo e codice.
+// ⭐ Un vocabolario solo: dal lotto 2b della grammatica unica l'`origine` e' il
+//    codice di `config.sorgenti`, come il tipo del lineage, e si nomina con la
+//    stessa etichetta anche quando non e' un documento da aprire (i consumi).
+//    ONERE non e' una sorgente: senza chiave esce il codice (fail-visible), ma
+//    nella commessa gli oneri si contano a parte e non arrivano qui.
 function documentoLabel(l) {
-  const tipo = l.origine_tipo_codice_interno
-    ? lineageDocumentoLabel(t, te, l.origine_tipo_codice_interno, null)
-    : labelOrCode(t, te, `vendite.annullo_legami.origine_${String(l.origine ?? '').toLowerCase()}`, l.origine)
+  const tipo = lineageDocumentoLabel(t, te, l.origine_tipo_codice_interno ?? l.origine, null)
   return l.origine_codice ? `${tipo} ${l.origine_codice}` : tipo
 }
 
@@ -145,7 +146,7 @@ function documentoLabel(l) {
 //        quante righe tornano da mandare (o da accreditare, per il reso).
 function cosaSiRiapre(l, n) {
   if (daCommessa.value) {
-    return l.origine === ORIGINE_LEGAME.RESO
+    return l.origine === SORGENTE_CODES.RESO_VENDITA
       ? t('vendite.annullo_legami.commessa_da_accreditare', { n })
       : t('vendite.annullo_legami.commessa_da_mandare', { n })
   }

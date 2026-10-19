@@ -53,6 +53,7 @@ from apps.vendite.db.offerte_repository import (
 )
 from apps.vendite.services._cliente_coppia_documento import (
     coppia_cambiata,
+    rifiuta_colonne_ferme,
     risolvi_cliente_coppia,
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
@@ -272,11 +273,12 @@ CREATE_KEYS_OFFERTA: frozenset[str] = frozenset({
 # Whitelist payload update offerta (testata). Sub-set di create (immutabili:
 # codice/uid/stato_doc_offerta_id/revisione_numero/revisione_padre_id e
 # tutti i campi audit/timestamp di transizione).
+# ⛔ Dal 2026-10-19 (R-BE-9) niente `utility_id` ne' `emittente_fiscale_id`: si
+#    scelgono alla creazione e non si cambiano, nemmeno in bozza (E-3 di Tid; il
+#    lock del DB «ferma sempre»). Le rifiuta sul campo `rifiuta_colonne_ferme`.
 UPDATE_KEYS_OFFERTA: frozenset[str] = frozenset({
-    "emittente_fiscale_id",
     "billing_account_id",
     "istanza_utility_id",
-    "utility_id",
     "listino_id",
     "listino_versione_id",
     "valore_variazione_globale",
@@ -643,6 +645,9 @@ class OfferteService:
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
+        rifiuta_colonne_ferme(
+            payload, code=E_VENDITE_VALIDATION, function_name=f"{__name__}.aggiorna_offerta",
+        )
         self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_OFFERTA)
         # Prima la testata: fuori perimetro o inesistente e' un 404.
         self._get_offerta_or_raise(
@@ -673,23 +678,17 @@ class OfferteService:
             with transaction.atomic():
                 cambia_coppia = False
                 if testata_payload:
-                    coppia = self._repo.get_coppia(offerta_id) or {}
+                    # Letta dal helper del 404, non con `or {}`: la utility della
+                    # coppia serve (si indicizza), e un'offerta sparita nel
+                    # frattempo e' «non trovata», non un KeyError (500).
+                    coppia = self._get_offerta_or_raise(
+                        offerta_id, op="aggiorna_offerta", getter=self._repo.get_coppia,
+                    )
                     # Il cliente si cambia per coppia: BA e istanza viaggiano
                     # insieme, letti dal lato che il payload porta (BB
                     # `risolvi_cliente_coppia`, lo stesso di preventivo e
-                    # contratto).
+                    # contratto), dentro la utility della testata, che non cambia.
                     if "billing_account_id" in testata_payload or "istanza_utility_id" in testata_payload:
-                        utility_id = (
-                            self._v.optional_positive_int(testata_payload, "utility_id")
-                            or coppia.get("utility_id")
-                        )
-                        ErrorManager.require(
-                            utility_id is not None,
-                            code=E_VENDITE_VALIDATION,
-                            message="Campo 'utility_id' obbligatorio.",
-                            context={"field": "utility_id"},
-                        )
-                        assert utility_id is not None
                         (
                             testata_payload["billing_account_id"],
                             testata_payload["istanza_utility_id"],
@@ -700,7 +699,7 @@ class OfferteService:
                             istanza_utility_id=self._v.optional_positive_int(
                                 testata_payload, "istanza_utility_id",
                             ),
-                            utility_id=int(utility_id),
+                            utility_id=int(coppia["utility_id"]),
                             code=E_VENDITE_VALIDATION,
                             msg_ba_fuori_coppia=_MSG_BA_FUORI_COPPIA,
                             function_name=f"{__name__}.aggiorna_offerta",
