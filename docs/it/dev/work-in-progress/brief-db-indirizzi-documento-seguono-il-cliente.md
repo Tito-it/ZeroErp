@@ -1,19 +1,18 @@
 # Brief DB — Gli indirizzi del documento seguono il cliente
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-18
+## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: Tid (apply del §8.7 e pgTAP; collaudo §8.5 e §8.6.4). Il lato DB del §8.7 e' scritto e provato (§8.7.4).**
+**Riparte: Tid, col commit di R-BE-9 e R-BE-10 (fatte il 2026-10-19, §8.7.5) e poi il collaudo (riga 3).**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | **Tid** | Apply di `20261018-65` … `-68` e dei due codici (mirror di `codici_errore` e `messaggi_errore`), poi i pgTAP come app | §8.7.4 | niente |
-| 2 | **BE** | R-BE-8 (policy e ripiego dei due codici) **nello stesso giro dell'apply**; poi R-BE-9 e R-BE-10 | §8.7.3 | 1 |
+| 1 | **Tid** | ✅ Apply di `20261018-65` … `-68` e dei due codici su dbdev (2026-10-18 17:05-17:10; verificato il 2026-10-19 da `databasechangelog` e dai montaggi: `utility_id` ed `emittente_fiscale_id` con `-` su preventivo, offerta e contratto) | §8.7.4 | — |
+| 2 | **BE** | ✅ R-BE-8 (policy e ripiego dei due codici), entrata con `08cc15a61` (2026-10-18). ✅ **R-BE-9** e **R-BE-10** (2026-10-19): le due colonne rifiutate sul campo dal BB `rifiuta_colonne_ferme` sui tre documenti, il drawer dell'offerta non le manda piu' in modifica; da committare | §8.7.3, §8.7.5 | — |
 | 3 | **Tid** | Collaudo in-app: slot di default e cambio di cliente in bozza su DDT, preventivo e offerta (§8.5); scheda precompilata e cambio di cliente del contratto (§8.6.4); emittente e utility spenti in modifica su preventivo, offerta e contratto (R-FE-5) | §8.5, §8.6.4, §8.7.3 | 1, 2 |
 | 4 | **Tid** | Archiviazione in `work-done/` | — | 3 |
 
-**Decisioni aperte di Tid: nessuna.** La forma del §8.7 (la colonna «ferma sempre» nel montaggio
-del lock di testata, due codici nuovi) era scelta del team DB: e' motivata nel §8.7.4, se Tid la
-vuole diversa lo dice prima dell'apply.
+**Decisioni aperte di Tid: nessuna.** R-BE-10 decisa da Tid il 2026-10-19: il BE rifiuta le due chiavi
+sul campo, su tutti e tre i documenti; il lock del DB resta la regola per gli altri scrittori (§8.7.5).
 ✅ **Committato** su `dev/db-tid` il 2026-10-18 (i quattro changeSet, le righe dei due codici, il
 pgTAP nuovo e i tre adeguati, le pagine `manual/`, la guida dei contratti, questo documento).
 Corsa di Tid su `zeroerp_ruoli` dopo l'apply (2026-10-18): nessuna regressione del giro; i quattro
@@ -30,7 +29,7 @@ a parte.
 > applicato e verde il 2026-10-12 (`20261012-34` … `-42`, pgTAP verdi nella corsa di Tid). ⏳ Restano il
 > collaudo in-app di Tid (§8.5), la ricaduta BE/FE del §8.4.6 e il cambio di cliente del **contratto** in
 > bozza (§8.3). ✅ **§8.3 e §8.4.6 fatti il 2026-10-14** (§8.6). ⏳ Restano il collaudo e la richiesta DB
-> del §8.7. ✅ **§8.7 lato DB scritto e provato il 2026-10-18** (§8.7.4): da applicare.
+> del §8.7. ✅ **§8.7 lato DB scritto, provato e applicato il 2026-10-18** (§8.7.4); R-BE-8 fatta.
 > **Nel registro dei difetti DB:** voce **D27** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -625,9 +624,9 @@ Forma, codice e nome sono scelte del team DB.
 | **R-BE-8** | BE | Codici nuovi **`E_DOC_UTILITY_IMMUTABILE`** ed **`E_DOC_EMITTENTE_IMMUTABILE`** (`CONFLITTO_STATO`, 409, **niente `campo`**, come la famiglia dei lock; VARIADIC lo stato): policy rigenerata e frase di ripiego |
 | **R-BE-9** | BE | `offerte_service`: `utility_id` ed `emittente_fiscale_id` escono da `UPDATE_KEYS_OFFERTA`; il BB della coppia prende la utility dalla testata. Finche' non escono non si rompe niente: un `UPDATE` allo stesso valore passa (il lock guarda il cambio), uno diverso prende il codice nuovo |
 | **R-BE-10** | BE | Contratto e preventivo: il divieto Python (`_FORBIDDEN_TESTATA_UPDATE`, la whitelist del preventivo) si puo' ritirare. Il codice del DB **non** porta il campo (`CONFLITTO_STATO`): se il BE vuole l'errore sul campo lo tiene come errore anticipato, altrimenti si ritira. Scelta del BE |
-| **R-FE-5** | FE | Niente da scrivere: in modifica i due campi si spengono da soli, perche' le capability di preventivo, offerta e contratto ora li mettono in `non_editable_fields` **anche in bozza**. Da verificare nel collaudo sull'offerta (prima l'emittente si accendeva in bozza) |
+| **R-FE-5** | FE | ⚠️ Una riga da scrivere (§8.7.5): il drawer dell'offerta mandava le due chiavi anche in modifica. Per il resto: in modifica i due campi si spengono da soli, perche' le capability di preventivo, offerta e contratto ora li mettono in `non_editable_fields` **anche in bozza**. Da verificare nel collaudo sull'offerta (prima l'emittente si accendeva in bozza) |
 
-#### 8.7.4 ✅ Consegna DB (team DB, 2026-10-18) — da applicare
+#### 8.7.4 ✅ Consegna DB (team DB, 2026-10-18) — applicata (2026-10-18 17:10)
 
 **La forma: una colonna «ferma sempre» nel montaggio del lock di testata.** Il terzo elemento di
 una terna di `vendite.trgfn_doc_testata_lock_fuori_bozza` puo' essere `-`: la colonna non si
@@ -687,3 +686,34 @@ Fuori perimetro, detto per completezza: sull'**ordine** la utility e' ferma solo
 montaggio, ma il billing account ha il lock assoluto e la utility la deriva il DB dal BA; su
 **DDT e reso** l'emittente in bozza si cambia ancora (B-4 riguardava contratto e preventivo, E-3
 l'offerta).
+
+#### 8.7.5 Fatto (sessione BE/FE, 2026-10-19): R-BE-9, R-BE-10
+
+**Decisione di Tid (2026-10-19) su R-BE-10:** il BE rifiuta sul campo, e i tre documenti rispondono allo
+stesso modo.
+
+* **BB `rifiuta_colonne_ferme`** in `vendite/services/_cliente_coppia_documento.py` (sede comune dei tre
+  documenti, gia' del BB della coppia): `utility_id` ed `emittente_fiscale_id` in un payload di modifica sono
+  un 400 col codice di validazione del documento, il campo nel contesto e la frase del codice del lock del DB
+  (`E_DOC_UTILITY_IMMUTABILE`, `E_DOC_EMITTENTE_IMMUTABILE`, letta dal registro delle policy: il testo non si
+  ricopia). Registrato nel catalogo BB backend.
+* **Offerta (R-BE-9):** le due chiavi escono da `UPDATE_KEYS_OFFERTA`; la coppia del cliente si risolve con
+  la utility della testata.
+* **Contratto (R-BE-10):** escono da `_FORBIDDEN_TESTATA_UPDATE` (lo rifiutava con un messaggio suo, **senza
+  campo**).
+* **Preventivo (R-BE-10):** il PATCH **scartava in silenzio** ogni chiave fuori whitelist, `utility_id`
+  compresa (risposta ok, niente cambiato). Ora le due colonne sono un 400 sul campo e ogni altra chiave ignota
+  un 400, come su offerta e contratto. Censiti i chiamanti: il drawer e i due smoke mandano solo chiavi della
+  whitelist.
+* **FE (R-FE-5 corretta):** `OffertaDrawer` manda emittente e utility solo alla creazione, come il
+  `ContrattoDrawer`; senza, ogni salvataggio dell'offerta sarebbe stato un 400.
+* **Test.** Sul DB vero (`test_contratto_cliente_e_fornitura_db` 6 e 7): l'offerta cambia cliente con la
+  utility della testata; le due chiavi su offerta e contratto sono un 400 sul campo con la frase del catalogo,
+  e la testata non cambia. Unitari: preventivo, colonne ferme sul campo e chiave ignota rifiutata. Suite BE
+  completa verde (6296), e2e `vendite` verdi (209), test FE di `vendite` verdi (130); mypy, ruff, eslint
+  puliti.
+* **Revisione critica (stessa sessione):** l'offerta legge la coppia dal helper del 404 (con `or {}` una riga
+  sparita nel frattempo diventava un `KeyError`, 500, ora che la utility si indicizza); nel preventivo
+  `E_PREV_VALIDAZIONE` e' una costante del modulo (era 35 letterali); nel contratto il dettaglio di
+  `reject_keys` non ripete piu' a mano l'elenco delle chiavi vietate (si era gia' disallineato).
+

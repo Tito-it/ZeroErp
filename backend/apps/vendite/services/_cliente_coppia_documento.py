@@ -4,7 +4,8 @@
 # Doc: Python
 # Scopo: il cliente di un documento con la coppia (istanza, utility) sulla
 #        testata — preventivo, offerta, contratto — letto dal lato che il
-#        payload porta, e il riconoscimento di un cambio di coppia.
+#        payload porta, il riconoscimento di un cambio di coppia, e le colonne
+#        della testata che in modifica non si cambiano (utility, emittente).
 # Note: ⭐ BB per la regola del 2 (ok Tid 2026-10-12, brief-db-indirizzi-
 #       documento-seguono-il-cliente §8.3; offerta come terzo consumatore, ok
 #       Tid 2026-10-14). Prima il preventivo lo risolveva da se'
@@ -24,6 +25,7 @@ from typing import Any
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_policies import ErrorPolicyRegistry
 
 # Le colonne della testata che dicono chi e' il cliente. Se un aggiornamento ne
 # cambia una, il DB rifa' la scheda di fornitura (`trg_<doc>_m50_fornitura_
@@ -135,3 +137,40 @@ def coppia_cambiata(payload: Mapping[str, Any], attuale: Mapping[str, Any]) -> b
         chiave in payload and _come_testo(payload[chiave]) != _come_testo(attuale.get(chiave))
         for chiave in COPPIA_CLIENTE
     )
+
+
+# Le colonne della testata che si scelgono alla creazione e non si cambiano,
+# nemmeno in bozza: si cambia il cliente, dentro la stessa utility e dello
+# stesso emittente (B-4 di Tid per preventivo e contratto, E-3 per l'offerta).
+# La regola e' del DB, per ogni scrittore: il lock di testata «ferma sempre»
+# (`vendite.trgfn_doc_testata_lock_fuori_bozza`, brief-db-indirizzi-documento-
+# seguono-il-cliente §8.7.4), coi suoi codici. Valore = il codice del DB, da cui
+# si prende la frase: il testo non si ricopia.
+COLONNE_FERME_IN_MODIFICA: dict[str, str] = {
+    "utility_id": "E_DOC_UTILITY_IMMUTABILE",
+    "emittente_fiscale_id": "E_DOC_EMITTENTE_IMMUTABILE",
+}
+
+
+# Scopo: rifiuta, nella modifica della testata di preventivo, offerta e
+#        contratto, le colonne che non si cambiano: un 400 sul campo (`code`,
+#        il codice di validazione del documento), con la frase del codice del
+#        DB. Si chiama PRIMA del controllo delle chiavi ammesse, che direbbe
+#        «chiave sconosciuta».
+# ⭐ Sede unica (regola del 2, R-BE-9 e R-BE-10, scelta di Tid 2026-10-19: il
+#    BE rifiuta sul campo, il lock del DB resta la regola per gli altri
+#    scrittori). Fino ad allora il contratto le rifiutava con un messaggio suo
+#    e senza campo, l'offerta le scriveva (la regola la diceva solo il DB, con
+#    un 409), il preventivo le scartava in silenzio.
+def rifiuta_colonne_ferme(
+    payload: Mapping[str, Any], *, code: str, function_name: str,
+) -> None:
+    for colonna, codice_db in COLONNE_FERME_IN_MODIFICA.items():
+        ErrorManager.require(
+            colonna not in payload,
+            code=code,
+            message=ErrorPolicyRegistry.resolve(codice_db).user_message,
+            context={"field": colonna},
+            function_name=function_name,
+        )
+

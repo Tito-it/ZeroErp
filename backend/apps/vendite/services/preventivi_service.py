@@ -24,7 +24,7 @@ from apps.config.sorgenti import SORGENTE_COMMESSA, SORGENTE_PREVENTIVO
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
-from apps.vendite.services._cliente_coppia_documento import risolvi_cliente_coppia
+from apps.vendite.services._cliente_coppia_documento import rifiuta_colonne_ferme, risolvi_cliente_coppia
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.vendite.services._date_consegna_righe import aggiorna_date_consegna_righe
 from apps.vendite.services._annullo_con_legami import (
@@ -78,6 +78,8 @@ _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 _STATI_FATTURABILI: frozenset[str] = frozenset({"ACCETTATO"})
 _STATI_GENERA_PRATICA: frozenset[str] = frozenset({"ACCETTATO"})
 _FN = "vendite.preventivi_service"
+# Il codice di validazione del dominio: una costante, non 35 letterali (2026-10-19).
+E_PREV_VALIDAZIONE = "E_PREV_VALIDAZIONE"
 # La data di consegna RICHIESTA dal cliente sulla riga (brief-db-modifiche-certe-
 # ciclo-vendita-e-articolo, Blocco A). Sul preventivo c'e' solo la richiesta:
 # la conferma nasce sull'ordine, e `fn_push_preventivo_a_ordine` porta avanti
@@ -91,7 +93,7 @@ _CHIAVE_DATA_CONSEGNA = "data_consegna_richiesta_cliente"
 # errore DB senza codice e' il 400 del dominio, non un 500 generico.
 _db_errors = make_db_errors_translator(
     fn_prefix=_FN,
-    fallback_code="E_PREV_VALIDAZIONE",
+    fallback_code=E_PREV_VALIDAZIONE,
     fallback_message="Violazione vincolo DB su preventivo.",
 )
 
@@ -101,8 +103,9 @@ _db_errors = make_db_errors_translator(
 #        non la trovava. ⭐ Il presidio
 #        `test_whitelist_service_dentro_repository` le confronta con le
 #        colonne che il repository sa scrivere.
-# ⚠️ `utility_id` NON c'e': e' immutabile (`fn_available_actions_preventivo`
-#    la mette sempre in `non_editable_fields`). `iva_id` nemmeno (`I6`,
+# ⚠️ `utility_id` ed `emittente_fiscale_id` NON ci sono: si scelgono alla
+#    creazione (lock del DB «ferma sempre»), e le rifiuta sul campo
+#    `rifiuta_colonne_ferme`. `iva_id` nemmeno (`I6`,
 #    2026-08-31: l'aliquota la decide il risolutore). `quantita` e' derivata
 #    dal trigger: la sorgente e' `qta_operativa`.
 UPDATE_KEYS_PREVENTIVO: frozenset[str] = frozenset({
@@ -142,7 +145,8 @@ CREATE_KEYS_RIGA: frozenset[str] = frozenset({
 UPDATE_RIGA_LETTE_A_PARTE: frozenset[str] = frozenset({
     "data_consegna_richiesta_cliente", "richiesta_approvazione",
 })
-_V_RIGA = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
+# Validator stateless del dominio (solo il codice): testata e righe.
+_V = PayloadValidator(validation_code=E_PREV_VALIDAZIONE)
 
 
 # Scopo: Carica la testata preventivo o solleva E_PREV_NOT_FOUND (BB core
@@ -161,7 +165,7 @@ def _get_testata_or_raise(
 #        vuota o `null`; `date` se ISO valida; 400 col campo se malformata.
 def _data_consegna_da_payload(payload: dict[str, Any], *, function_name: str) -> date | None:
     normalizzato = {_CHIAVE_DATA_CONSEGNA: empty_to_none(payload.get(_CHIAVE_DATA_CONSEGNA))}
-    return _V_RIGA.optional_date(
+    return _V.optional_date(
         normalizzato, _CHIAVE_DATA_CONSEGNA, function_name=function_name,
     )
 
@@ -228,7 +232,7 @@ def list_preventivi(
 ) -> dict[str, Any]:
     ErrorManager.require(
         page >= 1 and 1 <= page_size <= MAX_LIMIT,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="Parametri paginazione non validi.",
         function_name=f"{_FN}.list_preventivi",
     )
@@ -373,7 +377,7 @@ _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # dei test unit raggiungono il repository.
     repo_factory=lambda: PreventiviRepository(),
     not_found_code="E_PREV_NOT_FOUND",
-    error_code="E_PREV_VALIDAZIONE",
+    error_code=E_PREV_VALIDAZIONE,
     fn_prefix=_FN,
 )
 
@@ -420,7 +424,7 @@ def _risolvi_cliente_preventivo(
         billing_account_id=billing_account_id,
         istanza_utility_id=istanza_utility_id,
         utility_id=utility_id,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         msg_ba_fuori_coppia=_MSG_BA_FUORI_COPPIA,
         function_name=function_name,
         code_coppia_senza_ba="E_PREV_UTILITY_ISTANZA_INCOERENTE",
@@ -472,7 +476,7 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
     utility_id = payload.get("utility_id")
     ErrorManager.require(
         utility_id is not None,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="utility_id obbligatorio.",
         function_name=f"{_FN}.crea_preventivo",
     )
@@ -573,13 +577,17 @@ def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
 # (brief-db-testata-dopo-emissione, D-0 e R-BE-2): il 409 del lock passa com'e'.
 def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = PreventiviRepository()
+    # ⛔ Fino al 2026-10-19 una chiave fuori whitelist si SCARTAVA in silenzio
+    #    (anche `utility_id`: la risposta era ok e non cambiava niente). Ora le
+    #    due colonne ferme sono un 400 sul campo, e ogni altra chiave ignota un
+    #    400 (R-BE-10, scelta di Tid), come su offerta e contratto.
+    rifiuta_colonne_ferme(
+        payload, code=E_PREV_VALIDAZIONE, function_name=f"{_FN}.aggiorna_preventivo",
+    )
+    _V.validate_allowed_keys(payload, allowed=UPDATE_KEYS_PREVENTIVO)
     # Prima la testata: fuori perimetro o inesistente e' un 404.
     testata = _get_testata_or_raise(repo, preventivo_id, op="aggiorna_preventivo")
 
-    # Campi esposti dal form. utility_id e' immutabile per regola di
-    # dominio (vedi script.fn_available_actions_preventivo: non_editable_fields
-    # include sempre utility_id) e quindi NON e' nella whitelist: per cambiarla
-    # serve creare un nuovo preventivo.
     update_fields: dict[str, Any] = {}
     for key in UPDATE_KEYS_PREVENTIVO:
         if key in payload:
@@ -650,7 +658,7 @@ def cambia_stato(
         if stato_attuale in ("EMESSO", "ACCETTATO"):
             ErrorManager.require(
                 fatturazione_immediata is not None,
-                code="E_PREV_VALIDAZIONE",
+                code=E_PREV_VALIDAZIONE,
                 message="Modalita' di fatturazione obbligatoria per accettare il preventivo.",
                 detail="fatturazione_immediata: bool obbligatorio.",
                 function_name=f"{_FN}.cambia_stato",
@@ -663,7 +671,7 @@ def cambia_stato(
             else:
                 ErrorManager.require(
                     competenza_mese is not None,
-                    code="E_PREV_VALIDAZIONE",
+                    code=E_PREV_VALIDAZIONE,
                     message=(
                         "Mese di competenza obbligatorio quando fatturazione "
                         "non e' immediata."
@@ -694,7 +702,7 @@ def cambia_stato(
     # documentale). Fail-fast con messaggio parlante.
     ErrorManager.require(
         nuovo_stato != "EMESSO",
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message=(
             "Usare l'endpoint /emetti/ (multipart) per la transizione "
             "BOZZA->EMESSO: orchestra stato + generazione documento + "
@@ -705,7 +713,7 @@ def cambia_stato(
 
     if nuovo_stato == STATO_ANNULLATO:
         confermati = dichiarazione_legami(
-            legami_confermati, validation_code="E_PREV_VALIDAZIONE",
+            legami_confermati, validation_code=E_PREV_VALIDAZIONE,
             function_name=f"{_FN}.cambia_stato",
         )
         stato_prec = testata_o_not_found(
@@ -919,7 +927,7 @@ def get_root_per_pratica(pratica_id: int) -> dict[str, Any]:
 #    `make_db_errors_translator` — i parametri di dominio si fissano una volta,
 #    la regola resta in un posto solo.
 _risolvi_iva_riga = make_risolvi_iva_riga(
-    error_code="E_PREV_VALIDAZIONE",
+    error_code=E_PREV_VALIDAZIONE,
     function_name=f"{_FN}._risolvi_iva_riga",
     usa_auth_user=True,
 )
@@ -957,7 +965,7 @@ def gestisci_riga(
     articolo_id = payload.get("articolo_id")
     ErrorManager.require(
         articolo_id is not None,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="articolo_id obbligatorio.",
         function_name=f"{_FN}.gestisci_riga",
     )
@@ -1014,7 +1022,7 @@ def gestisci_riga(
         else:
             ErrorManager.require(
                 False,
-                code="E_PREV_VALIDAZIONE",
+                code=E_PREV_VALIDAZIONE,
                 message="Prezzo unitario obbligatorio per articoli non compositi.",
                 detail=f"articolo_id={articolo_id}",
                 function_name=f"{_FN}.gestisci_riga",
@@ -1122,7 +1130,7 @@ def gestisci_riga(
             componenti_overrides = normalize_componenti_overrides(
                 payload.get("componenti_overrides"),
                 function_name=f"{_FN}.gestisci_riga",
-                error_code="E_PREV_VALIDAZIONE",
+                error_code=E_PREV_VALIDAZIONE,
             )
             # Mappa attivazioni opzionali (modello unificato 2026-05-13):
             # default DB inserisce obbligatori `attivo=TRUE` e opzionali
@@ -1132,7 +1140,7 @@ def gestisci_riga(
             componenti_attivazioni = normalize_componenti_attivazioni(
                 payload.get("componenti_attivazioni"),
                 function_name=f"{_FN}.gestisci_riga",
-                error_code="E_PREV_VALIDAZIONE",
+                error_code=E_PREV_VALIDAZIONE,
             )
             repo.init_componenti_riga(
                 riga_id=int(riga_id_created),
@@ -1196,7 +1204,7 @@ def aggiorna_riga(
     for _campo_componenti in ("componenti_overrides", "componenti_attivazioni"):
         ErrorManager.require(
             _campo_componenti not in payload,
-            code="E_PREV_VALIDAZIONE",
+            code=E_PREV_VALIDAZIONE,
             message=(
                 f"Campo '{_campo_componenti}' non ammesso in PATCH riga: "
                 "modifica componenti via endpoint dedicato "
@@ -1426,14 +1434,14 @@ def _coerce_meta_to_dict(value: Any) -> dict[str, Any]:
 #        `NaN > 0` e' vero e il CHECK la lascia entrare. Qui restano i guard
 #        stretti di dominio, con la loro frase.
 def _validate_riga_economic(payload: dict[str, Any], *, function_name: str) -> None:
-    prezzo = _V_RIGA.optional_decimal(
+    prezzo = _V.optional_decimal(
         payload, "prezzo_unitario",
         message="Prezzo unitario non numerico.", function_name=function_name,
     )
     if prezzo is not None:
         ErrorManager.require(
             prezzo >= 0,
-            code="E_PREV_VALIDAZIONE",
+            code=E_PREV_VALIDAZIONE,
             message="Il prezzo unitario non puo' essere negativo.",
             detail=f"prezzo_unitario={payload['prezzo_unitario']!r}",
             context={"field": "prezzo_unitario"},
@@ -1442,14 +1450,14 @@ def _validate_riga_economic(payload: dict[str, Any], *, function_name: str) -> N
 
     # Sorgente quantita = `qta_operativa` (UoM operativa scelta dall'operatore);
     # `quantita` (base) e' derivata dal trigger DB e non arriva piu' dal FE.
-    qta_operativa = _V_RIGA.optional_decimal(
+    qta_operativa = _V.optional_decimal(
         payload, "qta_operativa",
         message="Quantita' non numerica.", function_name=function_name,
     )
     if qta_operativa is not None:
         ErrorManager.require(
             qta_operativa != 0,
-            code="E_PREV_VALIDAZIONE",
+            code=E_PREV_VALIDAZIONE,
             message="La quantita' deve essere diversa da zero.",
             detail=f"qta_operativa={payload['qta_operativa']!r}",
             context={"field": "qta_operativa"},
@@ -1485,7 +1493,7 @@ def _resolve_or_check_override_prezzo(
         auth_user_id=auth_user_id,
         function_name=function_name,
         resolver_fn=suggerisci_prezzo_riga,
-        error_code_validazione="E_PREV_VALIDAZIONE",
+        error_code_validazione=E_PREV_VALIDAZIONE,
         richiesta_approvazione=richiesta_approvazione,
     )
 
@@ -1528,7 +1536,7 @@ def _resolve_emittente_sr_id_or_raise(
         user = user_model.objects.get(pk=auth_user_id)  # type: ignore[misc]  # pk=None -> DoesNotExist
     except user_model.DoesNotExist:
         ErrorManager.raise_error(
-            code="E_PREV_VALIDAZIONE",
+            code=E_PREV_VALIDAZIONE,
             message="Utente non trovato.",
             detail=f"auth_user_id={auth_user_id}",
             function_name=function_name,
@@ -1536,7 +1544,7 @@ def _resolve_emittente_sr_id_or_raise(
     emittenti_sr = PermissionResolver.get_emittenti_sr_ids(user) or []
     ErrorManager.require(
         len(emittenti_sr) > 0,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="Impossibile risolvere l'emittente fiscale dell'operatore.",
         detail="L'operatore non ha emittenti autorizzati.",
         function_name=function_name,
@@ -1564,16 +1572,16 @@ def suggerisci_prezzo_riga(
 
     ErrorManager.require(
         articolo_id is not None and str(articolo_id).strip() != "",
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="articolo_id obbligatorio.",
         function_name=function_name,
     )
     guard_uom_id_positive(
-        uom_id, error_code="E_PREV_VALIDAZIONE", function_name=function_name,
+        uom_id, error_code=E_PREV_VALIDAZIONE, function_name=function_name,
     )
     ErrorManager.require(
         auth_user_id is not None,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="auth_user_id obbligatorio per risolvere l'emittente.",
         function_name=function_name,
     )
@@ -1582,13 +1590,13 @@ def suggerisci_prezzo_riga(
     testata = _get_testata_or_raise(repo, preventivo_id, op="suggerisci_prezzo_riga")
     ErrorManager.require(
         testata.get("billing_account_id") is not None,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="Preventivo senza billing_account: impossibile risolvere il prezzo.",
         function_name=function_name,
     )
     ErrorManager.require(
         testata.get("utility_id") is not None,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="Preventivo senza utility: impossibile risolvere il prezzo.",
         function_name=function_name,
     )
@@ -1606,7 +1614,7 @@ def suggerisci_prezzo_riga(
     data_riferimento_str = testata.get("data")
     ErrorManager.require(
         data_riferimento_str is not None,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="Preventivo senza data: impossibile risolvere il prezzo.",
         function_name=function_name,
     )
@@ -1675,7 +1683,7 @@ def aggiorna_date_consegna(preventivo_id: int, payload: dict[str, Any]) -> dict[
     with _db_errors("aggiorna_date_consegna"):
         return aggiorna_date_consegna_righe(
             repo, preventivo_id, payload,
-            error_code="E_PREV_VALIDAZIONE",
+            error_code=E_PREV_VALIDAZIONE,
             function_name=f"{_FN}.aggiorna_date_consegna",
         )
 
@@ -1716,7 +1724,7 @@ def preview_componenti_riga(
     data_riferimento_str = testata.get("data")
     ErrorManager.require(
         data_riferimento_str is not None,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="Data preventivo obbligatoria per preview componenti.",
         function_name=f"{_FN}.preview_componenti_riga",
     )
@@ -1726,7 +1734,7 @@ def preview_componenti_riga(
     )
     ErrorManager.require(
         emittente_sr_id is not None,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="Impossibile risolvere l'emittente fiscale per la preview.",
         function_name=f"{_FN}.preview_componenti_riga",
     )
@@ -1738,7 +1746,7 @@ def preview_componenti_riga(
     utility_id_raw = testata.get("utility_id")
     ErrorManager.require(
         utility_id_raw is not None,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="Utility preventivo obbligatoria per preview componenti.",
         function_name=f"{_FN}.preview_componenti_riga",
     )
@@ -1868,7 +1876,7 @@ def update_componente(
     # Il prezzo_unitario del padre verra' ricalcolato dal trigger DB.
     data = dati_patch_componente(
         payload, function_name=f"{_FN}.update_componente",
-        error_code="E_PREV_VALIDAZIONE",
+        error_code=E_PREV_VALIDAZIONE,
     )
     repo.update_componente(componente_id, **data)
     return {"status": "ok", "componente_id": componente_id}
@@ -2109,7 +2117,7 @@ def completa_smistamento(preventivo_id: int, *, user: str | None = None) -> dict
     )
     ErrorManager.require(
         result["flusso_id"] is not None,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="Flusso SMISTAMENTO non avviato per questa pratica.",
         detail=f"pratica_id={pratica_id}",
         function_name=f"{_FN}.completa_smistamento",
@@ -2151,7 +2159,7 @@ def genera_pratica(
     )
     ErrorManager.require(
         testata["billing_account_id"] is not None,
-        code="E_PREV_VALIDAZIONE",
+        code=E_PREV_VALIDAZIONE,
         message="Preventivo senza billing account: impossibile derivare contesto pratica.",
         function_name=f"{_FN}.genera_pratica",
     )

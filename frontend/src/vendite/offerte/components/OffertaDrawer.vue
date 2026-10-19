@@ -443,10 +443,16 @@ function buildPayload() {
   // dict vuoto per safety, evitando PATCH inutili.
   if (isEdit.value && !testata.modificabile.value) return {}
   return {
-    emittente_fiscale_id: f.emittente_fiscale_id,
+    // Emittente e utility SOLO in CREATE: si scelgono alla nascita e non si
+    // cambiano, nemmeno in bozza (lock del DB «ferma sempre»); in EDIT il BE
+    // le rifiuta sul campo (R-BE-9, brief-db-indirizzi-documento-seguono-il-
+    // cliente §8.7.3). Come il ContrattoDrawer.
+    ...(isEdit.value ? {} : {
+      emittente_fiscale_id: f.emittente_fiscale_id,
+      utility_id: f.utility_id,
+    }),
     billing_account_id: f.billing_account_id,
     istanza_utility_id: f.istanza_utility_id,
-    utility_id: f.utility_id,
     listino_id: f.listino_id,
     listino_versione_id: f.listino_versione_id || null,
     // Valuta inviata SOLO in CREATE: snapshot immutabile post-INSERT.
