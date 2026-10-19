@@ -772,7 +772,8 @@ contratto acceso su un cliente che ha gia' un contratto attivo sovrapposto, con 
 stampa: segnalato al team DB in chat (2026-10-19), nessun brief. ✅ Fatto lo stesso giorno: lato DB `161ac98af`
 (`script.fn_check_contratto_sovrapposto` nella capability e nel guard); lato BE/FE ritirato il pre-check Python di
 `emetti` e `ContrattiRepository.get_contratto_sovrapposto`, ripiego di `E_CONTRATTO_OVERLAP_ESISTENTE` allineato,
-traduzione della `reason_key`, e2e `test_contratto_attiva_sovrapposto_db`.
+traduzione della `reason_key`, e2e `test_contratto_attiva_sovrapposto_db` (commit `d54d67041`). ✅ Collaudato da Tid
+il 2026-10-19: «Attiva» spento col motivo che nomina il contratto in conflitto, nessun dialog della stampa.
 
 **Revisione critica del codice non committato (2026-10-19, su richiesta di Tid).**
 

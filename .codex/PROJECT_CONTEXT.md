@@ -421,8 +421,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   campo (`rifiuta_colonne_ferme`), chiavi ignote rifiutate sui PATCH di preventivo e DDT, il cambio di cliente
   in modifica si salva subito con conferma (`useCambioClienteDocumento`), lookup del cliente ricostruito
   (`ripristinaBillingAccount`). Collaudo di Tid superato (2026-10-19). Nato nel collaudo e fatto lo stesso giorno,
-  fuori dal brief: «Attiva» del contratto spento sopra un contratto vincolante sovrapposto (DB `161ac98af`, BE/FE),
-  da collaudare a video.
+  fuori dal brief: «Attiva» del contratto spento sopra un contratto vincolante sovrapposto (DB `161ac98af`, BE/FE
+  `d54d67041`), collaudato da Tid il 2026-10-19.
 - ✅ **Le righe di un DDT nato da un ordine: chiuso il 2026-10-11**
   (`work-done/brief-db-ddt-righe-evase-dall-ordine.md`, D28): la riga evasa (da ordine o da reso da
   ri-consegnare) e' ferma, la quantita' si corregge solo dal verbo `vendite.fn_ddt_riga_correggi_qta_evasa`,
