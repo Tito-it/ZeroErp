@@ -2,9 +2,11 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: il team DB col sotto-giro 2b** (o un altro fra 2b … 2e, o il lotto 3), al via di Tid. Il 2a è
-chiuso su DB, BE e FE (§11.6): il backend passa i codici delle sorgenti, il dev è ricaricato. I lotti 0 e 1 sono
-chiusi su DB, BE e FE.
+**Riparte: la sessione BE/FE col giro del 2b** (§12.4). Il DB del 2b è ✅ applicato su dbdev e i pgTAP sono
+verdi come app (§12.6). ⚠️ Finché il backend non scrive `OFFERTA_COMMERCIALE`, l'ordine da offerta è rifiutato
+dalla FK, e legami e smistamento rispondono coi codici delle sorgenti a un frontend che aspetta quelli corti.
+Poi il team DB coi sotto-giri 2c … 2e (o il lotto 3), al via di Tid. Il 2a è chiuso su DB, BE e FE (§11.6). I
+lotti 0 e 1 sono chiusi su DB, BE e FE.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -25,10 +27,15 @@ chiusi su DB, BE e FE.
 | 6-sexies-a | ✅ team DB | Lotto 2a scritto e provato in transazione: `20261019-40` … `-79` | §11 | — |
 | 6-sexies-b | ✅ sessione BE/FE | Il giro BE/FE del 2a (mixin indirizzi, annullo con legami, due risposte API), chiamata reale su dbdev (2026-10-19) | §11.4, §11.6 | 6-sexies-a |
 | 6-sexies-c | ✅ **Tid** | Apply del 2a su dbdev e corsa dei pgTAP come app: verdi, dopo l'adeguamento di un test (2026-10-19) | §11.5 | 6-sexies-a |
-| 6-sexies | team DB + sessione BE/FE | Sotto-giri 2b … 2e (DB e backend nello stesso giro; col 2e il SQL a mano delle chiavi, G-8), e lotto 3 (anticipabile) | §10, §5 G-4 | 6-sexies-b |
+| 6-septies-a | ✅ team DB | Lotto 2b scritto e provato in transazione: `20261019-87` … `-99`, tre CSV, 16 pgTAP (uno nuovo) | §12 | — |
+| 6-septies-b | sessione BE/FE | Il giro BE/FE del 2b: origine dell'ordine da offerta, origine dei legami, destinazione dello smistamento (tre risposte API) | §12.4 | 6-septies-a |
+| 6-septies-c | ✅ **Tid** | Apply del 2b su dbdev e corsa dei pgTAP come app: verdi (2026-10-19) | §12.6 | 6-septies-a |
+| 6-sexies | team DB + sessione BE/FE | Sotto-giri 2c … 2e (DB e backend nello stesso giro; col 2e il SQL a mano delle chiavi, G-8), e lotto 3 (anticipabile); censimento su `pg_get_functiondef`, non su `prosrc` (§12.3) | §10, §5 G-4 | 6-septies-b |
 | 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6-sexies |
 
-**Decisioni aperte di Tid:** nessuna (L2-1 decisa il 2026-10-19, §10.3). Da committare: niente (il giro BE/FE del 2a, §11.6 e §11.6.1, è nel commit del 2026-10-19 su `dev/backend-tid`). ⚠️ Mancano ancora i rimandi del §6.1 in
+**Decisioni aperte di Tid:** nessuna (L2-1 decisa il 2026-10-19, §10.3; il 2b applica G-3 così com'è, §12.2).
+Da committare su `dev/db-tid`: il 2b (13 changeSet, tre CSV, 16 pgTAP, il pgTAP del lotto 1 col preambolo),
+il §5c di `linee-guida-sql.md` e questo brief. ⚠️ Mancano ancora i rimandi del §6.1 in
 [brief-db-indirizzi-documento-seguono-il-cliente](brief-db-indirizzi-documento-seguono-il-cliente.md) (R-BE-1) e in
 [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md): oggi rimanda qui solo
 quello degli articoli ammessi.
@@ -918,3 +925,130 @@ Il frontend: le due risposte API sopra (le chiavi di traduzione e i confronti ch
   che l'etichetta si compone come nel DB, non che ogni lettura usata dai service porti `numero` e `rev`. Una
   lettura del preventivo senza `rev` è un `KeyError` (rumoroso); una lettura senza `numero` ripiegherebbe su
   `#id` senza errore.
+
+## 12. Lotto 2b — origine e destinazione (team DB, 2026-10-19)
+
+Numeri `20261019-87` … `-99`. Scritto, provato in transazione e ✅ **applicato su dbdev il 2026-10-19** (pgTAP
+verdi come app, §12.6). ⚠️ Il giro BE/FE del §12.4 è ancora da fare: dopo l'apply la FK rifiuta l'origine
+`OFFERTA` che `ordini_service` scrive oggi, e i lettori dei legami e dello smistamento rispondono coi codici
+delle sorgenti.
+
+### 12.1 Che cosa contiene
+
+Il vocabolario V7 passa ai codici di `config.sorgenti`: l'origine dell'ordine (`OFFERTA` →
+`OFFERTA_COMMERCIALE`), la destinazione della natura (`ORDINE` → `ORDINE_VENDITA`), l'origine dei legami
+(`ORDINE` → `ORDINE_VENDITA`, `RESO` → `RESO_VENDITA`, `OFFERTA` → `OFFERTA_COMMERCIALE`; nel ramo della
+commessa anche `DDT` → `DDT_VENDITA` e `CONSUMI` → `ATTIVITA_CONSUMI`, che il §11.3 non elencava).
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-87` (`00_schema`) | `vendite.ordini.documento_origine_tipo` convertita sul posto: `varchar(50)`, FK verso `config.sorgenti(codice_interno)` al posto del `CHECK`, `uq_ordini_v_documento_origine_offerta` col predicato nuovo. Prima toglie ciò che legge la colonna: la funzione lineage (BEGIN ATOMIC), la sua vista, `vw_ordini_lista`, la catena della dashboard |
+| `-88` (`00_schema`) | `config.nature_vendita.destinazione_tipo`, stessa forma; toglie le quattro viste dello smistamento, `vw_dash_fatturazione_preventivi`, `catalogo.vw_articoli_dettaglio` |
+| `-89` | `vendite.fn_documento_lineage_archi` ricreata, l'origine dell'offerta col codice nuovo (tre rami) |
+| `-90` … `-94` | le 14 viste ricreate: `vw_documento_lineage_archi`, `vw_ordini_lista`, smistamento (4), dashboard (7), `vw_articoli_dettaglio`. Cambiano i letterali in quattro; le altre tornano identiche |
+| `-95` | `vendite.fn_documento_legami`: `origine` è il codice della sorgente, ancorata in `RETURNS TABLE` (DROP + CREATE) |
+| `-96` … `-99` | i lettori coi letterali: `fn_documento_ritira_legami`, `fn_offerta_documenti_vivi`, `catalogo.trgfn_articoli_guard_onere_natura`, `script.fn_check_articolo_riga_su_contesto` |
+
+CSV: `nature_vendita.csv` (`MERCE` → `ORDINE_VENDITA`; il seed è `runOnChange`), e il testo tecnico di tre
+codici in `codici_errore.csv`/`messaggi_errore.csv`.
+
+pgTAP: nuovo `vendite/test-grammatica-origine-destinazione-sorgenti-v1` (12), adeguati 15 file (nota di
+revisione in testa a ciascuno).
+
+### 12.2 Le scelte
+
+* **Conversione sul posto** (`ALTER COLUMN … TYPE … USING CASE`): DDL, nessun trigger di riga, nessun momento
+  con due vocabolari. Il prezzo è il giro delle dipendenze: ogni vista che legge le due colonne, anche a
+  cascata, si toglie in `00_schema` e torna in `20_code`, nella stessa corsa (forma del `20261001-42`). `DROP`
+  senza `CASCADE`: un dipendente nuovo e non censito ferma il migrate invece di sparire.
+* **Le FK in `00_schema`**, come quella del lotto 0 (`20261019-15`): da zero le tabelle sono vuote, e il
+  mirror delle sorgenti gira prima del seed delle nature.
+* **La FK al posto del `CHECK` (G-3).** Il `CHECK` diceva anche *quali* sorgenti possono essere un'origine (due)
+  o una destinazione (tre); la FK dice solo che il codice esiste. Chi sceglie fra le sorgenti sono gli
+  scrittori (`fn_push_preventivo_a_ordine`, il backend dell'ordine da offerta, il CSV delle nature) e i
+  lettori, che riconoscono i loro codici. È G-3 così com'è stata decisa: un tipo nuovo è una riga del CSV,
+  non un `CHECK` da riscrivere.
+* **L'automazione ATTIVO non lega queste FK**: salta le colonne che non finiscono in `_id`
+  (`ATTIVO_SKIP_FK_NO_ID`). Provato sullo scratch: nessun trigger nuovo su ordini, nature, sorgenti. La FK
+  lega il nome, non l'accensione, come quella del lotto 0.
+* **`ONERE` resta.** È l'origine di una riga di commessa senza sorgente per progetto
+  (`chk_commesse_attivita_senza_sorgente_onere_rettifica`): non un codice corto da migrare, ma l'assenza
+  dell'origine detta con un nome. `origine` è quindi «il codice della sorgente, oppure `ONERE`», ed è scritto
+  nel commento del corpo e nel COMMENT.
+* **`%TYPE`** in firma, `DECLARE` e `RETURNS TABLE` dove c'è una colonna: `origine` su
+  `config.sorgenti.codice_interno`, `p_offerta_id` e `tipo` di `fn_offerta_documenti_vivi` (prima nudi),
+  `v_uid` e `v_sorgente_uid` su `commesse_attivita.sorgente_uid`. Restano nudi, col motivo scritto accanto, i
+  campi polimorfi (righe e testate di tabelle diverse), i vocabolari propri di una funzione (`natura`), i
+  testi liberi, gli array (`%TYPE[]` non esiste).
+* **Corpi dal catalogo vivo** di dbdev; la funzione lineage dal `20261011-92`, verificato uguale al vivo.
+
+### 12.3 Restano ad altri giri — e una lacuna del censimento del 2a
+
+* Numeratori (G-5, 2c), aree e ambito degli indirizzi (G-6, 2d), chiavi del push (G-8, 2e), note (lotto 3):
+  come nel §11.3.
+* ⚠️ **Il censimento del 2a non vedeva le funzioni `BEGIN ATOMIC`**: il loro corpo non sta in `prosrc`, e la
+  ricerca dei letterali leggeva solo quello. Rifatta col testo di `pg_get_functiondef`, ne escono quattro:
+  `fn_documento_lineage_archi` (V7, chiusa qui) e tre che non sono del 2a:
+
+  | Funzione | Letterale | Che cos'è |
+  | --- | --- | --- |
+  | `vendite.fn_ddt_push_diagnosi` | `'RESO'` | lo stato `RESO` della bolla, non un tipo di documento: resta |
+  | `vendite.fn_af_merce_per_riga` | `'DDT'` | il prefisso di `segment_key`: **2e** (G-8) |
+  | `vendite.fn_partite_merce` | `corsia = 'DDT'`; `origine` `NESSUNA` \| `MULTIPLA` \| `ORDINE` | la corsia viene dal `segment_key` (**2e**); l'`origine` è il vocabolario della situazione merce, da classificare nel 2e |
+
+  Chi censisce i sotto-giri successivi legge `pg_get_functiondef`, non `prosrc`.
+
+### 12.4 Richiesta al backend e al frontend (stesso apply)
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `ordini_service.py:737, 757`: scrive `ordini.documento_origine_tipo` e risponde `documento_origine.tipo` | `"OFFERTA"` | `SORGENTE_OFFERTA_COMMERCIALE`. ⚠️ **Cambia una risposta API** (FE); dopo l'apply `"OFFERTA"` è rifiutato dalla FK |
+| `vw_ordini_lista.documento_origine_tipo` (lista ordini, colonna `col_documento_origine`); `ordine_document_context_builder.py:201` | `OFFERTA` | `OFFERTA_COMMERCIALE`: da controllare chi lo traduce a video o in stampa |
+| `_annullo_con_legami.py`: `_TIPO_LINEAGE_DELL_ORIGINE` | traduce `ORDINE`, `RESO`, `OFFERTA`, `DDT`… | **si ritira**: `origine` è già il codice della sorgente. Resta da dire quali origini sono documenti da aprire: non `ONERE`, non `ATTIVITA_CONSUMI` (prima `CONSUMI`, fuori dalla mappa) |
+| `preventivi_repository.py:1214` (righe dello smistamento, `destinazione_tipo`) | `ORDINE` | `ORDINE_VENDITA`. ⚠️ **Cambia una risposta API** (FE) |
+| `catalogo_repository.py:205` (`natura_vendita_destinazione_tipo`) | `ORDINE` | `ORDINE_VENDITA`: da controllare chi lo legge a video |
+| FE `constants.js`: `DESTINAZIONE_SMISTAMENTO.ORDINE`, `ORIGINE_LEGAME.RESO` | `'ORDINE'`, `'RESO'` | i codici delle sorgenti (`SORGENTE_CODES`); il routing di «Smista selezionate» confronta la destinazione |
+| FE dialog dei legami: il ripiego `vendite.annullo_legami.origine_<origine>` quando l'origine non è un documento da aprire | chiavi dei codici corti (`origine_ordine`, `origine_reso`, `origine_offerta`, `origine_ddt`, `origine_consumi`…) | chiavi dei codici delle sorgenti (almeno `origine_attivita_consumi`; per `ONERE` oggi non c'è una chiave). ⚠️ **Cambia una risposta API** (il campo `origine` dei legami) |
+| `error_policies_generated.py` | testo di due codici | si rigenera dal CSV |
+| test Django, `smoke-test-ordini-giro-commessa.sh` (legge l'`origine`) | codici corti | da adeguare |
+
+### 12.5 La prova (2026-10-19, scratch `zeroerp_ruoli`, come owner, in transazione annullata)
+
+* **SQL estratto dei 13 changeSet, avanti e indietro**: applicato senza errori, poi i 13 rollback in ordine
+  inverso. Fotografia del catalogo (definizioni, `RETURNS`, ACL, COMMENT di viste, colonne, funzioni, indici,
+  vincoli; trigger; valori) prima, dopo, e dopo il ritorno:
+  * prima → dopo: cambiano **solo** i letterali e le colonne del §12.1, i tipi delle due colonne (e delle
+    colonne di vista che le espongono), `origine` di `fn_documento_legami` (`text` → `character varying`),
+    i vincoli (`CHECK` → FK), il predicato dell'indice unico, i COMMENT. La funzione lineage dal
+    `20261011-92` coincide col corpo vivo a meno del letterale. `ix_ordini_documento_origine`, ricostruito da
+    `ALTER TYPE`, conserva il suo COMMENT;
+  * prima → ritorno: identici, a meno dell'ordine delle voci nell'ACL della funzione lineage e della forma
+    stampata dei due `CHECK` (stessi valori).
+* `plpgsql_check` sulle quattro plpgsql: nessun errore; restano i due avvisi di prima (`PERFORM` di
+  `fn_log_and_raise_error` in una `STABLE`).
+* `dbops.fn_run_automations_attivo('AUTO', ARRAY['vendite','config'], false)` dopo il giro: nessun trigger
+  nuovo (§12.2).
+* **pgTAP**: 84 file (ogni file che nomina un oggetto, una colonna o un codice del 2b), ciascuno com'è e con
+  l'SQL estratto dopo la riga `BEGIN;`. **8 regressioni, tutte dei test**: fixture che scrivono l'origine
+  `OFFERTA` (ora rifiutata dalla FK), nature cercate con `destinazione_tipo = 'ORDINE'`, legami letti coi
+  codici corti, le asserzioni sul vecchio `CHECK`. Adeguati, insieme ad altri sette file che usavano gli
+  stessi codici senza cambiare esito (fra questi `test-fn-genera-ddt-riconsegna-eredita-v1`, che col filtro
+  `<> 'ORDINE'` avrebbe preso anche la merce). Dopo: **ognuno dei 15 torna, sul DB del 2b, all'esito che
+  aveva sul DB di oggi**, compresi i tre rossi già prima (fixture o scope da owner:
+  `test-articolo-usato-struttura-v1` 17, `test-annullo-documento-con-legami-v1` 30,
+  `test-vw-preventivi-smistamento-v1` 1). Il test nuovo: 12/12 col 2b, rosso senza.
+* Cancelli statici verdi; `guardrail_pgtap_preambolo` era rosso anche per il pgTAP del lotto 1 (mancava
+  `SET CONSTRAINTS ALL IMMEDIATE`): corretto, 12/12. Resta rosso per
+  `dbops/test-automazioni-guasto-ambiente-rilanciato-v1`, di un altro cantiere.
+* Su dbdev, in lettura (2026-10-19): gli ordini hanno origine `OFFERTA`, `PREVENTIVO` o nessuna; le nature
+  `ORDINE`, `COMMESSA`, `CONTRATTO`. Sono tutti valori che la conversione conosce: all'apply la FK non trova
+  valori fuori dalle sorgenti.
+* Non provato prima dell'apply: i pgTAP **come app** (li lancia Tid) e il giro BE/FE del §12.4.
+
+### 12.6 L'apply (Tid, 2026-10-19)
+
+* Applicato su dbdev: i 13 changeSet `20261019-87` … `-99` sono in `databasechangelog`. pgTAP come app: verdi.
+* Da qui il DB parla i codici delle sorgenti anche per origine e destinazione. Il giro BE/FE del §12.4 non è
+  ancora fatto: fino ad allora la creazione di un ordine da offerta (`ordini_service`, `"OFFERTA"`) è rifiutata
+  da `fk_ordini_documento_origine_tipo_sorgenti`, e il dialog dei legami e quello dello smistamento ricevono
+  valori che il frontend non riconosce ancora (`ORIGINE_LEGAME.RESO`, `DESTINAZIONE_SMISTAMENTO.ORDINE`).

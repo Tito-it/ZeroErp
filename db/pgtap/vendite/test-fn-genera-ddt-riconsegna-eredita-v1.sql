@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
+--   la natura NON merce si cerca diversa da ORDINE_VENDITA, il codice della sorgente (era
+--   ORDINE: dopo il giro il filtro avrebbe preso anche la merce).
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_genera_ddt_riconsegna — eredita' di testata e di riga
 -- Brief: brief-db-ddt-riconsegna-eredita-testata, Fase B (+ Fase C, C-1)
@@ -347,7 +350,7 @@ SELECT dbops.fn_pgtap_articolo_correggi_struttura(
     a.id,
     jsonb_build_object('natura_vendita_id',
         (SELECT nv.id FROM config.nature_vendita nv
-          WHERE nv.attivo AND nv.destinazione_tipo <> 'ORDINE'
+          WHERE nv.attivo AND nv.destinazione_tipo <> 'ORDINE_VENDITA'
             AND nv.id <> a.natura_vendita_id
           ORDER BY nv.id LIMIT 1)))
   FROM catalogo.articoli a

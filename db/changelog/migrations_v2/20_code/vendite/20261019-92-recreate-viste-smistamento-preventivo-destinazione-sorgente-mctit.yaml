@@ -1,0 +1,202 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 2b: le viste di smistamento del preventivo
+#   vw_preventivi_smistamento_righe, vw_preventivi_smistamento,
+#   vw_preventivi_righe_smistabili_ordine, vw_preventivi_righe_smistabili_commessa
+#   Brief: brief-db-grammatica-unica-documenti §12.
+#
+#   Tolte da 20261019-88 (leggono config.nature_vendita.destinazione_tipo).
+#   Tornano con la destinazione della merce nel codice della sorgente,
+#   ORDINE_VENDITA: il conteggio righe_merce di vw_preventivi_smistamento e il
+#   filtro di vw_preventivi_righe_smistabili_ordine. COMMESSA (il ripiego di
+#   vw_preventivi_smistamento_righe e il filtro delle smistabili in commessa) e'
+#   gia' il codice della sorgente. In quest'ordine: vw_preventivi_smistamento
+#   legge vw_preventivi_smistamento_righe.
+#
+#   Definizione dal catalogo vivo di dbdev (pg_get_viewdef con search_path
+#   vuoto, quindi coi nomi qualificati; 2026-10-19): la stessa vista, colonna per
+#   colonna. La prova confronta pg_get_viewdef prima e dopo, a meno dei
+#   letterali qui sotto. COMMENT di vista e di colonna ripetuti (il DROP li ha
+#   portati via); security_invoker come prima. Nessun GRANT: lo danno le ALTER
+#   DEFAULT PRIVILEGES del loop di 90_end, come a ogni vista nuova.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261019-92-recreate-viste-smistamento-preventivo-destinazione-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261019-92-recreate-viste-smistamento-preventivo-destinazione-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le quattro viste di smistamento del preventivo ricreate (tolte da 20261019-88): la
+        destinazione della merce e' ORDINE_VENDITA, il codice della sorgente. Grammatica unica,
+        lotto 2b.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_class c
+               WHERE c.relkind = 'v'
+                 AND c.relname IN ('vw_preventivi_smistamento_righe', 'vw_preventivi_smistamento', 'vw_preventivi_righe_smistabili_ordine', 'vw_preventivi_righe_smistabili_commessa')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_preventivi_smistamento_righe WITH (security_invoker=on) AS
+               SELECT p.id AS preventivo_id,
+                  p.uid AS preventivo_uid,
+                  p.numero AS preventivo_numero,
+                  pr.id AS riga_id,
+                  pr.ordine AS riga_ordine,
+                  pr.descrizione AS riga_descrizione,
+                  pr.articolo_id,
+                  pr.quantita,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.prezzo_unitario,
+                  pr.natura_vendita_id,
+                  nv.codice AS natura_vendita_codice,
+                  COALESCE(nv.destinazione_tipo, 'COMMESSA'::character varying) AS destinazione_tipo,
+                  orr.id AS ordine_riga_id,
+                  o.id AS ordine_id,
+                  o.numero AS ordine_numero,
+                      CASE
+                          WHEN (EXISTS ( SELECT 1
+                             FROM vendite.attivita_fatturabili af
+                            WHERE af.sorgente_uid = p.uid AND af.sorgente_riga = pr.id AND af.fattura_riga_id IS NOT NULL)) THEN 'FATTURATA'::text
+                          WHEN (EXISTS ( SELECT 1
+                             FROM vendite.attivita_fatturabili af
+                            WHERE af.sorgente_uid = p.uid AND af.sorgente_riga = pr.id)) THEN 'EMESSA_AF'::text
+                          WHEN script.fn_get_stato_push_segment(((('PREV:'::text || p.uid::text) || ':R:'::text) || pr.id::text)::character varying) <> 'LIBERA'::text THEN 'IN_COMMESSA'::text
+                          WHEN orr.id IS NOT NULL THEN 'A_ORDINE'::text
+                          ELSE 'RESIDUA'::text
+                      END AS stato_smistamento
+                 FROM vendite.preventivi p
+                   JOIN vendite.preventivi_righe pr ON pr.preventivo_id = p.id AND pr.attivo IS TRUE
+                   LEFT JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+                   LEFT JOIN vendite.ordini_righe orr ON orr.preventivo_riga_id = pr.id
+                   LEFT JOIN vendite.ordini o ON o.id = orr.ordine_id;
+
+              COMMENT ON VIEW vendite.vw_preventivi_smistamento_righe IS
+                  'Fonte dati del Pannello Smistamento (una riga per riga attiva del preventivo): '
+                  'natura/destinazione effettiva (NULL = pregresso -> COMMESSA), riferimenti ramo ordine, '
+                  'stato_smistamento autorevole (RESIDUA/A_ORDINE/IN_COMMESSA/EMESSA_AF/FATTURATA). Sostituisce '
+                  'vw_preventivi_stato_fatturazione_righe (brief-db-smistamento-preventivi.md B). ⭐ rev 2026-10-12 '
+                  '(20261012-11, brief-db-annullo-a-valle-riapre-a-monte D-5): IN_COMMESSA = il segmento della riga'
+                  ' non e'' LIBERO per script.fn_get_stato_push_segment, la fonte unica del «gia'' mandato». Prima '
+                  'era «segment EMESSA», allineato al predicato che la vista smistabili aveva fino al 2026-06-28: '
+                  'quando quella e'' passata all''allocazione, questa non l''ha seguita, e una riga mandata in '
+                  'commessa e non ancora emessa risultava RESIDUA mentre il push la dava gia'' inviata. Una riga di '
+                  'commessa ANNULLATA non occupa: annullata la commessa, la riga torna RESIDUA.';
+
+              CREATE VIEW vendite.vw_preventivi_smistamento WITH (security_invoker=on) AS
+               SELECT preventivo_id,
+                  preventivo_uid,
+                  preventivo_numero,
+                  count(*) AS righe_totali,
+                  count(*) FILTER (WHERE destinazione_tipo::text = 'ORDINE_VENDITA'::text) AS righe_merce,
+                  count(*) FILTER (WHERE destinazione_tipo::text = 'COMMESSA'::text) AS righe_servizi,
+                  count(*) FILTER (WHERE stato_smistamento = 'A_ORDINE'::text) AS righe_a_ordine,
+                  count(*) FILTER (WHERE stato_smistamento = ANY (ARRAY['IN_COMMESSA'::text, 'EMESSA_AF'::text, 'FATTURATA'::text])) AS righe_in_commessa,
+                  count(*) FILTER (WHERE stato_smistamento = ANY (ARRAY['EMESSA_AF'::text, 'FATTURATA'::text])) AS righe_emesse_af,
+                  count(*) FILTER (WHERE stato_smistamento = 'FATTURATA'::text) AS righe_fatturate,
+                  count(*) FILTER (WHERE stato_smistamento = 'RESIDUA'::text) AS righe_residue
+                 FROM vendite.vw_preventivi_smistamento_righe
+                GROUP BY preventivo_id, preventivo_uid, preventivo_numero;
+
+              COMMENT ON VIEW vendite.vw_preventivi_smistamento IS
+                  'Aggregata smistamento preventivo: contatori per ramo (merce/servizi, a ordine/in '
+                  'commessa/emesse/fatturate) + righe_residue complessivo per il progress "X/Y smistate -> EVASO" '
+                  '(gate D6). Sostituisce vw_preventivi_stato_fatturazione. ⭐ rev 2026-10-19 (20261019-92, '
+                  'brief-db-grammatica-unica-documenti lotto 2b, G-3 di Tid): ricreata dopo l''allargamento della '
+                  'colonna; il codice di origine o di destinazione e'' quello di config.sorgenti (OFFERTA -> '
+                  'OFFERTA_COMMERCIALE, ORDINE -> ORDINE_VENDITA).';
+
+              CREATE VIEW vendite.vw_preventivi_righe_smistabili_ordine WITH (security_invoker=on) AS
+               SELECT pr.preventivo_id,
+                  pr.id,
+                  pr.natura_vendita_id,
+                  pr.articolo_id,
+                  pr.descrizione,
+                  pr.prezzo_unitario,
+                  pr.sconto_percentuale,
+                  pr.iva_id,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.factor_to_base,
+                  pr.ordine,
+                  pr.data_consegna_richiesta_cliente
+                 FROM vendite.preventivi_righe pr
+                   JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+                WHERE COALESCE(pr.attivo, true) IS TRUE AND nv.destinazione_tipo::text = 'ORDINE_VENDITA'::text AND NOT (EXISTS ( SELECT 1
+                         FROM vendite.ordini_righe orr
+                        WHERE orr.preventivo_riga_id = pr.id));
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_smistabili_ordine IS
+                  'Sorgente unica (DB-first) del predicato di smistamento: righe-merce di un preventivo ancora da '
+                  'portare in un ordine (natura destinazione_tipo=ORDINE, attive, non ancora allocate a una '
+                  'ordini_righe.preventivo_riga_id). Grana = preventivi_righe; i consumatori filtrano per '
+                  'preventivo_id ed eventualmente per id (smistamento parziale). Consumata da '
+                  'fn_preventivo_ha_residuo_ordine e fn_push_preventivo_a_ordine; predisposta per il dialog BE di '
+                  'selezione righe. ⭐ rev 2026-09-13 (P-6): + data_consegna_richiesta_cliente in coda — e'' la '
+                  'proiezione da cui fn_push_preventivo_a_ordine copia la riga, e senza questa colonna la data del '
+                  'cliente si perdeva nel punto in cui il documento cambia natura. In ultima posizione perche'' '
+                  'CREATE OR REPLACE VIEW puo'' solo appendere. security_invoker=on. Brief: '
+                  'brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 5.2. ⭐ rev 2026-10-19 (20261019-92, '
+                  'brief-db-grammatica-unica-documenti lotto 2b, G-3 di Tid): ricreata dopo l''allargamento della '
+                  'colonna; il codice di origine o di destinazione e'' quello di config.sorgenti (OFFERTA -> '
+                  'OFFERTA_COMMERCIALE, ORDINE -> ORDINE_VENDITA).';
+
+              CREATE VIEW vendite.vw_preventivi_righe_smistabili_commessa WITH (security_invoker=on) AS
+               SELECT pr.preventivo_id,
+                  pr.id,
+                  p.uid AS preventivo_uid,
+                  pr.natura_vendita_id,
+                  pr.articolo_id,
+                  pr.descrizione,
+                  pr.prezzo_unitario,
+                  pr.sconto_percentuale,
+                  pr.iva_id,
+                  pr.quantita,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.factor_to_base,
+                  pr.ordine
+                 FROM vendite.preventivi_righe pr
+                   JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+                   LEFT JOIN config.nature_vendita nv ON nv.id = pr.natura_vendita_id
+                WHERE pr.attivo IS TRUE AND pr.quantita > 0::numeric AND pr.prezzo_unitario >= 0::numeric AND (pr.natura_vendita_id IS NULL OR nv.destinazione_tipo::text = 'COMMESSA'::text) AND script.fn_get_stato_push_segment(((('PREV:'::text || p.uid::text) || ':R:'::text) || pr.id::text)::character varying) = 'LIBERA'::text;
+
+              COMMENT ON VIEW vendite.vw_preventivi_righe_smistabili_commessa IS
+                  'Righe preventivo eleggibili al push commessa (servizi una tantum): attive, qta>0, prezzo>=0, '
+                  'natura NULL/COMMESSA, non gia'' mandate in commessa. Simmetrica a '
+                  'vw_preventivi_righe_smistabili_ordine (esclude su allocazione, non su fatturazione). Predicato '
+                  'di riga unico condiviso con fn_list_preventivi_da_pushare e fn_preventivo_ha_residuo_commessa; '
+                  'condizioni di testata a carico dei consumer. Fix gate EVASO '
+                  '(brief-db-gate-evaso-ramo-commessa-asimmetria.md). ⭐ rev 2026-10-12 (20261012-08/-09, '
+                  'brief-db-annullo-a-valle-riapre-a-monte D-5): «gia'' mandata» non e'' piu'' un predicato proprio: '
+                  'e'' script.fn_get_stato_push_segment(''PREV:<uid>:R:<id>'') = ''LIBERA'', la fonte unica del «gia'' '
+                  'inviato» (componenti #CMP e rettifiche #RET compresi). Una riga di commessa ANNULLATA non '
+                  'occupa: annullata la commessa, la riga torna smistabile. Prima la vista contava le righe '
+                  'ANNULLATA e non vedeva #RET: una terza copia della regola, gia'' diversa dalle altre due.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW vendite.vw_preventivi_righe_smistabili_commessa;
+              DROP VIEW vendite.vw_preventivi_righe_smistabili_ordine;
+              DROP VIEW vendite.vw_preventivi_smistamento;
+              DROP VIEW vendite.vw_preventivi_smistamento_righe;

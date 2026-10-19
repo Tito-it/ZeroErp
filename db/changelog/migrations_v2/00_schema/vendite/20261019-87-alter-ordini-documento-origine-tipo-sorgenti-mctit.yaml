@@ -1,0 +1,1344 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — LOTTO 2b (origine e destinazione):
+#   vendite.ordini.documento_origine_tipo
+#   Brief: brief-db-grammatica-unica-documenti §12 (G-1, G-3 di Tid; L2-1 del 2026-10-19).
+#
+# -- CHE COSA CAMBIA -----------------------------------------------------------
+#   Il vocabolario V7 dell'origine (PREVENTIVO | OFFERTA, CHECK scritto a mano,
+#   varchar(20)) passa ai codici di config.sorgenti: OFFERTA -> OFFERTA_COMMERCIALE,
+#   PREVENTIVO resta. G-3: il vincolo si adegua al nome. La colonna prende la
+#   lunghezza di config.sorgenti.codice_interno (varchar(50); %TYPE in DDL non
+#   esiste) e una FK verso le sorgenti al posto del CHECK.
+#
+# -- LA FORMA: CONVERSIONE SUL POSTO ---------------------------------------------
+#   ALTER COLUMN ... TYPE ... USING CASE: DDL, nessun trigger di riga scatta (gli
+#   ordini fuori bozza sono intoccabili per i guard: un UPDATE di backfill
+#   morirebbe), nessun momento con due vocabolari. Forma di 20261001-42.
+#
+# -- CHE COSA SI TOGLIE PRIMA, E CHI LO RIMETTE -----------------------------------
+#   ALTER TYPE rifiuta una colonna letta da una vista o da una funzione BEGIN
+#   ATOMIC, anche a cascata. Dal catalogo vivo di dbdev (pg_depend, 2026-10-19):
+#     · vendite.fn_documento_lineage_archi (BEGIN ATOMIC, legge la colonna)
+#       -> la ricrea 20261019-89; la sua vista vw_documento_lineage_archi -> -90;
+#     · vw_ordini_lista -> -91;
+#     · vw_dash_fatturazione_offerte e la catena che la legge
+#       (vw_dash_fatturazione_documenti, vw_dash_backlog_documenti,
+#       vw_dash_aperto_documenti, vw_dash_backlog_riepilogo,
+#       vw_dash_aperto_riepilogo) -> -93.
+#   DROP senza CASCADE, dai dipendenti in su: un dipendente nuovo non censito
+#   ferma il migrate invece di sparire in silenzio.
+#   uq_ordini_v_documento_origine_offerta ha 'OFFERTA' nel predicato: ALTER TYPE
+#   lo ricostruirebbe col predicato vecchio, quindi si toglie e si rimette col
+#   codice nuovo. ix_ordini_documento_origine non ha predicato sul codice: lo
+#   ricostruisce ALTER TYPE.
+#   Nessun trigger nomina la colonna in UPDATE OF (pg_trigger.tgattr, dbdev):
+#   trg_ordini_a05_lock_fuori_bozza_upd la nomina solo fra gli argomenti.
+#
+# -- LA FK QUI, IN 00_schema ----------------------------------------------------
+#   Come 20261019-15 (lotto 0): da zero la tabella e' vuota quando nasce la FK,
+#   il mirror delle sorgenti (80_data) la riempie dopo; su dev le righe
+#   convertite portano codici che config.sorgenti ha gia'. RESTRICT nei due
+#   versi: codice_interno e' immutabile e una sorgente non si cancella.
+#   A ci_apply l'automazione ATTIVO NON monta niente su questa FK: salta le FK
+#   la cui colonna non finisce in _id (ATTIVO_SKIP_FK_NO_ID). Provato sullo
+#   scratch (2026-10-19, in transazione annullata, dopo questo giro):
+#   dbops.fn_run_automations_attivo('AUTO', ARRAY['vendite','config'], false)
+#   lascia i trigger di ordini, nature_vendita e sorgenti come prima. La FK lega
+#   il NOME, non l'accensione, come quella del lotto 0 (20261019-15).
+#
+# -- IL CHECK CHE SPARISCE --------------------------------------------------------
+#   Diceva anche QUALI sorgenti possono essere un'origine (due). La FK dice solo
+#   che il codice esiste: quali sorgenti siano un'origine resta a chi scrive
+#   (vendite.fn_push_preventivo_a_ordine, il backend dell'ordine da offerta) e ai
+#   lettori, che riconoscono le due. Scelta di G-3 (la FK al posto del CHECK),
+#   dichiarata nel brief.
+#
+# -- CHI NOMINA LA COLONNA NELLE FASI SUCCESSIVE ----------------------------------
+#   grep su 70_dati_sistema, 80_data, 90_end: nessun changeSet; nei CSV solo il
+#   testo di due messaggi (aggiornati nello stesso giro).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261019-87-alter-ordini-documento-origine-tipo-sorgenti-mctit.yaml
+
+  - changeSet:
+      id: 20261019-87-alter-ordini-documento-origine-tipo-sorgenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ordini.documento_origine_tipo passa ai codici di config.sorgenti (OFFERTA ->
+        OFFERTA_COMMERCIALE), convertita sul posto: varchar(50) e FK verso
+        config.sorgenti(codice_interno) al posto del CHECK. Tolte qui le viste e la funzione lineage
+        che la leggono, ricreate da 20261019-89 … -93. Grammatica unica, lotto 2b.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint c
+               WHERE c.conrelid = 'vendite.ordini'::regclass
+                 AND c.conname = 'chk_ordini_documento_origine_tipo'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW vendite.vw_dash_aperto_riepilogo;
+              DROP VIEW vendite.vw_dash_backlog_riepilogo;
+              DROP VIEW vendite.vw_dash_aperto_documenti;
+              DROP VIEW vendite.vw_dash_backlog_documenti;
+              DROP VIEW vendite.vw_dash_fatturazione_documenti;
+              DROP VIEW vendite.vw_dash_fatturazione_offerte;
+              DROP VIEW vendite.vw_ordini_lista;
+              DROP VIEW vendite.vw_documento_lineage_archi;
+              DROP FUNCTION vendite.fn_documento_lineage_archi(bigint[], text[]);
+
+              ALTER TABLE vendite.ordini DROP CONSTRAINT chk_ordini_documento_origine_tipo;
+
+              DROP INDEX vendite.uq_ordini_v_documento_origine_offerta;
+
+              ALTER TABLE vendite.ordini
+                  ALTER COLUMN documento_origine_tipo TYPE varchar(50)
+                  USING CASE documento_origine_tipo
+                            WHEN 'OFFERTA' THEN 'OFFERTA_COMMERCIALE'
+                            ELSE documento_origine_tipo
+                        END;
+
+              CREATE UNIQUE INDEX uq_ordini_v_documento_origine_offerta
+                  ON vendite.ordini USING btree (documento_origine_tipo, documento_origine_id)
+                  WHERE documento_origine_tipo = 'OFFERTA_COMMERCIALE' AND NOT is_abortito_snapshot;
+
+              COMMENT ON INDEX vendite.uq_ordini_v_documento_origine_offerta IS
+                  'Un''offerta genera al piu'' UN ordine VIVO (2026-10-11, brief-db-annullo-documento-con-legami '
+                  'D-3/D-6): unico sugli ordini da offerta non abortiti. La coppia documento_origine_tipo/_id e'' '
+                  'provenienza: l''ordine annullato la conserva, e l''offerta torna trasformabile. Era unico senza '
+                  'stato (20260607-07). is_abortito_snapshot lo scrive il BB vendite.trgfn_doc_snapshot_da_stato. '
+                  'Lettore: vendite.fn_offerta_documenti_vivi. rev 2026-10-19 (20261019-87, '
+                  'brief-db-grammatica-unica-documenti lotto 2b): il predicato nomina l''offerta col codice della '
+                  'sorgente, OFFERTA_COMMERCIALE.';
+
+              ALTER TABLE vendite.ordini
+                  ADD CONSTRAINT fk_ordini_documento_origine_tipo_sorgenti
+                  FOREIGN KEY (documento_origine_tipo)
+                  REFERENCES config.sorgenti (codice_interno)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              COMMENT ON COLUMN vendite.ordini.documento_origine_tipo IS
+                  'Tipo del documento commerciale di origine (A1): il codice di config.sorgenti, PREVENTIVO | '
+                  'OFFERTA_COMMERCIALE (FK fk_ordini_documento_origine_tipo_sorgenti). NULL = ordine diretto (non '
+                  'nato da upstream); la coppia con documento_origine_id la presidia '
+                  'chk_ordini_documento_origine_copres. Provenienza: l''ordine annullato la conserva. rev 2026-10-19'
+                  ' (20261019-87, brief-db-grammatica-unica-documenti lotto 2b, G-3 di Tid): era un vocabolario a '
+                  'parte chiuso da un CHECK (PREVENTIVO | OFFERTA, varchar(20)); ora e'' lungo quanto codice_interno'
+                  ' e punta alle sorgenti. Quale sorgente puo'' essere un''origine lo decide chi scrive '
+                  '(vendite.fn_push_preventivo_a_ordine, il backend dell''ordine da offerta).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini DROP CONSTRAINT fk_ordini_documento_origine_tipo_sorgenti;
+
+              DROP INDEX vendite.uq_ordini_v_documento_origine_offerta;
+
+              ALTER TABLE vendite.ordini
+                  ALTER COLUMN documento_origine_tipo TYPE varchar(20)
+                  USING CASE documento_origine_tipo
+                            WHEN 'OFFERTA_COMMERCIALE' THEN 'OFFERTA'
+                            ELSE documento_origine_tipo
+                        END;
+
+              ALTER TABLE vendite.ordini
+                  ADD CONSTRAINT chk_ordini_documento_origine_tipo
+                  CHECK (documento_origine_tipo IS NULL
+                         OR documento_origine_tipo::text = ANY (ARRAY['PREVENTIVO', 'OFFERTA']));
+
+              CREATE UNIQUE INDEX uq_ordini_v_documento_origine_offerta
+                  ON vendite.ordini USING btree (documento_origine_tipo, documento_origine_id)
+                  WHERE documento_origine_tipo = 'OFFERTA' AND NOT is_abortito_snapshot;
+
+              COMMENT ON INDEX vendite.uq_ordini_v_documento_origine_offerta IS
+                  'Un''offerta genera al piu'' UN ordine VIVO (2026-10-11, brief-db-annullo-documento-con-legami '
+                  'D-3/D-6): unico sugli ordini da offerta non abortiti. La coppia documento_origine_tipo/_id e'' '
+                  'provenienza: l''ordine annullato la conserva, e l''offerta torna trasformabile. Era unico senza '
+                  'stato (20260607-07). is_abortito_snapshot lo scrive il BB vendite.trgfn_doc_snapshot_da_stato. '
+                  'Lettore: vendite.fn_offerta_documenti_vivi.';
+
+              COMMENT ON COLUMN vendite.ordini.documento_origine_tipo IS
+                  'Tipo del documento commerciale di origine (A1): PREVENTIVO|OFFERTA. NULL = ordine diretto (non '
+                  'nato da upstream). Vocabolario chiuso via CHECK (idioma di fatturazione_trigger).';
+        # ⚠️ La funzione BEGIN ATOMIC in un `sql:` da sola (pgjdbc, 20260921-21).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_documento_lineage_archi(
+                  -- ⚠️ Array espliciti: `colonna%TYPE[]` non esiste in PostgreSQL.
+                  --    Il seme e' la chiave del nodo, in due array paralleli: p_tipo_ids[i]
+                  --    e' un config.sorgenti.id, p_uids[i] la chiave del documento resa a
+                  --    text secondo key_selector (uid per preventivo e offerta, id per gli
+                  --    altri). Entrambi NULL = tutti gli archi.
+                  p_tipo_ids bigint[] DEFAULT NULL,
+                  p_uids     text[]   DEFAULT NULL)
+              -- Archi GREZZI: chiavi e tipo d'arco, senza la decorazione dei nodi (la
+              -- aggiunge chi legge, da fn_documento_lineage_nodi o dalla vista dei nodi).
+              RETURNS TABLE(
+                  from_tipo_id    config.sorgenti.id%TYPE,
+                  from_uid        text,                -- chiave polimorfa del nodo, resa a text (key_selector)
+                  to_tipo_id      config.sorgenti.id%TYPE,
+                  to_uid          text,                -- idem
+                  ruolo           vendite.commesse_sorgenti.ruolo_link%TYPE,   -- solo sugli archi verso la commessa
+                  arco            text,                -- lettera del ramo (A…U): vocabolario di questa funzione
+                  is_ramo_inverso boolean,             -- calcolato dall'arco
+                  rango_origine   smallint)            -- calcolato dall'arco
+              LANGUAGE sql
+              STABLE
+              -- ⛔ Le due clausole di 20261011-67: un CREATE OR REPLACE che non le ripete
+              --    le perde (presidio: script/test-plan-cache-mode-piano-generico-v1).
+              SET jit = off
+              SET plan_cache_mode = force_generic_plan
+              BEGIN ATOMIC
+              WITH seme AS MATERIALIZED (
+                  -- Il seme si smista UNA volta in array tipizzati. Il cast si fa solo
+                  -- sulle righe del tipo (FILTER si valuta prima dell'argomento): un uid di
+                  -- preventivo non passa mai da ::bigint. Ogni ramo cerca poi con
+                  -- `= ANY((SELECT …)::<tipo>[])`, che entra nell'indice (`id::text = uid`
+                  -- no). ⚠️ Il cast serve: senza, `ANY ((SELECT …))` e' la forma con
+                  -- sottoquery, che confronta l'elemento con l'array intero.
+                  SELECT array_agg(s.uid::uuid)   FILTER (WHERE so.codice_interno = 'PREVENTIVO')          AS prev_uids,
+                         array_agg(s.uid::uuid)   FILTER (WHERE so.codice_interno = 'OFFERTA_COMMERCIALE') AS off_uids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'ORDINE_VENDITA')      AS ord_ids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'CONTRATTO')           AS con_ids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'DDT_VENDITA')         AS ddt_ids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'FATTURA')             AS fat_ids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'COMMESSA')            AS com_ids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'RESO_VENDITA')        AS res_ids
+                    FROM unnest(fn_documento_lineage_archi.p_tipo_ids, fn_documento_lineage_archi.p_uids) AS s(tipo_id, uid)
+                    JOIN config.sorgenti so ON so.id = s.tipo_id
+                   WHERE s.uid IS NOT NULL
+              ), chiavi AS MATERIALIZED (
+                  -- ⭐ Le chiavi del seme in TUTTE le forme che i rami cercano: l'id e
+                  --    l'uid del documento, e il testo della sorgente polimorfa. Cosi'
+                  --    ogni ramo limita per indice la PRIMA tabella che legge con un
+                  --    `= ANY(<chiavi>)`, qualunque sia l'ordine dei join che il planner
+                  --    sceglie. ⚠️ Sotto RLS il planner non pesa il costo delle policy, e
+                  --    un seme passato come JOIN lo fa partire dal lato sbagliato (la
+                  --    tabella dell'altro capo per il solo prefisso del tipo, una policy
+                  --    per riga): provato, 2026-10-11.
+                  --    Le chiavi derivate (id del preventivo dall'uid, uid dell'ordine
+                  --    dall'id…) si leggono dalle tabelle SOTTO la RLS di chi chiama: un
+                  --    nodo che chi legge non vede non semina niente, come nella vista.
+                  SELECT k.prev_uids,
+                         (SELECT array_agg(p.id) FROM vendite.preventivi p WHERE p.uid = ANY (k.prev_uids)) AS prev_ids,
+                         k.prev_uids::text[] AS prev_txt,
+                         k.off_uids,
+                         (SELECT array_agg(oc.id) FROM vendite.offerte_commerciali oc WHERE oc.uid = ANY (k.off_uids)) AS off_ids,
+                         k.ord_ids,
+                         (SELECT array_agg(o.uid) FROM vendite.ordini o WHERE o.id = ANY (k.ord_ids)) AS ord_uids,
+                         k.ord_ids::text[] AS ord_txt,
+                         k.con_ids,
+                         k.con_ids::text[] AS con_txt,
+                         k.ddt_ids,
+                         (SELECT array_agg(d.uid) FROM vendite.ddt d WHERE d.id = ANY (k.ddt_ids)) AS ddt_uids,
+                         k.ddt_ids::text[] AS ddt_txt,
+                         k.fat_ids, k.com_ids, k.res_ids,
+                         (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'PREVENTIVO')     AS t_prev,
+                         (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'ORDINE_VENDITA') AS t_ord,
+                         (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'CONTRATTO')      AS t_con,
+                         (SELECT so.id FROM config.sorgenti so WHERE so.codice_interno = 'DDT_VENDITA')    AS t_ddt
+                    FROM seme k
+              ), cs_semi AS MATERIALIZED (
+                  -- ⭐ Le sorgenti delle commesse del seme, con la chiave polimorfa GIA'
+                  --    convertita al tipo del documento. Servono alle meta' ENTRANTI dei rami
+                  --    B, E, F, U: cosi' il join verso il documento e' `p.uid = cs.k_uuid`, un
+                  --    confronto fra colonne dello stesso tipo — leakproof, quindi entra
+                  --    nell'indice anche sotto RLS (linee-guida-sql §8.5-bis). Un cast nel join
+                  --    (`p.uid = cs.sorgente_uid::uuid`) non e' leakproof: sotto policy il
+                  --    planner lo applica DOPO la policy, cioe' legge l'intera tabella
+                  --    dell'altro capo per ogni sorgente (commessa con 32 preventivi: ~260 ms,
+                  --    dbdev come app, 2026-10-11; rev 20261011-92).
+                  --    Il cast e' sicuro: sta nella lista di selezione, valutata solo per le
+                  --    righe che passano il WHERE, e il CASE lo limita al tipo giusto.
+                  SELECT cs.id, cs.commessa_id, cs.sorgente_tipo_id, cs.ruolo_link,
+                         CASE WHEN cs.sorgente_tipo_id = k.t_prev
+                              THEN cs.sorgente_uid::uuid END                      AS k_uuid,
+                         CASE WHEN cs.sorgente_tipo_id IN (k.t_ord, k.t_con, k.t_ddt)
+                              THEN cs.sorgente_uid::bigint END                    AS k_bigint
+                    FROM chiavi k
+                    JOIN vendite.commesse_sorgenti cs
+                      ON cs.commessa_id = ANY (k.com_ids)
+                     AND cs.sorgente_tipo_id IN (k.t_prev, k.t_ord, k.t_con, k.t_ddt)
+              ), prev_k AS MATERIALIZED (
+                  -- Le chiavi testuali dei rami B ed E nel modo «tutti», come nella vista.
+                  SELECT p.uid::text AS uid FROM vendite.preventivi p WHERE fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+              ), ord_k AS MATERIALIZED (
+                  SELECT o.id::text AS id FROM vendite.ordini o WHERE fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+              ), archi (from_tipo_id, from_uid, to_tipo_id, to_uid, ruolo, arco) AS (
+                  -- ── Modo «tutti» (seme NULL): i 13 rami della vista, invariati. Il filtro
+                  --    sui parametri non nomina colonne: One-Time Filter, e con un seme il ramo
+                  --    non si esegue.
+                  SELECT s_from.id, p.uid::text, s_to.id, o.id::text, NULL::varchar, 'A'::text
+                    FROM vendite.ordini o
+                    JOIN vendite.preventivi p ON p.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'PREVENTIVO' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'ORDINE_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE o.documento_origine_tipo = 'PREVENTIVO' AND fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT s_from.id, p.uid, s_to.id, cm.id::text, cs.ruolo_link, 'B'
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN prev_k p ON p.uid = cs.sorgente_uid
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'PREVENTIVO'
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT s_from.id, oc.uid::text, s_to.id, c.id::text, NULL::varchar, 'C'
+                    FROM vendite.contratti c
+                    JOIN vendite.offerte_commerciali oc ON oc.id = c.offerta_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'CONTRATTO' AND s_to.attivo IS TRUE
+                   WHERE c.offerta_id IS NOT NULL AND fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT s_from.id, oc.uid::text, s_to.id, o.id::text, NULL::varchar, 'D'
+                    FROM vendite.ordini o
+                    JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'ORDINE_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE o.documento_origine_tipo = 'OFFERTA' AND fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT s_from.id, o.id, s_to.id, cm.id::text, cs.ruolo_link, 'E'
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN ord_k o ON o.id = cs.sorgente_uid
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT s_from.id, c.id::text, s_to.id, cm.id::text, cs.ruolo_link, 'F'
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.contratti c ON c.id::text = cs.sorgente_uid
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'CONTRATTO'
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT s_from.id, d.id::text, s_to.id, cm.id::text, cs.ruolo_link, 'U'
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN vendite.ddt d ON d.id::text = cs.sorgente_uid
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT DISTINCT s_from.id, cm.id::text, s_to.id, f.id::text, NULL::varchar, 'G'
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.commesse cm ON cm.id = af.commessa_id
+                    JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                    JOIN vendite.fatture f ON f.id = fr.fattura_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'COMMESSA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'FATTURA' AND s_to.attivo IS TRUE
+                   WHERE af.fattura_riga_id IS NOT NULL AND fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT s_from.id, o.id::text, s_to.id, d.id::text, NULL::varchar, 'H'
+                    FROM vendite.ddt d
+                    JOIN config.sorgenti s_from ON s_from.id = d.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN vendite.ordini o ON o.uid = d.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'DDT_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT s_from.id, d.id::text, s_to.id, r.id::text, NULL::varchar, 'R'
+                    FROM vendite.resi r
+                    JOIN config.sorgenti s_from ON s_from.id = r.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'RESO_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT DISTINCT s_fat.id, rr.fattura_id::text, s_fat.id, fr.fattura_id::text, NULL::varchar, 'N'
+                    FROM vendite.fatture_righe fr
+                    JOIN vendite.fatture_righe rr ON rr.id = fr.riga_rettificata_id
+                    JOIN config.sorgenti s_fat ON s_fat.codice_interno = 'FATTURA' AND s_fat.attivo IS TRUE
+                   WHERE fr.riga_rettificata_id IS NOT NULL AND rr.fattura_id <> fr.fattura_id AND fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT DISTINCT s_from.id, r.id::text, s_to.id, fr.fattura_id::text, NULL::varchar, 'S'
+                    FROM vendite.resi_righe_accrediti acc
+                    JOIN vendite.resi_righe rr ON rr.id = acc.resi_riga_id
+                    JOIN vendite.resi r ON r.id = rr.reso_id
+                    JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = acc.commessa_attivita_id
+                    JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'RESO_VENDITA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'FATTURA' AND s_to.attivo IS TRUE
+                   WHERE af.fattura_riga_id IS NOT NULL AND fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  SELECT DISTINCT s_from.id, r.id::text, s_to.id, d.id::text, NULL::varchar, 'T'
+                    FROM vendite.resi_righe_riconsegne rrr
+                    JOIN vendite.resi_righe rr ON rr.id = rrr.resi_riga_id
+                    JOIN vendite.resi r ON r.id = rr.reso_id
+                    JOIN vendite.ddt_righe dr ON dr.id = rrr.ddt_riga_id
+                    JOIN vendite.ddt d ON d.id = dr.ddt_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'RESO_VENDITA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'DDT_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL
+                  UNION ALL
+                  -- ── Modo «seme»: per ogni ramo, l'arco USCENTE da un nodo del seme, e
+                  --    l'arco ENTRANTE in un nodo del seme il cui `from` NON sta nel seme (gia'
+                  --    contato fra gli uscenti). Le due meta' sono disgiunte: il multiinsieme e'
+                  --    quello della vista ristretta agli archi incidenti, con gli stessi
+                  --    DISTINCT. La prima tabella di ogni meta' e' limitata per indice dalle
+                  --    chiavi del seme; le altre si raggiungono per chiave.
+                  --    Il filtro sui parametri in testa a ogni ramo e' il gemello di quello
+                  --    del modo «tutti»: nella lettura intera il ramo non si esegue.
+                  --    ⚠️ Si pianifica comunque: la lettura intera costa ~+30 ms FISSI di
+                  --    pianificazione rispetto alla vista di prima (dbdev, 2026-10-11). E'
+                  --    un costo che non cresce coi dati, e le liste smettono di leggere il
+                  --    grafo intero al giro 5 del brief.
+                  --    ⚠️ L'esclusione e' `(… = ANY(…)) IS NOT TRUE`, non `NOT (…)`: con l'array
+                  --    del tipo NULL (nessun nodo di quel tipo nel seme) `NOT` darebbe NULL e
+                  --    scarterebbe l'arco.
+                  -- A preventivo → ordine
+                  SELECT s_from.id, p.uid::text, s_to.id, o.id::text, NULL::varchar, 'A'
+                    FROM vendite.ordini o
+                    JOIN vendite.preventivi p ON p.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'PREVENTIVO' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'ORDINE_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND o.documento_origine_tipo = 'PREVENTIVO' AND o.documento_origine_id = ANY ((SELECT k.prev_ids FROM chiavi k)::bigint[])
+                  UNION ALL
+                  SELECT s_from.id, p.uid::text, s_to.id, o.id::text, NULL::varchar, 'A'
+                    FROM vendite.ordini o
+                    JOIN vendite.preventivi p ON p.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'PREVENTIVO' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'ORDINE_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND o.documento_origine_tipo = 'PREVENTIVO' AND o.id = ANY ((SELECT k.ord_ids FROM chiavi k)::bigint[])
+                     AND (p.uid = ANY ((SELECT k.prev_uids FROM chiavi k)::uuid[])) IS NOT TRUE
+                  -- B preventivo → commessa. La chiave del preventivo e' il testo di
+                  --   cs.sorgente_uid (polimorfa). Uscente: il preventivo si limita col seme
+                  --   (`p.uid = ANY`), e il cast resta un filtro sulle poche righe trovate.
+                  --   Entrante: le sorgenti arrivano da cs_semi con la chiave gia' convertita,
+                  --   e il join `p.uid = cs.k_uuid` e' leakproof, quindi per indice anche
+                  --   sotto RLS (rev 20261011-92, vedi cs_semi). Stessa forma per E, F, U.
+                  UNION ALL
+                  SELECT s_from.id, p.uid::text, s_to.id, cm.id::text, cs.ruolo_link, 'B'
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'PREVENTIVO'
+                    JOIN vendite.preventivi p
+                      ON p.uid = cs.sorgente_uid::uuid
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND cs.sorgente_tipo_id = (SELECT k.t_prev FROM chiavi k) AND cs.sorgente_uid = ANY ((SELECT k.prev_txt FROM chiavi k)::text[])
+                     AND p.uid = ANY ((SELECT k.prev_uids FROM chiavi k)::uuid[])
+                  UNION ALL
+                  SELECT s_from.id, p.uid::text, s_to.id, cm.id::text, cs.ruolo_link, 'B'
+                    FROM cs_semi cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'PREVENTIVO'
+                    JOIN vendite.preventivi p
+                      ON p.uid = cs.k_uuid
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND cs.sorgente_tipo_id = (SELECT k.t_prev FROM chiavi k)
+                     AND (p.uid = ANY ((SELECT k.prev_uids FROM chiavi k)::uuid[])) IS NOT TRUE
+                  -- C offerta → contratto
+                  UNION ALL
+                  SELECT s_from.id, oc.uid::text, s_to.id, c.id::text, NULL::varchar, 'C'
+                    FROM vendite.contratti c
+                    JOIN vendite.offerte_commerciali oc ON oc.id = c.offerta_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'CONTRATTO' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND c.offerta_id = ANY ((SELECT k.off_ids FROM chiavi k)::bigint[])
+                  UNION ALL
+                  SELECT s_from.id, oc.uid::text, s_to.id, c.id::text, NULL::varchar, 'C'
+                    FROM vendite.contratti c
+                    JOIN vendite.offerte_commerciali oc ON oc.id = c.offerta_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'CONTRATTO' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND c.id = ANY ((SELECT k.con_ids FROM chiavi k)::bigint[])
+                     AND (oc.uid = ANY ((SELECT k.off_uids FROM chiavi k)::uuid[])) IS NOT TRUE
+                  -- D offerta → ordine
+                  UNION ALL
+                  SELECT s_from.id, oc.uid::text, s_to.id, o.id::text, NULL::varchar, 'D'
+                    FROM vendite.ordini o
+                    JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'ORDINE_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND o.documento_origine_tipo = 'OFFERTA' AND o.documento_origine_id = ANY ((SELECT k.off_ids FROM chiavi k)::bigint[])
+                  UNION ALL
+                  SELECT s_from.id, oc.uid::text, s_to.id, o.id::text, NULL::varchar, 'D'
+                    FROM vendite.ordini o
+                    JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'OFFERTA_COMMERCIALE' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'ORDINE_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND o.documento_origine_tipo = 'OFFERTA' AND o.id = ANY ((SELECT k.ord_ids FROM chiavi k)::bigint[])
+                     AND (oc.uid = ANY ((SELECT k.off_uids FROM chiavi k)::uuid[])) IS NOT TRUE
+                  -- E ordini → commessa (sorgente polimorfa: la chiave e' id::text)
+                  UNION ALL
+                  SELECT s_from.id, o.id::text, s_to.id, cm.id::text, cs.ruolo_link, 'E'
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN vendite.ordini o
+                      ON o.id = cs.sorgente_uid::bigint
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND cs.sorgente_tipo_id = (SELECT k.t_ord FROM chiavi k) AND cs.sorgente_uid = ANY ((SELECT k.ord_txt FROM chiavi k)::text[])
+                     AND o.id = ANY ((SELECT k.ord_ids FROM chiavi k)::bigint[])
+                  UNION ALL
+                  SELECT s_from.id, o.id::text, s_to.id, cm.id::text, cs.ruolo_link, 'E'
+                    FROM cs_semi cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN vendite.ordini o
+                      ON o.id = cs.k_bigint
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND cs.sorgente_tipo_id = (SELECT k.t_ord FROM chiavi k)
+                     AND (o.id = ANY ((SELECT k.ord_ids FROM chiavi k)::bigint[])) IS NOT TRUE
+                  -- F contratti → commessa (sorgente polimorfa: la chiave e' id::text)
+                  UNION ALL
+                  SELECT s_from.id, c.id::text, s_to.id, cm.id::text, cs.ruolo_link, 'F'
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'CONTRATTO'
+                    JOIN vendite.contratti c
+                      ON c.id = cs.sorgente_uid::bigint
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND cs.sorgente_tipo_id = (SELECT k.t_con FROM chiavi k) AND cs.sorgente_uid = ANY ((SELECT k.con_txt FROM chiavi k)::text[])
+                     AND c.id = ANY ((SELECT k.con_ids FROM chiavi k)::bigint[])
+                  UNION ALL
+                  SELECT s_from.id, c.id::text, s_to.id, cm.id::text, cs.ruolo_link, 'F'
+                    FROM cs_semi cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'CONTRATTO'
+                    JOIN vendite.contratti c
+                      ON c.id = cs.k_bigint
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND cs.sorgente_tipo_id = (SELECT k.t_con FROM chiavi k)
+                     AND (c.id = ANY ((SELECT k.con_ids FROM chiavi k)::bigint[])) IS NOT TRUE
+                  -- U ddt → commessa (sorgente polimorfa: la chiave e' id::text)
+                  UNION ALL
+                  SELECT s_from.id, d.id::text, s_to.id, cm.id::text, cs.ruolo_link, 'U'
+                    FROM vendite.commesse_sorgenti cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN vendite.ddt d
+                      ON d.id = cs.sorgente_uid::bigint
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND cs.sorgente_tipo_id = (SELECT k.t_ddt FROM chiavi k) AND cs.sorgente_uid = ANY ((SELECT k.ddt_txt FROM chiavi k)::text[])
+                     AND d.id = ANY ((SELECT k.ddt_ids FROM chiavi k)::bigint[])
+                  UNION ALL
+                  SELECT s_from.id, d.id::text, s_to.id, cm.id::text, cs.ruolo_link, 'U'
+                    FROM cs_semi cs
+                    JOIN config.sorgenti s_from ON s_from.id = cs.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN vendite.ddt d
+                      ON d.id = cs.k_bigint
+                    JOIN vendite.commesse cm ON cm.id = cs.commessa_id
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'COMMESSA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND cs.sorgente_tipo_id = (SELECT k.t_ddt FROM chiavi k)
+                     AND (d.id = ANY ((SELECT k.ddt_ids FROM chiavi k)::bigint[])) IS NOT TRUE
+                  -- G commessa → fattura
+                  UNION ALL
+                  SELECT DISTINCT s_from.id, cm.id::text, s_to.id, f.id::text, NULL::varchar, 'G'
+                    FROM vendite.attivita_fatturabili af
+                    JOIN vendite.commesse cm ON cm.id = af.commessa_id
+                    JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                    JOIN vendite.fatture f ON f.id = fr.fattura_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'COMMESSA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'FATTURA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND af.commessa_id = ANY ((SELECT k.com_ids FROM chiavi k)::bigint[])
+                  UNION ALL
+                  SELECT DISTINCT s_from.id, cm.id::text, s_to.id, f.id::text, NULL::varchar, 'G'
+                    FROM vendite.fatture_righe fr
+                    JOIN vendite.fatture f ON f.id = fr.fattura_id
+                    JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
+                    JOIN vendite.commesse cm ON cm.id = af.commessa_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'COMMESSA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'FATTURA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND fr.fattura_id = ANY ((SELECT k.fat_ids FROM chiavi k)::bigint[])
+                     AND (cm.id = ANY ((SELECT k.com_ids FROM chiavi k)::bigint[])) IS NOT TRUE
+                  -- H ordine → DDT
+                  UNION ALL
+                  SELECT s_from.id, o.id::text, s_to.id, d.id::text, NULL::varchar, 'H'
+                    FROM vendite.ddt d
+                    JOIN config.sorgenti s_from ON s_from.id = d.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN vendite.ordini o ON o.uid = d.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'DDT_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND d.sorgente_tipo_id = (SELECT k.t_ord FROM chiavi k) AND d.sorgente_uid = ANY ((SELECT k.ord_uids FROM chiavi k)::uuid[])
+                  UNION ALL
+                  SELECT s_from.id, o.id::text, s_to.id, d.id::text, NULL::varchar, 'H'
+                    FROM vendite.ddt d
+                    JOIN config.sorgenti s_from ON s_from.id = d.sorgente_tipo_id AND s_from.codice_interno = 'ORDINE_VENDITA'
+                    JOIN vendite.ordini o ON o.uid = d.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'DDT_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND d.id = ANY ((SELECT k.ddt_ids FROM chiavi k)::bigint[])
+                     AND (o.id = ANY ((SELECT k.ord_ids FROM chiavi k)::bigint[])) IS NOT TRUE
+                  -- R DDT → reso
+                  UNION ALL
+                  SELECT s_from.id, d.id::text, s_to.id, r.id::text, NULL::varchar, 'R'
+                    FROM vendite.resi r
+                    JOIN config.sorgenti s_from ON s_from.id = r.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'RESO_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND r.sorgente_tipo_id = (SELECT k.t_ddt FROM chiavi k) AND r.sorgente_uid = ANY ((SELECT k.ddt_uids FROM chiavi k)::uuid[])
+                  UNION ALL
+                  SELECT s_from.id, d.id::text, s_to.id, r.id::text, NULL::varchar, 'R'
+                    FROM vendite.resi r
+                    JOIN config.sorgenti s_from ON s_from.id = r.sorgente_tipo_id AND s_from.codice_interno = 'DDT_VENDITA'
+                    JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'RESO_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND r.id = ANY ((SELECT k.res_ids FROM chiavi k)::bigint[])
+                     AND (d.id = ANY ((SELECT k.ddt_ids FROM chiavi k)::bigint[])) IS NOT TRUE
+                  -- N fattura → nota (rettifica fra due fatture diverse)
+                  UNION ALL
+                  SELECT DISTINCT s_fat.id, rr.fattura_id::text, s_fat.id, fr.fattura_id::text, NULL::varchar, 'N'
+                    FROM vendite.fatture_righe rr
+                    JOIN vendite.fatture_righe fr ON fr.riga_rettificata_id = rr.id
+                    JOIN config.sorgenti s_fat ON s_fat.codice_interno = 'FATTURA' AND s_fat.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND rr.fattura_id = ANY ((SELECT k.fat_ids FROM chiavi k)::bigint[])
+                     AND rr.fattura_id <> fr.fattura_id
+                  UNION ALL
+                  SELECT DISTINCT s_fat.id, rr.fattura_id::text, s_fat.id, fr.fattura_id::text, NULL::varchar, 'N'
+                    FROM vendite.fatture_righe fr
+                    JOIN vendite.fatture_righe rr ON rr.id = fr.riga_rettificata_id
+                    JOIN config.sorgenti s_fat ON s_fat.codice_interno = 'FATTURA' AND s_fat.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND fr.fattura_id = ANY ((SELECT k.fat_ids FROM chiavi k)::bigint[])
+                     AND rr.fattura_id <> fr.fattura_id
+                     AND (rr.fattura_id = ANY ((SELECT k.fat_ids FROM chiavi k)::bigint[])) IS NOT TRUE
+                  -- S reso → fattura (accredito)
+                  UNION ALL
+                  SELECT DISTINCT s_from.id, r.id::text, s_to.id, fr.fattura_id::text, NULL::varchar, 'S'
+                    FROM vendite.resi_righe rr
+                    JOIN vendite.resi r ON r.id = rr.reso_id
+                    JOIN vendite.resi_righe_accrediti acc ON acc.resi_riga_id = rr.id
+                    JOIN vendite.attivita_fatturabili af ON af.commessa_attivita_id = acc.commessa_attivita_id
+                    JOIN vendite.fatture_righe fr ON fr.id = af.fattura_riga_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'RESO_VENDITA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'FATTURA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND rr.reso_id = ANY ((SELECT k.res_ids FROM chiavi k)::bigint[])
+                  UNION ALL
+                  SELECT DISTINCT s_from.id, r.id::text, s_to.id, fr.fattura_id::text, NULL::varchar, 'S'
+                    FROM vendite.fatture_righe fr
+                    JOIN vendite.attivita_fatturabili af ON af.fattura_riga_id = fr.id
+                    JOIN vendite.resi_righe_accrediti acc ON acc.commessa_attivita_id = af.commessa_attivita_id
+                    JOIN vendite.resi_righe rr ON rr.id = acc.resi_riga_id
+                    JOIN vendite.resi r ON r.id = rr.reso_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'RESO_VENDITA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'FATTURA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND fr.fattura_id = ANY ((SELECT k.fat_ids FROM chiavi k)::bigint[])
+                     AND (r.id = ANY ((SELECT k.res_ids FROM chiavi k)::bigint[])) IS NOT TRUE
+                  -- T reso → DDT (riconsegna)
+                  UNION ALL
+                  SELECT DISTINCT s_from.id, r.id::text, s_to.id, d.id::text, NULL::varchar, 'T'
+                    FROM vendite.resi_righe rr
+                    JOIN vendite.resi r ON r.id = rr.reso_id
+                    JOIN vendite.resi_righe_riconsegne rrr ON rrr.resi_riga_id = rr.id
+                    JOIN vendite.ddt_righe dr ON dr.id = rrr.ddt_riga_id
+                    JOIN vendite.ddt d ON d.id = dr.ddt_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'RESO_VENDITA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'DDT_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND rr.reso_id = ANY ((SELECT k.res_ids FROM chiavi k)::bigint[])
+                  UNION ALL
+                  SELECT DISTINCT s_from.id, r.id::text, s_to.id, d.id::text, NULL::varchar, 'T'
+                    FROM vendite.ddt_righe dr
+                    JOIN vendite.ddt d ON d.id = dr.ddt_id
+                    JOIN vendite.resi_righe_riconsegne rrr ON rrr.ddt_riga_id = dr.id
+                    JOIN vendite.resi_righe rr ON rr.id = rrr.resi_riga_id
+                    JOIN vendite.resi r ON r.id = rr.reso_id
+                    JOIN config.sorgenti s_from ON s_from.codice_interno = 'RESO_VENDITA' AND s_from.attivo IS TRUE
+                    JOIN config.sorgenti s_to ON s_to.codice_interno = 'DDT_VENDITA' AND s_to.attivo IS TRUE
+                   WHERE NOT (fn_documento_lineage_archi.p_tipo_ids IS NULL AND fn_documento_lineage_archi.p_uids IS NULL)
+                     AND dr.ddt_id = ANY ((SELECT k.ddt_ids FROM chiavi k)::bigint[])
+                     AND (r.id = ANY ((SELECT k.res_ids FROM chiavi k)::bigint[])) IS NOT TRUE
+              )
+              SELECT a.from_tipo_id, a.from_uid, a.to_tipo_id, a.to_uid, a.ruolo, a.arco,
+                     -- R e N si leggono «al contrario» nel pannello: e' una proprieta'
+                     -- dell'arco, quindi sta qui e non in ogni lettore.
+                     a.arco = ANY (ARRAY['R', 'N']) AS is_ramo_inverso,
+                     (CASE a.arco
+                          WHEN 'A' THEN 10 WHEN 'B' THEN 10 WHEN 'C' THEN 10 WHEN 'D' THEN 10
+                          WHEN 'E' THEN 20 WHEN 'F' THEN 20 WHEN 'H' THEN 20
+                          WHEN 'G' THEN 30
+                          WHEN 'U' THEN 40 WHEN 'R' THEN 40
+                          WHEN 'S' THEN 50 WHEN 'T' THEN 50 WHEN 'N' THEN 50
+                      END)::smallint AS rango_origine
+                FROM archi a;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_documento_lineage_archi(bigint[], text[]) IS
+                  '⭐ rev 2026-10-11 (20261011-92): nei rami polimorfi B, E, F, U il join verso il documento e'' un '
+                  'confronto fra colonne dello stesso tipo (cs_semi porta la chiave gia'' convertita): un cast nel '
+                  'join non e'' leakproof, e sotto RLS faceva leggere l''intera tabella dell''altro capo per ogni '
+                  'sorgente. ⭐ rev 2026-10-11 (20261011-67): SET jit = off e SET plan_cache_mode = '
+                  'force_generic_plan sulla funzione. Con un seme non costante il piano tiene i rami dei due modi e'
+                  ' il JIT ne compilava le espressioni a ogni chiamata; le clausole la rendono non incorporabile e '
+                  'la pianificano una volta per sessione: chi la chiama non deve dichiarare niente. Gli ARCHI della'
+                  ' lineage dei documenti, GREZZI (chiavi, ruolo, lettera A…U, is_ramo_inverso, rango_origine), per'
+                  ' CHIAVE DEL NODO. Seme come fn_documento_lineage_nodi: (tipo_id, uid::text) in due array '
+                  'paralleli; entrambi NULL = tutti gli archi (vw_documento_lineage_archi ne e'' la proiezione '
+                  'decorata). Col seme: gli archi USCENTI da un nodo del seme e quelli ENTRANTI il cui from non sta'
+                  ' nel seme, cioe'' gli archi incidenti, ciascuno una volta, con gli stessi DISTINCT della vista. '
+                  'Il seme scende come array (`= ANY`) sulla prima tabella di ogni ramo: passato come JOIN, sotto '
+                  'RLS il planner partiva dal lato sbagliato. Chi la chiama in un ciclo plpgsql dichiara SET '
+                  'plan_cache_mode = force_generic_plan: il corpo e'' grande e la pianificazione costa. Il '
+                  'vocabolario delle 13 lettere e'' quello di vw_documento_lineage_archi: un arco nuovo si aggiunge '
+                  'QUI, nei due modi. BEGIN ATOMIC, INVOKER. Brief: brief-db-lineage-seminata-per-chiave §8.2.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_documento_lineage_archi(bigint[], text[]) TO zeroerp_app;
+
+              CREATE VIEW vendite.vw_documento_lineage_archi WITH (security_invoker=on) AS
+               WITH nodi AS MATERIALIZED (
+                       SELECT n.tipo_id,
+                          n.uid,
+                          n.codice,
+                          n.stato_codice_interno,
+                          n.fase,
+                          n.is_abortito,
+                          n.natura_doc_codice_interno
+                         FROM vendite.vw_documento_lineage_nodi n
+                      )
+               SELECT a.from_tipo_id,
+                  a.from_uid,
+                  nf.codice AS from_codice,
+                  a.to_tipo_id,
+                  a.to_uid,
+                  nt.codice AS to_codice,
+                  nt.stato_codice_interno AS to_stato_codice_interno,
+                  nt.fase AS to_fase,
+                  nt.is_abortito AS to_is_abortito,
+                  a.ruolo,
+                  a.arco,
+                  a.is_ramo_inverso,
+                  nf.natura_doc_codice_interno AS from_natura_doc_codice_interno,
+                  nt.natura_doc_codice_interno AS to_natura_doc_codice_interno,
+                  a.rango_origine
+                 FROM vendite.fn_documento_lineage_archi(NULL::bigint[], NULL::text[]) a(from_tipo_id, from_uid, to_tipo_id, to_uid, ruolo, arco, is_ramo_inverso, rango_origine)
+                   LEFT JOIN nodi nf ON nf.tipo_id = a.from_tipo_id AND nf.uid = a.from_uid
+                   LEFT JOIN nodi nt ON nt.tipo_id = a.to_tipo_id AND nt.uid = a.to_uid;
+
+              COMMENT ON VIEW vendite.vw_documento_lineage_archi IS
+                  '⭐ rev 2026-10-11 (brief-db-lineage-seminata-per-chiave, giro 1): la vista e'' la PROIEZIONE di '
+                  'vendite.fn_documento_lineage_archi(NULL, NULL), un corpo solo; chi vuole una parte del grafo '
+                  'chiama la funzione col seme. Stesse colonne, stessi tipi. Lineage documenti vendite (Step 2): '
+                  'grafo archi normalizzato A-H + R e N (rami di ritorno) + S, T e U. TREDICI lettere dal '
+                  '2026-08-28, e il vocabolario e'' CHIUSO: il pgTAP 13 le enumera e fallisce apposta a ogni arco '
+                  'nuovo, per costringere chi lo aggiunge a passare di li''. Chi allarga l''elenco aggiorna ANCHE '
+                  'questa frase e da'' all''arco nuovo un rango_origine: e'' questa la riga che la doc auto-gen stampa'
+                  ' in cima alla pagina, cioe'' la prima che legge chi vuole sapere quali archi esistono. Chiave '
+                  'nodo polimorfa (tipo_id, uid::text). Nodo target decorato via vw_documento_lineage_nodi. '
+                  'security_invoker=on. Base di vw_documento_lineage e fn_documento_lineage. ⭐ rev 2026-08-25 — '
+                  'ARCO S: reso -> nota di credito, letto da vendite.resi_righe_accrediti (la tabella nata il '
+                  '2026-08-18 per registrare il FATTO dell''accredito «contro cosa»), via commessa_attivita_id -> '
+                  'attivita_fatturabili -> fatture_righe. Soft-link calcolato come G e N, nessuna tabella ponte. ⛔ '
+                  'S NON E'' UN RAMO DI RITORNO, ed e'' una scelta: «inverso» vuol dire ramo di RITORNO, un verso che'
+                  ' il grafo forward non percorre; S invece e'' l''AVANZAMENTO del reso (la merce e'' tornata, adesso '
+                  'si accredita), come H lo e'' dell''ordine. La conseguenza voluta e'' che il reso smette di essere '
+                  'una foglia e prende la nota come FRONTIERA. ⛔ NON si aggiunge un arco «reso -> fattura '
+                  'ORIGINALE», benche'' resi_righe_accrediti.fattura_riga_rettificata_id lo renda banale: sarebbe '
+                  'forward, i due nodi FATTURA finirebbero allo stesso livello e con lo stesso pipeline_rank, e la '
+                  'frontiera del reso si deciderebbe sul confronto lessicografico fra due uid testuali. Il '
+                  'triangolo si chiude gia'' via N. ⭐ rev 2026-08-28 — ARCO T: reso -> DDT di RI-CONSEGNA, letto dal'
+                  ' ponte vendite.resi_righe_riconsegne. Il grafo aveva R (la merce torna) e S (il valore si '
+                  'accredita) ma non l''arco che dice che la merce e'' RIPARTITA: un reso ri-consegnato finiva come '
+                  'una foglia. ⛔ Nemmeno T e'' un ramo di ritorno: il ritorno e'' gia'' avvenuto ed e'' R, e da li'' il '
+                  'reso ha due modi di andare AVANTI. Si costruisce dal ponte e non da ddt.sorgente_*, quindi copre'
+                  ' anche le ri-consegne ORDER-BACKED. ⭐ rev 2026-08-28 — ARCO U: DDT -> Commessa, la QUARTA '
+                  'sorgente di commessa e la gemella di B, E ed F (stessa tabella commesse_sorgenti, stesso '
+                  'ruolo_link, stesso perimetro). Prima le righe DDT_VENDITA di commesse_sorgenti non producevano '
+                  'NESSUN arco, e quelle commesse dichiaravano nel grafo di non avere origine — n_sorgenti = 0, che'
+                  ' non e'' «non lo so» ma un''affermazione falsa. ⛔ AMMESSA PERCHE'' LO DICE CHI SCRIVE, non perche'' '
+                  'ci sono righe: le scrive HandlerDdt, un handler REGISTRATO del push (uno di cinque, con '
+                  'PREVENTIVO, ORDINE_VENDITA, CONTRATTO e ATTIVITA_CONSUMI), e ne'' il chiamante ne'' '
+                  'vendite.fn_link_commessa_sorgente hanno una whitelist di tipi — la funzione legge target_table e'
+                  ' key_selector da config.sorgenti per QUALUNQUE sorgente attiva. Il database non ha mai vietato '
+                  'che un DDT sia sorgente di commessa. ⚠️ Il quinto handler, ATTIVITA_CONSUMI, scrive nella stessa'
+                  ' tabella ma NON e'' un nodo del grafo: per quelle righe non basterebbe un arco, mancherebbe il '
+                  'nodo. Difetto della stessa famiglia, taglia diversa, altro cantiere. ⭐ rev 2026-08-28 — '
+                  'RANGO_ORIGINE: quando piu'' archi forward entrano nello STESSO nodo, dichiara quale sorgente e'' '
+                  '«l''origine». Scala per quanto e'' a monte il documento SORGENTE: 10 trattativa, 20 impegno, 30 '
+                  'esecuzione, 40 consegna, 50 ritorno; piu'' basso = piu'' origine. ⛔ NON e'' «ordinare sul tipo con '
+                  'un altro nome»: prima decideva from_tipo_id, cioe'' la PK di config.sorgenti — un id di SEED, per'
+                  ' cui la commessa vinceva sul reso solo perche'' 13 < 15 e una riseminatura avrebbe cambiato il '
+                  'root di ogni nota di credito in silenzio. Questo numero e'' SCRITTO, si legge, non si sposta se '
+                  'il catalogo cambia, e un arco nuovo senza rango vale NULL — che il pgTAP 41 prende. Le due gare '
+                  'vere: FATTURA <- G(30) e S(50), vince la COMMESSA; DDT <- H(20) e T(50), vince l''ORDINE. I '
+                  'pareggi A/D ed E/F sono DELIBERATI (nel primo caso i due archi si escludono per costruzione, nel'
+                  ' secondo il modello non ha una preferenza e ruolo_link decide prima) e il tie-break residuo e'' '
+                  'from_uid, che e'' immutabile: stabile, ma non significativo, ed e'' meglio dirlo che fingere una '
+                  'regola che non c''e''. ⛔ REGOLA DI PERIMETRO (rev 2026-08-25): ogni ramo passa dalle '
+                  'TABELLE-TESTATA dei due documenti che collega, perche'' sono quelle che portano la RLS. Le '
+                  'tabelle-ponte (commesse_sorgenti, attivita_fatturabili, resi_righe, resi_righe_accrediti, '
+                  'resi_righe_riconsegne, ddt_righe) hanno relrowsecurity = f e non danno perimetro: un ramo che si'
+                  ' ferma li'' produce un arco verso un documento che il chiamante non vede, e la decorazione non lo'
+                  ' ferma perche'' i join ai nodi sono LEFT. Fino al 2026-08-24 lo facevano B, E, F e G; U e'' il '
+                  'primo ramo a rispettarla per NASCITA. ⚠️ La chiave di commesse_sorgenti.sorgente_uid e'' '
+                  'POLIMORFA (key_selector): uid per il preventivo, id::text per ordine, contratto e DDT — i '
+                  'quattro join non si copiano l''uno dall''altro, e si casta l''id a text, mai il testo a uuid. ⭐ '
+                  'is_ramo_inverso E'' CALCOLATO QUI, una volta sola: prima la lettera R era ripetuta in tre posti '
+                  '(due WHERE della summary e fn_documento_lineage) e il terzo dimenticato non avrebbe rotto niente'
+                  ' di visibile. Espone anche from/to_natura_doc_codice_interno, per distinguere i due nodi '
+                  'FATTURA. ⭐ rev 2026-10-05 (20261005-21, brief-db-liste-documento-lineage-lenta, passo 2) — TRE '
+                  'LETTURE UNA VOLTA SOLA. Le chiavi testuali di preventivi (ramo B) e ordini (ramo E) e i nodi '
+                  '(nf, nt) si leggono una volta, in CTE MATERIALIZED: sotto RLS il planner rileggeva l''intera '
+                  'tabella per ogni riga di commesse_sorgenti (la chiave e'' un''espressione e non usa l''indice) e '
+                  'calcolava i nodi due volte. La regola di perimetro resta intera: le CTE leggono le '
+                  'tabelle-testata sotto la loro RLS, e il cast va dall''id al testo. Misurato come zeroerp_app su '
+                  'dbdev il 2026-10-05: la vista intera 380 -> 90 ms, gli archi di un documento 457 -> 143 ms, la '
+                  'pagina della lista preventivi 0,45 -> 0,17 s; righe identiche (EXCEPT ALL nei due versi su '
+                  'questa vista e su vw_documento_lineage).';
+
+              CREATE VIEW vendite.vw_ordini_lista WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.numero,
+                  o.serie,
+                  o.anno,
+                  o.data,
+                  o.stato_doc_ordine_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.descrizione AS stato_descrizione,
+                  o.soggetto_ruolo_id,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.imponibile_tot,
+                  o.sconto_tot,
+                  o.iva_tot,
+                  o.totale_doc,
+                  o.modalita_pagamento_id,
+                  mp.codice AS modalita_pagamento_codice,
+                  o.termine_pagamento_id,
+                  tp.codice AS termine_pagamento_codice,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.tasso_cambio,
+                  o.fatturazione_trigger,
+                  o.canale_origine,
+                  o.agente_soggetto_ruolo_id,
+                  s_ag.ragione_sociale_completa AS agente_denominazione,
+                  o.documento_origine_tipo,
+                  o.documento_origine_id,
+                      CASE o.documento_origine_tipo
+                          WHEN 'PREVENTIVO'::text THEN pv.numero
+                          WHEN 'OFFERTA'::text THEN oc.codice::character varying
+                          ELSE NULL::character varying
+                      END AS documento_origine_codice,
+                  o.data_insert,
+                  o.user_insert,
+                  o.data_update,
+                  o.user_update,
+                  sd.pdf_mode,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  dcr.data_consegna_richiesta_cliente_min,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM vendite.ordini o
+                   JOIN config.stati_doc_ordini sd ON sd.id = o.stato_doc_ordine_id
+                   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = o.soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN config.modalita_pagamento mp ON mp.id = o.modalita_pagamento_id
+                   LEFT JOIN config.termini_pagamento tp ON tp.id = o.termine_pagamento_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ag ON sr_ag.id = o.agente_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ag ON s_ag.id = sr_ag.soggetto_id
+                   LEFT JOIN vendite.preventivi pv ON pv.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'PREVENTIVO'::text
+                   LEFT JOIN vendite.offerte_commerciali oc ON oc.id = o.documento_origine_id AND o.documento_origine_tipo::text = 'OFFERTA'::text
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'ORDINE_VENDITA'::text AND so_pr.attivo IS TRUE), o.id::text) pr(n_pratiche, pratica_id, pratica_numero) ON true
+                   LEFT JOIN LATERAL ( SELECT min(orr.data_consegna_richiesta_cliente) AS data_consegna_richiesta_cliente_min
+                         FROM vendite.ordini_righe orr
+                        WHERE orr.ordine_id = o.id AND orr.attivo IS TRUE) dcr ON true
+                   LEFT JOIN vendite.registri_fatturazione reg ON reg.id = o.registro_id;
+
+              COMMENT ON VIEW vendite.vw_ordini_lista IS
+                  '⭐ rev 2026-10-11 (20261011-97, brief-db-lineage-seminata-per-chiave giro B): la vista non '
+                  'aggancia piu'' vw_documento_lineage. Le 8 colonne del grafo (frontiera_*, n_discendenti_attivi, '
+                  'is_transitato) le legge il backend da vendite.fn_documento_lineage_sintesi per le chiavi della '
+                  'pagina; la pratica resta, da pratiche.fn_pratica_del_documento. Vista canonica lista/dettaglio '
+                  'ordini vendita: testata + decodifiche denormalizzate (stato, cliente, billing/emittente/utility,'
+                  ' pagamento, valuta, agente, documento origine) + pdf_mode (modalita'' bottone PDF per-riga, '
+                  'data-driven). Sola denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready). rev'
+                  ' 2026-07-11: +pdf_mode. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da '
+                  'vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» '
+                  'decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e'' UNA tabella, '
+                  'e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il '
+                  'consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' '
+                  'CREATE OR REPLACE VIEW puo'' solo appendere: non e'' un disordine da sistemare. ⛔ NULL non '
+                  'significa «non lo so» ma «la frontiera non e'' un documento fiscale»: la natura esiste solo per '
+                  'le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) '
+                  '`frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore '
+                  'viene da `config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e '
+                  'linee-guida-sql §6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente'
+                  ' — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il '
+                  'guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva '
+                  '`frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se'
+                  ' lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, '
+                  'tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e'' '
+                  '`frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e il FE lo usa per la '
+                  'chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci '
+                  'mislabel nascosti dentro l''unico posto dove il guardrail li vede. ⭐ rev 2026-09-13 (P-6, '
+                  'brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + '
+                  'data_consegna_richiesta_cliente_min, la prima data di consegna chiesta dal cliente sulle righe '
+                  'ATTIVE dell''ordine. E'' un min() calcolato dalle righe e non una colonna di testata, perche'' una '
+                  'colonna sarebbe una seconda sorgente di verita'' che va fuori sincrono al primo cambio di riga; '
+                  'il suffisso _cliente dice di chi e'' la data (D-16: non marcato = nostro, marcato = della '
+                  'controparte). NULL = nessuna riga attiva la dichiara. In ultima posizione perche'' CREATE OR '
+                  'REPLACE VIEW puo'' solo appendere. Serve la lista (ui.lista_colonna 746) e il drawer di testata, '
+                  'che leggono SELECT v.*. ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.2, Q-E): + '
+                  'registro_codice, registro_descrizione in coda, LEFT JOIN vendite.registri_fatturazione su '
+                  'registro_id (20260831). E'' lo stesso blocco appeso a vw_fatture_lista nello stesso giro: le '
+                  'sorelle che un registro ce l''hanno — fatture, ddt, ordini, resi — lo espongono allo stesso modo,'
+                  ' cosi'' chi scrive l''ottava copia non la copia da una vista senza. ⛔ contratti, preventivi e '
+                  'offerte NON hanno registro_id e non avranno queste colonne: non e'' una dimenticanza. Nessun '
+                  'numero_documento qui: su questa vista `numero` e'' gia'' il numero parlante (varchar).';
+
+              CREATE VIEW vendite.vw_dash_fatturazione_offerte WITH (security_invoker=on) AS
+               SELECT 'OFFERTE'::character varying AS area,
+                  date_trunc('month'::text, COALESCE(o.validita_dal, script.fn_giorno_operativo(o.data_emissione), script.fn_giorno_operativo(o.data_insert))::timestamp with time zone)::date AS competenza_mese,
+                  o.id AS documento_id,
+                  o.uid::text AS documento_uid,
+                  o.codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  NULL::numeric AS valore_totale,
+                  NULL::numeric AS valore_transitato,
+                  1 AS unita_totali,
+                      CASE
+                          WHEN ct.vivo OR fo.vivo THEN 1
+                          ELSE 0
+                      END AS unita_transitate,
+                  ct.vivo OR fo.vivo AS is_transitato,
+                  COALESCE(sdo.esito::text = 'NEGATIVO'::text, false) AS is_abortito,
+                      CASE
+                          WHEN COALESCE(sdo.esito::text = 'NEGATIVO'::text, false) THEN NULL::text
+                          WHEN ct.vivo OR fo.vivo THEN NULL::text
+                          WHEN ct.esiste OR fo.esiste THEN 'FIGLIO_ABORTITO'::text
+                          WHEN sdo.codice_interno::text = 'BOZZA'::text THEN 'DOC_BOZZA'::text
+                          WHEN sdo.codice_interno::text = 'EMESSA'::text THEN 'IN_ATTESA_ACCETTAZIONE'::text
+                          ELSE 'SENZA_FIGLIO'::text
+                      END::character varying AS motivo_fermo,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.codice AS stato_codice,
+                  sdo.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  COALESCE(script.fn_giorno_operativo(o.data_emissione), o.validita_dal, script.fn_giorno_operativo(o.data_insert)) AS data_riferimento
+                 FROM vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
+                   CROSS JOIN LATERAL ( SELECT count(*) > 0 AS esiste,
+                          COALESCE(bool_or(NOT c.is_abortito_snapshot), false) AS vivo
+                         FROM vendite.contratti c
+                        WHERE c.offerta_id = o.id) ct
+                   CROSS JOIN LATERAL ( SELECT count(*) > 0 AS esiste,
+                          COALESCE(bool_or(sdor.esito::text IS DISTINCT FROM 'NEGATIVO'::text), false) AS vivo
+                         FROM vendite.ordini od
+                           JOIN config.stati_doc_ordini sdor ON sdor.id = od.stato_doc_ordine_id
+                        WHERE od.documento_origine_tipo::text = 'OFFERTA'::text AND od.documento_origine_id = o.id) fo
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = o.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_offerte IS
+                  'Dashboard fatturazione: resolver area OFFERTE, a conteggi (D-2). Transitata = figlio vivo '
+                  '(contratto via offerta_id NOT is_abortito_snapshot, o ordine documento_origine OFFERTA esito != '
+                  'NEGATIVO). FIGLIO_ABORTITO = figlio annullato (XOR permanente). cliente_display=ragione sociale '
+                  'intestatario istanza (path vw_offerte_commerciali_lista). Consumata da '
+                  'vw_dash_fatturazione_documenti. rev 2026-10-11 (20261011-76, '
+                  'brief-db-annullo-documento-con-legami D-6): un''offerta ha al piu'' un figlio VIVO ma puo'' avere '
+                  'piu'' figli annullati; i figli si riassumono in una riga per lato (esiste, vivo), cosi'' l''offerta'
+                  ' non si duplica e un figlio morto non nasconde quello vivo. FIGLIO_ABORTITO resta il caso «figli'
+                  ' solo annullati», che ora si sblocca rigenerando.';
+
+              COMMENT ON COLUMN vendite.vw_dash_fatturazione_offerte.data_riferimento IS
+                  'Anzianita'' backlog (due lenti): data emissione offerta, fallback validita_dal/data_insert '
+                  '("fermo da...", proxy v1).';
+
+              CREATE VIEW vendite.vw_dash_fatturazione_documenti WITH (security_invoker=on) AS
+               SELECT d.area,
+                  d.competenza_mese,
+                  d.documento_id,
+                  d.documento_uid,
+                  d.codice,
+                  d.emittente_fiscale_id,
+                  d.emittente_soggetto_ruolo_id,
+                  d.valore_totale,
+                  d.valore_transitato,
+                  d.unita_totali,
+                  d.unita_transitate,
+                  d.is_transitato,
+                  d.is_abortito,
+                  d.motivo_fermo,
+                  d.stato_codice_interno,
+                  d.stato_codice,
+                  d.fase,
+                  d.cliente_display,
+                  d.data_riferimento,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM ( SELECT p.area,
+                          p.competenza_mese,
+                          p.documento_id,
+                          p.documento_uid,
+                          p.codice,
+                          p.emittente_fiscale_id,
+                          p.emittente_soggetto_ruolo_id,
+                          p.valore_totale,
+                          p.valore_transitato,
+                          p.unita_totali,
+                          p.unita_transitate,
+                          p.is_transitato,
+                          p.is_abortito,
+                          p.motivo_fermo,
+                          p.stato_codice_interno,
+                          p.stato_codice,
+                          p.fase,
+                          p.cliente_display,
+                          p.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_preventivi p
+                      UNION ALL
+                       SELECT o.area,
+                          o.competenza_mese,
+                          o.documento_id,
+                          o.documento_uid,
+                          o.codice,
+                          o.emittente_fiscale_id,
+                          o.emittente_soggetto_ruolo_id,
+                          o.valore_totale,
+                          o.valore_transitato,
+                          o.unita_totali,
+                          o.unita_transitate,
+                          o.is_transitato,
+                          o.is_abortito,
+                          o.motivo_fermo,
+                          o.stato_codice_interno,
+                          o.stato_codice,
+                          o.fase,
+                          o.cliente_display,
+                          o.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_ordini o
+                      UNION ALL
+                       SELECT f.area,
+                          f.competenza_mese,
+                          f.documento_id,
+                          f.documento_uid,
+                          f.codice,
+                          f.emittente_fiscale_id,
+                          f.emittente_soggetto_ruolo_id,
+                          f.valore_totale,
+                          f.valore_transitato,
+                          f.unita_totali,
+                          f.unita_transitate,
+                          f.is_transitato,
+                          f.is_abortito,
+                          f.motivo_fermo,
+                          f.stato_codice_interno,
+                          f.stato_codice,
+                          f.fase,
+                          f.cliente_display,
+                          f.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_offerte f
+                      UNION ALL
+                       SELECT c.area,
+                          c.competenza_mese,
+                          c.documento_id,
+                          c.documento_uid,
+                          c.codice,
+                          c.emittente_fiscale_id,
+                          c.emittente_soggetto_ruolo_id,
+                          c.valore_totale,
+                          c.valore_transitato,
+                          c.unita_totali,
+                          c.unita_transitate,
+                          c.is_transitato,
+                          c.is_abortito,
+                          c.motivo_fermo,
+                          c.stato_codice_interno,
+                          c.stato_codice,
+                          c.fase,
+                          c.cliente_display,
+                          c.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_contratti c
+                      UNION ALL
+                       SELECT m.area,
+                          m.competenza_mese,
+                          m.documento_id,
+                          m.documento_uid,
+                          m.codice,
+                          m.emittente_fiscale_id,
+                          m.emittente_soggetto_ruolo_id,
+                          m.valore_totale,
+                          m.valore_transitato,
+                          m.unita_totali,
+                          m.unita_transitate,
+                          m.is_transitato,
+                          m.is_abortito,
+                          m.motivo_fermo,
+                          m.stato_codice_interno,
+                          m.stato_codice,
+                          m.fase,
+                          m.cliente_display,
+                          m.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_commesse m
+                      UNION ALL
+                       SELECT t.area,
+                          t.competenza_mese,
+                          t.documento_id,
+                          t.documento_uid,
+                          t.codice,
+                          t.emittente_fiscale_id,
+                          t.emittente_soggetto_ruolo_id,
+                          t.valore_totale,
+                          t.valore_transitato,
+                          t.unita_totali,
+                          t.unita_transitate,
+                          t.is_transitato,
+                          t.is_abortito,
+                          t.motivo_fermo,
+                          t.stato_codice_interno,
+                          t.stato_codice,
+                          t.fase,
+                          t.cliente_display,
+                          t.data_riferimento
+                         FROM vendite.vw_dash_fatturazione_ddt t) d
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = d.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = COALESCE(d.emittente_soggetto_ruolo_id, ef.soggetto_ruolo_id)
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_documenti IS
+                  'Union dei resolver per la dashboard fatturazione: preventivi, ordini, offerte, contratti, '
+                  'commesse e — dal 2026-07-18 (step 6, brief-db-fatturazione-ddt-resi §4a) — DDT. Le due lenti '
+                  'derivano da qui: il serbatoio filtra fase <> CHIUSO, il backlog filtra classe <> FISIOLOGICO. '
+                  'security_invoker=on (ri-specificato a ogni REPLACE: la reloption non e'' visibile in '
+                  'pg_get_viewdef e verrebbe azzerata in silenzio -> bypass RLS). ⭐ Rev 2026-08-18 (R-4, brief '
+                  'perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. ⚠️ Rev 2026-08-18 '
+                  '(-74, CORREZIONE): la prima stesura risolveva il nome da `emittente_soggetto_ruolo_id` dando per'
+                  ' buono che «i sei resolver la portano tutti». NON e'' vero: cinque su sei la scrivono '
+                  'NULL::bigint a mano (solo commesse ha il valore), quindi la colonna usciva vuota su 274 righe su'
+                  ' 274 — e su vw_dash_aperto_documenti, che esclude l''area COMMESSE, sarebbe stata vuota per '
+                  'sempre. Ora la chiave si risolve con COALESCE(emittente_soggetto_ruolo_id, '
+                  'emittenti_fiscali.soggetto_ruolo_id): stessa cura gia'' adottata in -63 per il ramo resi, e una '
+                  'sola catena di JOIN. ⚠️ La colonna `emittente_soggetto_ruolo_id` esposta resta NULL sui cinque '
+                  'rami: cambiarne la semantica e'' una decisione a parte, non una correzione. Chi filtra su quella '
+                  'colonna ottiene zero righe su cinque aree su sei — per il perimetro emittente si usa '
+                  '`emittente_fiscale_id`.';
+
+              COMMENT ON COLUMN vendite.vw_dash_fatturazione_documenti.data_riferimento IS
+                  'Anzianita'' backlog (due lenti): data "fermo da..." per area (preventivi/ordini: data documento; '
+                  'offerte: emissione con fallback; contratti/commesse: mese della riga).';
+
+              CREATE VIEW vendite.vw_dash_backlog_documenti WITH (security_invoker=on) AS
+               WITH base AS (
+                       SELECT d.area,
+                          d.competenza_mese,
+                          d.documento_id,
+                          d.documento_uid,
+                          d.codice,
+                          d.cliente_display,
+                          d.emittente_fiscale_id,
+                          d.emittente_soggetto_ruolo_id,
+                          d.valore_totale - d.valore_transitato AS valore_fermo,
+                          d.unita_totali - d.unita_transitate AS unita_ferme,
+                          d.motivo_fermo,
+                          d.data_riferimento,
+                          d.stato_codice_interno,
+                          d.stato_codice,
+                          d.fase
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE d.motivo_fermo IS NOT NULL
+                      UNION ALL
+                       SELECT 'RESI'::character varying AS area,
+                          date_trunc('month'::text, q.data::timestamp with time zone)::date AS competenza_mese,
+                          q.reso_id AS documento_id,
+                          q.reso_uid::text AS documento_uid,
+                          q.reso_numero::text AS codice,
+                          q.destinatario_denominazione AS cliente_display,
+                          q.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          count(*)::integer AS unita_ferme,
+                          'RICONSEGNA_NON_ESEGUITA'::character varying AS motivo_fermo,
+                          q.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM vendite.vw_resi_da_riconsegnare q
+                           JOIN vendite.resi r2 ON r2.id = q.reso_id
+                           JOIN config.stati_doc_reso sdr ON sdr.id = r2.stato_doc_reso_id
+                        GROUP BY q.reso_id, q.reso_uid, q.reso_numero, q.data, q.destinatario_denominazione, q.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      UNION ALL
+                       SELECT 'RESI'::character varying AS area,
+                          date_trunc('month'::text, a.data::timestamp with time zone)::date AS competenza_mese,
+                          a.reso_id AS documento_id,
+                          a.reso_uid::text AS documento_uid,
+                          a.reso_numero::text AS codice,
+                          a.destinatario_denominazione AS cliente_display,
+                          a.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          count(*)::integer AS unita_ferme,
+                          'MERCE_RESA_GIA_FATTURATA'::character varying AS motivo_fermo,
+                          a.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM vendite.vw_resi_da_accreditare a
+                           JOIN vendite.resi r3 ON r3.id = a.reso_id
+                           JOIN config.stati_doc_reso sdr ON sdr.id = r3.stato_doc_reso_id
+                        WHERE a.etichetta::text = 'DOVUTA'::text
+                        GROUP BY a.reso_id, a.reso_uid, a.reso_numero, a.data, a.destinatario_denominazione, a.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      )
+               SELECT b.area,
+                  b.competenza_mese,
+                  b.documento_id,
+                  b.documento_uid,
+                  b.codice,
+                  b.cliente_display,
+                  b.emittente_fiscale_id,
+                  b.emittente_soggetto_ruolo_id,
+                  b.valore_fermo,
+                  b.unita_ferme,
+                  b.motivo_fermo,
+                  COALESCE(mf.classe, 'ANOMALIA'::character varying) AS classe,
+                  mf.azione,
+                  b.data_riferimento,
+                  (( SELECT script.fn_data_operativa() AS fn_data_operativa)) - b.data_riferimento AS anzianita_giorni,
+                  b.stato_codice_interno,
+                  b.stato_codice,
+                  b.fase,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM base b
+                   LEFT JOIN config.motivi_fermo mf ON mf.codice_interno::text = b.motivo_fermo::text AND mf.attivo IS TRUE
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = b.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = COALESCE(b.emittente_soggetto_ruolo_id, ef.soggetto_ruolo_id)
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                WHERE COALESCE(mf.classe, 'ANOMALIA'::character varying)::text <> 'FISIOLOGICO'::text;
+
+              COMMENT ON VIEW vendite.vw_dash_backlog_documenti IS
+                  'Backlog fatturazione (lente 2). rev 2026-07-18 (step 9, DL-24): la vista E'' una UNION — ramo '
+                  'documenti (da vw_dash_fatturazione_documenti, invariato) + DUE rami resi a grana (reso x '
+                  'motivo): RICONSEGNA_NON_ESEGUITA (RECUPERABILE) da vw_resi_da_riconsegnare e '
+                  'MERCE_RESA_GIA_FATTURATA da vw_resi_da_accreditare con etichetta DOVUTA (le facoltative sono '
+                  'opzione, non arretrato). I resi NON stanno nella union pre-commessa: REVERSE_FLOW. Misura a '
+                  'conteggi (DL-11): valore_fermo NULL, mai 0. Classe/azione risolte UNA volta a valle su '
+                  'config.motivi_fermo, filtro classe <> FISIOLOGICO per tutti i rami. Deroga dichiarata: unica '
+                  'area dove un documento (reso misto) puo'' comparire due volte. security_invoker=on + RLS. ⭐ Rev '
+                  '2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda '
+                  '`emittente_ragione_sociale`. ⚠️ Due trappole, entrambe silenziose: (1) la proiezione e'' a '
+                  'colonne esplicite, quindi la colonna NON si eredita dalla vista a monte — va elencata, e il '
+                  'backend legge questa; (2) i due rami RESI non hanno emittente_soggetto_ruolo_id (NULL) ma hanno '
+                  'emittente_fiscale_id: risolvere solo dal soggetto-ruolo avrebbe lasciato muto l''INTERO blocco '
+                  'resi, che essendo minoritario sarebbe passato per «qualche riga senza emittente». Si risolve con'
+                  ' un COALESCE sulla CHIAVE (emittente_soggetto_ruolo_id, altrimenti '
+                  'emittenti_fiscali.soggetto_ruolo_id, che e'' NOT NULL + UNIQUE): una sola catena di JOIN, un solo'
+                  ' posto da tenere allineato. ⚠️ emittente_soggetto_ruolo_id sui rami resi resta NULL come prima: '
+                  'valorizzarla e'' un cambio di semantica di una colonna esistente e va deciso a parte.';
+
+              CREATE VIEW vendite.vw_dash_aperto_documenti WITH (security_invoker=on) AS
+               SELECT area,
+                  documento_id,
+                  documento_uid,
+                  codice,
+                  emittente_fiscale_id,
+                  emittente_soggetto_ruolo_id,
+                  cliente_display,
+                  fase,
+                  stato_codice_interno,
+                  stato_codice,
+                  valore_totale,
+                  unita_totali,
+                  motivo_fermo,
+                  data_riferimento,
+                  emittente_ragione_sociale
+                 FROM vendite.vw_dash_fatturazione_documenti d
+                WHERE area::text <> 'COMMESSE'::text AND NOT is_abortito AND is_transitato IS DISTINCT FROM true AND fase::text <> 'CHIUSO'::text;
+
+              COMMENT ON VIEW vendite.vw_dash_aperto_documenti IS
+                  'Situazione aperta v2 (serbatoio pre-commessa): stock dei documenti APERTI E NON CONCLUSI delle 4'
+                  ' aree (PREVENTIVI/ORDINI/OFFERTE/CONTRATTI — no COMMESSE, coperte dalla Lente 1), SENZA asse '
+                  'temporale. Perimetro (DL-15): area<>COMMESSE AND NOT is_abortito AND is_transitato IS DISTINCT '
+                  'FROM true AND fase<>CHIUSO. Eliminato il concetto "transitato" (DL-14): via '
+                  'is_transitato/is_aperto(col)/valore_transitato/unita_transitate dalla proiezione. Perimetro '
+                  'unico per vw_dash_aperto_riepilogo e per il drill-down BE (il filtro "aperti da oltre N giorni" '
+                  'e'' BE-side su data_riferimento). security_invoker=on (scope emittente RLS). ⭐ Rev 2026-08-18 '
+                  '(R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`, che '
+                  'arriva gia'' risolta da vw_dash_fatturazione_documenti. ⚠️ Andava ELENCATA: la proiezione e'' a '
+                  'colonne esplicite e non eredita nulla dalla vista a monte — il brief dava questa lista per '
+                  '«eredita» e sarebbe uscita una colonna vuota senza nessun errore a segnalarlo.';
+
+              CREATE VIEW vendite.vw_dash_backlog_riepilogo WITH (security_invoker=on) AS
+               SELECT classe,
+                  area,
+                  count(*)::integer AS n_documenti,
+                  COALESCE(sum(valore_fermo), 0::numeric) AS valore_fermo_tot,
+                  COALESCE(sum(unita_ferme), 0::bigint)::integer AS unita_ferme_tot,
+                  max(anzianita_giorni) AS anzianita_max_giorni
+                 FROM vendite.vw_dash_backlog_documenti
+                GROUP BY classe, area;
+
+              COMMENT ON VIEW vendite.vw_dash_backlog_riepilogo IS
+                  'Lente 2 Backlog: contatori di testata per classe x area '
+                  '(RECUPERABILE/ANOMALIA/SOLLECITO_CLIENTE; il FISIOLOGICO e'' escluso a monte). n documenti, '
+                  'valore fermo totale (NULL-safe: 0 per aree a conteggi), unita'' ferme, anzianita'' massima in '
+                  'giorni. Scope ereditato. security_invoker=on.';
+
+              CREATE VIEW vendite.vw_dash_aperto_riepilogo WITH (security_invoker=on) AS
+               SELECT area,
+                  fase,
+                  count(*)::integer AS n_documenti,
+                  sum(valore_totale) AS valore_totale
+                 FROM vendite.vw_dash_aperto_documenti
+                GROUP BY area, fase;
+
+              COMMENT ON VIEW vendite.vw_dash_aperto_riepilogo IS
+                  'Situazione aperta v2: card area x fase sullo stock aperti-non-conclusi (vw_dash_aperto_documenti'
+                  ' v2). n_documenti = tutti aperti della cella; valore_totale NULL per OFFERTE/CONTRATTI (aree a '
+                  'conteggi, DL-11). Via n_aperti (=n_documenti nel perimetro v2) e valore_transitato (concetto '
+                  'transito eliminato, DL-14). Fasi presenti: APERTO/IN_ATTESA/IN_CORSO (CHIUSO escluso a monte). '
+                  'Nessun asse temporale. security_invoker=on.';

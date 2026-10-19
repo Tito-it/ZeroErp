@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
+--   l'origine dei legami della commessa e' il codice della sorgente: DDT_VENDITA per la riga
+--   della bolla, RESO_VENDITA per la rettifica (erano DDT e RESO).
 -- pgTAP test per Zero ERP
 -- Test: annullare una commessa che porta la rettifica di un accredito — il
 --   reso torna da accreditare (D-7), la bolla torna da mandare (D-5).
@@ -249,10 +252,10 @@ SELECT set_config('zeroerp.maintenance_reset_lotto_draft', '', true);
 
 SELECT ok(
   (SELECT count(*) = 2
-          AND count(*) FILTER (WHERE l.origine = 'DDT' AND l.natura = 'CONSUMO'
+          AND count(*) FILTER (WHERE l.origine = 'DDT_VENDITA' AND l.natura = 'CONSUMO'
                                  AND l.riga_id = pg_temp.acr('ca_ddt')
                                  AND l.origine_id = pg_temp.acr('ddt')) = 1
-          AND count(*) FILTER (WHERE l.origine = 'RESO' AND l.natura = 'CONSUMO'
+          AND count(*) FILTER (WHERE l.origine = 'RESO_VENDITA' AND l.natura = 'CONSUMO'
                                  AND l.riga_id = pg_temp.acr('ca_ret')
                                  AND l.origine_id = pg_temp.acr('reso')
                                  AND l.origine_riga_id = pg_temp.acr('resi_riga')) = 1

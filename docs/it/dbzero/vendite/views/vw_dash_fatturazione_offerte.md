@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Dashboard fatturazione: resolver area OFFERTE, a conteggi (D-2). Transitata = figlio vivo (contratto via offerta_id NOT is_abortito_snapshot, o ordine documento_origine OFFERTA esito != NEGATIVO). FIGLIO_ABORTITO = figlio annullato (XOR permanente). cliente_display=ragione sociale intestatario istanza (path vw_offerte_commerciali_lista). Consumata da vw_dash_fatturazione_documenti. rev 2026-10-11 (20261011-76, brief-db-annullo-documento-con-legami D-6): un'offerta ha al piu' un figlio VIVO ma puo' avere piu' figli annullati; i figli si riassumono in una riga per lato (esiste, vivo), cosi' l'offerta non si duplica e un figlio morto non nasconde quello vivo. FIGLIO_ABORTITO resta il caso «figli solo annullati», che ora si sblocca rigenerando.
+> Dashboard fatturazione: resolver area OFFERTE, a conteggi (D-2). Transitata = figlio vivo (contratto via offerta_id NOT is_abortito_snapshot, o ordine documento_origine OFFERTA esito != NEGATIVO). FIGLIO_ABORTITO = figlio annullato (XOR permanente). cliente_display=ragione sociale intestatario istanza (path vw_offerte_commerciali_lista). Consumata da vw_dash_fatturazione_documenti. rev 2026-10-11 (20261011-76, brief-db-annullo-documento-con-legami D-6): un'offerta ha al piu' un figlio VIVO ma puo' avere piu' figli annullati; i figli si riassumono in una riga per lato (esiste, vivo), cosi' l'offerta non si duplica e un figlio morto non nasconde quello vivo. FIGLIO_ABORTITO resta il caso «figli solo annullati», che ora si sblocca rigenerando. ⭐ rev 2026-10-19 (20261019-93, brief-db-grammatica-unica-documenti lotto 2b, G-3 di Tid): ricreata dopo l'allargamento della colonna; il codice di origine o di destinazione e' quello di config.sorgenti (OFFERTA -&gt; OFFERTA_COMMERCIALE, ORDINE -&gt; ORDINE_VENDITA).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -50,7 +50,7 @@ SELECT 'OFFERTE'::character varying AS area,
             COALESCE(bool_or(((sdor.esito)::text IS DISTINCT FROM 'NEGATIVO'::text)), false) AS vivo
            FROM (vendite.ordini od
              JOIN config.stati_doc_ordini sdor ON ((sdor.id = od.stato_doc_ordine_id)))
-          WHERE (((od.documento_origine_tipo)::text = 'OFFERTA'::text) AND (od.documento_origine_id = o.id))) fo)
+          WHERE (((od.documento_origine_tipo)::text = 'OFFERTA_COMMERCIALE'::text) AND (od.documento_origine_id = o.id))) fo)
      LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = o.istanza_utility_id)))
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)));
 ```

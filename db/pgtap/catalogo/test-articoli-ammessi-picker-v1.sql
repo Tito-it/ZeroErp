@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
+--   la natura merce ha destinazione ORDINE_VENDITA, il codice della sorgente (era ORDINE).
 -- pgTAP test per Zero ERP
 --
 -- Il picker degli articoli di una riga (catalogo.fn_articoli_ammessi): i
@@ -71,7 +73,7 @@ SELECT plan(26);
 -- ============================================================
 CREATE TEMP TABLE _nat AS
 SELECT (SELECT nv.id FROM config.nature_vendita nv
-         WHERE nv.destinazione_tipo = 'ORDINE' AND nv.attivo ORDER BY nv.id LIMIT 1)    AS merce,
+         WHERE nv.destinazione_tipo = 'ORDINE_VENDITA' AND nv.attivo ORDER BY nv.id LIMIT 1)    AS merce,
        (SELECT nv.id FROM config.nature_vendita nv
          WHERE nv.destinazione_tipo = 'CONTRATTO' AND nv.attivo ORDER BY nv.id LIMIT 1) AS ricorrente;
 

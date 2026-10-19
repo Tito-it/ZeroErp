@@ -25,10 +25,15 @@ AS $function$
 --   conferma (D-3, per tutti i documenti); lo stato del
 --   preventivo dal BB vendite.fn_preventivo_proietta_stato_
 --   smistamento (D-10). Vedi l'intestazione del changeSet.
+-- rev 2026-10-19 (20261019-96, brief-db-grammatica-unica-documenti
+--   lotto 2b): l'origine dei legami e' il codice della sorgente
+--   (ORDINE_VENDITA, RESO_VENDITA); v_sorgente_uid ancorato.
 -- =========================================================
 DECLARE
     -- CONTEGGIO dei legami: nessuna colonna da ancorare.
     v_legami        integer;
+    -- L'etichetta del lettore di testata: un'uscita di funzione, nessuna
+    -- colonna dietro.
     v_etichetta     text;
     v_riga_id       vendite.ddt_righe.id%TYPE;
     v_preventivo_id vendite.preventivi.id%TYPE;
@@ -39,10 +44,11 @@ DECLARE
     -- una fn_check_*, nessuna colonna dietro.
     v_motivi        jsonb;
     -- La chiave della sorgente di bolla e contratto: <testata>.uid::text,
-    -- polimorfa (due testate).
-    v_sorgente_uid  text;
+    -- la stessa che porta la riga di commessa.
+    v_sorgente_uid  vendite.commesse_attivita.sorgente_uid%TYPE;
     v_ca_id         vendite.commesse_attivita.id%TYPE;
     v_resi_riga_id  vendite.resi_righe.id%TYPE;
+    -- Il motivo del ritiro, testo libero per i verbi che lo registrano.
     v_motivo        text;
 BEGIN
     -- 1. Parametri.
@@ -122,13 +128,13 @@ BEGIN
 
     -- 4a. Bolla: i legami con ordini e resi, riga per riga.
     --     ⚠️ rev 2026-10-12: solo per la bolla. Anche la commessa ha
-    --     legami di origine ORDINE e RESO, e i suoi riga_id sono righe
+    --     legami di origine ORDINE_VENDITA e RESO_VENDITA, e i suoi riga_id sono righe
     --     di commessa, non di bolla.
     IF p_documento = 'DDT_VENDITA' THEN
         FOR v_riga_id IN
             SELECT DISTINCT l.riga_id
               FROM vendite.fn_documento_legami(p_documento, p_id) AS l
-             WHERE l.origine IN ('ORDINE', 'RESO')
+             WHERE l.origine IN ('ORDINE_VENDITA', 'RESO_VENDITA')
              ORDER BY l.riga_id
         LOOP
             PERFORM vendite.fn_ddt_riga_ritira_legami(v_riga_id);
@@ -199,7 +205,7 @@ BEGIN
         FOR v_resi_riga_id IN
             SELECT DISTINCT l.origine_riga_id
               FROM vendite.fn_documento_legami(p_documento, p_id) AS l
-             WHERE l.origine = 'RESO'
+             WHERE l.origine = 'RESO_VENDITA'
                AND l.origine_riga_id IS NOT NULL
              ORDER BY l.origine_riga_id
         LOOP
@@ -221,7 +227,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_documento_ritira_legami(p_documento character varying, p_id bigint, p_legami_confermati integer)
-IS 'BB (2026-10-11, brief-db-annullo-documento-con-legami D-1/D-2/D-4/D-5): la conferma e il ritiro dei consumi di un documento che si annulla. Chi conferma DICHIARA quanti legami ha visto (vendite.fn_documento_legami); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI, lo stesso avviso del guard (stampo di E_CREDENZIALE_DA_CONFERMARE). Poi apre la porta del ritiro (GUC transazionale zeroerp.doc_ritira_legami = ''<DOCUMENTO>:<id>'', letta da vendite.fn_doc_porta_ritiro_ammette) e la LASCIA APERTA: la chiude il verbo dopo il cambio di stato, perche'' il guard dell''annullo la legge per i legami di provenienza. Ritira: legami della bolla con ordini e resi (vendite.fn_ddt_riga_ritira_legami); righe dell''ordine staccate dal preventivo (preventivo_riga_id a NULL), col preventivo EVASO che torna ACCETTATO se ha di nuovo un residuo; righe di commessa NON_EMESSA della sorgente (vendite.fn_ritira_commessa_attivita_da_sorgente, col registro). La provenienza (offerta) non si ritira. Ritorna i legami confermati, 0 se non ce n''erano. SECURITY INVOKER, EXECUTE a nessuno: lo chiamano i verbi DEFINER vendite.fn_annulla_ddt, fn_annulla_ordine, fn_annulla_preventivo, fn_annulla_contratto, che bloccano la testata prima. ⭐ rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte): (1) + COMMESSA (D-1, D-7): le righe NON_EMESSA della commessa, ciascuna dal verbo del suo genere — con sorgente, vendite.fn_ritira_commessa_attivita_da_sorgente limitata a quella commessa (il documento o il consumo torna da mandare: una riga ANNULLATA non occupa, D-5); RETTIFICA, vendite.fn_annulla_accredito_riga_reso (il reso torna da accreditare); ONERE, vendite.fn_annulla_commessa_attivita. (2) Prima cio'' che vieta (D-3), per ogni documento: prima della conferma solleva il primo motivo della check che il guard della testata solleverebbe (script.fn_check_preventivo_annullabile, fn_check_ordine_annullabile, fn_check_commessa_annullabile, fn_check_sorgente_chiudibile per bolla e contratto), cosi'' chi annulla non conferma un ritiro che il cambio di stato rifiuterebbe. (3) Lo stato del preventivo all''annullo dell''ordine dal BB vendite.fn_preventivo_proietta_stato_smistamento (D-10), non piu'' scritto qui. (4) Il ritiro dei legami di bolla (fn_ddt_riga_ritira_legami) solo per la bolla: anche la commessa ha legami di origine ORDINE e RESO. Lo chiama anche vendite.fn_annulla_commessa. rev 2026-10-12 (20261012-29): solo un commento del corpo, allineato al vincolo chk_commesse_attivita_senza_sorgente_onere_rettifica (20261012-27): ogni riga NON_EMESSA della commessa ha il suo verbo di ritiro. ⭐ rev 2026-10-19 (20261019-52, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato). La traduzione verso config.sorgenti non c''e'' piu''; la GUC zeroerp.doc_ritira_legami porta il codice della sorgente.';
+IS 'BB (2026-10-11, brief-db-annullo-documento-con-legami D-1/D-2/D-4/D-5): la conferma e il ritiro dei consumi di un documento che si annulla. Chi conferma DICHIARA quanti legami ha visto (vendite.fn_documento_legami); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI, lo stesso avviso del guard (stampo di E_CREDENZIALE_DA_CONFERMARE). Poi apre la porta del ritiro (GUC transazionale zeroerp.doc_ritira_legami = ''<DOCUMENTO>:<id>'', letta da vendite.fn_doc_porta_ritiro_ammette) e la LASCIA APERTA: la chiude il verbo dopo il cambio di stato, perche'' il guard dell''annullo la legge per i legami di provenienza. Ritira: legami della bolla con ordini e resi (vendite.fn_ddt_riga_ritira_legami); righe dell''ordine staccate dal preventivo (preventivo_riga_id a NULL), col preventivo EVASO che torna ACCETTATO se ha di nuovo un residuo; righe di commessa NON_EMESSA della sorgente (vendite.fn_ritira_commessa_attivita_da_sorgente, col registro). La provenienza (offerta) non si ritira. Ritorna i legami confermati, 0 se non ce n''erano. SECURITY INVOKER, EXECUTE a nessuno: lo chiamano i verbi DEFINER vendite.fn_annulla_ddt, fn_annulla_ordine, fn_annulla_preventivo, fn_annulla_contratto, che bloccano la testata prima. ⭐ rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte): (1) + COMMESSA (D-1, D-7): le righe NON_EMESSA della commessa, ciascuna dal verbo del suo genere — con sorgente, vendite.fn_ritira_commessa_attivita_da_sorgente limitata a quella commessa (il documento o il consumo torna da mandare: una riga ANNULLATA non occupa, D-5); RETTIFICA, vendite.fn_annulla_accredito_riga_reso (il reso torna da accreditare); ONERE, vendite.fn_annulla_commessa_attivita. (2) Prima cio'' che vieta (D-3), per ogni documento: prima della conferma solleva il primo motivo della check che il guard della testata solleverebbe (script.fn_check_preventivo_annullabile, fn_check_ordine_annullabile, fn_check_commessa_annullabile, fn_check_sorgente_chiudibile per bolla e contratto), cosi'' chi annulla non conferma un ritiro che il cambio di stato rifiuterebbe. (3) Lo stato del preventivo all''annullo dell''ordine dal BB vendite.fn_preventivo_proietta_stato_smistamento (D-10), non piu'' scritto qui. (4) Il ritiro dei legami di bolla (fn_ddt_riga_ritira_legami) solo per la bolla: anche la commessa ha legami di origine ORDINE e RESO. Lo chiama anche vendite.fn_annulla_commessa. rev 2026-10-12 (20261012-29): solo un commento del corpo, allineato al vincolo chk_commesse_attivita_senza_sorgente_onere_rettifica (20261012-27): ogni riga NON_EMESSA della commessa ha il suo verbo di ritiro. ⭐ rev 2026-10-19 (20261019-52, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato). La traduzione verso config.sorgenti non c''e'' piu''; la GUC zeroerp.doc_ritira_legami porta il codice della sorgente. ⭐ rev 2026-10-19 (20261019-96, brief-db-grammatica-unica-documenti lotto 2b): l''origine dei legami letti da vendite.fn_documento_legami e'' il codice della sorgente: la bolla ritira i legami di origine ORDINE_VENDITA e RESO_VENDITA, la commessa annulla gli accrediti di origine RESO_VENDITA (erano ORDINE e RESO).';
 ```
 
 ---

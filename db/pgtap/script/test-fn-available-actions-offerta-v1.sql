@@ -1,5 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
+--   l'ordine nato dall'offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, il
+--   codice della sorgente (era OFFERTA: ora la FK verso config.sorgenti lo rifiuta).
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_offerta — capability layer offerte commerciali
 -- ------------------------------------------------------------
@@ -22,7 +25,7 @@
 --     E can_push_contratto=false, entrambi reason='OFFERTA_ORDINE_GIA_GENERATO',
 --     genera_ordine E push_contratto assenti -> available_actions=[]
 -- 13) non ACCETTATA (BOZZA): can_genera_ordine=false, reason='OFFERTA_NON_ACCETTATA'
--- 14) Indice: secondo ordine ('OFFERTA', X) viola uq_ordini_v_documento_origine_offerta
+-- 14) Indice: secondo ordine ('OFFERTA_COMMERCIALE', X) viola uq_ordini_v_documento_origine_offerta
 -- 15) Indice: due ordini ('PREVENTIVO', Y) consentiti (indice non li vincola)
 -- 16a/16b) BOZZA senza listino_versione_id su un listino con una versione in
 --     vigore: azione verso EMESSA ACCESA, nessun motivo. ⚠️ Rev 2026-10-07
@@ -215,7 +218,7 @@ WITH ins AS (
 INSERT INTO tmp_aa_ids SELECT 'RIFIUTATA', id FROM ins;
 
 -- Slot ACCT-ORD: ACCETTATA con un ordine gia' generato
--- (documento_origine = ('OFFERTA', id)) -> genera_ordine NON disponibile
+-- (documento_origine = ('OFFERTA_COMMERCIALE', id)) -> genera_ordine NON disponibile
 -- (test 12) e secondo ordine bloccato dall'indice (test 14).
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -240,7 +243,7 @@ INSERT INTO vendite.ordini (
 )
 SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
        od.stato_draft_ordine_id, od.valuta_id, DATE '2087-01-02', false,
-       'OFFERTA', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
+       'OFFERTA_COMMERCIALE', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
   FROM tmp_aa_ord od;
 
 -- ============================================================
@@ -474,7 +477,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- TEST 14) Indice: secondo ordine ('OFFERTA', X) sull'offerta ACCT-ORD
+-- TEST 14) Indice: secondo ordine ('OFFERTA_COMMERCIALE', X) sull'offerta ACCT-ORD
 --          (che ne ha gia' uno) viola uq_ordini_v_documento_origine_offerta.
 -- ============================================================
 SELECT throws_ok(
@@ -486,7 +489,7 @@ SELECT throws_ok(
         )
         SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
                od.stato_draft_ordine_id, od.valuta_id, DATE '2087-01-03', false,
-               'OFFERTA', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
+               'OFFERTA_COMMERCIALE', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
           FROM tmp_aa_ord od
     $sql$,
     '23505',
