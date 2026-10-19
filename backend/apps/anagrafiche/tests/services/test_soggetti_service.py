@@ -26,9 +26,13 @@ Indice test eseguiti:
 15) test_create_indirizzo_missing_tipo — tipo mancante → E_ANAG_VALIDAZIONE
 16) test_assign_ruolo_ok — assegna ruolo
 17) test_assign_ruolo_missing_codice — codice vuoto → E_ANAG_VALIDAZIONE
-18) test_auto_clone_tipi_obbligatori — clona primo indirizzo per obbligatori mancanti
-19) test_no_auto_clone_if_flag_false — auto_clone=False, nessuna clonazione
-20) test_ogni_indirizzo_risolve_il_suo_dettaglio — due vie, due dettagli; il clone ritrova quello del primo (2026-10-18)
+18) test_auto_clone_tipi_obbligatori — gli indirizzi alla madre plurale, copia degli obbligatori accesa di default (2026-10-19)
+19) test_no_auto_clone_if_flag_false — auto_clone=False, la madre non copia
+20) test_senza_indirizzi_la_madre_non_si_chiama — (era test_ogni_indirizzo_risolve_il_suo_dettaglio: la via e' della madre, pgTAP)
+20b) test_via_nuova_incompleta_e_un_400_prima_della_madre — il pre-check resta nel backend
+20c) test_auto_clone_non_booleano_e_un_400 — "false" stringa non accende la copia
+20d) test_indirizzi_malformati_non_si_scartano — non lista / non oggetto → 400 (prima scartati)
+20e) test_fk_dentro_la_madre_e_un_400 — l'integrita' violata nella plurale → E_ANAG_FK
 21) test_resolve_filtri_export_label_completo — DEF-1 mapping con search+tipo
 22) test_resolve_filtri_export_label_fallback_id — descrizione mancante → id=N
 23) test_resolve_filtri_export_label_vuoto — nessun filtro → dict vuoto
@@ -64,8 +68,6 @@ from apps.core.services.service_errors import ServiceError
 
 SOGG_REPO = "apps.anagrafiche.services.soggetti_service.SoggettiRepository"
 IND_REPO = "apps.anagrafiche.services.soggetti_service.IndirizziRepository"
-LOOKUP_REPO = "apps.anagrafiche.services.soggetti_service.LookupRepository"
-GEO_SVC = "apps.anagrafiche.services.soggetti_service.GeoService"
 
 FAKE_UUID = "019bac81-3f96-7ce8-a086-7e0bd0a2fec1"
 
@@ -648,118 +650,126 @@ class TestSoggettiRuoli(TestCase):
 
 
 class TestAutoCloneIndirizzi(TestCase):
-    """Test auto-clone indirizzi obbligatori nel backend."""
+    """Gli indirizzi della creazione vanno alla madre plurale del DB
+    (`fn_crea_indirizzi_soggetto`): copia degli obbligatori, salto dei tipi
+    presenti e via di ogni elemento sono regole sue, provate dal pgTAP
+    `anagrafiche/test-indirizzi-singolare-e-plurale-v1`. Qui: che cosa le
+    arriva. Dal 2026-10-19 (R-DB-16b); fino ad allora la copia la faceva il
+    backend con la matrice letta da `LookupRepository`."""
 
-    @patch(LOOKUP_REPO)
-    @patch(GEO_SVC)
-    @patch(SOGG_REPO)
-    def test_auto_clone_tipi_obbligatori(self, mock_sogg, mock_ind, mock_lookup):
-        """Verifica che i tipi obbligatori mancanti vengano clonati dal primo."""
+    _PAYLOAD = {
+        "tipo_soggetto_dettaglio_id": 1,
+        "cognome": "Rossi", "nome": "Mario",
+        "codice_fiscale": "RSSMRA80A01H501Z",
+        "sesso": "M",
+        "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
+    }
+
+    def _repo(self, mock_sogg):
         repo = mock_sogg.return_value
         repo.get_natura_by_tipo_id.return_value = "PF"
         repo.crea_soggetto_pf.return_value = FAKE_UUID
         repo.get_soggetto_contatti.return_value = [{"id": 1}]
         repo.update_contatto.return_value = True
-        repo.crea_indirizzo_soggetto.return_value = 10
+        repo.crea_indirizzi_soggetto.return_value = 2
+        return repo
 
-        # Matrice: RESID obbligatorio, DOMFISC obbligatorio, FATT facoltativo
-        mock_lookup.return_value.list_matrice_indirizzi.return_value = [
-            {"codice": "RESID", "obbligatorio": True},
-            {"codice": "DOMFISC", "obbligatorio": True},
-            {"codice": "FATT", "obbligatorio": False},
-        ]
-
+    @patch(SOGG_REPO)
+    def test_auto_clone_tipi_obbligatori(self, mock_sogg):
+        """auto_clone assente vale vero: la madre copia gli obbligatori. Ogni
+        elemento le arriva con la SUA via, le stringhe vuote tolte."""
+        repo = self._repo(mock_sogg)
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         SoggettiService().create_soggetto({
-            "tipo_soggetto_dettaglio_id": 1,
-            "cognome": "Rossi", "nome": "Mario",
-            "codice_fiscale": "RSSMRA80A01H501Z",
-            "sesso": "M",
-            "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
-            # Solo 1 indirizzo RESID — DOMFISC deve essere auto-clonato
+            **self._PAYLOAD,
             "indirizzi": [
-                {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},
+                {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1, "scala": ""},
+                {"tipo_indirizzo_codice": "FATT", "stradario_id": 200, "civico": 9},
             ],
-            "auto_clone": True,
         })
-
-        # crea_indirizzo_soggetto deve essere chiamato 2 volte (RESID + DOMFISC clone)
-        self.assertEqual(repo.crea_indirizzo_soggetto.call_count, 2)
-        calls = repo.crea_indirizzo_soggetto.call_args_list
-        self.assertEqual(calls[0].args[1]["tipo_indirizzo_codice"], "RESID")
-        self.assertEqual(calls[1].args[1]["tipo_indirizzo_codice"], "DOMFISC")
-
-    @patch(LOOKUP_REPO)
-    @patch(GEO_SVC)
-    @patch(SOGG_REPO)
-    def test_no_auto_clone_if_flag_false(self, mock_sogg, mock_ind, mock_lookup):
-        """Se auto_clone=False, nessuna clonazione — solo indirizzi forniti."""
-        repo = mock_sogg.return_value
-        repo.get_natura_by_tipo_id.return_value = "PF"
-        repo.crea_soggetto_pf.return_value = FAKE_UUID
-        repo.get_soggetto_contatti.return_value = [{"id": 1}]
-        repo.update_contatto.return_value = True
-        repo.crea_indirizzo_soggetto.return_value = 10
-
-        from apps.anagrafiche.services.soggetti_service import SoggettiService
-        SoggettiService().create_soggetto({
-            "tipo_soggetto_dettaglio_id": 1,
-            "cognome": "Rossi", "nome": "Mario",
-            "codice_fiscale": "RSSMRA80A01H501Z",
-            "sesso": "M",
-            "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
-            "indirizzi": [
-                {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},
-            ],
-            "auto_clone": False,
-        })
-
-        # Solo 1 indirizzo creato (nessun clone)
-        self.assertEqual(repo.crea_indirizzo_soggetto.call_count, 1)
-        mock_lookup.return_value.list_matrice_indirizzi.assert_not_called()
-
-    @patch(LOOKUP_REPO)
-    @patch(GEO_SVC)
-    @patch(SOGG_REPO)
-    def test_ogni_indirizzo_risolve_il_suo_dettaglio(self, mock_sogg, mock_ind, mock_lookup):
-        """Ogni indirizzo porta alla madre la SUA via: il clone porta quella del
-        primo, e la madre (`fn_crea_indirizzo_soggetto`, via `fn_create_indirizzo`,
-        get_or_create) ritrova lo stesso dettaglio. Dal 2026-10-18 la via non la
-        risolve piu' il backend; fino a quel giorno il primo dettaglio si
-        riusava per ogni indirizzo successivo, anche per una via diversa."""
-        repo = mock_sogg.return_value
-        repo.get_natura_by_tipo_id.return_value = "PF"
-        repo.crea_soggetto_pf.return_value = FAKE_UUID
-        repo.get_soggetto_contatti.return_value = [{"id": 1}]
-        repo.update_contatto.return_value = True
-        repo.crea_indirizzo_soggetto.return_value = 10
-
-        mock_lookup.return_value.list_matrice_indirizzi.return_value = [
-            {"codice": "RESID", "obbligatorio": True},
-            {"codice": "DOMFISC", "obbligatorio": True},
-        ]
-
-        from apps.anagrafiche.services.soggetti_service import SoggettiService
-        SoggettiService().create_soggetto({
-            "tipo_soggetto_dettaglio_id": 1,
-            "cognome": "Rossi", "nome": "Mario",
-            "codice_fiscale": "RSSMRA80A01H501Z",
-            "sesso": "M",
-            "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
-            "indirizzi": [
+        repo.crea_indirizzi_soggetto.assert_called_once_with(
+            FAKE_UUID,
+            [
                 {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},
                 {"tipo_indirizzo_codice": "FATT", "stradario_id": 200, "civico": 9},
             ],
-            "auto_clone": True,
-        })
+            copia_obbligatori=True,
+        )
+        repo.crea_indirizzo_soggetto.assert_not_called()
 
-        per_tipo = {
-            c.args[1]["tipo_indirizzo_codice"]: c.args[1]["stradario_id"]
-            for c in repo.crea_indirizzo_soggetto.call_args_list
-        }
-        # FATT ha la sua via; DOMFISC e' il clone di RESID.
-        self.assertEqual(per_tipo, {"RESID": 100, "FATT": 200, "DOMFISC": 100})
-        mock_ind.return_value.crea_dettaglio_indirizzo.assert_not_called()
+    @patch(SOGG_REPO)
+    def test_no_auto_clone_if_flag_false(self, mock_sogg):
+        """auto_clone=False: la madre non copia."""
+        repo = self._repo(mock_sogg)
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().create_soggetto({
+            **self._PAYLOAD,
+            "indirizzi": [{"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1}],
+            "auto_clone": False,
+        })
+        self.assertIs(repo.crea_indirizzi_soggetto.call_args.kwargs["copia_obbligatori"], False)
+
+    @patch(SOGG_REPO)
+    def test_senza_indirizzi_la_madre_non_si_chiama(self, mock_sogg):
+        repo = self._repo(mock_sogg)
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().create_soggetto(dict(self._PAYLOAD))
+        repo.crea_indirizzi_soggetto.assert_not_called()
+
+    @patch(SOGG_REPO)
+    def test_via_nuova_incompleta_e_un_400_prima_della_madre(self, mock_sogg):
+        """Il pre-check per l'operatore (`indirizzo_per_madre`) resta: una via
+        nuova senza i suoi campi non arriva al DB."""
+        repo = self._repo(mock_sogg)
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError):
+            SoggettiService().create_soggetto({
+                **self._PAYLOAD,
+                "indirizzi": [{"tipo_indirizzo_codice": "RESID", "civico": 1}],
+            })
+        repo.crea_indirizzi_soggetto.assert_not_called()
+
+    @patch(SOGG_REPO)
+    def test_auto_clone_non_booleano_e_un_400(self, mock_sogg):
+        """La stringa "false" non e' un booleano: con `bool(...)` accendeva la copia."""
+        repo = self._repo(mock_sogg)
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError) as ctx:
+            SoggettiService().create_soggetto({
+                **self._PAYLOAD,
+                "indirizzi": [{"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1}],
+                "auto_clone": "false",
+            })
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        repo.crea_soggetto_pf.assert_not_called()
+
+    @patch(SOGG_REPO)
+    def test_indirizzi_malformati_non_si_scartano(self, mock_sogg):
+        """Un elenco che non e' una lista, o un elemento che non e' un oggetto, e'
+        un 400: fino al 2026-10-19 si scartavano e il soggetto nasceva senza."""
+        repo = self._repo(mock_sogg)
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        for indirizzi in ({"tipo_indirizzo_codice": "RESID"}, ["RESID"]):
+            with self.subTest(indirizzi=indirizzi), self.assertRaises(ServiceError) as ctx:
+                SoggettiService().create_soggetto({**self._PAYLOAD, "indirizzi": indirizzi})
+            self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        repo.crea_soggetto_pf.assert_not_called()
+
+    @patch(SOGG_REPO)
+    def test_fk_dentro_la_madre_e_un_400(self, mock_sogg):
+        """Una FK violata dentro la madre plurale e' `E_ANAG_FK`, non un 500."""
+        from apps.core.tests.db_error_fakes import SQLSTATE_FK, make_integrity_error
+        repo = self._repo(mock_sogg)
+        repo.crea_indirizzi_soggetto.side_effect = make_integrity_error(
+            SQLSTATE_FK, vincolo="fk_indirizzi_soggetti_stato",
+        )
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError) as ctx:
+            SoggettiService().create_soggetto({
+                **self._PAYLOAD,
+                "indirizzi": [{"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1}],
+            })
+        self.assertEqual(ctx.exception.code, "E_ANAG_FK")
 
 
 class TestResolveFiltriExportLabel(TestCase):

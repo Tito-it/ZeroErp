@@ -33,7 +33,6 @@ from apps.core.db._helpers import (
 from apps.core.services.auth_constants import (
     CATEGORIA_ACCESSO_OPERATORE,
     RUOLO_APPLICATIVO_OPERATORE,
-    TIPO_PROFILO_SUPER_ADMIN,
 )
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import MISSING, MissingType
@@ -382,50 +381,33 @@ class AmmSoftwareRepository:
     #    `uq_profili_accesso_bindings_identita`. Fino ad allora la INSERT era
     #    `ON CONFLICT DO NOTHING`: il SUPER_ADMIN chiesto non arrivava e
     #    nessuno lo diceva. Il rifiuto lo traduce il service.
-    #    Lo slegare resta qui: non ha una madre.
+    # ⭐ Dal 2026-10-19 (brief-db-processi-accensione-per-ambiente §6.15,
+    #    §6.16) anche il profilo e lo slegare stanno nel DB: il profilo lo
+    #    risolve il lettore `config.fn_profilo_super_admin_id` (per `tipo`,
+    #    fra gli ATTIVI, esattamente uno, altrimenti `E_CONFIG_MANCANTE`
+    #    «trovati N»: la stessa sede di `fn_crea_risorsa_umana_v2`), lo
+    #    slegare la madre `config.fn_slega_profilo_identita`. Fino ad allora
+    #    la regola del profilo era ricopiata qui e il DELETE toglieva i
+    #    legami verso OGNI profilo di quel tipo, spenti compresi.
     def _set_super_admin_binding(
         self, auth_user_id: int, *, enabled: bool
     ) -> None:
-        if enabled:
-            with connection.cursor() as cursor:
-                # Il profilo SUPER_ADMIN si RISOLVE come lo risolve il DB
-                # (`fn_crea_risorsa_umana_v2`): per `tipo`, fra gli ATTIVI, ed
-                # esattamente uno. Il modello non vieta due profili di quel
-                # tipo: sceglierne uno sarebbe un'ambiguita', non una scelta.
-                # (Una sottoquery scalare dava 500 con due profili e legava
-                # anche un profilo spento.)
-                cursor.execute(
-                    """SELECT pa.id FROM config.profili_accesso pa
-                        WHERE pa.tipo = %s::config.tipo_profilo_accesso
-                          AND pa.attivo""",
-                    [TIPO_PROFILO_SUPER_ADMIN],
-                )
-                profili = [r[0] for r in cursor.fetchall()]
-                ErrorManager.require(
-                    len(profili) == 1,
-                    code="E_CONFIG_MANCANTE",
-                    message="Configurazione mancante nel sistema.",
-                    detail=f"un solo profilo di accesso SUPER_ADMIN attivo (trovati {len(profili)})",
-                )
-                # La veste nella stessa istruzione del legame (niente
-                # SELECT + WRITE); nessuna veste OPERATORE = no-op.
-                cursor.execute(
-                    """SELECT config.fn_lega_profilo_identita(%s::integer, v.id)
-                         FROM (SELECT """ + _VESTE_OPERATORE.format(au="%s") + """ AS id) v
-                        WHERE v.id IS NOT NULL""",  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
-                    [profili[0], auth_user_id],
-                )
-            return
+        madre = (
+            "config.fn_lega_profilo_identita" if enabled
+            else "config.fn_slega_profilo_identita"
+        )
         with connection.cursor() as cursor:
+            # Il profilo prima della veste: una configurazione rotta si dice
+            # anche a chi non ha una veste OPERATORE (nessuna veste = no-op).
+            cursor.execute("SELECT config.fn_profilo_super_admin_id()")
+            profilo_id = cursor.fetchone()[0]
+            # La veste nella stessa istruzione del legame (niente
+            # SELECT + WRITE).
             cursor.execute(
-                """DELETE FROM config.profili_accesso_bindings pab
-                    USING anagrafiche.identita_digitali id,
-                          config.profili_accesso pa
-                    WHERE pab.identita_digitale_id = id.id
-                      AND pab.profilo_accesso_id  = pa.id
-                      AND pa.tipo = %s::config.tipo_profilo_accesso
-                      AND id.id = """ + _VESTE_OPERATORE.format(au="%s"),  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
-                [TIPO_PROFILO_SUPER_ADMIN, auth_user_id],
+                "SELECT " + madre + """(%s::integer, v.id)
+                     FROM (SELECT """ + _VESTE_OPERATORE.format(au="%s") + """ AS id) v
+                    WHERE v.id IS NOT NULL""",  # noqa: S608 — nome della madre e predicato letterali del modulo, valori come parametri
+                [profilo_id, auth_user_id],
             )
 
     # Scopo: Aggiorna i campi modificabili di un operatore (auth_user +
@@ -520,26 +502,6 @@ class AmmSoftwareRepository:
                         "SELECT anagrafiche.fn_sync_auth_user_is_active(%s)",
                         [auth_user_id],
                     )
-
-    # Scopo: Conta operatori con binding SUPER_ADMIN attivo.
-    # Usato dal service per impedire la disabilitazione dell'ultimo admin
-    # (guard a livello servizio; il guard DB equivalente e' il trigger
-    # `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`).
-    def count_admin_attivi(self) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """SELECT COUNT(*)
-                     FROM config.profili_accesso_bindings pab
-                     JOIN config.profili_accesso pa
-                       ON pa.id = pab.profilo_accesso_id
-                     JOIN anagrafiche.identita_digitali id
-                       ON id.id = pab.identita_digitale_id
-                    WHERE pa.tipo = %s::config.tipo_profilo_accesso
-                      AND pa.attivo = true
-                      AND id.attivo = true""",
-                [TIPO_PROFILO_SUPER_ADMIN],
-            )
-            return cursor.fetchone()[0]
 
     # Scopo: Disabilita un operatore: la sede UNICA dello spegnimento, sia
     # da «Disabilita» sia dall'interruttore «Accesso attivo» (2026-10-04).
@@ -1159,7 +1121,8 @@ class AmmSoftwareRepository:
     #          1. il reparto (codice del profilo = 'REPARTO_' || codice_interno);
     #          2. il profilo REPARTO con aree e azioni sostituite, dalla madre
     #             `config.fn_scrivi_profilo_accesso`;
-    #          3. UPSERT binding REPARTO -> profilo per uo_id (1:1, partial UQ).
+    #          3. il legame REPARTO -> profilo per uo_id, dalla madre
+    #             `config.fn_lega_profilo_reparto`.
     #        Il fail-fast su uo_id inesistente solleva E_AMM_VALIDAZIONE prima
     #        di toccare qualunque tabella. Tutti gli operatori bindati al
     #        reparto ereditano le modifiche; la cache permessi e' invalidata
@@ -1208,20 +1171,16 @@ class AmmSoftwareRepository:
             )
             profilo_id = cursor.fetchone()[0]
 
-            # 3. UPSERT binding REPARTO -> profilo. UNIQUE parziale su
-            #    unita_organizzativa_id IS NOT NULL: ON CONFLICT esplicita
-            #    indice + predicato per consentire l'inferenza Postgres.
-            #    ⚠️ Resta qui: la madre del legame (`fn_lega_profilo_identita`)
-            #    copre le identita', non i reparti.
+            # 3. Il legame REPARTO -> profilo, dalla madre del DB
+            #    `config.fn_lega_profilo_reparto` (2026-10-19, R-DB-16a):
+            #    idempotente sullo stesso profilo. Un ALTRO profilo gia' legato
+            #    al reparto lo rifiuta `uq_profili_accesso_bindings_uo` invece
+            #    di sostituirlo, come faceva l'UPSERT di prima: da qui non
+            #    capita, il codice del profilo deriva dal `codice_interno` del
+            #    reparto (passo 1), che non cambia
+            #    (`trg_unita_organizzative_a10_lock_columns_upd`).
             cursor.execute(
-                """INSERT INTO config.profili_accesso_bindings (
-                       profilo_accesso_id, unita_organizzativa_id,
-                       identita_digitale_id, ruolo_applicativo
-                   )
-                   VALUES (%s, %s, NULL, NULL)
-                   ON CONFLICT (unita_organizzativa_id)
-                       WHERE unita_organizzativa_id IS NOT NULL
-                       DO UPDATE SET profilo_accesso_id = EXCLUDED.profilo_accesso_id""",
+                "SELECT config.fn_lega_profilo_reparto(%s, %s)",
                 [profilo_id, uo_id],
             )
 

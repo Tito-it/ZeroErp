@@ -171,6 +171,13 @@ _CONTATTO_CREATO_COLS: tuple[str, ...] = (
     "soggetto_ruolo_id", "istanza_utility_id",
 )
 
+# Le colonne dell'indirizzo di ruolo appena creato che il repository
+# restituisce: la chiave, il ruolo e le colonne scrivibili (la stessa
+# whitelist dell'update), forma estera compresa (2026-10-19).
+_INDIRIZZO_RUOLO_CREATO_COLS: tuple[str, ...] = (
+    "id", "soggetto_ruolo_id", *sorted(INDIRIZZO_RUOLO_UPDATE_COLS),
+)
+
 
 class SoggettiRepository:
     """Accesso DB per soggetti, contatti, indirizzi soggetto, ruoli."""
@@ -655,6 +662,24 @@ class SoggettiRepository:
         assert row is not None
         return int(row[0])
 
+    # Scopo: Gli indirizzi di un soggetto dalla madre plurale del DB
+    #        `anagrafiche.fn_crea_indirizzi_soggetto` (gemella di
+    #        `fn_crea_indirizzi_ruolo`): con `copia_obbligatori` i tipi
+    #        obbligatori del tipo di soggetto che mancano ricevono una copia del
+    #        primo; un tipo che il soggetto ha gia' si salta; ogni riga dalla
+    #        singolare. Ritorna quanti ne ha scritti.
+    def crea_indirizzi_soggetto(
+        self, soggetto_id: str, indirizzi: list[dict[str, Any]], *, copia_obbligatori: bool,
+    ) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT anagrafiche.fn_crea_indirizzi_soggetto(%s::uuid, %s::jsonb, %s)",
+                [soggetto_id, json.dumps(indirizzi, default=str), copia_obbligatori],
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        return int(row[0])
+
     # Scopo: Elimina un'associazione indirizzo-soggetto per id.
     def delete_indirizzo_soggetto(self, indirizzo_soggetto_id: int, soggetto_id: str) -> bool:
         sql = """
@@ -690,39 +715,34 @@ class SoggettiRepository:
         "administrative_area", "locality", "sublocality", "postal_code",
     }
 
-    # Scopo: Crea indirizzo a livello ruolo.
-    #        Supporta modalita' normalizzata (indirizzo_dettaglio_id)
-    #        e libera (indirizzo_libero + stato_id).
-    #        Il trigger guard valida tipo_indirizzo_id vs matrice ammessi.
+    # Scopo: Crea UN indirizzo del ruolo, anche di un'istanza, con la madre del
+    #        DB `anagrafiche.fn_crea_indirizzo_ruolo(ruolo, indirizzo jsonb)`: la
+    #        grammatica di `fn_indirizzo_elemento` (tipo per id o codice; forma
+    #        libera, dettaglio gia' risolto o via da risolvere), piu' la chiave
+    #        `istanza_utility_id`. Ritorna la riga scritta, riletta per id
+    #        (`_INDIRIZZO_RUOLO_CREATO_COLS`).
+    # ⭐ Dal 2026-10-19 (R-DB-16b, brief-db-processi-accensione-per-ambiente
+    #    §6.16): fino ad allora la INSERT era qui, posizionale, senza i campi
+    #    della forma estera, e la via la risolveva il backend prima di scrivere.
     def crea_indirizzo_ruolo(
-        self, soggetto_ruolo_id: int, *,
-        tipo_indirizzo_id: int,
-        istanza_utility_id: int | None = None,
-        indirizzo_dettaglio_id: int | None = None,
-        indirizzo_libero: str | None = None,
-        stato_id: int | None = None,
-        comune_id: int | None = None,
-        codice_postale_id: int | None = None,
+        self, soggetto_ruolo_id: int, indirizzo: dict[str, Any],
     ) -> dict[str, Any]:
-        sql = """
-            INSERT INTO anagrafiche.indirizzi
-                (soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                 indirizzo_dettaglio_id, indirizzo_libero,
-                 stato_id, comune_id, codice_postale_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                      indirizzo_dettaglio_id, indirizzo_libero,
-                      stato_id, comune_id, codice_postale_id
-        """
+        # Due istruzioni: la riga scritta dalla madre non e' visibile allo
+        # snapshot dell'istruzione che la chiama.
         with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,
-                indirizzo_dettaglio_id, indirizzo_libero,
-                stato_id, comune_id, codice_postale_id,
-            ])
+            cursor.execute(
+                "SELECT anagrafiche.fn_crea_indirizzo_ruolo(%s::bigint, %s::jsonb)",
+                [soggetto_ruolo_id, json.dumps(indirizzo, default=str)],
+            )
+            indirizzo_id = cursor.fetchone()[0]
+            cursor.execute(
+                f"SELECT {', '.join(_INDIRIZZO_RUOLO_CREATO_COLS)} "  # noqa: S608 — colonne da una tupla letterale del modulo, valore come parametro
+                "FROM anagrafiche.indirizzi WHERE id = %s",
+                [indirizzo_id],
+            )
             result = row_to_dict(cursor)
-            assert result is not None
-            return result
+        assert result is not None
+        return result
 
     # Scopo: Aggiorna indirizzo ruolo con ownership check su soggetto_ruolo_id.
     #        SET dal BB `sql_set_clause` (whitelist RIGIDA
@@ -762,14 +782,6 @@ class SoggettiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [indirizzo_id, soggetto_ruolo_id])
             return cursor.rowcount > 0
-
-    # Scopo: Risolve tipo_indirizzo codice → id. Usa COALESCE(codice_interno, codice) per match.
-    def resolve_tipo_indirizzo_id(self, codice: str) -> int | None:
-        sql = "SELECT id FROM config.tipi_indirizzi WHERE COALESCE(codice_interno, codice) = %s LIMIT 1"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [codice])
-            row = cursor.fetchone()
-            return row[0] if row else None
 
     # =================================================================
     # Ruoli

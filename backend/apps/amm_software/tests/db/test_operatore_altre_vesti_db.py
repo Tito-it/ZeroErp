@@ -22,8 +22,9 @@
 2a. test_l_interruttore_non_riaccende_e_il_salvataggio_non_richiude — D-3
 2b. test_riaprire_il_rapporto_tiene_una_fine_futura — azzera solo la `valido_al` arrivata
 3. test_il_super_admin_si_lega_alla_sola_veste_operatore
+3-bis. test_togliere_il_super_admin_slega_la_veste — dalla madre `fn_slega_profilo_identita` (2026-10-19)
 3a. test_super_admin_su_un_accesso_con_un_altro_profilo_e_un_400 — il vincolo, non piu' il silenzio (2026-10-18)
-3b. test_due_profili_super_admin_attivi_non_si_sceglie — E_CONFIG_MANCANTE, come il DB (2026-10-18)
+3b. test_due_profili_super_admin_attivi_non_si_sceglie — E_CONFIG_MANCANTE dal lettore del DB (2026-10-18; dal DB il 2026-10-19)
 4. test_la_lista_legge_la_veste_operatore_anche_disabilitata
 5. test_la_sola_veste_shop_non_e_un_operatore
 6. test_spegnere_l_operatore_chiude_le_sessioni_della_sola_veste_operatore — e ne invalida gli inviti pendenti; le due strade chiudono il rapporto a oggi
@@ -33,12 +34,13 @@ from __future__ import annotations
 
 from unittest import TestCase
 
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
 from apps.amm_software.services.amm_software_service import AmmSoftwareService
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.db.risorse_umane_core_repository import RisorseUmaneCoreRepository
+from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.invito_veste import PORTA_OPERATORE, PORTA_SHOP
 from apps.core.services.token_service import TokenService
@@ -215,10 +217,36 @@ class OperatoreAltreVestiDbTests(TestCase):
         except Annulla:
             pass
 
+    # Scopo: Togliere il SUPER_ADMIN slega la veste operatore dalla madre
+    #        `config.fn_slega_profilo_identita`, sul profilo del lettore
+    #        (R-DB-16a, 2026-10-19; prima un DELETE del backend verso ogni
+    #        profilo di quel tipo). Ripetuto non e' un errore.
+    def test_togliere_il_super_admin_slega_la_veste(self):
+        repo = AmmSoftwareRepository()
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                uid, operatore, _shop = self._operatore_anche_cliente_shop(cur)
+                apri_contesto_operatore(cur)
+
+                repo.update_operatore(uid, is_super_admin=True)
+                repo.update_operatore(uid, is_super_admin=False)
+                repo.update_operatore(uid, is_super_admin=False)
+                cur.execute(
+                    "SELECT count(*) FROM config.profili_accesso_bindings WHERE identita_digitale_id = %s",
+                    [operatore],
+                )
+                self.assertEqual(cur.fetchone()[0], 0)
+                raise Annulla
+        except Annulla:
+            pass
+
     # Scopo: Il profilo SUPER_ADMIN si risolve come lo risolve il DB: fra gli
     #        ATTIVI, ed esattamente uno. Il modello non vieta un secondo profilo
     #        di quel tipo: con due il legame non sceglie, solleva
     #        E_CONFIG_MANCANTE prima di scrivere (era «more than one row», 500).
+    #        Dal 2026-10-19 la regola e' del lettore `config.fn_profilo_super_admin_id`
+    #        (R-DB-11a): l'errore sale come `DatabaseError` e lo traduce il
+    #        middleware, qui si legge come lo legge lui.
     def test_due_profili_super_admin_attivi_non_si_sceglie(self):
         try:
             with transaction.atomic(), connection.cursor() as cur:
@@ -230,9 +258,9 @@ class OperatoreAltreVestiDbTests(TestCase):
                 )
                 apri_contesto_operatore(cur)
 
-                with self.assertRaises(ServiceError) as ctx:
+                with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
                     AmmSoftwareRepository().update_operatore(uid, is_super_admin=True)
-                self.assertEqual(ctx.exception.code, "E_CONFIG_MANCANTE")
+                self.assertEqual(structured_db_error_code(ctx.exception), "E_CONFIG_MANCANTE")
                 cur.execute(
                     "SELECT count(*) FROM config.profili_accesso_bindings WHERE identita_digitale_id = %s",
                     [operatore],
