@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19
 
-**Riparte: Tid, col commit del lavoro BE (R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b fatti il 2026-10-19, §6.14 … §6.16, test verdi); poi chi chiude, con l'archiviazione (riga 11).** ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
+**Riparte: il team DB, con R-BE-15 (riga 9-ter-bis-17, §6.17): l'istanza di un indirizzo di ruolo può essere di un altro soggetto. Poi chi chiude, con l'archiviazione (riga 11).** ✅ Il lavoro BE di R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b è fatto e committato (`615281b6c`, 2026-10-19). ✅ Il collaudo finale (riga 9-decies) è fatto. ✅ 2b-1, 2b-3 e la loro ricaduta BE/FE sono fatte (§6.9). ✅ La 2b-2 è
 fatta (2026-10-18, §6.10): il backend crea emittente, fornitore, cliente, veste portale, magazzino, profilo,
 legame SUPER_ADMIN, override, emittente attivo e accende la veste dalle madri del DB; restano due scritture
 che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione è chiusa.
@@ -29,14 +29,15 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 9-ter-bis-11 | team DB, poi Tid, poi BE | ✅ R-BE-11: `20261019-16` (lettore `config.fn_profilo_super_admin_id`) e `-17` (la madre lo usa), applicati su dbdev (2026-10-18 23:59), pgTAP verdi, committati. ✅ R-DB-11a (2026-10-19): il BE ritira la sua query | §6.15 | — |
 | 9-ter-bis | team DB | ✅ (2026-10-19) R-BE-6, R-BE-7, R-BE-12: decisioni D-16a … D-16c di Tid col via allo sviluppo; `20261019-33` … `-39` scritti e provati sullo scratch, due pgTAP nuovi. R-BE-11 ha la sua riga (9-ter-bis-11) | §6.10, §6.16 | — |
 | 9-ter-bis-16 | Tid | ✅ apply di `20261019-33` … `-39` su dbdev (2026-10-19 00:26), pgTAP verdi compreso `test-fn-provisiona-dati-di-sviluppo-v1` corretto; committati | §6.16 | — |
-| 9-ter-bis-16-be | sessione BE | ✅ (2026-10-19) R-DB-16a (i legami di profilo dalle madri) e R-DB-16b (gli indirizzi dalle madri, ritirati la INSERT e la procedura); da committare | §6.16 | — |
+| 9-ter-bis-16-be | sessione BE | ✅ (2026-10-19) R-DB-16a (i legami di profilo dalle madri) e R-DB-16b (gli indirizzi dalle madri, ritirati la INSERT e la procedura); committato `615281b6c` | §6.16 | — |
+| 9-ter-bis-17 | team DB, poi Tid | **R-BE-15**: l'istanza di un indirizzo di ruolo appartiene allo stesso soggetto del ruolo (trovato dal team DB in §6.16, non toccato) | §6.17 | — |
 | 9-ter-ter | team DB | ✅ (2026-10-18, D-1 … D-4 di Tid, `20261018-80` … `-99`, `20261019-01` … `-04`, applicati) l'indirizzo libero: R-BE-8 (lo stato proposto, `script.fn_stato_proposto_id`), R-BE-9 (il guard `trgfn_indirizzi_guard_forma_libera` col codice e il campo), R-BE-10 (la forma estera nella madre del soggetto, `fn_crea_indirizzo_soggetto(soggetto, jsonb)`); la regione alleggerita (`-82`: forma estera = località sola) | §6.11, §6.12 | — |
 | 9-ter-quater | sessione BE/FE | ✅ (2026-10-18) firma jsonb della madre del soggetto, `postal_code`, tendina degli stati, form in due forme, codici; provato sul DB vero dopo l'apply | §6.12 | — |
 | 9-ter-quinquies | Tid | ✅ apply di `20261018-80 … -99` e `20261019-01 … -04` su dbdev, pgTAP verdi (2026-10-18) | §6.12 | — |
 | 9-ter-sexies | team DB, poi Tid | ✅ R-BE-13: `fn_stato_proposto_id` non applicava l'override per utente (né per gruppo ed emittente). D-13a e D-13b di Tid; `20261019-05` (BB `fn_get_parameter_di_sessione`) e `-06` scritti e provati, applicati su dbdev (2026-10-18 22:45), pgTAP verdi; resta il commit | §6.12, §6.13 | — |
 | 9-ter-septies | team DB, poi Tid | R-BE-14: l'emittente di prova del provisioning non è attrezzato per lavorare. Tre pezzi (§6.12): ✅ **registri** in questo brief; **template di default** in [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md), D-1 … D-3 di Tid aperte; ✅ **giacenza** nello smoke (BE). Registri: ✅ (2026-10-18) D-14a … D-14d prese, via allo sviluppo dato; `20261019-07` … `-12`, codice `E_REGISTRO_COPPIA_GIA_COPERTA`, pgTAP nuovo e `test-registri-motore-trasloco` adeguato, scritti e provati sullo scratch | §6.12, §6.14 | — |
 | 9-ter-octies | Tid | ✅ apply di `20261019-07` … `-12` e dei due CSV dei codici su dbdev (2026-10-18 23:35), pgTAP verdi, compreso `test-numero-prefisso-registro-v1` corretto; resta il commit | §6.14 | — |
-| 9-ter-nonies | sessione BE | ✅ (2026-10-19) R-DB-14a: ripiego e policy del codice `E_REGISTRO_COPPIA_GIA_COPERTA`; da committare | §6.14 | — |
+| 9-ter-nonies | sessione BE | ✅ (2026-10-19) R-DB-14a: ripiego e policy del codice `E_REGISTRO_COPPIA_GIA_COPERTA`; committato `615281b6c` | §6.14 | — |
 | 9-quater | team DB | ✅ 2b-3 scritta e provata (2026-10-18): etichette, guard, verbo, presidio, `fn_accendi_veste` (`20261018-55` … `-64`) | §5-ter.3 | — |
 | 9-octies | Tid | ✅ (2026-10-18, pgTAP verdi) apply della 2b-3 (`20261018-55` … `-64`, i due CSV dei codici, `presidi.csv`, `presidi_testi.csv`, il loop `20260205-41`); pgTAP `dbops/test-etichette-di-prova-v1`, `anagrafiche/test-fn-provisiona-dati-di-sviluppo-v1`, chi usa `fn_pgtap_crea_operatore_umano`, i presidi trasversali | §5-ter.3 | — |
 | 9-novies | sessione BE | ✅ (2026-10-18) ricaduta della 2b-3: codici, command `provision_utenti_sviluppo`, lista Operatori (BE e FE), smoke e run-book | §6.9 | — |
@@ -46,9 +47,9 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 10-quater | Tid | ✅ apply di R-BE-5 (`20261018-10` … `-14`) su dbdev, pgTAP senza regressioni (2026-10-18) | §6.7.4 | — |
 | 10 | sessione BE | ✅ (2026-10-18) codice nuovo e ripiego, capability di «Accendi» dal predicato del guard, consenso ritirato da command, test, unit e `sveglie.json`, nota della tolleranza riscritta | §6.8 | — |
 | 10-bis-env | Tid | ✅ tolta la riga `SMOKE_NOTTURNO_CONSENTITO` da `backend/.env.systemd` di backend-dev (2026-10-18) | §6.8 | — |
-| 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 8-ter, 9, 10, 10-quater |
+| 11 | chi chiude | archiviazione, riga di PROJECT_CONTEXT | — | 9-ter-bis-17 |
 
-Decisioni aperte di Tid: nessuna (D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18, §6.14). Resta un «trovato, non toccato» da instradare: l'istanza dell'indirizzo di ruolo di un altro soggetto (§6.16). ✅ `count_admin_attivi` (§6.15) ritirato il 2026-10-19, ok di Tid. ⚠️ Il lavoro BE del 2026-10-19 (R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b) è **da committare** su `dev/backend-tid`. La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
+Decisioni aperte di Tid: nessuna (D-14a … D-14d e la nota di debito sul registro standard prese il 2026-10-18, §6.14). L'ultimo «trovato, non toccato» è diventato R-BE-15 (§6.17, riga 9-ter-bis-17). ✅ `count_admin_attivi` (§6.15) ritirato il 2026-10-19, ok di Tid. ✅ Il lavoro BE del 2026-10-19 (R-DB-14a, R-DB-11a, R-DB-16a, R-DB-16b) è committato su `dev/backend-tid` (`615281b6c`), da pushare. La 10-bis è presa il 2026-10-18 (§6.6). ✅ La ricaduta BE/FE della 2b-3 (§6.9), la
 2b-2 (§6.10) e le richieste R-BE-11, R-BE-12 sono committate su `dev/backend-tid` (`08cc15a61`, 2026-10-18,
 mergiato in `Tito-dev` con la PR #1881). ✅ La ricaduta BE/FE delle due forme dell'indirizzo libero (§6.12) è
 committata (`bd7946224`, mergiata in `Tito-dev` con la PR #1884). ✅ Committati su `dev/db-tid` (2026-10-19): R-BE-13 lato DB (§6.13), R-BE-14 (§6.14), R-BE-11 (§6.15) e R-BE-6, R-BE-7, R-BE-12 (§6.16). ✅ Il lavoro
@@ -2099,6 +2100,28 @@ senza dati di sviluppo. Corretto il test: conta le radici già presenti prima de
 esatto (create le mancanti, riallineate le presenti): su un database nuovo `20|20|0`, su dbdev `20|0|20`. Provato
 sullo scratch (nessuna radice): 20/20. ✅ Rilanciato da Tid su dbdev: verde.
 
-**Trovato, non toccato:** nessun controllo verifica che l'istanza di un indirizzo di ruolo sia dello stesso soggetto
+**Trovato, non toccato** (→ R-BE-15, §6.17): nessun controllo verifica che l'istanza di un indirizzo di ruolo sia dello stesso soggetto
 del ruolo (`istanze_utilities.soggetto_id` contro `soggetti_ruoli.soggetto_id`). È una regola della tabella, che
 vale anche per l'`UPDATE`: andrebbe in un guard su `anagrafiche.indirizzi`, non nella madre.
+
+### 6.17 R-BE-15: l'istanza di un indirizzo di ruolo è di un altro soggetto (sessione BE, 2026-10-19)
+
+**Il difetto** (trovato dal team DB in §6.16): `anagrafiche.indirizzi` lega un indirizzo a un ruolo
+(`soggetto_ruolo_id`) e, facoltativamente, a un'istanza (`istanza_utility_id`). Niente verifica che l'istanza
+appartenga allo **stesso soggetto** del ruolo (`istanze_utilities.soggetto_id` contro `soggetti_ruoli.soggetto_id`).
+Un indirizzo può quindi stare sul ruolo di un soggetto ed essere l'indirizzo dell'istanza di un altro: la catena di
+risoluzione degli indirizzi (istanza → ruolo → soggetto) restituirebbe a un soggetto l'indirizzo di un altro.
+
+**Che cosa serve:**
+
+* la regola vale per **ogni scrittore** e per l'`UPDATE` (cambio del ruolo o dell'istanza), non solo per le madri
+  che creano: oggi scrivono la tabella `fn_crea_indirizzo_ruolo`, `fn_crea_indirizzi_ruolo` e l'`UPDATE` del backend
+  (`update_indirizzo_ruolo`, whitelist con `istanza_utility_id`);
+* un rifiuto con un **codice registrato**, che dica il campo (`istanza_utility_id`), così che il backend lo mostri
+  sul form senza una traduzione sua;
+* il pgTAP che lo provi costruendo il caso (istanza di un altro soggetto, in creazione e in modifica) e il caso
+  ammesso (istanza dello stesso soggetto, nessuna istanza);
+* se il dato esistente lo viola, dirlo: va deciso prima che il controllo entri.
+
+**Ricaduta BE attesa:** ripiego del codice nuovo e policy rigenerate; nessun pre-check nel backend.
+
