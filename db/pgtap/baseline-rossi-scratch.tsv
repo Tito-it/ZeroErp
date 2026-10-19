@@ -61,7 +61,6 @@ db/pgtap/vendite/test-fn-batch-upsert-commessa-attivita-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-cambia-stato-preventivo.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-contratto-righe-preview-nuovi-campi-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-crea-revisione-preventivo.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-create-contratto-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-emit-attivita-propaga-audit-pricing-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-genera-pratica-da-preventivo-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-get-valuta-id-v1.sql	ERRORE_FIXTURE
