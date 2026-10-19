@@ -5,6 +5,10 @@
 # Scopo: Unit test del BB `_annullo_con_legami` (mock repository e lineage,
 #        no DB) e dell'annullo con conferma del preventivo
 #        (brief-db-annullo-documento-con-legami R-1, R-2).
+# rev 2026-10-19 (brief-db-grammatica-unica-documenti lotto 2a): il documento
+#        si nomina col codice di `config.sorgenti` (`DDT_VENDITA`,
+#        `ORDINE_VENDITA`), lo stesso che va al lineage; l'`origine` dei legami
+#        resta coi codici corti fino al 2b.
 # ------------------------------------------------------------
 
 """
@@ -54,10 +58,10 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
             _legame(riga_id=31, riga_nr=1, origine="ORDINE"),
             _legame(riga_id=31, riga_nr=1, origine="RESO", origine_id=9),
         ]
-        out = bb.legami_del_documento("DDT", 7)
+        out = bb.legami_del_documento("DDT_VENDITA", 7)
         self.assertEqual(out["legami"], 2)
-        self.assertEqual(out["documento"], "DDT")
-        repo_cls.return_value.list_documento_legami.assert_called_once_with("DDT", 7)
+        self.assertEqual(out["documento"], "DDT_VENDITA")
+        repo_cls.return_value.list_documento_legami.assert_called_once_with("DDT_VENDITA", 7)
 
     @patch(_PASSAGGI)
     @patch(_REPO_V)
@@ -77,7 +81,7 @@ class AnnulloConLegamiBBTests(SimpleTestCase):
                 {"to_tipo_codice_interno": "COMMESSA", "to_doc_id": 50, "to_codice": "CM-50"},
             ],
         }
-        righe = bb.legami_del_documento("ORDINE", 8)["righe"]
+        righe = bb.legami_del_documento("ORDINE_VENDITA", 8)["righe"]
         passaggi.assert_called_once_with("ORDINE_VENDITA", 8)
         self.assertEqual(
             [(r["origine_tipo_codice_interno"], r["origine_codice"]) for r in righe],

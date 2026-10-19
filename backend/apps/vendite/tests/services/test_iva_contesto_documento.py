@@ -22,6 +22,8 @@
 #   9. normalizza_iva_id: la stringa numerica passa
 #  10. carica_testata: un tipo fuori whitelist e' rifiutato
 #  11. ⭐ whitelist e registry sono UNA SOLA sorgente
+#  12. ⭐ i tipi sono i codici di `config.sorgenti`: `ORDINE`/`DDT` rifiutati
+#      (rev 2026-10-19, brief-db-grammatica-unica-documenti lotto 2a)
 # ------------------------------------------------------------
 
 import unittest
@@ -146,8 +148,31 @@ class CaricaTestataTests(unittest.TestCase):
     #        il codice dice di conoscere.
     def test_whitelist_e_registry_coincidono(self):
         self.assertEqual(
-            set(mod.TIPI_DOCUMENTO_AMMESSI), set(mod._registry().keys())
+            set(mod.TIPI_DOCUMENTO_AMMESSI), set(mod._LOADER)
         )
+
+    # Scopo: ⭐ UNA GRAMMATICA SOLA per i tipi di documento (lotto 2a della
+    #        grammatica unica, 2026-10-19). I tipi ammessi sono i codici di
+    #        `config.sorgenti`, gli stessi delle costanti `SORGENTE_*`; i codici
+    #        corti di prima sono un rifiuto parlante, non un sinonimo.
+    def test_tipi_sono_i_codici_delle_sorgenti(self):
+        from apps.config.sorgenti import (
+            SORGENTE_DDT_VENDITA,
+            SORGENTE_ORDINE_VENDITA,
+            SORGENTE_PREVENTIVO,
+        )
+
+        self.assertEqual(
+            set(mod.TIPI_DOCUMENTO_AMMESSI),
+            {SORGENTE_PREVENTIVO, SORGENTE_ORDINE_VENDITA, SORGENTE_DDT_VENDITA},
+        )
+        for corto in ("ORDINE", "DDT"):
+            with self.subTest(corto=corto), self.assertRaises(ServiceError) as c:
+                mod.carica_testata(
+                    documento_tipo=corto, documento_id=1,
+                    error_code=_COD, function_name=_FN,
+                )
+            self.assertEqual(c.exception.context.get("field"), "documento_tipo")
 
 
 class PayloadIvaChiusoTests(unittest.TestCase):

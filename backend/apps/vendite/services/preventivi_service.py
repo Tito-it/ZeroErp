@@ -28,7 +28,6 @@ from apps.vendite.services._cliente_coppia_documento import risolvi_cliente_copp
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.vendite.services._date_consegna_righe import aggiorna_date_consegna_righe
 from apps.vendite.services._annullo_con_legami import (
-    DOCUMENTO_PREVENTIVO,
     STATO_ANNULLATO,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
@@ -737,7 +736,7 @@ def get_legami(preventivo_id: int) -> dict[str, Any]:
         code="E_PREV_NOT_FOUND", message="Preventivo non trovato.",
         id_name="preventivo_id", function_name=f"{_FN}.get_legami",
     )
-    return legami_del_documento(DOCUMENTO_PREVENTIVO, preventivo_id)
+    return legami_del_documento(SORGENTE_PREVENTIVO, preventivo_id)
 
 
 # Scopo: GUIDA (D4) — «Accetta/Rifiuta» in-pratica → azione sul DOCUMENTO
@@ -951,7 +950,7 @@ def gestisci_riga(
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="gestisci_riga")
     richiedi_righe_in_bozza(
-        testata, documento="Preventivo", documento_id=preventivo_id, verbo="aggiungere",
+        testata, documento=SORGENTE_PREVENTIVO, documento_id=preventivo_id, verbo="aggiungere",
         function_name=f"{_FN}.gestisci_riga",
     )
 
@@ -1178,7 +1177,7 @@ def aggiorna_riga(
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="aggiorna_riga")
     richiedi_righe_in_bozza(
-        testata, documento="Preventivo", documento_id=preventivo_id, verbo="modificare",
+        testata, documento=SORGENTE_PREVENTIVO, documento_id=preventivo_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
 
@@ -1650,7 +1649,7 @@ def elimina_riga(preventivo_id: int, riga_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="elimina_riga")
     richiedi_righe_in_bozza(
-        testata, documento="Preventivo", documento_id=preventivo_id, verbo="togliere",
+        testata, documento=SORGENTE_PREVENTIVO, documento_id=preventivo_id, verbo="togliere",
         function_name=f"{_FN}.elimina_riga",
     )
 
@@ -1832,7 +1831,7 @@ def _load_componente_for_modification(
     # Guard stato modificabile: il JOIN porta gia' lo stato — niente
     # round-trip extra a `get_preventivo`.
     richiedi_righe_in_bozza(
-        scope, documento="Preventivo", documento_id=preventivo_id, verbo=verbo,
+        scope, documento=SORGENTE_PREVENTIVO, documento_id=preventivo_id, verbo=verbo,
         function_name=function_name,
     )
 

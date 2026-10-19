@@ -32,7 +32,6 @@ from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._date_consegna_righe import aggiorna_date_consegna_righe
 from apps.vendite.services._annullo_con_legami import (
-    DOCUMENTO_ORDINE,
     STATO_ANNULLATO,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
@@ -880,7 +879,7 @@ def cambia_stato(
 def get_legami(ordine_id: int) -> dict[str, Any]:
     repo = OrdiniRepository()
     _get_testata_or_raise(repo, ordine_id, op="get_legami", getter=repo.get_stato_codice)
-    return legami_del_documento(DOCUMENTO_ORDINE, ordine_id)
+    return legami_del_documento(SORGENTE_ORDINE_VENDITA, ordine_id)
 
 
 # ══════════════════════════════════════════════════════════
@@ -897,7 +896,7 @@ def gestisci_riga(
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="gestisci_riga")
     richiedi_righe_in_bozza(
-        testata, documento="Ordine", documento_id=ordine_id, verbo="aggiungere",
+        testata, documento=SORGENTE_ORDINE_VENDITA, documento_id=ordine_id, verbo="aggiungere",
         function_name=f"{_FN}.gestisci_riga",
     )
 
@@ -999,7 +998,7 @@ def aggiorna_riga(
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="aggiorna_riga")
     richiedi_righe_in_bozza(
-        testata, documento="Ordine", documento_id=ordine_id, verbo="modificare",
+        testata, documento=SORGENTE_ORDINE_VENDITA, documento_id=ordine_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
     _get_riga_or_raise(repo, ordine_id, riga_id, op="aggiorna_riga")
@@ -1089,7 +1088,7 @@ def elimina_riga(ordine_id: int, riga_id: int) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="elimina_riga")
     richiedi_righe_in_bozza(
-        testata, documento="Ordine", documento_id=ordine_id, verbo="togliere",
+        testata, documento=SORGENTE_ORDINE_VENDITA, documento_id=ordine_id, verbo="togliere",
         function_name=f"{_FN}.elimina_riga",
     )
     _get_riga_or_raise(repo, ordine_id, riga_id, op="elimina_riga")
@@ -1147,7 +1146,7 @@ def update_componente(
     )
     assert scope is not None
     richiedi_righe_in_bozza(
-        scope, documento="Ordine", documento_id=ordine_id, verbo="modificare",
+        scope, documento=SORGENTE_ORDINE_VENDITA, documento_id=ordine_id, verbo="modificare",
         function_name=f"{_FN}.update_componente",
     )
     # Contratto dell'operatore unico per i cinque documenti (BB): chiavi
@@ -1179,7 +1178,7 @@ def delete_componente(
     )
     assert scope is not None
     richiedi_righe_in_bozza(
-        scope, documento="Ordine", documento_id=ordine_id, verbo="togliere",
+        scope, documento=SORGENTE_ORDINE_VENDITA, documento_id=ordine_id, verbo="togliere",
         function_name=f"{_FN}.delete_componente",
     )
     with _db_errors("delete_componente"):

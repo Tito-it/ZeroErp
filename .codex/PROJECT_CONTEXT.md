@@ -222,7 +222,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `work-in-progress/brief-db-grammatica-unica-documenti.md`): lo stesso tipo di documento ha più nomi
   (`config.tipi_entita`, `config.sorgenti`, la grammatica delle testate, le partizioni delle note) e chi passa
   dall'uno all'altro traduce. Direzione decisa da Tid (strada 3 dell'A-8-ter): un vocabolario solo, nessun ponte.
-  Riparte il team DB col censimento; poi le decisioni G-1 … G-4 di Tid.
+  Lotti 0, 1 e 2a (le testate: `DDT_VENDITA`, `ORDINE_VENDITA`, `OFFERTA_COMMERCIALE`…) chiusi su DB, BE e FE
+  il 2026-10-19; restano i sotto-giri 2b … 2e, il lotto 3 (note) e il 4 (chiusura). Lo stato è nel blocco
+  «Chi riparte» del brief.
 - **Type checker del backend (D2-b): chiuso il 2026-10-09** (`work-done/piano-be-type-checker.md`;
   `0ffe7b7c3`, `ebc54fc56`): mypy col plugin Django in CI, a cricchetto (`backend/mypy.ini`,
   `backend/mypy.baseline.json`, `scripts/check_mypy_baseline.py`; sede `docs/it/dev/sicurezza-e-qualita-statica.md`

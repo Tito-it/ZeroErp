@@ -200,7 +200,7 @@ class PreventiviRepository(
     _indirizzi_table = "vendite.preventivi_indirizzi"
     _indirizzi_fk_documento = "preventivo_id"
     _indirizzi_ambito = "PREVENTIVI"
-    _indirizzi_documento = "PREVENTIVO"
+    _indirizzi_documento = SORGENTE_PREVENTIVO
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_preventivi_lista)
@@ -785,10 +785,12 @@ class PreventiviRepository(
                    c.riga_preventivo_id,
                    r.preventivo_id,
                    sdp.codice_interno AS stato_codice_interno,
-                   -- L'etichetta del rifiuto di stato («Preventivo 2026/00012»,
-                   -- o «Preventivo #131» se NULL): senza, il guard delle righe
-                   -- in bozza ripiega sull'id anche su un preventivo emesso.
-                   p.numero
+                   -- L'etichetta del rifiuto di stato («Preventivo 2026/00012
+                   -- rev. 1», o «Preventivo #131 rev. 0» se NULL): senza, il
+                   -- guard delle righe in bozza ripiega sull'id anche su un
+                   -- preventivo emesso, e senza `rev` non dice quale revisione.
+                   p.numero,
+                   p.rev
               FROM vendite.preventivi_righe_componenti c
               JOIN vendite.preventivi_righe r ON r.id = c.riga_preventivo_id
               JOIN vendite.preventivi p       ON p.id = r.preventivo_id

@@ -30,7 +30,7 @@
 #    corrisponde lo dice il DB (`vendite.fn_documento_legami`, lo stesso lettore
 #    di avviso e verbo). Qui si legge e si trasporta.
 
-from typing import Any
+from typing import Any, Literal
 
 from apps.config.sorgenti import (
     SORGENTE_COMMESSA,
@@ -43,13 +43,18 @@ from apps.config.sorgenti import (
 )
 from apps.core.services.payload_helpers import PayloadValidator
 
-# I documenti che il lettore dei legami e i verbi di annullo conoscono (i codici
-# del DB, `p_documento` di `vendite.fn_documento_legami`).
-DOCUMENTO_DDT = "DDT"
-DOCUMENTO_ORDINE = "ORDINE"
-DOCUMENTO_PREVENTIVO = "PREVENTIVO"
-DOCUMENTO_CONTRATTO = "CONTRATTO"
-DOCUMENTO_COMMESSA = "COMMESSA"
+# ⭐ Il documento che si annulla si nomina col codice di `config.sorgenti`
+#    (costanti `SORGENTE_*`): dal 2026-10-19 il `p_documento` di
+#    `vendite.fn_documento_legami` e' quel vocabolario
+#    (brief-db-grammatica-unica-documenti, lotto 2a). Le costanti `DOCUMENTO_*`
+#    di prima, coi codici corti `DDT`/`ORDINE`, e la loro traduzione verso il
+#    tipo del lineage sono ritirate: il codice e' lo stesso nei due posti.
+# ⭐ Quali documenti il lettore conosce resta scritto, come tipo: le costanti
+#    `SORGENTE_*` sono `Final`, e mypy rifiuta al chiamante un codice fuori
+#    elenco o un codice corto (che il DB rifiuterebbe solo a runtime).
+DocumentoLegami = Literal[
+    "DDT_VENDITA", "ORDINE_VENDITA", "PREVENTIVO", "CONTRATTO", "COMMESSA",
+]
 
 # Lo stato di destinazione dei verbi di annullo. ⚠️ L'avviso del DB scatta
 # entrando in uno stato ABORTITO del vocabolario (`is_abortito`): in bolla,
@@ -59,15 +64,6 @@ DOCUMENTO_COMMESSA = "COMMESSA"
 STATO_ANNULLATO = "ANNULLATO"
 STATO_ANNULLATA = "ANNULLATA"
 
-# Il tipo del lineage (`config.sorgenti.codice_interno`) del documento che si
-# annulla: e' la chiave per leggere il nome dei documenti collegati.
-_TIPO_LINEAGE_DEL_DOCUMENTO: dict[str, str] = {
-    DOCUMENTO_DDT: SORGENTE_DDT_VENDITA,
-    DOCUMENTO_ORDINE: SORGENTE_ORDINE_VENDITA,
-    DOCUMENTO_PREVENTIVO: SORGENTE_PREVENTIVO,
-    DOCUMENTO_CONTRATTO: SORGENTE_CONTRATTO,
-    DOCUMENTO_COMMESSA: SORGENTE_COMMESSA,
-}
 # Il tipo del lineage dell'ORIGINE di un legame (`origine` del lettore). Serve
 # al gesto «vai al documento»: il lettore porta l'id della testata dall'altra
 # parte ma, per decisione di Tid, non il nome, che lo da' il lineage.
@@ -75,6 +71,8 @@ _TIPO_LINEAGE_DEL_DOCUMENTO: dict[str, str] = {
 # le hanno spinto righe). ⚠️ CONSUMI e ONERE non ci sono, di proposito: il
 # consumo non e' un nodo del lineage e l'onere non ha niente a monte. Senza
 # tipo la finestra mostra la sola origine, senza link.
+# ⚠️ Questa traduzione RESTA fino al sotto-giro 2b (V7) della grammatica unica:
+#    la colonna `origine` del lettore porta ancora i codici corti.
 _TIPO_LINEAGE_DELL_ORIGINE: dict[str, str] = {
     "ORDINE": SORGENTE_ORDINE_VENDITA,
     "RESO": SORGENTE_RESO_VENDITA,
@@ -108,7 +106,7 @@ def legami_confermati(
 # ⛔ Il chiamante deve aver gia' letto la testata del documento col suo
 #    lettore: `vendite.fn_documento_legami` e' SECURITY DEFINER e non applica
 #    il perimetro. Il lineage lo applica, ma qui serve solo per i nomi.
-def legami_del_documento(documento: str, documento_id: int) -> dict[str, Any]:
+def legami_del_documento(documento: DocumentoLegami, documento_id: int) -> dict[str, Any]:
     # Import locale: il repository trasversale del dominio, come per
     # `vendite_service` qui sotto.
     from apps.vendite.db.vendite_repository import VenditeRepository
@@ -134,9 +132,7 @@ def legami_del_documento(documento: str, documento_id: int) -> dict[str, Any]:
 def _nomi_dal_lineage(documento: str, documento_id: int) -> dict[tuple[str | None, Any], Any]:
     from apps.vendite.services import vendite_service
 
-    passaggi = vendite_service.get_documento_passaggi(
-        _TIPO_LINEAGE_DEL_DOCUMENTO[documento], documento_id,
-    )
+    passaggi = vendite_service.get_documento_passaggi(documento, documento_id)
     nomi: dict[tuple[str | None, Any], Any] = {}
     for p in passaggi["indietro"]:
         nomi[(p["from_tipo_codice_interno"], p["from_doc_id"])] = p["from_codice"]

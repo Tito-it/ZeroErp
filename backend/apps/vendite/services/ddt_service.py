@@ -45,7 +45,6 @@ from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._annullo_con_legami import (
-    DOCUMENTO_DDT,
     STATO_ANNULLATO,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
@@ -552,7 +551,7 @@ def gestisci_riga(
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="gestisci_riga")
     richiedi_righe_in_bozza(
-        testata, documento="DDT", documento_id=ddt_id, verbo="aggiungere",
+        testata, documento=SORGENTE_DDT_VENDITA, documento_id=ddt_id, verbo="aggiungere",
         function_name=f"{_FN}.gestisci_riga",
     )
 
@@ -687,7 +686,7 @@ def aggiorna_riga(
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="aggiorna_riga")
     richiedi_righe_in_bozza(
-        testata, documento="DDT", documento_id=ddt_id, verbo="modificare",
+        testata, documento=SORGENTE_DDT_VENDITA, documento_id=ddt_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
     _get_riga_or_raise(repo, ddt_id, riga_id, op="aggiorna_riga")
@@ -731,7 +730,7 @@ def elimina_riga(ddt_id: int, riga_id: int) -> dict[str, Any]:
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="elimina_riga")
     richiedi_righe_in_bozza(
-        testata, documento="DDT", documento_id=ddt_id, verbo="togliere",
+        testata, documento=SORGENTE_DDT_VENDITA, documento_id=ddt_id, verbo="togliere",
         function_name=f"{_FN}.elimina_riga",
     )
     _get_riga_or_raise(repo, ddt_id, riga_id, op="elimina_riga")
@@ -882,7 +881,7 @@ def elimina_prelievo(ddt_id: int, riga_id: int, prelievo_id: int) -> dict[str, A
 def get_legami(ddt_id: int) -> dict[str, Any]:
     repo = DdtRepository()
     _get_testata_or_raise(repo, ddt_id, op="get_legami", getter=repo.get_stato_codice)
-    return legami_del_documento(DOCUMENTO_DDT, ddt_id)
+    return legami_del_documento(SORGENTE_DDT_VENDITA, ddt_id)
 
 
 # ══════════════════════════════════════════════════════════
@@ -936,7 +935,7 @@ def update_componente(
     )
     assert scope is not None
     richiedi_righe_in_bozza(
-        scope, documento="DDT", documento_id=ddt_id, verbo="modificare",
+        scope, documento=SORGENTE_DDT_VENDITA, documento_id=ddt_id, verbo="modificare",
         function_name=f"{_FN}.update_componente",
     )
     # Contratto dell'operatore unico per i cinque documenti (BB): chiavi
@@ -968,7 +967,7 @@ def delete_componente(
     )
     assert scope is not None
     richiedi_righe_in_bozza(
-        scope, documento="DDT", documento_id=ddt_id, verbo="togliere",
+        scope, documento=SORGENTE_DDT_VENDITA, documento_id=ddt_id, verbo="togliere",
         function_name=f"{_FN}.delete_componente",
     )
     with _db_errors("delete_componente"):

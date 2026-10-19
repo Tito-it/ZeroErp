@@ -53,7 +53,10 @@ class IndirizziSeguonoClienteDbTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         # La sonda e' il building block: senza, il test non ha materia.
-        richiedi_db_provvisto("vendite.fn_doc_indirizzo_default(text,bigint)")
+        # ⚠️ Dal 2026-10-19 (20261019-47, grammatica unica lotto 2a) la firma
+        #    e' `character varying`: `p_documento` e' ancorato a
+        #    `config.sorgenti.codice_interno%TYPE`.
+        richiedi_db_provvisto("vendite.fn_doc_indirizzo_default(character varying,bigint)")
 
     def setUp(self) -> None:
         apri_transazione_annullata(self)

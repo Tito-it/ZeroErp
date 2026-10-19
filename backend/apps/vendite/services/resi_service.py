@@ -36,7 +36,7 @@ from typing import Any
 from django.db import transaction
 
 from apps.config.db.sorgenti_repository import SorgentiRepository
-from apps.config.sorgenti import SORGENTE_DDT_VENDITA
+from apps.config.sorgenti import SORGENTE_DDT_VENDITA, SORGENTE_RESO_VENDITA
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
@@ -1272,7 +1272,7 @@ def _richiedi_righe_in_bozza(
         id_name="reso_id", function_name=f"{_FN}.{op}",
     )
     richiedi_righe_in_bozza(
-        reso, documento="Reso", documento_id=reso_id, verbo=verbo,
+        reso, documento=SORGENTE_RESO_VENDITA, documento_id=reso_id, verbo=verbo,
         function_name=f"{_FN}.{op}",
     )
     return reso

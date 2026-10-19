@@ -42,10 +42,26 @@
 # residuo). ⚠️ Perche' l'etichetta sia quella del DB anche sui COMPONENTI, le
 # letture `load_componente_with_scope` portano `numero`: senza, «DDT #131» su
 # un DDT emesso — che il numero ce l'ha sempre — e nessun errore a dirlo.
+# ⭐ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a): il
+# chiamante nomina il documento col codice di `config.sorgenti` (`SORGENTE_*`),
+# che e' il `TG_ARGV[0]` del trigger e quindi il valore di `documento` nel
+# `context`. Prima passava la PAROLA dell'etichetta («Ordine») e il contesto
+# ne era il maiuscolo: dopo il 2a il DB scrive `ORDINE_VENDITA` e il Python
+# `ORDINE`, due lingue nel diario per lo stesso rifiuto. Codice e parola
+# sono due cose: la parola sta in `PAROLA_ETICHETTA`, una sede sola (prima
+# era un letterale in ciascuno dei 17 chiamanti). Il preventivo porta anche
+# la revisione, come l'etichetta del DB («Preventivo 2026/00012 rev. 1»).
 
 from collections.abc import Mapping
 from typing import Any, Literal
 
+from apps.config.sorgenti import (
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+    SORGENTE_RESO_VENDITA,
+)
 from apps.core.services.error_manager import ErrorManager
 
 # Lo stato in cui le righe si toccano. E' il default del BB a DB
@@ -67,6 +83,23 @@ OPERAZIONE_PER_VERBO: dict[str, str] = {
 
 CODICE = "E_RIGA_DOC_NON_BOZZA"
 
+# I documenti le cui righe passano da questo guard, coi codici di
+# `config.sorgenti`. ⭐ `Literal` perche' le costanti `SORGENTE_*` sono `Final`:
+# mypy rifiuta un codice fuori elenco (o un codice corto) gia' al chiamante.
+DocumentoRighe = Literal[
+    "DDT_VENDITA", "ORDINE_VENDITA", "PREVENTIVO", "CONTRATTO", "RESO_VENDITA",
+]
+
+# La parola con cui `script.fn_get_stato_testata_documento` apre l'etichetta.
+# Le chiavi sono quelle di `DocumentoRighe` (presidio in `test_righe_bozza_guard`).
+PAROLA_ETICHETTA: dict[str, str] = {
+    SORGENTE_DDT_VENDITA: "DDT",
+    SORGENTE_ORDINE_VENDITA: "Ordine",
+    SORGENTE_PREVENTIVO: "Preventivo",
+    SORGENTE_CONTRATTO: "Contratto",
+    SORGENTE_RESO_VENDITA: "Reso",
+}
+
 # Il template di `config.messaggi_errore` per `CODICE` (lingua `it`), com'e':
 # etichetta, stato, verbo. Presidiato sul DB vero dal test e2e.
 FRASE_CATALOGO = (
@@ -76,30 +109,37 @@ FRASE_CATALOGO = (
 
 
 # Scopo: L'etichetta del documento come la compone il DB: «DDT 2026/00012»,
-#        oppure «DDT #131» quando `numero` e' NULL (bozza mai numerata).
+#        oppure «DDT #131» quando `numero` e' NULL (bozza mai numerata); il
+#        preventivo con la revisione («Preventivo 2026/00012 rev. 1»), che il
+#        DB aggiunge perche' le revisioni condividono il numero.
+#        ⚠️ Una lettura del preventivo senza `rev` e' un lettore rotto: KeyError.
 def _etichetta(documento: str, testata: Mapping[str, Any], documento_id: int) -> str:
     numero = testata.get("numero")
-    return f"{documento} {numero if numero else f'#{int(documento_id)}'}"
+    etichetta = f"{PAROLA_ETICHETTA[documento]} {numero if numero else f'#{int(documento_id)}'}"
+    if documento == SORGENTE_PREVENTIVO:
+        etichetta += f" rev. {testata['rev']}"
+    return etichetta
 
 
 # Scopo: Rifiuta con `E_RIGA_DOC_NON_BOZZA` (409, banner) se la testata non e'
-#        in bozza. `documento` e' la parola dell'etichetta («DDT», «Ordine»,
-#        «Preventivo»), `verbo` uno dei tre di `OPERAZIONE_PER_VERBO`,
-#        `testata` una lettura che porta `stato_codice_interno` e `numero`.
+#        in bozza. `documento` e' il codice di `config.sorgenti` (`SORGENTE_*`,
+#        uno di `DocumentoRighe`), `verbo` uno dei tre di `OPERAZIONE_PER_VERBO`,
+#        `testata` una lettura che porta `stato_codice_interno` e `numero`
+#        (per il preventivo anche `rev`).
 # Perimetro e risultato atteso: nessun ritorno; solleva `ServiceError` col
 #        codice del DB, la frase a catalogo composta coi tre valori e un
-#        `context` con le chiavi E i valori del trigger (documento maiuscolo,
-#        testata_id, stato, operazione SQL) — senza `field`: su un conflitto di
-#        stato non c'e' un input da accendere.
-#        ⚠️ Un verbo fuori catalogo o una testata senza `stato_codice_interno`
-#        sono errori del CHIAMANTE (un lettore che non porta lo stato), non
-#        della richiesta: escono come eccezione Python (500 dal middleware),
-#        non come un 409 con un buco nella frase. Un `assert` non basterebbe:
-#        sparisce con `-O`.
+#        `context` con le chiavi E i valori del trigger (documento col codice
+#        della sorgente, testata_id, stato, operazione SQL) — senza `field`:
+#        su un conflitto di stato non c'e' un input da accendere.
+#        ⚠️ Un verbo o un documento fuori catalogo, o una testata senza
+#        `stato_codice_interno` (o senza `rev` sul preventivo) sono errori del
+#        CHIAMANTE (un lettore che non porta lo stato), non della richiesta:
+#        escono come eccezione Python (500 dal middleware), non come un 409
+#        con un buco nella frase. Un `assert` non basterebbe: sparisce con `-O`.
 def richiedi_righe_in_bozza(
     testata: Mapping[str, Any],
     *,
-    documento: str,
+    documento: DocumentoRighe,
     documento_id: int,
     verbo: Verbo,
     function_name: str,
@@ -108,14 +148,19 @@ def richiedi_righe_in_bozza(
         operazione = OPERAZIONE_PER_VERBO[verbo]
     except KeyError:
         raise ValueError(f"verbo fuori catalogo: {verbo!r}") from None
+    if documento not in PAROLA_ETICHETTA:
+        raise ValueError(f"documento fuori catalogo: {documento!r}")
     stato = str(testata["stato_codice_interno"])
-    ErrorManager.require(
-        stato == STATO_BOZZA,
+    if stato == STATO_BOZZA:
+        return
+    # L'etichetta si compone solo sul ramo del rifiuto: in bozza non serve, e
+    # una lettura leggera (che in bozza non porta `rev`) non deve sollevare.
+    ErrorManager.raise_error(
         code=CODICE,
         message=FRASE_CATALOGO % (_etichetta(documento, testata, documento_id), stato, verbo),
         detail=f"stato={stato}",
         context={
-            "documento": documento.upper(),
+            "documento": documento,
             "testata_id": int(documento_id),
             "stato": stato,
             "operazione": operazione,

@@ -59,7 +59,9 @@ dichiarato e ignorato sarebbe la stessa promessa falsa.
 - Header sicurezza: `Authorization: Bearer <access_token>`
 - Body (JSON):
   - `articolo_id` (uuid) — obbligatorio, `catalogo.articoli.id`
-  - `documento_tipo` (string) — obbligatorio, whitelist: `PREVENTIVO` | `ORDINE` | `DDT`
+  - `documento_tipo` (string) — obbligatorio, whitelist: `PREVENTIVO` | `ORDINE_VENDITA` | `DDT_VENDITA`
+    (i codici di `config.sorgenti`; dal 2026-10-19 `ORDINE` e `DDT` sono un 400,
+    brief-db-grammatica-unica-documenti lotto 2a)
   - `documento_id` (int) — obbligatorio, id del documento su cui si scrive la riga
 
 ⚠️ `documento_tipo` è una **whitelist**, non un suggerimento: un tipo fuori

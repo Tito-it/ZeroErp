@@ -29,6 +29,7 @@ from django.db import DatabaseError, transaction
 
 from apps.config.sorgenti import (
     SORGENTE_ATTIVITA_CONSUMI,
+    SORGENTE_COMMESSA,
     SORGENTE_CONTRATTO,
     SORGENTE_DDT_VENDITA,
     SORGENTE_ORDINE_VENDITA,
@@ -52,7 +53,6 @@ from apps.vendite.db.commesse_repository import (
     CommesseRepository,
 )
 from apps.vendite.services._annullo_con_legami import (
-    DOCUMENTO_COMMESSA,
     STATO_ANNULLATA,
     legami_del_documento,
     legami_confermati as dichiarazione_legami,
@@ -718,7 +718,7 @@ def get_legami(commessa_id: int) -> dict[str, Any]:
             function_name=function_name,
             log_to_db=True,
         )
-    return legami_del_documento(DOCUMENTO_COMMESSA, commessa_id)
+    return legami_del_documento(SORGENTE_COMMESSA, commessa_id)
 
 
 # Scopo: Helper — valida una lista opzionale di id dal payload (righe_ids,

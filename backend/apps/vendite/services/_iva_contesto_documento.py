@@ -30,6 +30,11 @@ from datetime import date
 from collections.abc import Mapping
 from typing import Any, Callable
 
+from apps.config.sorgenti import (
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 
@@ -41,37 +46,50 @@ __all__ = [
     "normalizza_iva_id",
 ]
 
+# Scopo: la testata del preventivo. I tre loader hanno import LOCALI per non
+#        creare cicli fra i service di dominio e questo modulo (che loro
+#        importano).
+def _carica_preventivo(documento_id: int) -> Mapping[str, Any] | None:
+    from apps.vendite.db.preventivi_repository import PreventiviRepository
+
+    return PreventiviRepository().get_preventivo(documento_id)
+
+
+# Scopo: la testata dell'ordine (stesso perimetro di `_carica_preventivo`).
+def _carica_ordine(documento_id: int) -> Mapping[str, Any] | None:
+    from apps.vendite.db.ordini_repository import OrdiniRepository
+
+    return OrdiniRepository().get_ordine(documento_id)
+
+
+# Scopo: la testata del DDT (stesso perimetro di `_carica_preventivo`).
+def _carica_ddt(documento_id: int) -> Mapping[str, Any] | None:
+    from apps.vendite.db.ddt_repository import DdtRepository
+
+    return DdtRepository().get_ddt(documento_id)
+
+
 # ⭐ Whitelist a dizionario e non una catena di `if`: aggiungere un dominio e'
 #    una voce, ed e' lo stesso stampo di `_SORGENTE_CONFIG` in
 #    `approvazioni_prezzo_service`. ⛔ E' anche il cancello: un `tipo` fuori
 #    elenco non arriva mai a comporre un nome di tabella.
-_LOADER: dict[str, Callable[[int], Mapping[str, Any] | None]] = {}
+# ⭐ I tipi sono i codici di `config.sorgenti` (dal 2026-10-19,
+#    brief-db-grammatica-unica-documenti lotto 2a: una grammatica sola per i
+#    tipi di documento).
+_LOADER: dict[str, Callable[[int], Mapping[str, Any] | None]] = {
+    SORGENTE_PREVENTIVO: _carica_preventivo,
+    SORGENTE_ORDINE_VENDITA: _carica_ordine,
+    SORGENTE_DDT_VENDITA: _carica_ddt,
+}
 
 
-# Scopo: registra i tre loader con import LOCALI, per non creare cicli fra i
-#        service di dominio e questo modulo (che loro importano).
-def _registry() -> dict[str, Callable[[int], Mapping[str, Any] | None]]:
-    if not _LOADER:
-        from apps.vendite.db.ddt_repository import DdtRepository
-        from apps.vendite.db.ordini_repository import OrdiniRepository
-        from apps.vendite.db.preventivi_repository import PreventiviRepository
-
-        _LOADER.update(
-            {
-                "PREVENTIVO": lambda i: PreventiviRepository().get_preventivo(i),
-                "ORDINE": lambda i: OrdiniRepository().get_ordine(i),
-                "DDT": lambda i: DdtRepository().get_ddt(i),
-            }
-        )
-    return _LOADER
-
-
-# ⛔ UNA SORGENTE SOLA, e prima erano due. L'elenco dei tipi ammessi era scritto
-#    a mano accanto al registry dei loader: aggiungerne uno solo di la' avrebbe
-#    fatto passare il guard e poi sollevato un `KeyError` grezzo dentro la
-#    lettura — un errore tecnico al posto di un rifiuto parlante, e per un
-#    dominio che il codice dichiarava di conoscere.
-TIPI_DOCUMENTO_AMMESSI: tuple[str, ...] = ("PREVENTIVO", "ORDINE", "DDT")
+# ⛔ UNA SORGENTE SOLA: i tipi ammessi SONO le chiavi del registro. Erano due
+#    elenchi scritti a mano, e aggiungerne uno solo di la' avrebbe fatto
+#    passare il guard e poi sollevato un `KeyError` grezzo dentro la lettura —
+#    un errore tecnico al posto di un rifiuto parlante. Sono le `choices` di
+#    `views_iva.py`, quindi il contratto dell'API: `ORDINE_VENDITA` e
+#    `DDT_VENDITA`, non piu' i corti.
+TIPI_DOCUMENTO_AMMESSI: tuple[str, ...] = tuple(_LOADER)
 
 
 # Scopo: Carica la testata del documento indicato, validando il tipo contro la
@@ -86,12 +104,11 @@ def carica_testata(
     error_code: str,
     function_name: str,
 ) -> dict[str, Any]:
-    ammessi = _registry()
     ErrorManager.require(
-        documento_tipo in ammessi,
+        documento_tipo in _LOADER,
         code=error_code,
         message="Tipo documento non ammesso per la risoluzione IVA.",
-        detail=f"ammessi: {', '.join(sorted(ammessi))}",
+        detail=f"ammessi: {', '.join(sorted(_LOADER))}",
         context={"field": "documento_tipo"},
         function_name=function_name,
     )
@@ -102,7 +119,7 @@ def carica_testata(
         context={"field": "documento_id"},
         function_name=function_name,
     )
-    testata = ammessi[documento_tipo](documento_id)
+    testata = _LOADER[documento_tipo](documento_id)
     ErrorManager.require(
         testata is not None,
         code=error_code,

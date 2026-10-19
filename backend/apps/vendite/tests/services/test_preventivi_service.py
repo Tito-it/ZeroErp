@@ -973,7 +973,7 @@ class TestPreventiviService(unittest.TestCase):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
         self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "EMESSO", "uid": "abc",
+            "id": 1, "stato_codice_interno": "EMESSO", "uid": "abc", "rev": 0,
         }
         with self.assertRaises(ServiceError) as ctx:
             gestisci_riga(1, {"articolo_id": "uuid-art-1"})
@@ -1581,6 +1581,7 @@ class TestPreventiviService(unittest.TestCase):
             "riga_preventivo_id": 10,
             "preventivo_id": 1,
             "stato_codice_interno": "EMESSO",  # non modificabile
+            "rev": 0,  # l'etichetta del rifiuto porta la revisione
         }
         with self.assertRaises(ServiceError) as ctx:
             update_componente(1, 10, 50, {"prezzo_unitario": "100"})

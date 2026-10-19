@@ -32,6 +32,7 @@ import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
+import { SORGENTE_CODES } from '../../../documenti/constants'
 import { DATE_FORMAT, MANAGE_ICONS } from '../../../core/constants'
 import { parseIsoDate, toDateString } from '../../../core/utils/date'
 
@@ -69,7 +70,7 @@ const {
   origineLabel: ivaOrigineLabel,
   risolviPer: risolviIvaPer,
   reset: resetIva,
-} = useIvaRisolta({ documentoTipo: 'PREVENTIVO', documentoId: () => props.preventivoId })
+} = useIvaRisolta({ documentoTipo: SORGENTE_CODES.PREVENTIVO, documentoId: () => props.preventivoId })
 
 const emit = defineEmits(['saved', 'cancel', 'componenti-changed'])
 

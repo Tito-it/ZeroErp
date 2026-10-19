@@ -1006,9 +1006,9 @@ class DdtRigheEvaseTests(SimpleTestCase):
         # qui la testata prima, poi la delega col codice del documento.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "EMESSO"
-        bb.return_value = {"documento": "DDT", "id": 7, "legami": 2, "righe": []}
+        bb.return_value = {"documento": "DDT_VENDITA", "id": 7, "legami": 2, "righe": []}
         self.assertEqual(ddt_service.get_legami(7)["legami"], 2)
-        bb.assert_called_once_with("DDT", 7)
+        bb.assert_called_once_with("DDT_VENDITA", 7)
 
     @patch(f"{_SVC}.legami_del_documento")
     @patch(_REPO)

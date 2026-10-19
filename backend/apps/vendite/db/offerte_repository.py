@@ -352,7 +352,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     _indirizzi_table = "vendite.offerte_commerciali_indirizzi"
     _indirizzi_fk_documento = "offerta_id"
     _indirizzi_ambito = "OFFERTE"
-    _indirizzi_documento = "OFFERTA"
+    _indirizzi_documento = SORGENTE_OFFERTA_COMMERCIALE
 
     # =================================================================
     # Lista e dettaglio testata

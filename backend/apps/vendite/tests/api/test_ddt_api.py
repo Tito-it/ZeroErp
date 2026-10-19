@@ -177,7 +177,7 @@ class TestDdtApi(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.get_legami")
     def test_legami_ok(self, mock_leg, _auth) -> None:
-        mock_leg.return_value = {"documento": "DDT", "id": 7, "legami": 1, "righe": []}
+        mock_leg.return_value = {"documento": "DDT_VENDITA", "id": 7, "legami": 1, "righe": []}
         resp = self.client.get(f"{_BASE}7/legami/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["legami"], 1)

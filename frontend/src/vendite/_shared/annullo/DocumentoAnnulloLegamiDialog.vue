@@ -50,7 +50,8 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useDocumentoDrawer } from '../../../core/composables/useDocumentoDrawer'
 import { formatNumber } from '../../../core/utils/format'
 import { labelOrCode } from '../../../core/utils/i18nLabel'
-import { DOCUMENTO_LEGAMI, NATURA_LEGAME, ORIGINE_LEGAME } from '../../constants'
+import { SORGENTE_CODES } from '../../../documenti/constants'
+import { NATURA_LEGAME, ORIGINE_LEGAME } from '../../constants'
 import { lineageDocumentoLabel } from '../lineage/lineageLabels'
 import { getLegami } from './legamiApi'
 
@@ -97,7 +98,7 @@ const righe = computed(() => dati.value?.righe ?? [])
 
 // La forma della commessa: la decide il documento della risposta, non la
 // forma delle righe (riga_nr nullo vale anche per i legami di testata).
-const daCommessa = computed(() => dati.value?.documento === DOCUMENTO_LEGAMI.COMMESSA)
+const daCommessa = computed(() => dati.value?.documento === SORGENTE_CODES.COMMESSA)
 
 // Scopo: le voci della finestra. Documento qualunque: una voce per legame,
 //        com'e' sempre stato. Commessa: le righe che si riaprono contate per

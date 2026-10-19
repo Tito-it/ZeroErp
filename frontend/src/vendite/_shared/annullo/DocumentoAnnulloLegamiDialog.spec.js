@@ -49,7 +49,9 @@ const CorniceFinta = defineComponent({
   template: '<div><slot /></div>',
 })
 
-function legami(righe, documento = 'ORDINE') {
+// `documento` col codice di `config.sorgenti` (lotto 2a della grammatica unica,
+// 2026-10-19); l'`origine` dei legami resta coi codici corti fino al 2b.
+function legami(righe, documento = 'ORDINE_VENDITA') {
   return Promise.resolve({ data: { data: { documento, id: 7, legami: righe.length, righe } } })
 }
 
