@@ -5714,6 +5714,8 @@
       "col_sorgente": "Source",
       "col_emittente": "Issuer",
       "col_is_default": "Default",
+      "col_standard": "Standard",
+      "col_stato_scarto": "Alignment with the standard",
       "field_codice": "Code",
       "field_codice_interno": "Internal code",
       "field_descrizione": "Description",

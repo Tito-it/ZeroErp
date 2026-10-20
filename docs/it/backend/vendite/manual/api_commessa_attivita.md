@@ -31,7 +31,7 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
   - `tipo_movimento` (string) — `NORMALE` | `RETTIFICA` | `ONERE` (spazi/maiuscole tollerati); assente o vuoto = tutti
   - `limit` (int) — righe per pagina (default 25 `DEFAULT_LIMIT`, range 1-200)
   - `offset` (int) — offset paginazione (default 0)
-  - `order_by` (string) — whitelist chiusa `ATTIVITA_SORT_COLUMNS`: `id`, `data_attivita`, `competenza_mese`, `segment_key`, `quantita`, `prezzo_snapshot`, `stato_approvazione`, `stato_emissione`, `fatturata_il`, `fattura_numero`, `tipo_movimento`, `articolo_codice`, `articolo_descrizione`, `sorgente_codice`, `sorgente_documento_numero`, `gruppo_key`. Assente = ordine storico per `id`
+  - `order_by` (string) — whitelist chiusa `ATTIVITA_SORT_COLUMNS`: `id`, `data_attivita`, `competenza_mese`, `segment_key`, `quantita`, `prezzo_snapshot`, `stato_approvazione`, `stato_emissione`, `fatturata_il`, `fattura_numero`, `tipo_movimento`, `articolo_codice`, `articolo_descrizione`, `sorgente_etichetta`, `sorgente_documento_numero`, `gruppo_key`. Assente = ordine storico per `id`
   - `order_dir` (string) — `asc` | `desc` (default `asc` per qualunque colonna, date comprese: il service passa `asc` alla fn)
 
 ## Output
@@ -66,7 +66,7 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
         "stato_approvazione": "APPROVATA",
         "stato_emissione": "NON_EMESSA",
         "sorgente_tipo_id": 1,
-        "sorgente_codice": "PREVENTIVO",
+        "sorgente_codice_interno": "PREVENTIVO",
         "meta": {},
         "data_update": "2026-02-26T10:00:00+00:00",
         "fatturata": false,
@@ -101,8 +101,9 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 - `limit` validato nel service: deve essere compreso tra 1 e 200.
 - `competenza_mese` parsata via `optional_iso_date` e passata come `date` al repository.
 - La funzione DB normalizza `competenza_mese` al primo del mese (`date_trunc`).
-- JOIN su `config.sorgenti` per risolvere `sorgente_codice` (evita N+1 lato client).
-- `sorgente_apribile` (dal 2026-10-20, al posto di `sorgente_area`, il plurale ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-in-progress/brief-db-grammatica-unica-documenti.md)): vero quando il documento d'origine ha una sua pagina (`config.sorgenti.apribile`), fattura e reso compresi; `null` sulle righe senza sorgente. ⚠️ `sorgente_codice` oggi è `config.sorgenti.codice` (il nome modificabile): diventa `sorgente_codice_interno` col §13.6 del brief, ed è da quello che il frontend aprirà il documento.
+- JOIN su `config.sorgenti` per risolvere `sorgente_codice_interno` e `sorgente_etichetta` (evita N+1 lato client).
+- `sorgente_apribile` (dal 2026-10-20, al posto di `sorgente_area`, il plurale ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-in-progress/brief-db-grammatica-unica-documenti.md)): vero quando il documento d'origine ha una sua pagina (`config.sorgenti.apribile`), fattura e reso compresi; `null` sulle righe senza sorgente.
+- `sorgente_codice_interno` e `sorgente_etichetta` (dal 2026-10-21, changeSet `20261021-20`, §13.6 del brief): il tipo del documento d'origine col codice **immutabile** della sorgente, da cui il frontend apre il documento, e il suo nome a video («Ordine»), che la colonna «Tipo origine» mostra e su cui si ordina. Prima c'era `sorgente_codice`, che era `config.sorgenti.codice`, il nome modificabile.
 - `count` è il **totale filtrato** (stessi filtri della lista, senza `LIMIT/OFFSET`), non le righe della pagina.
 - Ordinamento server-side (dal 2026-08-03, 7° lotto liste configurabili): `order_by`/`order_dir` sono validati nel service contro `ATTIVITA_SORT_COLUMNS` (specchio della whitelist chiusa dentro la fn DB, changeset `20260802-26`) e passati a `p_order_by`/`p_order_dir`. Ordine e paginazione vivono **dentro** la funzione: ordinare a valle ordinerebbe la sola pagina estratta. `order_by` assente = ordine storico `ca.id`; tiebreak `ca.id` sempre presente. La fn solleva `E_PARAMETRO_INVALIDO` su nome fuori whitelist (difesa in profondità, il service intercetta prima).
 - Funzione DB STABLE (read-only).
@@ -111,7 +112,7 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 
 - `vendite.fn_list_commessa_attivita(p_commessa_id, p_stato_emissione, p_stato_approvazione, p_competenza_mese, p_limit, p_offset, p_order_by, p_order_dir, p_tipo_movimento)` — funzione principale (colonne lette: `CommesseRepository._ATTIVITA_COLS`)
 - `vendite.commesse_attivita` — tabella dati
-- `config.sorgenti` — JOIN per `sorgente_codice`
+- `config.sorgenti` — JOIN per `sorgente_codice_interno`, `sorgente_etichetta`, `sorgente_apribile`
 
 ---
 

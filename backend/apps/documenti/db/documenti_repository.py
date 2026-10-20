@@ -50,6 +50,9 @@ TEMPLATES_ORDER_COLUMNS: dict[str, str] = {
     "tipo_documento_output_descrizione": "tipo_documento_output_descrizione",
     "sorgente_tipo_descrizione": "sorgente_tipo_descrizione",
     "emittente_ragione_sociale": "emittente_ragione_sociale",
+    # Ordinabile a catalogo dal 2026-10-21 (lista 24, colonna «Standard», brief-
+    # db-modelli-documento-standard): senza la voce qui la freccia rispondeva 400.
+    "standard": "t.standard",
     "data_insert": "t.data_insert",
     "data_update": "t.data_update",
 }
@@ -1046,42 +1049,52 @@ class DocumentiRepository:
     # Resolve template + versione per render (Tranche I)
     # =================================================================
 
-    # Scopo: Il modello che stampa un documento della sorgente per l'emittente
-    #        del documento, chiesto al DB: `documenti.fn_risolvi_template_applicabile`
-    #        (brief-db-modelli-documento-standard §4.1 Q-2, strada B). Se
-    #        l'emittente ha modelli attivi per (tipo, sorgente) vale il suo
-    #        predefinito; se non ne ha, il predefinito standard. Ritorna
-    #        `{template_documento_id, livello, template_versione_id}` con
-    #        livello `EMITTENTE` | `STANDARD` e la versione con cui il modello
-    #        stampa oggi; ogni mancata risoluzione la solleva la funzione, con
-    #        il suo codice (SENZA_PREDEFINITO, NON_RISOLTO, AMBIGUO).
-    # ⭐ La versione la dice il DB (P-2, `20261020-27`): «puo' stampare» e'
-    #    scritto una volta sola, nella funzione. Ricercarla qui con filtri
-    #    nostri ne farebbe una seconda copia, e il giorno che divergessero la
-    #    funzione sceglierebbe un modello che poi non si stampa.
+    # Scopo: Il modello e la versione con cui si stampa un documento della
+    #        sorgente per l'emittente del documento, chiesti alla porta unica
+    #        del DB: `documenti.fn_risolvi_template_applicabile`
+    #        (brief-db-modelli-documento-standard §10.3 K-2). Senza
+    #        `template_documento_id` il DB lo SCEGLIE coi due livelli (strada B,
+    #        §4.1 Q-2): il predefinito dell'emittente se ha modelli suoi che
+    #        possono stampare, se no il predefinito standard. Con
+    #        `template_documento_id` il DB lo VERIFICA: adatto al documento
+    #        (sorgente, tipo, emittente oppure standard) e stampabile oggi.
+    #        Ritorna `{template_documento_id, livello, template_versione_id}`,
+    #        livello `EMITTENTE` | `STANDARD` | `INDICATO`; ogni rifiuto lo
+    #        solleva la funzione, col suo codice (SENZA_PREDEFINITO,
+    #        NON_RISOLTO, AMBIGUO, NON_COERENTE, NON_STAMPABILE).
+    # ⭐ Modello E versione: «puo' stampare» e' scritto una volta sola, nella
+    #    vista `vw_template_versioni_stampabili` che la funzione legge.
+    #    Ricercare la versione qui con filtri nostri ne farebbe una seconda
+    #    copia, ed e' successo: fino al 2026-10-21 il modello indicato passava
+    #    da `get_versione_pubblicata_attiva`, che non guardava se il modello
+    #    era attivo (un modello spento indicato a mano stampava ancora) e
+    #    usava il giorno del BE invece di `script.fn_data_operativa()`.
     # ⛔ La regola non si ricopia qui: fino al 2026-10-19 il BE la scriveva da
     #    se' (`ORDER BY t.id LIMIT 1`, cioe' l'id piu' basso quando il tipo
     #    mancava) e con una seconda query (`count_templates_attivi_no_default`)
     #    ne ricopiava i filtri per scegliere il messaggio.
     #    Il perimetro non si rifa': l'emittente e' quello del documento, che il
-    #    chiamante ha gia' verificato nella whitelist.
+    #    chiamante ha gia' verificato nella whitelist, e il modello indicato lo
+    #    legge il chiamante dentro lo scope prima di chiederlo qui.
     def risolvi_template_applicabile(
         self,
         *,
         sorgente_tipo_id: int,
         emittente_fiscale_id: int,
         tipo_documento_output_id: int | None,
+        template_documento_id: int | None = None,
     ) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT template_documento_id, livello, template_versione_id
-                  FROM documenti.fn_risolvi_template_applicabile(%s, %s, %s)
+                  FROM documenti.fn_risolvi_template_applicabile(%s, %s, %s, %s)
                 """,
                 [
                     int(sorgente_tipo_id),
                     int(emittente_fiscale_id),
                     int(tipo_documento_output_id) if tipo_documento_output_id is not None else None,
+                    int(template_documento_id) if template_documento_id is not None else None,
                 ],
             )
             results = rows_to_list(cursor)
@@ -1091,31 +1104,6 @@ class DocumentiRepository:
         if not results:
             raise RuntimeError("fn_risolvi_template_applicabile senza riga e senza errore")
         return results[0]
-
-    # Scopo: Carica la versione PUBBLICATA attiva con `validita @> %s`
-    #        (l'oggi dell'azienda passato dal service per testabilita'). Ritorna
-    #        la versione piu' recente (`versione DESC LIMIT 1`); se nessuna
-    #        riga matcha, ritorna None (404 lato service).
-    def get_versione_pubblicata_attiva(
-        self,
-        template_documento_id: int,
-        *,
-        today: Any,
-    ) -> dict[str, Any] | None:
-        sql = f"""
-            SELECT {_VERSIONI_PROJECTION_DETAIL}
-            {_VERSIONI_FROM}
-            WHERE v.template_documento_id = %s
-              AND v.stato = 'PUBBLICATA'
-              AND v.attivo = true
-              AND v.validita @> %s::date
-            ORDER BY v.versione DESC, v.id DESC
-            LIMIT 1
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [int(template_documento_id), today])
-            results = rows_to_list(cursor)
-        return results[0] if results else None
 
     # Scopo: Calcola il prossimo progressivo per (sorgente_tipo, sorgente_uid,
     #        sorgente_riga). `NULLS NOT DISTINCT` sull'unique vincolo DDL
@@ -1430,9 +1418,10 @@ class DocumentiRepository:
     # Scopo: Versione template per id SENZA filtri di stato ne' di template.
     #        E' la lettura della ristampa fedele: la versione pinnata sul
     #        documento va caricata **anche se OBSOLETA o non piu' attiva** —
-    #        e' esattamente quella con cui il documento nacque. Le altre
-    #        letture (`get_versione`, `get_versione_pubblicata_attiva`)
-    #        filtrano di proposito e non servono qui.
+    #        e' esattamente quella con cui il documento nacque. La stampa
+    #        nuova invece legge la versione che le dice la porta unica
+    #        (`risolvi_template_applicabile`), e `get_versione` la lega al
+    #        suo modello: tutte e due non servono qui.
     #        Nessun rischio di leak: l'id arriva da una riga di
     #        `documenti_generati` gia' passata per lo scope emittente.
     def get_versione_by_id(self, versione_id: int) -> dict[str, Any] | None:

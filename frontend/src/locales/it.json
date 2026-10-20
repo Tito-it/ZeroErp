@@ -5714,6 +5714,8 @@
       "col_sorgente": "Sorgente",
       "col_emittente": "Emittente fiscale",
       "col_is_default": "Default",
+      "col_standard": "Standard",
+      "col_stato_scarto": "Allineamento allo standard",
       "field_codice": "Codice",
       "field_codice_interno": "Codice interno",
       "field_descrizione": "Descrizione",
