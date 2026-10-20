@@ -33,7 +33,6 @@ db/pgtap/vendite/test-commesse-emittente-invariante-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-commesse-schema-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-commesse-stati-commessa-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-commesse-transizioni-stati-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-contratti-overlap-draft-escluso-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-utilities-guard-tipo-classe-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-data-documento-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-diagnostica-gruppi-fatturabili-v1.sql	ERRORE_FIXTURE
