@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA COERENZA DEL DOCUMENTO GENERATO LEGGE IL BB
+#   documenti.trgfn_documenti_generati_check_coerenza (rev di 20261020-08; corpo vivo dalla doc dbzero)
+#   Brief: brief-db-modelli-documento-standard §10.3 K-4
+#
+# Le regole 2-4 (tipo, sorgente, emittente oppure standard) sono la stessa domanda
+#   che fn_risolvi_template_applicabile fa sul modello indicato prima del render
+#   (20261021-08). La risposta sta ora in documenti.fn_template_motivo_non_coerente
+#   (20261021-05), e il trigger la legge invece di ripeterla.
+#
+# Cosa resta qui: la regola 1 (la versione e' di quel modello), che e' del
+#   documento generato e non del modello.
+#
+# Cosa cambia per chi la incontra: niente nel codice e nel messaggio
+#   (E_DOCUMENTI_GENERATO_COERENZA). Il contesto delle regole 2-4 porta il
+#   motivo per nome (SORGENTE, TIPO, EMITTENTE) e i tre valori del documento, al
+#   posto delle tre coppie atteso/fornito: nessun lettore le usava (censito su BE e
+#   pgTAP, 2026-10-21). Se piu' regole falliscono insieme, il motivo e' il primo
+#   nell'ordine del BB (prima sorgente, poi tipo, poi emittente); prima era il
+#   tipo.
+#
+# Firma, LANGUAGE plpgsql, nessun SET/COST: CREATE OR REPLACE. Il trigger non si
+#   rimonta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261021-06-update-trgfn-documenti-generati-check-coerenza-su-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261021-06-update-trgfn-documenti-generati-check-coerenza-su-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.trgfn_documenti_generati_check_coerenza: le regole 2-4 leggono
+        documenti.fn_template_motivo_non_coerente invece di ripeterla; la regola 1 resta. Brief:
+        brief-db-modelli-documento-standard §10.3 K-4.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'documenti'
+                 AND p.proname = 'fn_template_motivo_non_coerente';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Valida la coerenza referenziale del documento generato.
+              --
+              -- Regole:
+              --   1. template_versione_id.template_documento_id ==
+              --      template_documento_id
+              --   2-4. il modello va bene per il documento: stessa sorgente,
+              --      stesso tipo di output, e lo stesso emittente OPPURE il
+              --      modello e' standard. La regola e' del BB
+              --      documenti.fn_template_motivo_non_coerente (rev
+              --      20261021-06, brief-db-modelli-documento-standard §10.3
+              --      K-4): la stessa domanda che la risoluzione fa sul modello
+              --      indicato prima del render.
+              --
+              -- Se una di queste fallisce il record nasce inconsistente,
+              -- rendendo inaffidabile l'audit tramite context_json snapshot.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_GENERATO_COERENZA
+              DECLARE
+                v_tv_template_id documenti.template_documenti_versioni.template_documento_id%TYPE;
+                -- tipo esplicito: il motivo del BB, non una colonna
+                v_motivo         text;
+              BEGIN
+                SELECT v.template_documento_id
+                  INTO v_tv_template_id
+                  FROM documenti.template_documenti_versioni v
+                 WHERE v.id = NEW.template_versione_id;
+
+                IF v_tv_template_id IS DISTINCT FROM NEW.template_documento_id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_versione_id', NEW.template_versione_id,
+                      'template_documento_id_atteso', v_tv_template_id,
+                      'template_documento_id_fornito', NEW.template_documento_id
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                v_motivo := documenti.fn_template_motivo_non_coerente(
+                    NEW.template_documento_id, NEW.sorgente_tipo_id,
+                    NEW.emittente_fiscale_id, NEW.tipo_documento_output_id);
+
+                IF v_motivo IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_check_coerenza',
+                    'E_DOCUMENTI_GENERATO_COERENZA',
+                    jsonb_build_object(
+                      'template_documento_id', NEW.template_documento_id,
+                      'motivo', v_motivo,
+                      'sorgente_tipo_id', NEW.sorgente_tipo_id,
+                      'tipo_documento_output_id', NEW.tipo_documento_output_id,
+                      'emittente_fiscale_id', NEW.emittente_fiscale_id
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_check_coerenza()
+              IS 'Guard A6: valida coerenza referenziale tra template_versione_id, template_documento_id, tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id. Regola 1 (la versione e'' di quel modello) qui; regole 2-4 (stessa sorgente, stesso tipo, stesso emittente oppure modello standard) dal BB documenti.fn_template_motivo_non_coerente, la stessa domanda che la risoluzione fa sul modello indicato prima del render (rev 2026-10-21, 20261021-06, brief-db-modelli-documento-standard §10.3 K-4). Il contesto porta il motivo per nome. Storia: regola 4 «oppure standard» dal 20261020-08 (§4.1 Q-3).';

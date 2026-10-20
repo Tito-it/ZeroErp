@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `vendite`
 
 ## 📚 Tabelle (manuale)
@@ -223,6 +228,7 @@
 - [fn_ordine_riga_componenti_init](manual/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](manual/fn_ordine_riga_componenti_preview.md)
 - [fn_ordine_riga_qta_riconsegna](manual/fn_ordine_riga_qta_riconsegna.md) — (rev 2026-07-26)
+- [fn_parametri_importo_riga](manual/fn_parametri_importo_riga.md)
 - [fn_partite_merce](manual/fn_partite_merce.md) — (latest review 2026-09-21)
 - [fn_popola_fatture_rettifiche](manual/fn_popola_fatture_rettifiche.md) — (rev 2026-08-18)
 - [fn_prepare_sdi_payload](manual/fn_prepare_sdi_payload.md) — (latest review 16-02-2026)   Preparare il payload SDI di un lotto:

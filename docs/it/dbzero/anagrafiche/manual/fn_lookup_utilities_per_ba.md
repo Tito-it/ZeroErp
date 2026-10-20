@@ -43,9 +43,12 @@ con l'emittente fiscale effettivamente collegato al BA.
 La funzione applica una politica ibrida:
 
 * la matrice `config.utilities_tipi_ruolo` decide quali utility sono ammesse;
-* `anagrafiche.emittenti_fiscali_utilities` aggiunge solo parametri di override;
-* una utility ammessa ma senza override resta visibile, con parametri `NULL`
-  che il chiamante interpreta tramite default di sistema.
+* i parametri d'importo sono quelli **effettivi**, da
+  `anagrafiche.fn_parametri_importo_utility`: la riga di
+  `anagrafiche.emittenti_fiscali_utilities` se c'è, altrimenti i valori di sistema
+  dell'utility (e la policy generale dell'emittente per il metodo);
+* una utility ammessa ma senza override resta visibile, con i parametri di sistema
+  (rev 21-10-2026: prima uscivano `NULL`, e un valore di sistema non esisteva).
 
 ---
 
@@ -70,8 +73,8 @@ La funzione ritorna una tabella:
 | `is_personalizzata_per_ef` | `boolean` | `true` se esiste una riga override attiva per emittente/utility. |
 | `minimo_soglia_min` | `numeric` | Soglia minima configurata sull'override, se presente. |
 | `minimo_soglia_max` | `numeric` | Soglia massima configurata sull'override, se presente. |
-| `arrotondamento_importi_dec` | `smallint` | Numero decimali di arrotondamento configurato sull'override, se presente. |
-| `metodo_arrotondamento_importi` | `text` | Metodo di arrotondamento configurato sull'override, se presente. |
+| `arrotondamento_importi_dec` | `smallint` | Decimali di arrotondamento effettivi: dell'override, se presente, altrimenti di sistema. |
+| `metodo_arrotondamento_importi` | `text` | Metodo di arrotondamento effettivo: dell'override, poi la policy generale dell'emittente, poi di sistema. |
 
 Le righe sono ordinate per `codice`.
 
@@ -89,8 +92,8 @@ La funzione applica le seguenti regole:
 * La stessa utility deve essere ammessa anche per il ruolo `EF`.
 * Le righe di `config.utilities_tipi_ruolo` devono essere attive e valide alla
   data corrente (`valido_dal`/`valido_al`).
-* Gli override di `anagrafiche.emittenti_fiscali_utilities` sono letti con
-  `LEFT JOIN`: se non esistono, la utility resta visibile.
+* I parametri arrivano da `anagrafiche.fn_parametri_importo_utility`, una riga
+  per ogni utility che esiste: senza override la utility resta visibile.
 
 ---
 

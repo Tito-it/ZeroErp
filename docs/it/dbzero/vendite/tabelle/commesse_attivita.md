@@ -121,12 +121,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_commesse_attivita_a10_area_geografica_fatturazione_r_4e9bb4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id', 'id')` |
 | trg_commesse_attivita_a10_area_geografica_fatturazione_r_4e9bb4 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id', 'id')` |
+| trg_commesse_attivita_a10_area_geografica_fatturazione_r_4e9bb4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'area_geografica_fatturazione', 'attivo', 'area_geografica_id', 'id')` |
 | trg_commesse_attivita_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_commesse_attivita_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
-| trg_commesse_attivita_a10_causali_onere_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'causali_onere', 'attivo', 'causale_onere_id', 'id')` |
 | trg_commesse_attivita_a10_causali_onere_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'causali_onere', 'attivo', 'causale_onere_id', 'id')` |
+| trg_commesse_attivita_a10_causali_onere_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'causali_onere', 'attivo', 'causale_onere_id', 'id')` |
 | trg_commesse_attivita_a10_guard_listino_riga_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_attivita_guard_listino_riga()` |
 | trg_commesse_attivita_a10_guard_listino_riga_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_attivita_guard_listino_riga()` |
 | trg_commesse_attivita_a10_guard_prezzo_rettifica_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_commesse_attivita_guard_prezzo_rettifica()` |
@@ -139,16 +139,16 @@
 | trg_commesse_attivita_a10_listini_versioni_require_attiv_5d6a8d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
 | trg_commesse_attivita_a10_nature_doc_fiscale_require_att_626b7e | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'nature_doc_fiscale', 'attivo', 'natura_doc_id', 'id')` |
 | trg_commesse_attivita_a10_nature_doc_fiscale_require_att_626b7e | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'nature_doc_fiscale', 'attivo', 'natura_doc_id', 'id')` |
-| trg_commesse_attivita_a10_promo_articoli_require_attivo__12aecc | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'promo_articoli', 'attivo', 'promo_id', 'id')` |
 | trg_commesse_attivita_a10_promo_articoli_require_attivo__12aecc | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'promo_articoli', 'attivo', 'promo_id', 'id')` |
+| trg_commesse_attivita_a10_promo_articoli_require_attivo__12aecc | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'promo_articoli', 'attivo', 'promo_id', 'id')` |
 | trg_commesse_attivita_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_commesse_attivita_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_commesse_attivita_a10_tipi_doc_fiscale_require_attiv_89561d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_commesse_attivita_a10_tipi_doc_fiscale_require_attiv_89561d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'tipi_doc_fiscale', 'attivo', 'tipo_doc_fiscale_id', 'id')` |
 | trg_commesse_attivita_a10_unita_misura_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |
 | trg_commesse_attivita_a10_unita_misura_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_id', 'id')` |
-| trg_commesse_attivita_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_commesse_attivita_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_commesse_attivita_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_commesse_attivita_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_commesse_attivita_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_commesse_attivita_z90_proietta_stato_preventivo_ins_dlt | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_commesse_attivita_proietta_stato_preventivo()` |

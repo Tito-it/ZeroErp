@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MODELLO E' ADATTO A QUESTO DOCUMENTO? UNA DOMANDA, UNA SEDE
+#   documenti.fn_template_motivo_non_coerente (BB nuovo)
+#   Brief: brief-db-modelli-documento-standard §10.3 K-4
+#
+# Restituisce NULL se il modello va bene per il documento, altrimenti il motivo,
+#   nell'ordine in cui si controlla:
+#   * MODELLO_INESISTENTE: l'id non e' un modello;
+#   * SORGENTE: il modello e' di un'altra sorgente;
+#   * TIPO: il modello e' di un altro tipo di documento (solo se il tipo e'
+#     indicato);
+#   * EMITTENTE: il modello e' di un altro emittente, e non e' standard (lo
+#     standard vale per tutti).
+#
+# Due lettori, nello stesso giro:
+#   * documenti.trgfn_documenti_generati_check_coerenza (20261021-06), le regole
+#     2-4, alla scrittura del documento generato;
+#   * documenti.fn_risolvi_template_applicabile (20261021-08), per il modello
+#     indicato, PRIMA del render.
+#   Senza il BB la stessa regola sarebbe stata due volte nel DB. Il BE ne aveva una
+#   terza copia (DocumentGenerationService._guard_template_coerente), che si
+#   ritira dopo l'apply (§10.5).
+#
+# IS DISTINCT FROM ovunque: l'emittente del modello e' NULL sullo standard, e un
+#   confronto nudo con NULL passerebbe in silenzio. Lo standard si esclude per
+#   nome (t.standard).
+# Forma: LANGUAGE sql BEGIN ATOMIC (§5c), STABLE, SECURITY INVOKER. Il COMMENT in
+#   un secondo sql: pgjdbc esegue una BEGIN ATOMIC solo se sta da sola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261021-05-create-fn-template-motivo-non-coerente-mctit.yaml
+
+  - changeSet:
+      id: 20261021-05-create-fn-template-motivo-non-coerente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.fn_template_motivo_non_coerente: NULL se il modello va bene per il documento
+        (sorgente, tipo, emittente o standard), altrimenti il motivo. Sede unica, letta dal trigger di
+        coerenza e dalla risoluzione. Brief: brief-db-modelli-documento-standard §10.3 K-4.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: documenti
+            tableName: template_documenti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION documenti.fn_template_motivo_non_coerente(
+                  p_template_documento_id     documenti.template_documenti.id%TYPE,
+                  p_sorgente_tipo_id          documenti.template_documenti.sorgente_tipo_id%TYPE,
+                  p_emittente_fiscale_id      documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  p_tipo_documento_output_id  documenti.template_documenti.tipo_documento_output_id%TYPE DEFAULT NULL
+              )
+               RETURNS text
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT CASE
+                           WHEN t.id IS NULL THEN 'MODELLO_INESISTENTE'
+                           WHEN t.sorgente_tipo_id IS DISTINCT FROM p_sorgente_tipo_id THEN 'SORGENTE'
+                           WHEN p_tipo_documento_output_id IS NOT NULL
+                                AND t.tipo_documento_output_id IS DISTINCT FROM p_tipo_documento_output_id THEN 'TIPO'
+                           WHEN t.standard IS NOT TRUE
+                                AND t.emittente_fiscale_id IS DISTINCT FROM p_emittente_fiscale_id THEN 'EMITTENTE'
+                         END
+                    FROM (SELECT 1) base
+                    LEFT JOIN documenti.template_documenti t
+                      ON t.id = p_template_documento_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION documenti.fn_template_motivo_non_coerente(
+                  documenti.template_documenti.id%TYPE,
+                  documenti.template_documenti.sorgente_tipo_id%TYPE,
+                  documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  documenti.template_documenti.tipo_documento_output_id%TYPE) IS
+                  'Il modello va bene per il documento? (2026-10-21, brief-db-modelli-documento-standard §10.3 K-4). NULL se si; altrimenti il motivo, nell''ordine: MODELLO_INESISTENTE, SORGENTE, TIPO (solo se il tipo e'' indicato), EMITTENTE (un modello di un altro emittente che non e'' standard). Sede unica della regola: la leggono trgfn_documenti_generati_check_coerenza (regole 2-4) e fn_risolvi_template_applicabile (il modello indicato, prima del render).';

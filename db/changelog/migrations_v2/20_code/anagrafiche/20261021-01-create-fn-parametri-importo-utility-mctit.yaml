@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I PARAMETRI D'IMPORTO EFFETTIVI DI UN EMITTENTE PER UNA UTILITY, IN UN PUNTO SOLO
+#   anagrafiche.fn_parametri_importo_utility (BB nuovo)
+#   Brief: brief-db-modelli-documento-standard §10.3 K-7, D-7 di Tid (2026-10-20)
+#
+# La regola:
+#   * decimali: la riga dell'emittente per l'utility
+#     (anagrafiche.emittenti_fiscali_utilities, attiva) se c'e', se no il valore di
+#     sistema dell'utility (config.utilities, 20261020-99);
+#   * metodo: la riga dell'emittente per l'utility, poi la policy GENERALE
+#     dell'emittente (emittenti_fiscali.rounding_policy), poi il sistema. Il terzo
+#     livello e' del modello, non un'aggiunta: la manuale di emittenti_fiscali dice
+#     «rounding_policy solo come policy generale del ruolo; i dettagli per utility
+#     nella matrice». Fino a qui nessuna funzione la leggeva: la scriveva solo
+#     fn_crea_emittente_fiscale. Per i decimali l'emittente non ha una colonna sua;
+#   * soglie del minimo: solo della riga dell'emittente; senza la riga NULL, cioe'
+#     «nessun minimo» (Q-7);
+#   * `personalizzata`: la riga dell'emittente per l'utility c'e'.
+#   Nessuna delle due tabelle dell'emittente ha RLS: il ripiego non scatta perche'
+#   una riga e' nascosta.
+#
+# Una riga se l'utility esiste, zero righe se non esiste o e' NULL: chi la legge
+#   distingue «utility mancante» da «parametri di sistema».
+#
+# Lettori nello stesso giro: vendite.fn_ricalcola_totali_fattura (20261021-02),
+#   anagrafiche.fn_lookup_utilities_per_ba (20261021-03). Prima ognuno leggeva la
+#   tabella a modo suo: il primo come obbligatoria, il secondo come facoltativa.
+#
+# Forma: LANGUAGE sql BEGIN ATOMIC (linee guida §5c: le dipendenze stanno in
+#   pg_depend), STABLE, SECURITY INVOKER. Il COMMENT in un secondo sql: pgjdbc
+#   esegue una BEGIN ATOMIC solo se sta da sola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261021-01-create-fn-parametri-importo-utility-mctit.yaml
+
+  - changeSet:
+      id: 20261021-01-create-fn-parametri-importo-utility
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_parametri_importo_utility: decimali e metodo d'arrotondamento effettivi di un
+        emittente per una utility (la sua riga se c'e', se no il valore di sistema dell'utility) e le
+        sue soglie del minimo. Brief: brief-db-modelli-documento-standard §10.3 K-7.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM information_schema.columns
+               WHERE table_schema = 'config'
+                 AND table_name = 'utilities'
+                 AND column_name = 'arrotondamento_importi_dec';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION anagrafiche.fn_parametri_importo_utility(
+                  p_emittente_soggetto_ruolo_id  anagrafiche.emittenti_fiscali_utilities.emittente_soggetto_ruolo_id%TYPE,
+                  p_utility_id                   config.utilities.id%TYPE
+              )
+               RETURNS TABLE(
+                  arrotondamento_importi_dec     config.utilities.arrotondamento_importi_dec%TYPE,
+                  metodo_arrotondamento_importi  config.utilities.metodo_arrotondamento_importi%TYPE,
+                  minimo_soglia_min              anagrafiche.emittenti_fiscali_utilities.minimo_soglia_min%TYPE,
+                  minimo_soglia_max              anagrafiche.emittenti_fiscali_utilities.minimo_soglia_max%TYPE,
+                  -- tipo esplicito: non e' una colonna, dice se la riga
+                  -- dell'emittente c'e'
+                  personalizzata                 boolean
+              )
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT COALESCE(e.arrotondamento_importi_dec, u.arrotondamento_importi_dec),
+                         COALESCE(e.metodo_arrotondamento_importi, ef.rounding_policy,
+                                  u.metodo_arrotondamento_importi),
+                         e.minimo_soglia_min,
+                         e.minimo_soglia_max,
+                         (e.id IS NOT NULL)
+                    FROM config.utilities u
+                    LEFT JOIN anagrafiche.emittenti_fiscali_utilities e
+                      ON e.utility_id = u.id
+                     AND e.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                     AND e.attivo IS TRUE
+                    LEFT JOIN anagrafiche.emittenti_fiscali ef
+                      ON ef.soggetto_ruolo_id = p_emittente_soggetto_ruolo_id
+                   WHERE u.id = p_utility_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_parametri_importo_utility(
+                  anagrafiche.emittenti_fiscali_utilities.emittente_soggetto_ruolo_id%TYPE,
+                  config.utilities.id%TYPE) IS
+                  'I parametri d''importo effettivi di un emittente per una utility (2026-10-21, brief-db-modelli-documento-standard §10.3 K-7, D-7 di Tid): decimali e metodo d''arrotondamento della riga attiva di anagrafiche.emittenti_fiscali_utilities se c''e'', altrimenti (per il solo metodo) la policy generale emittenti_fiscali.rounding_policy, altrimenti il valore di sistema di config.utilities; le soglie del minimo solo dall''emittente (NULL = nessun minimo); personalizzata = la riga dell''emittente c''e''. Una riga se l''utility esiste, zero se non esiste o e'' NULL. Sede unica: la leggono fn_ricalcola_totali_fattura e fn_lookup_utilities_per_ba.';
