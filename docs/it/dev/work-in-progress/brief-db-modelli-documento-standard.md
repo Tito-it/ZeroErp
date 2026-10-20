@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-20
 
-**Riparte: il BE, con la risoluzione a due livelli (§6, «Stato al 2026-10-19») e la rigenerazione
-delle policy dopo `20261020-26` (§8.4); il team DB, con la voce nuova del censimento (§2, Q-6 … Q-8:
+**Riparte: il BE, con la risoluzione a due livelli (§6, «Stato al 2026-10-19»; policy rigenerate
+dopo `20261020-26`, §8.4); il team DB, con la voce nuova del censimento (§2, Q-6 … Q-8:
 `emittenti_fiscali_utilities`); Tid, con P-1 e P-2 (§8.4).**
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -18,7 +18,7 @@ delle policy dopo `20261020-26` (§8.4); il team DB, con la voce nuova del censi
 | 8 | **Tid** | ✅ Apply della tranche 2, pgTAP verdi (2026-10-19) | §8.2 | 7 |
 | 8-bis | **team DB** | ✅ Correzione Q-2: conta solo un modello che può stampare (`20261020-26`), provata sullo scratch e su dbdev | §8.4 | — |
 | 8-ter | **Tid** | ✅ Apply di `20261020-26` e dei due CSV dei codici, pgTAP verdi (2026-10-20) | §8.4 | 8-bis |
-| 9 | **BE/FE** | La risoluzione a due livelli e la lista Modelli documento (policy dei codici nuovi già rigenerate; da rigenerare di nuovo dopo `-26`, cambiano solo le note) | §6, §8.4 | 5, 8-ter |
+| 9 | **BE/FE** | La risoluzione a due livelli e la lista Modelli documento (policy dei codici nuovi già rigenerate; ✅ rigenerate di nuovo dopo `-26` il 2026-10-20: cambiano solo le note di `AMBIGUO`, `NON_RISOLTO`, `SENZA_PREDEFINITO`) | §6, §8.4 | 5, 8-ter |
 | 9-bis | **team DB** | Censimento, voce «parametri d'importo per utility» (`emittenti_fiscali_utilities`): risposte a Q-6 … Q-8; DEVA non chiude una fattura | §2 | — |
 | 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard) | §7 | 8, 9, 9-bis |
 | 11 | **Tid** | Archiviazione in `work-done/` | — | 10 |
@@ -650,6 +650,12 @@ filtri di `get_versione_pubblicata_attiva` del BE.
 * **Al BE**: `error_policies_generated.py` ricopia le note dei codici, che cambiano: va
   rigenerato (solo commenti, nessuna classe cambia). I test DB del BE
   (`test_template_standard_db.py`) usano lo standard del seed, che è pubblicato: non cambiano esito.
+  ⚠️ *Smentito dalla corsa (sessione BE, 2026-10-20):* il caso 3 (strada B) creava il modello
+  **dell'emittente** senza versioni, e con la `-26` quel modello non conta più: la risoluzione dava
+  `STANDARD` e il test era rosso. Adeguato: il modello riceve una bozza, il test prova che con la sola
+  bozza resta lo standard (il difetto di «personalizza» che ha motivato la `-26`), poi la pubblica
+  da `TemplateVersioniAdminService` e vuole `E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO` (409). Verde su
+  dbdev, 4/4.
 * **Codici**: nessuno nuovo. Aggiornate le note di `SENZA_PREDEFINITO`, `NON_RISOLTO` e `AMBIGUO`
   (`codici_errore.csv`) e la causa e la soluzione di `SENZA_PREDEFINITO` e `NON_RISOLTO`
   (`messaggi_errore.csv`). Il testo dei messaggi non cambia.

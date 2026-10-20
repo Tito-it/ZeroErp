@@ -2,10 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-20
 
-**Riparte: la sessione BE** (§12.10.4: `CONTEXT_VERSION = 3` dell'ordine con `origine.etichetta`, i commenti e la
-doc del §12.8). `20261020-22` … `-25` sono applicati su dbdev (2026-10-19 sera), pgTAP come app verdi senza
-regressioni (2026-10-20). Subito dopo il riavvio del backend
-in forma 3, Tid lancia lo SQL una tantum di L2b-2 (§12.10.3), poi la prova a video del 2b (§12.7).
+**Riparte: Tid**, con la prova a video del 2b (§12.7) e della stampa dell'ordine («Offerta»/«Preventivo»,
+§12.10.6); poi i sotto-giri 2c … 2e (team DB + sessione BE/FE). Il giro del §12.10 è chiuso su DB e BE, e lo
+SQL una tantum di L2b-2 è eseguito (Tid, 2026-10-20): le copie degli emittenti stampano in forma 3.
 Il 2b è chiuso su DB e BE/FE, revisione compresa (§12.7). Il 2a è chiuso su DB, BE e FE (§11.6). I lotti 0 e 1
 sono chiusi su DB, BE e FE.
 
@@ -34,22 +33,19 @@ sono chiusi su DB, BE e FE.
 | 6-septies-c | ✅ **Tid** | Apply del 2b su dbdev e corsa dei pgTAP come app: verdi (2026-10-19) | §12.6 | 6-septies-a |
 | 6-septies-e+f | ✅ team DB | §12.8 e §12.9 insieme (via di Tid, 2026-10-19 sera): `config.sorgenti.etichetta` (colonna, CSV, `NOT NULL` in `90_end`), `fn_partite_merce` con `ORDINE_VENDITA`, lo standard dell'ordine v2 (forma 3); `20261020-22` … `-25`, provati in transazione (2026-10-20) | §12.10 | — |
 | 6-septies-h | ✅ **Tid** | Apply di `20261020-22` … `-25` su dbdev (2026-10-19 sera) e corsa dei pgTAP come app: verdi, nessuna regressione (2026-10-20); L2b-2 = (c) (2026-10-20) | §12.10.3, §12.10.5 | 6-septies-e+f |
-| 6-septies-g | sessione BE | `get_ordine` con `documento_origine_etichetta`, builder dell'ordine in **forma 3** con `origine.etichetta`, test, `api_ordini.md`; i commenti e la doc del §12.8 | §12.10.4 | 6-septies-h |
-| 6-septies-i | **Tid** | Subito dopo il riavvio del backend in forma 3: lo SQL una tantum di L2b-2 su dbdev | §12.10.3 | 6-septies-g |
+| 6-septies-g | ✅ sessione BE | `get_ordine` con `documento_origine_etichetta`, builder dell'ordine in **forma 3** con `origine.etichetta`, test (anche sul DB vero), `api_ordini.md`; i commenti e la doc del §12.8; worker ricaricati (2026-10-20) | §12.10.6 | 6-septies-h |
+| 6-septies-i | ✅ **Tid** | Lo SQL una tantum di L2b-2 su dbdev, dopo il riavvio del backend in forma 3 (2026-10-20) | §12.10.3 | 6-septies-g |
 | 6-sexies | team DB + sessione BE/FE | Sotto-giri 2c … 2e (DB e backend nello stesso giro; col 2e il SQL a mano delle chiavi, G-8), e lotto 3 (anticipabile); censimento su `pg_get_functiondef`, non su `prosrc` (§12.3) | §10, §5 G-4 | 6-septies-b |
 | 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6-sexies |
 
 **Decisioni aperte di Tid:** il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
-§12.8 e §12.9 (§12.10) è **da committare** su `dev/db-tid`. Il §12.8 è partito il 2026-10-19 sera, insieme al
+§12.8 e §12.9 (§12.10) è committato (PR #1904); il giro BE del §12.10.6 è **da committare** su `dev/backend-tid`. Il §12.8 è partito il 2026-10-19 sera, insieme al
 §12.9 (Tid). L2-1 decisa il 2026-10-19
 (§10.3); il 2b applica G-3 così com'è (§12.2); L2b-1 decisa il 2026-10-19: (a), colonna a DB (§12.9). Il giro BE/FE
 del 2b con la sua revisione (§12.7) e questo brief sono committati su `dev/backend-tid` (2026-10-19). Nello
 stesso commit c'è anche un lavoro **fuori da questo brief**: `core/utils/ripristinaLookup.js`,
 `vendite/_shared/cliente/` e i cinque drawer di vendita (preventivo, offerta, ordine, DDT, contratto) — il
-cliente riaperto mostrava il solo codice (collaudo di Tid, regola del 2), coi due BB nel catalogo BB frontend. ⚠️ Mancano ancora i rimandi del §6.1 in
-[brief-db-indirizzi-documento-seguono-il-cliente](../work-done/brief-db-indirizzi-documento-seguono-il-cliente.md) (R-BE-1) e in
-[brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md): oggi rimanda qui solo
-quello degli articoli ammessi.
+cliente riaperto mostrava il solo codice (collaudo di Tid, regola del 2), coi due BB nel catalogo BB frontend. I rimandi del §6.1 ci sono nei tre brief (verificati e aggiornati il 2026-10-20).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-18. **A chi:** il team DB, poi Tid.
 > **Origine:** l'A-8-ter di
@@ -220,8 +216,8 @@ migrazione resta chiuso invece di crescere a ogni giro.
 
 | Brief | Oggetti in comune | Che cosa si fa |
 | --- | --- | --- |
-| [brief-db-indirizzi-documento-seguono-il-cliente](../work-done/brief-db-indirizzi-documento-seguono-il-cliente.md) | `vendite.fn_doc_indirizzo_default` coi selettori `DDT`, `ORDINE`, `PREVENTIVO`, `OFFERTA`, `CONTRATTO` (R-BE-1, il BE li passa da quattro service e dai verbi con cascata); `script.fn_doc_lock_regola` e il lock delle testate del §8.7 (`20261018-65`); `fn_get_cliente_testata_documento`, `fn_doc_indirizzi_sede` | rimando in R-BE-1; i selettori entrano nel censimento come consumatori della grammatica delle testate |
-| [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md) | i guard di transizione delle testate (`trg_<doc>_a10_guard_transizione_upd`), gli stati iniziali per famiglia | non iniziato: se introduce un registro per tipo di documento, nasce sulla grammatica decisa in G-1 |
+| [brief-db-indirizzi-documento-seguono-il-cliente](../work-done/brief-db-indirizzi-documento-seguono-il-cliente.md) | `vendite.fn_doc_indirizzo_default` coi selettori `DDT`, `ORDINE`, `PREVENTIVO`, `OFFERTA`, `CONTRATTO` (R-BE-1, il BE li passa da quattro service e dai verbi con cascata); `script.fn_doc_lock_regola` e il lock delle testate del §8.7 (`20261018-65`); `fn_get_cliente_testata_documento`, `fn_doc_indirizzi_sede` | ✅ rimando in R-BE-1; i selettori sono migrati nel lotto 2a (§11), annotato lì il 2026-10-20 |
+| [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md) | i guard di transizione delle testate (`trg_<doc>_a10_guard_transizione_upd`), gli stati iniziali per famiglia | ✅ rimando in testa; non iniziato: se introduce un registro per tipo di documento, nasce sulla grammatica decisa in G-1 (il lotto 0 è chiuso) |
 | [brief-db-articoli-ammessi-per-documento](brief-db-articoli-ammessi-per-documento.md) | il ponte di `script.fn_articolo_riga_contesto`, la famiglia del §9.8.3 | il ponte resta fino al lotto che lo rende inutile: lo ritira chi chiude questo brief |
 
 ### 6.2 Documenti che pesano sulle decisioni G-1 … G-3 (da leggere nel censimento)
@@ -1354,3 +1350,34 @@ Il frontend non cambia per il §12.9: il dettaglio dell'ordine non mostra il tip
 * ✅ **Apply su dbdev** (Tid, 2026-10-19 sera): i quattro changeSet `EXECUTED`. Il `-23` è passato, quindi il
   loader vero ha dato l'etichetta a ogni riga. Lo standard dell'ordine stampa la versione 2, in forma 3.
 * ✅ **pgTAP come app** (Tid, 2026-10-20): verdi, nessuna regressione.
+
+### 12.10.6 Il giro BE (sessione BE, 2026-10-20)
+
+* **`OrdiniRepository.get_ordine`**: `LEFT JOIN config.sorgenti` per codice su `documento_origine_tipo`, colonna
+  `documento_origine_etichetta` (NULL senza origine). Il dettaglio dell'ordine la porta in risposta (campo in più,
+  documentato in `api_ordini.md`); il frontend non la legge.
+* **`OrdineDocumentContextBuilder`**: `CONTEXT_VERSION = 3`; `ordine.origine` = `{tipo, codice, etichetta}`, le tre
+  chiavi sempre presenti (`None` senza origine). Il motivo della forma nuova sta nell'header, come per la fattura.
+* **§12.8**: commento di `vendite_service.py` (`origine <> 'ORDINE_VENDITA'`), esempio di
+  `api_situazione_merce.md`, commento dei vocabolari in `apps/config/sorgenti.py` (l'`origine` delle partite è
+  questo vocabolario, tranne `NESSUNA` e `MULTIPLA`). Frontend: un grep conferma che nessuno legge
+  `partite[].origine`. Nessun lettore BE confronta `'ORDINE'` con quell'origine.
+* **`api_ordini.md`**: il contratto di stampa dell'ordine non era scritto da nessuna parte; ora c'è (forma 3, le
+  tre chiavi di `origine`, la storia della forma).
+* **Test**: nel builder l'etichetta e la forma 3, più un caso nuovo (ordine senza origine: le tre chiavi a
+  `None`). Sul DB vero (`vendite/tests/db/test_origine_ordine_sorgente_db.py`, caso 3): `get_ordine` dà NULL
+  senza origine e l'etichetta del catalogo con `OFFERTA_COMMERCIALE` (letta da `config.sorgenti`, non
+  ricopiata), e il builder la passa.
+* **La giuntura col modello**, provata una volta su dbdev in transazione annullata (script a perdere, non un
+  test): lo standard pubblicato dell'ordine (versione 2, forma 3) reso con `_render_html_with_jinja` sul
+  contesto del builder nuovo. Senza origine si rende; con origine da offerta la carta dice «Offerta» e non
+  contiene `OFFERTA_COMMERCIALE`.
+* **Prova**: 2783 test Django di `vendite`, `config`, `documenti` verdi; e2e su dbdev di `vendite/tests/db`,
+  `documenti/tests/db`, `config`: 283, un solo rosso, **fuori da questo giro**:
+  `documenti/tests/db/test_template_standard_db.py::test_modello_suo_senza_predefinito_non_usa_lo_standard`
+  (il preventivo, strada B), file non tracciato del lavoro in corso di
+  [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md); era rosso per la `20261020-26`
+  di quel brief, ed è adeguato lo stesso giorno (§8.4 lì): ora 283/283. ruff e mypy a cricchetto
+  puliti. Worker gunicorn ricaricati il 2026-10-20 alle 10:18.
+* Da vedere a video (Tid), **dopo lo SQL di L2b-2**: la stampa di un ordine nato da offerta e di uno nato da
+  preventivo (la provenienza dice «Offerta»/«Preventivo»), e di un ordine senza origine (il blocco non c'è).
