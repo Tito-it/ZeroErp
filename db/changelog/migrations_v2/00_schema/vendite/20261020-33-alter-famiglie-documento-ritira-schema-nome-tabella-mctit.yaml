@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2c (G-5): si ritirano
+#   vendite.famiglie_documento.schema_tabella e nome_tabella.
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-5 («si ritirano a favore di
+#   target_table, regola del 2»), §10.4.
+#
+#   «Dove vive il documento» lo dice gia' config.sorgenti.target_table, e dal -01 la
+#   famiglia E' una sorgente. Tenere anche le due colonne era la seconda copia dello
+#   stesso fatto, che poteva divergere. Chi le leggeva legge il BB
+#   config.fn_sorgente_tabella (20261020-34).
+#
+#   Le due colonne erano NOT NULL senza default: un INSERT che le nomina (la madre del
+#   CRUD) cambia firma nello stesso giro (20261020-39). La vista della lista le espone
+#   ancora, calcolate dalla sorgente (20261020-46): il suo contratto col backend resta.
+#   Il rollback le ricostruisce dalla sorgente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261020-33-alter-famiglie-documento-ritira-schema-nome-tabella-mctit.yaml
+
+  - changeSet:
+      id: 20261020-33-alter-famiglie-documento-ritira-schema-nome-tabella
+      author: mctit
+      failOnError: true
+      comment: >
+        Ritira vendite.famiglie_documento.schema_tabella e nome_tabella: la tabella dei documenti
+        la dice config.sorgenti.target_table. Toglie i due guard che le nominano (tornano in
+        20261020-37) e l'indice di una famiglia attiva per tabella (la regola passa nel guard).
+        Grammatica unica, sotto-giro 2c (G-5).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: famiglie_documento
+            columnName: schema_tabella
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- I due trigger nominano le colonne in UPDATE OF (dipendenza in pg_depend): si
+              -- tolgono qui e tornano in 20_code (20261020-37) con le colonne di oggi. Sono
+              -- montati a mano, non da ci_apply (guardrail_ddl_su_trigger_automazione).
+              DROP TRIGGER trg_famiglie_documento_a10_guard_riferimenti_ins_upd ON vendite.famiglie_documento;
+              DROP TRIGGER trg_famiglie_documento_a10_guard_chiave_struttura_upd ON vendite.famiglie_documento;
+
+              -- «Una tabella, una famiglia» non si perde: la tabella ora viene dalla sorgente
+              -- (un'altra tabella), e un indice non fa join. La regola passa nel guard dei
+              -- riferimenti (20261020-35), col codice E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA.
+              DROP INDEX vendite.uq_famiglie_documento_tabella_attiva;
+
+              ALTER TABLE vendite.famiglie_documento
+                DROP COLUMN schema_tabella,
+                DROP COLUMN nome_tabella;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_guard_riferimenti_ins_upd ON vendite.famiglie_documento;
+              DROP TRIGGER IF EXISTS trg_famiglie_documento_a10_guard_chiave_struttura_upd ON vendite.famiglie_documento;
+
+              ALTER TABLE vendite.famiglie_documento
+                ADD COLUMN schema_tabella text,
+                ADD COLUMN nome_tabella text;
+
+              -- I valori tornano dalla sorgente: e' da li' che la famiglia li legge oggi.
+              UPDATE vendite.famiglie_documento f
+                 SET schema_tabella = n.nspname, nome_tabella = c.relname
+                FROM config.sorgenti s
+                JOIN pg_catalog.pg_class c ON c.oid = s.target_table
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE s.codice_interno = f.codice_interno;
+
+              ALTER TABLE vendite.famiglie_documento
+                ALTER COLUMN schema_tabella SET NOT NULL,
+                ALTER COLUMN nome_tabella SET NOT NULL;
+
+              COMMENT ON COLUMN vendite.famiglie_documento.schema_tabella IS 'Schema della tabella che contiene i documenti di questa famiglia.';
+              COMMENT ON COLUMN vendite.famiglie_documento.nome_tabella IS 'Tabella che contiene i documenti di questa famiglia.';
+
+              CREATE UNIQUE INDEX uq_famiglie_documento_tabella_attiva ON vendite.famiglie_documento USING btree (schema_tabella, nome_tabella) WHERE attivo;
+              COMMENT ON INDEX vendite.uq_famiglie_documento_tabella_attiva IS 'UNA TABELLA, UNA FAMIGLIA (decisione di Tid, 2026-09-01): due famiglie ATTIVE non possono nominare la stessa tabella di documenti. ⭐ PERCHE'': la famiglia non e'' un modo di chiamare i documenti, E'' il tipo di documento — e il tipo di documento e'' la tabella in cui vive; un «ddt di reso» fa parte dello stesso insieme dei ddt. ⛔ COSA IMPEDISCE IN CONCRETO: anagrafiche.fn_get_storia_emittente_ba itera le famiglie e per ognuna CONTA le righe della sua tabella, quindi due famiglie sulla stessa tabella conterebbero gli stessi documenti due volte e li elencherebbero sotto due nomi diversi — il blocco reggerebbe (la domanda e'' «ce n''e'' almeno uno?») ma la frase che l''operatore legge direbbe il falso. Finora non serviva perche'' in quella tabella scriveva solo un seed: il CRUD e'' la prima cosa che rende raggiungibile il caso. ⭐ E'' PARZIALE SU `attivo`, e non e'' un dettaglio: un UNIQUE pieno sarebbe un cancello su uno stato PERSISTENTE — una famiglia ritirata resta scritta per sempre (si spegne, non si cancella), quindi terrebbe la sua tabella occupata per sempre e nessun successore potrebbe nascere. Il perimetro giusto e'' quello attivo perche'' e'' esattamente quello che i presidi leggono (`WHERE fd.attivo`): una famiglia spenta non e'' nel conteggio, quindi non e'' nel problema. ⚠️ E'' L''OPPOSTO di cio'' che vale sui registri, dove attivo=false NON libera lo slot: li'' lo slot e'' la CHIAVE DEL CONTATORE e un sezionale spento possiede ancora i numeri che ha consegnato, qui e'' un''identita'' di catalogo che solo le righe accese fanno valere. Due vincoli simili, due ragioni diverse: non si deduca l''una dall''altra. ⚠️ Violarlo da'' un 23505 col nome dell''indice: la frase per l''operatore la compone il backend (richiesta BE-F8). Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.15.';
+
+              CREATE TRIGGER trg_famiglie_documento_a10_guard_riferimenti_ins_upd BEFORE INSERT OR UPDATE OF schema_tabella, nome_tabella, colonna_numero, colonna_billing_account, colonna_serie, attivo ON vendite.famiglie_documento FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti();
+              COMMENT ON TRIGGER trg_famiglie_documento_a10_guard_riferimenti_ins_upd ON vendite.famiglie_documento IS 'Una famiglia ATTIVA deve nominare oggetti che esistono. ⛔ `colonna_serie` e'' nella lista `UPDATE OF` dal 2026-09-01: prima non c''era, e un UPDATE che toccava solo quella colonna — cioe'' esattamente quello che fa il mirror 20260901-12 — passava accanto al guard senza svegliarlo. ⚠️ `attivo` resta nella lista perche'' riaccendere una famiglia ne rimette in gioco i riferimenti. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1).';
+
+              CREATE TRIGGER trg_famiglie_documento_a10_guard_chiave_struttura_upd BEFORE UPDATE OF schema_tabella, nome_tabella, colonna_numero, colonna_billing_account, colonna_serie ON vendite.famiglie_documento FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_famiglie_documento_guard_struttura();
+              COMMENT ON TRIGGER trg_famiglie_documento_a10_guard_chiave_struttura_upd ON vendite.famiglie_documento IS 'Dove vive il documento non si cambia sotto un registro. 🔴 IL NOME PORTA `chiave` PER ORDINARLO PRIMA DI `guard_riferimenti`: i trigger BEFORE ROW scattano in ordine alfabetico, e senza questo accorgimento un cambio di `nome_tabella` su una famiglia con registri usciva col messaggio del riferimento inesistente — vero, ma non il punto: quella colonna non si cambia affatto, e l''operatore avrebbe corretto il riferimento per sbattere un attimo dopo contro il muro vero. Prima l''immutabilita'', poi la validita'' del valore nuovo. ⛔ Solo UPDATE: alla nascita non c''e'' niente da proteggere — una famiglia nuova non ha registri — e un guard BEFORE ROW montato in INSERT oscurerebbe i CHECK della tabella. ⚠️ La funzione esce subito sul no-op, cosi'' i mirror CSV che riscrivono queste colonne a ogni migrate non lo svegliano. ⛔ codice_interno non e'' nella lista: e'' del lock automatico. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.5 (DB-3).';

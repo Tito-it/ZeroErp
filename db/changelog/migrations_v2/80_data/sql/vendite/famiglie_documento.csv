@@ -1,7 +1,7 @@
-codice_interno,descrizione,schema_tabella,nome_tabella,colonna_numero,colonna_billing_account,colonna_serie,attivo,presidia_data_documento,prefisso_default,lunghezza_default,anno_nel_numero_default,ammette_regole_fiscali,meta,data_insert,user_insert,data_update,user_update,codice
-FATTURA,Fattura di vendita,vendite,fatture,numero,billing_account_id,serie,true,true,NULL,7,false,true,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED,FATTURA
-DDT,Documento di trasporto,vendite,ddt,numero,billing_account_id,serie,true,false,DDT,7,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED,DDT
-ORDINE,Ordine di vendita,vendite,ordini,numero,billing_account_id,serie,true,false,ORD,7,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED,ORDINE
-COMMESSA,Commessa,vendite,commesse,codice,billing_account_id,NULL,true,false,CMM-,9,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED,COMMESSA
-RESO,Reso di vendita,vendite,resi,numero,billing_account_id,NULL,true,false,RESO,7,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED,RESO
-DISTINTA,Distinta contabile di incasso,pagamenti,vendite_contabili,codice,NULL,NULL,true,false,DIS-,7,true,false,{},2026-09-15 00:00:00+02,SEED,2026-09-15 00:00:00+02,SEED,DISTINTA
+codice_interno,descrizione,colonna_numero,colonna_billing_account,colonna_serie,attivo,presidia_data_documento,prefisso_default,lunghezza_default,anno_nel_numero_default,ammette_regole_fiscali,meta,data_insert,user_insert,data_update,user_update,codice
+FATTURA,Fattura di vendita,numero,billing_account_id,serie,true,true,NULL,7,false,true,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED,FATTURA
+DDT_VENDITA,Documento di trasporto,numero,billing_account_id,serie,true,false,DDT,7,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED,DDT
+ORDINE_VENDITA,Ordine di vendita,numero,billing_account_id,serie,true,false,ORD,7,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED,ORDINE
+COMMESSA,Commessa,codice,billing_account_id,NULL,true,false,CMM-,9,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED,COMMESSA
+RESO_VENDITA,Reso di vendita,numero,billing_account_id,NULL,true,false,RESO,7,true,false,{},2026-08-30 00:00:00+02,SEED,2026-08-30 00:00:00+02,SEED,RESO
+DISTINTA_INCASSO,Distinta contabile di incasso,codice,NULL,NULL,true,false,DIS-,7,true,false,{},2026-09-15 00:00:00+02,SEED,2026-09-15 00:00:00+02,SEED,DISTINTA

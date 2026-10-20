@@ -1,4 +1,5 @@
 -- ============================================================
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d, G-6): gli ambiti sono i codici delle sorgenti, con la FK al posto del CHECK.
 -- test-indirizzi-documenti-simmetria-v1.sql
 -- Copertura: brief-db-indirizzi-documenti-simmetria-e-cascata §6
 -- ------------------------------------------------------------
@@ -8,8 +9,8 @@
 --  3) seed PREVENTIVI: FATT, CON, FORNITURA, RES
 --  4) SPED ritirato: non presente in nessun ambito
 --  5) obbligatori: CON@DDT e FATT@FATTURE marcati obbligatorio
---  6) CHECK ambito: accetta i nuovi ambiti (OFFERTE/CONTRATTI/ACQUISTI_DDT)
---  7) CHECK ambito: rifiuta un ambito non previsto
+--  6) FK ambito: accetta gli ambiti nuovi (OFFERTA_COMMERCIALE/CONTRATTO/DDT_ACQUISTO; era il CHECK)
+--  7) FK ambito: rifiuta un ambito che non e' una sorgente (era il CHECK, 23514)
 --  8) fn_indirizzi_obbligatori_mancanti: DDT senza CON -> {CON}
 --  9) fn_indirizzi_obbligatori_mancanti: DDT con CON -> {}
 -- 10) fn_snapshot_indirizzo: id inesistente -> errore
@@ -49,7 +50,7 @@ SELECT
 SELECT is(
   (SELECT array_agg(tipo_indirizzo_id ORDER BY tipo_indirizzo_id)
      FROM config.tipi_indirizzi_allowed
-    WHERE ambito = 'DDT' AND attivo),
+    WHERE ambito = 'DDT_VENDITA' AND attivo),
   ARRAY[(SELECT con_id FROM tmp_ti)]::integer[],
   '1) whitelist DDT: solo CON'
 );
@@ -58,7 +59,7 @@ SELECT is(
 SELECT is(
   (SELECT array_agg(tipo_indirizzo_id ORDER BY tipo_indirizzo_id)
      FROM config.tipi_indirizzi_allowed
-    WHERE ambito = 'ORDINI' AND attivo),
+    WHERE ambito = 'ORDINE_VENDITA' AND attivo),
   (SELECT array_agg(x ORDER BY x) FROM unnest(ARRAY[
       (SELECT con_id FROM tmp_ti), (SELECT fatt_id FROM tmp_ti)]) x)::integer[],
   '2) whitelist ORDINI: CON + FATT'
@@ -67,7 +68,7 @@ SELECT is(
 -- 3) PREVENTIVI: FATT, CON, FORNITURA, RES (4 tipi).
 SELECT is(
   (SELECT count(*)::int FROM config.tipi_indirizzi_allowed
-    WHERE ambito = 'PREVENTIVI' AND attivo),
+    WHERE ambito = 'PREVENTIVO' AND attivo),
   4, '3) whitelist PREVENTIVI: 4 tipi (FATT,CON,FORNITURA,RES)'
 );
 
@@ -82,37 +83,38 @@ SELECT is(
 SELECT is(
   (SELECT count(*)::int FROM config.tipi_indirizzi_allowed
     WHERE obbligatorio IS TRUE
-      AND ((ambito = 'DDT'     AND tipo_indirizzo_id = (SELECT con_id  FROM tmp_ti))
-        OR (ambito = 'FATTURE' AND tipo_indirizzo_id = (SELECT fatt_id FROM tmp_ti)))),
+      AND ((ambito = 'DDT_VENDITA'     AND tipo_indirizzo_id = (SELECT con_id  FROM tmp_ti))
+        OR (ambito = 'FATTURA' AND tipo_indirizzo_id = (SELECT fatt_id FROM tmp_ti)))),
   2, '5) obbligatori: CON@DDT e FATT@FATTURE'
 );
 
--- 6) CHECK ambito accetta i nuovi ambiti (insert + rollback al savepoint).
+-- 6) La FK dell'ambito accetta gli ambiti nuovi (insert + rollback al savepoint).
+--    rev 2026-10-20 (2d, G-6): l'ambito e' il codice della sorgente, con la FK al posto del CHECK.
 SAVEPOINT sp_chk_ok;
 SELECT lives_ok($$
   INSERT INTO config.tipi_indirizzi_allowed (ambito, tipo_indirizzo_id)
   SELECT a, (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')
-    FROM unnest(ARRAY['OFFERTE','CONTRATTI','ACQUISTI_DDT']) a
+    FROM unnest(ARRAY['OFFERTA_COMMERCIALE','CONTRATTO','DDT_ACQUISTO']) a
   ON CONFLICT DO NOTHING
-$$, '6) CHECK ambito: accetta OFFERTE/CONTRATTI/ACQUISTI_DDT');
+$$, '6) FK ambito: accetta OFFERTA_COMMERCIALE/CONTRATTO/DDT_ACQUISTO');
 ROLLBACK TO SAVEPOINT sp_chk_ok;
 
--- 7) CHECK ambito rifiuta un ambito non previsto.
+-- 7) La FK dell'ambito rifiuta un codice che non e' una sorgente.
 SELECT throws_ok($$
   INSERT INTO config.tipi_indirizzi_allowed (ambito, tipo_indirizzo_id)
   VALUES ('AMBITO_INESISTENTE', (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON'))
-$$, '23514', NULL, '7) CHECK ambito: rifiuta ambito non previsto');
+$$, '23503', NULL, '7) FK ambito: rifiuta un ambito che non e'' una sorgente');
 
 -- 8) Helper: DDT senza CON -> mancante CON.
 SELECT is(
-  script.fn_indirizzi_obbligatori_mancanti('DDT', ARRAY[]::integer[]),
+  script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', ARRAY[]::integer[]),
   ARRAY['CON']::text[],
   '8) fn_indirizzi_obbligatori_mancanti DDT vuoto -> {CON}'
 );
 
 -- 9) Helper: DDT con CON -> nessun mancante.
 SELECT is(
-  script.fn_indirizzi_obbligatori_mancanti('DDT', ARRAY[(SELECT con_id FROM tmp_ti)]),
+  script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', ARRAY[(SELECT con_id FROM tmp_ti)]),
   ARRAY[]::text[],
   '9) fn_indirizzi_obbligatori_mancanti DDT con CON -> {}'
 );

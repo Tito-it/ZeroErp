@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_situazione_merce_ordine — la situazione merce per riga
 --       d'ordine PER DOCUMENTO (D14 giro 2 — D3;
@@ -329,7 +330,7 @@ CREATE TEMP TABLE tmp_o1 AS SELECT * FROM pg_temp.sm_mk_ordine(30, (SELECT stato
 CREATE TEMP TABLE tmp_d1 AS SELECT * FROM pg_temp.sm_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-10');
 CREATE TEMP TABLE tmp_d2 AS SELECT * FROM pg_temp.sm_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-11');
 CREATE TEMP TABLE tmp_d3 AS SELECT * FROM pg_temp.sm_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-12');
-SELECT pg_temp.sm_mk_af(('ORD:' || (SELECT ordine_uid FROM tmp_o1)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_o1)::text)::varchar, 15);
+SELECT pg_temp.sm_mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid FROM tmp_o1)::text, (SELECT ordine_riga_id FROM tmp_o1)), 15);
 
 SELECT results_eq(
   $q$SELECT s.consegnato, s.fatturato_da_ordine, s.differenza, s.stato::text, s.partite_merce, s.da_spedire
@@ -447,7 +448,7 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE tmp_o5 AS SELECT * FROM pg_temp.sm_mk_ordine(10, (SELECT stato_ord_conf_id FROM tmp_refs_sm));
 CREATE TEMP TABLE tmp_d5 AS SELECT * FROM pg_temp.sm_mk_ddt((SELECT ordine_id FROM tmp_o5), (SELECT ordine_riga_id FROM tmp_o5), 4, DATE '2026-08-16');
-SELECT pg_temp.sm_mk_af(('ORD:' || (SELECT ordine_uid FROM tmp_o5)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_o5)::text)::varchar, 10);
+SELECT pg_temp.sm_mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid FROM tmp_o5)::text, (SELECT ordine_riga_id FROM tmp_o5)), 10);
 
 SELECT results_eq(
   $q$SELECT s.consegnato, s.fatturato_da_ordine, s.fatturato_anticipato, s.differenza, s.stato::text, s.da_spedire

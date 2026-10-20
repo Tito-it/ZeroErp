@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- pgTAP test per Zero ERP
 -- Test: SCENARIO end-to-end della chiusura ri-consegna (Fase 2)
 --   fn_chiudi_riconsegna_reso + fn_riapri_riconsegna_reso e i loro effetti
@@ -24,7 +25,7 @@
 -- 22-09-2026 il conto era vw_contatore_merce, ritirata), cioe' tenuti < fatturati:
 --   tenuti    = evaso - reso            (dai fulfillment e dai resi)
 --   fatturati = somma delle attivita_fatturabili NORMALE con segment_key
---               'DDT:<uid>:R:<ddt_riga_id>' (o 'ORD:...'), ricondotte alla riga
+--               'DDT_VENDITA:<uid>:R:<ddt_riga_id>' (o 'ORDINE_VENDITA:...'), ricondotte alla riga
 --               ordine via ordini_righe_fulfillment.
 -- Quindi servono: una riga DDT consegnata order-backed, una commessa con una
 -- commessa_attivita che porti quel segment_key, l'AF corrispondente, e il reso.
@@ -116,7 +117,7 @@ SELECT dr.id AS ddt_riga_id, dr.quantita AS consegnato, dr.articolo_id,
  LIMIT 1;
 
 -- Commessa + attivita' con il segment_key che il conto della merce riconosce
--- come "fatturato": 'DDT:<uid>:R:<ddt_riga_id>' (la corsia DDT di
+-- come "fatturato": 'DDT_VENDITA:<uid>:R:<ddt_riga_id>' (la corsia DDT di
 -- fn_af_merce_per_riga, letta dalla partita per chiave).
 CREATE TEMP TABLE tmp_com AS
 SELECT vendite.fn_get_or_create_commessa(
@@ -138,7 +139,7 @@ SELECT u.attivita_id
          -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
          p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
          p_sorgente_uid => ((SELECT commessa_id FROM tmp_com))::text,
-         p_segment_key                   => ('DDT:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar,
+         p_segment_key                   => ('DDT_VENDITA:' || r.ddt_uid || ':R:' || r.ddt_riga_id)::varchar,
          p_articolo_id                   => r.articolo_id,
          p_istanza_utility_id            => (SELECT ba.istanza_utility_id
                                                FROM anagrafiche.billing_account ba

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_resi_da_accreditare — la coda accrediti PER DOCUMENTO
 --       (D14 giro 2 — D3; brief-db-partita-merce-per-documento §2.2, §7;
@@ -322,7 +323,7 @@ CREATE TEMP TABLE tmp_o1 AS SELECT * FROM pg_temp.ca_mk_ordine(10);
 CREATE TEMP TABLE tmp_ob AS SELECT * FROM pg_temp.ca_mk_ordine(10);
 CREATE TEMP TABLE tmp_p AS SELECT * FROM pg_temp.ca_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-13',
                                                        (SELECT ordine_riga_id FROM tmp_ob));
-CREATE TEMP TABLE tmp_fr AS SELECT pg_temp.ca_fattura(('DDT:' || (SELECT ddt_uid FROM tmp_p)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p)::text)::varchar, 6) AS fattura_riga_id;
+CREATE TEMP TABLE tmp_fr AS SELECT pg_temp.ca_fattura(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p)::text, (SELECT ddt_riga_id FROM tmp_p)), 6) AS fattura_riga_id;
 CREATE TEMP TABLE tmp_ra AS SELECT * FROM pg_temp.ca_mk_reso((SELECT ddt_riga_id FROM tmp_p), (SELECT ddt_uid FROM tmp_p), 4, (SELECT tipo_credito_id FROM tmp_refs_ca));
 CREATE TEMP TABLE tmp_rb AS SELECT * FROM pg_temp.ca_mk_reso((SELECT ddt_riga_id FROM tmp_p), (SELECT ddt_uid FROM tmp_p), 3, (SELECT tipo_credito_id FROM tmp_refs_ca));
 
@@ -382,7 +383,7 @@ SELECT results_eq(
 -- ============================================================
 CREATE TEMP TABLE tmp_o3 AS SELECT * FROM pg_temp.ca_mk_ordine(5);
 CREATE TEMP TABLE tmp_p3 AS SELECT * FROM pg_temp.ca_mk_ddt((SELECT ordine_id FROM tmp_o3), (SELECT ordine_riga_id FROM tmp_o3), 5, DATE '2026-08-14');
-SELECT pg_temp.ca_fattura(('DDT:' || (SELECT ddt_uid FROM tmp_p3)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p3)::text)::varchar, 5);
+SELECT pg_temp.ca_fattura(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p3)::text, (SELECT ddt_riga_id FROM tmp_p3)), 5);
 CREATE TEMP TABLE tmp_rc AS SELECT * FROM pg_temp.ca_mk_reso((SELECT ddt_riga_id FROM tmp_p3), (SELECT ddt_uid FROM tmp_p3), 2, (SELECT tipo_riconsegna_id FROM tmp_refs_ca));
 
 SELECT results_eq(

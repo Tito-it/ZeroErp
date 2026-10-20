@@ -9,31 +9,35 @@ CREATE FUNCTION fn_risolvi_template_applicabile(p_sorgente_tipo_id bigint, p_emi
 
 ```sql
 CREATE OR REPLACE FUNCTION documenti.fn_risolvi_template_applicabile(p_sorgente_tipo_id bigint, p_emittente_fiscale_id bigint, p_tipo_documento_output_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(template_documento_id bigint, livello text)
+ RETURNS TABLE(template_documento_id bigint, livello text, template_versione_id bigint)
  LANGUAGE plpgsql
  STABLE
 AS $function$
 -- Scopo: il modello che stampa un documento della sorgente
---   p_sorgente_tipo_id dell'emittente p_emittente_fiscale_id.
+--   p_sorgente_tipo_id dell'emittente p_emittente_fiscale_id, e
+--   la versione con cui stampa.
 --   Strada B (brief-db-modelli-documento-standard §4.1 Q-2): se
 --   l'emittente ha modelli che possono stampare per (tipo,
 --   sorgente) vale il suo predefinito, e senza predefinito
 --   stampabile e' un errore; se non ne ha, vale il predefinito
 --   standard.
 --   «Puo' stampare» = attivo, con una versione PUBBLICATA, attiva
---   e valida alla data operativa: gli stessi filtri con cui chi
---   stampa carica la versione (rev 20261020-26).
+--   e valida alla data operativa (rev 20261020-26). La versione
+--   restituita e' quella (rev 20261020-27, P-2): chi stampa non
+--   ripete il predicato.
 DECLARE
     -- tipo esplicito: la data operativa, non una colonna
-    v_oggi         date;
-    v_tipo         documenti.template_documenti.tipo_documento_output_id%TYPE;
+    v_oggi          date;
+    v_tipo          documenti.template_documenti.tipo_documento_output_id%TYPE;
     -- tipo esplicito: dei conteggi, non colonne
-    v_n_tipi       integer;
-    v_n_propri     integer;
-    v_template_id  documenti.template_documenti.id%TYPE;
-    v_standard_id  documenti.template_documenti.id%TYPE;
-    v_tipo_nome    documenti.tipi_documento_output.descrizione%TYPE;
-    v_sorgente     config.sorgenti.codice_interno%TYPE;
+    v_n_tipi        integer;
+    v_n_propri      integer;
+    v_template_id   documenti.template_documenti.id%TYPE;
+    v_versione_id   documenti.template_documenti_versioni.id%TYPE;
+    v_standard_id   documenti.template_documenti.id%TYPE;
+    v_std_vers_id   documenti.template_documenti_versioni.id%TYPE;
+    v_tipo_nome     documenti.tipi_documento_output.descrizione%TYPE;
+    v_sorgente      config.sorgenti.codice_interno%TYPE;
 BEGIN
     -- 0) Argomenti: solo un chiamante rotto li manda male.
     IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
@@ -108,26 +112,29 @@ BEGIN
 
     -- 2) I candidati della terna, in una lettura: quelli
     --    dell'emittente (contati, e il suo predefinito) e il
-    --    predefinito standard. Candidato = puo' stampare.
+    --    predefinito standard, ognuno con la versione che lo rende
+    --    stampabile. Candidato = puo' stampare.
     --    uq_template_documenti_default_attivo (NULLS NOT DISTINCT):
-    --    al massimo un predefinito attivo per lato, quindi max() non
-    --    sceglie fra due.
-    SELECT count(*) FILTER (WHERE NOT t.standard)::integer,
+    --    al massimo un predefinito attivo per lato.
+    --    ex_template_documenti_versioni_no_overlap_pubblicata: al
+    --    massimo una versione pubblicata attiva per data, quindi il
+    --    JOIN e' 1:1 e max() non sceglie fra due.
+    SELECT count(DISTINCT t.id) FILTER (WHERE NOT t.standard)::integer,
            max(t.id) FILTER (WHERE NOT t.standard AND t.is_default),
-           max(t.id) FILTER (WHERE t.standard AND t.is_default)
-      INTO v_n_propri, v_template_id, v_standard_id
+           max(v.id) FILTER (WHERE NOT t.standard AND t.is_default),
+           max(t.id) FILTER (WHERE t.standard AND t.is_default),
+           max(v.id) FILTER (WHERE t.standard AND t.is_default)
+      INTO v_n_propri, v_template_id, v_versione_id, v_standard_id, v_std_vers_id
       FROM documenti.template_documenti t
+      JOIN documenti.template_documenti_versioni v
+        ON v.template_documento_id = t.id
+       AND v.stato = 'PUBBLICATA'
+       AND v.attivo
+       AND v.validita @> v_oggi
      WHERE t.tipo_documento_output_id = v_tipo
        AND t.sorgente_tipo_id = p_sorgente_tipo_id
        AND (t.emittente_fiscale_id = p_emittente_fiscale_id OR t.standard)
-       AND t.attivo
-       AND EXISTS (
-             SELECT 1
-               FROM documenti.template_documenti_versioni v
-              WHERE v.template_documento_id = t.id
-                AND v.stato = 'PUBBLICATA'
-                AND v.attivo
-                AND v.validita @> v_oggi);
+       AND t.attivo;
 
     -- 2a) Livello EMITTENTE: decide la presenza di modelli suoi che
     --     possono stampare, non il predefinito (strada B).
@@ -147,6 +154,7 @@ BEGIN
 
         template_documento_id := v_template_id;
         livello := 'EMITTENTE';
+        template_versione_id := v_versione_id;
         RETURN NEXT;
         RETURN;
     END IF;
@@ -166,12 +174,13 @@ BEGIN
 
     template_documento_id := v_standard_id;
     livello := 'STANDARD';
+    template_versione_id := v_std_vers_id;
     RETURN NEXT;
 END;
 $function$
 
 COMMENT ON FUNCTION documenti.fn_risolvi_template_applicabile(p_sorgente_tipo_id bigint, p_emittente_fiscale_id bigint, p_tipo_documento_output_id bigint)
-IS 'Il modello che stampa un documento (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-2, strada B di Tid). Conta solo un modello che PUO'' STAMPARE: attivo, con una versione PUBBLICATA, attiva e valida alla data operativa (rev 20261020-26: un modello attivo con la sola bozza non toglie lo standard). Livello EMITTENTE se l''emittente del documento ha modelli stampabili per (tipo, sorgente): vale il suo predefinito, se stampabile; altrimenti E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO (lo standard non entra). Livello STANDARD se non ne ha: il predefinito standard stampabile, altrimenti E_DOCUMENTI_TEMPLATE_NON_RISOLTO. Tipo di output facoltativo: si deduce solo se fra i modelli stampabili della sorgente utilizzabili dall''emittente ce n''e'' uno solo, altrimenti E_DOCUMENTI_TEMPLATE_AMBIGUO. Argomenti rotti: E_DOCUMENTI_RISOLVI_TEMPLATE_INPUT_INVALIDO. L''emittente e'' quello del documento, gia'' letto sotto RLS dal chiamante: niente scope qui. Restituisce una riga (template_documento_id, livello).';
+IS 'Il modello che stampa un documento, e la versione con cui stampa (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-2, strada B di Tid; §8.4 P-2). Conta solo un modello che PUO'' STAMPARE: attivo, con una versione PUBBLICATA, attiva e valida alla data operativa (rev 20261020-26: un modello attivo con la sola bozza non toglie lo standard). Livello EMITTENTE se l''emittente del documento ha modelli stampabili per (tipo, sorgente): vale il suo predefinito, se stampabile; altrimenti E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO (lo standard non entra). Livello STANDARD se non ne ha: il predefinito standard stampabile, altrimenti E_DOCUMENTI_TEMPLATE_NON_RISOLTO. Tipo di output facoltativo: si deduce solo se fra i modelli stampabili della sorgente utilizzabili dall''emittente ce n''e'' uno solo, altrimenti E_DOCUMENTI_TEMPLATE_AMBIGUO. Argomenti rotti: E_DOCUMENTI_RISOLVI_TEMPLATE_INPUT_INVALIDO. L''emittente e'' quello del documento, gia'' letto sotto RLS dal chiamante: niente scope qui. Restituisce una riga (template_documento_id, livello, template_versione_id): la versione e'' quella che rende stampabile il modello (rev 20261020-27), e chi stampa la usa senza ripetere il predicato.';
 ```
 
 ---

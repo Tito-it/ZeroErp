@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d): area_documento diventa documento_apribile (config.sorgenti.area ritirata).
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_dash_competenza_gruppi (elenco dei gruppi fatturabili)
 -- Brief: brief-db-emissione-fattura-per-documento-sorgente PARTE A (step A10)
@@ -11,8 +12,8 @@
 --  3) valore per gruppo = somma di prezzo_snapshot * quantita
 --  4) G8 ⭐ la somma dei gruppi coincide con le righe DA_EMETTERE della vista base
 --  5) G8 le chiavi esposte sono accettate TALI E QUALI da fn_emit come p_gruppi
---  6) D-5 riferimento del gruppo documento = numero del documento (via area)
---  7) G4 il gruppo oneri c'e', con area NULL e riferimento = commessa (LEFT JOIN)
+--  6) D-5 riferimento del gruppo documento = numero del documento (sorgente apribile)
+--  7) G4 il gruppo oneri c'e', con documento_apribile NULL e riferimento = commessa (LEFT JOIN)
 --  8) G14 operatore fuori scope emittente -> zero righe
 --  (security_invoker: presidiato da rls/test-rls-viste-security-invoker.sql,
 --   non piu' qui)
@@ -314,27 +315,27 @@ SELECT is(
 
 -- ============================================================
 -- TEST 6 (D-5): il riferimento leggibile. L'operatore deve vedere il numero
---   del documento, non la chiave. Passa da config.sorgenti.area ->
+--   del documento, non la chiave. Passa da config.sorgenti.apribile ->
 --   vw_dash_fatturazione_documenti.
 -- ============================================================
 SELECT is(
-  (SELECT ARRAY[g.area_documento::text, g.riferimento::text]
+  (SELECT ARRAY[g.documento_apribile::text, g.riferimento::text]
      FROM vendite.vw_dash_competenza_gruppi g
     WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
       AND g.tipo_gruppo = 'PREVENTIVO'
       AND g.stadio = 'DA_EMETTERE'),
-  ARRAY['PREVENTIVI'::text, (SELECT numero::text FROM tmp_vg_prev)],
-  '6) D-5: gruppo preventivo -> area PREVENTIVI e riferimento = numero documento'
+  ARRAY['true'::text, (SELECT numero::text FROM tmp_vg_prev)],
+  '6) D-5: gruppo preventivo -> documento apribile e riferimento = numero documento'
 );
 
 -- ============================================================
--- TEST 7 (G4): il gruppo oneri non ha area ne' documento, e proprio per
+-- TEST 7 (G4): il gruppo oneri non ha sorgente ne' documento, e proprio per
 --   questo il join deve essere LEFT: se fosse INNER sparirebbe dall'elenco,
 --   che e' esattamente il difetto che il concetto di gruppo evita.
 -- ============================================================
 SELECT is(
   (SELECT ARRAY[g.tipo_gruppo::text,
-                COALESCE(g.area_documento::text, '<NULL>'),
+                COALESCE(g.documento_apribile::text, '<NULL>'),
                 g.riferimento::text]
      FROM vendite.vw_dash_competenza_gruppi g
     WHERE g.commessa_id = (SELECT commessa_id FROM tmp_vg_comm)
@@ -342,7 +343,7 @@ SELECT is(
   ARRAY['ONERI_COMMESSA'::text, '<NULL>'::text,
         (SELECT c.codice::text FROM vendite.commesse c
           WHERE c.id = (SELECT commessa_id FROM tmp_vg_comm))],
-  '7) G4: gruppo oneri presente, area NULL, riferimento = codice commessa'
+  '7) G4: gruppo oneri presente, documento_apribile NULL, riferimento = codice commessa'
 );
 
 -- ============================================================

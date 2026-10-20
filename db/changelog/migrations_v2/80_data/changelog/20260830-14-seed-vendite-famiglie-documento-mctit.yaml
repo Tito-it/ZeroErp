@@ -117,8 +117,12 @@ databaseChangeLog:
             columns:
               - column: { name: codice_interno, type: STRING }
               - column: { name: descrizione, type: STRING }
-              - column: { name: schema_tabella, type: STRING }
-              - column: { name: nome_tabella, type: STRING }
+              # ⛔ schema_tabella e nome_tabella RITIRATE il 2026-10-20 (20261020-33,
+              #    brief-db-grammatica-unica-documenti 2c, G-5): la tabella dei documenti
+              #    e' la target_table della sorgente, e codice_interno E' la sorgente
+              #    (FK fk_famiglie_documento_sorgenti): DDT_VENDITA, ORDINE_VENDITA,
+              #    RESO_VENDITA, DISTINTA_INCASSO. Il mirror gira dopo quello delle
+              #    sorgenti (20251002-21), quindi la FK trova i codici.
               - column: { name: colonna_numero, type: STRING }
               - column: { name: colonna_billing_account, type: STRING }
               # ex 20260901-12: la colonna della serie sul documento (NULL dove

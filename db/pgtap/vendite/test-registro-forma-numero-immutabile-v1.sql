@@ -4,6 +4,7 @@
 -- Test: vendite.trgfn_registri_fatturazione_guard_forma_numero  (20260901-03)
 --       script.fn_check_registro_forma_modificabile             (20260901-02)
 --       Piano: brief-be-fe-crud-registri-di-numerazione, sezione 8
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA.
 -- ------------------------------------------------------------
 -- Elenco test (plan 8):
 -- 1) ⭐ Registro che non ha mai numerato: la check risponde []
@@ -80,11 +81,11 @@ WITH ins AS (
       prefisso, suffisso, lunghezza_numero)
   SELECT 'FRM-' || r.emittente_soggetto_ruolo_id::text,
          'Registro pgTAP forma numero',
-         r.emittente_soggetto_ruolo_id, 'DDT', 'ANNUALE', true,
+         r.emittente_soggetto_ruolo_id, 'DDT_VENDITA', 'ANNUALE', true,
          (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1),
          'ZQF', NULL, 7
     FROM vendite.registri_fatturazione r
-   WHERE r.famiglia_documento = 'DDT'
+   WHERE r.famiglia_documento = 'DDT_VENDITA'
      AND r.utility_id IS NULL
      AND r.attivo
    ORDER BY r.id
@@ -119,7 +120,7 @@ SELECT lives_ok(
 CREATE TEMP TABLE tmp_frm_num AS
 SELECT vendite.fn_get_next_progressivo(
            (SELECT registro_id FROM tmp_frm),
-           DATE '2101-06-15', NULL, '', NULL, 'DDT') AS numero;
+           DATE '2101-06-15', NULL, '', NULL, 'DDT_VENDITA') AS numero;
 
 SELECT is(
     (SELECT string_agg(m ->> 'reason', ',' ORDER BY m ->> 'reason')

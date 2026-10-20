@@ -12,6 +12,10 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_struttura()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti, 2c G-5):
+--   schema_tabella e nome_tabella ritirate (20261020-33): la tabella
+--   e' quella della sorgente; il guard protegge colonna_numero,
+--   colonna_billing_account, colonna_serie.
 DECLARE
     -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
     --   fn_check_* (nessuna colonna dietro), e `v_campo` e' il NOME di una
@@ -24,8 +28,9 @@ BEGIN
     -- =========================================================
     -- Scopo:
     --   Rifiutare il cambio delle colonne che dicono DOVE VIVE
-    --   IL DOCUMENTO — schema_tabella, nome_tabella,
-    --   colonna_numero, colonna_billing_account, colonna_serie —
+    --   IL DOCUMENTO — colonna_numero, colonna_billing_account,
+    --   colonna_serie (la tabella, dal 2026-10-20, e' quella della
+    --   sorgente: l'identita' della famiglia, che non si cambia) —
     --   su una famiglia che ha gia' dei registri.
     --
     -- ⛔ Perche': quelle colonne non descrivono la famiglia, la
@@ -44,9 +49,7 @@ BEGIN
     --   migrate: i due mirror CSV riscrivono queste colonne a
     --   OGNI migrate con gli stessi valori, e `UPDATE OF` scatta
     --   comunque perche' e' lo statement a nominarle.
-    IF NEW.schema_tabella          IS NOT DISTINCT FROM OLD.schema_tabella
-       AND NEW.nome_tabella            IS NOT DISTINCT FROM OLD.nome_tabella
-       AND NEW.colonna_numero          IS NOT DISTINCT FROM OLD.colonna_numero
+    IF NEW.colonna_numero          IS NOT DISTINCT FROM OLD.colonna_numero
        AND NEW.colonna_billing_account IS NOT DISTINCT FROM OLD.colonna_billing_account
        AND NEW.colonna_serie           IS NOT DISTINCT FROM OLD.colonna_serie THEN
         RETURN NEW;
@@ -65,8 +68,6 @@ BEGIN
     --   toccato uno, e mandarlo a correggerne un altro e' peggio
     --   che non dirglielo.
     v_campo := CASE
-        WHEN NEW.schema_tabella          IS DISTINCT FROM OLD.schema_tabella          THEN 'schema_tabella'
-        WHEN NEW.nome_tabella            IS DISTINCT FROM OLD.nome_tabella            THEN 'nome_tabella'
         WHEN NEW.colonna_numero          IS DISTINCT FROM OLD.colonna_numero          THEN 'colonna_numero'
         WHEN NEW.colonna_billing_account IS DISTINCT FROM OLD.colonna_billing_account THEN 'colonna_billing_account'
         ELSE 'colonna_serie'
@@ -91,7 +92,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_guard_struttura()
-IS 'Guard `_a10_` su vendite.famiglie_documento: rifiuta il cambio delle cinque colonne che dicono DOVE VIVE IL DOCUMENTO (schema_tabella, nome_tabella, colonna_numero, colonna_billing_account, colonna_serie) su una famiglia che ha gia'' dei registri. ⛔ PERCHE'': quelle colonne non descrivono la famiglia, la fanno funzionare — il caso peggiore e'' colonna_serie portata a NULL, che lascia i registri con una serie dentro un secchio del contatore che il documento non sa piu'' distinguere, senza che nessun vincolo se ne accorga. ⭐ §12.5.2 — QUI NON C''E'' IL PREDICATO: si chiama script.fn_check_famiglia_documento_struttura_modificabile e si solleva il codice del primo motivo, cosi'' il rifiuto e i campi in sola lettura della maschera non possono divergere. ⚠️ Il `campo` del contesto e'' la PRIMA colonna cambiata DAVVERO e non una fissa: l''operatore ne ha toccato una, e mandarlo a correggerne un''altra e'' peggio che non dirglielo. ⭐ L''USCITA SUL NO-OP E'' OBBLIGATORIA: i mirror 20260830-14 e 20260901-12 riscrivono queste colonne a ogni migrate e `UPDATE OF` scatta comunque, quindi senza il confronto sui VALORI ogni migrate fallirebbe. ⛔ codice_interno NON e'' fra le colonne: lo presidia il lock automatico con E_CODICE_NON_MODIFICABILE, e metterlo anche qui darebbe due rifiuti diversi per la stessa colonna a seconda di quale trigger scatta prima — cioe'' dell''ordine alfabetico, che nessuno ha scelto. ⚠️ tx_id NULL e non NEW.tx_id: `_a10_` scatta prima del trigger che lo genera. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.5 (DB-3).';
+IS 'Guard `_a10_` su vendite.famiglie_documento: rifiuta il cambio delle cinque colonne che dicono DOVE VIVE IL DOCUMENTO (schema_tabella, nome_tabella, colonna_numero, colonna_billing_account, colonna_serie) su una famiglia che ha gia'' dei registri. ⛔ PERCHE'': quelle colonne non descrivono la famiglia, la fanno funzionare — il caso peggiore e'' colonna_serie portata a NULL, che lascia i registri con una serie dentro un secchio del contatore che il documento non sa piu'' distinguere, senza che nessun vincolo se ne accorga. ⭐ §12.5.2 — QUI NON C''E'' IL PREDICATO: si chiama script.fn_check_famiglia_documento_struttura_modificabile e si solleva il codice del primo motivo, cosi'' il rifiuto e i campi in sola lettura della maschera non possono divergere. ⚠️ Il `campo` del contesto e'' la PRIMA colonna cambiata DAVVERO e non una fissa: l''operatore ne ha toccato una, e mandarlo a correggerne un''altra e'' peggio che non dirglielo. ⭐ L''USCITA SUL NO-OP E'' OBBLIGATORIA: i mirror 20260830-14 e 20260901-12 riscrivono queste colonne a ogni migrate e `UPDATE OF` scatta comunque, quindi senza il confronto sui VALORI ogni migrate fallirebbe. ⛔ codice_interno NON e'' fra le colonne: lo presidia il lock automatico con E_CODICE_NON_MODIFICABILE, e metterlo anche qui darebbe due rifiuti diversi per la stessa colonna a seconda di quale trigger scatta prima — cioe'' dell''ordine alfabetico, che nessuno ha scelto. ⚠️ tx_id NULL e non NEW.tx_id: `_a10_` scatta prima del trigger che lo genera. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.5 (DB-3). Rev 2026-10-20 (20261020-36, brief-db-grammatica-unica-documenti 2c, G-5): schema_tabella e nome_tabella ritirate; la tabella e'' quella della sorgente, cioe'' l''identita'' della famiglia.';
 ```
 
 ---

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 --
 -- Il registro delle fatture nasce con l'emittente (2026-10-18). R-BE-14 del
@@ -78,7 +79,7 @@ SELECT t.id AS tipo_id, n.id AS natura_id
 -- ============================================================
 -- 1-5) Un emittente che nasce
 -- ============================================================
-SELECT is(vendite.fn_codice_registro_provisionato('FATTURA', 123), 'FAT-123',
+SELECT is(vendite.fn_codice_registro_provisionato('FATTURA', 123), 'FATTURA-123',
     '1) la regola del codice: prime tre lettere della famiglia, trattino, emittente');
 
 SELECT is(
@@ -200,7 +201,7 @@ SELECT throws_like(
     (SELECT format('INSERT INTO vendite.tipi_doc_fiscale_registri (tipo_doc_fiscale_id, natura_doc_id, registro_id) VALUES (%s, %s, %s)',
                    m.tipo_id, m.natura_id, (SELECT manuale_id FROM _man))
        FROM _m m WHERE m.n = 1),
-    '%numera già%sul registro FAT-%',
+    '%numera già%sul registro FATTURA-%',
     '10) la coppia ha gia'' un registro per lo stesso emittente e utility: E_REGISTRO_COPPIA_GIA_COPERTA');
 
 -- Un registro di UNA utility, per la stessa coppia.
@@ -224,7 +225,7 @@ SELECT lives_ok(
 
 SELECT throws_like(
     (SELECT format('UPDATE vendite.registri_fatturazione SET utility_id = NULL WHERE id = %s', utility_reg_id) FROM _uti),
-    '%numera già%sul registro FAT-%',
+    '%numera già%sul registro FATTURA-%',
     '12) ... portato a «tutte le utility» diventa ambiguo: rifiutato');
 
 SELECT lives_ok(

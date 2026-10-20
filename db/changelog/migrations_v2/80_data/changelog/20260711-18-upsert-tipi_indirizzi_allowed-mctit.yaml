@@ -42,6 +42,8 @@ databaseChangeLog:
             nullValue: "NULL"
             primaryKey: "ambito,tipo_indirizzo_id"
             columns:
+              # rev 2026-10-20 (20261020-47, brief-db-grammatica-unica-documenti 2d, G-6):
+              #   ambito e' il codice della sorgente del documento (FK verso config.sorgenti).
               - column: { name: ambito,             type: STRING }
               - column: { name: tipo_indirizzo_id,  type: NUMERIC }
               - column: { name: obbligatorio,       type: BOOLEAN }

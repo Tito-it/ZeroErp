@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2d (G-6): vw_dash_fatturazione_contratti: l'area CONTRATTI diventa CONTRATTO
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-6, §10.4.
+#
+#   La dashboard raggruppa per codice della sorgente (G-6): il valore della colonna area passa
+#   dal plurale (CONTRATTI) al codice (CONTRATTO). Stesso tipo, stessa colonna: CREATE OR REPLACE,
+#   le viste sopra (vw_dash_fatturazione_documenti, i riepiloghi) restano in piedi.
+#   ⚠️ CAMBIA UN VALORE nelle risposte della dashboard: le costanti DASH_*_AREE del backend e
+#   il frontend della dashboard seguono nello stesso giro.
+#
+#   Corpo e COMMENT dal catalogo vivo di dbdev (2026-10-20), non da uno YAML; sostituzioni
+#   contate. %TYPE in firma, DECLARE e RETURNS TABLE dove c'e' una colonna; nudi, col
+#   motivo accanto, i valori che una colonna non ha (conteggi, jsonb di lavoro, array).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261020-84-update-vw-dash-fatturazione-contratti-area-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-84-update-vw-dash-fatturazione-contratti-area-codice-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_dash_fatturazione_contratti: l'area CONTRATTI diventa CONTRATTO, il codice della sorgente. Grammatica unica, 2d (G-6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si AZZERA a ogni CREATE OR REPLACE VIEW: si ripete dal catalogo.
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_contratti WITH (security_invoker=on) AS
+              SELECT 'CONTRATTO'::character varying AS area,
+                  NULL::date AS competenza_mese,
+                  c.id AS documento_id,
+                  (c.uid)::text AS documento_uid,
+                  (c.numero)::text AS codice,
+                  c.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  NULL::numeric AS valore_totale,
+                  NULL::numeric AS valore_transitato,
+                  1 AS unita_totali,
+                  NULL::integer AS unita_transitate,
+                  NULL::boolean AS is_transitato,
+                  false AS is_abortito,
+                  NULL::character varying AS motivo_fermo,
+                  sdc.codice_interno AS stato_codice_interno,
+                  sdc.codice AS stato_codice,
+                  sdc.fase,
+                  sog.ragione_sociale_completa AS cliente_display,
+                  c.valido_dal AS data_riferimento
+                 FROM ((((vendite.contratti c
+                   JOIN config.stati_doc_contratti sdc ON (((sdc.id = c.stato_doc_contratto_id) AND ((sdc.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = c.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr.soggetto_id)));
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_contratti IS
+                'Resolver area CONTRATTI (famiglia dash fatturazione / situazione aperta): 1 riga per contratto vivo (esito <> NEGATIVO), DE-ESPLOSO (niente asse mese, DL-12). Giudizio di transito SOSPESO finche'' non esiste il push ricorrente: is_transitato/unita_transitate/motivo_fermo = NULL (non "fermo": senza push ogni contratto sarebbe un falso-allarme perenne). data_riferimento = valido_dal ("in essere da"). Area a conteggi: valore_* NULL. Consumata da vw_dash_fatturazione_documenti (union) e da vw_dash_aperto_*; il Backlog non la vede (motivo_fermo NULL). Rev 2026-10-20 (20261020-84, brief-db-grammatica-unica-documenti 2d, G-6): l''area CONTRATTI diventa CONTRATTO, il codice della sorgente (il plurale e'' ritirato).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_contratti WITH (security_invoker=on) AS
+              SELECT 'CONTRATTI'::character varying AS area,
+                  NULL::date AS competenza_mese,
+                  c.id AS documento_id,
+                  (c.uid)::text AS documento_uid,
+                  (c.numero)::text AS codice,
+                  c.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  NULL::numeric AS valore_totale,
+                  NULL::numeric AS valore_transitato,
+                  1 AS unita_totali,
+                  NULL::integer AS unita_transitate,
+                  NULL::boolean AS is_transitato,
+                  false AS is_abortito,
+                  NULL::character varying AS motivo_fermo,
+                  sdc.codice_interno AS stato_codice_interno,
+                  sdc.codice AS stato_codice,
+                  sdc.fase,
+                  sog.ragione_sociale_completa AS cliente_display,
+                  c.valido_dal AS data_riferimento
+                 FROM ((((vendite.contratti c
+                   JOIN config.stati_doc_contratti sdc ON (((sdc.id = c.stato_doc_contratto_id) AND ((sdc.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = c.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr.soggetto_id)));
+
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_contratti IS
+                'Resolver area CONTRATTI (famiglia dash fatturazione / situazione aperta): 1 riga per contratto vivo (esito <> NEGATIVO), DE-ESPLOSO (niente asse mese, DL-12). Giudizio di transito SOSPESO finche'' non esiste il push ricorrente: is_transitato/unita_transitate/motivo_fermo = NULL (non "fermo": senza push ogni contratto sarebbe un falso-allarme perenne). data_riferimento = valido_dal ("in essere da"). Area a conteggi: valore_* NULL. Consumata da vw_dash_fatturazione_documenti (union) e da vw_dash_aperto_*; il Backlog non la vede (motivo_fermo NULL).';

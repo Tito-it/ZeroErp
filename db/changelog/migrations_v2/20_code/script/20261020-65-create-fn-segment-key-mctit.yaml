@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2e (G-8, L2e-2 = (a)): script.fn_segment_key, il solo costruttore della chiave.
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-8, §13.3 (L2e-2 decisa da Tid il 2026-10-20).
+#
+#   La chiave d'idempotenza del push verso la commessa (vendite.commesse_attivita.segment_key) ha la
+#   forma <SORGENTE>:<uid>[:R:<riga>][:M:<AAAA-MM>][#CMP:<componente>|#RET:<...>]. G-8: il prefisso
+#   e' il codice della sorgente (ORDINE_VENDITA, non ORD), la costruisce un solo BB, e chi la legge
+#   non ricopia split_part a mano. L2e-2 = (a): le rettifiche da reso non hanno sorgente
+#   (chk_commesse_attivita_senza_sorgente_onere_rettifica), quindi «di che documento e'?» si legge
+#   dalla chiave, con questi BB.
+#   ⭐ LANGUAGE sql, senza SET: il planner li espande in linea (le funzioni veloci della merce
+#   li usano dentro join e intervalli d'indice). I suffissi #CMP:/#RET: restano a chi li scrive.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261020-65-create-fn-segment-key-mctit.yaml
+
+  - changeSet:
+      id: 20261020-65-create-fn-segment-key
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_segment_key: il solo costruttore della chiave del push (sorgente, uid, riga, mese). Grammatica unica, 2e (G-8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_segment_key(
+                  p_sorgente config.sorgenti.codice_interno%TYPE,
+                  p_uid      vendite.commesse_attivita.sorgente_uid%TYPE,
+                  -- l'id della riga del documento: polimorfo (righe di tabelle diverse)
+                  p_riga     bigint DEFAULT NULL,
+                  -- il mese di competenza (contratti): un giorno qualunque del mese
+                  p_mese     date DEFAULT NULL)
+              RETURNS vendite.commesse_attivita.segment_key%TYPE
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: costruire la chiave d'idempotenza del push di un
+              --   documento verso la commessa: <sorgente>:<uid>[:R:<riga>]
+              --   [:M:<AAAA-MM>]. Il SOLO costruttore (G-8, regola del 2).
+              -- Parametri: p_sorgente il codice della sorgente (ORDINE_VENDITA,
+              --   DDT_VENDITA, PREVENTIVO, CONTRATTO, ATTIVITA_CONSUMI); p_uid
+              --   l'uid della testata; p_riga e p_mese facoltativi.
+              -- ⚠️ STABLE e non IMMUTABLE: to_char lo e'. Nessun SET: il
+              --   planner la espande in linea.
+              -- ⚠️ I suffissi (#CMP:<componente> del kit, #RET:<...> della
+              --   rettifica) li aggiunge chi scrive quella riga, alla chiave
+              --   che riceve da qui.
+              -- Brief: brief-db-grammatica-unica-documenti §13.3 (2e).
+              -- =========================================================
+              SELECT p_sorgente || ':' || p_uid
+                     || COALESCE(':R:' || p_riga::text, '')
+                     || COALESCE(':M:' || to_char(p_mese, 'YYYY-MM'), '');
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_segment_key(config.sorgenti.codice_interno%TYPE, vendite.commesse_attivita.sorgente_uid%TYPE, bigint, date) IS
+                'La chiave d''idempotenza del push verso la commessa: <sorgente>:<uid>[:R:<riga>][:M:<AAAA-MM>], col codice della sorgente come prefisso (G-8). Il SOLO costruttore; i suffissi #CMP:/#RET: li aggiunge chi scrive la riga. LANGUAGE sql STABLE senza SET: si espande in linea. Brief: brief-db-grammatica-unica-documenti §13.3.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_segment_key(config.sorgenti.codice_interno%TYPE, vendite.commesse_attivita.sorgente_uid%TYPE, bigint, date) TO zeroerp_app;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION script.fn_segment_key(config.sorgenti.codice_interno%TYPE, vendite.commesse_attivita.sorgente_uid%TYPE, bigint, date);

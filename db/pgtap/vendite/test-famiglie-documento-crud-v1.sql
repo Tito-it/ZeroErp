@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): famiglie di prova nate come sorgenti; DDT_VENDITA; test 11 sulla serie, test 20 sul guard (E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA), test 25 su una sorgente di prova su acquisti.ordini (L2c-1).
 -- pgTAP test per Zero ERP
 -- Test: il CRUD delle FAMIGLIE DI DOCUMENTO — i tre guard, le due porte del
 --       provisioning, la madre e la superficie di lettura.
@@ -93,6 +94,20 @@ SELECT 'PGTAP-FAM'::varchar   AS codice,
        'fattura_id'::text     AS col_ba,
        (SELECT count(*) FROM anagrafiche.emittenti_fiscali) AS n_emittenti;
 
+-- ⭐ rev 2026-10-20 (2c, G-5): una famiglia E' una sorgente (FK
+--   fk_famiglie_documento_sorgenti) e la sua tabella e' la target_table della
+--   sorgente. Le famiglie di prova nascono prima come sorgenti, ciascuna con la
+--   tabella che serve al suo caso (NULL = il riferimento che manca).
+DO $sorgenti$ BEGIN
+    PERFORM dbops.fn_pgtap_crea_sorgente('PGTAP-FAM', 'vendite.fatture_sdi'::regclass);
+    PERFORM dbops.fn_pgtap_crea_sorgente('PGTAP-MORTA');
+    PERFORM dbops.fn_pgtap_crea_sorgente('PGTAP-ATOM');
+    PERFORM dbops.fn_pgtap_crea_sorgente('PGTAP-DDT2', 'vendite.ddt'::regclass);
+    PERFORM dbops.fn_pgtap_crea_sorgente('PGTAP-DDT3', 'vendite.ddt'::regclass);
+    PERFORM dbops.fn_pgtap_crea_sorgente('PGTAP-ACQ', 'acquisti.ordini'::regclass);
+    PERFORM dbops.fn_pgtap_crea_sorgente('PGTAP-ACQ-VUOTA', 'acquisti.ordini'::regclass);
+END $sorgenti$;
+
 -- ============================================================
 -- 1) ⭐ Il trigger deve NOMINARE colonna_serie
 -- ============================================================
@@ -112,7 +127,7 @@ SELECT matches(
 -- ============================================================
 PREPARE serie_inesistente AS
 UPDATE vendite.famiglie_documento SET colonna_serie = 'colonna_che_non_esiste'
- WHERE codice_interno = 'DDT';
+ WHERE codice_interno = 'DDT_VENDITA';
 
 SELECT throws_ok(
     'serie_inesistente', 'P0001',
@@ -123,7 +138,7 @@ SELECT throws_ok(
 --   di unicita' col numero: e' il caso «nome giusto che non basta».
 PREPARE serie_non_discrimina AS
 UPDATE vendite.famiglie_documento SET colonna_serie = 'causale_trasporto_id'
- WHERE codice_interno = 'DDT';
+ WHERE codice_interno = 'DDT_VENDITA';
 
 SELECT throws_ok(
     'serie_non_discrimina', 'P0001',
@@ -131,16 +146,16 @@ SELECT throws_ok(
     '3) ...e una che esiste ma NON discrimina il numero pure');
 
 SELECT lives_ok(
-    $$UPDATE vendite.famiglie_documento SET colonna_serie = 'serie' WHERE codice_interno = 'DDT'$$,
+    $$UPDATE vendite.famiglie_documento SET colonna_serie = 'serie' WHERE codice_interno = 'DDT_VENDITA'$$,
     '4) Il gemello positivo: la serie vera passa');
 
 -- ⭐ Una famiglia spenta puo' nominare quello che vuole: e' storia, non
 --   configurazione. Si crea spenta apposta, per non toccare le cinque vere.
 SELECT lives_ok(
     $$INSERT INTO vendite.famiglie_documento
-          (codice_interno, descrizione, schema_tabella, nome_tabella, colonna_numero,
+          (codice_interno, descrizione, colonna_numero,
            colonna_billing_account, colonna_serie, attivo, user_insert)
-      VALUES ('PGTAP-MORTA', 'Famiglia ritirata', 'vendite', 'tabella_sparita',
+      VALUES ('PGTAP-MORTA', 'Famiglia ritirata',
               'numero', 'billing_account_id', 'serie', FALSE, 'pgtap')$$,
     '5) Una famiglia SPENTA puo'' nominare riferimenti che non esistono piu''');
 
@@ -148,7 +163,7 @@ SELECT lives_ok(
 -- 6/7/8) ⛔ Lo spegnimento
 -- ============================================================
 PREPARE spegni_ddt AS
-UPDATE vendite.famiglie_documento SET attivo = FALSE WHERE codice_interno = 'DDT';
+UPDATE vendite.famiglie_documento SET attivo = FALSE WHERE codice_interno = 'DDT_VENDITA';
 
 SELECT throws_ok(
     'spegni_ddt', 'P0001',
@@ -157,9 +172,9 @@ SELECT throws_ok(
 
 -- La famiglia di prova: nessun registro, nessun documento numerato.
 INSERT INTO vendite.famiglie_documento
-    (codice_interno, descrizione, schema_tabella, nome_tabella, colonna_numero,
+    (codice_interno, descrizione, colonna_numero,
      colonna_billing_account, prefisso_default, lunghezza_default, user_insert)
-SELECT f.codice, 'Famiglia pgTAP', f.sch, f.tab, f.col_num, f.col_ba, 'PGT', 9, 'pgtap'
+SELECT f.codice, 'Famiglia pgTAP', f.col_num, f.col_ba, 'PGT', 9, 'pgtap'
   FROM tmp_fam f;
 
 SELECT lives_ok(
@@ -174,7 +189,7 @@ SELECT lives_ok(
 -- 9/10/11) ⛔ La struttura, e l'ordine dei guard
 -- ============================================================
 PREPARE cambia_struttura_ddt AS
-UPDATE vendite.famiglie_documento SET colonna_serie = NULL WHERE codice_interno = 'DDT';
+UPDATE vendite.famiglie_documento SET colonna_serie = NULL WHERE codice_interno = 'DDT_VENDITA';
 
 SELECT throws_ok(
     'cambia_struttura_ddt', 'P0001',
@@ -187,19 +202,21 @@ SELECT lives_ok(
     '10) Il gemello positivo: senza registri la struttura si cambia');
 
 -- ⭐⭐ L'ORDINE DEI GUARD, e si prova sulla FRASE.
--- ⚠️ Cambiando `nome_tabella` su una famiglia con registri, due guard hanno
---   qualcosa da dire: `riferimenti` (la tabella nuova non ha la colonna serie)
---   e `chiave_struttura` (quella colonna non si cambia affatto). I BEFORE ROW
+-- ⚠️ rev 2026-10-20 (2c): la tabella non e' piu' una colonna della famiglia (la
+--   dice la sorgente). Lo stesso conflitto si costruisce con una colonna_serie
+--   che non esiste, su una famiglia con registri: due guard hanno qualcosa da
+--   dire, `riferimenti` (la colonna non c'e') e `chiave_struttura` (quella
+--   colonna non si cambia affatto). I BEFORE ROW
 --   scattano in ordine alfabetico, e il nome `chiave` esiste per far parlare il
 --   secondo. Se un domani qualcuno rinomina il trigger, questo test diventa
 --   rosso — che e' esattamente cio' che deve fare.
 PREPARE sposta_tabella_ddt AS
-UPDATE vendite.famiglie_documento SET nome_tabella = 'resi' WHERE codice_interno = 'DDT';
+UPDATE vendite.famiglie_documento SET colonna_serie = 'colonna_che_non_esiste' WHERE codice_interno = 'DDT_VENDITA';
 
 SELECT throws_like(
     'sposta_tabella_ddt',
     '%non si modificano%',
-    '11) Su un cambio di tabella parla il guard della CHIAVE, non quello dei riferimenti');
+    '11) Su una serie inesistente sotto un registro parla il guard della CHIAVE, non quello dei riferimenti');
 
 -- ============================================================
 -- 12) ⛔ Il lock su codice_interno
@@ -255,8 +272,7 @@ SELECT is(
 --   in cui la seconda meta' della madre puo' saltare per davvero.
 SELECT throws_ok(
     $$SELECT * FROM vendite.fn_crea_famiglia_documento(
-          'PGTAP-ATOM', 'Famiglia atomica', 'vendite', 'tabella_che_non_esiste',
-          'numero', 'billing_account_id')$$,
+          'PGTAP-ATOM', 'Famiglia atomica', 'numero', 'billing_account_id')$$,
     'P0001',
     NULL,
     '17) La madre rifiuta un riferimento inesistente');
@@ -309,15 +325,18 @@ SELECT is(
 --   in cui vive. Due righe sulla stessa tabella sono due nomi per la stessa
 --   cosa, e il presidio sul cambio emittente conterebbe quei documenti DUE
 --   VOLTE, elencandoli sotto due nomi diversi.
-SELECT throws_ok(
+-- ⚠️ rev 2026-10-20 (2c): la regola era l'indice uq_famiglie_documento_tabella_attiva
+--   (23505); dalla G-5 la tabella viene dalla sorgente e la regola sta nel guard dei
+--   riferimenti, col codice E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA. Si prova sulla
+--   frase, che nomina la famiglia che occupa gia' la tabella.
+SELECT throws_like(
     $$INSERT INTO vendite.famiglie_documento
-          (codice_interno, descrizione, schema_tabella, nome_tabella, colonna_numero,
+          (codice_interno, descrizione, colonna_numero,
            colonna_billing_account, colonna_serie, user_insert)
-      VALUES ('PGTAP-DDT2', 'Un secondo nome per i ddt', 'vendite', 'ddt',
+      VALUES ('PGTAP-DDT2', 'Un secondo nome per i ddt',
               'numero', 'billing_account_id', 'serie', 'pgtap')$$,
-    '23505',
-    NULL,
-    '20) Due famiglie ATTIVE non possono nominare la stessa tabella');
+    '%gia'' numerata dalla famiglia attiva DDT_VENDITA%',
+    '20) Due famiglie ATTIVE non possono numerare la stessa tabella');
 
 -- ⭐ IL GEMELLO CHE SPIEGA IL PREDICATO: il vincolo e' PARZIALE su `attivo`, e
 --   una famiglia ritirata NON tiene occupata la sua tabella. ⛔ Un UNIQUE pieno
@@ -327,9 +346,9 @@ SELECT throws_ok(
 --   libera lo slot: la' lo slot e' la chiave del contatore.
 SELECT lives_ok(
     $$INSERT INTO vendite.famiglie_documento
-          (codice_interno, descrizione, schema_tabella, nome_tabella, colonna_numero,
+          (codice_interno, descrizione, colonna_numero,
            colonna_billing_account, colonna_serie, attivo, user_insert)
-      VALUES ('PGTAP-DDT3', 'Un ddt ritirato', 'vendite', 'ddt',
+      VALUES ('PGTAP-DDT3', 'Un ddt ritirato',
               'numero', 'billing_account_id', 'serie', FALSE, 'pgtap')$$,
     '21) ...ma una famiglia RITIRATA si'': il vincolo e'' parziale, e non blocca per sempre');
 
@@ -363,7 +382,7 @@ SELECT is(
 
 PREPARE dichiara_ddt_fiscale AS
 UPDATE vendite.famiglie_documento SET ammette_regole_fiscali = TRUE
- WHERE codice_interno = 'DDT';
+ WHERE codice_interno = 'DDT_VENDITA';
 
 SELECT throws_ok(
     'dichiara_ddt_fiscale', '23514',
@@ -385,10 +404,13 @@ SELECT throws_ok(
 CREATE TEMP TABLE _fam_noba AS
 SELECT famiglia_id, codice_interno, registri_creati
   FROM vendite.fn_crea_famiglia_documento(
+       -- rev 2026-10-20 (2c): una sorgente di PROVA su acquisti.ordini. ⚠️ Non la
+       --   sorgente vera ORDINE_ACQUISTO: il codice del registro provvisionato prende
+       --   le prime tre lettere della famiglia (vendite.fn_codice_registro_provisionato)
+       --   e ORD collide col registro di ORDINE_VENDITA. Difetto latente del modello,
+       --   registrato nel brief (L2c-1, §13.3-bis), non di questo test.
        p_codice_interno        => 'PGTAP-ACQ',
        p_descrizione           => 'Ordine di acquisto (pgTAP, senza billing account)',
-       p_schema_tabella        => 'acquisti',
-       p_nome_tabella          => 'ordini',
        p_colonna_numero        => 'numero',
        p_colonna_billing_account => NULL);
 
@@ -406,7 +428,7 @@ SELECT is(
 CREATE TEMP TABLE _fam_vuota AS
 SELECT famiglia_id
   FROM vendite.fn_crea_famiglia_documento(
-           'PGTAP-ACQ-VUOTA', 'Stessa cosa, con la stringa vuota', 'acquisti', 'ordini',
+           'PGTAP-ACQ-VUOTA', 'Stessa cosa, con la stringa vuota',
            'numero', '   ', NULL, NULL, 7, false);
 
 SELECT is(

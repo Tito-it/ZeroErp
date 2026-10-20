@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_preventivi_da_pushare
 -- ------------------------------------------------------------
@@ -7,7 +8,7 @@
 -- 1) fn_list_preventivi_da_pushare presente
 -- 2) Riferimenti minimi disponibili
 -- 3) Preventivo ACCETTATO con riga valida restituito
--- 4) Segment key formato corretto (PREV:<uid>:R:<riga_id>)
+-- 4) Segment key formato corretto (PREVENTIVO:<uid>:R:<riga_id>)
 -- 5) prezzo_bloccato coerente con fatturazione_immediata
 -- 6) Preventivo non ACCETTATO escluso
 -- 7) Riga con quantita zero esclusa
@@ -187,10 +188,10 @@ SELECT ok(
     SELECT 1
     FROM tmp_result_prev rp
     WHERE rp.preventivo_id = (SELECT id FROM tmp_prev)
-      AND rp.segment_key = 'PREV:' || (SELECT uid FROM tmp_prev)::text
+      AND rp.segment_key = 'PREVENTIVO:' || (SELECT uid FROM tmp_prev)::text
                            || ':R:' || (SELECT id FROM tmp_prev_riga)::text
   ),
-  'Segment key formato corretto (PREV:<uid>:R:<riga_id>)'
+  'Segment key formato corretto (PREVENTIVO:<uid>:R:<riga_id>)'
 );
 
 -- ============================================================

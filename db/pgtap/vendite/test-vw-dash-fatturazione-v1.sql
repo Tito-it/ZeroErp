@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): l'area della dashboard e' il codice della sorgente; le chiavi del push col prefisso lungo.
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture deve creare una commessa sull'emittente 44 (EMI-TEST), che per
 --   progetto resta SENZA operatore assegnato — ed e' il soggetto del test:
@@ -277,7 +278,7 @@ INSERT INTO vendite.commesse_attivita (
   sorgente_tipo_id, sorgente_uid)
 SELECT
   (SELECT id FROM tmp_df_commessa),
-  'PREV:' || (SELECT uid FROM tmp_df_prev)::text || ':R:' || (SELECT id FROM tmp_df_riga_serv_emessa)::text,
+  'PREVENTIVO:' || (SELECT uid FROM tmp_df_prev)::text || ':R:' || (SELECT id FROM tmp_df_riga_serv_emessa)::text,
   r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 2,
   DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31',
   r.tipo_doc_fiscale_id, r.valuta_id, 30.000000,
@@ -308,7 +309,7 @@ FROM tmp_df_refs r;
 -- 2-4) Area PREVENTIVI
 -- ============================================================
 SELECT ok(
-  (SELECT v.area = 'PREVENTIVI'
+  (SELECT v.area = 'PREVENTIVO'
       AND v.competenza_mese = DATE '2080-01-01'
       AND v.unita_totali = 3
       AND v.unita_transitate = 2
@@ -365,7 +366,7 @@ SELECT is(
   '6. Ordine CONFERMATO senza push: motivo PUSH_NON_ESEGUITO'
 );
 
--- Push del ramo ordine: attivita EMESSA con segment_key ORD:<uid>:R:<riga>.
+-- Push del ramo ordine: attivita EMESSA con segment_key ORDINE_VENDITA:<uid>:R:<riga>.
 INSERT INTO vendite.commesse_attivita (
   commessa_id, segment_key,
   articolo_id, istanza_utility_id, data_attivita, uom_id, quantita,
@@ -375,7 +376,7 @@ INSERT INTO vendite.commesse_attivita (
   sorgente_tipo_id, sorgente_uid)
 SELECT
   (SELECT id FROM tmp_df_commessa),
-  'ORD:' || (SELECT uid FROM tmp_df_ordine)::text || ':R:' || (SELECT riga_id FROM tmp_df_ordine)::text,
+  'ORDINE_VENDITA:' || (SELECT uid FROM tmp_df_ordine)::text || ':R:' || (SELECT riga_id FROM tmp_df_ordine)::text,
   r.art_merce_id, r.istanza_utility_id, DATE '2080-02-01', r.uom_id, 1,
   DATE '2080-02-01', DATE '2080-02-01', DATE '2080-02-28',
   r.tipo_doc_fiscale_id, r.valuta_id, 50.000000,
@@ -594,7 +595,7 @@ INSERT INTO vendite.commesse_attivita (
   sorgente_tipo_id, sorgente_uid)
 SELECT
   (SELECT id FROM tmp_df_commessa),
-  'CONTR:' || (SELECT uid FROM tmp_df_contratto)::text || ':R:0:M:'
+  'CONTRATTO:' || (SELECT uid FROM tmp_df_contratto)::text || ':R:0:M:'
            || to_char(date_trunc('month', script.fn_data_operativa())::date, 'YYYY-MM'),
   r.art_serv_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
   date_trunc('month', script.fn_data_operativa())::date,
@@ -697,7 +698,7 @@ SELECT ok(
       AND d.is_transitato = false AND d.is_abortito = false
       AND d.fase IS NOT NULL
      FROM vendite.vw_dash_fatturazione_documenti d
-    WHERE d.area = 'PREVENTIVI'
+    WHERE d.area = 'PREVENTIVO'
       AND d.documento_id = (SELECT id FROM tmp_df_prev)),
   '17. Union PREVENTIVI: il documento 2080-01 espone 140/110, fermo, fase valorizzata'
 );
@@ -708,7 +709,7 @@ SELECT ok(
       AND count(*) FILTER (WHERE NOT d.is_transitato AND NOT d.is_abortito) = 3
       AND bool_and(d.valore_totale IS NULL AND d.valore_transitato IS NULL)
      FROM vendite.vw_dash_fatturazione_documenti d
-    WHERE d.area = 'OFFERTE' AND d.competenza_mese = DATE '2080-03-01'
+    WHERE d.area = 'OFFERTA_COMMERCIALE' AND d.competenza_mese = DATE '2080-03-01'
       AND d.documento_id IN (SELECT offerta_id FROM tmp_df_offerte)),
   '18. Union OFFERTE 2080-03: 4 documenti, 1 transitata, 3 ferme, valori NULL (area a conteggi)'
 );
@@ -774,7 +775,7 @@ SELECT CASE WHEN (SELECT ba_b_id FROM tmp_df_refs) IS NULL
   ELSE ok(
     (SELECT NOT EXISTS (
               SELECT 1 FROM vendite.vw_dash_fatturazione_documenti d
-               WHERE d.area = 'COMMESSE' AND d.competenza_mese = DATE '2080-05-01')),
+               WHERE d.area = 'COMMESSA' AND d.competenza_mese = DATE '2080-05-01')),
     '20. Scope: mese 2080-05 (solo commessa B) assente da documenti per l''operatore A'
   )
 END;
@@ -883,7 +884,7 @@ SELECT ok(
         AND v.competenza_mese = DATE '2080-07-01')
    AND NOT EXISTS (
      SELECT 1 FROM vendite.vw_dash_fatturazione_documenti d
-      WHERE d.area = 'COMMESSE' AND d.competenza_mese = DATE '2080-07-01')),
+      WHERE d.area = 'COMMESSA' AND d.competenza_mese = DATE '2080-07-01')),
   '25. Mese di sole void (2080-07 ANNULLATA): assente dal resolver e dal drill-down'
 );
 

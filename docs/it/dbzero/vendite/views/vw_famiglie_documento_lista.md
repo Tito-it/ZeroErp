@@ -3,22 +3,22 @@
 
 > 📝 **Descrizione**
 >
-> Superficie di lettura del catalogo delle famiglie di documento: le colonne di catalogo, i due conteggi dei registri e i due blocchi capability presi dalle check. ⛔ ESISTE PERCHE' IL LOOKUP GENERICO NON BASTA: dbops.fn_get_lookup_codici torna id, codice, codice_interno, descrizione e attivo, e non puo' portare i default della forma ne' le colonne di natura — non e' un suo difetto, e' generico e va lasciato generico. ⭐ TRE LETTORI, UNA SEDE: la lista del CRUD delle famiglie (dove e' anche la `vista_sql` dichiarata a catalogo, cosi' il database valida ogni campo_sorgente contro le colonne vere), il suo export CSV/XLSX che legge le stesse righe con le stesse chiavi, e il drawer dei REGISTRI, che da qui prende prefisso_default e lunghezza_default per precompilare la forma alla creazione e presidia_data_documento / colonna_serie per decidere quali campi mostrare. ⛔ Quest'ultimo e' cio' che toglie i due letterali 'FATTURA' paralleli da backend e frontend: presidia_data_documento e' ammette_regole_fiscali SONO le colonne che rispondono a quelle domande — la prima al pavimento di sequenza, la seconda ai campi fiscali del registro: due domande diverse con la stessa risposta di oggi, tenute distinte apposta. ⚠️ IL NOME DELLE COLONNE E' IL CONTRATTO: &lt;ListaConfigurabile&gt; legge data[campo_sorgente] e il renderer di export fa lo stesso, quindi un rename qui rompe le celle e il file esportato insieme, e in silenzio. ⭐ I due conteggi sono DATO: n_registri e' il predicato che rende immutabile la struttura, n_registri_attivi quello che blocca lo spegnimento — mostrarli fa capire il rifiuto prima di provarlo. ⛔ DUE BLOCCHI CAPABILITY, DUE NOMI: rimozione_* risponde a «posso spegnerla?», struttura_* a «posso cambiarle le colonne?»; su una famiglia con registri sono spenti entrambi per motivi diversi, e riusare uno per l'altra domanda mostrerebbe la frase sbagliata senza che niente fallisca. ⚠️ LEFT JOIN LATERAL ... ON TRUE e non CROSS JOIN: la check risponde [] quando l'azione e' ammessa, e con un CROSS JOIN sparirebbero dalla lista proprio le famiglie senza problemi. ⚠️ security_invoker=on e' scritto nel changeSet perche' si AZZERA a ogni CREATE OR REPLACE VIEW: una revisione che non lo ripete trasforma la vista in un bypass della RLS, in silenzio. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.8 (DB-6).
+> Superficie di lettura del catalogo delle famiglie di documento: le colonne di catalogo, i due conteggi dei registri e i due blocchi capability presi dalle check. ⛔ ESISTE PERCHE' IL LOOKUP GENERICO NON BASTA: dbops.fn_get_lookup_codici torna id, codice, codice_interno, descrizione e attivo, e non puo' portare i default della forma ne' le colonne di natura — non e' un suo difetto, e' generico e va lasciato generico. ⭐ TRE LETTORI, UNA SEDE: la lista del CRUD delle famiglie (dove e' anche la `vista_sql` dichiarata a catalogo, cosi' il database valida ogni campo_sorgente contro le colonne vere), il suo export CSV/XLSX che legge le stesse righe con le stesse chiavi, e il drawer dei REGISTRI, che da qui prende prefisso_default e lunghezza_default per precompilare la forma alla creazione e presidia_data_documento / colonna_serie per decidere quali campi mostrare. ⛔ Quest'ultimo e' cio' che toglie i due letterali 'FATTURA' paralleli da backend e frontend: presidia_data_documento e' ammette_regole_fiscali SONO le colonne che rispondono a quelle domande — la prima al pavimento di sequenza, la seconda ai campi fiscali del registro: due domande diverse con la stessa risposta di oggi, tenute distinte apposta. ⚠️ IL NOME DELLE COLONNE E' IL CONTRATTO: &lt;ListaConfigurabile&gt; legge data[campo_sorgente] e il renderer di export fa lo stesso, quindi un rename qui rompe le celle e il file esportato insieme, e in silenzio. ⭐ I due conteggi sono DATO: n_registri e' il predicato che rende immutabile la struttura, n_registri_attivi quello che blocca lo spegnimento — mostrarli fa capire il rifiuto prima di provarlo. ⛔ DUE BLOCCHI CAPABILITY, DUE NOMI: rimozione_* risponde a «posso spegnerla?», struttura_* a «posso cambiarle le colonne?»; su una famiglia con registri sono spenti entrambi per motivi diversi, e riusare uno per l'altra domanda mostrerebbe la frase sbagliata senza che niente fallisca. ⚠️ LEFT JOIN LATERAL ... ON TRUE e non CROSS JOIN: la check risponde [] quando l'azione e' ammessa, e con un CROSS JOIN sparirebbero dalla lista proprio le famiglie senza problemi. ⚠️ security_invoker=on e' scritto nel changeSet perche' si AZZERA a ogni CREATE OR REPLACE VIEW: una revisione che non lo ripete trasforma la vista in un bypass della RLS, in silenzio. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.8 (DB-6). Rev 2026-10-20 (20261020-46, brief-db-grammatica-unica-documenti 2c, G-5): codice_interno e' il codice della sorgente; schema_tabella, nome_tabella e tabella_documento restano (il nome delle colonne e' il contratto) ma vengono dalla target_table della sorgente (config.fn_sorgente_tabella): le due colonne della tabella sono ritirate.
 
-> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+> 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_famiglie_documento_lista
-WITH (security_invoker=on) AS
+WITH (security_invoker=true) AS
 SELECT f.id,
     f.codice_interno,
     f.descrizione,
-    f.schema_tabella,
-    f.nome_tabella,
+    (t.schema_tabella)::text AS schema_tabella,
+    (t.nome_tabella)::text AS nome_tabella,
     f.colonna_numero,
     f.colonna_serie,
     f.colonna_billing_account,
-    ((f.schema_tabella || '.'::text) || f.nome_tabella) AS tabella_documento,
+    (((t.schema_tabella)::text || '.'::text) || (t.nome_tabella)::text) AS tabella_documento,
     f.presidia_data_documento,
     (f.colonna_serie IS NOT NULL) AS gestisce_serie,
     f.ammette_regole_fiscali,
@@ -39,7 +39,8 @@ SELECT f.id,
     struttura.dettaglio AS struttura_blocco_dettaglio,
     (struttura.reason IS NULL) AS can_modificare_struttura,
     f.codice
-   FROM (((vendite.famiglie_documento f
+   FROM ((((vendite.famiglie_documento f
+     LEFT JOIN LATERAL config.fn_sorgente_tabella(f.codice_interno) t(schema_tabella, nome_tabella, relid) ON (true))
      LEFT JOIN LATERAL ( SELECT count(*) AS n_registri,
             count(*) FILTER (WHERE rr.attivo) AS n_registri_attivi
            FROM vendite.registri_fatturazione rr

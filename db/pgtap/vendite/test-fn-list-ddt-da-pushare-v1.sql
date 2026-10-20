@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_ddt_da_pushare (Caso A: da ordine, Caso B: autonomo)
 --       + trgfn_ddt_normalize (ereditarieta` billing fields)
@@ -14,7 +15,7 @@
 -- 7) Caso B: DDT autonomo SPEDITO con billing_account restituito
 -- 8) Caso B: prezzo da ddt_righe.prezzo_unitario
 -- 9) Caso B: DDT autonomo VENDITA senza billing_account non si emette (rev 2026-10-09)
--- 10) Segment key formato corretto (DDT:<uid>:R:<riga_id>)
+-- 10) Segment key formato corretto (DDT_VENDITA:<uid>:R:<riga_id>)
 -- 11) prezzo_bloccato = TRUE se prezzo presente
 -- 12) Filtro p_billing_account_id rispettato
 -- ------------------------------------------------------------
@@ -560,10 +561,10 @@ SELECT ok(
     SELECT 1
     FROM vendite.fn_list_ddt_da_pushare(NULL, NULL, NULL) rd
     WHERE rd.ddt_id = (SELECT id FROM tmp_ddt_b)
-      AND rd.segment_key = 'DDT:' || (SELECT uid FROM tmp_ddt_b)::text
+      AND rd.segment_key = 'DDT_VENDITA:' || (SELECT uid FROM tmp_ddt_b)::text
                             || ':R:' || (SELECT id FROM tmp_ddt_b_riga)::text
   ),
-  'Segment key formato corretto (DDT:<uid>:R:<riga_id>)'
+  'Segment key formato corretto (DDT_VENDITA:<uid>:R:<riga_id>)'
 );
 
 -- ============================================================

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: fn_list_ddt_da_pushare proietta la DIFFERENZA del conto della merce,
 --       non piu' dr.quantita grezza — step 3, brief-db-fatturazione-ddt-resi
@@ -270,8 +271,8 @@ SELECT pg_temp.mk_reso(
 -- da test-fn-list-ddt-da-pushare-v1 (casi 7-8, "DDT autonomo"): non ripetuto qui.
 
 -- Fatturazione: CA per C (DDT_C, 7) e D (DDT_orig_D, 10) -> emit.
-SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_c)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_c)::text, 7);
-SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_d)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_d)::text, 10);
+SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_c)::text, (SELECT ddt_riga_id FROM tmp_c)), 7);
+SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_d)::text, (SELECT ddt_riga_id FROM tmp_d)), 10);
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
 

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_annulla_accredito_riga_reso — l'annullo dell'accredito
 --       (brief-db-note-credito-prerequisiti-be-fe §8 passo 3 / §9;
@@ -306,7 +307,7 @@ SELECT vendite.fn_link_commessa_sorgente(
 CREATE TEMP TABLE tmp_pa AS SELECT * FROM pg_temp.ann_mk_partita(10, 25);
 CREATE TEMP TABLE tmp_pa_fattura AS
 SELECT pg_temp.ann_fattura(
-    ('DDT:' || (SELECT ddt_uid FROM tmp_pa)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_pa)::text)::varchar,
+    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pa)::text, (SELECT ddt_riga_id FROM tmp_pa)),
     10, 25) AS fattura_riga_id;
 CREATE TEMP TABLE tmp_pa_reso AS
 SELECT pg_temp.ann_mk_reso((SELECT ddt_riga_id FROM tmp_pa), (SELECT ddt_uid FROM tmp_pa), 3) AS resi_riga_id;
@@ -443,7 +444,7 @@ SELECT is(
 CREATE TEMP TABLE tmp_pb AS SELECT * FROM pg_temp.ann_mk_partita(10, 25);
 CREATE TEMP TABLE tmp_pb_fattura AS
 SELECT pg_temp.ann_fattura(
-    ('DDT:' || (SELECT ddt_uid FROM tmp_pb)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_pb)::text)::varchar,
+    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pb)::text, (SELECT ddt_riga_id FROM tmp_pb)),
     10, 25) AS fattura_riga_id;
 CREATE TEMP TABLE tmp_pb_reso AS
 SELECT pg_temp.ann_mk_reso((SELECT ddt_riga_id FROM tmp_pb), (SELECT ddt_uid FROM tmp_pb), 3) AS resi_riga_id;
@@ -478,7 +479,7 @@ SELECT u.attivita_id AS commessa_attivita_id
   FROM tmp_refs_ann r,
        vendite.fn_upsert_commessa_attivita(
          p_commessa_id                 => (SELECT commessa_id FROM tmp_com_ann),
-         p_segment_key                 => ('DDT:' || (SELECT ddt_uid FROM tmp_pb)::text
+         p_segment_key                 => ('DDT_VENDITA:' || (SELECT ddt_uid FROM tmp_pb)::text
                                             || ':R:' || (SELECT ddt_riga_id FROM tmp_pb)::text
                                             || '#RET:2')::varchar,
          p_articolo_id                 => r.articolo_id,
@@ -515,7 +516,7 @@ INSERT INTO vendite.resi_righe_accrediti
 SELECT (SELECT resi_riga_id FROM tmp_pb_reso),
        (SELECT fattura_riga_id FROM tmp_pb_riga2),
        1, 1,
-       ('DDT:' || (SELECT ddt_uid FROM tmp_pb)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_pb)::text || '#RET:2')::varchar,
+       (script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pb)::text, (SELECT ddt_riga_id FROM tmp_pb)) || '#RET:2')::varchar,
        (SELECT commessa_attivita_id FROM tmp_pb_ret2),
        '{}'::jsonb;
 

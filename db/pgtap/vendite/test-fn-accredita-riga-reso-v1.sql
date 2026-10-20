@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_accredita_riga_reso — la madre del verbo «accredita»
 --       (brief-design-note-credito-resi, slice N8; changeset 20260818-39)
@@ -270,7 +271,7 @@ CREATE TEMP TABLE tmp_pa AS SELECT * FROM pg_temp.acc_mk_partita(10, 25);
 
 CREATE TEMP TABLE tmp_pa_fattura AS
 SELECT pg_temp.acc_fattura(
-    ('DDT:' || (SELECT ddt_uid FROM tmp_pa)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_pa)::text)::varchar,
+    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pa)::text, (SELECT ddt_riga_id FROM tmp_pa)),
     10, 25) AS fattura_riga_id;
 
 CREATE TEMP TABLE tmp_pa_reso AS
@@ -309,7 +310,7 @@ SELECT is(
 SELECT is(
   (SELECT ca.segment_key FROM vendite.commesse_attivita ca
     WHERE ca.id = (SELECT commessa_attivita_id FROM tmp_esito)),
-  ('DDT:' || (SELECT ddt_uid FROM tmp_pa)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_pa)::text || '#RET:1')::varchar,
+  (script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pa)::text, (SELECT ddt_riga_id FROM tmp_pa)) || '#RET:1')::varchar,
   '4) D-NC-1: il segmento e'' quello della SPEDIZIONE, col suffisso #RET:1'
 );
 
@@ -416,7 +417,7 @@ SELECT throws_ok(
 SELECT throws_like(
   format($$ INSERT INTO vendite.resi_righe_accrediti
               (resi_riga_id, fattura_riga_rettificata_id, qta, qta_partita, gruppo, commessa_attivita_id)
-            VALUES (%s, %s, 999, 999, 'DDT:test#RET:9', %s) $$,
+            VALUES (%s, %s, 999, 999, 'DDT_VENDITA:test#RET:9', %s) $$,
          (SELECT resi_riga_id FROM tmp_pa_reso),
          (SELECT fattura_riga_id FROM tmp_pa_fattura),
          (SELECT commessa_attivita_id FROM tmp_esito)),
@@ -437,7 +438,7 @@ CREATE TEMP TABLE tmp_pc AS SELECT * FROM pg_temp.acc_mk_partita(8, 30);
 
 CREATE TEMP TABLE tmp_pc_fattura AS
 SELECT pg_temp.acc_fattura(
-    ('ORD:' || (SELECT o.uid FROM vendite.ordini_righe orr
+    ('ORDINE_VENDITA:' || (SELECT o.uid FROM vendite.ordini_righe orr
                   JOIN vendite.ordini o ON o.id = orr.ordine_id
                  WHERE orr.id = (SELECT ordine_riga_id FROM tmp_pc))::text
      || ':R:' || (SELECT ordine_riga_id FROM tmp_pc)::text)::varchar,
@@ -455,7 +456,7 @@ SELECT is(
           || '|' || max(ca.segment_key)
      FROM tmp_esito_c e
      JOIN vendite.commesse_attivita ca ON ca.id = e.commessa_attivita_id),
-  '1|-2.000000|30.00|true|DDT:' || (SELECT ddt_uid FROM tmp_pc)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_pc)::text || '#RET:1',
+  '1|-2.000000|30.00|true|' || script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pc)::text, (SELECT ddt_riga_id FROM tmp_pc)) || '#RET:1',
   '15) corsia ORD: fatturato sull''ordine, la rettifica nasce sulla spedizione col prezzo della riga d''ordine'
 );
 

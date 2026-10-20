@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_ordini_da_pushare + trgfn_ordini_normalize
 -- ------------------------------------------------------------
@@ -163,7 +164,7 @@ SELECT ok(
     SELECT 1
     FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL) rp
     WHERE rp.ordine_id = (SELECT id FROM tmp_ordine)
-      AND rp.segment_key = 'ORD:' || (SELECT uid FROM tmp_ordine)::text
+      AND rp.segment_key = 'ORDINE_VENDITA:' || (SELECT uid FROM tmp_ordine)::text
                            || ':R:' || (SELECT id FROM tmp_ordine_riga)::text
   ),
   'Segment key formato corretto (ORD:<uid>:R:<riga_id>)'

@@ -9,6 +9,7 @@
 --   vendite.fn_get_or_create_commessa          (20260831-16)
 --   vendite.fn_assegna_numero_documento        (20260831-55 — la lunghezza dal registro)
 --   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA.
 -- ------------------------------------------------------------
 -- Elenco test (plan 11):
 -- 0) ⚠️ Precondizioni: la fixture non mente
@@ -168,7 +169,7 @@ SELECT
    --   giusto ma nel posto sbagliato.
    AND EXISTS (SELECT 1 FROM vendite.registri_fatturazione r
                 WHERE r.emittente_soggetto_ruolo_id = ef.soggetto_ruolo_id
-                  AND r.famiglia_documento = 'DDT' AND r.attivo)
+                  AND r.famiglia_documento = 'DDT_VENDITA' AND r.attivo)
  ORDER BY ba.id
  LIMIT 1;
 
@@ -272,7 +273,7 @@ SELECT is(
        FROM vendite.ddt d
        JOIN vendite.registri_fatturazione reg ON reg.id = d.registro_id
       WHERE d.id = (SELECT ddt_id FROM tmp_num_ddt)),
-    'DDT|true',
+    'DDT_VENDITA|true',
     '1) Il DDT emesso sta su un registro di famiglia DDT del PROPRIO emittente');
 
 SELECT is(
@@ -350,7 +351,7 @@ SELECT is(
        FROM vendite.ordini o
        JOIN vendite.registri_fatturazione reg ON reg.id = o.registro_id
       WHERE o.id = (SELECT ordine_id FROM tmp_num_ord)),
-    'true|ORDINE|true',
+    'true|ORDINE_VENDITA|true',
     '4) L''ordine nasce gia'' numerato, sul registro ORDINE del proprio emittente');
 
 -- =========================================================
@@ -539,7 +540,7 @@ SELECT is(
        FROM vendite.resi re
        JOIN vendite.registri_fatturazione reg ON reg.id = re.registro_id
       WHERE re.id = (SELECT reso_id FROM tmp_num_reso)),
-    'true|RESO|true|true',
+    'true|RESO_VENDITA|true|true',
     '8) Il reso confermato ha numero, registro RESO del proprio emittente e anno dalla data');
 
 -- ⚠️ Si asserisce la FORMA, non il numero: il progressivo dipende da quanti

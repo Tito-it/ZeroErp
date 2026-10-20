@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): l'area della dashboard e' il codice della sorgente; le chiavi del push col prefisso lungo.
 -- pgTAP test per Zero ERP
 --
 -- Test: Lente 2 Backlog (20260706-01..02 lookup+seed, -03..08 colonna
@@ -267,7 +268,7 @@ INSERT INTO vendite.commesse_attivita (
   sorgente_tipo_id, sorgente_uid)
 SELECT
   (SELECT id FROM tmp_bl_commessa),
-  'PREV:' || (SELECT uid FROM tmp_bl_prev)::text || ':R:' || (SELECT id FROM tmp_bl_riga_serv_emessa)::text,
+  'PREVENTIVO:' || (SELECT uid FROM tmp_bl_prev)::text || ':R:' || (SELECT id FROM tmp_bl_riga_serv_emessa)::text,
   r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 2,
   DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31',
   r.tipo_doc_fiscale_id, r.valuta_id, 30.000000,
@@ -383,7 +384,7 @@ SELECT ok(
       AND b.data_riferimento = DATE '2080-01-01'
       AND b.anzianita_giorni = (script.fn_data_operativa() - DATE '2080-01-01')
      FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'PREVENTIVI'
+    WHERE b.area = 'PREVENTIVO'
       AND b.documento_id = (SELECT id FROM tmp_bl_prev)
       AND b.motivo_fermo = 'RIGA_RESIDUA'),
   '5. RIGA_RESIDUA in backlog: RECUPERABILE, valore fermo 30, data_riferimento = data documento, anzianita'' coerente'
@@ -400,7 +401,7 @@ SELECT o.id
 
 SELECT is(
   (SELECT count(*)::integer FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'ORDINI' AND b.documento_id = (SELECT id FROM tmp_bl_ordine)),
+    WHERE b.area = 'ORDINE_VENDITA' AND b.documento_id = (SELECT id FROM tmp_bl_ordine)),
   0,
   '6. Ordine DRAFT (DOC_BOZZA, fisiologico): FUORI dal backlog'
 );
@@ -413,7 +414,7 @@ SELECT ok(
   (SELECT b.motivo_fermo = 'PUSH_NON_ESEGUITO' AND b.classe = 'RECUPERABILE'
       AND b.data_riferimento IS NOT NULL
      FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'ORDINI' AND b.documento_id = (SELECT id FROM tmp_bl_ordine)),
+    WHERE b.area = 'ORDINE_VENDITA' AND b.documento_id = (SELECT id FROM tmp_bl_ordine)),
   '7. Ordine CONFERMATO senza push: PUSH_NON_ESEGUITO in backlog, RECUPERABILE'
 );
 
@@ -422,12 +423,12 @@ SELECT ok(
 -- ============================================================
 SELECT ok(
   (SELECT count(*) = 0 FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'OFFERTE'
+    WHERE b.area = 'OFFERTA_COMMERCIALE'
       AND b.documento_id = (SELECT offerta_id FROM tmp_bl_offerte WHERE slot = 'BOZZA'))
   AND
   (SELECT b.motivo_fermo = 'IN_ATTESA_ACCETTAZIONE' AND b.classe = 'SOLLECITO_CLIENTE'
      FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'OFFERTE'
+    WHERE b.area = 'OFFERTA_COMMERCIALE'
       AND b.documento_id = (SELECT offerta_id FROM tmp_bl_offerte WHERE slot = 'EMESSA')),
   '8. Offerta BOZZA fuori dal backlog; offerta EMESSA dentro come SOLLECITO_CLIENTE (blu)'
 );
@@ -435,7 +436,7 @@ SELECT ok(
 SELECT ok(
   (SELECT b.motivo_fermo = 'FIGLIO_ABORTITO' AND b.classe = 'ANOMALIA'
      FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'OFFERTE'
+    WHERE b.area = 'OFFERTA_COMMERCIALE'
       AND b.documento_id = (SELECT offerta_id FROM tmp_bl_offerte WHERE slot = 'ACC_FIGLIO_ABORTITO')),
   '9. Offerta con figlio ANNULLATO: FIGLIO_ABORTITO in backlog, ANOMALIA (rossa)'
 );
@@ -445,7 +446,7 @@ SELECT ok(
 -- ============================================================
 SELECT is(
   (SELECT count(*)::integer FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'CONTRATTI'
+    WHERE b.area = 'CONTRATTO'
       AND b.documento_id = (SELECT id FROM tmp_bl_contratto)),
   0,
   '10. Contratto ATTIVO senza canone (CANONE_NON_GENERATO, fisiologico): FUORI dal backlog'
@@ -459,7 +460,7 @@ SELECT ok(
       AND b.data_riferimento = DATE '2080-01-01'
       AND b.competenza_mese = DATE '2080-01-01'
      FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'COMMESSE'
+    WHERE b.area = 'COMMESSA'
       AND b.documento_id = (SELECT id FROM tmp_bl_commessa)),
   '11. Commessa ferma: ATTIVITA_NON_APPROVATA in backlog, data_riferimento = competenza'
 );
@@ -473,7 +474,7 @@ UPDATE config.motivi_fermo SET attivo = false
 SELECT ok(
   (SELECT b.classe = 'ANOMALIA' AND b.azione IS NULL
      FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'PREVENTIVI'
+    WHERE b.area = 'PREVENTIVO'
       AND b.documento_id = (SELECT id FROM tmp_bl_prev)
       AND b.motivo_fermo = 'RIGA_RESIDUA'),
   '12. Fail-visible: motivo senza lookup attiva -> classe ANOMALIA, riga NON persa in silenzio'

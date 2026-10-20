@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_partite_merce — la partita di merce
 --       (brief-design-partita-merce-generalizzata, slice S2, changeSet 20260817-07).
@@ -289,9 +290,9 @@ CREATE TEMP TABLE tmp_p4 AS SELECT * FROM pg_temp.mk_partita(4, (SELECT causale_
 CREATE TEMP TABLE tmp_p5 AS SELECT * FROM pg_temp.mk_partita(3, (SELECT causale_non_fatt_id FROM tmp_refs), true);
 
 -- Le attivita': P1 sulla corsia ORD, P2 sulla corsia DDT, P5 sulla corsia ORD.
-SELECT pg_temp.mk_af('ORD:' || (SELECT ordine_uid FROM tmp_p1)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_p1)::text, 10);
-SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_p1)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p2)::text, 6);
-SELECT pg_temp.mk_af('ORD:' || (SELECT ordine_uid FROM tmp_p5)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_p5)::text, 3);
+SELECT pg_temp.mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid FROM tmp_p1)::text, (SELECT ordine_riga_id FROM tmp_p1)), 10);
+SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p1)::text, (SELECT ddt_riga_id FROM tmp_p2)), 6);
+SELECT pg_temp.mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid FROM tmp_p5)::text, (SELECT ordine_riga_id FROM tmp_p5)), 3);
 
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));

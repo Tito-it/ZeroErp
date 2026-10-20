@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   l'origine dei legami della commessa e' il codice della sorgente: DDT_VENDITA per la riga
 --   della bolla, RESO_VENDITA per la rettifica (erano DDT e RESO).
@@ -154,7 +155,7 @@ BEGIN
     p_sorgente_riga    => 1,
     p_meta             => '{}'::jsonb);
   SELECT d.uid::text INTO v_uid FROM vendite.ddt d WHERE d.id = pg_temp.acr('ddt');
-  v_seg := ('DDT:' || v_uid || ':R:' || pg_temp.acr('ddt_riga'))::varchar;
+  v_seg := ('DDT_VENDITA:' || v_uid || ':R:' || pg_temp.acr('ddt_riga'))::varchar;
 
   SELECT u.attivita_id INTO v_ca FROM vendite.fn_upsert_commessa_attivita(
     p_commessa_id                   => v_cm,
@@ -298,7 +299,7 @@ SELECT ok(
   (SELECT ca.stato_emissione = 'ANNULLATA' FROM vendite.commesse_attivita ca
     WHERE ca.id = pg_temp.acr('ca_ddt'))
   AND script.fn_get_stato_push_segment(
-        ('DDT:' || (SELECT d.uid FROM vendite.ddt d WHERE d.id = pg_temp.acr('ddt'))::text
+        ('DDT_VENDITA:' || (SELECT d.uid FROM vendite.ddt d WHERE d.id = pg_temp.acr('ddt'))::text
          || ':R:' || pg_temp.acr('ddt_riga'))::varchar) = 'LIBERA',
   '6) la riga della bolla e'' ANNULLATA e il suo segmento torna LIBERO: la bolla torna da mandare');
 

@@ -12,6 +12,9 @@ CREATE OR REPLACE FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigi
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-20 (20261020-57, brief-db-grammatica-unica-documenti, 2d G-6):
+--   l'ambito degli indirizzi CONTRATTI diventa CONTRATTO, il codice
+--   della sorgente; firma e RETURNS ancorati.
 DECLARE
     -- Il BERSAGLIO dei due guard di idempotenza: l'array {tipo,id} dei
     -- documenti gia' generati. ⚠️ `jsonb` esplicito — e' un frammento del
@@ -286,7 +289,7 @@ BEGIN
       FROM vendite.offerte_commerciali_indirizzi oi
       JOIN config.tipi_indirizzi_allowed a
         ON a.tipo_indirizzo_id = oi.tipo_indirizzo_id
-       AND a.ambito = 'CONTRATTI'
+       AND a.ambito = 'CONTRATTO'
        AND a.attivo IS TRUE
      WHERE oi.offerta_id = p_offerta_id
     ON CONFLICT (contratto_id, tipo_indirizzo_id) DO NOTHING;
@@ -454,7 +457,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint, p_chiudi_contratto_esistente boolean)
-IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev6 (2026-06-08): guard di mutua esclusivita'' offerta->contratto/ordine (E_OFFERTA_ORDINE_GIA_GENERATO) — un''offerta genera al massimo uno tra contratto e ordine. Rev5 (2026-06-01): trasporta 1:1 stato_approvazione_prezzo + pratica_approvazione_prezzo_id anche sulle RIGHE (oltre che sui componenti). Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti (advisory lock + overlap + routing + backstop). Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO). ⭐ rev 2026-08-24: i due guard di idempotenza portano il BERSAGLIO, e il bersaglio NON e'' l''offerta — e'' il documento GIA'' GENERATO (il contratto, oppure l''ordine). La frase nomina l''offerta perche'' e'' il soggetto del discorso, ma l''operatore l''offerta ce l''ha gia'' davanti: cio'' che non riesce a raggiungere e'' il documento che gli blocca la strada. E'' un array perche'' se i documenti fossero piu'' d''uno — l''anomalia che il guard esiste per fermare — deve poterli vedere tutti. Da qui il canale DATATYPE dell''eccezione, e il frontend ci disegna «vai al contratto». ⚠️ L''EXISTS e'' diventato una raccolta: stessa scansione, in piu'' gli id. Brief: brief-db-bersaglio-errore.md §6 L6. rev 2026-10-11 (20261011-74, brief-db-annullo-documento-con-legami D-3/D-6): i due guard (E_OFFERTA_CONTRATTO_GIA_GENERATO, E_OFFERTA_ORDINE_GIA_GENERATO) guardano i soli documenti VIVI, letti da vendite.fn_offerta_documenti_vivi (sede unica, con la capability dell''offerta): un contratto o un ordine annullato conserva la provenienza ma non consuma piu'' l''offerta. Gli indici unici uq_contratti_offerta_id e uq_ordini_v_documento_origine_offerta valgono sui soli vivi (20261011-68, -70).';
+IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev6 (2026-06-08): guard di mutua esclusivita'' offerta->contratto/ordine (E_OFFERTA_ORDINE_GIA_GENERATO) — un''offerta genera al massimo uno tra contratto e ordine. Rev5 (2026-06-01): trasporta 1:1 stato_approvazione_prezzo + pratica_approvazione_prezzo_id anche sulle RIGHE (oltre che sui componenti). Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti (advisory lock + overlap + routing + backstop). Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO). ⭐ rev 2026-08-24: i due guard di idempotenza portano il BERSAGLIO, e il bersaglio NON e'' l''offerta — e'' il documento GIA'' GENERATO (il contratto, oppure l''ordine). La frase nomina l''offerta perche'' e'' il soggetto del discorso, ma l''operatore l''offerta ce l''ha gia'' davanti: cio'' che non riesce a raggiungere e'' il documento che gli blocca la strada. E'' un array perche'' se i documenti fossero piu'' d''uno — l''anomalia che il guard esiste per fermare — deve poterli vedere tutti. Da qui il canale DATATYPE dell''eccezione, e il frontend ci disegna «vai al contratto». ⚠️ L''EXISTS e'' diventato una raccolta: stessa scansione, in piu'' gli id. Brief: brief-db-bersaglio-errore.md §6 L6. rev 2026-10-11 (20261011-74, brief-db-annullo-documento-con-legami D-3/D-6): i due guard (E_OFFERTA_CONTRATTO_GIA_GENERATO, E_OFFERTA_ORDINE_GIA_GENERATO) guardano i soli documenti VIVI, letti da vendite.fn_offerta_documenti_vivi (sede unica, con la capability dell''offerta): un contratto o un ordine annullato conserva la provenienza ma non consuma piu'' l''offerta. Gli indici unici uq_contratti_offerta_id e uq_ordini_v_documento_origine_offerta valgono sui soli vivi (20261011-68, -70). Rev 2026-10-20 (20261020-57, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi CONTRATTI diventa CONTRATTO, il codice della sorgente.';
 ```
 
 ---

@@ -14,6 +14,7 @@
 --       vendite.fn_lookup_registro_documento   (20260831-01)
 --       vendite.fn_get_registro_documento      (20260831-02)
 --       Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6 e §2.3
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA.
 -- ------------------------------------------------------------
 -- Elenco test (plan 9):
 -- 1) Fixture: due emittenti, un registro DDT per ciascuno
@@ -105,7 +106,7 @@ SELECT r.id AS registro_id, r.emittente_soggetto_ruolo_id, e.n
   FROM tmp_mot_emittenti e
   JOIN vendite.registri_fatturazione r
     ON r.emittente_soggetto_ruolo_id = e.soggetto_ruolo_id
-   AND r.famiglia_documento          = 'DDT'
+   AND r.famiglia_documento          = 'DDT_VENDITA'
    AND r.utility_id IS NULL
    AND r.attivo
  WHERE e.n IN (1, 2);
@@ -124,7 +125,7 @@ UPDATE vendite.registri_fatturazione r
   FROM tmp_mot_emittenti e
  WHERE e.n = 3
    AND r.emittente_soggetto_ruolo_id = e.soggetto_ruolo_id
-   AND r.famiglia_documento = 'DDT';
+   AND r.famiglia_documento = 'DDT_VENDITA';
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_mot_registri),
@@ -141,7 +142,7 @@ SELECT r.n,
        vendite.fn_get_next_progressivo(
            r.registro_id,
            make_date((SELECT anno_a FROM tmp_mot_costanti)::int, 3, 15),
-           NULL, '', NULL, 'DDT') AS numero
+           NULL, '', NULL, 'DDT_VENDITA') AS numero
   FROM tmp_mot_registri r
  ORDER BY r.n;
 
@@ -160,7 +161,7 @@ SELECT r.n,
        vendite.fn_get_next_progressivo(
            r.registro_id,
            make_date((SELECT anno_a FROM tmp_mot_costanti)::int, 4, 20),
-           NULL, '', NULL, 'DDT') AS numero
+           NULL, '', NULL, 'DDT_VENDITA') AS numero
   FROM tmp_mot_registri r
  ORDER BY r.n;
 
@@ -187,7 +188,7 @@ CREATE TEMP TABLE tmp_mot_capodanno AS
 SELECT vendite.fn_get_next_progressivo(
            (SELECT registro_id FROM tmp_mot_registri WHERE n = 1),
            make_date((SELECT anno_b FROM tmp_mot_costanti)::int, 1, 2),
-           NULL, '', NULL, 'DDT') AS numero;
+           NULL, '', NULL, 'DDT_VENDITA') AS numero;
 
 SELECT is(
     (SELECT numero FROM tmp_mot_capodanno),
@@ -212,7 +213,7 @@ SELECT is(
 SELECT is(
     (SELECT k.registro_id
        FROM vendite.fn_lookup_registro_documento(
-                'DDT',
+                'DDT_VENDITA',
                 (SELECT soggetto_ruolo_id FROM tmp_mot_emittenti WHERE n = 3),
                 NULL) k),
     NULL::bigint,
@@ -221,7 +222,7 @@ SELECT is(
 PREPARE mot_involucro_muto AS
 SELECT k.registro_id
   FROM vendite.fn_get_registro_documento(
-           'DDT',
+           'DDT_VENDITA',
            (SELECT soggetto_ruolo_id FROM tmp_mot_emittenti WHERE n = 3),
            NULL) k;
 
@@ -259,7 +260,7 @@ INSERT INTO vendite.registri_fatturazione (
     codice, descrizione, emittente_soggetto_ruolo_id,
     famiglia_documento, reset_policy, attivo, utility_id)
 SELECT 'MOTU1', 'Registro DDT utility', r.emittente_soggetto_ruolo_id,
-       'DDT', 'ANNUALE', true,
+       'DDT_VENDITA', 'ANNUALE', true,
        (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1)
   FROM tmp_mot_registri r
  WHERE r.n = 1;
@@ -267,7 +268,7 @@ SELECT 'MOTU1', 'Registro DDT utility', r.emittente_soggetto_ruolo_id,
 SELECT is(
     (SELECT reg.codice::text
        FROM vendite.fn_lookup_registro_documento(
-                'DDT',
+                'DDT_VENDITA',
                 (SELECT emittente_soggetto_ruolo_id FROM tmp_mot_registri WHERE n = 1),
                 (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1)) k
        JOIN vendite.registri_fatturazione reg ON reg.id = k.registro_id),

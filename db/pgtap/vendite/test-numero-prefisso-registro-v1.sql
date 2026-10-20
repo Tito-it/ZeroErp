@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2c): le famiglie di numerazione col codice della sorgente (DDT_VENDITA, ORDINE_VENDITA, RESO_VENDITA, DISTINTA_INCASSO).
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture CREA un emittente e i suoi registri per
 --   provare il provisioning, e nessun operatore ne vede piu' di uno
@@ -92,14 +93,14 @@ SELECT r.emittente_soggetto_ruolo_id AS emittente_sr,
        (SELECT u.id FROM config.utilities u ORDER BY u.id LIMIT 1)       AS ut_1,
        (SELECT u.id FROM config.utilities u ORDER BY u.id DESC LIMIT 1)  AS ut_2
   FROM vendite.registri_fatturazione r
- WHERE r.famiglia_documento = 'DDT' AND r.utility_id IS NULL AND r.attivo
+ WHERE r.famiglia_documento = 'DDT_VENDITA' AND r.utility_id IS NULL AND r.attivo
  ORDER BY r.id
  LIMIT 1;
 
 INSERT INTO vendite.registri_fatturazione (
     codice, descrizione, emittente_soggetto_ruolo_id,
     famiglia_documento, reset_policy, attivo, utility_id, prefisso, suffisso)
-SELECT 'PFXA', 'pgTAP prefisso A', p.emittente_sr, 'DDT', 'ANNUALE', true,
+SELECT 'PFXA', 'pgTAP prefisso A', p.emittente_sr, 'DDT_VENDITA', 'ANNUALE', true,
        p.ut_1, 'PFX', 'Z'
   FROM tmp_pfx p;
 
@@ -107,7 +108,7 @@ PREPARE pfx_doppione AS
 INSERT INTO vendite.registri_fatturazione (
     codice, descrizione, emittente_soggetto_ruolo_id,
     famiglia_documento, reset_policy, attivo, utility_id, prefisso, suffisso)
-SELECT 'PFXB', 'pgTAP prefisso B', p.emittente_sr, 'ORDINE', 'ANNUALE', true,
+SELECT 'PFXB', 'pgTAP prefisso B', p.emittente_sr, 'ORDINE_VENDITA', 'ANNUALE', true,
        p.ut_2, 'PFX', 'Z'
   FROM tmp_pfx p;
 
@@ -123,7 +124,7 @@ SELECT lives_ok(
     $q$INSERT INTO vendite.registri_fatturazione (
            codice, descrizione, emittente_soggetto_ruolo_id,
            famiglia_documento, reset_policy, attivo, utility_id)
-       SELECT 'PFXC', 'pgTAP senza nome', p.emittente_sr, 'ORDINE', 'ANNUALE',
+       SELECT 'PFXC', 'pgTAP senza nome', p.emittente_sr, 'ORDINE_VENDITA', 'ANNUALE',
               true, p.ut_2
          FROM tmp_pfx p$q$,
     '3) ...ma due registri SENZA prefisso ne'' suffisso convivono');
@@ -160,18 +161,18 @@ SELECT lives_ok(
 --   vendite.fn_assegna_numero_documento.
 CREATE TEMP TABLE tmp_all AS
 WITH documenti AS (
-    SELECT 'ORDINE'::character varying AS fam, ef.soggetto_ruolo_id AS sr,
+    SELECT 'ORDINE_VENDITA'::character varying AS fam, ef.soggetto_ruolo_id AS sr,
            EXTRACT(YEAR FROM o.data)::smallint AS anno, o.numero::text AS numero
       FROM vendite.ordini o
       JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
      WHERE o.numero IS NOT NULL
     UNION ALL
-    SELECT 'DDT', ef.soggetto_ruolo_id, EXTRACT(YEAR FROM d.data)::smallint, d.numero::text
+    SELECT 'DDT_VENDITA', ef.soggetto_ruolo_id, EXTRACT(YEAR FROM d.data)::smallint, d.numero::text
       FROM vendite.ddt d
       JOIN anagrafiche.emittenti_fiscali ef ON ef.id = d.emittente_fiscale_id
      WHERE d.numero IS NOT NULL
     UNION ALL
-    SELECT 'RESO', ef.soggetto_ruolo_id, EXTRACT(YEAR FROM r.data)::smallint, r.numero::text
+    SELECT 'RESO_VENDITA', ef.soggetto_ruolo_id, EXTRACT(YEAR FROM r.data)::smallint, r.numero::text
       FROM vendite.resi r
       JOIN anagrafiche.emittenti_fiscali ef ON ef.id = r.emittente_fiscale_id
      WHERE r.numero IS NOT NULL
@@ -269,7 +270,7 @@ SELECT is(
         AND r.famiglia_documento <> 'FATTURA'),
     -- ⭐ Rev 2026-09-15: la sesta famiglia, DISTINTA (DIS-), e' la prima fuori
     --   da vendite (brief distinta-numerata-sul-registro, L11/L12).
-    'COMMESSA=CMM-, DDT=DDT, DISTINTA=DIS-, ORDINE=ORD, RESO=RESO',
+    'COMMESSA=CMM-, DDT_VENDITA=DDT, DISTINTA_INCASSO=DIS-, ORDINE_VENDITA=ORD, RESO_VENDITA=RESO',
     '6) I registri di un emittente nuovo nascono gia'' col prefisso');
 
 SELECT * FROM finish();

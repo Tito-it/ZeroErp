@@ -1,0 +1,696 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2e (G-8, L2e-2 = (a)): le capability dell'ordine compongono la chiave col BB
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-8, §13.3.
+#
+#   Lo stato del push di una riga d'ordine si chiede con la chiave composta da script.fn_segment_key (ORDINE_VENDITA).
+#
+#   Corpo e COMMENT dal catalogo vivo di dbdev (2026-10-20), non da uno YAML; sostituzioni
+#   contate. Firma e RETURNS TABLE ricostruiti dal catalogo e ancorati con %TYPE dove una colonna
+#   con lo stesso nome e lo stesso tipo esiste (verificato); nudi, col motivo, i valori calcolati.
+#   ⚠️ Le chiavi gia' scritte nei dati di dbdev si convertono con lo SQL una tantum del giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261020-95-update-fn-available-actions-ordine-chiave-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-95-update-fn-available-actions-ordine-chiave-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_available_actions_ordine: la chiave da script.fn_segment_key (ORDINE_VENDITA); firma ancorata. Grammatica unica, 2e (G-8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_ordine(
+                  p_ordine_id vendite.ordini.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- rev 2026-10-20 (20261020-95, brief-db-grammatica-unica-documenti, 2e G-8):
+              --   la chiave della riga d'ordine la compone script.fn_segment_key
+              --   (ORDINE_VENDITA). Firma e RETURNS ancorati.
+              -- Scopo: capability ordine di vendita per detail API (data-driven).
+              --   push_commessa: decoupling fatturazione/spedizione (rev 2026-07-10,
+              --   fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO /
+              --   ORDINE_FATTURA_DA_DDT / ORDINE_GIA_INVIATO / ORDINE_GIA_FATTURATO /
+              --   ORDINE_NESSUNA_RIGA_PUSHABILE).
+              --   rev 2026-07-19: ramo reason via fn_get_stato_push_segment
+              --   (brief-db-push-commessa-gia-inviato §4b).
+              --   rev 2026-07-19 (bis): reason_key nel namespace i18n
+              --   `vendite.ordini.*` (era `ordini.*`, non risolvibile nel FE)
+              --   — brief-db-i18n-namespace-reason-ordini.
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_ordini (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato).
+              --   rev 2026-08-04: + reasons sull'annullamento, da
+              --   script.fn_check_ordine_annullabile — la STESSA funzione che
+              --   vendite.trgfn_ordini_guard_transizione usa per sollevare. I motivi
+              --   si SOMMANO a quello di requires_righe in un array solo, da cui
+              --   discendono enabled/reason/reason_key. + nessuna_azione_key dal
+              --   meta dello stato, esposta quando nessuna azione e' abilitata
+              --   (brief-db-vie-uscita-operatore §4 regola R3 e §6).
+              --   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+              --   dello stato di destinazione. Serve alla frase di conferma
+              --   «portare il documento nello stato X»: il codice_interno non e'
+              --   quella forma (DRAFT -> Bozza, ALLOCATO -> Allocato a magazzino)
+              --   e tradurlo nel FE sarebbe una seconda copia del vocabolario
+              --   degli stati. NULL sulle azioni che non cambiano stato.
+              --   rev 2026-08-29: + reasons sulla CONFERMA, da
+              --   script.fn_check_ordine_confermabile — la STESSA funzione che
+              --   il guard usa per sollevare (Regola 4). Oggi un motivo:
+              --   una riga attiva che porta un prezzo senza aliquota IVA.
+              --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, I9.
+              --   rev 2026-08-10: ANNULLATO esce dal ramo di DRAFT. Il motivo
+              --   ORDINE_NON_CONFERMATO («disponibile dopo la conferma») e'
+              --   un'istruzione corretta su DRAFT e una promessa falsa su
+              --   ANNULLATO, da cui la matrice non ha uscite. NON si usa
+              --   fase = 'CHIUSO' come sul preventivo: fra i CHIUSI c'e'
+              --   EVASO, che puo' ancora avere il push abilitato (5 ordini
+              --   misurati), e un ramo su fase lo intercetterebbe prima di
+              --   v_push_ok. Gemello del 20260810-01, brief-db-vie-uscita-
+              --   operatore §12.
+              --   rev 2026-08-10 (2): la nota di stato non e' piu' subordinata alla
+              --   lista vuota, e cambia nome. Decisione §5 di Tid: «la nota spiega lo
+              --   stato chiuso, e compare sempre» — anche accanto a un'azione ancora
+              --   viva, dove l'operatore legge cos'e' successo E ha il suo bottone.
+              --   Cade quindi il presupposto che la faceva sparire: via
+              --   v_nessuna_azione e il suo NOT EXISTS, che erano diventati codice
+              --   morto, e via il commento che spiegava perche' non si appoggiavano a
+              --   v_can_change — era la motivazione di una regola che non esiste piu'.
+              --   Il campo si chiama ora `stato_info_key`: `nessuna_azione_key`
+              --   diventava falso proprio nel momento in cui inizia a mostrarsi
+              --   quando le azioni ci sono, e il vocabolario giusto era gia' dall'altra
+              --   parte (le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*).
+              --   ⚠️ La PROPRIETA' nel meta dello stato resta `nessuna_azione_key`, ed
+              --   e' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi
+              --   proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e
+              --   rinominarla senza toccare il guard lo renderebbe verde per cecita' —
+              --   il caso peggiore, gia' denunciato nel §8.3 del brief. Rinomina della
+              --   proprieta' proposta come slice a se'.
+              --   brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.
+              --   rev 2026-09-24: dalla bozza, l'azione verso CONFERMATO espone anche i
+              --   motivi dei prezzi non autorizzati (building block
+              --   script.fn_check_prezzi_autorizzati, lo stesso della Regola 5 del
+              --   guard di transizione). brief-db-preventivi-congelamento-pricing.
+              --   rev 2026-10-10: + la terna can_edit_data_consegna_confermata
+              --   (_reason, _reason_key): la promessa di consegna che il verbo
+              --   dedicato cambia dopo la conferma. Gli stati li dice il montaggio
+              --   del lock delle righe, letto da
+              --   script.fn_check_ordine_data_consegna_confermata; in DRAFT la data
+              --   si scrive dalla riga. brief-db-testata-dopo-emissione (R-2).
+              DECLARE
+                  -- Tipi nudi solo per valori CALCOLATI (azioni e motivi jsonb, flag,
+                  -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
+                  v_stato_id   vendite.ordini.stato_doc_ordine_id%TYPE;
+                  v_stato_cod  config.stati_doc_ordini.codice_interno%TYPE;
+                  v_uid        vendite.ordini.uid%TYPE;
+                  v_fatt_trg   vendite.ordini.fatturazione_trigger%TYPE;
+                  v_pdf_mode   config.stati_doc_ordini.pdf_mode%TYPE;
+                  v_pdf_allow  config.stati_doc_ordini.pdf_allow_allegati%TYPE;
+                  v_stato_info_key    text;
+                  v_actions    jsonb;
+                  v_can_change boolean := false;
+                  v_ha_righe   boolean := false;
+                  v_mot_annulla jsonb := '[]'::jsonb;
+                  v_mot_conferma jsonb := '[]'::jsonb;
+                  v_mot_prezzi   jsonb := '[]'::jsonb;
+                  v_push_ok    boolean := false;
+                  v_push_reason     text := NULL;
+                  v_push_reason_key text := NULL;
+                  -- La promessa di consegna (data_consegna_confermata): motivi
+                  -- della check, e il primo motivo in chiaro.
+                  v_mot_dcc         jsonb := '[]'::jsonb;
+                  v_dcc_reason      text := NULL;
+                  v_dcc_reason_key  text := NULL;
+                  c_non_edit_cliente CONSTANT jsonb :=
+                      '["billing_account_id","soggetto_ruolo_id"]'::jsonb;
+                  -- Motivo "documento vuoto" nella forma dei motivi delle fn_check_*,
+                  -- cosi' i due mondi si concatenano. `codice` e' quello che il guard
+                  -- solleva davvero (trgfn_ordini_guard_transizione, Regola 2).
+                  c_motivo_senza_righe CONSTANT jsonb := jsonb_build_array(
+                      jsonb_build_object(
+                          'codice',     'E_ORDINE_CONFERMA_SENZA_RIGHE',
+                          'reason',     'DOCUMENTO_SENZA_RIGHE',
+                          'reason_key', 'common.azione_reason.senza_righe',
+                          'dettaglio',  0));
+                  -- La testata nello stato, dal montaggio del lock (rev 2026-10-10):
+                  -- {modificabile, non_modificabili}.
+                  v_testata jsonb;
+              BEGIN
+                  -- Stato corrente + trigger + uid + capability PDF + la chiave
+                  -- "nessuna azione" dello stato (dato, non codice).
+                  SELECT o.stato_doc_ordine_id, sdo.codice_interno,
+                         o.uid, o.fatturazione_trigger,
+                         sdo.pdf_mode, sdo.pdf_allow_allegati,
+                         -- ⚠️ La PROPRIETA' nel meta resta `nessuna_azione_key` mentre il
+                         -- campo del blob si chiama ora `stato_info_key`. L'asimmetria e'
+                         -- voluta e la spiega la rev 2026-08-10 (2) in testa: il presidio
+                         -- i18n si aggancia a QUESTO nome.
+                         sdo.meta->>'nessuna_azione_key'
+                    INTO v_stato_id, v_stato_cod, v_uid, v_fatt_trg,
+                         v_pdf_mode, v_pdf_allow, v_stato_info_key
+                    FROM vendite.ordini o
+                    JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
+                   WHERE o.id = p_ordine_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe). La fn sa solo COME contare le
+                  -- proprie righe: specchia il guard (trgfn_ordini_guard_transizione
+                  -- Regola 2, rev 2026-07-16): riga attiva, nessun vincolo su
+                  -- quantita/prezzo (un ordine a totale zero deve poter avanzare).
+                  v_ha_righe := EXISTS (
+                      SELECT 1 FROM vendite.ordini_righe r
+                       WHERE r.ordine_id = p_ordine_id
+                         AND r.attivo IS TRUE
+                  );
+
+                  -- Motivi ostativi all'ANNULLAMENTO, calcolati UNA VOLTA SOLA.
+                  -- Fn pura: [] quando e' lecito. E' la stessa che solleva nel guard.
+                  v_mot_annulla := script.fn_check_ordine_annullabile(p_ordine_id);
+
+                  -- Motivi ostativi alla CONFERMA, anch'essi calcolati UNA VOLTA SOLA.
+                  -- Stessa forma e stessa ragione: e' la funzione che il guard di
+                  -- transizione usa per sollevare (Regola 4), quindi bottone e guard
+                  -- non possono divergere. rev 2026-08-29, brief IVA I9.
+                  v_mot_conferma := script.fn_check_ordine_confermabile(p_ordine_id);
+
+                  -- Motivi dei prezzi non autorizzati: SOLO dalla bozza, come la
+                  -- Regola 5 del guard di transizione che li solleva con lo stesso
+                  -- building block (il rientro in CONFERMATO da EVASO non e' una
+                  -- conferma, ed e' comunque automatico). rev 2026-09-24,
+                  -- brief-db-preventivi-congelamento-pricing (D-6).
+                  IF v_stato_cod = 'DRAFT' THEN
+                      v_mot_prezzi := script.fn_check_prezzi_autorizzati('vendite.ordini'::regclass,
+                                                                         p_ordine_id);
+                  END IF;
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              -- Forma leggibile della destinazione: la colonna
+                              -- accanto, nello stesso JOIN. Il FE non puo'
+                              -- derivarla dal codice.
+                              'target_state_descrizione', sa.descrizione,
+                              'label_key',        t.meta->>'label_key',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                              -- Tutto discende dall'array dei motivi: nessuna
+                              -- regola puo' mascherarne un'altra.
+                              'enabled',          jsonb_array_length(m.motivi) = 0,
+                              'reason',           m.motivi -> 0 ->> 'reason',
+                              'reason_key',       m.motivi -> 0 ->> 'reason_key',
+                              'reasons',          m.motivi
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_ordini t
+                  JOIN config.stati_doc_ordini sa ON sa.id = t.stato_a_id
+                  -- I motivi della destinazione, sommati in un array solo: prima
+                  -- quelli specifici, poi il generico "documento vuoto".
+                  CROSS JOIN LATERAL (
+                      SELECT CASE WHEN sa.codice_interno = 'ANNULLATO'
+                                  THEN v_mot_annulla ELSE '[]'::jsonb END
+                          || CASE WHEN sa.codice_interno = 'CONFERMATO'
+                                  THEN v_mot_conferma || v_mot_prezzi ELSE '[]'::jsonb END
+                          || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                       AND NOT v_ha_righe
+                                  THEN c_motivo_senza_righe ELSE '[]'::jsonb END AS motivi
+                  ) m
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  -- Conta anche le azioni disabilitate: la barra azioni deve
+                  -- comparire proprio per mostrare il pulsante grigio + tooltip.
+                  v_can_change := jsonb_array_length(v_actions) > 0;
+
+                  -- push_commessa: fonte unica fn_list_ordini_da_pushare (decoupling).
+                  -- Namespace i18n: `vendite.ordini.*` — coerente con la label_key
+                  -- dell'azione push qui sotto e con le reason DDT. Il codice reason
+                  -- (ORDINE_*) NON e' una chiave i18n e non segue questa convenzione.
+                  --
+                  -- ⚠️ DRAFT e ANNULLATO erano nello stesso ramo, e sono
+                  -- l'opposto: su DRAFT «disponibile dopo la conferma»
+                  -- istruisce, su ANNULLATO promette un passo che non
+                  -- arrivera' mai (nessuna transizione in uscita dalla
+                  -- matrice). Il predicato resta sui CODICI e non su
+                  -- fase = 'CHIUSO': fra i CHIUSI dell'ordine c'e' anche
+                  -- EVASO, che puo' avere il push ancora ABILITATO, e un
+                  -- ramo su fase in testa alla catena lo spegnerebbe prima
+                  -- che v_push_ok venga calcolato — un difetto di
+                  -- comportamento al posto di uno di testo.
+                  IF v_stato_cod = 'DRAFT' THEN
+                      v_push_reason     := 'ORDINE_NON_CONFERMATO';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.non_confermato';
+                  ELSIF v_stato_cod = 'ANNULLATO' THEN
+                      v_push_reason     := 'ORDINE_ANNULLATO';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.annullato';
+                  ELSIF v_fatt_trg IS DISTINCT FROM 'CONFERMATO' THEN
+                      v_push_reason     := 'ORDINE_FATTURA_DA_DDT';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.fattura_da_ddt';
+                  ELSIF EXISTS (SELECT 1
+                                  FROM vendite.fn_list_ordini_da_pushare(p_ordine_id := p_ordine_id)) THEN
+                      v_push_ok := true;
+                  -- Nessuna riga pushabile: distinguere il PERCHE'
+                  -- via classificatore condiviso (stesso predicato
+                  -- delle push-list, vede anche i componenti #CMP).
+                  ELSIF EXISTS (SELECT 1
+                                  FROM vendite.ordini_righe r
+                                 WHERE r.ordine_id = p_ordine_id
+                                   AND script.fn_get_stato_push_segment(
+                                         script.fn_segment_key('ORDINE_VENDITA', v_uid::text, r.id)) = 'ALLOCATA') THEN
+                      -- pushato, in attesa di fatturazione
+                      v_push_reason     := 'ORDINE_GIA_INVIATO';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.gia_inviato';
+                  ELSIF EXISTS (SELECT 1
+                                  FROM vendite.ordini_righe r
+                                 WHERE r.ordine_id = p_ordine_id
+                                   AND script.fn_get_stato_push_segment(
+                                         script.fn_segment_key('ORDINE_VENDITA', v_uid::text, r.id)) = 'EMESSA') THEN
+                      v_push_reason     := 'ORDINE_GIA_FATTURATO';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.gia_fatturato';
+                  ELSE
+                      v_push_reason     := 'ORDINE_NESSUNA_RIGA_PUSHABILE';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.nessuna_riga_pushabile';
+                  END IF;
+
+                  IF v_push_ok THEN
+                      v_actions := v_actions || jsonb_build_array(
+                          jsonb_build_object(
+                              'key',              'push_commessa',
+                              'target_state',     NULL,
+                              -- Non e' un cambio di stato: nessuna destinazione
+                              -- da nominare.
+                              'target_state_descrizione', NULL,
+                              'label_key',        'vendite.ordini.azione_push_commessa',
+                              'requires_confirm', true,
+                              'outlined',         false,
+                              'enabled',          true,
+                              'reason',           NULL,
+                              'reason_key',       NULL
+                          )
+                      );
+                  END IF;
+
+                  -- La promessa di consegna dopo la conferma (rev 2026-10-10).
+                  -- In DRAFT la data si scrive modificando la riga
+                  -- (can_edit_righe): il verbo dedicato e' per dopo, e lo dice
+                  -- il motivo. Negli altri stati decide il montaggio del lock
+                  -- delle righe, letto dalla check: nessuno stato scritto qui.
+                  IF v_stato_cod = 'DRAFT' THEN
+                      v_dcc_reason     := 'ORDINE_IN_BOZZA';
+                      v_dcc_reason_key := 'vendite.ordini.data_consegna_confermata_reason.in_bozza';
+                  ELSE
+                      v_mot_dcc        := script.fn_check_ordine_data_consegna_confermata(p_ordine_id);
+                      v_dcc_reason     := v_mot_dcc -> 0 ->> 'reason';
+                      v_dcc_reason_key := v_mot_dcc -> 0 ->> 'reason_key';
+                  END IF;
+
+                  -- La testata nello stato, letta dal montaggio del lock di testata
+                  -- (rev 2026-10-10): le colonne «sempre» della capability, poi quelle
+                  -- che il lock blocca in questo stato. Nessuno stato scritto qui.
+                  v_testata := script.fn_doc_testata_in_stato('vendite.ordini'::regclass, v_stato_cod, c_non_edit_cliente);
+
+                  RETURN jsonb_build_object(
+                      'available_actions',           v_actions,
+                      'can_change_state',            v_can_change,
+                      'can_edit_testata',  (v_testata ->> 'modificabile')::boolean,
+                      'can_edit_righe',              (v_stato_cod = 'DRAFT'),
+                      -- Dal montaggio del lock dei satelliti (rev 2026-10-11, R-DB-3).
+                      'can_edit_indirizzi',  script.fn_doc_riga_modificabile('vendite.ordini_indirizzi'::regclass, v_stato_cod),
+                      -- Il flag discende dal motivo: il backend trasporta.
+                      'can_edit_data_consegna_confermata',            (v_dcc_reason IS NULL),
+                      'can_edit_data_consegna_confermata_reason',     v_dcc_reason,
+                      'can_edit_data_consegna_confermata_reason_key', v_dcc_reason_key,
+                      'can_push_commessa',           v_push_ok,
+                      'can_push_commessa_reason',    v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'stato_info_key',          v_stato_info_key,
+                      'non_editable_fields', v_testata -> 'non_modificabili',
+                      'pdf',                         jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice',                v_stato_cod
+                  );
+              END;
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_available_actions_ordine(bigint) IS
+                'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b. rev 2026-07-19 (bis): le 5 reason_key del push passano al namespace i18n vendite.ordini.* (era ordini.*, radice inesistente nei locales FE) — brief-db-i18n-namespace-reason-ordini; convenzione in docs/it/dev/frontend/i18n-namespace-radici.md. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_ordine_annullabile (stessa fn del guard di transizione); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente (EVASO / PARZIALMENTE_EVASO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3, §6). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_ordini.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza, ALLOCATO -> Allocato a magazzino) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. NULL su push_commessa, che non e'' una transizione. rev 2026-08-10: ANNULLATO ha un ramo proprio nella catena delle reason del push. Stava insieme a DRAFT sotto ORDINE_NON_CONFERMATO, cioe'' «disponibile dopo la conferma dell''ordine»: su DRAFT e'' l''istruzione giusta, su ANNULLATO e'' una promessa falsa perche'' la matrice non ha nessuna transizione in uscita da quello stato. Reason nuova ORDINE_ANNULLATO, reason_key vendite.ordini.push_commessa_reason.annullato. ⚠️ Il predicato resta sui CODICI e NON su fase = ''CHIUSO'' (come invece fa il preventivo nel changeSet gemello 20260810-01): fra gli stati CHIUSI dell''ordine c''e'' anche EVASO, che puo'' avere il push ancora abilitato (5 ordini su 32, misurati nel §9.2 del brief), e un ramo su fase in testa alla catena li intercetterebbe prima che v_push_ok venga calcolato — spegnerebbe un''azione legittima. FATTURATO resta dov''era di proposito: la catena gli assegna gia'' il motivo piu'' preciso gia_fatturato. Rilievo in-app di Tid del 2026-08-10, brief-db-vie-uscita-operatore §12. rev 2026-08-10 (2): il campo si chiama ora stato_info_key e NON e'' piu'' subordinato alla lista vuota: viene emesso sempre che lo stato lo dichiari nel proprio meta, anche accanto a un''azione ancora abilitata. Decisione §5 di Tid: la nota spiega lo STATO, e chi ha ancora un bottone deve comunque poter leggere cos''e'' successo; cade quindi il presupposto che la faceva sparire, e v_nessuna_azione con il suo NOT EXISTS escono come codice morto. Il nome vecchio nessuna_azione_key diventava falso proprio nel momento in cui il campo inizia a comparire QUANDO le azioni ci sono, e il vocabolario giusto era gia'' dall''altra parte: le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*. ⚠️ La PROPRIETA'' nel meta dello stato resta nessuna_azione_key, ed e'' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare il guard lo renderebbe verde per cecita'' — il caso peggiore, gia'' denunciato nel §8.3 del brief. Rinomina della proprieta'' proposta come slice a se''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare con l''operatore di presenza risponde vero per TUTTI i documenti, va guardato il valore. Il FE rinomina la prop nello stesso rilascio (8 drawer + DrawerActionsBar). brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2. rev 2026-08-29: le azioni verso CONFERMATO espongono reasons da script.fn_check_ordine_confermabile (stessa fn che il guard di transizione usa per sollevare, Regola 4), sommate nello stesso array unico da cui discendono enabled/reason/reason_key. Oggi un motivo: E_ORDINE_RIGA_IVA_MANCANTE, una riga attiva che porta un prezzo senza aliquota IVA — senza, la riga entra in vw_ordini_righe_iva_base (che filtra solo attivo e quantita > 0) e il riepilogo la somma con COALESCE(aliquota, 0): imponibile pieno, imposta zero, su un ordine confermato e stampato. ⚠️ La reason_key vendite.ordini.azione_reason.iva_mancante e'' un debito verso il frontend: la chiave gemella del DDT esiste nei locales, questa va aggiunta. Brief: brief-db-be-iva-risolutore-e-regime-cliente, I9. rev 2026-09-24: dalla bozza, l''''azione verso CONFERMATO somma ai motivi di fn_check_ordine_confermabile quelli dei prezzi non autorizzati (componenti BoM attivi PENDING o REJECTED) da script.fn_check_prezzi_autorizzati — lo stesso building block della Regola 5 di trgfn_ordini_guard_transizione, che vale anch''''essa solo per DRAFT -> CONFERMATO. ⚠️ Le reason_key common.azione_reason.prezzo_pendente / prezzo_rifiutato sono un debito verso il frontend. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-5, D-6). rev 2026-09-27 (20260927-13): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-10): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). rev 2026-10-10 (20261010-67): + la terna can_edit_data_consegna_confermata · _reason · _reason_key (famiglia 1): la promessa di consegna delle righe, che il verbo dedicato del backend cambia dopo la conferma. In DRAFT false con ORDINE_IN_BOZZA (vendite.ordini.data_consegna_confermata_reason.in_bozza): in bozza la data si scrive modificando la riga. Negli altri stati il primo motivo di script.fn_check_ordine_data_consegna_confermata, che legge gli stati ammessi dal montaggio del lock di vendite.ordini_righe (oggi CONFERMATO e PARZIALMENTE_EVASO): ammesso true/null/null, altrimenti false con STATO_NON_AMMETTE (vendite.ordini.data_consegna_confermata_reason.stato_non_ammette). Il flag discende dal motivo. ⚠️ Le due reason_key sono un debito verso il frontend. Brief: brief-db-testata-dopo-emissione (fase 1, R-2). rev 2026-10-10 (brief-db-testata-dopo-emissione fase 2): non_editable_fields e can_edit_testata si leggono dal montaggio del lock di testata con script.fn_doc_testata_in_stato: le colonne «sempre» della capability seguite da quelle che il lock blocca nello stato, e can_edit_testata vero se nello stato almeno una colonna nominata si cambia. Ritirate le liste scritte a mano dei campi bloccati fuori bozza (la terza copia della regola, accanto a lock e backend): con D-8/D-10 le colonne aperte dopo l''emissione (note, trasporto, valido_al e CIG/CUP del contratto…) si cambiano negli stati del montaggio e si fermano a documento chiuso. rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-3): + can_edit_indirizzi, dal montaggio del lock di vendite.ordini_indirizzi (script.fn_doc_riga_modificabile): gli indirizzi si scrivono solo in bozza, e il backend non lo scrive piu'' (_INDIRIZZI_CFG) Rev 2026-10-20 (20261020-95, brief-db-grammatica-unica-documenti 2e, G-8): la chiave della riga d''ordine la compone script.fn_segment_key (ORDINE_VENDITA).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability ordine di vendita per detail API (data-driven).
+              --   push_commessa: decoupling fatturazione/spedizione (rev 2026-07-10,
+              --   fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO /
+              --   ORDINE_FATTURA_DA_DDT / ORDINE_GIA_INVIATO / ORDINE_GIA_FATTURATO /
+              --   ORDINE_NESSUNA_RIGA_PUSHABILE).
+              --   rev 2026-07-19: ramo reason via fn_get_stato_push_segment
+              --   (brief-db-push-commessa-gia-inviato §4b).
+              --   rev 2026-07-19 (bis): reason_key nel namespace i18n
+              --   `vendite.ordini.*` (era `ordini.*`, non risolvibile nel FE)
+              --   — brief-db-i18n-namespace-reason-ordini.
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_ordini (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato).
+              --   rev 2026-08-04: + reasons sull'annullamento, da
+              --   script.fn_check_ordine_annullabile — la STESSA funzione che
+              --   vendite.trgfn_ordini_guard_transizione usa per sollevare. I motivi
+              --   si SOMMANO a quello di requires_righe in un array solo, da cui
+              --   discendono enabled/reason/reason_key. + nessuna_azione_key dal
+              --   meta dello stato, esposta quando nessuna azione e' abilitata
+              --   (brief-db-vie-uscita-operatore §4 regola R3 e §6).
+              --   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+              --   dello stato di destinazione. Serve alla frase di conferma
+              --   «portare il documento nello stato X»: il codice_interno non e'
+              --   quella forma (DRAFT -> Bozza, ALLOCATO -> Allocato a magazzino)
+              --   e tradurlo nel FE sarebbe una seconda copia del vocabolario
+              --   degli stati. NULL sulle azioni che non cambiano stato.
+              --   rev 2026-08-29: + reasons sulla CONFERMA, da
+              --   script.fn_check_ordine_confermabile — la STESSA funzione che
+              --   il guard usa per sollevare (Regola 4). Oggi un motivo:
+              --   una riga attiva che porta un prezzo senza aliquota IVA.
+              --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, I9.
+              --   rev 2026-08-10: ANNULLATO esce dal ramo di DRAFT. Il motivo
+              --   ORDINE_NON_CONFERMATO («disponibile dopo la conferma») e'
+              --   un'istruzione corretta su DRAFT e una promessa falsa su
+              --   ANNULLATO, da cui la matrice non ha uscite. NON si usa
+              --   fase = 'CHIUSO' come sul preventivo: fra i CHIUSI c'e'
+              --   EVASO, che puo' ancora avere il push abilitato (5 ordini
+              --   misurati), e un ramo su fase lo intercetterebbe prima di
+              --   v_push_ok. Gemello del 20260810-01, brief-db-vie-uscita-
+              --   operatore §12.
+              --   rev 2026-08-10 (2): la nota di stato non e' piu' subordinata alla
+              --   lista vuota, e cambia nome. Decisione §5 di Tid: «la nota spiega lo
+              --   stato chiuso, e compare sempre» — anche accanto a un'azione ancora
+              --   viva, dove l'operatore legge cos'e' successo E ha il suo bottone.
+              --   Cade quindi il presupposto che la faceva sparire: via
+              --   v_nessuna_azione e il suo NOT EXISTS, che erano diventati codice
+              --   morto, e via il commento che spiegava perche' non si appoggiavano a
+              --   v_can_change — era la motivazione di una regola che non esiste piu'.
+              --   Il campo si chiama ora `stato_info_key`: `nessuna_azione_key`
+              --   diventava falso proprio nel momento in cui inizia a mostrarsi
+              --   quando le azioni ci sono, e il vocabolario giusto era gia' dall'altra
+              --   parte (le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*).
+              --   ⚠️ La PROPRIETA' nel meta dello stato resta `nessuna_azione_key`, ed
+              --   e' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi
+              --   proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e
+              --   rinominarla senza toccare il guard lo renderebbe verde per cecita' —
+              --   il caso peggiore, gia' denunciato nel §8.3 del brief. Rinomina della
+              --   proprieta' proposta come slice a se'.
+              --   brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2.
+              --   rev 2026-09-24: dalla bozza, l'azione verso CONFERMATO espone anche i
+              --   motivi dei prezzi non autorizzati (building block
+              --   script.fn_check_prezzi_autorizzati, lo stesso della Regola 5 del
+              --   guard di transizione). brief-db-preventivi-congelamento-pricing.
+              --   rev 2026-10-10: + la terna can_edit_data_consegna_confermata
+              --   (_reason, _reason_key): la promessa di consegna che il verbo
+              --   dedicato cambia dopo la conferma. Gli stati li dice il montaggio
+              --   del lock delle righe, letto da
+              --   script.fn_check_ordine_data_consegna_confermata; in DRAFT la data
+              --   si scrive dalla riga. brief-db-testata-dopo-emissione (R-2).
+              DECLARE
+                  -- Tipi nudi solo per valori CALCOLATI (azioni e motivi jsonb, flag,
+                  -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
+                  v_stato_id   vendite.ordini.stato_doc_ordine_id%TYPE;
+                  v_stato_cod  config.stati_doc_ordini.codice_interno%TYPE;
+                  v_uid        vendite.ordini.uid%TYPE;
+                  v_fatt_trg   vendite.ordini.fatturazione_trigger%TYPE;
+                  v_pdf_mode   config.stati_doc_ordini.pdf_mode%TYPE;
+                  v_pdf_allow  config.stati_doc_ordini.pdf_allow_allegati%TYPE;
+                  v_stato_info_key    text;
+                  v_actions    jsonb;
+                  v_can_change boolean := false;
+                  v_ha_righe   boolean := false;
+                  v_mot_annulla jsonb := '[]'::jsonb;
+                  v_mot_conferma jsonb := '[]'::jsonb;
+                  v_mot_prezzi   jsonb := '[]'::jsonb;
+                  v_push_ok    boolean := false;
+                  v_push_reason     text := NULL;
+                  v_push_reason_key text := NULL;
+                  -- La promessa di consegna (data_consegna_confermata): motivi
+                  -- della check, e il primo motivo in chiaro.
+                  v_mot_dcc         jsonb := '[]'::jsonb;
+                  v_dcc_reason      text := NULL;
+                  v_dcc_reason_key  text := NULL;
+                  c_non_edit_cliente CONSTANT jsonb :=
+                      '["billing_account_id","soggetto_ruolo_id"]'::jsonb;
+                  -- Motivo "documento vuoto" nella forma dei motivi delle fn_check_*,
+                  -- cosi' i due mondi si concatenano. `codice` e' quello che il guard
+                  -- solleva davvero (trgfn_ordini_guard_transizione, Regola 2).
+                  c_motivo_senza_righe CONSTANT jsonb := jsonb_build_array(
+                      jsonb_build_object(
+                          'codice',     'E_ORDINE_CONFERMA_SENZA_RIGHE',
+                          'reason',     'DOCUMENTO_SENZA_RIGHE',
+                          'reason_key', 'common.azione_reason.senza_righe',
+                          'dettaglio',  0));
+                  -- La testata nello stato, dal montaggio del lock (rev 2026-10-10):
+                  -- {modificabile, non_modificabili}.
+                  v_testata jsonb;
+              BEGIN
+                  -- Stato corrente + trigger + uid + capability PDF + la chiave
+                  -- "nessuna azione" dello stato (dato, non codice).
+                  SELECT o.stato_doc_ordine_id, sdo.codice_interno,
+                         o.uid, o.fatturazione_trigger,
+                         sdo.pdf_mode, sdo.pdf_allow_allegati,
+                         -- ⚠️ La PROPRIETA' nel meta resta `nessuna_azione_key` mentre il
+                         -- campo del blob si chiama ora `stato_info_key`. L'asimmetria e'
+                         -- voluta e la spiega la rev 2026-08-10 (2) in testa: il presidio
+                         -- i18n si aggancia a QUESTO nome.
+                         sdo.meta->>'nessuna_azione_key'
+                    INTO v_stato_id, v_stato_cod, v_uid, v_fatt_trg,
+                         v_pdf_mode, v_pdf_allow, v_stato_info_key
+                    FROM vendite.ordini o
+                    JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
+                   WHERE o.id = p_ordine_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe). La fn sa solo COME contare le
+                  -- proprie righe: specchia il guard (trgfn_ordini_guard_transizione
+                  -- Regola 2, rev 2026-07-16): riga attiva, nessun vincolo su
+                  -- quantita/prezzo (un ordine a totale zero deve poter avanzare).
+                  v_ha_righe := EXISTS (
+                      SELECT 1 FROM vendite.ordini_righe r
+                       WHERE r.ordine_id = p_ordine_id
+                         AND r.attivo IS TRUE
+                  );
+
+                  -- Motivi ostativi all'ANNULLAMENTO, calcolati UNA VOLTA SOLA.
+                  -- Fn pura: [] quando e' lecito. E' la stessa che solleva nel guard.
+                  v_mot_annulla := script.fn_check_ordine_annullabile(p_ordine_id);
+
+                  -- Motivi ostativi alla CONFERMA, anch'essi calcolati UNA VOLTA SOLA.
+                  -- Stessa forma e stessa ragione: e' la funzione che il guard di
+                  -- transizione usa per sollevare (Regola 4), quindi bottone e guard
+                  -- non possono divergere. rev 2026-08-29, brief IVA I9.
+                  v_mot_conferma := script.fn_check_ordine_confermabile(p_ordine_id);
+
+                  -- Motivi dei prezzi non autorizzati: SOLO dalla bozza, come la
+                  -- Regola 5 del guard di transizione che li solleva con lo stesso
+                  -- building block (il rientro in CONFERMATO da EVASO non e' una
+                  -- conferma, ed e' comunque automatico). rev 2026-09-24,
+                  -- brief-db-preventivi-congelamento-pricing (D-6).
+                  IF v_stato_cod = 'DRAFT' THEN
+                      v_mot_prezzi := script.fn_check_prezzi_autorizzati('vendite.ordini'::regclass,
+                                                                         p_ordine_id);
+                  END IF;
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',              t.meta->>'action_key',
+                              'target_state',     sa.codice_interno,
+                              -- Forma leggibile della destinazione: la colonna
+                              -- accanto, nello stesso JOIN. Il FE non puo'
+                              -- derivarla dal codice.
+                              'target_state_descrizione', sa.descrizione,
+                              'label_key',        t.meta->>'label_key',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
+                              -- Tutto discende dall'array dei motivi: nessuna
+                              -- regola puo' mascherarne un'altra.
+                              'enabled',          jsonb_array_length(m.motivi) = 0,
+                              'reason',           m.motivi -> 0 ->> 'reason',
+                              'reason_key',       m.motivi -> 0 ->> 'reason_key',
+                              'reasons',          m.motivi
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_ordini t
+                  JOIN config.stati_doc_ordini sa ON sa.id = t.stato_a_id
+                  -- I motivi della destinazione, sommati in un array solo: prima
+                  -- quelli specifici, poi il generico "documento vuoto".
+                  CROSS JOIN LATERAL (
+                      SELECT CASE WHEN sa.codice_interno = 'ANNULLATO'
+                                  THEN v_mot_annulla ELSE '[]'::jsonb END
+                          || CASE WHEN sa.codice_interno = 'CONFERMATO'
+                                  THEN v_mot_conferma || v_mot_prezzi ELSE '[]'::jsonb END
+                          || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                       AND NOT v_ha_righe
+                                  THEN c_motivo_senza_righe ELSE '[]'::jsonb END AS motivi
+                  ) m
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  -- Conta anche le azioni disabilitate: la barra azioni deve
+                  -- comparire proprio per mostrare il pulsante grigio + tooltip.
+                  v_can_change := jsonb_array_length(v_actions) > 0;
+
+                  -- push_commessa: fonte unica fn_list_ordini_da_pushare (decoupling).
+                  -- Namespace i18n: `vendite.ordini.*` — coerente con la label_key
+                  -- dell'azione push qui sotto e con le reason DDT. Il codice reason
+                  -- (ORDINE_*) NON e' una chiave i18n e non segue questa convenzione.
+                  --
+                  -- ⚠️ DRAFT e ANNULLATO erano nello stesso ramo, e sono
+                  -- l'opposto: su DRAFT «disponibile dopo la conferma»
+                  -- istruisce, su ANNULLATO promette un passo che non
+                  -- arrivera' mai (nessuna transizione in uscita dalla
+                  -- matrice). Il predicato resta sui CODICI e non su
+                  -- fase = 'CHIUSO': fra i CHIUSI dell'ordine c'e' anche
+                  -- EVASO, che puo' avere il push ancora ABILITATO, e un
+                  -- ramo su fase in testa alla catena lo spegnerebbe prima
+                  -- che v_push_ok venga calcolato — un difetto di
+                  -- comportamento al posto di uno di testo.
+                  IF v_stato_cod = 'DRAFT' THEN
+                      v_push_reason     := 'ORDINE_NON_CONFERMATO';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.non_confermato';
+                  ELSIF v_stato_cod = 'ANNULLATO' THEN
+                      v_push_reason     := 'ORDINE_ANNULLATO';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.annullato';
+                  ELSIF v_fatt_trg IS DISTINCT FROM 'CONFERMATO' THEN
+                      v_push_reason     := 'ORDINE_FATTURA_DA_DDT';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.fattura_da_ddt';
+                  ELSIF EXISTS (SELECT 1
+                                  FROM vendite.fn_list_ordini_da_pushare(p_ordine_id := p_ordine_id)) THEN
+                      v_push_ok := true;
+                  -- Nessuna riga pushabile: distinguere il PERCHE'
+                  -- via classificatore condiviso (stesso predicato
+                  -- delle push-list, vede anche i componenti #CMP).
+                  ELSIF EXISTS (SELECT 1
+                                  FROM vendite.ordini_righe r
+                                 WHERE r.ordine_id = p_ordine_id
+                                   AND script.fn_get_stato_push_segment(
+                                         'ORD:' || v_uid::text || ':R:' || r.id::text) = 'ALLOCATA') THEN
+                      -- pushato, in attesa di fatturazione
+                      v_push_reason     := 'ORDINE_GIA_INVIATO';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.gia_inviato';
+                  ELSIF EXISTS (SELECT 1
+                                  FROM vendite.ordini_righe r
+                                 WHERE r.ordine_id = p_ordine_id
+                                   AND script.fn_get_stato_push_segment(
+                                         'ORD:' || v_uid::text || ':R:' || r.id::text) = 'EMESSA') THEN
+                      v_push_reason     := 'ORDINE_GIA_FATTURATO';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.gia_fatturato';
+                  ELSE
+                      v_push_reason     := 'ORDINE_NESSUNA_RIGA_PUSHABILE';
+                      v_push_reason_key := 'vendite.ordini.push_commessa_reason.nessuna_riga_pushabile';
+                  END IF;
+
+                  IF v_push_ok THEN
+                      v_actions := v_actions || jsonb_build_array(
+                          jsonb_build_object(
+                              'key',              'push_commessa',
+                              'target_state',     NULL,
+                              -- Non e' un cambio di stato: nessuna destinazione
+                              -- da nominare.
+                              'target_state_descrizione', NULL,
+                              'label_key',        'vendite.ordini.azione_push_commessa',
+                              'requires_confirm', true,
+                              'outlined',         false,
+                              'enabled',          true,
+                              'reason',           NULL,
+                              'reason_key',       NULL
+                          )
+                      );
+                  END IF;
+
+                  -- La promessa di consegna dopo la conferma (rev 2026-10-10).
+                  -- In DRAFT la data si scrive modificando la riga
+                  -- (can_edit_righe): il verbo dedicato e' per dopo, e lo dice
+                  -- il motivo. Negli altri stati decide il montaggio del lock
+                  -- delle righe, letto dalla check: nessuno stato scritto qui.
+                  IF v_stato_cod = 'DRAFT' THEN
+                      v_dcc_reason     := 'ORDINE_IN_BOZZA';
+                      v_dcc_reason_key := 'vendite.ordini.data_consegna_confermata_reason.in_bozza';
+                  ELSE
+                      v_mot_dcc        := script.fn_check_ordine_data_consegna_confermata(p_ordine_id);
+                      v_dcc_reason     := v_mot_dcc -> 0 ->> 'reason';
+                      v_dcc_reason_key := v_mot_dcc -> 0 ->> 'reason_key';
+                  END IF;
+
+                  -- La testata nello stato, letta dal montaggio del lock di testata
+                  -- (rev 2026-10-10): le colonne «sempre» della capability, poi quelle
+                  -- che il lock blocca in questo stato. Nessuno stato scritto qui.
+                  v_testata := script.fn_doc_testata_in_stato('vendite.ordini'::regclass, v_stato_cod, c_non_edit_cliente);
+
+                  RETURN jsonb_build_object(
+                      'available_actions',           v_actions,
+                      'can_change_state',            v_can_change,
+                      'can_edit_testata',  (v_testata ->> 'modificabile')::boolean,
+                      'can_edit_righe',              (v_stato_cod = 'DRAFT'),
+                      -- Dal montaggio del lock dei satelliti (rev 2026-10-11, R-DB-3).
+                      'can_edit_indirizzi',  script.fn_doc_riga_modificabile('vendite.ordini_indirizzi'::regclass, v_stato_cod),
+                      -- Il flag discende dal motivo: il backend trasporta.
+                      'can_edit_data_consegna_confermata',            (v_dcc_reason IS NULL),
+                      'can_edit_data_consegna_confermata_reason',     v_dcc_reason,
+                      'can_edit_data_consegna_confermata_reason_key', v_dcc_reason_key,
+                      'can_push_commessa',           v_push_ok,
+                      'can_push_commessa_reason',    v_push_reason,
+                      'can_push_commessa_reason_key', v_push_reason_key,
+                      'stato_info_key',          v_stato_info_key,
+                      'non_editable_fields', v_testata -> 'non_modificabili',
+                      'pdf',                         jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice',                v_stato_cod
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_available_actions_ordine(bigint) IS
+                'Capability ordine di vendita per detail API: available_actions + push_commessa (decoupling fatturazione/spedizione, fn_list_ordini_da_pushare fonte unica; reason ORDINE_NON_CONFERMATO/ORDINE_FATTURA_DA_DDT/ORDINE_GIA_FATTURATO/ORDINE_NESSUNA_RIGA_PUSHABILE) + can_change_state + can_edit_* + nessuna_azione_key + non_editable_fields + stato_codice. rev 2026-07-11: + blocco pdf {mode, allow_allegati} da config.stati_doc_ordini. rev 2026-07-16: ogni azione espone enabled/reason/reason_key; se la transizione ha meta.requires_righe e l''ordine non ha righe -> enabled=false + reason DOCUMENTO_SENZA_RIGHE (predicato specchiato dal guard Regola 2, che non filtra su attivo). rev 2026-07-19: reason ORDINE_GIA_INVIATO (allocato, in attesa fatturazione) distinta da ORDINE_GIA_FATTURATO, entrambe via script.fn_get_stato_push_segment (vede anche componenti #CMP) — brief-db-push-commessa-gia-inviato §4b. rev 2026-07-19 (bis): le 5 reason_key del push passano al namespace i18n vendite.ordini.* (era ordini.*, radice inesistente nei locales FE) — brief-db-i18n-namespace-reason-ordini; convenzione in docs/it/dev/frontend/i18n-namespace-radici.md. rev 2026-08-04: le azioni verso ANNULLATO espongono reasons da script.fn_check_ordine_annullabile (stessa fn del guard di transizione); i motivi si sommano a quello di requires_righe in un array unico da cui discendono enabled/reason/reason_key. + nessuna_azione_key dal meta dello stato corrente (EVASO / PARZIALMENTE_EVASO), esposta solo quando nessuna azione risulta abilitata — valutata a parte da can_change_state, che qui conta apposta anche le disabilitate (brief-db-vie-uscita-operatore §4 regola R3, §6). rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_ordini.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile (DRAFT -> Bozza, ALLOCATO -> Allocato a magazzino) e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati. NULL su push_commessa, che non e'' una transizione. rev 2026-08-10: ANNULLATO ha un ramo proprio nella catena delle reason del push. Stava insieme a DRAFT sotto ORDINE_NON_CONFERMATO, cioe'' «disponibile dopo la conferma dell''ordine»: su DRAFT e'' l''istruzione giusta, su ANNULLATO e'' una promessa falsa perche'' la matrice non ha nessuna transizione in uscita da quello stato. Reason nuova ORDINE_ANNULLATO, reason_key vendite.ordini.push_commessa_reason.annullato. ⚠️ Il predicato resta sui CODICI e NON su fase = ''CHIUSO'' (come invece fa il preventivo nel changeSet gemello 20260810-01): fra gli stati CHIUSI dell''ordine c''e'' anche EVASO, che puo'' avere il push ancora abilitato (5 ordini su 32, misurati nel §9.2 del brief), e un ramo su fase in testa alla catena li intercetterebbe prima che v_push_ok venga calcolato — spegnerebbe un''azione legittima. FATTURATO resta dov''era di proposito: la catena gli assegna gia'' il motivo piu'' preciso gia_fatturato. Rilievo in-app di Tid del 2026-08-10, brief-db-vie-uscita-operatore §12. rev 2026-08-10 (2): il campo si chiama ora stato_info_key e NON e'' piu'' subordinato alla lista vuota: viene emesso sempre che lo stato lo dichiari nel proprio meta, anche accanto a un''azione ancora abilitata. Decisione §5 di Tid: la nota spiega lo STATO, e chi ha ancora un bottone deve comunque poter leggere cos''e'' successo; cade quindi il presupposto che la faceva sparire, e v_nessuna_azione con il suo NOT EXISTS escono come codice morto. Il nome vecchio nessuna_azione_key diventava falso proprio nel momento in cui il campo inizia a comparire QUANDO le azioni ci sono, e il vocabolario giusto era gia'' dall''altra parte: le chiavi i18n stanno sotto vendite.<dominio>.stato_info.*. ⚠️ La PROPRIETA'' nel meta dello stato resta nessuna_azione_key, ed e'' voluto: il presidio scripts/check_i18n_keys.py trova quelle chiavi proprio per quel nome (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare il guard lo renderebbe verde per cecita'' — il caso peggiore, gia'' denunciato nel §8.3 del brief. Rinomina della proprieta'' proposta come slice a se''. ⚠️ Il campo e'' SEMPRE presente nel blob, col valore a null quando non si applica: filtrare con l''operatore di presenza risponde vero per TUTTI i documenti, va guardato il valore. Il FE rinomina la prop nello stesso rilascio (8 drawer + DrawerActionsBar). brief-db-vie-uscita-operatore §4; attivita-urgenti-del-10-08 §2. rev 2026-08-29: le azioni verso CONFERMATO espongono reasons da script.fn_check_ordine_confermabile (stessa fn che il guard di transizione usa per sollevare, Regola 4), sommate nello stesso array unico da cui discendono enabled/reason/reason_key. Oggi un motivo: E_ORDINE_RIGA_IVA_MANCANTE, una riga attiva che porta un prezzo senza aliquota IVA — senza, la riga entra in vw_ordini_righe_iva_base (che filtra solo attivo e quantita > 0) e il riepilogo la somma con COALESCE(aliquota, 0): imponibile pieno, imposta zero, su un ordine confermato e stampato. ⚠️ La reason_key vendite.ordini.azione_reason.iva_mancante e'' un debito verso il frontend: la chiave gemella del DDT esiste nei locales, questa va aggiunta. Brief: brief-db-be-iva-risolutore-e-regime-cliente, I9. rev 2026-09-24: dalla bozza, l''''azione verso CONFERMATO somma ai motivi di fn_check_ordine_confermabile quelli dei prezzi non autorizzati (componenti BoM attivi PENDING o REJECTED) da script.fn_check_prezzi_autorizzati — lo stesso building block della Regola 5 di trgfn_ordini_guard_transizione, che vale anch''''essa solo per DRAFT -> CONFERMATO. ⚠️ Le reason_key common.azione_reason.prezzo_pendente / prezzo_rifiutato sono un debito verso il frontend. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-5, D-6). rev 2026-09-27 (20260927-13): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-10): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9). rev 2026-10-10 (20261010-67): + la terna can_edit_data_consegna_confermata · _reason · _reason_key (famiglia 1): la promessa di consegna delle righe, che il verbo dedicato del backend cambia dopo la conferma. In DRAFT false con ORDINE_IN_BOZZA (vendite.ordini.data_consegna_confermata_reason.in_bozza): in bozza la data si scrive modificando la riga. Negli altri stati il primo motivo di script.fn_check_ordine_data_consegna_confermata, che legge gli stati ammessi dal montaggio del lock di vendite.ordini_righe (oggi CONFERMATO e PARZIALMENTE_EVASO): ammesso true/null/null, altrimenti false con STATO_NON_AMMETTE (vendite.ordini.data_consegna_confermata_reason.stato_non_ammette). Il flag discende dal motivo. ⚠️ Le due reason_key sono un debito verso il frontend. Brief: brief-db-testata-dopo-emissione (fase 1, R-2). rev 2026-10-10 (brief-db-testata-dopo-emissione fase 2): non_editable_fields e can_edit_testata si leggono dal montaggio del lock di testata con script.fn_doc_testata_in_stato: le colonne «sempre» della capability seguite da quelle che il lock blocca nello stato, e can_edit_testata vero se nello stato almeno una colonna nominata si cambia. Ritirate le liste scritte a mano dei campi bloccati fuori bozza (la terza copia della regola, accanto a lock e backend): con D-8/D-10 le colonne aperte dopo l''emissione (note, trasporto, valido_al e CIG/CUP del contratto…) si cambiano negli stati del montaggio e si fermano a documento chiuso. rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-3): + can_edit_indirizzi, dal montaggio del lock di vendite.ordini_indirizzi (script.fn_doc_riga_modificabile): gli indirizzi si scrivono solo in bozza, e il backend non lo scrive piu'' (_INDIRIZZI_CFG)';

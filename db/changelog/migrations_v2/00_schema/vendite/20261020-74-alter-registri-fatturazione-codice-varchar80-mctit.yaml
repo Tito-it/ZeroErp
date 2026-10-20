@@ -1,0 +1,569 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — L2c-1 (a): registri_fatturazione.codice si allarga.
+#   Brief: brief-db-grammatica-unica-documenti §13.3-bis (decisa da Tid il 2026-10-20, nel giro).
+#
+#   Il codice di un registro provvisionato e' <codice della famiglia>-<id dell'emittente>
+#   (20261020-64): con i codici delle sorgenti non sta piu' in 16 caratteri. varchar(80): 50 del
+#   codice della famiglia, il trattino, l'id. G-3: il vincolo si adegua al nome.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   * ALTER TYPE rifiuta una colonna letta da una vista, anche solo allargandola: si tolgono le
+#     sei viste che leggono codice (le liste di ordini, DDT, fatture, scadenze, resi, e
+#     vw_dash_competenza_attivita) e la vista che sta sopra l'ultima (vw_dash_competenza_mensile);
+#     vw_dash_competenza_gruppi, l'altra sopra, e' gia' tolta dal 20261020-48. Tornano in 20_code
+#     con la definizione viva, security_invoker e GRANT. Le colonne registro_codice delle liste
+#     passano a varchar(80).
+#   * Nessun trigger nomina codice in UPDATE OF; nessuna tabella storico ne porta una copia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261020-74-alter-registri-fatturazione-codice-varchar80-mctit.yaml
+
+  - changeSet:
+      id: 20261020-74-alter-registri-fatturazione-codice-varchar80
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.registri_fatturazione.codice da varchar(16) a varchar(80): il registro provvisionato
+        porta il codice intero della famiglia. Toglie le sette viste che lo leggono (tornano in 20_code).
+        Grammatica unica, L2c-1 (a).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "16"
+            sql: >
+              SELECT character_maximum_length FROM information_schema.columns
+               WHERE table_schema = 'vendite' AND table_name = 'registri_fatturazione' AND column_name = 'codice'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Prima chi legge la colonna (pg_depend, catalogo vivo 2026-10-20): i dipendenti prima delle
+              -- viste che leggono. vw_dash_competenza_gruppi e' gia' tolta dal 20261020-48. Tornano tutte in
+              -- 20_code (20261020-75 ... -82). Senza CASCADE: un dipendente non censito ferma il migrate.
+              DROP VIEW vendite.vw_dash_competenza_mensile;
+              DROP VIEW vendite.vw_ordini_lista;
+              DROP VIEW vendite.vw_ddt_lista;
+              DROP VIEW vendite.vw_fatture_lista;
+              DROP VIEW vendite.vw_fatture_scadenze_lista;
+              DROP VIEW vendite.vw_resi_lista;
+              DROP VIEW vendite.vw_dash_competenza_attivita;
+
+              ALTER TABLE vendite.registri_fatturazione
+                ALTER COLUMN codice TYPE character varying(80);
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.codice IS
+                'Codice univoco registro (es. VEND-GESTORE, VEND-RESELLER-X) Rev 2026-10-20 (20261020-74, brief-db-grammatica-unica-documenti L2c-1): varchar(80) (era 16). Un registro che nasce dal provisioning si chiama <codice della famiglia>-<id dell''emittente> (vendite.fn_codice_registro_provisionato), e il codice della famiglia e'' quello della sua sorgente, fino a 50 caratteri. Resta un nome modificabile.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le viste ricreate in 20_code le toglie il loro rollback, che gira prima di questo.
+              ALTER TABLE vendite.registri_fatturazione
+                ALTER COLUMN codice TYPE character varying(16);
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.codice IS
+                'Codice univoco registro (es. VEND-GESTORE, VEND-RESELLER-X)';
+
+              CREATE VIEW vendite.vw_ordini_lista WITH (security_invoker=on) AS
+              SELECT o.id,
+                  o.uid,
+                  o.numero,
+                  o.serie,
+                  o.anno,
+                  o.data,
+                  o.stato_doc_ordine_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.descrizione AS stato_descrizione,
+                  o.soggetto_ruolo_id,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.imponibile_tot,
+                  o.sconto_tot,
+                  o.iva_tot,
+                  o.totale_doc,
+                  o.modalita_pagamento_id,
+                  mp.codice AS modalita_pagamento_codice,
+                  o.termine_pagamento_id,
+                  tp.codice AS termine_pagamento_codice,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.tasso_cambio,
+                  o.fatturazione_trigger,
+                  o.canale_origine,
+                  o.agente_soggetto_ruolo_id,
+                  s_ag.ragione_sociale_completa AS agente_denominazione,
+                  o.documento_origine_tipo,
+                  o.documento_origine_id,
+                      CASE o.documento_origine_tipo
+                          WHEN 'PREVENTIVO'::text THEN pv.numero
+                          WHEN 'OFFERTA_COMMERCIALE'::text THEN (oc.codice)::character varying
+                          ELSE NULL::character varying
+                      END AS documento_origine_codice,
+                  o.data_insert,
+                  o.user_insert,
+                  o.data_update,
+                  o.user_update,
+                  sd.pdf_mode,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  dcr.data_consegna_richiesta_cliente_min,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM ((((((((((((((((((vendite.ordini o
+                   JOIN config.stati_doc_ordini sd ON ((sd.id = o.stato_doc_ordine_id)))
+                   JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = o.soggetto_ruolo_id)))
+                   JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = o.billing_account_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = o.emittente_fiscale_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = ef.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN config.utilities u ON ((u.id = o.utility_id)))
+                   LEFT JOIN config.modalita_pagamento mp ON ((mp.id = o.modalita_pagamento_id)))
+                   LEFT JOIN config.termini_pagamento tp ON ((tp.id = o.termine_pagamento_id)))
+                   LEFT JOIN config.valute v_val ON ((v_val.id = o.valuta_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ag ON ((sr_ag.id = o.agente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ag ON ((s_ag.id = sr_ag.soggetto_id)))
+                   LEFT JOIN vendite.preventivi pv ON (((pv.id = o.documento_origine_id) AND ((o.documento_origine_tipo)::text = 'PREVENTIVO'::text))))
+                   LEFT JOIN vendite.offerte_commerciali oc ON (((oc.id = o.documento_origine_id) AND ((o.documento_origine_tipo)::text = 'OFFERTA_COMMERCIALE'::text))))
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE (((so_pr.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (so_pr.attivo IS TRUE))), (o.id)::text) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
+                   LEFT JOIN LATERAL ( SELECT min(orr.data_consegna_richiesta_cliente) AS data_consegna_richiesta_cliente_min
+                         FROM vendite.ordini_righe orr
+                        WHERE ((orr.ordine_id = o.id) AND (orr.attivo IS TRUE))) dcr ON (true))
+                   LEFT JOIN vendite.registri_fatturazione reg ON ((reg.id = o.registro_id)));
+
+              COMMENT ON VIEW vendite.vw_ordini_lista IS
+                '⭐ rev 2026-10-11 (20261011-97, brief-db-lineage-seminata-per-chiave giro B): la vista non aggancia piu'' vw_documento_lineage. Le 8 colonne del grafo (frontiera_*, n_discendenti_attivi, is_transitato) le legge il backend da vendite.fn_documento_lineage_sintesi per le chiavi della pagina; la pratica resta, da pratiche.fn_pratica_del_documento. Vista canonica lista/dettaglio ordini vendita: testata + decodifiche denormalizzate (stato, cliente, billing/emittente/utility, pagamento, valuta, agente, documento origine) + pdf_mode (modalita'' bottone PDF per-riga, data-driven). Sola denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready). rev 2026-07-11: +pdf_mode. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede. ⭐ rev 2026-09-13 (P-6, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + data_consegna_richiesta_cliente_min, la prima data di consegna chiesta dal cliente sulle righe ATTIVE dell''ordine. E'' un min() calcolato dalle righe e non una colonna di testata, perche'' una colonna sarebbe una seconda sorgente di verita'' che va fuori sincrono al primo cambio di riga; il suffisso _cliente dice di chi e'' la data (D-16: non marcato = nostro, marcato = della controparte). NULL = nessuna riga attiva la dichiara. In ultima posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere. Serve la lista (ui.lista_colonna 746) e il drawer di testata, che leggono SELECT v.*. ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.2, Q-E): + registro_codice, registro_descrizione in coda, LEFT JOIN vendite.registri_fatturazione su registro_id (20260831). E'' lo stesso blocco appeso a vw_fatture_lista nello stesso giro: le sorelle che un registro ce l''hanno — fatture, ddt, ordini, resi — lo espongono allo stesso modo, cosi'' chi scrive l''ottava copia non la copia da una vista senza. ⛔ contratti, preventivi e offerte NON hanno registro_id e non avranno queste colonne: non e'' una dimenticanza. Nessun numero_documento qui: su questa vista `numero` e'' gia'' il numero parlante (varchar). ⭐ rev 2026-10-19 (20261019-91, brief-db-grammatica-unica-documenti lotto 2b, G-3 di Tid): ricreata dopo l''allargamento della colonna; il codice di origine o di destinazione e'' quello di config.sorgenti (OFFERTA -> OFFERTA_COMMERCIALE, ORDINE -> ORDINE_VENDITA).';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_ordini_lista TO zeroerp_app;
+
+              CREATE VIEW vendite.vw_ddt_lista WITH (security_invoker=on) AS
+              SELECT d.id,
+                  d.uid,
+                  d.numero,
+                  d.serie,
+                  d.anno,
+                  d.data,
+                  d.stato_doc_ddt_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.descrizione AS stato_descrizione,
+                  d.destinatario_soggetto_ruolo_id,
+                  s_dest.id AS destinatario_soggetto_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  s_dest.id_fiscale_univoco_cf_piva,
+                  d.mittente_soggetto_ruolo_id,
+                  s_mitt.ragione_sociale_completa AS mittente_denominazione,
+                  d.vettore_soggetto_ruolo_id,
+                  s_vett.ragione_sociale_completa AS vettore_denominazione,
+                  d.billing_account_id,
+                  ba.codice AS ba_codice,
+                  d.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  d.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  d.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  d.causale_trasporto_id,
+                  ct.codice AS causale_trasporto_codice,
+                  ct.descrizione AS causale_trasporto_descrizione,
+                  d.aspetto_bene_id,
+                  ab.codice AS aspetto_bene_codice,
+                  ab.descrizione AS aspetto_bene_descrizione,
+                  d.modalita_addebito_trasporto_id,
+                  mat.codice AS modalita_addebito_trasporto_codice,
+                  d.num_colli,
+                  d.peso_lordo,
+                  d.peso_netto,
+                  d.volume,
+                  d.targa,
+                  d.autista,
+                  d.data_ora_partenza,
+                  d.data_ora_consegna_prev,
+                  d.tracking_code,
+                  d.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  d.sorgente_uid,
+                  o_src.id AS ordine_origine_id,
+                  o_src.numero AS ordine_origine_numero,
+                  d.data_insert,
+                  d.user_insert,
+                  d.data_update,
+                  d.user_update,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM ((((((((((((((((((((vendite.ddt d
+                   JOIN config.stati_doc_ddt sd ON ((sd.id = d.stato_doc_ddt_id)))
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON ((sr_dest.id = d.destinatario_soggetto_ruolo_id)))
+                   JOIN anagrafiche.soggetti s_dest ON ((s_dest.id = sr_dest.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_mitt ON ((sr_mitt.id = d.mittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_mitt ON ((s_mitt.id = sr_mitt.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_vett ON ((sr_vett.id = d.vettore_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_vett ON ((s_vett.id = sr_vett.soggetto_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = d.billing_account_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = d.emittente_fiscale_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = ef.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN config.utilities u ON ((u.id = d.utility_id)))
+                   LEFT JOIN config.valute v_val ON ((v_val.id = d.valuta_id)))
+                   LEFT JOIN config.causali_trasporto ct ON ((ct.id = d.causale_trasporto_id)))
+                   LEFT JOIN config.aspetti_beni ab ON ((ab.id = d.aspetto_bene_id)))
+                   LEFT JOIN config.modalita_addebito_trasporto mat ON ((mat.id = d.modalita_addebito_trasporto_id)))
+                   LEFT JOIN config.sorgenti src ON ((src.id = d.sorgente_tipo_id)))
+                   LEFT JOIN vendite.ordini o_src ON (((o_src.uid = d.sorgente_uid) AND ((src.codice_interno)::text = 'ORDINE_VENDITA'::text))))
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE (((so_pr.codice_interno)::text = 'DDT_VENDITA'::text) AND (so_pr.attivo IS TRUE))), (d.id)::text) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
+                   LEFT JOIN vendite.registri_fatturazione reg ON ((reg.id = d.registro_id)));
+
+              COMMENT ON VIEW vendite.vw_ddt_lista IS
+                '⭐ rev 2026-10-11 (20261011-97, brief-db-lineage-seminata-per-chiave giro B): la vista non aggancia piu'' vw_documento_lineage. Le 8 colonne del grafo (frontiera_*, n_discendenti_attivi, is_transitato) le legge il backend da vendite.fn_documento_lineage_sintesi per le chiavi della pagina; la pratica resta, da pratiche.fn_pratica_del_documento. Vista flat canonica e self-contained DDT per la lista UI. Nomi canonici. Destinatario via soggetto_ruolo diretto; mittente/vettore nullable. +emittente_fiscale_id/_codice (scope, §15). Campi trasporto per il PDF. Ordine di origine via sorgente_uid. security_invoker=on. Mirror vw_ordini_lista. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede. ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.2, Q-E): + registro_codice, registro_descrizione in coda, LEFT JOIN vendite.registri_fatturazione su registro_id (20260831). E'' lo stesso blocco appeso a vw_fatture_lista nello stesso giro: le sorelle che un registro ce l''hanno — fatture, ddt, ordini, resi — lo espongono allo stesso modo, cosi'' chi scrive l''ottava copia non la copia da una vista senza. ⛔ contratti, preventivi e offerte NON hanno registro_id e non avranno queste colonne: non e'' una dimenticanza. Nessun numero_documento qui: su questa vista `numero` e'' gia'' il numero parlante (varchar).';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_ddt_lista TO zeroerp_app;
+
+              CREATE VIEW vendite.vw_fatture_lista WITH (security_invoker=on) AS
+              SELECT f.id,
+                  f.uid,
+                  f.numero,
+                  f.serie,
+                  f.anno,
+                  f.data,
+                  f.registro_id,
+                  f.stato_doc_fiscale_id,
+                  sdf.codice_interno AS stato_codice_interno,
+                  sdf.descrizione AS stato_descrizione,
+                  sdf.fase,
+                  f.tipo_doc_fiscale_id,
+                  tdf.codice_interno AS tipo_doc_fiscale_codice_interno,
+                  tdf.descrizione AS tipo_doc_fiscale_descrizione,
+                  f.natura_doc_id,
+                  ndf.codice_interno AS natura_doc_codice_interno,
+                  ndf.descrizione AS natura_doc_descrizione,
+                  f.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s_cli.id AS soggetto_id,
+                  s_cli.ragione_sociale_completa,
+                  s_cli.id_fiscale_univoco_cf_piva,
+                  f.emittente_soggetto_ruolo_id,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  f.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  f.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  f.imponibile_tot,
+                  f.imposta_tot,
+                  f.totale_doc,
+                  f.totale_a_pagare,
+                  f.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  f.sorgente_uid,
+                  f.data_insert,
+                  f.user_insert,
+                  f.data_update,
+                  f.user_update,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  vendite.fn_numero_documento_fattura(f.numero, f.serie) AS numero_documento,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM ((((((((((((((vendite.fatture f
+                   JOIN config.nature_doc_fiscale ndf ON ((ndf.id = f.natura_doc_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN config.tipi_doc_fiscale tdf ON ((tdf.id = f.tipo_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = f.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_cli ON ((sr_cli.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_cli ON ((s_cli.id = sr_cli.soggetto_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = f.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN config.utilities u ON ((u.id = f.utility_id)))
+                   LEFT JOIN config.valute v_val ON ((v_val.id = f.valuta_id)))
+                   LEFT JOIN config.sorgenti src ON ((src.id = f.sorgente_tipo_id)))
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE (((so_pr.codice_interno)::text = 'FATTURA'::text) AND (so_pr.attivo IS TRUE))), (f.id)::text) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
+                   LEFT JOIN vendite.registri_fatturazione reg ON ((reg.id = f.registro_id)));
+
+              COMMENT ON VIEW vendite.vw_fatture_lista IS
+                '⭐ rev 2026-10-11 (20261011-97, brief-db-lineage-seminata-per-chiave giro B): la vista non aggancia piu'' vw_documento_lineage. Le 8 colonne del grafo (frontiera_*, n_discendenti_attivi, is_transitato) le legge il backend da vendite.fn_documento_lineage_sintesi per le chiavi della pagina; la pratica resta, da pratiche.fn_pratica_del_documento. Vista flat canonica e self-contained delle fatture di vendita per la lista UI — la settima sorella di vw_contratti/ddt/offerte_commerciali/ordini/preventivi/resi_lista, e l''ultimo documento del ciclo attivo che ne era privo. Nomi canonici gia'' noti al frontend: stato_codice_interno/stato_descrizione, ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice, utility_codice/utility_descrizione, emittente_ragione_sociale, soggetto_id. Cliente risolto via billing_account -> soggetto_ruolo -> soggetto (la fattura non porta un soggetto_ruolo cliente). emittente_fiscale_id DERIVATO da anagrafiche.emittenti_fiscali.soggetto_ruolo_id, che ha un vincolo di unicita'' (uq_emittenti_fiscali_ruolo): il join non moltiplica le righe. Importi coi nomi della tabella (imponibile_tot, imposta_tot, totale_doc, totale_a_pagare) perche'' fra le sorelle quel nome NON e'' canonico. ⛔ security_invoker=on: vendite.fatture ha la RLS (rls_fatture_ef_whitelist per l''operatore, rls_fatture_ba_ownership per il portale) ed e'' quella a dover mordere — la vista non filtra e non fa scope, denormalizza soltanto. ⛔ UN SOLO join interno, config.nature_doc_fiscale, e solo perche'' natura_doc_id e'' NOT NULL con FK; tutto il resto e'' LEFT. In particolare anagrafiche.billing_account, che ha una RLS propria risolta da fn_scope_ef_whitelist_via_efba mentre la fattura usa fn_scope_ef_whitelist_via_sr: le due derivazioni del perimetro possono divergere, e un inner join farebbe sparire dalla lista una fattura che la sua policy lascia passare — una lista che mostra meno del dovuto senza nessun segnale. Le colonne nullable (stato/tipo/utility/valuta) sono LEFT per la stessa ragione di forma: una fattura senza stato deve comparire senza stato, non sparire. Bozze incluse: numero/serie/anno sono NULL finche'' il documento non e'' numerato. Genealogia da vendite.vw_documento_lineage (18 righe su 18 fatture, misurate): n_discendenti_attivi e is_transitato sono zero per costruzione perche'' la fattura e'' terminale. NON contiene il lotto di appartenenza: questa lista esiste per raggiungere la fattura SENZA passare dal lotto. Seed lista: ui.lista_definizione ''vendite.fatture'' (attivo = f finche'' il backend non espone l''endpoint). Registro: piano-migrazione-primevue-5.md §9, 2026-08-24. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⚠️ SU QUESTA VISTA LA COLONNA E'' COSTANTE, ed e'' bene saperlo prima di leggerla: una fattura e'' sempre frontiera di SE STESSA (nel grafo forward non ha archi uscenti — l''arco N e'' un ramo di ritorno; lo asserisce il pgTAP 30 di test-documento-lineage-v1.sql), quindi frontiera_natura_doc_codice qui vale SEMPRE la natura della riga stessa. C''e'' lo stesso, e per una ragione di forma e non di dato: le sette liste sorelle devono esporre lo STESSO blocco frontiera_*, altrimenti chi scrive l''ottava copia da quella sbagliata. ⛔ E chi un giorno montasse la colonna «Transito» qui sappia che renderebbe il documento su se stesso: non un''etichetta sbagliata, un chip che non dice niente. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede. ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.2, P-1): + numero_documento, registro_codice, registro_descrizione in coda. numero_documento e'' vendite.fn_numero_documento_fattura(numero, serie), la SEDE UNICA del numero parlante («numero - serie», NULL sulla non numerata, mai la stringa vuota): la lista deve portarlo perche'' il FE non compone — un contatore nudo e'' ambiguo per costruzione (una fattura 1 e una nota di credito 1 nello stesso anno). Il registro e'' LEFT: una bozza puo'' non averlo e deve comparire senza, non sparire. Consumatori: il lookup fattura degli incassi (tre superfici) e la lista vendite.fatture, che leggono SELECT v.*. Lo stesso blocco registro_* va in coda anche a vw_ddt_lista, vw_ordini_lista e vw_resi_lista (Q-E): contratti, preventivi e offerte un registro non ce l''hanno, e non lo avranno.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_fatture_lista TO zeroerp_app;
+
+              CREATE VIEW vendite.vw_fatture_scadenze_lista WITH (security_invoker=on) AS
+              SELECT sc.id AS scadenza_id,
+                  sc.fattura_id,
+                  sc.numero_rata,
+                  sc.data_scadenza,
+                  sc.importo,
+                  f.numero,
+                  vendite.fn_numero_documento_fattura(f.numero, f.serie) AS numero_documento,
+                  f.serie,
+                  f.anno,
+                  f.data,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione,
+                  ndf.codice_interno AS natura_doc_codice_interno,
+                  ndf.descrizione AS natura_doc_descrizione,
+                  tdf.codice_interno AS tipo_doc_fiscale_codice_interno,
+                  tdf.descrizione AS tipo_doc_fiscale_descrizione,
+                  sdf.codice_interno AS stato_codice_interno,
+                  sdf.descrizione AS stato_descrizione,
+                  f.totale_doc,
+                  f.totale_a_pagare,
+                  v_val.codice AS valuta_codice,
+                  f.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s_cli.id AS soggetto_id,
+                  s_cli.ragione_sociale_completa,
+                  s_cli.id_fiscale_univoco_cf_piva,
+                  f.emittente_soggetto_ruolo_id,
+                  ef.id AS emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM ((((((((((((vendite.fatture_scadenze sc
+                   JOIN vendite.fatture f ON ((f.id = sc.fattura_id)))
+                   JOIN config.nature_doc_fiscale ndf ON ((ndf.id = f.natura_doc_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN config.tipi_doc_fiscale tdf ON ((tdf.id = f.tipo_doc_fiscale_id)))
+                   LEFT JOIN vendite.registri_fatturazione reg ON ((reg.id = f.registro_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = f.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_cli ON ((sr_cli.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_cli ON ((s_cli.id = sr_cli.soggetto_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.soggetto_ruolo_id = f.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = f.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN config.valute v_val ON ((v_val.id = f.valuta_id)));
+
+              COMMENT ON VIEW vendite.vw_fatture_scadenze_lista IS
+                'Vista d''IDENTITA'' delle rate: una riga per rata di vendite.fatture_scadenze col suo documento (numero parlante dalla sede unica fn_numero_documento_fattura, registro, date, natura, tipo, stato, totali, valuta), il cliente e l''emittente denormalizzati. NESSUN SALDO: il residuo e'' di pagamenti e vive nel nucleo pagamenti.fn_get_saldi_rate (P-3) — chi legge fa JOIN LATERAL sulla pagina o passa da pagamenti.vw_saldi_rate. ⛔ Niente «scaduta»/«insoluta»: sono derivate dal residuo. ⭐ La chiave si chiama scadenza_id, il vocabolario di pagamenti; `numero` (il contatore) resta accanto a `numero_documento` perche'' il picker filtra per numero ESATTO. ⛔ security_invoker=on: la vista non filtra e non fa scope, a mordere e'' la RLS di fatture_scadenze (OPERATORE via ef_whitelist e CLIENTE_PORTALE via ba_ownership, entrambe via testata): la stessa vista serve il picker degli incassi, lo scadenzario e il portale. Va RI-SPECIFICATA a ogni CREATE OR REPLACE. ⛔ DUE inner dimostrabili — vendite.fatture (FK NOT NULL, e la policy della rata e'' lo stesso EXISTS sulla testata) e config.nature_doc_fiscale (FK NOT NULL) — tutto il resto e'' LEFT: una rata su una bozza senza stato, registro o numero compare senza, non sparisce. ⚠️ I JOIN sono SCRITTI e non ereditati da vw_fatture_lista: impilarsi su quella vista trascina la CTE ricorsiva del lineage in ogni lettura delle rate (il planner non rimuove un LEFT JOIN su una vista). Nasce il 2026-09-17 per D19-c (brief-db-distinta-ricerca-rate §4-bis.3, P-2): il picker delle rate della distinta e'' il primo consumatore dello scadenzario.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_fatture_scadenze_lista TO zeroerp_app;
+
+              CREATE VIEW vendite.vw_resi_lista WITH (security_invoker=on) AS
+              SELECT r.id,
+                  r.uid,
+                  r.numero,
+                  r.anno,
+                  r.data,
+                  r.stato_doc_reso_id,
+                  sr.codice_interno AS stato_codice_interno,
+                  sr.descrizione AS stato_descrizione,
+                  r.destinatario_soggetto_ruolo_id,
+                  s_dest.id AS destinatario_soggetto_id,
+                  s_dest.ragione_sociale_completa AS destinatario_denominazione,
+                  s_dest.id_fiscale_univoco_cf_piva,
+                  r.billing_account_id,
+                  ba.codice AS ba_codice,
+                  r.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  r.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  r.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  r.sorgente_tipo_id,
+                  src.codice_interno AS sorgente_codice_interno,
+                  r.sorgente_uid,
+                  d_src.id AS ddt_origine_id,
+                  d_src.numero AS ddt_origine_numero,
+                  r.data_insert,
+                  r.user_insert,
+                  r.data_update,
+                  r.user_update,
+                  sr.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  reg.codice AS registro_codice,
+                  reg.descrizione AS registro_descrizione
+                 FROM (((((((((((((vendite.resi r
+                   JOIN config.stati_doc_reso sr ON ((sr.id = r.stato_doc_reso_id)))
+                   JOIN anagrafiche.soggetti_ruoli sr_dest ON ((sr_dest.id = r.destinatario_soggetto_ruolo_id)))
+                   JOIN anagrafiche.soggetti s_dest ON ((s_dest.id = sr_dest.soggetto_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = r.billing_account_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = r.emittente_fiscale_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = ef.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN config.utilities u ON ((u.id = r.utility_id)))
+                   LEFT JOIN config.valute v_val ON ((v_val.id = r.valuta_id)))
+                   LEFT JOIN config.sorgenti src ON ((src.id = r.sorgente_tipo_id)))
+                   LEFT JOIN vendite.ddt d_src ON ((d_src.uid = r.sorgente_uid)))
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE (((so_pr.codice_interno)::text = 'RESO_VENDITA'::text) AND (so_pr.attivo IS TRUE))), (r.id)::text) pr(n_pratiche, pratica_id, pratica_numero) ON (true))
+                   LEFT JOIN vendite.registri_fatturazione reg ON ((reg.id = r.registro_id)));
+
+              COMMENT ON VIEW vendite.vw_resi_lista IS
+                '⭐ rev 2026-10-11 (20261011-97, brief-db-lineage-seminata-per-chiave giro B): la vista non aggancia piu'' vw_documento_lineage. Le 8 colonne del grafo (frontiera_*, n_discendenti_attivi, is_transitato) le legge il backend da vendite.fn_documento_lineage_sintesi per le chiavi della pagina; la pratica resta, da pratiche.fn_pratica_del_documento. Lista/dettaglio resi vendita (mirror vw_ddt_lista). security_invoker=on + RLS su base; espone emittente_fiscale_id/_codice e emittente_ragione_sociale. ⭐ rev 2026-08-25 — LA SESTA SORELLA: fase + colonne di genealogia da vendite.vw_documento_lineage (pratica, frontiera, discendenti, is_transitato), nella stessa forma delle altre liste documento. `fase` non c''era: la vista aveva lo stato ma non la fase normalizzata, e il seed della colonna omonima la cerca con quel nome esatto — senza, la colonna sarebbe nata vuota e in silenzio. ⭐ SU UN RESO frontiera_codice E'' IL NUMERO DELLA NOTA DI CREDITO: con l''arco S (20260825-19) il reso smette di essere una foglia e la sua frontiera diventa la nota che lo accredita. La colonna «Transito» risponde percio'' a «questo reso e'' gia'' stato accreditato, e con quale documento» — che prima era una QUANTITA'' (gia_accreditato) in un drawer, non un documento in lista. ⚠️ Il join al lineage e'' LEFT come sulle sorelle: un reso senza genealogia compare senza genealogia, non sparisce. Consumo: ui.lista_definizione ''vendite.resi'' (id 9) + preset resi_default; il frontend e'' gia'' <ListaConfigurabile>, quindi le colonne arrivano dal seed. ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede. ⭐ rev 2026-09-17 (brief-db-distinta-ricerca-rate §4-bis.2, Q-E): + registro_codice, registro_descrizione in coda, LEFT JOIN vendite.registri_fatturazione su registro_id (20260831). E'' lo stesso blocco appeso a vw_fatture_lista nello stesso giro: le sorelle che un registro ce l''hanno — fatture, ddt, ordini, resi — lo espongono allo stesso modo, cosi'' chi scrive l''ottava copia non la copia da una vista senza. ⛔ contratti, preventivi e offerte NON hanno registro_id e non avranno queste colonne: non e'' una dimenticanza. Nessun numero_documento qui: su questa vista `numero` e'' gia'' il numero parlante (varchar).';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_resi_lista TO zeroerp_app;
+
+              CREATE VIEW vendite.vw_dash_competenza_attivita WITH (security_invoker=on) AS
+              SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  st.stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, (script.fn_giorno_operativo(af.data_insert))::timestamp without time zone))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  (
+                      CASE
+                          WHEN (fr.id IS NULL) THEN NULL::numeric
+                          WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+                          ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                      END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  co.billing_account_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  reg.registro_id,
+                  rf.codice AS registro_codice,
+                  reg.politica_data_documento,
+                      CASE
+                          WHEN (reg.registro_id IS NOT NULL) THEN vendite.fn_calcola_data_documento(p_registro_id => reg.registro_id, p_competenza_mese => ca.competenza_mese, p_serie => reg.serie, p_data_dichiarata => NULL::date)
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  af.id AS attivita_fatturabile_id,
+                  COALESCE(af.lock_in_fatturazione, false) AS lock_in_fatturazione,
+                  af.stato_esecuzione,
+                  (
+                      CASE
+                          WHEN ((st.stadio)::text <> 'EMESSA_NON_FATTURATA'::text) THEN NULL::text
+                          WHEN (af.id IS NULL) THEN 'SENZA_ATTIVITA_FATTURABILE'::text
+                          WHEN (NOT COALESCE(af.lock_in_fatturazione, false)) THEN
+                          CASE
+                              WHEN (EXISTS ( SELECT 1
+                                 FROM vendite.vw_lotti_fase lfase
+                                WHERE ((lfase.lotto_id = fl.id) AND lfase.in_gioco))) THEN 'GIRO_IN_CORSO'::text
+                              ELSE 'RESIDUO'::text
+                          END
+                          WHEN ((af.stato_esecuzione)::text IS DISTINCT FROM ('COMPLETED'::character varying)::text) THEN 'GIRO_IN_CORSO'::text
+                          ELSE 'RESIDUO'::text
+                      END)::character varying AS motivo_non_fatturata,
+                  fl.id AS lotto_provenienza_id,
+                  fl.codice AS lotto_provenienza_codice,
+                  art.codice AS articolo_codice,
+                  art.descrizione AS articolo_descrizione,
+                  COALESCE(((cae.classe_emittibilita)::text = 'TRATTENUTA'::text), false) AS emissione_trattenuta,
+                      CASE
+                          WHEN ((cae.classe_emittibilita)::text = 'TRATTENUTA'::text) THEN cae.trattenuta_da_lotti
+                          ELSE NULL::bigint[]
+                      END AS emissione_trattenuta_da_lotti
+                 FROM (((((((((((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = co.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(p_billing_account_id_riga => co.billing_account_id, p_tipo_doc_fiscale_id => ca.tipo_doc_fiscale_id, p_natura_doc_id => ca.natura_doc_id) reg(ba_fatturazione_id, utility_id, emittente_soggetto_ruolo_id, registro_id, serie, politica_data_documento) ON ((af.fattura_riga_id IS NULL)))
+                   LEFT JOIN vendite.registri_fatturazione rf ON ((rf.id = reg.registro_id)))
+                   LEFT JOIN vendite.fatturazione_lotti fl ON ((fl.lock_batch_id = COALESCE(af.lock_batch_id, af.emit_batch_id))))
+                   LEFT JOIN catalogo.articoli art ON ((art.id = ca.articolo_id)))
+                   CROSS JOIN LATERAL ( SELECT (
+                              CASE
+                                  WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                                  WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                                  WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                                  ELSE 'FATTURATA'::text
+                              END)::character varying AS stadio) st)
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                   LEFT JOIN vendite.vw_commesse_attivita_emittibilita cae ON ((cae.commessa_attivita_id = ca.id)))
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_attivita IS
+                'Lente 1 Competenza, grana ATTIVITA'': una riga per attivita'' di commessa con lo stadio del ciclo (DA_APPROVARE / DA_EMETTERE / EMESSA_NON_FATTURATA / FATTURATA), il valore, il collegamento a fattura e lotto e lo stato della commessa. Alimenta il drill-down commesse, che il backend AGGREGA per commessa. SCOPE EMITTENTE via fn_get_emittenti_scope_sr_ids(GUC): fail-closed. security_invoker=on. ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. Il drill-down puo'' metterla nel GROUP BY in sicurezza: l''emittente e'' una colonna di vendite.commesse e commessa_id ne e'' la chiave primaria, quindi una commessa non puo'' avere attivita'' di emittenti diversi — l''emittente non sta sull''attivita''. La colonna nel GROUP BY serve comunque: su una colonna di VISTA PostgreSQL non deduce la dipendenza funzionale. ⚠️ Due catene distinte sulle stesse tabelle: sr/s sono il CLIENTE (via billing account), sr_ef/s_ef l''EMITTENTE. Scambiarle non darebbe nessun errore, solo un nome sbagliato a video. ⭐ Rev 2026-08-26 (L4, brief-db-registro-e-data-prevista-in-competenza): quattro colonne nuove in coda — registro_id, registro_codice, politica_data_documento, data_documento_prevista. Rispondono alle due domande che la schermata da cui si fattura non sapeva dire PRIMA di premere: su quale sezionale finira'' il documento, e che data portera''. ⭐ Il sezionale si risolve chiamando vendite.fn_resolve_registro_documento, cioe'' LA STESSA funzione che usa fn_build_fattura_key quando la fattura nasce davvero: la previsione e'' una lettura, non una profezia, e non puo'' divergere dal documento perche'' non e'' una seconda implementazione. ⚠️ Le si passa co.billing_account_id, il BA della RIGA: la funzione risale al padre da se'', e passarle il BA di fatturazione darebbe una previsione plausibile e sbagliata proprio sui BA con padre. ⛔ L''aggancio e'' CONDIZIONATO — ON (af.fattura_riga_id IS NULL), decisione D-9: dove il documento esiste gia'' la previsione non si fa, o la colonna mentirebbe al proprio nome. ⚠️ Il discriminante e'' la riga di fattura e non lo stadio: su EMESSA_NON_FATTURATA il documento non c''e'' ancora — e li'' finiscono le attivita'' rimaste orfane di una fattura eliminata, cioe'' lavoro da ri-emettere, per cui sapere dove finira'' e'' proprio l''informazione utile. ⛔ Il CASE sulla data e'' obbligatorio e non difensivo: fn_calcola_data_documento SOLLEVA su registro nullo, un CASE cortocircuita e un argomento no — senza, la prima riga con un sezionale non risolvibile farebbe morire l''intera lista. ⚠️ registro_codice viene da registri_fatturazione.codice, colonna MUTABILE: e'' display, l''alias e'' fedele alla sorgente (linee-guida-sql §6c) e quella tabella non espone codice_interno. Nessuna logica puo'' appoggiarcisi — chi filtra lo fa su registro_id. ℹ️ Costo dichiarato: due chiamate di funzione per riga su una vista che ne alimenta altre quattro. Tutta la catena e'' STABLE e le tabelle di configurazione lette non hanno RLS. ⭐ Rev 2026-08-26 (D-1, brief-db-residui-competenza-dimensione-e-chiave): otto colonne nuove in coda — attivita_fatturabile_id, lock_in_fatturazione, stato_esecuzione, motivo_non_fatturata, lotto_provenienza_id, lotto_provenienza_codice, articolo_codice, articolo_descrizione. ⛔ attivita_fatturabile_id e'' LA CHIAVE DEL VERBO: vendite.fn_riporta_attivita_da_emettere consuma vendite.attivita_fatturabili.id, e nessuna vista lo esponeva — il frontend non poteva chiamare la mutazione. Tradurre commessa_attivita_id -> af.id lato backend sarebbe stata una SECONDA IMPLEMENTAZIONE di un legame che il database conosce gia''. E'' un identificatore, non una colonna da mostrare. ⭐ motivo_non_fatturata e'' LA DIMENSIONE, a vocabolario chiuso di TRE valori e NULL fuori dallo stadio EMESSA_NON_FATTURATA: GIRO_IN_CORSO (lucchettata con stato_esecuzione diverso da COMPLETED — oppure, rev 2026-09-12, LIBERA col marchio di un lotto IN GIOCO: il transito fra pull e select), RESIDUO (lucchettata e COMPLETED senza riga di fattura — oppure libera col marchio di un lotto morto o senza marchio: la DIVERGENZA fra i due livelli, che nessun giro riprende. Sono le sole che il verbo tocca) e SENZA_ATTIVITA_FATTURABILE. ⛔ IN_ATTESA_LOTTO e'' RITIRATO (20260912-36): diceva «non lucchettata, il prossimo giro la prende da se''», ed e'' falso PER COSTRUZIONE dentro questo stadio — la riga di commessa e'' EMESSA, il pull non la vede e la select di un altro lotto non trova il suo marchio (brief-db-rilancio-step-non-rivede-le-proprie-commesse §10.4 e §11.3 C.2, 20260912-35). Un valore che la vista non puo'' produrre non sta nel vocabolario: teneva in vita un ramo morto, e la lista NASCONDEVA il verbo proprio sulle righe che nessun giro avrebbe ripreso. «In gioco» si legge da vendite.vw_lotti_fase, la sede unica, con un EXISTS valutato SOLO su quel ramo del CASE (una lettura per riga libera dello stadio, zero sulle altre). ⛔ Serve perche'' lo stadio guarda SOLO fattura_riga_id, e dentro EMESSA_NON_FATTURATA finiscono situazioni con RIMEDI OPPOSTI: due non chiedono nessuna azione, una si''. Un numero solo per rimedi opposti e'' la stessa ambiguita'' che il cantiere «il lavoro che non torna indietro» ha chiuso un livello piu'' in giu''. ⛔ E NON si spezza il valore EMESSA_NON_FATTURATA in due stadi: lo STADIO dice a che punto del ciclo e'' il lavoro, e le situazioni sono allo STESSO punto — cambia la loro salute, non il loro avanzamento. Si aggiunge la DIMENSIONE, come il 2026-08-20 si aggiunse tipo_movimento alla mensile invece di una colonna valore_rettifiche. ⛔ I rami sono, uno per uno, gli stessi di script.fn_check_attivita_riportabile_da_emettere (motivo 5, motivo 4 e «nessun motivo»; il motivo 3 — libera con la riga NON_EMESSA — sta fuori da questo stadio per costruzione): cambiarne uno qui senza cambiarlo li'' non produce nessun errore — la lista proporrebbe il verbo su una riga che la mutazione rifiuta, o lo nasconderebbe su una che accetta. Il presidio che lega le due superfici e'' db/pgtap/vendite/test-motivo-non-fatturata-v1.sql, con una fixture COSTRUITA per ciascun caso. ⛔ IS DISTINCT FROM ''COMPLETED'' e non <>: stato_esecuzione e'' NULLABLE e il CHECK ammette anche ERRORE, quindi con <> un lucchetto a NULL darebbe NULL e il CASE cadrebbe su RESIDUO dove la funzione dice E_ATTIVITA_IN_LAVORAZIONE. ERRORE finisce percio'' in GIRO_IN_CORSO, e il rimedio (aspettare che il lotto si chiuda) e'' lo stesso. ⭐ SENZA_ATTIVITA_FATTURABILE e'' il quarto valore: il modello AMMETTE una riga di commessa a EMESSA senza NESSUNA riga in attivita_fatturabili (il JOIN e'' LEFT, e il guard di DELETE ammette per progetto la cancellazione di una riga non fatturata). Senza un ramo suo il COALESCE la farebbe cadere su IN_ATTESA_LOTTO, cioe'' «il prossimo giro la prende» — falso, perche'' la pull filtra su stato_emissione e non la riprende mai piu''; e attivita_fatturabile_id sarebbe NULL, quindi il verbo non avrebbe nemmeno la chiave. Zero occorrenze non significa che il caso non esiste. ⛔ NON si usa `fatturato` come discriminante: dal 20260826-33 e'' una colonna GENERATA da fattura_riga_id, quindi dentro EMESSA_NON_FATTURATA e'' sempre falsa e non distingue niente. ⭐ lotto_provenienza_id/_codice rispondono a «da dove viene questo residuo», e NON sono lotto_id: quello nasce dalla catena della FATTURA e su un residuo la fattura non c''e''. Arrivano da vendite.fatturazione_lotti via COALESCE(lock_batch_id, emit_batch_id) — rev 2026-09-12: un residuo DIVERGENTE il lucchetto non ce l''ha, e la sua provenienza e'' il MARCHIO del giro (emit_batch_id), che e'' il lock_batch_id del lotto che l''ha presa in carico; per un''attivita'' lucchettata i due coincidono. La chiave sul lato lotti resta lock_batch_id, che li'' ha un UNIQUE — quindi il LEFT JOIN non puo'' moltiplicare righe. LEFT e non INNER perche'' fatturazione_lotti ha la RLS: un lotto fuori perimetro lascia le colonne a NULL e non fa sparire il residuo. lotto_provenienza_codice viene da codice, MUTABILE: e'' display (§6c) e nessuna logica puo'' appoggiarcisi. ⭐ articolo_codice/articolo_descrizione dicono CHE LAVORO E'': la vista esponeva il solo articolo_id, che e'' un UUID, e una lista di residui su cui si deve AGIRE senza il nome del lavoro non e'' azionabile. Il decode e'' lo stesso di vendite.fn_list_commessa_attivita (rev 2026-08-20), che lo fa un livello sopra sulla stessa colonna. LEFT anche se articolo_id e'' NOT NULL: un decode non deve poter far sparire la riga che sta decorando, e catalogo.articoli non ha RLS. ℹ️ I due JOIN nuovi NON li paga chi non li usa, e la ragione e'' STRUTTURALE: sono LEFT JOIN su chiavi con indice UNIQUE (uq_fatturazione_lotti_lock_batch_id, pk_articoli), quindi PostgreSQL puo'' PROVARE che non moltiplicano le righe e li elimina dal piano quando nessuna delle loro colonne e'' selezionata (left join removal). ⚠️ La condizione che regge tutto e'' il UNIQUE: togliendolo l''eliminazione smetterebbe di essere lecita e la vista comincerebbe a contare doppio — per questo e'' in preCondition e ha un test suo. ⭐ Lo STADIO si calcola UNA volta sola, nella CROSS JOIN LATERAL `st`, e serve sia la colonna stadio sia motivo_non_fatturata: quest''ultima e'' definita SOPRA lo stadio e in SQL un alias di SELECT non e'' riferibile da un''altra espressione della stessa SELECT. Ricopiare il CASE avrebbe messo la definizione dello stadio in DUE posti della stessa vista, dove divergere non produce nessun errore. Valore, nome e tipo della colonna stadio non cambiano.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_dash_competenza_attivita TO zeroerp_app;
+
+              CREATE VIEW vendite.vw_dash_competenza_mensile WITH (security_invoker=on) AS
+              SELECT competenza_mese,
+                  stadio,
+                  stato_fattura_codice_interno,
+                  (count(*) FILTER (WHERE (NOT emissione_trattenuta)))::integer AS n_attivita,
+                  COALESCE(sum(valore) FILTER (WHERE (NOT emissione_trattenuta)), (0)::numeric) AS valore_tot,
+                  COALESCE(sum(valore_fatturato), (0)::numeric) AS valore_fatturato_tot,
+                  (count(*) FILTER (WHERE emessa_in_ritardo))::integer AS n_in_ritardo,
+                  COALESCE(sum(valore) FILTER (WHERE emessa_in_ritardo), (0)::numeric) AS valore_in_ritardo,
+                  tipo_movimento,
+                  motivo_non_fatturata,
+                  (count(*) FILTER (WHERE emissione_trattenuta))::integer AS n_attivita_trattenute,
+                  COALESCE(sum(valore) FILTER (WHERE emissione_trattenuta), (0)::numeric) AS valore_trattenuto
+                 FROM vendite.vw_dash_competenza_attivita
+                GROUP BY competenza_mese, stadio, stato_fattura_codice_interno, tipo_movimento, motivo_non_fatturata;
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_mensile IS
+                'Lente 1 Competenza, aggregata in FORMATO LUNGO: una riga per (competenza_mese, stadio, stato fattura, tipo_movimento, motivo_non_fatturata). Il pivot alla griglia 12 mesi x 4 stadi e'' del service, non della vista. security_invoker=on: lo scope emittente arriva da vw_dash_competenza_attivita (GUC fail-closed) e va RI-SPECIFICATO a ogni REPLACE, perche'' la reloption non e'' visibile in pg_get_viewdef e verrebbe azzerata in silenzio. ⭐ Rev 2026-08-20 (richiesta BE, punto 3): `tipo_movimento` entra nel raggruppamento. Prima si perdeva qui, e il residuo del mese — che e'' una somma CON SEGNO — compensava le rettifiche con le fatture da emettere: agosto 2026 segnava 101% di copertura perche'' il residuo era −29,50, cioe'' due note di credito da emettere. Con una sola fattura da 29,50 in sospeso il residuo sarebbe andato a zero e la dashboard avrebbe detto «100%, niente da fare» con tre documenti da produrre: la compensazione NASCONDE LAVORO. ⭐ E non riguarda le sole rettifiche — a luglio 2026 ci sono 5.000 EUR di ONERI nello stesso totale: la somma mescolava tre cose di natura diversa, ed e'' il motivo per cui si aggiunge la DIMENSIONE e non una colonna `valore_rettifiche`, che avrebbe messo i valori dell''enum dentro la vista. 🔴 Cambia la CARDINALITA'': 7 righe -> 8 sul dato del 2026-08-20, unico bucket spezzato 2026-07 FATTURATA/EMESSA (NORMALE + ONERE). I totali del consumatore reggono perche'' il pivot accumula, ma il breakdown per stato documento fiscale elenca una voce per riga: senza adeguamento BE mostra EMESSA due volte. brief-design-note-credito-resi §40.2. ⭐ Rev 2026-08-26 (D-2, brief-db-residui-competenza-dimensione-e-chiave): `motivo_non_fatturata` entra nel raggruppamento, per la STESSA ragione e nella STESSA forma. Lo stadio EMESSA_NON_FATTURATA guarda solo fattura_riga_id, e dentro quel valore convivono situazioni con RIMEDI OPPOSTI: in attesa del proprio lotto (nessun rimedio, il prossimo giro la prende), dentro un giro vivo (nessun rimedio, si aspetta) e RESIDUO — l''unica su cui «Riporta da emettere» ha effetto. Un numero solo per rimedi opposti dice all''operatore che c''e'' qualcosa da fare quando non c''e'', o nasconde il lavoro vero dentro un transito sano. ⛔ Dimensione e NON una colonna `n_residui`: quella avrebbe costretto l''aggregata a conoscere il valore RESIDUO, cioe'' a cablare un elemento del vocabolario dentro una somma. La dimensione non conosce nessun valore: li porta. 🔴 E cambia di nuovo la CARDINALITA'': un bucket EMESSA_NON_FATTURATA che contiene piu'' situazioni si spezza in una riga per situazione. I totali reggono, il breakdown no — l''adeguamento BE/FE va fatto nello stesso giro. ⚠️ Il presidio di grana e'' il test 22 di db/pgtap/vendite/test-fn-list-commessa-attivita-provenienza-v1.sql, che confronta le righe della mensile col GROUP BY del dettaglio: cambiando la grana va portato sulla regola nuova, mai spento.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_dash_competenza_mensile TO zeroerp_app;

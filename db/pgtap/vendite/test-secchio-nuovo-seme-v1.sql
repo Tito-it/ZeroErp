@@ -4,6 +4,7 @@
 -- Test: il SEME del secchio appena nato
 --       vendite.fn_get_next_progressivo (20260908-10)
 --       Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.7
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): le famiglie col codice della sorgente.
 -- ------------------------------------------------------------
 -- Elenco test (plan 5):
 -- 1) ANNUALE -> NESSUNA su un registro che ha gia' numerato: NON riparte da 1
@@ -64,14 +65,14 @@ a AS (
   INSERT INTO vendite.registri_fatturazione
       (codice, descrizione, emittente_soggetto_ruolo_id, famiglia_documento,
        prefisso, lunghezza_numero, reset_policy, utility_id)
-  SELECT 'PGTAP-SEME-A', 'pgTAP seme: passaggio di politica', base.sr, 'ORDINE',
+  SELECT 'PGTAP-SEME-A', 'pgTAP seme: passaggio di politica', base.sr, 'ORDINE_VENDITA',
          'QSA', 7, 'ANNUALE', base.ut FROM base
   RETURNING id),
 b AS (
   INSERT INTO vendite.registri_fatturazione
       (codice, descrizione, emittente_soggetto_ruolo_id, famiglia_documento,
        prefisso, lunghezza_numero, reset_policy, utility_id)
-  SELECT 'PGTAP-SEME-B', 'pgTAP seme: nessun cambio di politica', base.sr, 'DDT',
+  SELECT 'PGTAP-SEME-B', 'pgTAP seme: nessun cambio di politica', base.sr, 'DDT_VENDITA',
          'QSB', 7, 'ANNUALE', base.ut FROM base
   RETURNING id)
 SELECT (SELECT id FROM a) AS reg_a, (SELECT id FROM b) AS reg_b;
@@ -82,10 +83,10 @@ SELECT (SELECT id FROM a) AS reg_a, (SELECT id FROM b) AS reg_b;
 -- Due numeri con la politica di partenza: il secchio 2026 arriva a 2.
 CREATE TEMP TABLE tmp_seme_a1 AS
 SELECT vendite.fn_get_next_progressivo((SELECT reg_a FROM tmp_seme_reg),
-           DATE '2126-03-01', NULL, '', NULL, 'ORDINE') AS n1;
+           DATE '2126-03-01', NULL, '', NULL, 'ORDINE_VENDITA') AS n1;
 CREATE TEMP TABLE tmp_seme_a2 AS
 SELECT vendite.fn_get_next_progressivo((SELECT reg_a FROM tmp_seme_reg),
-           DATE '2126-04-01', NULL, '', NULL, 'ORDINE') AS n2;
+           DATE '2126-04-01', NULL, '', NULL, 'ORDINE_VENDITA') AS n2;
 
 UPDATE vendite.registri_fatturazione
    SET reset_policy = 'NESSUNA'
@@ -93,7 +94,7 @@ UPDATE vendite.registri_fatturazione
 
 CREATE TEMP TABLE tmp_seme_a3 AS
 SELECT vendite.fn_get_next_progressivo((SELECT reg_a FROM tmp_seme_reg),
-           DATE '2126-05-01', NULL, '', NULL, 'ORDINE') AS n3;
+           DATE '2126-05-01', NULL, '', NULL, 'ORDINE_VENDITA') AS n3;
 
 SELECT is(
     (SELECT n3 FROM tmp_seme_a3),
@@ -102,7 +103,7 @@ SELECT is(
 
 CREATE TEMP TABLE tmp_seme_a4 AS
 SELECT vendite.fn_get_next_progressivo((SELECT reg_a FROM tmp_seme_reg),
-           DATE '2127-02-01', NULL, '', NULL, 'ORDINE') AS n4;
+           DATE '2127-02-01', NULL, '', NULL, 'ORDINE_VENDITA') AS n4;
 
 SELECT is(
     (SELECT n4 FROM tmp_seme_a4),
@@ -118,7 +119,7 @@ UPDATE vendite.registri_fatturazione
 
 CREATE TEMP TABLE tmp_seme_a5 AS
 SELECT vendite.fn_get_next_progressivo((SELECT reg_a FROM tmp_seme_reg),
-           DATE '2127-03-01', NULL, '', NULL, 'ORDINE') AS n5;
+           DATE '2127-03-01', NULL, '', NULL, 'ORDINE_VENDITA') AS n5;
 
 SELECT is(
     (SELECT n5 FROM tmp_seme_a5),
@@ -130,13 +131,13 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE tmp_seme_b1 AS
 SELECT vendite.fn_get_next_progressivo((SELECT reg_b FROM tmp_seme_reg),
-           DATE '2126-06-01', NULL, '', NULL, 'DDT') AS n1;
+           DATE '2126-06-01', NULL, '', NULL, 'DDT_VENDITA') AS n1;
 CREATE TEMP TABLE tmp_seme_b2 AS
 SELECT vendite.fn_get_next_progressivo((SELECT reg_b FROM tmp_seme_reg),
-           DATE '2126-07-01', NULL, '', NULL, 'DDT') AS n2;
+           DATE '2126-07-01', NULL, '', NULL, 'DDT_VENDITA') AS n2;
 CREATE TEMP TABLE tmp_seme_b3 AS
 SELECT vendite.fn_get_next_progressivo((SELECT reg_b FROM tmp_seme_reg),
-           DATE '2127-01-02', NULL, '', NULL, 'DDT') AS n3;
+           DATE '2127-01-02', NULL, '', NULL, 'DDT_VENDITA') AS n3;
 
 SELECT is(
     (SELECT n3 FROM tmp_seme_b3),
@@ -158,14 +159,14 @@ c AS (
   INSERT INTO vendite.registri_fatturazione
       (codice, descrizione, emittente_soggetto_ruolo_id, famiglia_documento,
        prefisso, lunghezza_numero, reset_policy, utility_id)
-  SELECT 'PGTAP-SEME-C', 'pgTAP seme: registro senza storia', base.sr, 'RESO',
+  SELECT 'PGTAP-SEME-C', 'pgTAP seme: registro senza storia', base.sr, 'RESO_VENDITA',
          'QSC', 7, 'NESSUNA', base.ut FROM base
   RETURNING id)
 SELECT id AS reg_c FROM c;
 
 CREATE TEMP TABLE tmp_seme_c1 AS
 SELECT vendite.fn_get_next_progressivo((SELECT reg_c FROM tmp_seme_c),
-           DATE '2126-08-01', NULL, '', NULL, 'RESO') AS n1;
+           DATE '2126-08-01', NULL, '', NULL, 'RESO_VENDITA') AS n1;
 
 SELECT is(
     (SELECT n1 FROM tmp_seme_c1),

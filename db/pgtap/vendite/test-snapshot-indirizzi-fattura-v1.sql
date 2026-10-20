@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d): l'ambito dei tipi d'indirizzo ammessi e' il codice della sorgente (FATTURE -> FATTURA).
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_snapshot_indirizzi_fattura (Fase 2.1)
 --       + catena script.fn_resolve_indirizzo_documento (2.0-b)
@@ -19,7 +20,7 @@
 -- 10) Precedenza per istanza: lo snapshot passa all'indirizzo dell'istanza
 -- 11) Idempotenza: terza esecuzione a dati invariati -> (0, 0)
 -- 12) Una sola riga FATT per fattura
--- 13) Whitelist: un tipo fuori ambito FATTURE non viene scritto
+-- 13) Whitelist: un tipo fuori ambito FATTURA non viene scritto
 -- 14) Layer SOGGETTO: CON risolto dal soggetto, origine_indirizzo_id NULL
 -- 15) Seed: registry 19 + impl 19 + policy 17/18 presenti e attivi
 -- 16) Posizione nello step DRAFT (skip finche' il task non e' armato)
@@ -123,7 +124,7 @@ WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
   -- solo negli slot che si occupano: basta un RES o un FORNITURA gia' presenti
   -- sul ruolo perche' il task ne scriva uno in piu' e i conteggi dei test 5, 9
   -- e 11 diventino una lotteria sui dati. Si pretende quindi che ne' il ruolo
-  -- ne' il soggetto abbiano indirizzi di un tipo ammesso in ambito FATTURE
+  -- ne' il soggetto abbiano indirizzi di un tipo ammesso in ambito FATTURA
   -- (piu' DOMFISC, che il test 13 inserisce).
   AND NOT EXISTS (
         SELECT 1 FROM anagrafiche.indirizzi i
@@ -131,14 +132,14 @@ WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
            AND (i.tipo_indirizzo_id = ti.domfisc_id
              OR i.tipo_indirizzo_id IN (SELECT a.tipo_indirizzo_id
                                           FROM config.tipi_indirizzi_allowed a
-                                         WHERE a.ambito = 'FATTURE'
+                                         WHERE a.ambito = 'FATTURA'
                                            AND a.attivo IS TRUE)))
   AND NOT EXISTS (
         SELECT 1 FROM anagrafiche.indirizzi_soggetti isg
          WHERE isg.soggetto_id = sr.soggetto_id
            AND isg.tipo_indirizzo_id IN (SELECT a.tipo_indirizzo_id
                                            FROM config.tipi_indirizzi_allowed a
-                                          WHERE a.ambito = 'FATTURE'
+                                          WHERE a.ambito = 'FATTURA'
                                             AND a.attivo IS TRUE))
 ORDER BY ba.id
 LIMIT 1;
@@ -152,7 +153,7 @@ UPDATE tmp_base_sif SET registro_id = script.fn_pgtap_registro_fattura(
     (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_sif));
 -- 2) Fixture utilizzabile. Se qui e' falso tutto il resto viene saltato:
 --    serve un billing account il cui spazio indirizzi (ruolo + soggetto) sia
---    vuoto per i tipi ammessi in ambito FATTURE, cosi' i conteggi dei giri
+--    vuoto per i tipi ammessi in ambito FATTURA, cosi' i conteggi dei giri
 --    dipendono solo da cio' che inserisce il test.
 CREATE TEMP TABLE tmp_gate_sif AS
 SELECT EXISTS (SELECT 1 FROM tmp_refs_sif) AS ok;
@@ -317,7 +318,7 @@ END;
 
 -- ============================================================
 -- 13) Whitelist: DOMFISC esiste sul ruolo ma non e' ammesso in ambito
---     FATTURE, quindi il task non lo deve nemmeno guardare.
+--     FATTURA, quindi il task non lo deve nemmeno guardare.
 -- ============================================================
 INSERT INTO anagrafiche.indirizzi (
   soggetto_ruolo_id, tipo_indirizzo_id, istanza_utility_id,

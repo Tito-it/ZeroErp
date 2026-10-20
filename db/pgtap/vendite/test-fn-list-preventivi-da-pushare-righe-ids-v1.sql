@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_list_preventivi_da_pushare con p_righe_ids
@@ -196,7 +197,7 @@ INSERT INTO vendite.commesse_attivita (
 )
 SELECT
   (SELECT id FROM tmp_ri_commessa),
-  'PREV:' || (SELECT uid FROM tmp_ri_prev)::text || ':R:' || (SELECT id FROM tmp_ri_riga_b)::text,
+  'PREVENTIVO:' || (SELECT uid FROM tmp_ri_prev)::text || ':R:' || (SELECT id FROM tmp_ri_riga_b)::text,
   r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 2,
   DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31',
   r.tipo_doc_fiscale_id, r.valuta_id, 20.000000,

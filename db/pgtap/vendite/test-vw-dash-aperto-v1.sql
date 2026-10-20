@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente.
 -- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
 --   questo stesso file. Dichiarazione leggibile dal cancello
 --   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
@@ -348,11 +349,11 @@ SELECT set_config('app.current_user_id',
 SELECT ok(
   (SELECT EXISTS (
      SELECT 1 FROM vendite.vw_dash_fatturazione_documenti d
-      WHERE d.area = 'COMMESSE'
+      WHERE d.area = 'COMMESSA'
         AND d.documento_id = (SELECT id FROM tmp_ap_commessa)))
   AND NOT EXISTS (
      SELECT 1 FROM vendite.vw_dash_aperto_documenti a
-      WHERE a.area = 'COMMESSE'),
+      WHERE a.area = 'COMMESSA'),
   '5. La commessa e'' nella union ma le COMMESSE non entrano nello stock (Lente 1 le copre)'
 );
 
@@ -363,10 +364,10 @@ SELECT ok(
   (SELECT EXISTS (
      SELECT 1 FROM vendite.vw_dash_fatturazione_documenti d
       WHERE d.documento_id = (SELECT id FROM tmp_ap_prev_neg)
-        AND d.area = 'PREVENTIVI' AND d.is_abortito))
+        AND d.area = 'PREVENTIVO' AND d.is_abortito))
   AND NOT EXISTS (
      SELECT 1 FROM vendite.vw_dash_aperto_documenti a
-      WHERE a.area = 'PREVENTIVI'
+      WHERE a.area = 'PREVENTIVO'
         AND a.documento_id = (SELECT id FROM tmp_ap_prev_neg)),
   '6. Preventivo con esito NEGATIVO: marcato abortito in union, ASSENTE dallo stock'
 );
@@ -379,7 +380,7 @@ SELECT ok(
       AND a.valore_totale = 50
       AND a.motivo_fermo = 'RIGA_RESIDUA'
      FROM vendite.vw_dash_aperto_documenti a
-    WHERE a.area = 'PREVENTIVI'
+    WHERE a.area = 'PREVENTIVO'
       AND a.documento_id = (SELECT id FROM tmp_ap_prev)),
   '7. Preventivo ACCETTATO con residuo: nello stock, valore 50, fase valorizzata, motivo_fermo tenuto'
 );
@@ -392,7 +393,7 @@ SELECT ok(
       AND bool_and(a.fase IS NOT NULL)
       AND bool_and(a.valore_totale IS NULL)
      FROM vendite.vw_dash_aperto_documenti a
-    WHERE a.area = 'CONTRATTI'
+    WHERE a.area = 'CONTRATTO'
       AND a.documento_id = (SELECT id FROM tmp_ap_contratto)),
   '8. Contratto ATTIVO multi-mese: 1 sola riga nello stock (giudizio sospeso = aperto), valori NULL'
 );
@@ -405,13 +406,13 @@ SELECT ok(
   (SELECT EXISTS (
      SELECT 1 FROM vendite.vw_dash_fatturazione_documenti d
       WHERE d.documento_id = (SELECT id FROM tmp_ap_prev_evaso)
-        AND d.area = 'PREVENTIVI'
+        AND d.area = 'PREVENTIVO'
         AND d.fase = 'CHIUSO'
         AND NOT d.is_abortito
         AND d.is_transitato IS DISTINCT FROM true))
   AND NOT EXISTS (
      SELECT 1 FROM vendite.vw_dash_aperto_documenti a
-      WHERE a.area = 'PREVENTIVI'
+      WHERE a.area = 'PREVENTIVO'
         AND a.documento_id = (SELECT id FROM tmp_ap_prev_evaso)),
   '9. Caso (b): preventivo EVASO non-abortito/non-transitato in union (fase CHIUSO), ASSENTE dallo stock via fase<>CHIUSO'
 );
@@ -439,15 +440,15 @@ SELECT ok(
   -- cella PREVENTIVI della fase del fixture: conta e somma
   (SELECT r.n_documenti >= 1 AND r.valore_totale IS NOT NULL
      FROM vendite.vw_dash_aperto_riepilogo r
-    WHERE r.area = 'PREVENTIVI'
+    WHERE r.area = 'PREVENTIVO'
       AND r.fase = (SELECT a.fase FROM vendite.vw_dash_aperto_documenti a
                      WHERE a.documento_id = (SELECT id FROM tmp_ap_prev)
-                       AND a.area = 'PREVENTIVI'))
+                       AND a.area = 'PREVENTIVO'))
   AND
   -- cella CONTRATTI: area a conteggi -> valore_totale NULL (DL-11)
   (SELECT bool_and(r.valore_totale IS NULL)
      FROM vendite.vw_dash_aperto_riepilogo r
-    WHERE r.area = 'CONTRATTI')
+    WHERE r.area = 'CONTRATTO')
   AND
   -- coerenza globale: somma n_documenti del riepilogo = righe del dettaglio
   (SELECT (SELECT COALESCE(SUM(n_documenti), 0) FROM vendite.vw_dash_aperto_riepilogo)
@@ -482,11 +483,11 @@ SELECT CASE WHEN (SELECT ef_b_id FROM tmp_ap_refs_b) IS NULL
     (SELECT NOT EXISTS (
        SELECT 1 FROM vendite.vw_dash_aperto_documenti a
         WHERE a.documento_id = (SELECT id FROM tmp_ap_prev_b)
-          AND a.area = 'PREVENTIVI')
+          AND a.area = 'PREVENTIVO')
      AND EXISTS (
        SELECT 1 FROM vendite.vw_dash_aperto_documenti a
         WHERE a.documento_id = (SELECT id FROM tmp_ap_prev)
-          AND a.area = 'PREVENTIVI')),
+          AND a.area = 'PREVENTIVO')),
     '13. Scope RLS (FORCE): l''operatore A vede il preventivo A, NON quello di emittente B'
   )
 END;

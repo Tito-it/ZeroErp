@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: predicato "gia' inviato" delle push-list + reason capability
 --       (brief-db-push-commessa-gia-inviato, rilievo ORD0000227;
@@ -200,7 +201,7 @@ SELECT is(
 -- Insert separata dall'assert (stessa ragione di visibilita' dei test 3-4).
 DO $$
 BEGIN
-  PERFORM pg_temp.mk_attivita('ORD:' || (SELECT uid_a::text FROM tmp_gi_ord)
+  PERFORM pg_temp.mk_attivita('ORDINE_VENDITA:' || (SELECT uid_a::text FROM tmp_gi_ord)
                                || ':R:' || (SELECT riga_a::text FROM tmp_gi_ord)
                                || '#CMP:comp-1', 'NON_EMESSA');
 END $$;
@@ -221,7 +222,7 @@ SELECT is(
 
 UPDATE vendite.commesse_attivita
    SET stato_emissione = 'EMESSA'
- WHERE segment_key LIKE 'ORD:' || (SELECT uid_a::text FROM tmp_gi_ord) || ':%';
+ WHERE segment_key LIKE 'ORDINE_VENDITA:' || (SELECT uid_a::text FROM tmp_gi_ord) || ':%';
 
 SELECT is(
   (SELECT (j->>'can_push_commessa') || '|' || (j->>'can_push_commessa_reason')

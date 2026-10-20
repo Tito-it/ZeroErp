@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d): l'area della dashboard e' il codice della sorgente.
 -- pgTAP test per Zero ERP
 --
 -- Test: regressione bug di vista "la vecchia revisione EMESSO riemerge come
@@ -260,7 +261,7 @@ SELECT ok(
       AND bool_and(d.stato_codice_interno = 'RIFIUTATO')
       AND count(*) FILTER (WHERE d.stato_codice_interno = 'EMESSO') = 0
      FROM vendite.vw_dash_fatturazione_documenti d
-    WHERE d.area = 'PREVENTIVI' AND d.codice = 'PGTAP-REVATT-A'),
+    WHERE d.area = 'PREVENTIVO' AND d.codice = 'PGTAP-REVATT-A'),
   '4. A: la union mostra 1 sola riga = rev attiva RIFIUTATO; la rev0 EMESSO superata NON compare (no fantasma)'
 );
 
@@ -269,7 +270,7 @@ SELECT ok(
 -- ============================================================
 SELECT is(
   (SELECT count(*)::integer FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'PREVENTIVI'
+    WHERE b.area = 'PREVENTIVO'
       AND b.documento_id IN ((SELECT id FROM tmp_ra_a_rev0), (SELECT id FROM tmp_ra_a_rev1))),
   0,
   '5. A: Backlog = 0 righe per il numero (rev attiva RIFIUTATA esclusa, rev0 EMESSO non piu'' fantasma)'
@@ -280,7 +281,7 @@ SELECT is(
 -- ============================================================
 SELECT is(
   (SELECT count(*)::integer FROM vendite.vw_dash_aperto_documenti a
-    WHERE a.area = 'PREVENTIVI'
+    WHERE a.area = 'PREVENTIVO'
       AND a.documento_id IN ((SELECT id FROM tmp_ra_a_rev0), (SELECT id FROM tmp_ra_a_rev1))),
   0,
   '6. A: Situazione aperta = 0 righe per il numero (nessuna riga fantasma)'
@@ -308,7 +309,7 @@ SELECT ok(
       AND bool_and(d.stato_codice_interno = 'EMESSO')
       AND bool_and(d.documento_id = (SELECT id FROM tmp_ra_b_rev0))
      FROM vendite.vw_dash_fatturazione_documenti d
-    WHERE d.area = 'PREVENTIVI' AND d.codice = 'PGTAP-REVATT-B'),
+    WHERE d.area = 'PREVENTIVO' AND d.codice = 'PGTAP-REVATT-B'),
   '8. B: la union mostra 1 sola riga = rev0 EMESSO (predecessore vivo); la rev1 ANNULLATO NON compare'
 );
 
@@ -318,11 +319,11 @@ SELECT ok(
 SELECT ok(
   (SELECT b.motivo_fermo = 'IN_ATTESA_ACCETTAZIONE'
      FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area = 'PREVENTIVI'
+    WHERE b.area = 'PREVENTIVO'
       AND b.documento_id = (SELECT id FROM tmp_ra_b_rev0))
   AND NOT EXISTS (
     SELECT 1 FROM vendite.vw_dash_backlog_documenti b
-     WHERE b.area = 'PREVENTIVI'
+     WHERE b.area = 'PREVENTIVO'
        AND b.documento_id = (SELECT id FROM tmp_ra_b_rev1)),
   '9. B: Backlog espone rev0 EMESSO (IN_ATTESA_ACCETTAZIONE); la rev1 ANNULLATO assente'
 );
@@ -332,7 +333,7 @@ SELECT ok(
 -- ============================================================
 SELECT is(
   (SELECT count(*)::integer FROM vendite.vw_dash_fatturazione_documenti d
-    WHERE d.area = 'PREVENTIVI' AND d.codice = 'PGTAP-REVATT-C'),
+    WHERE d.area = 'PREVENTIVO' AND d.codice = 'PGTAP-REVATT-C'),
   1,
   '10. C: preventivo singola-rev EMESSO compare esattamente 1 volta (nessuna regressione sul caso normale)'
 );
@@ -346,7 +347,7 @@ SELECT ok(
     WHERE id = (SELECT id FROM tmp_ra_d_rev0)) IS FALSE
   AND
   (SELECT count(*)::integer FROM vendite.vw_dash_fatturazione_documenti d
-    WHERE d.area = 'PREVENTIVI' AND d.codice = 'PGTAP-REVATT-D') = 0,
+    WHERE d.area = 'PREVENTIVO' AND d.codice = 'PGTAP-REVATT-D') = 0,
   '11. D: annullato singola-rev is_attiva=FALSE e fuori dalla union (annullato = non attivo)'
 );
 
@@ -358,7 +359,7 @@ SELECT is(
   (SELECT count(*)::integer
      FROM vendite.vw_dash_fatturazione_documenti d
      JOIN vendite.vw_preventivi p ON p.id = d.documento_id
-    WHERE d.area = 'PREVENTIVI'
+    WHERE d.area = 'PREVENTIVO'
       AND d.codice LIKE 'PGTAP-REVATT-%'
       AND p.is_attiva IS FALSE),
   0,

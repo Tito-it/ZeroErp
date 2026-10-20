@@ -1,16 +1,21 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: GUARDRAIL — coerenza fra config.sorgenti.area e il letterale `area`
---       scritto a mano dentro le 6 viste vw_dash_fatturazione_<sorgente>
+-- Test: GUARDRAIL — il letterale `area` scritto dentro le 6 viste
+--       vw_dash_fatturazione_<sorgente> e' il codice della sua sorgente
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d, G-6 e L2d-1):
+--   config.sorgenti.area e' RITIRATA; le viste scrivono il codice_interno della
+--   sorgente (era il plurale), e «la sorgente e' un documento che si apre» lo dice
+--   config.sorgenti.apribile. E' la bonifica che questo file annunciava qui sotto:
+--   il letterale si e' spostato da 'PREVENTIVI' a 'PREVENTIVO'.
 -- Brief: brief-db-emissione-fattura-per-documento-sorgente (A7-ter, D-5)
 -- ------------------------------------------------------------
 -- Indice test (1..5):
 --  1) tutte e 6 le viste proiettano un letterale `area` estraibile
---  2) ⭐ ogni letterale coincide con config.sorgenti.area della sua sorgente
---  3) nessuna area di config.sorgenti resta senza una vista che la proietti
---  4) config.sorgenti ha esattamente 6 aree valorizzate (le 6 documentali)
---  5) le sorgenti NON documentali hanno area NULL (scelta, non dimenticanza)
+--  2) ⭐ ogni letterale coincide col codice_interno della sorgente della vista
+--  3) le 6 sorgenti delle viste sono apribili
+--  4) le sorgenti apribili sono le 8 del seed (le 6, piu' fattura e reso)
+--  5) nessuna sorgente di RIGA e' apribile
 -- ------------------------------------------------------------
 -- PERCHE' QUESTO FILE ESISTE, e perche' e' un guardrail e non una bonifica.
 --
@@ -84,7 +89,7 @@ SELECT
       pg_get_viewdef(('vendite.' || m.vista)::regclass)
       from '''([A-Z_]+)''::character varying AS area'
   ) AS area_letterale,
-  (SELECT s.area FROM config.sorgenti s WHERE s.codice_interno = m.codice_interno) AS area_config
+  (SELECT s.apribile FROM config.sorgenti s WHERE s.codice_interno = m.codice_interno) AS apribile
 FROM tmp_area_map m;
 
 -- ============================================================
@@ -107,9 +112,9 @@ SELECT is(
 -- ============================================================
 SELECT is(
   (SELECT count(*)::int FROM tmp_area_letterali
-    WHERE area_letterale IS DISTINCT FROM area_config),
+    WHERE area_letterale IS DISTINCT FROM codice_interno),
   0,
-  '2) ogni letterale area delle 6 viste coincide con config.sorgenti.area'
+  '2) ogni letterale area delle 6 viste e'' il codice della sua sorgente'
 );
 
 -- ============================================================
@@ -118,26 +123,22 @@ SELECT is(
 --   risolvera' mai — un gruppo che mostrera' sempre il fallback.
 -- ============================================================
 SELECT is(
-  ARRAY(
-    SELECT s.codice_interno::text
-      FROM config.sorgenti s
-     WHERE s.area IS NOT NULL
-       AND NOT EXISTS (
-           SELECT 1 FROM tmp_area_letterali l
-            WHERE l.codice_interno = s.codice_interno::text)
-     ORDER BY s.codice_interno
-  ),
-  ARRAY[]::text[],
-  '3) nessuna area di config.sorgenti resta senza vista che la proietti'
+  (SELECT count(*)::int FROM tmp_area_letterali WHERE apribile IS NOT TRUE),
+  0,
+  '3) le 6 sorgenti delle viste sono apribili (la dashboard apre i loro documenti)'
 );
 
 -- ============================================================
 -- TEST 4: il seed. Sei sorgenti documentali, non di piu' e non di meno.
 -- ============================================================
+-- ⭐ Il seed (contratto, non popolazione): le 6 delle viste, piu' fattura e
+--   reso, accese da Tid il 2026-10-20 (una pagina ce l'hanno).
 SELECT is(
-  (SELECT count(*)::int FROM config.sorgenti WHERE area IS NOT NULL),
-  6,
-  '4) config.sorgenti ha esattamente 6 aree valorizzate'
+  ARRAY(SELECT s.codice_interno::text FROM config.sorgenti s
+         WHERE s.apribile ORDER BY s.codice_interno),
+  ARRAY(SELECT c FROM (SELECT m.codice_interno AS c FROM tmp_area_map m
+                       UNION ALL VALUES ('FATTURA'), ('RESO_VENDITA')) x ORDER BY c),
+  '4) le sorgenti apribili sono le 6 delle viste, piu'' fattura e reso'
 );
 
 -- ============================================================
@@ -155,12 +156,10 @@ SELECT is(
 --   fallendo su qualcosa che non c'entra con l'area.
 -- ============================================================
 SELECT is(
-  ARRAY(
-    SELECT s.codice_interno::text FROM config.sorgenti s
-     WHERE s.area IS NOT NULL ORDER BY s.codice_interno
-  ),
-  ARRAY(SELECT m.codice_interno FROM tmp_area_map m ORDER BY m.codice_interno),
-  '5) le aree valorizzate sono esattamente quelle delle 6 sorgenti mappate'
+  (SELECT count(*)::int FROM config.sorgenti s
+    WHERE s.apribile AND s.categoria = 'RIGA'),
+  0,
+  '5) nessuna sorgente di RIGA e'' apribile: una riga si apre dal suo documento'
 );
 
 SELECT * FROM finish();

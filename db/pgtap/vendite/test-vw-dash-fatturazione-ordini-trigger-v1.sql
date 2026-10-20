@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente (ORDINE_VENDITA).
 -- pgTAP test per Zero ERP
 -- Test: vw_dash_fatturazione_ordini trigger-aware (IN_ATTESA_DDT) — step 7,
 --       brief-db-fatturazione-ddt-resi §4b / DL-20.
@@ -102,7 +103,7 @@ SELECT is(
 -- 3) FISIOLOGICO -> fuori dal backlog per la regola di classe, da solo
 SELECT is(
   (SELECT COUNT(*)::int FROM vendite.vw_dash_backlog_documenti
-    WHERE area='ORDINI' AND documento_id=(SELECT ordine_id FROM tmp_ddt_trg)),
+    WHERE area='ORDINE_VENDITA' AND documento_id=(SELECT ordine_id FROM tmp_ddt_trg)),
   0, '3) IN_ATTESA_DDT e'' FISIOLOGICO: l''ordine sparisce dal backlog (resta nel serbatoio)');
 
 -- 4-5) trigger CONFERMATO: tutto come prima
@@ -114,7 +115,7 @@ SELECT is(
 
 SELECT is(
   (SELECT b.classe FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area='ORDINI' AND b.documento_id=(SELECT ordine_id FROM tmp_conf_trg)),
+    WHERE b.area='ORDINE_VENDITA' AND b.documento_id=(SELECT ordine_id FROM tmp_conf_trg)),
   'RECUPERABILE'::varchar,
   '5) e resta nel backlog come RECUPERABILE (invariato)');
 

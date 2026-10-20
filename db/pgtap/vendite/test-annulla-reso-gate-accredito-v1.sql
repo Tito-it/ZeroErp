@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_annulla_reso — la guardia dell'accredito
 --       (E_RESO_ANNULLO_CON_ACCREDITO, changeset 20260819-22)
@@ -332,7 +333,7 @@ CREATE TEMP TABLE tmp_pa AS SELECT * FROM pg_temp.agr_mk_partita(10, 25);
 CREATE TEMP TABLE tmp_pa_riga AS SELECT pg_temp.agr_ddt_riga((SELECT ddt_id FROM tmp_pa), 1) AS ddt_riga_id;
 CREATE TEMP TABLE tmp_pa_fatt AS
 SELECT pg_temp.agr_fattura(
-    ('DDT:' || (SELECT ddt_uid FROM tmp_pa)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_pa_riga)::text)::varchar,
+    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pa)::text, (SELECT ddt_riga_id FROM tmp_pa_riga)),
     10, 25) AS fattura_riga_id;
 CREATE TEMP TABLE tmp_reso_a AS SELECT pg_temp.agr_new_reso((SELECT ddt_uid FROM tmp_pa)) AS reso_id;
 CREATE TEMP TABLE tmp_reso_a_riga AS
@@ -458,7 +459,7 @@ SELECT pg_temp.agr_ddt_riga((SELECT ddt_id FROM tmp_pd), 1) AS riga1,
        pg_temp.agr_ddt_riga((SELECT ddt_id FROM tmp_pd), 2) AS riga2;
 CREATE TEMP TABLE tmp_pd_fatt AS
 SELECT pg_temp.agr_fattura(
-    ('DDT:' || (SELECT ddt_uid FROM tmp_pd)::text || ':R:' || (SELECT riga1 FROM tmp_pd_righe)::text)::varchar,
+    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pd)::text, (SELECT riga1 FROM tmp_pd_righe)),
     10, 25) AS fattura_riga_id;
 CREATE TEMP TABLE tmp_reso_d AS SELECT pg_temp.agr_new_reso((SELECT ddt_uid FROM tmp_pd)) AS reso_id;
 CREATE TEMP TABLE tmp_reso_d_righe AS

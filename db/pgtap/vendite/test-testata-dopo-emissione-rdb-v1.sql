@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): gli ambiti degli indirizzi col codice della sorgente (ORDINE_VENDITA, PREVENTIVO, CONTRATTO); 'DDT' in pg_temp.righe e' un argomento della grammatica dei montaggi e resta.
 -- pgTAP test per Zero ERP
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
@@ -278,7 +279,7 @@ BEGIN
 
     -- L'indirizzo dell'ordine da confermare, scritto in bozza.
     INSERT INTO vendite.ordini_indirizzi (ordine_id, tipo_indirizzo_id, snapshot)
-    VALUES (pg_temp.doc('ORD_CONF'), pg_temp.tipo('ORDINI'), '{"display":"pgtap"}'::jsonb);
+    VALUES (pg_temp.doc('ORD_CONF'), pg_temp.tipo('ORDINE_VENDITA'), '{"display":"pgtap"}'::jsonb);
 
     PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', pg_temp.doc('ORD_CONF'), 'CONFERMATO');
     PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', v_id, 'EMESSO');
@@ -292,7 +293,7 @@ SELECT is(
     pg_temp.esito(format(
         $$INSERT INTO vendite.ordini_indirizzi (ordine_id, tipo_indirizzo_id, snapshot)
           VALUES (%s, %s, '{"display":"pgtap"}')$$,
-        pg_temp.doc('ORD_DRAFT'), pg_temp.tipo('ORDINI'))),
+        pg_temp.doc('ORD_DRAFT'), pg_temp.tipo('ORDINE_VENDITA'))),
     'PASSA',
     '5) ordine in bozza: l''indirizzo si aggiunge'
 );
@@ -302,9 +303,9 @@ SELECT is(
         $$INSERT INTO vendite.ordini_indirizzi (ordine_id, tipo_indirizzo_id, snapshot)
           SELECT %s, a.tipo_indirizzo_id, '{"display":"pgtap"}'
             FROM config.tipi_indirizzi_allowed a
-           WHERE a.ambito = 'ORDINI' AND a.attivo AND a.tipo_indirizzo_id <> %s
+           WHERE a.ambito = 'ORDINE_VENDITA' AND a.attivo AND a.tipo_indirizzo_id <> %s
            LIMIT 1$$,
-        pg_temp.doc('ORD_CONF'), pg_temp.tipo('ORDINI'))),
+        pg_temp.doc('ORD_CONF'), pg_temp.tipo('ORDINE_VENDITA'))),
     'E_DOC_DATI_COLLEGATI_NON_BOZZA',
     '6) ordine CONFERMATO: aggiungere un indirizzo e'' rifiutato col codice dei satelliti'
 );
@@ -340,7 +341,7 @@ SELECT is(
     pg_temp.esito(format(
         $$INSERT INTO vendite.preventivi_indirizzi (preventivo_id, tipo_indirizzo_id, snapshot)
           VALUES (%s, %s, '{"display":"pgtap"}')$$,
-        pg_temp.doc('PREV'), pg_temp.tipo('PREVENTIVI')))
+        pg_temp.doc('PREV'), pg_temp.tipo('PREVENTIVO')))
       || '|' || (script.fn_available_actions_preventivo(pg_temp.doc('PREV')) ->> 'can_edit_indirizzi'),
     'E_DOC_DATI_COLLEGATI_NON_BOZZA|false',
     '11) preventivo EMESSO: l''indirizzo e'' rifiutato, e la capability lo dice'
@@ -475,7 +476,7 @@ SELECT is(
     pg_temp.esito(format(
         $$INSERT INTO vendite.contratti_indirizzi (contratto_id, tipo_indirizzo_id, snapshot)
           VALUES (%s, %s, '{"display":"pgtap"}')$$,
-        pg_temp.doc('CON_ATTIVA'), pg_temp.tipo('CONTRATTI')))
+        pg_temp.doc('CON_ATTIVA'), pg_temp.tipo('CONTRATTO')))
       || '|' || (SELECT (c ->> 'can_edit_utility') || '|' || (c ->> 'can_edit_indirizzi')
                    FROM (SELECT script.fn_available_actions_contratto(pg_temp.doc('CON_ATTIVA')) AS c) x)
       || '|' || (SELECT (c ->> 'can_edit_utility') || '|' || (c ->> 'can_edit_indirizzi')

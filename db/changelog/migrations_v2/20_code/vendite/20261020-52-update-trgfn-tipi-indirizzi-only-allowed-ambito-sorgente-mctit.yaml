@@ -1,0 +1,159 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2d (G-6): il guard dei tipi d'indirizzo ammessi riceve il codice del documento
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-6, §10.4.
+#
+#   L'argomento del montaggio e' il codice della sorgente (i montaggi si rifanno nel
+#   20261020-53); il ripiego senza argomento passa da 'FATTURE' a 'FATTURA'. v_ambito ancorato.
+#
+#   Corpo e COMMENT dal catalogo vivo di dbdev (2026-10-20), non da uno YAML; sostituzioni
+#   contate. %TYPE in firma, DECLARE e RETURNS TABLE dove c'e' una colonna; nudi, col
+#   motivo accanto, i valori che una colonna non ha (conteggi, jsonb di lavoro, array).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261020-52-update-trgfn-tipi-indirizzi-only-allowed-ambito-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-52-update-trgfn-tipi-indirizzi-only-allowed-ambito-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_tipi_indirizzi_only_allowed: l'ambito e' il codice della sorgente (ripiego FATTURA); v_ambito ancorato. Grammatica unica, 2d (G-6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- rev 2026-10-20 (20261020-52, brief-db-grammatica-unica-documenti, 2d G-6):
+              --   l'ambito degli indirizzi e' il codice della sorgente del
+              --   documento; il ripiego senza argomento e' FATTURA.
+               DECLARE
+                 -- rev 2026-10-20 (G-6): il codice della sorgente del documento (FATTURA, DDT_VENDITA,
+                --   ORDINE_VENDITA, PREVENTIVO, OFFERTA_COMMERCIALE, CONTRATTO, DDT_ACQUISTO)
+                v_ambito         config.tipi_indirizzi_allowed.ambito%TYPE := COALESCE(TG_ARGV[0], 'FATTURA');
+                 v_codice         text;
+                 v_allowed_ids    integer[];
+                 v_allowed_codes  text[];
+                 v_tabella        text := TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME;
+               BEGIN
+                 -- Codice interno del tipo richiesto (per log).
+                 SELECT t.codice_interno INTO v_codice
+                 FROM config.tipi_indirizzi t
+                 WHERE t.id = NEW.tipo_indirizzo_id;
+
+                 -- Whitelist dei tipi ammessi per l'ambito: UNICA fonte = config.
+                 -- Nessun fallback hardcoded (fail-closed se ambito non configurato).
+                 SELECT array_agg(a.tipo_indirizzo_id),
+                        array_agg(t.codice_interno)
+                   INTO v_allowed_ids, v_allowed_codes
+                 FROM config.tipi_indirizzi_allowed a
+                 JOIN config.tipi_indirizzi t ON t.id = a.tipo_indirizzo_id
+                 WHERE a.ambito = v_ambito
+                   AND a.attivo = true;
+
+                 -- Validazione: tipo esistente E incluso nella whitelist dell'ambito.
+                 IF v_codice IS NULL
+                    OR v_allowed_ids IS NULL
+                    OR NOT (NEW.tipo_indirizzo_id = ANY(v_allowed_ids)) THEN
+                   PERFORM script.fn_log_and_raise_error(
+                     'database', TG_NAME, 'E_TIPO_INDIRIZZO',
+                     jsonb_build_object(
+                       'table', v_tabella,
+                       'ambito', v_ambito,
+                       'new_row', (to_jsonb(NEW) - 'snapshot'),
+                       'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                       'codice_interno', v_codice,
+                       'allowed_codes', v_allowed_codes
+                     ),
+                     NULL::uuid,
+                     NEW.tipo_indirizzo_id::text,
+                     v_codice,
+                     v_ambito,
+                     array_to_string(COALESCE(v_allowed_codes, ARRAY[]::text[]), ', ')
+                   );
+                 END IF;
+
+                 RETURN NEW;
+               END
+               $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed() IS
+                'Rev 2026-10-20 (20261020-52, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi e'' il codice della sorgente del documento (l''argomento del montaggio); ripiego FATTURA.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+               DECLARE
+                 v_ambito         text := COALESCE(TG_ARGV[0], 'FATTURE'); -- 'FATTURE'|'DDT'|'ORDINI'|'PREVENTIVI'|'OFFERTE'|'CONTRATTI'|'ACQUISTI_DDT'
+                 v_codice         text;
+                 v_allowed_ids    integer[];
+                 v_allowed_codes  text[];
+                 v_tabella        text := TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME;
+               BEGIN
+                 -- Codice interno del tipo richiesto (per log).
+                 SELECT t.codice_interno INTO v_codice
+                 FROM config.tipi_indirizzi t
+                 WHERE t.id = NEW.tipo_indirizzo_id;
+
+                 -- Whitelist dei tipi ammessi per l'ambito: UNICA fonte = config.
+                 -- Nessun fallback hardcoded (fail-closed se ambito non configurato).
+                 SELECT array_agg(a.tipo_indirizzo_id),
+                        array_agg(t.codice_interno)
+                   INTO v_allowed_ids, v_allowed_codes
+                 FROM config.tipi_indirizzi_allowed a
+                 JOIN config.tipi_indirizzi t ON t.id = a.tipo_indirizzo_id
+                 WHERE a.ambito = v_ambito
+                   AND a.attivo = true;
+
+                 -- Validazione: tipo esistente E incluso nella whitelist dell'ambito.
+                 IF v_codice IS NULL
+                    OR v_allowed_ids IS NULL
+                    OR NOT (NEW.tipo_indirizzo_id = ANY(v_allowed_ids)) THEN
+                   PERFORM script.fn_log_and_raise_error(
+                     'database', TG_NAME, 'E_TIPO_INDIRIZZO',
+                     jsonb_build_object(
+                       'table', v_tabella,
+                       'ambito', v_ambito,
+                       'new_row', (to_jsonb(NEW) - 'snapshot'),
+                       'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                       'codice_interno', v_codice,
+                       'allowed_codes', v_allowed_codes
+                     ),
+                     NULL::uuid,
+                     NEW.tipo_indirizzo_id::text,
+                     v_codice,
+                     v_ambito,
+                     array_to_string(COALESCE(v_allowed_codes, ARRAY[]::text[]), ', ')
+                   );
+                 END IF;
+
+                 RETURN NEW;
+               END
+               $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_tipi_indirizzi_only_allowed() IS
+                '';

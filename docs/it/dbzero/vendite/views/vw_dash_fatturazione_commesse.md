@@ -3,14 +3,14 @@
 
 > 📝 **Descrizione**
 >
-> Dashboard fatturazione: resolver area COMMESSE. Valore imponibile snapshot totale vs EMESSO. Denominatore = sole attivita' COMPUTABILI: esclude i void (stato_emissione ANNULLATA; stato_approvazione RIFIUTATA se non gia' EMESSA) simmetrico a orr.attivo degli ordini -&gt; is_transitato/totale/motivo_fermo non falsati dalle void. is_abortito=stato commessa ANNULLATA. SCOPE EMITTENTE nel resolver via fn_get_emittenti_scope_sr_ids(GUC): NULL=tutto, '{}'=niente (fail-closed), array=whitelist. cliente_display=ragione sociale intestatario BA. Consumata da vw_dash_fatturazione_documenti.
+> Dashboard fatturazione: resolver area COMMESSE. Valore imponibile snapshot totale vs EMESSO. Denominatore = sole attivita' COMPUTABILI: esclude i void (stato_emissione ANNULLATA; stato_approvazione RIFIUTATA se non gia' EMESSA) simmetrico a orr.attivo degli ordini -&gt; is_transitato/totale/motivo_fermo non falsati dalle void. is_abortito=stato commessa ANNULLATA. SCOPE EMITTENTE nel resolver via fn_get_emittenti_scope_sr_ids(GUC): NULL=tutto, '{}'=niente (fail-closed), array=whitelist. cliente_display=ragione sociale intestatario BA. Consumata da vw_dash_fatturazione_documenti. Rev 2026-10-20 (20261020-85, brief-db-grammatica-unica-documenti 2d, G-6): l'area COMMESSE diventa COMMESSA, il codice della sorgente (il plurale e' ritirato).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_commesse
 WITH (security_invoker=on) AS
-SELECT 'COMMESSE'::character varying AS area,
+SELECT 'COMMESSA'::character varying AS area,
     ca.competenza_mese,
     co.id AS documento_id,
     (co.id)::text AS documento_uid,

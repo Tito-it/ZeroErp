@@ -4,7 +4,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| ambito | text | NO |  |
+| ambito | character varying(50) | NO |  |
 | tipo_indirizzo_id | integer | NO |  |
 | obbligatorio | boolean | NO | false |
 | attivo | boolean | NO | true |
@@ -20,9 +20,9 @@
 |------|------|---------|
 | CHECK | chk_tipi_indirizzi_allowed_ripiego_diverso |  |
 | CHECK | chk_tipi_indirizzi_allowed_ripiego_solo_slot |  |
-| CHECK | chk_tipi_indirizzi_ambito |  |
 | FOREIGN KEY | fk_config_tipi_indirizzi | tipo_indirizzo_id |
 | FOREIGN KEY | fk_tipi_indirizzi_allowed_ripiego | ripiego_tipo_indirizzo_id |
+| FOREIGN KEY | fk_tipi_indirizzi_allowed_sorgenti | ambito |
 | PRIMARY KEY | pk_tipi_indirizzi_allowed | ambito, tipo_indirizzo_id |
 
 ## 📑 Indici

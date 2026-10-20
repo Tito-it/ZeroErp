@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Resolver ordini per la dashboard fatturazione. rev 2026-07-18 (step 8, DL-23 EMENDATO): per trigger SPEDITO/CONSEGNATO valore_totale = RESIDUO DA SPEDIRE (per riga: GREATEST(0, quantita − Σ fulfillment.qta_evasa + fn_ordine_riga_qta_riconsegna) × prezzo scontato — reso-aware, formula single-source) perche' il valore spedito lo porta il DDT: chiude il doppio conteggio ordine-pieno + DDT. Con trigger CONFERMATO valore PIENO invariato (fattura l'ordine: col netto un ordine spedito-ma-non-pushato mostrerebbe 0 senza compensazione — buco cieco sulla configurazione di default). L'area Ordini e' l'unica a misura netta (accettato, §4c). rev 2026-07-18 (step 7, DL-20): trigger-aware, motivo IN_ATTESA_DDT (FISIOLOGICO) per trigger SPEDITO/CONSEGNATO. security_invoker=on + RLS.
+> Resolver ordini per la dashboard fatturazione. rev 2026-07-18 (step 8, DL-23 EMENDATO): per trigger SPEDITO/CONSEGNATO valore_totale = RESIDUO DA SPEDIRE (per riga: GREATEST(0, quantita − Σ fulfillment.qta_evasa + fn_ordine_riga_qta_riconsegna) × prezzo scontato — reso-aware, formula single-source) perche' il valore spedito lo porta il DDT: chiude il doppio conteggio ordine-pieno + DDT. Con trigger CONFERMATO valore PIENO invariato (fattura l'ordine: col netto un ordine spedito-ma-non-pushato mostrerebbe 0 senza compensazione — buco cieco sulla configurazione di default). L'area Ordini e' l'unica a misura netta (accettato, §4c). rev 2026-07-18 (step 7, DL-20): trigger-aware, motivo IN_ATTESA_DDT (FISIOLOGICO) per trigger SPEDITO/CONSEGNATO. security_invoker=on + RLS. Rev 2026-10-20 (20261020-83, brief-db-grammatica-unica-documenti 2d e 2e): l'area ORDINI diventa ORDINE_VENDITA, il codice della sorgente; la chiave della riga la compone script.fn_segment_key.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -17,7 +17,7 @@ WITH righe AS (
             script.fn_imponibile_riga(GREATEST((0)::numeric, ((orr.quantita - COALESCE(ful.evasa, (0)::numeric)) + vendite.fn_ordine_riga_qta_riconsegna(orr.id))), orr.prezzo_unitario, orr.sconto_percentuale) AS valore_riga_residua,
             (EXISTS ( SELECT 1
                    FROM vendite.commesse_attivita ca
-                  WHERE (((ca.segment_key)::text = ((('ORD:'::text || (o2.uid)::text) || ':R:'::text) || (orr.id)::text)) AND ((ca.stato_emissione)::text = 'EMESSA'::text)))) AS transitata
+                  WHERE (((ca.segment_key)::text = (script.fn_segment_key('ORDINE_VENDITA'::character varying, (o2.uid)::text, orr.id))::text) AND ((ca.stato_emissione)::text = 'EMESSA'::text)))) AS transitata
            FROM ((vendite.ordini_righe orr
              JOIN vendite.ordini o2 ON ((o2.id = orr.ordine_id)))
              LEFT JOIN ( SELECT f.ordine_riga_id,
@@ -26,7 +26,7 @@ WITH righe AS (
                   GROUP BY f.ordine_riga_id) ful ON ((ful.ordine_riga_id = orr.id)))
           WHERE (orr.attivo IS TRUE)
         )
- SELECT 'ORDINI'::character varying AS area,
+ SELECT 'ORDINE_VENDITA'::character varying AS area,
     (date_trunc('month'::text, (o.data)::timestamp with time zone))::date AS competenza_mese,
     o.id AS documento_id,
     (o.uid)::text AS documento_uid,

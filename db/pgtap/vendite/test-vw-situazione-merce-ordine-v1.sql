@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.vw_situazione_merce_ordine — l'aggregato PARLANTE per riga
 --       d'ordine, per il pannello situazione merce.
@@ -338,7 +339,7 @@ BEGIN
     -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
     p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
     p_sorgente_uid => ((SELECT commessa_id FROM tmp_com))::text,
-    p_segment_key => 'ORD:' || (SELECT ordine_uid FROM tmp_f)::text || ':R:'
+    p_segment_key => 'ORDINE_VENDITA:' || (SELECT ordine_uid FROM tmp_f)::text || ':R:'
                      || (SELECT ordine_riga_id FROM tmp_f)::text || '#CMP:senza-coeff',
     p_articolo_id => r.articolo_id, p_istanza_utility_id => r.istanza_utility_id,
     p_data_attivita => DATE '2026-08-15', p_uom_id => r.uom_id, p_quantita => 5,

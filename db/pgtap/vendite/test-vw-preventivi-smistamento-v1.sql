@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   la destinazione della merce e' ORDINE_VENDITA, il codice della sorgente (era ORDINE).
 -- pgTAP test per Zero ERP
@@ -197,7 +198,7 @@ INSERT INTO vendite.commesse_attivita (
 )
 SELECT
   (SELECT id FROM tmp_vs_commessa),
-  'PREV:' || (SELECT uid FROM tmp_vs_prev)::text || ':R:' || (SELECT id FROM tmp_vs_riga_serv_emessa)::text,
+  'PREVENTIVO:' || (SELECT uid FROM tmp_vs_prev)::text || ':R:' || (SELECT id FROM tmp_vs_riga_serv_emessa)::text,
   r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 2,
   DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31',
   r.tipo_doc_fiscale_id, r.valuta_id, 30.000000,
@@ -274,7 +275,7 @@ INSERT INTO vendite.commesse_attivita (
 )
 SELECT
   (SELECT id FROM tmp_vs_commessa),
-  'PREV:' || (SELECT uid FROM tmp_vs_prev)::text || ':R:' || (SELECT id FROM tmp_vs_riga_serv_residua)::text,
+  'PREVENTIVO:' || (SELECT uid FROM tmp_vs_prev)::text || ':R:' || (SELECT id FROM tmp_vs_riga_serv_residua)::text,
   r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 3,
   DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31',
   r.tipo_doc_fiscale_id, r.valuta_id, 10.000000,
@@ -293,7 +294,7 @@ SELECT is(
 -- La riga si ritira (come all'annullo della commessa): non occupa piu'.
 UPDATE vendite.commesse_attivita
    SET stato_emissione = 'ANNULLATA'
- WHERE segment_key = 'PREV:' || (SELECT uid FROM tmp_vs_prev)::text || ':R:'
+ WHERE segment_key = 'PREVENTIVO:' || (SELECT uid FROM tmp_vs_prev)::text || ':R:'
                      || (SELECT id FROM tmp_vs_riga_serv_residua)::text;
 
 SELECT is(
