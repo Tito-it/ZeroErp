@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Resolver DDT per la dashboard fatturazione (brief-db-fatturazione-ddt-resi §4a, step 6), sesta area di vw_dash_fatturazione_documenti: stesse 19 colonne dei gemelli. POPOLAZIONE = solo DDT con ruolo di fatturazione — fuori quelli di ordini con trigger CONFERMATO (fattura l'ordine: XOR; evita falso positivo PUSH_NON_ESEGUITO perpetuo e doppio conteggio del valore) e fuori le causali non fatturabili (solo trasporto, DL-28). Stesso discriminatore del lister, letto per la stessa strada (fulfillment). motivo_fermo TRIGGER-AWARE: DOC_BOZZA in DRAFT, IN_TRANSITO prima dello stato-trigger (viaggio in corso, non ritardo), PUSH_NON_ESEGUITO / PUSH_PARZIALE dal trigger in poi; soglia = rank del trigger, SPEDITO per lo standalone. Valore per riga con COALESCE(ddt_righe.prezzo_unitario, ordini_righe via fulfillment) — vw_ddt_righe_iva_base NON riusabile (filtra prezzo NOT NULL). data_riferimento = ddt.data (DL-17). fase/is_abortito dal catalogo. security_invoker=on + RLS. rev 2026-07-18.
+> Resolver DDT per la dashboard fatturazione (brief-db-fatturazione-ddt-resi §4a, step 6), sesta area di vw_dash_fatturazione_documenti: stesse 19 colonne dei gemelli. POPOLAZIONE = solo DDT con ruolo di fatturazione — fuori quelli di ordini con trigger CONFERMATO (fattura l'ordine: XOR; evita falso positivo PUSH_NON_ESEGUITO perpetuo e doppio conteggio del valore) e fuori le causali non fatturabili (solo trasporto, DL-28). Stesso discriminatore del lister, letto per la stessa strada (fulfillment). motivo_fermo TRIGGER-AWARE: DOC_BOZZA in DRAFT, IN_TRANSITO prima dello stato-trigger (viaggio in corso, non ritardo), PUSH_NON_ESEGUITO / PUSH_PARZIALE dal trigger in poi; soglia = rank del trigger, SPEDITO per lo standalone. Valore per riga con COALESCE(ddt_righe.prezzo_unitario, ordini_righe via fulfillment) — vw_ddt_righe_iva_base NON riusabile (filtra prezzo NOT NULL). data_riferimento = ddt.data (DL-17). fase/is_abortito dal catalogo. security_invoker=on + RLS. rev 2026-07-18. Rev 2026-10-20 (20261020-68, brief-db-grammatica-unica-documenti 2d e 2e): l'area DDT diventa DDT_VENDITA, il codice della sorgente; la chiave della riga la compone script.fn_segment_key.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -16,7 +16,7 @@ WITH righe AS (
             script.fn_imponibile_riga(dr.quantita, COALESCE(dr.prezzo_unitario, src.src_prezzo_unitario), dr.sconto_percentuale) AS valore_riga,
             (EXISTS ( SELECT 1
                    FROM vendite.commesse_attivita ca
-                  WHERE (((ca.segment_key)::text = ((('DDT:'::text || (d2.uid)::text) || ':R:'::text) || (dr.id)::text)) AND ((ca.stato_emissione)::text = 'EMESSA'::text)))) AS transitata
+                  WHERE (((ca.segment_key)::text = (script.fn_segment_key('DDT_VENDITA'::character varying, (d2.uid)::text, dr.id))::text) AND ((ca.stato_emissione)::text = 'EMESSA'::text)))) AS transitata
            FROM ((vendite.ddt_righe dr
              JOIN vendite.ddt d2 ON ((d2.id = dr.ddt_id)))
              LEFT JOIN LATERAL ( SELECT or_r.prezzo_unitario AS src_prezzo_unitario
@@ -27,7 +27,7 @@ WITH righe AS (
                  LIMIT 1) src ON (true))
           WHERE (dr.attivo IS TRUE)
         )
- SELECT 'DDT'::character varying AS area,
+ SELECT 'DDT_VENDITA'::character varying AS area,
     (date_trunc('month'::text, (d.data)::timestamp with time zone))::date AS competenza_mese,
     d.id AS documento_id,
     (d.uid)::text AS documento_uid,

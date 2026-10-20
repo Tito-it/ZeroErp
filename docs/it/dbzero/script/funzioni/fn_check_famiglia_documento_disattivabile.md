@@ -14,10 +14,17 @@ CREATE OR REPLACE FUNCTION script.fn_check_famiglia_documento_disattivabile(p_fa
  STABLE SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public'
 AS $function$
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti, 2c G-5):
+--   la tabella dei documenti e' la target_table della sorgente
+--   (config.fn_sorgente_tabella), non piu' schema_tabella/nome_tabella
+--   della famiglia; p_famiglia_id ancorato.
 DECLARE
     v_motivi   jsonb := '[]'::jsonb;
     v_fam      record;
-    v_relid    oid;
+    v_relid    pg_catalog.pg_class.oid%TYPE;
+    v_schema   pg_catalog.pg_namespace.nspname%TYPE;
+    v_nome     pg_catalog.pg_class.relname%TYPE;
+    -- due conteggi: nessuna colonna di cui siano il riflesso
     v_registri bigint;
     v_docs     bigint;
 BEGIN
@@ -58,8 +65,7 @@ BEGIN
             'identificativo della famiglia non valido');
     END IF;
 
-    SELECT f.codice_interno, f.descrizione, f.schema_tabella,
-           f.nome_tabella, f.colonna_numero
+    SELECT f.codice_interno, f.descrizione, f.colonna_numero
       INTO v_fam
       FROM vendite.famiglie_documento f
      WHERE f.id = p_famiglia_id;
@@ -108,9 +114,12 @@ BEGIN
     END IF;
 
     -- ---- MOTIVO 2 — documenti gia' numerati ----------------
-    -- ⚠️ to_regclass: una famiglia puo' nominare una tabella che
-    --   non c'e' piu' (e' storia). La check risponde, non esplode.
-    v_relid := to_regclass(format('%I.%I', v_fam.schema_tabella, v_fam.nome_tabella));
+    -- ⚠️ rev 2026-10-20: la tabella e' la target_table della sorgente
+    --   (G-5). Se la sorgente non ne dichiara una, nessuna riga: la
+    --   check risponde, non esplode.
+    SELECT t.relid, t.schema_tabella, t.nome_tabella
+      INTO v_relid, v_schema, v_nome
+      FROM config.fn_sorgente_tabella(v_fam.codice_interno) t;
 
     IF v_relid IS NOT NULL THEN
         -- ⭐ Il predicato e' «porta un numero», lo stesso di
@@ -120,7 +129,7 @@ BEGIN
             'SELECT count(*) FROM %I.%I d'
             || ' WHERE d.%I IS NOT NULL'
             || '   AND btrim(d.%I::text) <> $1',
-            v_fam.schema_tabella, v_fam.nome_tabella,
+            v_schema, v_nome,
             v_fam.colonna_numero, v_fam.colonna_numero)
           INTO v_docs
          USING ''::text;
@@ -133,12 +142,11 @@ BEGIN
                 'dettaglio',  jsonb_build_object('famiglia_id',    p_famiglia_id,
                                                  'codice_interno', v_fam.codice_interno,
                                                  'documenti',      v_docs,
-                                                 'tabella',        v_fam.schema_tabella
-                                                                   || '.' || v_fam.nome_tabella),
+                                                 'tabella',        v_schema || '.' || v_nome),
                 'valori',     jsonb_build_array('vendite.famiglie_documento',
                                                 'codice_interno',
                                                 v_fam.codice_interno,
-                                                v_fam.schema_tabella || '.' || v_fam.nome_tabella));
+                                                v_schema || '.' || v_nome));
         END IF;
     END IF;
 
@@ -147,7 +155,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_famiglia_documento_disattivabile(p_famiglia_id integer)
-IS 'Pure check (§12.5.1): i motivi che impediscono di SPEGNERE una famiglia di documento. Torna [] se si puo'', altrimenti l''array ORDINATO dei motivi — prima HA_REGISTRI_ATTIVI (E_ATTIVO_BLOCK_CHILDREN_ACTIVE), poi HA_DOCUMENTI_NUMERATI (E_ATTIVO_BLOCK_CHILDREN_EXIST). ⛔ PERCHE'' ESISTE: anagrafiche.fn_ba_ha_storia_emittente e fn_get_storia_emittente_ba iterano `WHERE fd.attivo`, quindi spegnere una famiglia non nasconde una voce di catalogo — la fa USCIRE dal presidio sul cambio emittente del billing account, e i suoi documenti smettono di trattenere il BA dove sono stati numerati. ⭐ L''ORDINE E'' IL CONTRATTO: la madre solleva il PRIMO motivo, e per primo va quello RIMEDIABILE (spegnere i registri); i numeri gia'' usciti non si disfano. ⚠️ SECURITY DEFINER e non INVOKER: le cinque tabelle dei documenti hanno la RLS attiva (verificato 2026-09-01) e un conteggio invoker tornerebbe ZERO a chi non le vede — cioe'' «si puo'' spegnere». Uno zero sotto RLS non e'' un dato, e'' una risposta troncata: stessa scelta di anagrafiche.fn_get_storia_emittente_ba. ⭐ Le tabelle dei documenti NON sono elencate qui: si compongono dalla famiglia stessa in SQL dinamico, cosi'' una famiglia nuova entra nel controllo il giorno che nasce; to_regclass e non un cast, perche'' una famiglia ritirata puo'' nominare una tabella che non esiste piu''. ⚠️ La reason_key e'' un debito verso il FE (§12.3). Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.4 (DB-2).';
+IS 'Pure check (§12.5.1): i motivi che impediscono di SPEGNERE una famiglia di documento. Torna [] se si puo'', altrimenti l''array ORDINATO dei motivi — prima HA_REGISTRI_ATTIVI (E_ATTIVO_BLOCK_CHILDREN_ACTIVE), poi HA_DOCUMENTI_NUMERATI (E_ATTIVO_BLOCK_CHILDREN_EXIST). ⛔ PERCHE'' ESISTE: anagrafiche.fn_ba_ha_storia_emittente e fn_get_storia_emittente_ba iterano `WHERE fd.attivo`, quindi spegnere una famiglia non nasconde una voce di catalogo — la fa USCIRE dal presidio sul cambio emittente del billing account, e i suoi documenti smettono di trattenere il BA dove sono stati numerati. ⭐ L''ORDINE E'' IL CONTRATTO: la madre solleva il PRIMO motivo, e per primo va quello RIMEDIABILE (spegnere i registri); i numeri gia'' usciti non si disfano. ⚠️ SECURITY DEFINER e non INVOKER: le cinque tabelle dei documenti hanno la RLS attiva (verificato 2026-09-01) e un conteggio invoker tornerebbe ZERO a chi non le vede — cioe'' «si puo'' spegnere». Uno zero sotto RLS non e'' un dato, e'' una risposta troncata: stessa scelta di anagrafiche.fn_get_storia_emittente_ba. ⭐ Le tabelle dei documenti NON sono elencate qui: si compongono dalla famiglia stessa in SQL dinamico, cosi'' una famiglia nuova entra nel controllo il giorno che nasce; to_regclass e non un cast, perche'' una famiglia ritirata puo'' nominare una tabella che non esiste piu''. ⚠️ La reason_key e'' un debito verso il FE (§12.3). Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.4 (DB-2). Rev 2026-10-20 (20261020-38, brief-db-grammatica-unica-documenti 2c, G-5): la tabella dei documenti e'' la target_table della sorgente (config.fn_sorgente_tabella).';
 ```
 
 ---

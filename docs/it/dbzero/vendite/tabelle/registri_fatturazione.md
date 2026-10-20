@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
-| codice | character varying(16) | NO |  |
+| codice | character varying(80) | NO |  |
 | descrizione | character varying(120) | NO |  |
 | emittente_soggetto_ruolo_id | bigint | NO |  |
 | serie_default | character varying(8) | YES |  |
@@ -27,7 +27,7 @@
 | politica_data_documento | character varying(32) | NO | 'OGGI'::character varying |
 | limite_emissione_giorni | smallint | YES |  |
 | limite_emissione_giorno_mese | smallint | YES |  |
-| famiglia_documento | character varying(16) | NO | 'FATTURA'::character varying |
+| famiglia_documento | character varying(50) | NO | 'FATTURA'::character varying |
 | prefisso | character varying(4) | YES |  |
 | suffisso | character varying(4) | YES |  |
 | lunghezza_numero | integer | NO | 7 |
@@ -74,8 +74,8 @@
 | trg_registri_fatturazione_a10_set_anno_nel_numero_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_registri_fatturazione_set_anno_nel_numero()` |
 | trg_registri_fatturazione_a10_tipi_doc_fiscale_registri__d1c865 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'tipi_doc_fiscale_registri', 'registro_id', 'id', 'attivo')` |
 | trg_registri_fatturazione_a10_vendite_contabili_block_de_3e2bbe | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pagamenti', 'vendite_contabili', 'registro_id', 'id', 'attivo')` |
-| trg_registri_fatturazione_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_registri_fatturazione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_registri_fatturazione_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_registri_fatturazione_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_registri_fatturazione_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_registri_fatturazione_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('registri_fatturazione_id')` |

@@ -25,6 +25,7 @@
 --   3) su DDT EMESSO il cambio e' BLOCCATO (P0001)
 --   4) ⚠️ l'UPDATE che cambia stato e causale INSIEME (DRAFT->EMESSO) passa
 --   5) riscrivere la STESSA causale su un DDT emesso non e' un cambio: passa
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): l'ambito degli indirizzi della bolla e' DDT_VENDITA.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -116,7 +117,7 @@ BEGIN
     INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
     SELECT v_uno, ti.id, '{"display":"pgtap"}'::jsonb
       FROM config.tipi_indirizzi ti
-     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT', NULL))
+     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', NULL))
     ON CONFLICT DO NOTHING;
 
     UPDATE vendite.ddt SET stato_doc_ddt_id = v_emesso WHERE id = v_uno;
@@ -137,7 +138,7 @@ BEGIN
     INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
     SELECT v_due, ti.id, '{"display":"pgtap"}'::jsonb
       FROM config.tipi_indirizzi ti
-     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT', NULL))
+     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', NULL))
     ON CONFLICT DO NOTHING;
 
     INSERT INTO tmp_b VALUES (v_uno, v_due, v_cv, v_cc);

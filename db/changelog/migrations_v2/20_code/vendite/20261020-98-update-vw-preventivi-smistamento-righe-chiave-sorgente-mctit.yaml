@@ -1,0 +1,117 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2e (G-8, L2e-2 = (a)): vw_preventivi_smistamento_righe compone la chiave col BB
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-8, §13.3.
+#
+#   Lo stato del push di una riga di preventivo si chiede con la chiave composta da script.fn_segment_key (PREVENTIVO).
+#
+#   Corpo e COMMENT dal catalogo vivo di dbdev (2026-10-20), non da uno YAML; sostituzioni
+#   contate. Firma e RETURNS TABLE ricostruiti dal catalogo e ancorati con %TYPE dove una colonna
+#   con lo stesso nome e lo stesso tipo esiste (verificato); nudi, col motivo, i valori calcolati.
+#   ⚠️ Le chiavi gia' scritte nei dati di dbdev si convertono con lo SQL una tantum del giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261020-98-update-vw-preventivi-smistamento-righe-chiave-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-98-update-vw-preventivi-smistamento-righe-chiave-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_preventivi_smistamento_righe: la chiave della riga di preventivo da script.fn_segment_key (PREVENTIVO). Grammatica unica, 2e (G-8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si AZZERA a ogni CREATE OR REPLACE VIEW: si ripete dal catalogo.
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_smistamento_righe WITH (security_invoker=on) AS
+              SELECT p.id AS preventivo_id,
+                  p.uid AS preventivo_uid,
+                  p.numero AS preventivo_numero,
+                  pr.id AS riga_id,
+                  pr.ordine AS riga_ordine,
+                  pr.descrizione AS riga_descrizione,
+                  pr.articolo_id,
+                  pr.quantita,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.prezzo_unitario,
+                  pr.natura_vendita_id,
+                  nv.codice AS natura_vendita_codice,
+                  COALESCE(nv.destinazione_tipo, 'COMMESSA'::character varying) AS destinazione_tipo,
+                  orr.id AS ordine_riga_id,
+                  o.id AS ordine_id,
+                  o.numero AS ordine_numero,
+                      CASE
+                          WHEN (EXISTS ( SELECT 1
+                             FROM vendite.attivita_fatturabili af
+                            WHERE ((af.sorgente_uid = p.uid) AND (af.sorgente_riga = pr.id) AND (af.fattura_riga_id IS NOT NULL)))) THEN 'FATTURATA'::text
+                          WHEN (EXISTS ( SELECT 1
+                             FROM vendite.attivita_fatturabili af
+                            WHERE ((af.sorgente_uid = p.uid) AND (af.sorgente_riga = pr.id)))) THEN 'EMESSA_AF'::text
+                          WHEN (script.fn_get_stato_push_segment(script.fn_segment_key('PREVENTIVO'::character varying, (p.uid)::text, pr.id)) <> 'LIBERA'::text) THEN 'IN_COMMESSA'::text
+                          WHEN (orr.id IS NOT NULL) THEN 'A_ORDINE'::text
+                          ELSE 'RESIDUA'::text
+                      END AS stato_smistamento
+                 FROM ((((vendite.preventivi p
+                   JOIN vendite.preventivi_righe pr ON (((pr.preventivo_id = p.id) AND (pr.attivo IS TRUE))))
+                   LEFT JOIN config.nature_vendita nv ON ((nv.id = pr.natura_vendita_id)))
+                   LEFT JOIN vendite.ordini_righe orr ON ((orr.preventivo_riga_id = pr.id)))
+                   LEFT JOIN vendite.ordini o ON ((o.id = orr.ordine_id)));
+
+              COMMENT ON VIEW vendite.vw_preventivi_smistamento_righe IS
+                'Fonte dati del Pannello Smistamento (una riga per riga attiva del preventivo): natura/destinazione effettiva (NULL = pregresso -> COMMESSA), riferimenti ramo ordine, stato_smistamento autorevole (RESIDUA/A_ORDINE/IN_COMMESSA/EMESSA_AF/FATTURATA). Sostituisce vw_preventivi_stato_fatturazione_righe (brief-db-smistamento-preventivi.md B). ⭐ rev 2026-10-12 (20261012-11, brief-db-annullo-a-valle-riapre-a-monte D-5): IN_COMMESSA = il segmento della riga non e'' LIBERO per script.fn_get_stato_push_segment, la fonte unica del «gia'' mandato». Prima era «segment EMESSA», allineato al predicato che la vista smistabili aveva fino al 2026-06-28: quando quella e'' passata all''allocazione, questa non l''ha seguita, e una riga mandata in commessa e non ancora emessa risultava RESIDUA mentre il push la dava gia'' inviata. Una riga di commessa ANNULLATA non occupa: annullata la commessa, la riga torna RESIDUA. Rev 2026-10-20 (20261020-98, brief-db-grammatica-unica-documenti 2e, G-8): la chiave della riga di preventivo la compone script.fn_segment_key (PREVENTIVO:<uid>:R:<riga>, era PREV:...).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_smistamento_righe WITH (security_invoker=on) AS
+              SELECT p.id AS preventivo_id,
+                  p.uid AS preventivo_uid,
+                  p.numero AS preventivo_numero,
+                  pr.id AS riga_id,
+                  pr.ordine AS riga_ordine,
+                  pr.descrizione AS riga_descrizione,
+                  pr.articolo_id,
+                  pr.quantita,
+                  pr.qta_operativa,
+                  pr.uom_operativa_id,
+                  pr.prezzo_unitario,
+                  pr.natura_vendita_id,
+                  nv.codice AS natura_vendita_codice,
+                  COALESCE(nv.destinazione_tipo, 'COMMESSA'::character varying) AS destinazione_tipo,
+                  orr.id AS ordine_riga_id,
+                  o.id AS ordine_id,
+                  o.numero AS ordine_numero,
+                      CASE
+                          WHEN (EXISTS ( SELECT 1
+                             FROM vendite.attivita_fatturabili af
+                            WHERE ((af.sorgente_uid = p.uid) AND (af.sorgente_riga = pr.id) AND (af.fattura_riga_id IS NOT NULL)))) THEN 'FATTURATA'::text
+                          WHEN (EXISTS ( SELECT 1
+                             FROM vendite.attivita_fatturabili af
+                            WHERE ((af.sorgente_uid = p.uid) AND (af.sorgente_riga = pr.id)))) THEN 'EMESSA_AF'::text
+                          WHEN (script.fn_get_stato_push_segment((((('PREV:'::text || (p.uid)::text) || ':R:'::text) || (pr.id)::text))::character varying) <> 'LIBERA'::text) THEN 'IN_COMMESSA'::text
+                          WHEN (orr.id IS NOT NULL) THEN 'A_ORDINE'::text
+                          ELSE 'RESIDUA'::text
+                      END AS stato_smistamento
+                 FROM ((((vendite.preventivi p
+                   JOIN vendite.preventivi_righe pr ON (((pr.preventivo_id = p.id) AND (pr.attivo IS TRUE))))
+                   LEFT JOIN config.nature_vendita nv ON ((nv.id = pr.natura_vendita_id)))
+                   LEFT JOIN vendite.ordini_righe orr ON ((orr.preventivo_riga_id = pr.id)))
+                   LEFT JOIN vendite.ordini o ON ((o.id = orr.ordine_id)));
+
+
+              COMMENT ON VIEW vendite.vw_preventivi_smistamento_righe IS
+                'Fonte dati del Pannello Smistamento (una riga per riga attiva del preventivo): natura/destinazione effettiva (NULL = pregresso -> COMMESSA), riferimenti ramo ordine, stato_smistamento autorevole (RESIDUA/A_ORDINE/IN_COMMESSA/EMESSA_AF/FATTURATA). Sostituisce vw_preventivi_stato_fatturazione_righe (brief-db-smistamento-preventivi.md B). ⭐ rev 2026-10-12 (20261012-11, brief-db-annullo-a-valle-riapre-a-monte D-5): IN_COMMESSA = il segmento della riga non e'' LIBERO per script.fn_get_stato_push_segment, la fonte unica del «gia'' mandato». Prima era «segment EMESSA», allineato al predicato che la vista smistabili aveva fino al 2026-06-28: quando quella e'' passata all''allocazione, questa non l''ha seguita, e una riga mandata in commessa e non ancora emessa risultava RESIDUA mentre il push la dava gia'' inviata. Una riga di commessa ANNULLATA non occupa: annullata la commessa, la riga torna RESIDUA.';

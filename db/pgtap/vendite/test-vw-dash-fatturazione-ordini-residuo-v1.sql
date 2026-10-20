@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente (ORDINE_VENDITA).
 -- pgTAP test per Zero ERP
 -- Test: vw_dash_fatturazione_ordini a valore RESIDUO da spedire — step 8,
 --       brief-db-fatturazione-ddt-resi §4c / DL-23 EMENDATO.
@@ -190,7 +191,7 @@ SELECT is(
 -- 6) il serbatoio eredita il netto senza modifiche proprie
 SELECT is(
   (SELECT valore_totale FROM vendite.vw_dash_aperto_documenti
-    WHERE area='ORDINI' AND documento_id=(SELECT ordine_id FROM tmp_a)),
+    WHERE area='ORDINE_VENDITA' AND documento_id=(SELECT ordine_id FROM tmp_a)),
   150::numeric, '6) vw_dash_aperto_documenti (serbatoio) mostra il residuo 150 di A (effetto a valle)');
 
 SELECT * FROM finish();

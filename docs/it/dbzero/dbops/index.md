@@ -117,6 +117,7 @@
 - [fn_pgtap_crea_roster_processo](funzioni/fn_pgtap_crea_roster_processo.md)
 - [fn_pgtap_crea_soggetto_pg](funzioni/fn_pgtap_crea_soggetto_pg.md) — (rev 2026-08-21)
 - [fn_pgtap_crea_soggetto_ruolo](funzioni/fn_pgtap_crea_soggetto_ruolo.md) — (rev 2026-08-21)
+- [fn_pgtap_crea_sorgente](funzioni/fn_pgtap_crea_sorgente.md)
 - [fn_pgtap_indirizzo_libero_forma](funzioni/fn_pgtap_indirizzo_libero_forma.md) — (18-10-2026)
 - [fn_pgtap_listino_aggiungi_articoli](funzioni/fn_pgtap_listino_aggiungi_articoli.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento Lotto 3b)
 - [fn_pgtap_piva_libera](funzioni/fn_pgtap_piva_libera.md) — (rev 2026-08-21)

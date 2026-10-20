@@ -69,7 +69,10 @@ databaseChangeLog:
               #   Loader esteso IN PLACE: e' runOnChange + validCheckSums ANY,
               #   quindi mirror vivo del CSV. Nessun loader nuovo.
               #   NULL (token) = sorgente non sfogliabile come documento.
-              - column: { name: area, type: STRING }
+              # ⛔ area RITIRATA il 2026-10-20 (20261020-48, brief-db-grammatica-unica-documenti
+              #    2d, G-6 e L2d-1): al suo posto apribile (boolean NOT NULL), vero quando la
+              #    sorgente e' un documento con una sua pagina. Nasce uguale a «area valorizzata».
+              - column: { name: apribile, type: BOOLEAN }
 
               # label_selector: quale colonna della target_table porta il NUMERO
               #   LEGGIBILE del documento, aggiunta 2026-08-20 (colonna da

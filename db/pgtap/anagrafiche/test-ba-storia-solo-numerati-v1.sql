@@ -10,6 +10,7 @@
 --   script.fn_check_ba_cambio_emittente()      (20260831-19)
 --   anagrafiche.fn_guard_ba_cambio_emittente()
 --   Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, §3.6 e §3.7
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): la famiglia della bolla e' DDT_VENDITA, il codice della sorgente.
 -- ------------------------------------------------------------
 -- Elenco test (plan 7):
 -- 1) Fixture: un billing account NUOVO, quindi senza storia
@@ -194,7 +195,7 @@ SELECT is(
     (SELECT s.n_documenti
        FROM tmp_bsd_ids t,
             LATERAL anagrafiche.fn_get_storia_emittente_ba(t.billing_account_id) s
-      WHERE s.famiglia_documento = 'DDT'),
+      WHERE s.famiglia_documento = 'DDT_VENDITA'),
     1::bigint,
     '5) Il DDT NUMERATO entra nella storia, sotto la famiglia DDT');
 

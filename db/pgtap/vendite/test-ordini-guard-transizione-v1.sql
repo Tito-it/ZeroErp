@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- Test: vendite.trgfn_ordini_guard_transizione (+ trigger)
 -- ------------------------------------------------------------
@@ -299,7 +300,7 @@ INSERT INTO vendite.commesse_attivita (
   valuta_id, prezzo_snapshot, pricing_mode,
   stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
 SELECT (SELECT id FROM vendite.commesse WHERE codice = 'PGTAP-GT-COM'),
-       'ORD:PGTAP-GT:R:1',
+       'ORDINE_VENDITA:PGTAP-GT:R:1',
        r.articolo_id,
        -- ⚠️ vendite.commesse non ha istanza_utility_id: si risolve dal
        --    billing account della commessa, che e' dove vive.

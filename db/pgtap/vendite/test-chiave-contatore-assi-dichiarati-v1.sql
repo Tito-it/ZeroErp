@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): la tabella della famiglia viene dalla sorgente (config.fn_sorgente_tabella); la famiglia del reso e' RESO_VENDITA.
 -- pgTAP test per Zero ERP
 -- Test: la CHIAVE DEL CONTATORE e gli assi dichiarati
 --       vendite.registri_fatturazione_progressivi (20260901-08)
@@ -90,7 +91,7 @@ SELECT is(
       WHERE f.colonna_serie IS NOT NULL
         AND NOT EXISTS (
             SELECT 1 FROM pg_attribute a
-             WHERE a.attrelid = (f.schema_tabella || '.' || f.nome_tabella)::regclass
+             WHERE a.attrelid = (SELECT t.relid FROM config.fn_sorgente_tabella(f.codice_interno) t)
                AND NOT a.attisdropped
                AND a.attname = f.colonna_serie)),
     0,
@@ -107,7 +108,7 @@ SELECT is(
             SELECT 1
               FROM pg_index x
               JOIN pg_class c ON c.oid = x.indrelid
-             WHERE c.oid = (f.schema_tabella || '.' || f.nome_tabella)::regclass
+             WHERE c.oid = (SELECT t.relid FROM config.fn_sorgente_tabella(f.codice_interno) t)
                AND x.indisunique
                AND pg_get_indexdef(x.indexrelid) ~ ('\m' || f.colonna_numero || '\M')
                AND pg_get_indexdef(x.indexrelid) ~ ('\m' || f.colonna_serie  || '\M'))),
@@ -140,7 +141,7 @@ SELECT r.emittente_soggetto_ruolo_id AS sr,
 PREPARE ass_reso_con_serie AS
 INSERT INTO vendite.registri_fatturazione
     (codice, descrizione, emittente_soggetto_ruolo_id, famiglia_documento, serie_default, utility_id)
-SELECT 'ASS-RESO-KO', 'pgTAP assi dichiarati', t.sr, 'RESO', 'X1', t.utility_id FROM tmp_ass t;
+SELECT 'ASS-RESO-KO', 'pgTAP assi dichiarati', t.sr, 'RESO_VENDITA', 'X1', t.utility_id FROM tmp_ass t;
 
 SELECT throws_ok(
     'EXECUTE ass_reso_con_serie',

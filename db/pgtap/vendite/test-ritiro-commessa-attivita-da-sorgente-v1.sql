@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- Test: il RITIRO delle righe di commessa quando il documento si chiude
 --       (brief-db-lavoro-che-non-torna-indietro, lotto L7a / Q-5' strada A)
@@ -96,7 +97,7 @@ BEGIN
         tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
         stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
       SELECT (SELECT id FROM tmp_commessa_rit),
-             'ORD:PGTAP-RIT:' || s || ':' || substr(md5(clock_timestamp()::text), 1, 10),
+             'ORDINE_VENDITA:PGTAP-RIT:' || s || ':' || substr(md5(clock_timestamp()::text), 1, 10),
              r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
              date_trunc('month', script.fn_data_operativa())::date,
              date_trunc('month', script.fn_data_operativa())::date,

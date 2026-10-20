@@ -12,8 +12,21 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti, 2c G-5):
+--   la tabella dei documenti e' la target_table della sorgente della
+--   famiglia (config.fn_sorgente_tabella), non piu'
+--   schema_tabella/nome_tabella; entra la regola di una famiglia
+--   attiva per tabella, che era l'indice
+--   uq_famiglie_documento_tabella_attiva
+--   (E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA).
 DECLARE
-    v_relid     oid;
+    v_relid     pg_catalog.pg_class.oid%TYPE;
+    v_schema    pg_catalog.pg_namespace.nspname%TYPE;
+    v_nome      pg_catalog.pg_class.relname%TYPE;
+    -- la famiglia attiva che numera gia' la stessa tabella
+    v_altra     vendite.famiglie_documento.codice_interno%TYPE;
+    -- un riferimento composto per la frase (schema.tabella.colonna):
+    --   nessuna colonna di cui sia il riflesso
     v_mancante  text;
 BEGIN
     -- =========================================================
@@ -38,13 +51,15 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- ⚠️ to_regclass torna NULL invece di sollevare, anche se lo
-    --   schema non esiste: e' proprio cio' che serve a un guard
-    --   che vuole comporre la propria frase.
-    v_relid := to_regclass(format('%I.%I', NEW.schema_tabella, NEW.nome_tabella));
+    -- ⭐ rev 2026-10-20: la tabella e' la target_table della sorgente
+    --   (G-5), risolta dal BB. Nessuna riga = la sorgente non dichiara
+    --   una tabella: e' il riferimento mancante, con la sua frase.
+    SELECT t.relid, t.schema_tabella, t.nome_tabella
+      INTO v_relid, v_schema, v_nome
+      FROM config.fn_sorgente_tabella(NEW.codice_interno) t;
 
     IF v_relid IS NULL THEN
-        v_mancante := format('%I.%I', NEW.schema_tabella, NEW.nome_tabella);
+        v_mancante := format('config.sorgenti.target_table di %s', NEW.codice_interno);
 
     ELSIF NOT EXISTS (
         SELECT 1 FROM pg_attribute a
@@ -54,7 +69,7 @@ BEGIN
            AND NOT a.attisdropped
     ) THEN
         v_mancante := format('%I.%I.%I',
-            NEW.schema_tabella, NEW.nome_tabella, NEW.colonna_numero);
+            v_schema, v_nome, NEW.colonna_numero);
 
     -- ⭐ Il billing account e' OPZIONALE (20260914-07): il vuoto e'
     --   la dichiarazione che questa famiglia non ne ha uno — la
@@ -72,7 +87,7 @@ BEGIN
            AND NOT a.attisdropped
     ) THEN
         v_mancante := format('%I.%I.%I',
-            NEW.schema_tabella, NEW.nome_tabella, NEW.colonna_billing_account);
+            v_schema, v_nome, NEW.colonna_billing_account);
 
     -- ⭐ La serie e' OPZIONALE: il vuoto e' la dichiarazione che
     --   questa famiglia una serie non ce l'ha (resi, commesse).
@@ -87,7 +102,7 @@ BEGIN
                  AND NOT a.attisdropped
           ) THEN
         v_mancante := format('%I.%I.%I',
-            NEW.schema_tabella, NEW.nome_tabella, NEW.colonna_serie);
+            v_schema, v_nome, NEW.colonna_serie);
     END IF;
 
     IF v_mancante IS NOT NULL THEN
@@ -97,8 +112,8 @@ BEGIN
             'E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE',
             jsonb_build_object(
                 'codice_interno',          NEW.codice_interno,
-                'schema_tabella',          NEW.schema_tabella,
-                'nome_tabella',            NEW.nome_tabella,
+                'schema_tabella',          v_schema,
+                'nome_tabella',            v_nome,
                 'colonna_numero',          NEW.colonna_numero,
                 'colonna_billing_account', NEW.colonna_billing_account,
                 'colonna_serie',           NEW.colonna_serie,
@@ -106,6 +121,45 @@ BEGIN
             NULL::uuid,
             NEW.codice_interno::text,
             v_mancante);
+    END IF;
+
+    -- ---------------------------------------------------------
+    -- ⭐ UNA TABELLA, UNA FAMIGLIA (rev 2026-10-20: era l'indice
+    --   uq_famiglie_documento_tabella_attiva, decisione di Tid del
+    --   2026-09-01). Due famiglie ATTIVE non numerano la stessa
+    --   tabella: la famiglia E' il tipo di documento. Dal G-5 la
+    --   tabella viene dalla sorgente, cioe' da un'altra tabella, e
+    --   un indice non fa join: la regola sta qui. Il modello ammette
+    --   due sorgenti con la stessa target_table; non due famiglie
+    --   che le numerano.
+    -- ⚠️ Non e' a prova di concorrenza come l'indice: due creazioni
+    --   simultanee passerebbero entrambe. Dichiarato (intestazione
+    --   del changeSet 20261020-35).
+    -- ---------------------------------------------------------
+    SELECT f.codice_interno INTO v_altra
+      FROM vendite.famiglie_documento f
+      CROSS JOIN LATERAL config.fn_sorgente_tabella(f.codice_interno) t
+     WHERE f.attivo
+       AND f.id IS DISTINCT FROM NEW.id
+       AND t.relid = v_relid
+     ORDER BY f.id
+     LIMIT 1;
+
+    IF v_altra IS NOT NULL THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite',
+            'trgfn_famiglie_documento_guard_riferimenti',
+            'E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA',
+            jsonb_build_object(
+                'codice_interno', NEW.codice_interno,
+                'tabella',        format('%I.%I', v_schema, v_nome),
+                'altra_famiglia', v_altra,
+                -- il campo che il form deve accendere: la sorgente scelta
+                'campo',          'codice_interno'),
+            NULL::uuid,
+            NEW.codice_interno::text,
+            format('%I.%I', v_schema, v_nome),
+            v_altra::text);
     END IF;
 
     -- ---------------------------------------------------------
@@ -140,8 +194,8 @@ BEGIN
             'E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA',
             jsonb_build_object(
                 'codice_interno', NEW.codice_interno,
-                'schema_tabella', NEW.schema_tabella,
-                'nome_tabella',   NEW.nome_tabella,
+                'schema_tabella', v_schema,
+                'nome_tabella',   v_nome,
                 'colonna_numero', NEW.colonna_numero,
                 'colonna_serie',  NEW.colonna_serie,
                 -- ⚠️ Il campo che il form deve accendere: la
@@ -158,7 +212,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
-IS 'Guard `_a10_` su vendite.famiglie_documento: una famiglia ATTIVA deve nominare oggetti che esistono — la tabella del documento, la colonna del numero, quella del billing account e, se dichiarata, quella della serie. ⛔ PERCHE'': quei nomi finiscono in SQL dinamico dentro il presidio sul cambio emittente del billing account, e un refuso resterebbe muto fino al primo spostamento, dove uscirebbe come undefined_table in un movimento che con le famiglie non c''entra. ⭐ SULLA SERIE CI SONO DUE CONTROLLI E DUE CODICI: se la colonna non esiste e'' un refuso come gli altri tre (E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE); se esiste ma NON compare in un vincolo di unicita'' insieme alla colonna del numero e'' il caso peggiore — il nome e'' giusto e si legge — e ha il suo codice E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA, perche'' la serie entra nella chiave del contatore e apre un secchio che riparte da 1: senza il vincolo allargato quel numero collide con uno gia'' emesso. ⛔ IL PREDICATO E'' TESTUALE su pg_get_indexdef e non per attnum, ed e'' verificato: uq_fatture_numero porta la serie come COALESCE(serie, '''''''') — un''espressione, che in pg_index.indkey ha attnum 0 — quindi la versione «precisa» rifiuterebbe la FATTURA e farebbe fallire il migrate sul mirror delle famiglie. E'' lo stesso predicato del test 5 di test-chiave-contatore-assi-dichiarati-v1: due predicati sulla stessa invariante, prima o poi, dissentono. ⚠️ Solo sulle famiglie ATTIVE: una famiglia ritirata puo'' nominare una tabella che non c''e'' piu'', ed e'' storia. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1). ⭐ rev 2026-09-14 (P-9, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 3-bis): la colonna del billing account e'' OPZIONALE come la serie — NULL o vuota = «questa famiglia non ha un billing account» (l''ordine di acquisto, la cui controparte e'' un soggetto_ruolo) — e il controllo su pg_attribute si salta PRIMA di comporre, non dentro: un %I con NULL solleverebbe un errore di PostgreSQL senza codice di dominio. Il numero e la tabella restano obbligatori.';
+IS 'Guard `_a10_` su vendite.famiglie_documento: una famiglia ATTIVA deve nominare oggetti che esistono — la tabella del documento, la colonna del numero, quella del billing account e, se dichiarata, quella della serie. ⛔ PERCHE'': quei nomi finiscono in SQL dinamico dentro il presidio sul cambio emittente del billing account, e un refuso resterebbe muto fino al primo spostamento, dove uscirebbe come undefined_table in un movimento che con le famiglie non c''entra. ⭐ SULLA SERIE CI SONO DUE CONTROLLI E DUE CODICI: se la colonna non esiste e'' un refuso come gli altri tre (E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE); se esiste ma NON compare in un vincolo di unicita'' insieme alla colonna del numero e'' il caso peggiore — il nome e'' giusto e si legge — e ha il suo codice E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA, perche'' la serie entra nella chiave del contatore e apre un secchio che riparte da 1: senza il vincolo allargato quel numero collide con uno gia'' emesso. ⛔ IL PREDICATO E'' TESTUALE su pg_get_indexdef e non per attnum, ed e'' verificato: uq_fatture_numero porta la serie come COALESCE(serie, '''''''') — un''espressione, che in pg_index.indkey ha attnum 0 — quindi la versione «precisa» rifiuterebbe la FATTURA e farebbe fallire il migrate sul mirror delle famiglie. E'' lo stesso predicato del test 5 di test-chiave-contatore-assi-dichiarati-v1: due predicati sulla stessa invariante, prima o poi, dissentono. ⚠️ Solo sulle famiglie ATTIVE: una famiglia ritirata puo'' nominare una tabella che non c''e'' piu'', ed e'' storia. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1). ⭐ rev 2026-09-14 (P-9, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 3-bis): la colonna del billing account e'' OPZIONALE come la serie — NULL o vuota = «questa famiglia non ha un billing account» (l''ordine di acquisto, la cui controparte e'' un soggetto_ruolo) — e il controllo su pg_attribute si salta PRIMA di comporre, non dentro: un %I con NULL solleverebbe un errore di PostgreSQL senza codice di dominio. Il numero e la tabella restano obbligatori. Rev 2026-10-20 (20261020-35, brief-db-grammatica-unica-documenti 2c, G-5): la tabella dei documenti e'' la target_table della sorgente della famiglia (config.fn_sorgente_tabella); entra la regola di una famiglia ATTIVA per tabella, che era l''indice uq_famiglie_documento_tabella_attiva (E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA). Non e'' a prova di concorrenza come l''indice: dichiarato.';
 ```
 
 ---

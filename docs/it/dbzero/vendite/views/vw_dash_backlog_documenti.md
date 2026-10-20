@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Backlog fatturazione (lente 2). rev 2026-07-18 (step 9, DL-24): la vista E' una UNION — ramo documenti (da vw_dash_fatturazione_documenti, invariato) + DUE rami resi a grana (reso x motivo): RICONSEGNA_NON_ESEGUITA (RECUPERABILE) da vw_resi_da_riconsegnare e MERCE_RESA_GIA_FATTURATA da vw_resi_da_accreditare con etichetta DOVUTA (le facoltative sono opzione, non arretrato). I resi NON stanno nella union pre-commessa: REVERSE_FLOW. Misura a conteggi (DL-11): valore_fermo NULL, mai 0. Classe/azione risolte UNA volta a valle su config.motivi_fermo, filtro classe &lt;&gt; FISIOLOGICO per tutti i rami. Deroga dichiarata: unica area dove un documento (reso misto) puo' comparire due volte. security_invoker=on + RLS. ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. ⚠️ Due trappole, entrambe silenziose: (1) la proiezione e' a colonne esplicite, quindi la colonna NON si eredita dalla vista a monte — va elencata, e il backend legge questa; (2) i due rami RESI non hanno emittente_soggetto_ruolo_id (NULL) ma hanno emittente_fiscale_id: risolvere solo dal soggetto-ruolo avrebbe lasciato muto l'INTERO blocco resi, che essendo minoritario sarebbe passato per «qualche riga senza emittente». Si risolve con un COALESCE sulla CHIAVE (emittente_soggetto_ruolo_id, altrimenti emittenti_fiscali.soggetto_ruolo_id, che e' NOT NULL + UNIQUE): una sola catena di JOIN, un solo posto da tenere allineato. ⚠️ emittente_soggetto_ruolo_id sui rami resi resta NULL come prima: valorizzarla e' un cambio di semantica di una colonna esistente e va deciso a parte.
+> Backlog fatturazione (lente 2). rev 2026-07-18 (step 9, DL-24): la vista E' una UNION — ramo documenti (da vw_dash_fatturazione_documenti, invariato) + DUE rami resi a grana (reso x motivo): RICONSEGNA_NON_ESEGUITA (RECUPERABILE) da vw_resi_da_riconsegnare e MERCE_RESA_GIA_FATTURATA da vw_resi_da_accreditare con etichetta DOVUTA (le facoltative sono opzione, non arretrato). I resi NON stanno nella union pre-commessa: REVERSE_FLOW. Misura a conteggi (DL-11): valore_fermo NULL, mai 0. Classe/azione risolte UNA volta a valle su config.motivi_fermo, filtro classe &lt;&gt; FISIOLOGICO per tutti i rami. Deroga dichiarata: unica area dove un documento (reso misto) puo' comparire due volte. security_invoker=on + RLS. ⭐ Rev 2026-08-18 (R-4, brief perimetro-emittente Fase E): aggiunta in coda `emittente_ragione_sociale`. ⚠️ Due trappole, entrambe silenziose: (1) la proiezione e' a colonne esplicite, quindi la colonna NON si eredita dalla vista a monte — va elencata, e il backend legge questa; (2) i due rami RESI non hanno emittente_soggetto_ruolo_id (NULL) ma hanno emittente_fiscale_id: risolvere solo dal soggetto-ruolo avrebbe lasciato muto l'INTERO blocco resi, che essendo minoritario sarebbe passato per «qualche riga senza emittente». Si risolve con un COALESCE sulla CHIAVE (emittente_soggetto_ruolo_id, altrimenti emittenti_fiscali.soggetto_ruolo_id, che e' NOT NULL + UNIQUE): una sola catena di JOIN, un solo posto da tenere allineato. ⚠️ emittente_soggetto_ruolo_id sui rami resi resta NULL come prima: valorizzarla e' un cambio di semantica di una colonna esistente e va deciso a parte. Rev 2026-10-20 (20261020-71, brief-db-grammatica-unica-documenti 2d, G-6): l'area RESI diventa RESO_VENDITA, il codice della sorgente (il plurale e' ritirato).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -29,7 +29,7 @@ WITH base AS (
            FROM vendite.vw_dash_fatturazione_documenti d
           WHERE (d.motivo_fermo IS NOT NULL)
         UNION ALL
-         SELECT 'RESI'::character varying AS area,
+         SELECT 'RESO_VENDITA'::character varying AS area,
             (date_trunc('month'::text, (q.data)::timestamp with time zone))::date AS competenza_mese,
             q.reso_id AS documento_id,
             (q.reso_uid)::text AS documento_uid,
@@ -49,7 +49,7 @@ WITH base AS (
              JOIN config.stati_doc_reso sdr ON ((sdr.id = r2.stato_doc_reso_id)))
           GROUP BY q.reso_id, q.reso_uid, q.reso_numero, q.data, q.destinatario_denominazione, q.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
         UNION ALL
-         SELECT 'RESI'::character varying AS area,
+         SELECT 'RESO_VENDITA'::character varying AS area,
             (date_trunc('month'::text, (a.data)::timestamp with time zone))::date AS competenza_mese,
             a.reso_id AS documento_id,
             (a.reso_uid)::text AS documento_uid,

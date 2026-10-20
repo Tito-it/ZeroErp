@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_af_merce_per_riga — il contatore delle attivita'
 --       fatturabili per riga di documento, letto PER CHIAVE DI SEGMENTO
@@ -169,12 +170,12 @@ END $$ LANGUAGE plpgsql;
 
 -- Le chiavi del test, come le compone chi le passa: BASE, senza suffisso.
 CREATE TEMP TABLE tmp_k AS
-SELECT ('DDT:' || u_ddt::text  || ':R:900001')::varchar  AS k_ddt,
-       ('DDT:' || u_ddt::text  || ':R:9000010')::varchar AS k_vicino,   -- 900001 e' un PREFISSO di 9000010
-       ('DDT:' || u_ddt::text  || ':R:90000')::varchar   AS k_prefisso,  -- prefisso di 900001, non esiste
-       ('ORD:' || u_kit::text  || ':R:900002')::varchar  AS k_kit,
-       ('ORD:' || u_coll::text || ':R:900001')::varchar  AS k_coll,      -- stesso NUMERO, altra corsia
-       ('DDT:' || u_foo::text  || ':R:900004')::varchar  AS k_foo
+SELECT ('DDT_VENDITA:' || u_ddt::text  || ':R:900001')::varchar  AS k_ddt,
+       ('DDT_VENDITA:' || u_ddt::text  || ':R:9000010')::varchar AS k_vicino,   -- 900001 e' un PREFISSO di 9000010
+       ('DDT_VENDITA:' || u_ddt::text  || ':R:90000')::varchar   AS k_prefisso,  -- prefisso di 900001, non esiste
+       ('ORDINE_VENDITA:' || u_kit::text  || ':R:900002')::varchar  AS k_kit,
+       ('ORDINE_VENDITA:' || u_coll::text || ':R:900001')::varchar  AS k_coll,      -- stesso NUMERO, altra corsia
+       ('DDT_VENDITA:' || u_foo::text  || ':R:900004')::varchar  AS k_foo
   FROM tmp_seg_afk;
 
 -- 5, 6, 8: la riga DDT semplice, la sua rettifica, il vicino numerico
@@ -235,7 +236,7 @@ SELECT is(
 SELECT results_eq(
   $q$SELECT f.corsia::text, (f.quantita = 10), f.misurabile, f.da_componenti, f.voci
        FROM vendite.fn_af_merce_per_riga(ARRAY[(SELECT k_kit FROM tmp_k)]) f$q$,
-  $q$VALUES ('ORD'::text, true, true, true, 1)$q$,
+  $q$VALUES ('ORDINE_VENDITA'::text, true, true, true, 1)$q$,
   '7) kit con coeff 2/1/0.5 su qta 20/10/5: una riga ORD da 10 in unita'' del PADRE, da_componenti, misurabile, una voce (l''istanza)');
 
 -- ============================================================
@@ -244,8 +245,8 @@ SELECT results_eq(
 SELECT is(
   (SELECT count(*) || ':' || max(f.corsia::text) || ':' || (max(f.quantita) = 7)::text
      FROM vendite.fn_af_merce_per_riga(ARRAY[(SELECT k_coll FROM tmp_k)]) f)
-  || '|' || (SELECT count(*) FROM vendite.fn_af_merce_per_riga(ARRAY[(SELECT k_ddt FROM tmp_k)]) f WHERE f.corsia = 'ORD')::text,
-  '1:ORD:true|0',
+  || '|' || (SELECT count(*) FROM vendite.fn_af_merce_per_riga(ARRAY[(SELECT k_ddt FROM tmp_k)]) f WHERE f.corsia = 'ORDINE_VENDITA')::text,
+  '1:ORDINE_VENDITA:true|0',
   '8) stesso riga_id 900001 su corsia ORD: la chiave ORD prende la sua riga (7), la chiave DDT non la vede');
 
 -- ============================================================
@@ -283,7 +284,7 @@ SELECT results_eq(
 -- ============================================================
 SELECT is(
   (SELECT count(*) FROM vendite.fn_af_merce_per_riga(ARRAY[]::varchar[]))::text
-  || '|' || (SELECT count(*) FROM vendite.fn_af_merce_per_riga(ARRAY['DDT:00000000-0000-0000-0000-000000000000:R:1']))::text,
+  || '|' || (SELECT count(*) FROM vendite.fn_af_merce_per_riga(ARRAY['DDT_VENDITA:00000000-0000-0000-0000-000000000000:R:1']))::text,
   '0|0',
   '12) array VUOTO e chiave inesistente: zero righe — vuoto non e'' «tutte»');
 

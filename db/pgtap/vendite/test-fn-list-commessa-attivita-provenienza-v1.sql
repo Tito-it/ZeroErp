@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): test 11 su config.sorgenti.apribile (area ritirata).
 -- pgTAP test per Zero ERP
 --
 -- Test: la PROVENIENZA della riga di commessa arriva a valle
@@ -137,15 +138,16 @@ SELECT is(
   '10. ogni label_selector nomina una colonna che esiste sulla target_table'
 );
 
--- ⭐ COERENZA. `area` valorizzata = la sorgente E' un documento sfogliabile,
---   quindi ha un numero che l'operatore legge. Una sorgente nuova sfogliabile e
+-- ⭐ COERENZA. `apribile` = la sorgente E' un documento con una sua pagina
+--   (rev 2026-10-20, 2d: era `area` valorizzata, ritirata), quindi ha un numero
+--   che l'operatore legge. Una sorgente nuova sfogliabile e
 --   senza label_selector darebbe una colonna «Origine» vuota per sempre, e
 --   sarebbe l'unico sintomo.
 SELECT is(
   (SELECT count(*)::int FROM config.sorgenti s
-    WHERE s.attivo IS TRUE AND s.area IS NOT NULL AND s.label_selector IS NULL),
+    WHERE s.attivo IS TRUE AND s.apribile AND s.label_selector IS NULL),
   0,
-  '11. ogni sorgente sfogliabile (area valorizzata) dichiara un label_selector'
+  '11. ogni sorgente apribile dichiara un label_selector'
 );
 
 -- ============================================================

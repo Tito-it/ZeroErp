@@ -58,6 +58,9 @@ databaseChangeLog:
       runOnChange: true
       validCheckSums:
         - ANY
+      # ⭐ rev 2026-10-20 (brief-db-grammatica-unica-documenti 2c, G-5): la famiglia della
+      #    distinta si chiama DISTINTA_INCASSO, il codice della sua sorgente (20261020-32).
+      #    runOnChange + ANY: rigira, la primitiva e' idempotente.
       failOnError: true
       comment: >
         Un registro di numerazione DISTINTA (DIS-<sr>, prefisso DIS-, 7 cifre, ANNUALE, anno
@@ -79,7 +82,7 @@ databaseChangeLog:
                 sql: |
                   SELECT count(*)
                     FROM vendite.famiglie_documento fd
-                   WHERE fd.codice_interno = 'DISTINTA'
+                   WHERE fd.codice_interno = 'DISTINTA_INCASSO'
                      AND fd.attivo IS TRUE;
             - sqlCheck:
                 expectedResult: 1
@@ -96,7 +99,7 @@ databaseChangeLog:
             sql: |
               -- ⭐ La primitiva, non un INSERT ricopiato: la regola di come nasce
               --    un registro vive in vendite.fn_provision_registri.
-              SELECT vendite.fn_provision_registri_famiglia('DISTINTA');
+              SELECT vendite.fn_provision_registri_famiglia('DISTINTA_INCASSO');
       rollback:
         - sql:
             splitStatements: false
@@ -104,7 +107,7 @@ databaseChangeLog:
               -- ⛔ Un registro che ha gia' numerato non si toglie: il numero resta
               --    scritto sul documento e il sezionale ne e' l'identita'.
               DELETE FROM vendite.registri_fatturazione r
-               WHERE r.famiglia_documento = 'DISTINTA'
+               WHERE r.famiglia_documento = 'DISTINTA_INCASSO'
                  AND r.meta->>'origine' = 'C2-12'
                  AND NOT EXISTS (SELECT 1 FROM pagamenti.vendite_contabili c
                                   WHERE c.registro_id = r.id);

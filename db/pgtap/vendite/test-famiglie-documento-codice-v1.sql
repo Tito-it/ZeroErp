@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): le famiglie di prova nascono come sorgenti (dbops.fn_pgtap_crea_sorgente); niente schema_tabella/nome_tabella; la madre ha la firma nuova.
 -- pgTAP test per Zero ERP
 -- Test: la famiglia di documento ha un `codice` MODIFICABILE accanto al
 --       codice_interno, e la lista delle famiglie cerca su quello.
@@ -79,9 +80,17 @@ SELECT is(
 -- ============================================================
 -- 4/5/6) Il default alla nascita
 -- ============================================================
+-- ⭐ rev 2026-10-20 (2c, G-5): una famiglia E' una sorgente (FK
+--   fk_famiglie_documento_sorgenti). Le famiglie di prova nascono prima come
+--   sorgenti, senza tabella (il caso che prima era «una tabella che non esiste»).
+DO $sorgenti$ BEGIN
+    PERFORM dbops.fn_pgtap_crea_sorgente(c)
+       FROM unnest(ARRAY['PGTAP-COD-A', 'PGTAP-COD-B', 'PGTAP-COD-C', 'PGTAP-COD-M']) c;
+END $sorgenti$;
+
 INSERT INTO vendite.famiglie_documento
-    (codice_interno, descrizione, schema_tabella, nome_tabella, colonna_numero, attivo, user_insert)
-VALUES ('PGTAP-COD-A', 'Famiglia pgTAP A', 'vendite', 'tabella_pgtap_a', 'numero', FALSE, 'pgtap');
+    (codice_interno, descrizione, colonna_numero, attivo, user_insert)
+VALUES ('PGTAP-COD-A', 'Famiglia pgTAP A', 'numero', FALSE, 'pgtap');
 
 SELECT is(
     (SELECT codice FROM vendite.famiglie_documento WHERE codice_interno = 'PGTAP-COD-A'),
@@ -89,8 +98,8 @@ SELECT is(
     '4) Senza codice all''INSERT, il codice vale il codice_interno');
 
 INSERT INTO vendite.famiglie_documento
-    (codice_interno, codice, descrizione, schema_tabella, nome_tabella, colonna_numero, attivo, user_insert)
-VALUES ('PGTAP-COD-B', '  ', 'Famiglia pgTAP B', 'vendite', 'tabella_pgtap_b', 'numero', FALSE, 'pgtap');
+    (codice_interno, codice, descrizione, colonna_numero, attivo, user_insert)
+VALUES ('PGTAP-COD-B', '  ', 'Famiglia pgTAP B', 'numero', FALSE, 'pgtap');
 
 SELECT is(
     (SELECT codice FROM vendite.famiglie_documento WHERE codice_interno = 'PGTAP-COD-B'),
@@ -98,8 +107,8 @@ SELECT is(
     '5) ...anche con un codice vuoto: il campo vuoto non sceglie un codice');
 
 INSERT INTO vendite.famiglie_documento
-    (codice_interno, codice, descrizione, schema_tabella, nome_tabella, colonna_numero, attivo, user_insert)
-VALUES ('PGTAP-COD-C', 'PGT-SCELTO', 'Famiglia pgTAP C', 'vendite', 'tabella_pgtap_c', 'numero', FALSE, 'pgtap');
+    (codice_interno, codice, descrizione, colonna_numero, attivo, user_insert)
+VALUES ('PGTAP-COD-C', 'PGT-SCELTO', 'Famiglia pgTAP C', 'numero', FALSE, 'pgtap');
 
 SELECT is(
     (SELECT codice FROM vendite.famiglie_documento WHERE codice_interno = 'PGTAP-COD-C'),
@@ -118,8 +127,7 @@ SELECT is(
 CREATE TEMP TABLE tmp_madre AS
 SELECT m.famiglia_id
   FROM vendite.fn_crea_famiglia_documento(
-           'PGTAP-COD-M', 'Famiglia pgTAP dalla madre', 'vendite',
-           'tabella_pgtap_m', 'numero',
+           'PGTAP-COD-M', 'Famiglia pgTAP dalla madre', 'numero',
            p_attivo => FALSE) m;
 
 SELECT is(

@@ -7,6 +7,7 @@
 --       vendite.fn_assegna_numero_documento                  (20260908-13)
 --       vendite.trgfn_..._set_anno_nel_numero                (20260908-14)
 --       Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): le famiglie col codice della sorgente (DDT_VENDITA, ORDINE_VENDITA, RESO_VENDITA).
 -- ------------------------------------------------------------
 -- Elenco test (plan 7):
 -- 1) I cinque default sono quelli dichiarati (la fattura e' l'unico false)
@@ -57,8 +58,8 @@ SELECT is(
     (SELECT string_agg(f.codice_interno || '=' || f.anno_nel_numero_default::text,
                        ', ' ORDER BY f.codice_interno)
        FROM vendite.famiglie_documento f
-      WHERE f.codice_interno IN ('FATTURA', 'DDT', 'ORDINE', 'RESO', 'COMMESSA')),
-    'COMMESSA=true, DDT=true, FATTURA=false, ORDINE=true, RESO=true',
+      WHERE f.codice_interno IN ('FATTURA', 'DDT_VENDITA', 'ORDINE_VENDITA', 'RESO_VENDITA', 'COMMESSA')),
+    'COMMESSA=true, DDT_VENDITA=true, FATTURA=false, ORDINE_VENDITA=true, RESO_VENDITA=true',
     '1) I cinque default sono quelli dichiarati: solo la fattura ha l''anno in colonna, non nella stringa');
 
 -- ============================================================
@@ -78,14 +79,14 @@ a AS (
   INSERT INTO vendite.registri_fatturazione
       (codice, descrizione, emittente_soggetto_ruolo_id, famiglia_documento,
        prefisso, lunghezza_numero, reset_policy, utility_id)
-  SELECT 'PGTAP-ANN-A', 'pgTAP anno: DDT annuale', base.sr, 'DDT',
+  SELECT 'PGTAP-ANN-A', 'pgTAP anno: DDT annuale', base.sr, 'DDT_VENDITA',
          'QAA', 7, 'ANNUALE', base.ut FROM base
   RETURNING id),
 b AS (
   INSERT INTO vendite.registri_fatturazione
       (codice, descrizione, emittente_soggetto_ruolo_id, famiglia_documento,
        prefisso, lunghezza_numero, reset_policy, utility_id)
-  SELECT 'PGTAP-ANN-B', 'pgTAP anno: ordine continuo', base.sr, 'ORDINE',
+  SELECT 'PGTAP-ANN-B', 'pgTAP anno: ordine continuo', base.sr, 'ORDINE_VENDITA',
          'QAB', 7, 'NESSUNA', base.ut FROM base
   RETURNING id),
 c AS (
@@ -126,7 +127,7 @@ SELECT is(
 CREATE TEMP TABLE tmp_ann_num_a AS
 SELECT v.numero
   FROM vendite.fn_assegna_numero_documento(
-           p_famiglia_documento          => 'DDT',
+           p_famiglia_documento          => 'DDT_VENDITA',
            p_emittente_soggetto_ruolo_id => (SELECT sr FROM tmp_ann),
            p_data                        => DATE '2126-04-10',
            p_documento_id                => NULL,
@@ -142,7 +143,7 @@ SELECT matches(
 CREATE TEMP TABLE tmp_ann_num_b AS
 SELECT v.numero
   FROM vendite.fn_assegna_numero_documento(
-           p_famiglia_documento          => 'ORDINE',
+           p_famiglia_documento          => 'ORDINE_VENDITA',
            p_emittente_soggetto_ruolo_id => (SELECT sr FROM tmp_ann),
            p_data                        => DATE '2126-04-10',
            p_documento_id                => NULL,

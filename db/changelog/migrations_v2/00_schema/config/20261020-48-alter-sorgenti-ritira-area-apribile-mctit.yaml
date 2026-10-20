@@ -1,0 +1,202 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2d (G-6, L2d-1): si ritira
+#   config.sorgenti.area, entra config.sorgenti.apribile.
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-6, §10.4 (L2d-1 di Tid, 2026-10-20).
+#
+#   area era un vocabolario a parte (il plurale: PREVENTIVI, ORDINI...) e il suo vuoto era
+#   una regola nascosta: «area IS NULL = la sorgente non e' un documento che si apre». Chi
+#   la legge (fn_list_commessa_attivita, vw_dash_competenza_gruppi) la usa per APRIRE il
+#   documento, non solo per la dashboard: per questo la colonna esplicita si chiama
+#   apribile e non in_dashboard (L2d-1). Il documento si apre dal codice della sorgente.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   * L'unico dipendente in pg_depend e' vw_dash_competenza_gruppi: si toglie qui e torna
+#     in 20_code (20261020-82) con documento_apribile al posto di area_documento.
+#   * apribile = (area IS NOT NULL) per riga, senza UPDATE: nessun comportamento cambia.
+#     Da zero la riempie poi il CSV (mirror 20251002-21, colonna apribile).
+#   * Nessun trigger su config.sorgenti nomina area in UPDATE OF (lock: codice_interno,
+#     categoria; ATTIVO: attivo, tipo_doc_fiscale_id).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261020-48-alter-sorgenti-ritira-area-apribile-mctit.yaml
+
+  - changeSet:
+      id: 20261020-48-alter-sorgenti-ritira-area-apribile
+      author: mctit
+      failOnError: true
+      comment: >
+        config.sorgenti: si ritira area (il plurale, e il suo vuoto come regola), entra apribile boolean NOT NULL, uguale a «area valorizzata». Toglie vw_dash_competenza_gruppi (torna in 20261020-82). Grammatica unica, 2d (G-6, L2d-1).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: sorgenti
+            columnName: area
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Prima chi legge la colonna che si ritira: torna in 20_code (20261020-82), senza
+              -- CASCADE (nessun dipendente sopra di lei, letto da pg_depend il 2026-10-20).
+              DROP VIEW vendite.vw_dash_competenza_gruppi;
+
+              -- apribile si riempie per riga SENZA UPDATE (forma del 20261002-63): colonna nuda,
+              -- poi ALTER TYPE sullo stesso tipo con USING sulla riga, poi NOT NULL. Nessun
+              -- trigger di riga, nessun default che resti: una sorgente nuova dichiara se si apre.
+              ALTER TABLE config.sorgenti
+                ADD COLUMN apribile boolean;
+
+              ALTER TABLE config.sorgenti
+                ALTER COLUMN apribile TYPE boolean USING (area IS NOT NULL);
+
+              ALTER TABLE config.sorgenti
+                ALTER COLUMN apribile SET NOT NULL;
+
+              COMMENT ON COLUMN config.sorgenti.apribile IS
+                'Vero quando la sorgente e'' un documento con una sua PAGINA: chi mostra una riga che viene da questa sorgente (la lista delle attivita'' di commessa, i gruppi della competenza in dashboard) la apre col codice della sorgente e ne risolve il numero (label_selector). Falso per le righe, i consumi, i documenti che non hanno ancora una pagina. Il valore sta nel CSV 80_data/sql/config/sorgenti.csv. Rev 2026-10-20 (20261020-48, brief-db-grammatica-unica-documenti 2d, G-6 e L2d-1 di Tid): sostituisce config.sorgenti.area, che diceva la stessa cosa con un vuoto («area IS NULL = non sfogliabile») e con un vocabolario a parte, il plurale. Nasce uguale a «area valorizzata»: nessun comportamento cambia.';
+
+              ALTER TABLE config.sorgenti
+                DROP CONSTRAINT chk_sorgenti_area_non_vuota;
+
+              ALTER TABLE config.sorgenti
+                DROP COLUMN area;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                ADD COLUMN area character varying(30);
+
+              ALTER TABLE config.sorgenti
+                ALTER COLUMN area TYPE character varying(30) USING (CASE WHEN apribile THEN CASE codice_interno WHEN 'PREVENTIVO' THEN 'PREVENTIVI' WHEN 'CONTRATTO' THEN 'CONTRATTI' WHEN 'ORDINE_VENDITA' THEN 'ORDINI' WHEN 'DDT_VENDITA' THEN 'DDT' WHEN 'COMMESSA' THEN 'COMMESSE' WHEN 'OFFERTA_COMMERCIALE' THEN 'OFFERTE' END END);
+
+              ALTER TABLE config.sorgenti
+                ADD CONSTRAINT chk_sorgenti_area_non_vuota CHECK (((area IS NULL) OR (btrim((area)::text) <> ''::text)));
+
+              COMMENT ON COLUMN config.sorgenti.area IS
+                'Area documentale corrispondente alla sorgente: PREVENTIVI, ORDINI, CONTRATTI, DDT, OFFERTE, COMMESSE. E'' la chiave con cui vendite.vw_dash_fatturazione_documenti (e le sei viste per-sorgente che la compongono) etichetta i documenti, e serve a tradurre un gruppo fatturabile nel suo riferimento leggibile per l''operatore. Prima del 2026-07-27 questo vocabolario NON esisteva come dato: la stringa era scritta a mano dentro ciascuna delle sei viste. NULL = la sorgente non e'' un documento sfogliabile (ATTIVITA, ATTIVITA_CONSUMI, FATTURA, RESO_VENDITA): i consumatori usano LEFT JOIN, cosi'' un gruppo senza area non sparisce dall''elenco. NON e'' fra le colonne lock (a differenza di categoria): e'' una mappa di presentazione, non una classificazione strutturale. brief-db-emissione-fattura-per-documento-sorgente A7-bis / D-5.';
+
+              ALTER TABLE config.sorgenti DROP COLUMN apribile;
+
+              CREATE VIEW vendite.vw_dash_competenza_gruppi WITH (security_invoker=true) AS
+              WITH aggregato AS (
+                       SELECT a.competenza_mese,
+                          a.gruppo_key,
+                          a.sorgente_tipo_id,
+                          a.sorgente_uid,
+                          a.commessa_id,
+                          a.commessa_codice,
+                          a.emittente_soggetto_ruolo_id,
+                          a.cliente_display,
+                          a.stadio,
+                          a.commessa_emittibile,
+                          a.commessa_stato_codice_interno,
+                          a.commessa_stato_descrizione,
+                          a.billing_account_id,
+                          count(*) AS n_attivita,
+                          COALESCE(sum(a.valore), (0)::numeric) AS valore,
+                          min(a.data_attivita) AS data_attivita_min,
+                          max(a.data_attivita) AS data_attivita_max,
+                          bool_or(((a.tipo_movimento)::text = 'ONERE'::text)) AS ha_oneri,
+                          array_agg(DISTINCT a.registro_id) AS registri_ids,
+                          min((a.registro_codice)::text) AS registro_codice_unico,
+                          min(a.data_documento_prevista) AS data_prevista_unica,
+                          bool_or(a.emissione_trattenuta) AS trattenuto,
+                          min(a.emissione_trattenuta_da_lotti[1]) AS lotto_blocco_id
+                         FROM vendite.vw_dash_competenza_attivita a
+                        GROUP BY a.competenza_mese, a.gruppo_key, a.sorgente_tipo_id, a.sorgente_uid, a.commessa_id, a.commessa_codice, a.emittente_soggetto_ruolo_id, a.cliente_display, a.stadio, a.commessa_emittibile, a.commessa_stato_codice_interno, a.commessa_stato_descrizione, a.billing_account_id
+                      )
+               SELECT g.competenza_mese,
+                  g.gruppo_key,
+                  COALESCE(s.codice_interno, 'ONERI_COMMESSA'::character varying) AS tipo_gruppo,
+                  s.area AS area_documento,
+                  COALESCE(doc.documento_numero, g.commessa_codice, g.gruppo_key) AS riferimento,
+                  g.commessa_id,
+                  g.commessa_codice,
+                  g.emittente_soggetto_ruolo_id,
+                  g.cliente_display,
+                  g.stadio,
+                  g.n_attivita,
+                  g.valore,
+                  g.data_attivita_min,
+                  g.data_attivita_max,
+                  g.ha_oneri,
+                  g.sorgente_tipo_id,
+                  g.sorgente_uid,
+                  g.commessa_emittibile,
+                  g.commessa_stato_codice_interno,
+                  g.commessa_stato_descrizione,
+                  doc.documento_id,
+                  COALESCE(ba_riga.parent_account_id, ba_riga.id) AS ba_fatturazione_id,
+                  ba_fatt.codice AS ba_codice_fatturazione,
+                  sog.ragione_sociale_completa AS cliente_fatturazione_display,
+                  sog.id_fiscale_univoco_cf_piva AS id_fiscale,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  g.registri_ids,
+                  (cardinality(g.registri_ids))::smallint AS registri_n,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.registro_codice_unico
+                          ELSE NULL::text
+                      END AS registro_codice,
+                      CASE
+                          WHEN (cardinality(g.registri_ids) = 1) THEN g.data_prevista_unica
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  esito.stato_esecuzione AS ultimo_esito,
+                  esito.errore_codice AS ultimo_errore_codice,
+                  esito.errore_messaggio AS ultimo_errore_messaggio,
+                  esito.errore_quando AS ultimo_errore_quando,
+                  esito.lotto_codice AS ultimo_lotto_codice,
+                      CASE
+                          WHEN g.trattenuto THEN 'TRATTENUTO_DA_LOTTO'::text
+                          ELSE NULL::text
+                      END AS emissione_blocco_reason,
+                      CASE
+                          WHEN g.trattenuto THEN 'vendite.emissione.blocco_reason.trattenuto_da_lotto'::text
+                          ELSE NULL::text
+                      END AS emissione_blocco_reason_key,
+                  g.lotto_blocco_id AS emissione_blocco_lotto_id,
+                  fb.lotto_codice AS emissione_blocco_lotto_codice,
+                  esito.lotto_id AS ultimo_lotto_id,
+                  esito.lotto_stato AS ultimo_lotto_stato,
+                  esito.lotto_pre_fiscale AS ultimo_lotto_pre_fiscale
+                 FROM ((((((((((aggregato g
+                   LEFT JOIN config.sorgenti s ON ((s.id = g.sorgente_tipo_id)))
+                   LEFT JOIN LATERAL vendite.fn_get_sorgente_documento_ref(g.sorgente_tipo_id, g.sorgente_uid) doc(documento_id, documento_numero) ON ((s.area IS NOT NULL)))
+                   LEFT JOIN anagrafiche.billing_account ba_riga ON ((ba_riga.id = g.billing_account_id)))
+                   LEFT JOIN anagrafiche.billing_account ba_fatt ON ((ba_fatt.id = COALESCE(ba_riga.parent_account_id, ba_riga.id))))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_fatt ON ((sr_fatt.id = ba_fatt.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti sog ON ((sog.id = sr_fatt.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = g.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT le.stato_esecuzione,
+                          le.errore_codice,
+                          le.errore_messaggio,
+                          le.errore_quando,
+                          f.lotto_codice,
+                          f.lotto_id,
+                          f.stato_codice_interno AS lotto_stato,
+                          f.pre_fiscale AS lotto_pre_fiscale
+                         FROM (vendite.fatturazione_lotti_esiti le
+                           JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = le.lotto_id)))
+                        WHERE ((le.gruppo_key = g.gruppo_key) AND (f.lotto_competenza_mese = g.competenza_mese))
+                        ORDER BY COALESCE(le.errore_quando, le.data_update) DESC, le.id DESC
+                       LIMIT 1) esito ON (true))
+                   LEFT JOIN vendite.vw_lotti_fase fb ON ((fb.lotto_id = g.lotto_blocco_id)));
+
+              COMMENT ON VIEW vendite.vw_dash_competenza_gruppi IS
+                'I documenti da emettere di una competenza, un gruppo per riga, con l''esito dell''ULTIMO tentativo di fatturazione (ultimo_esito, ultimo_errore_codice, ultimo_errore_messaggio, ultimo_errore_quando, ultimo_lotto_codice). Rev 2026-09-07: l''esito si legge da vendite.fatturazione_lotti_esiti e non piu'' dalle colonne del perimetro — quelle non esistevano sui giri che un perimetro non lo dichiarano, quindi un documento fallito in un giro di massa restava senza segno. Il segno NON spegne stadio ne'' commessa_emittibile (decisione di Tid): dice che un tentativo e'' fallito, non che il documento non si possa fatturare. Il legame e'' (documento, mese di competenza): senza il mese, il documento di settembre erediterebbe l''errore di agosto. Brief: brief-db-esito-gruppo-lotto.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_dash_competenza_gruppi TO zeroerp_app;

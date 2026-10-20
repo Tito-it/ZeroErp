@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
@@ -381,7 +382,7 @@ END $fix$;
 
 -- ── L'attivita' ALLOCATA sul segmento della riga consegnata (test 8) ──
 -- La commessa e la sua ROOT, poi l'attivita' NON_EMESSA sul segmento
--- 'DDT:<uid>:R:<id>': e' cio' che fn_get_stato_push_segment legge come
+-- 'DDT_VENDITA:<uid>:R:<id>': e' cio' che fn_get_stato_push_segment legge come
 -- ALLOCATA, cioe' «merce instradata a fatturazione».
 CREATE TEMP TABLE tmp_com_lr AS
 SELECT vendite.fn_get_or_create_commessa(
@@ -404,7 +405,7 @@ SELECT vendite.fn_link_commessa_sorgente(
   p_meta             => '{}'::jsonb);
 
 CREATE TEMP TABLE tmp_seg_lr AS
-SELECT ('DDT:' || d.uid::text || ':R:' || dr.id::text)::varchar AS segment_key
+SELECT ('DDT_VENDITA:' || d.uid::text || ':R:' || dr.id::text)::varchar AS segment_key
   FROM vendite.ddt d
   JOIN vendite.ddt_righe dr ON dr.ddt_id = d.id
  WHERE d.id = (SELECT id FROM tmp_fix WHERE chiave = 'ddt_cons');

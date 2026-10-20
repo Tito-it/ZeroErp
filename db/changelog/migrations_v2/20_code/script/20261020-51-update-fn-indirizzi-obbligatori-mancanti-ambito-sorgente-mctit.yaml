@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2d (G-6): fn_indirizzi_obbligatori_mancanti riceve il codice del documento
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-6, §10.4.
+#
+#   p_ambito e' il codice della sorgente (20261020-47): si ancora a
+#   config.tipi_indirizzi_allowed.ambito%TYPE. Il tipo passa da text a character varying,
+#   quindi la firma cambia: DROP + CREATE (un CREATE OR REPLACE creerebbe un overload).
+#   EXECUTE ridato. I chiamanti passano un letterale: si adeguano nello stesso giro.
+#
+#   Corpo e COMMENT dal catalogo vivo di dbdev (2026-10-20), non da uno YAML; sostituzioni
+#   contate. %TYPE in firma, DECLARE e RETURNS TABLE dove c'e' una colonna; nudi, col
+#   motivo accanto, i valori che una colonna non ha (conteggi, jsonb di lavoro, array).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261020-51-update-fn-indirizzi-obbligatori-mancanti-ambito-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-51-update-fn-indirizzi-obbligatori-mancanti-ambito-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_indirizzi_obbligatori_mancanti: p_ambito e' il codice della sorgente, ancorato (DROP + CREATE). Grammatica unica, 2d (G-6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.fn_indirizzi_obbligatori_mancanti(text,integer[]);
+
+              CREATE FUNCTION script.fn_indirizzi_obbligatori_mancanti(
+                  p_ambito        config.tipi_indirizzi_allowed.ambito%TYPE,
+                  -- id di config.tipi_indirizzi: %TYPE[] non e' sintassi valida
+                  p_tipi_presenti integer[])
+               RETURNS text[]
+               LANGUAGE sql
+               STABLE
+              AS $function$
+              -- rev 2026-10-20 (20261020-51, brief-db-grammatica-unica-documenti, 2d G-6):
+              --   p_ambito e' il codice della sorgente del documento (FATTURA,
+              --   DDT_VENDITA...), ancorato.
+                -- Codici obbligatori dell'ambito non presenti tra i tipi passati.
+                SELECT COALESCE(
+                         array_agg(t.codice_interno ORDER BY t.codice_interno),
+                         ARRAY[]::text[])
+                  FROM config.tipi_indirizzi_allowed a
+                  JOIN config.tipi_indirizzi t ON t.id = a.tipo_indirizzo_id
+                 WHERE a.ambito = p_ambito
+                   AND a.attivo IS TRUE
+                   AND a.obbligatorio IS TRUE
+                   AND NOT (a.tipo_indirizzo_id = ANY(COALESCE(p_tipi_presenti, ARRAY[]::integer[])));
+              $function$;
+
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_indirizzi_obbligatori_mancanti(config.tipi_indirizzi_allowed.ambito%TYPE, integer[]) IS
+                'Rev 2026-10-20 (20261020-51, brief-db-grammatica-unica-documenti 2d, G-6): p_ambito e'' il codice della sorgente del documento, ancorato a config.tipi_indirizzi_allowed.ambito%TYPE.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_indirizzi_obbligatori_mancanti(config.tipi_indirizzi_allowed.ambito%TYPE, integer[]) TO zeroerp_app;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION script.fn_indirizzi_obbligatori_mancanti(config.tipi_indirizzi_allowed.ambito%TYPE, integer[]);
+
+              CREATE FUNCTION script.fn_indirizzi_obbligatori_mancanti(p_ambito text, p_tipi_presenti integer[])
+               RETURNS text[]
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                -- Codici obbligatori dell'ambito non presenti tra i tipi passati.
+                SELECT COALESCE(
+                         array_agg(t.codice_interno ORDER BY t.codice_interno),
+                         ARRAY[]::text[])
+                  FROM config.tipi_indirizzi_allowed a
+                  JOIN config.tipi_indirizzi t ON t.id = a.tipo_indirizzo_id
+                 WHERE a.ambito = p_ambito
+                   AND a.attivo IS TRUE
+                   AND a.obbligatorio IS TRUE
+                   AND NOT (a.tipo_indirizzo_id = ANY(COALESCE(p_tipi_presenti, ARRAY[]::integer[])));
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_indirizzi_obbligatori_mancanti(text,integer[]) IS
+                '';
+
+              GRANT EXECUTE ON FUNCTION script.fn_indirizzi_obbligatori_mancanti(text,integer[]) TO zeroerp_app;

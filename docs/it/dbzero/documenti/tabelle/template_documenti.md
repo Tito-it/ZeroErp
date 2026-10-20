@@ -43,6 +43,7 @@
 | PRIMARY KEY | template_documenti_pkey | id |
 | UNIQUE | uq_template_documenti_emittente_sorgente_codice | emittente_fiscale_id, sorgente_tipo_id, codice |
 | UNIQUE | uq_template_documenti_emittente_sorgente_codice_interno | emittente_fiscale_id, sorgente_tipo_id, codice_interno |
+| UNIQUE | uq_template_documenti_id_tipo_sorgente | id, tipo_documento_output_id, sorgente_tipo_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -52,6 +53,7 @@
 | uq_template_documenti_default_attivo | `CREATE UNIQUE INDEX uq_template_documenti_default_attivo ON documenti.template_documenti USING btree (tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id) NULLS NOT DISTINCT WHERE ((is_default IS TRUE) AND (attivo IS TRUE))` |
 | uq_template_documenti_emittente_sorgente_codice | `CREATE UNIQUE INDEX uq_template_documenti_emittente_sorgente_codice ON documenti.template_documenti USING btree (emittente_fiscale_id, sorgente_tipo_id, codice) NULLS NOT DISTINCT` |
 | uq_template_documenti_emittente_sorgente_codice_interno | `CREATE UNIQUE INDEX uq_template_documenti_emittente_sorgente_codice_interno ON documenti.template_documenti USING btree (emittente_fiscale_id, sorgente_tipo_id, codice_interno) NULLS NOT DISTINCT` |
+| uq_template_documenti_id_tipo_sorgente | `CREATE UNIQUE INDEX uq_template_documenti_id_tipo_sorgente ON documenti.template_documenti USING btree (id, tipo_documento_output_id, sorgente_tipo_id)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

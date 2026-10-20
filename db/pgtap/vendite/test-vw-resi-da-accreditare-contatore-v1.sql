@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vw_resi_da_accreditare nella forma §3c — popolata dalla differenza
 --       NEGATIVA del contatore, tipo reso degradato a etichetta — step 4,
@@ -316,13 +317,13 @@ SELECT pg_temp.mk_reso((SELECT ddt_b_riga FROM tmp_p6), (SELECT ddt_b_uid FROM t
                        (SELECT tipo_credito_id FROM tmp_refs)) AS resi_riga_id;
 
 -- Fatturazione: P2 e P3 per 10 (tutto), P4 per 7 (parziale). P1 nessuna.
-SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_p2)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p2)::text, 10);
-SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_p3)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p3)::text, 10);
-SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_p4)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p4)::text, 7);
+SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p2)::text, (SELECT ddt_riga_id FROM tmp_p2)), 10);
+SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p3)::text, (SELECT ddt_riga_id FROM tmp_p3)), 10);
+SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p4)::text, (SELECT ddt_riga_id FROM tmp_p4)), 7);
 -- P5: la riga manuale e' fatturata per intero, sul segmento della SUA riga di DDT.
-SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_p1)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p5_riga_ddt)::text, 6);
+SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p1)::text, (SELECT ddt_riga_id FROM tmp_p5_riga_ddt)), 6);
 -- P6: solo la spedizione A e' fatturata. La B no, di proposito.
-SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_a_uid FROM tmp_p6)::text || ':R:' || (SELECT ddt_a_riga FROM tmp_p6)::text, 4);
+SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_a_uid FROM tmp_p6)::text, (SELECT ddt_a_riga FROM tmp_p6)), 4);
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
 

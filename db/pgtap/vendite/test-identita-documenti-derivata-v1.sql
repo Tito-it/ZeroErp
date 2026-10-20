@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): la tabella della famiglia viene dalla sorgente (config.fn_sorgente_tabella).
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: il test 4 conta documenti su tabelle con la RLS accesa
 --   (vendite.fatture, vendite.commesse). Da dentro un perimetro un documento
@@ -94,11 +95,13 @@ SELECT plan(6);
 CREATE TEMP TABLE tmp_idd_fam AS
 SELECT fd.codice_interno,
        fd.descrizione,
-       fd.schema_tabella,
-       fd.nome_tabella,
+       -- rev 2026-10-20 (2c): la tabella e' quella della sorgente (il BB del guard)
+       st.schema_tabella,
+       st.nome_tabella,
        fd.colonna_numero,
-       to_regclass(format('%I.%I', fd.schema_tabella, fd.nome_tabella)) AS relid
+       st.relid
   FROM vendite.famiglie_documento fd
+  LEFT JOIN LATERAL config.fn_sorgente_tabella(fd.codice_interno) st ON true
  WHERE fd.attivo;
 
 -- ⭐ Una funzione sola per «questa tabella ha questa colonna?»: la stessa

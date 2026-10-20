@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- Test: tipo_movimento promosso da meta (jsonb) a COLONNA su
 --       commesse_attivita + attivita_fatturabili, con dominio esteso a ONERE
@@ -130,7 +131,7 @@ FROM vendite.fn_upsert_commessa_attivita(
   -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
   p_sorgente_tipo_id => (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
   p_sorgente_uid => ((SELECT commessa_id FROM tmp_commessa_tm))::text,
-  p_segment_key => ('ORD:TM:R:' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
+  p_segment_key => ('ORDINE_VENDITA:TM:R:' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
   p_articolo_id => (SELECT articolo_id FROM tmp_refs_tm),
   p_istanza_utility_id => (SELECT istanza_utility_id FROM tmp_refs_tm),
   p_data_attivita => DATE '2026-07-15',

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_list_contratti_da_pushare
 -- ------------------------------------------------------------
@@ -186,7 +187,7 @@ SELECT ok(
     SELECT 1
     FROM tmp_result_contr rc
     WHERE rc.contratto_id = (SELECT id FROM tmp_contratto)
-      AND rc.segment_key = 'CONTR:' || (SELECT uid FROM tmp_contratto)::text
+      AND rc.segment_key = 'CONTRATTO:' || (SELECT uid FROM tmp_contratto)::text
                             || ':R:' || (SELECT id FROM tmp_contratto_riga)::text
                             || ':M:' || to_char(
                                 date_trunc('month',

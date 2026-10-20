@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): test 1 con gli ambiti col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
@@ -149,7 +150,8 @@ SELECT is(
        JOIN config.tipi_indirizzi t ON t.id = a.tipo_indirizzo_id
        LEFT JOIN config.tipi_indirizzi r ON r.id = a.ripiego_tipo_indirizzo_id
       WHERE a.slot_default),
-    'CONTRATTI:CON>FATT, DDT:CON>FATT, OFFERTE:CON>FATT, ORDINI:CON>FATT, PREVENTIVI:CON>FATT',
+    -- rev 2026-10-20 (2d, G-6): gli ambiti sono i codici delle sorgenti
+    'CONTRATTO:CON>FATT, DDT_VENDITA:CON>FATT, OFFERTA_COMMERCIALE:CON>FATT, ORDINE_VENDITA:CON>FATT, PREVENTIVO:CON>FATT',
     '1) slot di default CON, ripiego FATT, su cinque ambiti; fattura e DDT d''acquisto senza');
 
 SELECT is(

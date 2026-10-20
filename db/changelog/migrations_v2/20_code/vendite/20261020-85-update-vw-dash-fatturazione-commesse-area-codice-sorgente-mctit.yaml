@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2d (G-6): vw_dash_fatturazione_commesse: l'area COMMESSE diventa COMMESSA
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-6, §10.4.
+#
+#   La dashboard raggruppa per codice della sorgente (G-6): il valore della colonna area passa
+#   dal plurale (COMMESSE) al codice (COMMESSA). Stesso tipo, stessa colonna: CREATE OR REPLACE,
+#   le viste sopra (vw_dash_fatturazione_documenti, i riepiloghi) restano in piedi.
+#   ⚠️ CAMBIA UN VALORE nelle risposte della dashboard: le costanti DASH_*_AREE del backend e
+#   il frontend della dashboard seguono nello stesso giro.
+#
+#   Corpo e COMMENT dal catalogo vivo di dbdev (2026-10-20), non da uno YAML; sostituzioni
+#   contate. %TYPE in firma, DECLARE e RETURNS TABLE dove c'e' una colonna; nudi, col
+#   motivo accanto, i valori che una colonna non ha (conteggi, jsonb di lavoro, array).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261020-85-update-vw-dash-fatturazione-commesse-area-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-85-update-vw-dash-fatturazione-commesse-area-codice-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_dash_fatturazione_commesse: l'area COMMESSE diventa COMMESSA, il codice della sorgente. Grammatica unica, 2d (G-6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- security_invoker si AZZERA a ogni CREATE OR REPLACE VIEW: si ripete dal catalogo.
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_commesse WITH (security_invoker=on) AS
+              SELECT 'COMMESSA'::character varying AS area,
+                  ca.competenza_mese,
+                  co.id AS documento_id,
+                  (co.id)::text AS documento_uid,
+                  (co.codice)::text AS codice,
+                  NULL::bigint AS emittente_fiscale_id,
+                  co.emittente_soggetto_ruolo_id,
+                  sum((COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita)) AS valore_totale,
+                  COALESCE(sum((COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita)) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text)), (0)::numeric) AS valore_transitato,
+                  (count(*))::integer AS unita_totali,
+                  (count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text)))::integer AS unita_transitate,
+                  (count(*) = count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text))) AS is_transitato,
+                  ((sc.codice_interno)::text = 'ANNULLATA'::text) AS is_abortito,
+                  (
+                      CASE
+                          WHEN ((sc.codice_interno)::text = 'ANNULLATA'::text) THEN NULL::text
+                          WHEN (count(*) = count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text))) THEN NULL::text
+                          WHEN (count(*) FILTER (WHERE (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text))) > 0) THEN 'ATTIVITA_NON_APPROVATA'::text
+                          ELSE 'ATTIVITA_NON_EMESSA'::text
+                      END)::character varying AS motivo_fermo,
+                  sc.codice_interno AS stato_codice_interno,
+                  sc.codice AS stato_codice,
+                  NULL::character varying AS fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.competenza_mese AS data_riferimento
+                 FROM ((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)))
+                GROUP BY co.id, co.codice, co.emittente_soggetto_ruolo_id, ca.competenza_mese, sc.codice_interno, sc.codice, s.ragione_sociale_completa;
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_commesse IS
+                'Dashboard fatturazione: resolver area COMMESSE. Valore imponibile snapshot totale vs EMESSO. Denominatore = sole attivita'' COMPUTABILI: esclude i void (stato_emissione ANNULLATA; stato_approvazione RIFIUTATA se non gia'' EMESSA) simmetrico a orr.attivo degli ordini -> is_transitato/totale/motivo_fermo non falsati dalle void. is_abortito=stato commessa ANNULLATA. SCOPE EMITTENTE nel resolver via fn_get_emittenti_scope_sr_ids(GUC): NULL=tutto, ''{}''=niente (fail-closed), array=whitelist. cliente_display=ragione sociale intestatario BA. Consumata da vw_dash_fatturazione_documenti. Rev 2026-10-20 (20261020-85, brief-db-grammatica-unica-documenti 2d, G-6): l''area COMMESSE diventa COMMESSA, il codice della sorgente (il plurale e'' ritirato).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_commesse WITH (security_invoker=on) AS
+              SELECT 'COMMESSE'::character varying AS area,
+                  ca.competenza_mese,
+                  co.id AS documento_id,
+                  (co.id)::text AS documento_uid,
+                  (co.codice)::text AS codice,
+                  NULL::bigint AS emittente_fiscale_id,
+                  co.emittente_soggetto_ruolo_id,
+                  sum((COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita)) AS valore_totale,
+                  COALESCE(sum((COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita)) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text)), (0)::numeric) AS valore_transitato,
+                  (count(*))::integer AS unita_totali,
+                  (count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text)))::integer AS unita_transitate,
+                  (count(*) = count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text))) AS is_transitato,
+                  ((sc.codice_interno)::text = 'ANNULLATA'::text) AS is_abortito,
+                  (
+                      CASE
+                          WHEN ((sc.codice_interno)::text = 'ANNULLATA'::text) THEN NULL::text
+                          WHEN (count(*) = count(*) FILTER (WHERE ((ca.stato_emissione)::text = 'EMESSA'::text))) THEN NULL::text
+                          WHEN (count(*) FILTER (WHERE (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text))) > 0) THEN 'ATTIVITA_NON_APPROVATA'::text
+                          ELSE 'ATTIVITA_NON_EMESSA'::text
+                      END)::character varying AS motivo_fermo,
+                  sc.codice_interno AS stato_codice_interno,
+                  sc.codice AS stato_codice,
+                  NULL::character varying AS fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.competenza_mese AS data_riferimento
+                 FROM ((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)))
+                GROUP BY co.id, co.codice, co.emittente_soggetto_ruolo_id, ca.competenza_mese, sc.codice_interno, sc.codice, s.ragione_sociale_completa;
+
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_commesse IS
+                'Dashboard fatturazione: resolver area COMMESSE. Valore imponibile snapshot totale vs EMESSO. Denominatore = sole attivita'' COMPUTABILI: esclude i void (stato_emissione ANNULLATA; stato_approvazione RIFIUTATA se non gia'' EMESSA) simmetrico a orr.attivo degli ordini -> is_transitato/totale/motivo_fermo non falsati dalle void. is_abortito=stato commessa ANNULLATA. SCOPE EMITTENTE nel resolver via fn_get_emittenti_scope_sr_ids(GUC): NULL=tutto, ''{}''=niente (fail-closed), array=whitelist. cliente_display=ragione sociale intestatario BA. Consumata da vw_dash_fatturazione_documenti.';

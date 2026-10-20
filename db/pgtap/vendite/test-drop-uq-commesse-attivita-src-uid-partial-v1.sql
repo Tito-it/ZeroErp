@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- Test: drop uq_commesse_attivita_src_uid_partial
 -- ------------------------------------------------------------
@@ -136,7 +137,7 @@ SELECT lives_ok(
     )
     SELECT
       (SELECT id FROM tmp_commessa_srcuid),
-      'PREV:' || r.sorgente_uid_test::text || ':R:' || v.riga::text,
+      'PREVENTIVO:' || r.sorgente_uid_test::text || ':R:' || v.riga::text,
       r.articolo_id, r.istanza_utility_id, DATE '2026-06-01', r.uom_id, 1,
       DATE '2026-06-01', DATE '2026-06-01', DATE '2026-06-30',
       r.tipo_doc_fiscale_id, r.valuta_id, 10.00,

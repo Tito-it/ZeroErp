@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_partite_merce — la partita di merce PER DOCUMENTO
 --       (D14 quarta leva; brief-db-partita-merce-per-documento §2, §2-bis, §3;
@@ -385,7 +386,7 @@ CREATE TEMP TABLE tmp_d1 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FR
                                                         p_lega_anche => (SELECT ordine_riga_id FROM tmp_ob));
 CREATE TEMP TABLE tmp_d2 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-11');
 CREATE TEMP TABLE tmp_d3 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-12');
-SELECT pg_temp.ch_mk_af(('ORD:' || (SELECT ordine_uid FROM tmp_o1)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_o1)::text)::varchar, 15);
+SELECT pg_temp.ch_mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid FROM tmp_o1)::text, (SELECT ordine_riga_id FROM tmp_o1)), 15);
 
 -- ⭐ Il DDT di MEZZO chiesto da solo. Senza R1 (il primo DDT, stessa riga
 --    d'ordine) la sua partizione sarebbe {se stesso} e prenderebbe 10.
@@ -425,7 +426,7 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE tmp_o2 AS SELECT * FROM pg_temp.ch_mk_ordine(10);
 CREATE TEMP TABLE tmp_p AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o2), (SELECT ordine_riga_id FROM tmp_o2), 10, DATE '2026-08-13');
-SELECT pg_temp.ch_fattura(('DDT:' || (SELECT ddt_uid FROM tmp_p)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p)::text)::varchar, 6);
+SELECT pg_temp.ch_fattura(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_p)::text, (SELECT ddt_riga_id FROM tmp_p)), 6);
 CREATE TEMP TABLE tmp_reso AS SELECT * FROM pg_temp.ch_mk_reso((SELECT ddt_riga_id FROM tmp_p), (SELECT ddt_uid FROM tmp_p), 5);
 SELECT vendite.fn_accredita_riga_reso((SELECT resi_riga_id FROM tmp_reso));
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com_ch), true, false);
@@ -525,12 +526,12 @@ SELECT results_eq(
 -- ============================================================
 CREATE TEMP TABLE tmp_o5 AS SELECT * FROM pg_temp.ch_mk_ordine(10);
 CREATE TEMP TABLE tmp_d5 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o5), (SELECT ordine_riga_id FROM tmp_o5), 10, DATE '2026-08-16');
-SELECT pg_temp.ch_mk_af(('DDT:' || (SELECT ddt_uid FROM tmp_d5)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_d5)::text)::varchar, 10);
-SELECT pg_temp.ch_mk_af(('ORD:' || (SELECT ordine_uid FROM tmp_o5)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_o5)::text)::varchar, 5, 'ONERE');
+SELECT pg_temp.ch_mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_d5)::text, (SELECT ddt_riga_id FROM tmp_d5)), 10);
+SELECT pg_temp.ch_mk_af(script.fn_segment_key('ORDINE_VENDITA', (SELECT ordine_uid FROM tmp_o5)::text, (SELECT ordine_riga_id FROM tmp_o5)), 5, 'ONERE');
 
 SELECT results_eq(
   $q$SELECT p.fatturato_merce, p.fatturato_da_ordine, p.fatturato, p.differenza,
-            (SELECT count(*)::int FROM vendite.fn_af_merce_per_riga(ARRAY[('ORD:' || o.ordine_uid::text || ':R:' || o.ordine_riga_id::text)::varchar]) f
+            (SELECT count(*)::int FROM vendite.fn_af_merce_per_riga(ARRAY[script.fn_segment_key('ORDINE_VENDITA', o.ordine_uid::text, o.ordine_riga_id)]) f
               WHERE f.tipo_movimento = 'ONERE' AND f.quantita = 5)
        FROM vendite.fn_partite_merce(ARRAY[(SELECT ddt_id FROM tmp_d5)]) p, tmp_o5 o$q$,
   $q$VALUES (10::numeric, 0::numeric, 10::numeric, 0::numeric, 1)$q$,

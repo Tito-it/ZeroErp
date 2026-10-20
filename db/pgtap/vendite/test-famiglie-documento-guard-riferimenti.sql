@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): le famiglie di prova nascono come sorgenti (dbops.fn_pgtap_crea_sorgente), la tabella e' quella della sorgente; il test 7 legge config.fn_sorgente_tabella.
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture SCRIVE in vendite.famiglie_documento, che e'
 --   un catalogo di configurazione — le sue righe le mette una migrazione, non
@@ -92,14 +93,28 @@ SELECT is(
     '2) Il guard e'' montato BEFORE su INSERT e UPDATE');
 
 -- ============================================================
+-- Fixture — rev 2026-10-20 (2c, G-5): una famiglia E' una sorgente (FK) e la sua
+--   tabella e' la target_table della sorgente. Ogni famiglia di prova nasce prima
+--   come sorgente, con la tabella del suo caso; «la tabella che non esiste» e' la
+--   sorgente che non ne dichiara una.
+-- ============================================================
+DO $sorgenti$ BEGIN
+    PERFORM dbops.fn_pgtap_crea_sorgente('TSTNOTAB');
+    PERFORM dbops.fn_pgtap_crea_sorgente('TSTNOCOL', 'vendite.ddt'::regclass);
+    PERFORM dbops.fn_pgtap_crea_sorgente('TSTRITIR');
+    PERFORM dbops.fn_pgtap_crea_sorgente('TSTNOBA', 'acquisti.ordini'::regclass);
+    PERFORM dbops.fn_pgtap_crea_sorgente('TSTNOBA2', 'acquisti.ddt'::regclass);
+END $sorgenti$;
+
+-- ============================================================
 -- 3) ⛔ Famiglia ATTIVA con una TABELLA che non esiste
 -- ============================================================
 PREPARE fdgr_tabella_assente AS
 INSERT INTO vendite.famiglie_documento (
-    codice_interno, descrizione, schema_tabella, nome_tabella,
+    codice_interno, descrizione,
     colonna_numero, colonna_billing_account, attivo, presidia_data_documento)
-VALUES ('TSTNOTAB', 'Famiglia di test senza tabella', 'vendite',
-        'tabella_che_non_esiste_pgtap', 'numero', 'billing_account_id', true, false);
+VALUES ('TSTNOTAB', 'Famiglia di test senza tabella',
+        'numero', 'billing_account_id', true, false);
 
 SELECT throws_ok(
     'EXECUTE fdgr_tabella_assente',
@@ -117,10 +132,10 @@ SELECT throws_ok(
 --   `codice` per la commessa).
 PREPARE fdgr_colonna_assente AS
 INSERT INTO vendite.famiglie_documento (
-    codice_interno, descrizione, schema_tabella, nome_tabella,
+    codice_interno, descrizione,
     colonna_numero, colonna_billing_account, attivo, presidia_data_documento)
-VALUES ('TSTNOCOL', 'Famiglia di test senza colonna', 'vendite',
-        'ddt', 'colonna_che_non_esiste_pgtap', 'billing_account_id', true, false);
+VALUES ('TSTNOCOL', 'Famiglia di test senza colonna',
+        'colonna_che_non_esiste_pgtap', 'billing_account_id', true, false);
 
 SELECT throws_ok(
     'EXECUTE fdgr_colonna_assente',
@@ -135,10 +150,10 @@ SELECT throws_ok(
 -- ritirare una famiglia obbligherebbe a cancellarne la riga.
 SELECT lives_ok(
     $q$INSERT INTO vendite.famiglie_documento (
-           codice_interno, descrizione, schema_tabella, nome_tabella,
+           codice_interno, descrizione,
            colonna_numero, colonna_billing_account, attivo, presidia_data_documento)
-       VALUES ('TSTRITIR', 'Famiglia di test ritirata', 'vendite',
-               'tabella_che_non_esiste_pgtap', 'numero', 'billing_account_id',
+       VALUES ('TSTRITIR', 'Famiglia di test ritirata',
+               'numero', 'billing_account_id',
                false, false)$q$,
     '5) Una famiglia RITIRATA puo'' nominare una tabella che non c''e'' piu''');
 
@@ -173,10 +188,9 @@ SELECT ok(
     AND NOT EXISTS (
         SELECT 1
           FROM vendite.famiglie_documento fd
-          LEFT JOIN pg_class c
-                 ON c.relname = fd.nome_tabella
-                AND c.relnamespace = (SELECT n.oid FROM pg_namespace n
-                                       WHERE n.nspname = fd.schema_tabella)
+          -- rev 2026-10-20 (2c): la tabella dalla sorgente, col BB del guard
+          LEFT JOIN LATERAL config.fn_sorgente_tabella(fd.codice_interno) st ON true
+          LEFT JOIN pg_class c ON c.oid = st.relid
          WHERE fd.attivo
            AND fd.codice_interno NOT LIKE 'TST%'
            AND (c.oid IS NULL
@@ -202,10 +216,10 @@ SELECT ok(
 -- e non ha ancora una famiglia attiva (uq_famiglie_documento_tabella_attiva).
 SELECT lives_ok(
     $q$INSERT INTO vendite.famiglie_documento (
-           codice_interno, descrizione, schema_tabella, nome_tabella,
+           codice_interno, descrizione,
            colonna_numero, colonna_billing_account, attivo, presidia_data_documento)
-       VALUES ('TSTNOBA', 'Famiglia di test senza billing account', 'acquisti',
-               'ordini', 'numero', NULL, true, false)$q$,
+       VALUES ('TSTNOBA', 'Famiglia di test senza billing account',
+               'numero', NULL, true, false)$q$,
     '8) Una famiglia ATTIVA senza billing account passa: il vuoto e'' una dichiarazione (l''ordine di acquisto)');
 
 -- ============================================================
@@ -215,10 +229,10 @@ SELECT lives_ok(
 -- uscisse presto su NULL lascerebbe passare anche il refuso sul numero.
 PREPARE fdgr_noba_numero_assente AS
 INSERT INTO vendite.famiglie_documento (
-    codice_interno, descrizione, schema_tabella, nome_tabella,
+    codice_interno, descrizione,
     colonna_numero, colonna_billing_account, attivo, presidia_data_documento)
-VALUES ('TSTNOBA2', 'Famiglia senza BA con numero rotto', 'acquisti',
-        'ddt', 'colonna_che_non_esiste_pgtap', NULL, true, false);
+VALUES ('TSTNOBA2', 'Famiglia senza BA con numero rotto',
+        'colonna_che_non_esiste_pgtap', NULL, true, false);
 
 SELECT throws_ok(
     'EXECUTE fdgr_noba_numero_assente',

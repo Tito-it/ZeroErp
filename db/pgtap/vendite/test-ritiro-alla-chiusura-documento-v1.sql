@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- Test: l'AGGANCIO del ritiro — freno e ritiro sulla chiusura del documento
 --       (brief-db-lavoro-che-non-torna-indietro, lotto L7b / Q-9 e Q-10;
@@ -135,7 +136,7 @@ BEGIN
         tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
         stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
       SELECT (SELECT id FROM tmp_rc_commessa),
-             'ORD:' || (SELECT uid FROM tmp_rc_ordine)::text || ':R:' || s,
+             'ORDINE_VENDITA:' || (SELECT uid FROM tmp_rc_ordine)::text || ':R:' || s,
              r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
              date_trunc('month', script.fn_data_operativa())::date,
              date_trunc('month', script.fn_data_operativa())::date,
@@ -161,7 +162,7 @@ WITH ins AS (
     tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
     stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
   SELECT (SELECT id FROM tmp_rc_commessa),
-         'ORD:PGTAP-RC-ESTRANEA:' || substr(md5(clock_timestamp()::text), 1, 10),
+         'ORDINE_VENDITA:PGTAP-RC-ESTRANEA:' || substr(md5(clock_timestamp()::text), 1, 10),
          r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
          date_trunc('month', script.fn_data_operativa())::date,
          date_trunc('month', script.fn_data_operativa())::date,

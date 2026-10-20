@@ -11,6 +11,11 @@ CREATE OR REPLACE FUNCTION vendite.fn_doc_indirizzo_default(p_documento characte
  RETURNS boolean
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-20 (20261020-50, brief-db-grammatica-unica-documenti, 2d G-6):
+--   l'ambito degli indirizzi e' il codice della sorgente del documento
+--   (p_documento): la colonna ambito di fn_doc_indirizzi_sede e'
+--   ritirata; p_documento ancorato. p_testata_id resta nudo: e'
+--   polimorfo (testate di tabelle diverse).
 
 -- ⚠️ Tipi nudi DICHIARATI: p_documento e' un selettore senza colonna
 --   di vocabolario; p_testata_id e' POLIMORFO (l'id di cinque testate);
@@ -38,8 +43,11 @@ BEGIN
             NULL::uuid, 'testata_id obbligatorio (>0)');
     END IF;
 
-    SELECT s.schema_tabella, s.tabella, s.colonna_fk, s.ambito
-      INTO v_schema, v_tabella, v_fk_col, v_ambito
+    -- rev 2026-10-20 (G-6): l'ambito e' il documento stesso.
+    v_ambito := p_documento;
+
+    SELECT s.schema_tabella, s.tabella, s.colonna_fk
+      INTO v_schema, v_tabella, v_fk_col
       FROM script.fn_doc_indirizzi_sede(p_documento) AS s;
 
     IF v_tabella IS NULL THEN
@@ -118,7 +126,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_doc_indirizzo_default(p_documento character varying, p_testata_id bigint)
-IS 'Riempie lo slot di default di un documento (DDT | ORDINE | PREVENTIVO | OFFERTA | CONTRATTO; FATTURA non ha slot di default) dall''anagrafica del suo cliente, SOLO se lo slot e'' vuoto: la cascata dalla sorgente e la scelta dell''operatore vincono sempre. Lo slot e il ripiego sono dati: config.tipi_indirizzi_allowed.slot_default e ripiego_tipo_indirizzo_id. Risoluzione con script.fn_resolve_indirizzo_documento (RUOLO con precedenza all''istanza, poi SOGGETTO), prima sul tipo dello slot e poi sul ripiego; cliente da script.fn_get_cliente_testata_documento. Torna true se ha scritto. Nessun errore se non c''e'' niente da scrivere: un default mancante non e'' un errore, l''obbligo lo dice l''emissione. INVOKER: scrive sotto la RLS di chi chiama. Chi la chiama (decisione di Tid del 2026-10-11): alla creazione chi crea — il backend dopo le sue INSERT e dopo i verbi con cascata, vendite.fn_create_contratto dentro di se'' —, al cambio di cliente in bozza vendite.trgfn_doc_indirizzi_seguono_cliente. Sostituisce l''helper Python auto_assegna_indirizzo_default. ⚠️ Rispetto al Python lo slot si riempie dal suo tipo e dal suo ripiego, non dalla catena fissa CON -> FATT: identico su tutti gli ambiti di oggi (slot CON, ripiego FATT). Brief: brief-db-indirizzi-documento-seguono-il-cliente (D-2, §7.2). ⭐ rev 2026-10-19 (20261019-47, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
+IS 'Riempie lo slot di default di un documento (DDT | ORDINE | PREVENTIVO | OFFERTA | CONTRATTO; FATTURA non ha slot di default) dall''anagrafica del suo cliente, SOLO se lo slot e'' vuoto: la cascata dalla sorgente e la scelta dell''operatore vincono sempre. Lo slot e il ripiego sono dati: config.tipi_indirizzi_allowed.slot_default e ripiego_tipo_indirizzo_id. Risoluzione con script.fn_resolve_indirizzo_documento (RUOLO con precedenza all''istanza, poi SOGGETTO), prima sul tipo dello slot e poi sul ripiego; cliente da script.fn_get_cliente_testata_documento. Torna true se ha scritto. Nessun errore se non c''e'' niente da scrivere: un default mancante non e'' un errore, l''obbligo lo dice l''emissione. INVOKER: scrive sotto la RLS di chi chiama. Chi la chiama (decisione di Tid del 2026-10-11): alla creazione chi crea — il backend dopo le sue INSERT e dopo i verbi con cascata, vendite.fn_create_contratto dentro di se'' —, al cambio di cliente in bozza vendite.trgfn_doc_indirizzi_seguono_cliente. Sostituisce l''helper Python auto_assegna_indirizzo_default. ⚠️ Rispetto al Python lo slot si riempie dal suo tipo e dal suo ripiego, non dalla catena fissa CON -> FATT: identico su tutti gli ambiti di oggi (slot CON, ripiego FATT). Brief: brief-db-indirizzi-documento-seguono-il-cliente (D-2, §7.2). ⭐ rev 2026-10-19 (20261019-47, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato). Rev 2026-10-20 (20261020-50, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi e'' il codice della sorgente del documento (p_documento).';
 ```
 
 ---

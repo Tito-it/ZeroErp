@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_preventivo_ha_residuo_commessa (20260612-03) +
@@ -284,7 +285,7 @@ INSERT INTO vendite.commesse_attivita (
 )
 SELECT
   (SELECT id FROM tmp_rc_commessa),
-  'PREV:' || (SELECT uid FROM tmp_rc_misto)::text || ':R:' || (SELECT id FROM tmp_rc_riga_serv)::text,
+  'PREVENTIVO:' || (SELECT uid FROM tmp_rc_misto)::text || ':R:' || (SELECT id FROM tmp_rc_riga_serv)::text,
   r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 2,
   DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31',
   r.tipo_doc_fiscale_id, r.valuta_id, 30.000000,
@@ -383,7 +384,7 @@ INSERT INTO vendite.commesse_attivita (
   competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
   pricing_mode, stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
 SELECT (SELECT id FROM tmp_rc_commessa),
-  'PREV:' || (SELECT prev_uid FROM tmp_rc_nonemessa)::text || ':R:' || (SELECT riga_id FROM tmp_rc_nonemessa)::text,
+  'PREVENTIVO:' || (SELECT prev_uid FROM tmp_rc_nonemessa)::text || ':R:' || (SELECT riga_id FROM tmp_rc_nonemessa)::text,
   r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
   DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31', r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
   'FIXED', 'BOZZA', 'NON_EMESSA',
@@ -397,7 +398,7 @@ INSERT INTO vendite.commesse_attivita (
   competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
   pricing_mode, stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
 SELECT (SELECT id FROM tmp_rc_commessa),
-  'PREV:' || (SELECT prev_uid FROM tmp_rc_bom)::text || ':R:' || (SELECT riga_id FROM tmp_rc_bom)::text || '#CMP:999',
+  'PREVENTIVO:' || (SELECT prev_uid FROM tmp_rc_bom)::text || ':R:' || (SELECT riga_id FROM tmp_rc_bom)::text || '#CMP:999',
   r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
   DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31', r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
   'FIXED', 'BOZZA', 'NON_EMESSA',
@@ -411,7 +412,7 @@ INSERT INTO vendite.commesse_attivita (
   competenza_mese, competenza_dal, competenza_al, tipo_doc_fiscale_id, valuta_id, prezzo_snapshot,
   pricing_mode, stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
 SELECT (SELECT id FROM tmp_rc_commessa),
-  'PREV:' || (SELECT prev_uid FROM tmp_rc_annull)::text || ':R:' || (SELECT riga_id FROM tmp_rc_annull)::text,
+  'PREVENTIVO:' || (SELECT prev_uid FROM tmp_rc_annull)::text || ':R:' || (SELECT riga_id FROM tmp_rc_annull)::text,
   r.art_serv_id, r.istanza_utility_id, DATE '2080-01-01', r.uom_id, 1,
   DATE '2080-01-01', DATE '2080-01-01', DATE '2080-12-31', r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
   'FIXED', 'BOZZA', 'ANNULLATA',

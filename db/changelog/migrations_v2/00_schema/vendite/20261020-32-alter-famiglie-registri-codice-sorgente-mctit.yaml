@@ -1,0 +1,266 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA GRAMMATICA SOLA PER I TIPI DI DOCUMENTO — sotto-giro 2c (G-5): la famiglia di
+#   numerazione si chiama col codice della sua sorgente.
+#   Brief: brief-db-grammatica-unica-documenti §7.9 G-5, §10.4 (L2-2 = un apply per 2c-2e).
+#
+#   vendite.famiglie_documento.codice_interno e vendite.registri_fatturazione.famiglia_documento
+#   passano ai codici di config.sorgenti: DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA,
+#   RESO -> RESO_VENDITA, DISTINTA -> DISTINTA_INCASSO; FATTURA e COMMESSA sono gia' uguali.
+#   L'identita' della famiglia diventa una FK verso config.sorgenti(codice_interno).
+#
+# -- LA FORMA ------------------------------------------------------------
+#   * Conversione SUL POSTO (ALTER COLUMN ... TYPE ... USING CASE): DDL, nessun trigger di
+#     riga (il lock di codice_interno non scatta), nessun momento con due vocabolari. La FK
+#     dei registri si toglie e si rimette intorno alle due conversioni. varchar(50) come
+#     config.sorgenti.codice_interno (G-3: il vincolo si adegua al nome).
+#   * Da zero le due tabelle sono VUOTE qui: le famiglie le semina il mirror del CSV in
+#     80_data (20260830-14, CSV coi codici lunghi), che gira dopo quello delle sorgenti
+#     (20251002-21); i registri li creano i seed 20260831-03 / 20260915-34, adeguati.
+#   * Due trigger nominano le colonne in UPDATE OF (il lock di codice_interno, il guard della
+#     serie dei registri): si mettono da parte quelli che ci sono e si rimontano identici
+#     (vedi il blocco $sospendi$); da zero il lock non c'e' ancora (lo monta 90_end).
+#   * L'unico dipendente delle quattro colonne in pg_depend e' vw_famiglie_documento_lista:
+#     si toglie qui e torna in 20_code (20261020-46), forma del 20261019-87. Senza CASCADE.
+#   * L'automazione ATTIVO non lega la FK nuova (la colonna non finisce in _id): lega il
+#     nome, non l'accensione, come le FK del lotto 0 e del 2b.
+#   * Nessuna policy d'indice per la FK nuova: il lato che punta (codice_interno) e' gia'
+#     UNIQUE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261020-32-alter-famiglie-registri-codice-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-32-alter-famiglie-registri-codice-sorgente
+      author: mctit
+      failOnError: true
+      comment: >
+        vendite.famiglie_documento.codice_interno e registri_fatturazione.famiglia_documento ai codici di
+        config.sorgenti (varchar(50), conversione sul posto) e FK della famiglia verso config.sorgenti.
+        Grammatica unica, sotto-giro 2c (G-5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint
+                   WHERE conname = 'fk_famiglie_documento_sorgenti'
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_famiglie_documento_lista
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Prima chi legge le colonne: la vista della lista torna in 20_code
+              -- (20261020-46), senza CASCADE: un dipendente non censito ferma il migrate.
+              DROP VIEW vendite.vw_famiglie_documento_lista;
+
+              -- ⛔ I TRIGGER CHE NOMINANO LE DUE COLONNE in UPDATE OF sono dipendenze che ALTER
+              --    TYPE rifiuta: il lock di codice_interno (script.trgfn_lock_columns) e il guard
+              --    della serie dei registri. Il lock lo monta 90_end (20260901-21) o l'automazione:
+              --    da zero, qui, NON c'e' ancora; su dbdev si'. Quindi non si nominano: si mettono
+              --    da parte QUELLI CHE CI SONO (definizione e COMMENT dal catalogo), si tolgono, e
+              --    dopo la conversione si rimontano identici (linee-guida-sql §11.5: niente DDL
+              --    incondizionata su un trigger di automazione).
+              DO $sospendi$
+              DECLARE
+                  r record;
+              BEGIN
+                  CREATE TEMP TABLE tmp_trigger_sospesi (nome name, tabella text, def text, commento text) ON COMMIT DROP;
+                  FOR r IN
+                      SELECT t.oid, t.tgname, t.tgrelid
+                        FROM pg_catalog.pg_trigger t
+                       WHERE NOT t.tgisinternal
+                         AND t.tgrelid IN ('vendite.famiglie_documento'::regclass, 'vendite.registri_fatturazione'::regclass)
+                         AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                      WHERE a.attrelid = t.tgrelid
+                                        AND a.attnum = ANY (t.tgattr)
+                                        AND a.attname IN ('codice_interno', 'famiglia_documento'))
+                  LOOP
+                      INSERT INTO tmp_trigger_sospesi
+                      VALUES (r.tgname, r.tgrelid::regclass::text,
+                              pg_catalog.pg_get_triggerdef(r.oid), pg_catalog.obj_description(r.oid, 'pg_trigger'));
+                      EXECUTE format('DROP TRIGGER %I ON %s', r.tgname, r.tgrelid::regclass);
+                  END LOOP;
+              END
+              $sospendi$;
+
+              ALTER TABLE vendite.registri_fatturazione
+                DROP CONSTRAINT fk_registri_fatturazione_famiglia;
+
+              ALTER TABLE vendite.famiglie_documento
+                ALTER COLUMN codice_interno TYPE character varying(50)
+                USING (CASE codice_interno WHEN 'DDT' THEN 'DDT_VENDITA' WHEN 'ORDINE' THEN 'ORDINE_VENDITA' WHEN 'RESO' THEN 'RESO_VENDITA' WHEN 'DISTINTA' THEN 'DISTINTA_INCASSO' ELSE codice_interno END);
+
+              ALTER TABLE vendite.registri_fatturazione
+                ALTER COLUMN famiglia_documento TYPE character varying(50)
+                USING (CASE famiglia_documento WHEN 'DDT' THEN 'DDT_VENDITA' WHEN 'ORDINE' THEN 'ORDINE_VENDITA' WHEN 'RESO' THEN 'RESO_VENDITA' WHEN 'DISTINTA' THEN 'DISTINTA_INCASSO' ELSE famiglia_documento END);
+
+              ALTER TABLE vendite.registri_fatturazione
+                ADD CONSTRAINT fk_registri_fatturazione_famiglia
+                FOREIGN KEY (famiglia_documento) REFERENCES vendite.famiglie_documento (codice_interno);
+
+              -- I trigger messi da parte tornano identici (definizione e COMMENT).
+              DO $ripristina$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN SELECT * FROM tmp_trigger_sospesi LOOP
+                      EXECUTE r.def;
+                      IF r.commento IS NOT NULL THEN
+                          EXECUTE format('COMMENT ON TRIGGER %I ON %s IS %L', r.nome, r.tabella, r.commento);
+                      END IF;
+                  END LOOP;
+                  DROP TABLE tmp_trigger_sospesi;
+              END
+              $ripristina$;
+
+              ALTER TABLE vendite.famiglie_documento
+                ADD CONSTRAINT fk_famiglie_documento_sorgenti
+                FOREIGN KEY (codice_interno) REFERENCES config.sorgenti (codice_interno);
+
+              COMMENT ON COLUMN vendite.famiglie_documento.codice_interno IS
+                'Chiave naturale e stabile della famiglia: e'' il codice_interno della sua sorgente in config.sorgenti (FK fk_famiglie_documento_sorgenti): FATTURA, DDT_VENDITA, ORDINE_VENDITA, COMMESSA, RESO_VENDITA, DISTINTA_INCASSO. La tabella dei documenti e'' la target_table della sorgente (config.fn_sorgente_tabella). E'' il contratto, l''id e'' dettaglio implementativo. Rev 2026-10-21 (20261020-32, brief-db-grammatica-unica-documenti G-5): prima erano i codici corti DDT, ORDINE, RESO, DISTINTA, un vocabolario a parte.';
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.famiglia_documento IS
+                'Famiglia di documento che questo registro numera: chiave naturale di vendite.famiglie_documento (il codice della sorgente: FATTURA, DDT_VENDITA, ORDINE_VENDITA, COMMESSA, RESO_VENDITA, DISTINTA_INCASSO; rev 2026-10-21, 20261020-32, G-5). ⭐ Il discriminante sta QUI e non in config.tipi_doc_fiscale, ed e'' una decisione: DDT, ordine, commessa e reso non hanno un tipo documento fiscale — vendite.ddt non ha proprio la colonna — e quel vocabolario e'' consumato da 83 file di 20_code, dove chi lo itera puo'' assumere «tipo doc fiscale ⇒ finisce in fattura». Sul registro la famiglia e'' invece un fatto locale. ⚠️ Il DEFAULT ''FATTURA'' vale per il pregresso: le righe che esistevano il 2026-08-30 SONO registri di fatturazione, e il default le classifica senza una UPDATE. ⚠️ Il nome della tabella dice `fatturazione` e il contenuto e'' piu'' largo: e'' un debito DICHIARATO, non una svista — rinominare la tabella significherebbe rinominare trigger, funzioni, viste e vincoli, cioe'' un cantiere piu'' grande del miglioramento che accompagna, e per di piu'' scorrelato. La descrizione della tabella dice gia'' «registri/serie di NUMERAZIONE»: era il nome dell''oggetto a essere rimasto indietro. Debito registrato in brief-db-registri-di-numerazione-emittente-e-trasloco §12.5-bis. Piano: C2-1.';
+
+              COMMENT ON CONSTRAINT fk_famiglie_documento_sorgenti ON vendite.famiglie_documento IS
+                'La famiglia di numerazione e'' quella di una sorgente: il suo codice e'' il codice_interno della sorgente (G-5). Una famiglia nuova e'' una sorgente che si numera, non un nome nuovo. Brief: brief-db-grammatica-unica-documenti §10.4.';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_famiglie_documento_lista;
+
+              ALTER TABLE vendite.famiglie_documento DROP CONSTRAINT fk_famiglie_documento_sorgenti;
+              ALTER TABLE vendite.registri_fatturazione DROP CONSTRAINT fk_registri_fatturazione_famiglia;
+
+              -- ⛔ I TRIGGER CHE NOMINANO LE DUE COLONNE in UPDATE OF sono dipendenze che ALTER
+              --    TYPE rifiuta: il lock di codice_interno (script.trgfn_lock_columns) e il guard
+              --    della serie dei registri. Il lock lo monta 90_end (20260901-21) o l'automazione:
+              --    da zero, qui, NON c'e' ancora; su dbdev si'. Quindi non si nominano: si mettono
+              --    da parte QUELLI CHE CI SONO (definizione e COMMENT dal catalogo), si tolgono, e
+              --    dopo la conversione si rimontano identici (linee-guida-sql §11.5: niente DDL
+              --    incondizionata su un trigger di automazione).
+              DO $sospendi$
+              DECLARE
+                  r record;
+              BEGIN
+                  CREATE TEMP TABLE tmp_trigger_sospesi (nome name, tabella text, def text, commento text) ON COMMIT DROP;
+                  FOR r IN
+                      SELECT t.oid, t.tgname, t.tgrelid
+                        FROM pg_catalog.pg_trigger t
+                       WHERE NOT t.tgisinternal
+                         AND t.tgrelid IN ('vendite.famiglie_documento'::regclass, 'vendite.registri_fatturazione'::regclass)
+                         AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                      WHERE a.attrelid = t.tgrelid
+                                        AND a.attnum = ANY (t.tgattr)
+                                        AND a.attname IN ('codice_interno', 'famiglia_documento'))
+                  LOOP
+                      INSERT INTO tmp_trigger_sospesi
+                      VALUES (r.tgname, r.tgrelid::regclass::text,
+                              pg_catalog.pg_get_triggerdef(r.oid), pg_catalog.obj_description(r.oid, 'pg_trigger'));
+                      EXECUTE format('DROP TRIGGER %I ON %s', r.tgname, r.tgrelid::regclass);
+                  END LOOP;
+              END
+              $sospendi$;
+
+              ALTER TABLE vendite.famiglie_documento
+                ALTER COLUMN codice_interno TYPE character varying(16)
+                USING (CASE codice_interno WHEN 'DDT_VENDITA' THEN 'DDT' WHEN 'ORDINE_VENDITA' THEN 'ORDINE' WHEN 'RESO_VENDITA' THEN 'RESO' WHEN 'DISTINTA_INCASSO' THEN 'DISTINTA' ELSE codice_interno END);
+
+              ALTER TABLE vendite.registri_fatturazione
+                ALTER COLUMN famiglia_documento TYPE character varying(16)
+                USING (CASE famiglia_documento WHEN 'DDT_VENDITA' THEN 'DDT' WHEN 'ORDINE_VENDITA' THEN 'ORDINE' WHEN 'RESO_VENDITA' THEN 'RESO' WHEN 'DISTINTA_INCASSO' THEN 'DISTINTA' ELSE famiglia_documento END);
+
+              ALTER TABLE vendite.registri_fatturazione
+                ADD CONSTRAINT fk_registri_fatturazione_famiglia
+                FOREIGN KEY (famiglia_documento) REFERENCES vendite.famiglie_documento (codice_interno);
+
+              -- I trigger messi da parte tornano identici (definizione e COMMENT).
+              DO $ripristina$
+              DECLARE
+                  r record;
+              BEGIN
+                  FOR r IN SELECT * FROM tmp_trigger_sospesi LOOP
+                      EXECUTE r.def;
+                      IF r.commento IS NOT NULL THEN
+                          EXECUTE format('COMMENT ON TRIGGER %I ON %s IS %L', r.nome, r.tabella, r.commento);
+                      END IF;
+                  END LOOP;
+                  DROP TABLE tmp_trigger_sospesi;
+              END
+              $ripristina$;
+
+              COMMENT ON COLUMN vendite.famiglie_documento.codice_interno IS
+                'Chiave naturale e stabile: FATTURA, DDT, ORDINE, COMMESSA, RESO. E'' il contratto, l''id e'' dettaglio implementativo.';
+
+              COMMENT ON COLUMN vendite.registri_fatturazione.famiglia_documento IS
+                'Famiglia di documento che questo registro numera: chiave naturale di vendite.famiglie_documento (FATTURA, DDT, ORDINE, COMMESSA, RESO). ⭐ Il discriminante sta QUI e non in config.tipi_doc_fiscale, ed e'' una decisione: DDT, ordine, commessa e reso non hanno un tipo documento fiscale — vendite.ddt non ha proprio la colonna — e quel vocabolario e'' consumato da 83 file di 20_code, dove chi lo itera puo'' assumere «tipo doc fiscale ⇒ finisce in fattura». Sul registro la famiglia e'' invece un fatto locale. ⚠️ Il DEFAULT ''FATTURA'' vale per il pregresso: le righe che esistevano il 2026-08-30 SONO registri di fatturazione, e il default le classifica senza una UPDATE. ⚠️ Il nome della tabella dice `fatturazione` e il contenuto e'' piu'' largo: e'' un debito DICHIARATO, non una svista — rinominare la tabella significherebbe rinominare trigger, funzioni, viste e vincoli, cioe'' un cantiere piu'' grande del miglioramento che accompagna, e per di piu'' scorrelato. La descrizione della tabella dice gia'' «registri/serie di NUMERAZIONE»: era il nome dell''oggetto a essere rimasto indietro. Debito registrato in brief-db-registri-di-numerazione-emittente-e-trasloco §12.5-bis. Piano: C2-1.';
+
+              CREATE VIEW vendite.vw_famiglie_documento_lista WITH (security_invoker = true) AS
+              SELECT f.id,
+                  f.codice_interno,
+                  f.descrizione,
+                  f.schema_tabella,
+                  f.nome_tabella,
+                  f.colonna_numero,
+                  f.colonna_serie,
+                  f.colonna_billing_account,
+                  ((f.schema_tabella || '.'::text) || f.nome_tabella) AS tabella_documento,
+                  f.presidia_data_documento,
+                  (f.colonna_serie IS NOT NULL) AS gestisce_serie,
+                  f.ammette_regole_fiscali,
+                  f.prefisso_default,
+                  f.lunghezza_default,
+                  r.n_registri,
+                  r.n_registri_attivi,
+                  f.attivo,
+                  f.meta,
+                  f.data_insert,
+                  f.data_update,
+                  disattiva.reason AS rimozione_blocco_reason,
+                  disattiva.reason_key AS rimozione_blocco_reason_key,
+                  disattiva.dettaglio AS rimozione_blocco_dettaglio,
+                  (disattiva.reason IS NULL) AS can_disattivare,
+                  struttura.reason AS struttura_blocco_reason,
+                  struttura.reason_key AS struttura_blocco_reason_key,
+                  struttura.dettaglio AS struttura_blocco_dettaglio,
+                  (struttura.reason IS NULL) AS can_modificare_struttura,
+                  f.codice
+                 FROM (((vendite.famiglie_documento f
+                   LEFT JOIN LATERAL ( SELECT count(*) AS n_registri,
+                          count(*) FILTER (WHERE rr.attivo) AS n_registri_attivi
+                         FROM vendite.registri_fatturazione rr
+                        WHERE ((rr.famiglia_documento)::text = (f.codice_interno)::text)) r ON (true))
+                   LEFT JOIN LATERAL ( SELECT (m.value ->> 'reason'::text) AS reason,
+                          (m.value ->> 'reason_key'::text) AS reason_key,
+                          (m.value -> 'dettaglio'::text) AS dettaglio
+                         FROM jsonb_array_elements(script.fn_check_famiglia_documento_disattivabile(f.id)) WITH ORDINALITY m(value, ord)
+                        ORDER BY m.ord
+                       LIMIT 1) disattiva ON (true))
+                   LEFT JOIN LATERAL ( SELECT (m.value ->> 'reason'::text) AS reason,
+                          (m.value ->> 'reason_key'::text) AS reason_key,
+                          (m.value -> 'dettaglio'::text) AS dettaglio
+                         FROM jsonb_array_elements(script.fn_check_famiglia_documento_struttura_modificabile(f.id)) WITH ORDINALITY m(value, ord)
+                        ORDER BY m.ord
+                       LIMIT 1) struttura ON (true));
+
+              COMMENT ON VIEW vendite.vw_famiglie_documento_lista IS
+                'Superficie di lettura del catalogo delle famiglie di documento: le colonne di catalogo, i due conteggi dei registri e i due blocchi capability presi dalle check. ⛔ ESISTE PERCHE'' IL LOOKUP GENERICO NON BASTA: dbops.fn_get_lookup_codici torna id, codice, codice_interno, descrizione e attivo, e non puo'' portare i default della forma ne'' le colonne di natura — non e'' un suo difetto, e'' generico e va lasciato generico. ⭐ TRE LETTORI, UNA SEDE: la lista del CRUD delle famiglie (dove e'' anche la `vista_sql` dichiarata a catalogo, cosi'' il database valida ogni campo_sorgente contro le colonne vere), il suo export CSV/XLSX che legge le stesse righe con le stesse chiavi, e il drawer dei REGISTRI, che da qui prende prefisso_default e lunghezza_default per precompilare la forma alla creazione e presidia_data_documento / colonna_serie per decidere quali campi mostrare. ⛔ Quest''ultimo e'' cio'' che toglie i due letterali ''FATTURA'' paralleli da backend e frontend: presidia_data_documento e'' ammette_regole_fiscali SONO le colonne che rispondono a quelle domande — la prima al pavimento di sequenza, la seconda ai campi fiscali del registro: due domande diverse con la stessa risposta di oggi, tenute distinte apposta. ⚠️ IL NOME DELLE COLONNE E'' IL CONTRATTO: <ListaConfigurabile> legge data[campo_sorgente] e il renderer di export fa lo stesso, quindi un rename qui rompe le celle e il file esportato insieme, e in silenzio. ⭐ I due conteggi sono DATO: n_registri e'' il predicato che rende immutabile la struttura, n_registri_attivi quello che blocca lo spegnimento — mostrarli fa capire il rifiuto prima di provarlo. ⛔ DUE BLOCCHI CAPABILITY, DUE NOMI: rimozione_* risponde a «posso spegnerla?», struttura_* a «posso cambiarle le colonne?»; su una famiglia con registri sono spenti entrambi per motivi diversi, e riusare uno per l''altra domanda mostrerebbe la frase sbagliata senza che niente fallisca. ⚠️ LEFT JOIN LATERAL ... ON TRUE e non CROSS JOIN: la check risponde [] quando l''azione e'' ammessa, e con un CROSS JOIN sparirebbero dalla lista proprio le famiglie senza problemi. ⚠️ security_invoker=on e'' scritto nel changeSet perche'' si AZZERA a ogni CREATE OR REPLACE VIEW: una revisione che non lo ripete trasforma la vista in un bypass della RLS, in silenzio. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.8 (DB-6).';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_famiglie_documento_lista TO zeroerp_app;

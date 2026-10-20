@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: D-NC-4 — «una ri-consegna e' merce nuova SOLO per la parte accreditata»
 --       (brief-design-note-credito-resi §12.5-bis; changeset 20260818-38)
@@ -226,7 +227,7 @@ CREATE TEMP TABLE tmp_ric_p AS SELECT * FROM pg_temp.ric_mk_partita(10, 20);
 
 CREATE TEMP TABLE tmp_ric_fatt AS
 SELECT pg_temp.ric_fattura(
-    ('DDT:' || (SELECT ddt_uid FROM tmp_ric_p)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_ric_p)::text)::varchar,
+    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_ric_p)::text, (SELECT ddt_riga_id FROM tmp_ric_p)),
     10, 20) AS fattura_riga_id;
 
 CREATE TEMP TABLE tmp_ric_reso AS
@@ -313,7 +314,7 @@ CREATE TEMP TABLE tmp_ric_pb AS SELECT * FROM pg_temp.ric_mk_partita(10, 20);
 
 CREATE TEMP TABLE tmp_ric_fatt_b AS
 SELECT pg_temp.ric_fattura(
-    ('DDT:' || (SELECT ddt_uid FROM tmp_ric_pb)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_ric_pb)::text)::varchar,
+    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_ric_pb)::text, (SELECT ddt_riga_id FROM tmp_ric_pb)),
     10, 20) AS fattura_riga_id;
 
 CREATE TEMP TABLE tmp_ric_reso_b AS
@@ -360,7 +361,7 @@ SELECT is(
 --    fatturazione NORMALE se ne accorge da solo — nessun verbo nuovo.
 SELECT is(
   script.fn_get_stato_push_segment(
-    ('DDT:' || (SELECT ddt_uid FROM tmp_ric_r2b)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_ric_r2b)::text)::varchar),
+    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_ric_r2b)::text, (SELECT ddt_riga_id FROM tmp_ric_r2b))),
   'LIBERA',
   '8) il segmento della spedizione nuova e'' LIBERA: la fatturazione normale la vede'
 );

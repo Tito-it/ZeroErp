@@ -12,6 +12,9 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_guard_uscita_draft()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-20 (20261020-61, brief-db-grammatica-unica-documenti, 2d G-6):
+--   l'ambito degli indirizzi FATTURE diventa FATTURA, il codice della
+--   sorgente.
 -- Scopo: una fattura non lascia lo stato DRAFT se non e' completa
 --        di cio' che il documento stampa — gli indirizzi marcati
 --        obbligatori per l'ambito FATTURE e l'intestazione
@@ -66,7 +69,7 @@ BEGIN
       FROM vendite.fatture_indirizzi fi
      WHERE fi.fattura_id = NEW.id;
 
-    v_ind_mancanti := script.fn_indirizzi_obbligatori_mancanti('FATTURE', v_presenti);
+    v_ind_mancanti := script.fn_indirizzi_obbligatori_mancanti('FATTURA', v_presenti);
 
     IF array_length(v_ind_mancanti, 1) IS NOT NULL THEN
         v_riassunto := v_riassunto
@@ -120,7 +123,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_fatture_guard_uscita_draft()
-IS 'Guard (BEFORE UPDATE OF stato_doc_fiscale_id) di completezza sull''uscita dalla bozza: una fattura non lascia DRAFT senza gli indirizzi marcati obbligatori per l''ambito FATTURE (matrice config.tipi_indirizzi_allowed via script.fn_indirizzi_obbligatori_mancanti, oggi il solo FATT) e senza l''intestazione fiscale congelata delle due parti (emittente_snapshot e cliente_snapshot, scritte da fn_snapshot_intestazione_fattura). Sono i due lati della stessa garanzia di ristampa conforme: presidiarne uno solo lascerebbe un blocco stampato meta'' congelato e meta'' vivo. Esce in testa se lo stato di partenza non e'' DRAFT (oltre quella soglia il presidio e'' del guard di congelamento dei satelliti) e se lo stato di destinazione e'' abortito (una bozza incompleta deve restare chiudibile). Solo UPDATE: l''unico creatore applicativo, fn_get_or_create_fattura_header, inserisce sempre in DRAFT. Nessun bypass GUC: il reset lotto rientra nella bozza, non ne esce. L''intestazione si verifica per jsonb_typeof e non per IS NULL, perche'' jsonb_strip_nulls fa arrivare uno snapshot vuoto come ''{}''. Errore: E_FATTURA_NON_EMETTIBILE_INCOMPLETA. Modello: trgfn_ddt_guard_indirizzi_obbligatori. piano-db-satelliti-fattura Fase 2.5 + brief intestazione §3.5 (I.4).';
+IS 'Guard (BEFORE UPDATE OF stato_doc_fiscale_id) di completezza sull''uscita dalla bozza: una fattura non lascia DRAFT senza gli indirizzi marcati obbligatori per l''ambito FATTURE (matrice config.tipi_indirizzi_allowed via script.fn_indirizzi_obbligatori_mancanti, oggi il solo FATT) e senza l''intestazione fiscale congelata delle due parti (emittente_snapshot e cliente_snapshot, scritte da fn_snapshot_intestazione_fattura). Sono i due lati della stessa garanzia di ristampa conforme: presidiarne uno solo lascerebbe un blocco stampato meta'' congelato e meta'' vivo. Esce in testa se lo stato di partenza non e'' DRAFT (oltre quella soglia il presidio e'' del guard di congelamento dei satelliti) e se lo stato di destinazione e'' abortito (una bozza incompleta deve restare chiudibile). Solo UPDATE: l''unico creatore applicativo, fn_get_or_create_fattura_header, inserisce sempre in DRAFT. Nessun bypass GUC: il reset lotto rientra nella bozza, non ne esce. L''intestazione si verifica per jsonb_typeof e non per IS NULL, perche'' jsonb_strip_nulls fa arrivare uno snapshot vuoto come ''{}''. Errore: E_FATTURA_NON_EMETTIBILE_INCOMPLETA. Modello: trgfn_ddt_guard_indirizzi_obbligatori. piano-db-satelliti-fattura Fase 2.5 + brief intestazione §3.5 (I.4). Rev 2026-10-20 (20261020-61, brief-db-grammatica-unica-documenti 2d, G-6): l''ambito degli indirizzi FATTURE diventa FATTURA, il codice della sorgente.';
 ```
 
 ---

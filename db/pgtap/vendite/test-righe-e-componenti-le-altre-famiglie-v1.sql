@@ -63,6 +63,7 @@
 --    non la regola. La controprova senza 20261008-34 (2026-10-08) ha dato
 --    verdi i test 13 e 15 per questa strada. Il rifiuto giusto e' quello che
 --    non passa dal ricalcolo della madre.
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): l'ambito degli indirizzi della bolla e' DDT_VENDITA (le etichette ORDINE/DDT della tabella _doc sono del test e restano).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -254,7 +255,7 @@ BEGIN
     INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
     SELECT v_id, ti.id, '{"pgtap": true}'::jsonb
       FROM config.tipi_indirizzi ti
-     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT', ARRAY[]::integer[]));
+     WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', ARRAY[]::integer[]));
 
     INSERT INTO _doc
     SELECT 'DDT', v_id, v_riga,

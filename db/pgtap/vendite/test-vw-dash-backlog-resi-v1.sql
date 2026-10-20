@@ -1,5 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente (RESO_VENDITA).
 -- pgTAP test per Zero ERP
 -- Test: ramo resi sul Backlog (vw_dash_backlog_documenti come union) — step 9,
 --       brief-db-fatturazione-ddt-resi §4d / DL-24.
@@ -196,7 +198,7 @@ SELECT pg_temp.mk_reso((SELECT ddt_riga_id FROM tmp_a), (SELECT ddt_uid FROM tmp
                        (SELECT tipo_riconsegna_id FROM tmp_refs)) AS reso_id;
 
 CREATE TEMP TABLE tmp_b AS SELECT * FROM pg_temp.mk_partita();
-SELECT pg_temp.mk_af('DDT:' || (SELECT ddt_uid FROM tmp_b)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_b)::text, 10);
+SELECT pg_temp.mk_af(script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_b)::text, (SELECT ddt_riga_id FROM tmp_b)), 10);
 SELECT vendite.fn_cambia_stato_commessa((SELECT commessa_id FROM tmp_com), 'PRONTA_FATTURAZIONE');
 SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com));
 CREATE TEMP TABLE tmp_b_reso AS
@@ -221,21 +223,21 @@ SELECT ok(
 -- 2) A in backlog: RICONSEGNA_NON_ESEGUITA, RECUPERABILE, con azione
 SELECT is(
   (SELECT (b.motivo_fermo, b.classe, b.azione) FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area='RESI' AND b.documento_id=(SELECT reso_id FROM tmp_a_reso)),
+    WHERE b.area='RESO_VENDITA' AND b.documento_id=(SELECT reso_id FROM tmp_a_reso)),
   ('RICONSEGNA_NON_ESEGUITA'::varchar, 'RECUPERABILE'::varchar, 'Genera il DDT di ri-consegna'::varchar),
   '2) reso per ri-consegna senza copertura -> backlog RESI, RECUPERABILE, azione presente');
 
 -- 3) misura a conteggi (DL-11): NULL, mai 0
 SELECT is(
   (SELECT (b.valore_fermo IS NULL, b.unita_ferme) FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area='RESI' AND b.documento_id=(SELECT reso_id FROM tmp_a_reso)),
+    WHERE b.area='RESO_VENDITA' AND b.documento_id=(SELECT reso_id FROM tmp_a_reso)),
   (true, 1), '3) misura a conteggi: valore_fermo NULL (mai 0), unita_ferme = 1 riga');
 
 -- 4) ri-consegna completa -> la riga sparisce
 SELECT vendite.fn_genera_ddt_riconsegna((SELECT reso_id FROM tmp_a_reso));
 SELECT is(
   (SELECT COUNT(*)::int FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area='RESI' AND b.documento_id=(SELECT reso_id FROM tmp_a_reso)),
+    WHERE b.area='RESO_VENDITA' AND b.documento_id=(SELECT reso_id FROM tmp_a_reso)),
   0, '4) ri-consegna generata (copertura completa) -> fuori dal backlog');
 
 -- 5) B: l'accredito dovuto esiste (sanity sulla fixture)
@@ -265,13 +267,13 @@ SELECT is(
 --    alla frase). La vista e la union non sono state toccate.
 SELECT is(
   (SELECT (b.classe, b.azione IS NOT NULL) FROM vendite.vw_dash_backlog_documenti b
-    WHERE b.area='RESI' AND b.documento_id=(SELECT reso_id FROM tmp_b_reso)),
+    WHERE b.area='RESO_VENDITA' AND b.documento_id=(SELECT reso_id FROM tmp_b_reso)),
   ('RECUPERABILE'::varchar, true),
   '6) MERCE_RESA_GIA_FATTURATA e'' RECUPERABILE con azione: il rimedio esiste, la riga entra in backlog');
 
 -- 7) i resi non stanno nella union pre-commessa (REVERSE_FLOW)
 SELECT is(
-  (SELECT COUNT(*)::int FROM vendite.vw_dash_fatturazione_documenti WHERE area='RESI'),
+  (SELECT COUNT(*)::int FROM vendite.vw_dash_fatturazione_documenti WHERE area='RESO_VENDITA'),
   0, '7) resi SOLO nel backlog: mai in vw_dash_fatturazione_documenti (REVERSE_FLOW)');
 
 SELECT * FROM finish();

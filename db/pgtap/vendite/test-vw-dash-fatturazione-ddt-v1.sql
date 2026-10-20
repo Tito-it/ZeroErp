@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente (DDT_VENDITA).
 -- pgTAP test per Zero ERP
 -- Test: vw_dash_fatturazione_ddt — resolver DDT, sesta area della union
 --       — step 6, brief-db-fatturazione-ddt-resi §4a / DL-21 emendato.
@@ -170,8 +171,8 @@ SELECT is(
 -- 8) il ramo arriva nella union
 SELECT is(
   (SELECT area FROM vendite.vw_dash_fatturazione_documenti
-    WHERE documento_id=(SELECT ddt_id FROM tmp_a) AND area='DDT'),
-  'DDT'::varchar,
+    WHERE documento_id=(SELECT ddt_id FROM tmp_a) AND area='DDT_VENDITA'),
+  'DDT_VENDITA'::varchar,
   '8) il ramo DDT arriva in vw_dash_fatturazione_documenti (le due lenti lo ereditano)');
 
 SELECT * FROM finish();

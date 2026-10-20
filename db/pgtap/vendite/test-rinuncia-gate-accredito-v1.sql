@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: script.fn_check_rinuncia_reversibile — il gate NC si e' svegliato
 --       (P-3 / passo 4, changeset 20260819-02)
@@ -278,7 +279,7 @@ SELECT vendite.fn_link_commessa_sorgente(
 CREATE TEMP TABLE tmp_pr AS SELECT * FROM pg_temp.rin_mk_partita(10, 25);
 CREATE TEMP TABLE tmp_pr_fattura AS
 SELECT pg_temp.rin_fattura(
-    ('DDT:' || (SELECT ddt_uid FROM tmp_pr)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_pr)::text)::varchar,
+    script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_pr)::text, (SELECT ddt_riga_id FROM tmp_pr)),
     10, 25) AS fattura_riga_id;
 CREATE TEMP TABLE tmp_pr_reso AS
 SELECT pg_temp.rin_mk_reso((SELECT ddt_riga_id FROM tmp_pr), (SELECT ddt_uid FROM tmp_pr), 3) AS resi_riga_id;

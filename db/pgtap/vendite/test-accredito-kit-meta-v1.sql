@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_accredita_riga_reso — lo snapshot KIT sulla rettifica
 --       (P-7, changeset 20260818-75). Origine: smoke del BE del 2026-08-18.
@@ -290,7 +291,7 @@ SELECT vendite.fn_link_commessa_sorgente(
 -- ============================================================
 CREATE TEMP TABLE tmp_ka AS SELECT * FROM pg_temp.kit_mk_partita(10, 12.50);
 CREATE TEMP TABLE tmp_ka_key AS
-SELECT ('DDT:' || (SELECT ddt_uid FROM tmp_ka)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_ka)::text)::varchar AS kit_key;
+SELECT script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_ka)::text, (SELECT ddt_riga_id FROM tmp_ka)) AS kit_key;
 
 SELECT pg_temp.kit_mk_componente(
   ((SELECT kit_key FROM tmp_ka_key) || '#CMP:' || (SELECT art_c1_id FROM tmp_refs_kit)::text)::varchar,
@@ -385,7 +386,7 @@ SELECT is(
 -- ============================================================
 CREATE TEMP TABLE tmp_kb AS SELECT * FROM pg_temp.kit_mk_partita(10, 12.50);
 CREATE TEMP TABLE tmp_kb_key AS
-SELECT ('DDT:' || (SELECT ddt_uid FROM tmp_kb)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_kb)::text)::varchar AS kit_key;
+SELECT script.fn_segment_key('DDT_VENDITA', (SELECT ddt_uid FROM tmp_kb)::text, (SELECT ddt_riga_id FROM tmp_kb)) AS kit_key;
 
 SELECT pg_temp.kit_mk_componente(
   ((SELECT kit_key FROM tmp_kb_key) || '#CMP:' || (SELECT art_c1_id FROM tmp_refs_kit)::text)::varchar,

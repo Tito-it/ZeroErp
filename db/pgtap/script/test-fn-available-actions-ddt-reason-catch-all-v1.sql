@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
@@ -210,7 +211,7 @@ $$ LANGUAGE sql;
 
 -- La segment_key di quella riga, come la compone il lister.
 CREATE OR REPLACE FUNCTION pg_temp.rca_segment(p_ddt bigint) RETURNS varchar AS $$
-  SELECT ('DDT:' || d.uid::text || ':R:' || pg_temp.rca_riga(p_ddt)::text)::varchar
+  SELECT script.fn_segment_key('DDT_VENDITA', d.uid::text, pg_temp.rca_riga(p_ddt))
     FROM vendite.ddt d WHERE d.id = p_ddt;
 $$ LANGUAGE sql;
 

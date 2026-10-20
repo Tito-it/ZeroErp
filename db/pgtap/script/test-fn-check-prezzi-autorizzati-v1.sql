@@ -83,6 +83,7 @@
 --  - ⚠️ gli errori si asseriscono sulla FRASE (throws_like), non su P0001:
 --    i guard di transizione sanno sollevare anche altro, e P0001 direbbe solo
 --    «errore di dominio», non quale.
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c/2d): l'ambito degli indirizzi della bolla e' DDT_VENDITA.
 -- ------------------------------------------------------------
 
 -- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
@@ -720,7 +721,7 @@ BEGIN
         INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
         SELECT v_ddt, ti.id, '{"pgtap": true}'::jsonb
           FROM config.tipi_indirizzi ti
-         WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT', ARRAY[]::integer[]));
+         WHERE ti.codice_interno = ANY (script.fn_indirizzi_obbligatori_mancanti('DDT_VENDITA', ARRAY[]::integer[]));
 
         INSERT INTO _d VALUES (v_tag, v_ddt, v_comp);
     END LOOP;

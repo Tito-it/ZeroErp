@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: tornare indietro — annullare la commessa riapre a monte, con la
 --   segnalazione; il verso in avanti verso la commessa dal DB.
@@ -408,7 +409,7 @@ SELECT ok(
   pg_temp.ac_stato('preventivi', pg_temp.ac_fix('b_prev')) = 'ACCETTATO'
   AND vendite.fn_preventivo_ha_residuo_commessa(pg_temp.ac_fix('b_prev'))
   AND script.fn_get_stato_push_segment(
-        ('PREV:' || (SELECT p.uid FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev'))::text
+        ('PREVENTIVO:' || (SELECT p.uid FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev'))::text
          || ':R:' || pg_temp.ac_fix('b_s1'))::varchar) = 'LIBERA'
   AND (SELECT v.stato_smistamento = 'RESIDUA' FROM vendite.vw_preventivi_smistamento_righe v
         WHERE v.riga_id = pg_temp.ac_fix('b_s1'))
@@ -687,7 +688,7 @@ SELECT ok(
   (SELECT bool_and(
             (EXISTS (SELECT 1 FROM vendite.vw_preventivi_righe_smistabili_commessa v WHERE v.id = pr.id))
             = (script.fn_get_stato_push_segment(
-                 ('PREV:' || p.uid::text || ':R:' || pr.id::text)::varchar) = 'LIBERA'))
+                 script.fn_segment_key('PREVENTIVO', p.uid::text, pr.id)) = 'LIBERA'))
      FROM vendite.preventivi_righe pr
      JOIN vendite.preventivi p ON p.id = pr.preventivo_id
     WHERE pr.articolo_id = (SELECT art_serv_id FROM tmp_ac_refs)

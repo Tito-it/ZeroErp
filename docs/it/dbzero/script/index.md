@@ -275,6 +275,9 @@
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](funzioni/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.
 - [fn_search_stradario_generale](funzioni/fn_search_stradario_generale.md) — Ricerca vie su `config.stradario_generale` (senza comune/CAP). Serve per autocomplete "via nuova": l'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
+- [fn_segment_key](funzioni/fn_segment_key.md)
+- [fn_segment_key_riga](funzioni/fn_segment_key_riga.md)
+- [fn_segment_key_sorgente](funzioni/fn_segment_key_sorgente.md)
 - [fn_snapshot_indirizzo](funzioni/fn_snapshot_indirizzo.md)
 - [fn_snapshot_indirizzo_soggetto](funzioni/fn_snapshot_indirizzo_soggetto.md) — (latest review 02-08-2026)
 - [fn_sorgente_chiave_id](funzioni/fn_sorgente_chiave_id.md) — (scritta il 05-10-2026)

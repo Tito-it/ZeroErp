@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d): l'ambito dei tipi d'indirizzo ammessi e' il codice della sorgente (FATTURE -> FATTURA).
 -- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
 --   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
 --   fixture viene completata, si toglie questa riga e si rimette il
@@ -102,7 +103,7 @@ SELECT
 
 
 -- Stesso criterio di test-snapshot-indirizzi-fattura-v1: spazio indirizzi
--- (ruolo + soggetto) vuoto per i tipi ammessi in ambito FATTURE, cosi' i
+-- (ruolo + soggetto) vuoto per i tipi ammessi in ambito FATTURA, cosi' i
 -- conteggi dipendono solo da cio' che inserisce il test.
 CREATE TEMP TABLE tmp_cand_sil AS
 SELECT ba.id AS billing_account_id, ba.soggetto_ruolo_id, ba.istanza_utility_id,
@@ -116,14 +117,14 @@ SELECT ba.id AS billing_account_id, ba.soggetto_ruolo_id, ba.istanza_utility_id,
           WHERE i.soggetto_ruolo_id = ba.soggetto_ruolo_id
             AND i.tipo_indirizzo_id IN (SELECT a.tipo_indirizzo_id
                                           FROM config.tipi_indirizzi_allowed a
-                                         WHERE a.ambito = 'FATTURE'
+                                         WHERE a.ambito = 'FATTURA'
                                            AND a.attivo IS TRUE))
    AND NOT EXISTS (
          SELECT 1 FROM anagrafiche.indirizzi_soggetti g
           WHERE g.soggetto_id = sr.soggetto_id
             AND g.tipo_indirizzo_id IN (SELECT a.tipo_indirizzo_id
                                           FROM config.tipi_indirizzi_allowed a
-                                         WHERE a.ambito = 'FATTURE'
+                                         WHERE a.ambito = 'FATTURA'
                                            AND a.attivo IS TRUE));
 
 -- Due BA dello stesso ruolo, su istanze diverse: vedi la nota in testa.

@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2d/2e): chiavi del push e ambito degli indirizzi col codice della sorgente.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_crea_revisione_preventivo
 -- ------------------------------------------------------------
@@ -118,7 +119,7 @@ SELECT
   ) AS iva_id,
   (SELECT a.tipo_indirizzo_id
      FROM config.tipi_indirizzi_allowed a
-    WHERE a.ambito = 'PREVENTIVI' AND a.attivo IS TRUE
+    WHERE a.ambito = 'PREVENTIVO' AND a.attivo IS TRUE
     LIMIT 1
   ) AS tipo_indirizzo_id;
 
