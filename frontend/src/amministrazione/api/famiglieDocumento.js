@@ -43,6 +43,18 @@ export function lookupFamiglie() {
   return api.get(`${BASE}/lookup/`)
 }
 
+// Scopo: le sorgenti fra cui si sceglie la famiglia da creare (dal 2026-10-20,
+//        brief-db-grammatica-unica-documenti 2c, G-5): una famiglia e' quella di
+//        una SORGENTE, e la tabella dei documenti e' la sua `target_table`.
+//        Ogni voce dice se la sorgente ha gia' una famiglia
+//        (`famiglia_esistente`) e chi numera gia' la sua tabella
+//        (`tabella_numerata_da`): sono informazioni per spegnere la voce e dire
+//        perche', il rifiuto resta al database. Cancello dell'amministratore,
+//        come la creazione. Envelope `{ results }`, come il lookup.
+export function listSorgentiFamiglie() {
+  return api.get(`${BASE}/sorgenti/`)
+}
+
 export function getFamiglia(id) {
   return api.get(`${BASE}/${id}/`)
 }

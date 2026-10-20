@@ -40,7 +40,7 @@ creare un fondo, tanto meno a cancellarlo*.
 | `order_by` | enum | `data` | `data`, `motivo`, `anno`, `numero`, `totale_a_pagare`, `importo_proposto`, `capienza_attuale`, `stato_atto`. Fuori whitelist → **400**. ⚠️ `stato_atto` (aggiunto il 2026-08-22) è valorizzato sul solo ramo `NON_PIU_CAPIENTE`: ordinarlo **separa i casi con un atto vivo da quelli senza**, e i vuoti vanno in coda su `desc` (`sql_order_direction`, che emette sempre i `NULLS` espliciti) |
 | `order_dir` | `asc`/`desc` | `desc` | Le fatture più recenti prima. Altro valore → **400** |
 | `page` | int | 1 | |
-| `page_size` | int | 50 | max 200 |
+| `page_size` | int | 25 | max 200 |
 
 ### I quattro motivi
 

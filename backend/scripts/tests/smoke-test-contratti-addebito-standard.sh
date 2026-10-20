@@ -15,7 +15,7 @@
 #  - riga UNA_TANTUM/FISSA (addebito standard, qta+prezzo)
 #  - /emetti/ → ATTIVO (prereq documentale gated: skip se template/emittente assente)
 #  - push CONTRATTO (POST /commesse/push/run/, batch globale sorgente CONTRATTO)
-#  - 1 commesse_attivita per riga, segment_key CONTR:<uid>:R:<riga>:M:<YYYY-MM inizio>
+#  - 1 commesse_attivita per riga, segment_key CONTRATTO:<uid>:R:<riga>:M:<YYYY-MM inizio>
 #  - commessa emittibile (PRONTA_FATTURAZIONE + approvate >= 1)
 #  - idempotenza push: re-run = nessun doppione (upsert su segment_key)
 #
@@ -240,7 +240,7 @@ else
     log_info "Body: $(echo "$LAST_BODY" | head -c 200)"
 fi
 
-# Funzione: cerca la nostra attività (segment_key CONTR:<uid>:R:<riga>:M:...) tra
+# Funzione: cerca la nostra attività (segment_key CONTRATTO:<uid>:R:<riga>:M:...) tra
 # le commesse passate in $@ e stampa "commessa_id|segment_key|competenza_mese".
 trova_attivita() {
     local uid="$1"; shift
@@ -255,7 +255,7 @@ try:
     rows = json.load(sys.stdin).get('data',{}).get('results',[])
     for a in rows:
         sk = a.get('segment_key') or ''
-        if sk.startswith('CONTR:'+uid+':'):
+        if sk.startswith('CONTRATTO:'+uid+':'):
             print(cid+'|'+sk+'|'+str(a.get('competenza_mese') or '')); break
 except Exception:
     pass
@@ -283,7 +283,7 @@ except Exception: pass
     fi
 
     # --- 6. Verifica attività con segment_key del nostro contratto ---
-    echo ""; echo "-- 6. Attività con segment_key CONTR:<uid>:R:<riga>:M:<mese-inizio> --"
+    echo ""; echo "-- 6. Attività con segment_key CONTRATTO:<uid>:R:<riga>:M:<mese-inizio> --"
     COMMESSA_ID=""; SEG=""; COMPETENZA=""
     if [[ "$PUSH_OK" == "1" ]]; then
         HIT=$(trova_attivita "$CONTRATTO_UID" $COMMESSE_IDS || true)
@@ -291,16 +291,16 @@ except Exception: pass
             COMMESSA_ID="${HIT%%|*}"; rest="${HIT#*|}"; SEG="${rest%%|*}"; COMPETENZA="${rest##*|}"
             log_ok "attività trovata (commessa=$COMMESSA_ID)"
             log_info "segment_key = $SEG ; competenza_mese = $COMPETENZA"
-            if [[ "$SEG" == "CONTR:${CONTRATTO_UID}:R:${RIGA_ID}:M:${MESE_INIZIO}" ]]; then
+            if [[ "$SEG" == "CONTRATTO:${CONTRATTO_UID}:R:${RIGA_ID}:M:${MESE_INIZIO}" ]]; then
                 log_ok "segment_key atteso (riga $RIGA_ID, mese-inizio $MESE_INIZIO)"
             else
-                log_fail "segment_key inatteso: atteso CONTR:${CONTRATTO_UID}:R:${RIGA_ID}:M:${MESE_INIZIO}"
+                log_fail "segment_key inatteso: atteso CONTRATTO:${CONTRATTO_UID}:R:${RIGA_ID}:M:${MESE_INIZIO}"
             fi
             [[ "$COMPETENZA" == "${MESE_INIZIO}-01" ]] \
                 && log_ok "competenza_mese = ${MESE_INIZIO}-01 (mese inizio contratto)" \
                 || log_info "competenza_mese = $COMPETENZA (atteso ${MESE_INIZIO}-01)"
         else
-            log_fail "nessuna attività con segment_key CONTR:${CONTRATTO_UID}: nelle commesse pushate"
+            log_fail "nessuna attività con segment_key CONTRATTO:${CONTRATTO_UID}: nelle commesse pushate"
         fi
     else
         log_skip "push non OK: salto verifica attività"

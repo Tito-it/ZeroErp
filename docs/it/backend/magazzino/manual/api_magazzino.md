@@ -60,8 +60,11 @@ Codice: `apps/magazzino/api/views.py` (`build_documento_interno_views`),
 
 * **Liste offset-based** (`limit`/`offset`, `{count, results}`), la lingua di
   `<ListaConfigurabile>`. `order_by` fuori whitelist è un 400 col campo;
-  `order_dir` passa grezzo, e senza ordinamento decide il repository (per le
-  testate `data DESC, id DESC`).
+  senza `order_dir` le colonne data (riconosciute dal nome: `data`, `data_*`,
+  `*_at`, …) partono `DESC`, la colonna di default segue il verso della lista;
+  senza ordinamento decide il repository (per le testate `data DESC, id DESC`).
+* **`search`**: sotto la soglia del catalogo della lista il termine è ignorato,
+  mai un 400.
 * **Ogni lista ha il suo export sorella** `…/export/?formato=csv|xlsx`, con gli
   stessi filtri e le colonne dalla preferenza della lista (`lista_codice` letto
   dalla view della lista, presidio `test_export_lista_codice_pari`).
@@ -79,8 +82,7 @@ Codice: `apps/magazzino/api/views.py` (`build_documento_interno_views`),
 
 Lista delle testate (catalogo `magazzino.inventari` 70 · `magazzino.rettifiche`
 73). Filtri: `magazzino_id`, `stato` (`DRAFT | CONFIRM | POSTED | CANCEL`,
-fuori vocabolario 400), `data_da`/`data_a`, `search` (**min 3**, sotto soglia
-400 `E_SEARCH_VALIDATION`). Ordinamento in `DOCUMENTI_SORT_COLUMNS` (`data`,
+fuori vocabolario 400), `data_da`/`data_a`, `search`. Ordinamento in `DOCUMENTI_SORT_COLUMNS` (`data`,
 `stato`, `magazzino_codice`, `magazzino_descrizione`, `descrizione`,
 `righe_count`, `data_insert`, `user_insert`, `id`).
 
@@ -228,7 +230,9 @@ due fatti.
 
 Parziale (`null` esplicito azzera un campo facoltativo: togliere il lotto). Il
 guard risponde fuori da `DRAFT`. La coppia (documento, riga) è la risorsa: una
-riga di un altro documento è 404 `E_MAG_DOCUMENTO_RIGA_NON_TROVATA` (R-7).
+riga di un altro documento è 404 `E_MAG_DOCUMENTO_RIGA_NON_TROVATA` (R-7). Il
+`PATCH` risponde con la riga; il `DELETE` (con `Idempotency-Key`) con
+`{riga_id, eliminata}`.
 
 ### 12. `GET /api/v1/magazzino/righe/motivi/`
 
@@ -264,8 +268,7 @@ Sola lettura per costruzione: sul registro si scrive solo dalla porta
 Per (articolo, magazzino), da `vw_disponibilita` (lista
 `magazzino.disponibilita` 75). Filtri: `magazzino_id`, `articolo_id`,
 `solo_negativa` (disponibile sotto zero: le promesse che una rettifica ha reso
-non più mantenibili, D-L2-d), `solo_con_giacenza`, `search` (min 3, 400 sotto
-soglia). Ordinamento in `DISPONIBILITA_SORT_COLUMNS`; senza: articolo,
+non più mantenibili, D-L2-d), `solo_con_giacenza`, `search`. Ordinamento in `DISPONIBILITA_SORT_COLUMNS`; senza: articolo,
 magazzino.
 
 Riga: `chiave_riga` (`articolo|magazzino`), articolo (con `requires_lotto` /
@@ -286,6 +289,25 @@ Per articolo, somma sui magazzini visibili (`vw_disponibilita_articolo`, lista
 Il drill-down di `n_blocchi` (D-L2-j): gli attesi `APERTA` **in uscita** su
 (articolo, magazzino), con quantità, data prevista, causale, sorgente, soggetto
 decodificato e nota. Non paginato: `{"results": [...]}`.
+
+### 18-bis. `POST /api/v1/magazzino/disponibilita/blocchi/` — apri un blocco manuale
+
+Il blocco manuale (Lotto 3): una promessa di merce, scritta dal verbo
+`magazzino.fn_apri_blocco` con una sola `SELECT`. Permesso `blocca_merce`
+(`post_permission`, richiesto di nuovo dal verbo a DB), `Idempotency-Key`
+obbligatoria.
+
+Corpo: `magazzino_id`, `articolo_id` (UUID), `qta` (decimale) obbligatori;
+`soggetto_ruolo_id`, `nota`, `lotto_id`, `asset_id`, `ubicazione_id`
+facoltativi. Risposta `{"blocco_id": n}`. Payload malformato: 400
+`E_MAGAZZINO_VALIDATION` col campo; i rifiuti di merito sono i codici del verbo.
+
+### 18-ter. `POST /api/v1/magazzino/disponibilita/blocchi/{blocco_id}/libera/`
+
+Libera il blocco (verbo `magazzino.fn_libera_blocco`: autore, momento, nota).
+Stesso permesso `blocca_merce`, `Idempotency-Key` obbligatoria. Corpo
+`{"nota": "…"}` (facoltativa). Risposta `{"blocco_id": n, "liberato": true}`.
+Un blocco inesistente o già liberato risponde col codice del DB.
 
 ### 19. `GET /api/v1/magazzino/movimenti/`
 
@@ -308,7 +330,6 @@ Export: `…/movimenti/export/`.
 | codice | classe | quando |
 | --- | --- | --- |
 | `E_MAGAZZINO_VALIDATION` | DATO_ERRATO | payload o query rifiutati dal BE, FK/CHECK tradotti — col campo (R-6) |
-| `E_SEARCH_VALIDATION` | DATO_ERRATO | `search` sotto soglia su testate e disponibilità |
 | `E_MAG_DOCUMENTO_NON_TROVATO` | NON_TROVATO | la testata non c'è o è fuori perimetro (404 no-leak) |
 | `E_MAG_DOCUMENTO_RIGA_NON_TROVATA` | NON_TROVATO | la riga non c'è, o è di un altro documento (R-7) |
 | `E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA` | CONFLITTO_STATO | la matrice non ammette il passaggio; anche «registra» fuori da `CONFIRM` |
@@ -317,7 +338,7 @@ Export: `…/movimenti/export/`.
 | `E_MAG_DOCUMENTO_MAGAZZINO_IMMUTABILE` | CONFLITTO_STATO | cambiare il magazzino dopo la nascita (R-4; il BE non lo manda mai) |
 | `E_MAG_DOCUMENTO_SENZA_RIGHE` | NON_ESEGUIBILE | registrare un documento vuoto |
 | `E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA` | DATO_ERRATO | stessa posizione due volte nell'inventario, campo `articolo_id` (R-2) |
-| `E_PERMESSO_NEGATO` | NON_PERMESSO | registrare senza l'azione `registra_magazzino` |
+| `E_PERMESSO_NEGATO` | NON_PERMESSO | registrare senza l'azione `registra_magazzino`; aprire o liberare un blocco senza `blocca_merce` |
 | i codici della riga | DATO_ERRATO | alla registrazione, il primo motivo di `fn_check_riga_magazzino` (`E_MAG_LOTTO_OBBLIGATORIO`, `E_MAG_UBICAZIONE_OBBLIGATORIA`, `E_MAG_ARTICOLO_NON_GESTITO`, …): passano **com'è**, con la frase e il campo del catalogo |
 | `E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE` | TECNICO | la porta `POSTED` aperta fuori dal verbo: dall'API non si raggiunge (rotta 6) |
 

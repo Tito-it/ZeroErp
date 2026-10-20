@@ -66,7 +66,7 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
 - Path (preventivi): `/api/v1/vendite/righe/{riga_id}/approva-prezzo/`
   (contratti: `/righe-contratto/...`; offerte: `/eccezioni-offerta/...`)
 - Auth: `vendite` + `post_permission = "approva_prezzo_override"` (oppure superuser)
-- Header: `Idempotency-Key` raccomandato (gestito da `handle_post_json`)
+- Header: `Idempotency-Key` non preteso (`handle_post_json` senza `require_idempotency_key`: nessun replay)
 - Body JSON:
   - `nota` (string, opzionale) — registrata come nota INTERNA sulla pratica
 - Output `200`:
@@ -86,7 +86,7 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
   - Transizione pratica APERTA → CHIUSA via `pratiche_service.cambia_stato_pratica`
   - INSERT nota INTERNA: `"Approvato override prezzo. {nota}"` (oppure default)
 - Errori:
-  - `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403) — utente senza azione `approva_prezzo_override`. **Defense-in-depth**: check eseguito PRIMA del lookup riga (no leak su esistenza)
+  - `E_PERMISSION_DENIED` (403) — utente senza azione `approva_prezzo_override`: lo rifiuta il cancello della view (`post_permission`), prima di qualunque lookup riga (no leak su esistenza). Il service ripete il controllo come difesa interna (`E_PRICING_OVERRIDE_NON_AUTORIZZATO`, 403), non raggiungibile dall'endpoint
   - `E_PREV_RIGA_NOT_FOUND` (404) — riga inesistente
   - `E_APPROVAZIONE_PREZZO_NON_AMMESSA` (409) — riga non in stato `PENDING` o senza pratica collegata (stato inconsistente)
 
@@ -98,7 +98,7 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
 - Path (preventivi): `/api/v1/vendite/righe/{riga_id}/rifiuta-prezzo/`
   (contratti: `/righe-contratto/...`; offerte: `/eccezioni-offerta/...`)
 - Auth: `vendite` + `post_permission = "approva_prezzo_override"` (oppure superuser)
-- Header: `Idempotency-Key` raccomandato
+- Header: `Idempotency-Key` non preteso
 - Body JSON:
   - `motivazione` (string, opzionale) — registrata come nota INTERNA con prefisso "Rifiutato override prezzo. Motivo: ..."
 - Output `200`:
@@ -126,11 +126,14 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
 
 - Metodo: `GET`
 - Path: `/api/v1/vendite/approvazioni-prezzo/`
-- Auth: `vendite` LETTURA (l'approver agisce con `approva_prezzo_override` su singolo POST)
+- Auth: `vendite` + `get_permission = "approva_prezzo_override"` (oppure superuser): la coda è una pagina operativa per approver, non una lista consultiva
 - Throttling: `is_search_endpoint = True`
+- Cancello perimetro emittente (`lista_codice = "vendite.approvazioni_prezzo"`): può rispondere `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`
 - Query params:
-  - `limit` (int, default 50, max 200, clamp via `apps.core.api.constants.MAX_LIMIT`)
+  - `limit` (int, default 25 `DEFAULT_LIMIT`, max 200 `MAX_LIMIT`, clamp `limiti_pagina`)
   - `offset` (int, default 0)
+  - `order_by` (whitelist pratiche `PRATICHE_ORDER_COLS`: `id`, `codice`, `descrizione`, `data_apertura`, `data_scadenza`, `data_insert`, `tipo_prestazione_descrizione`, `stato_descrizione`, `priorita_descrizione`, `soggetto_display`, `risorsa_umana_display`; default `data_insert`)
+  - `order_dir` (`asc`/`desc`, default `desc` per qualunque colonna)
 - Output `200`:
 
 ```json
@@ -160,7 +163,7 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
       }
     ],
     "count": 1,
-    "limit": 50,
+    "limit": 25,
     "offset": 0
   }
 }
@@ -170,16 +173,19 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
   - `tipo_prestazione_id = 9001` (codice `APPROVAZIONE_PREZZO`)
   - `stato_codice_interno = 'APERTA'`
   - `emittente_fiscale_id` derivato da `PermissionResolver.get_emittente_for_user` (operatore singolo emittente)
-- **Capability per item (Fase 5.B1)**: ogni item della coda ha `can_approve`/`can_reject`/`action_reason` **e `sorgente`** (`preventivo`/`contratto`/`offerta`, per il routing endpoint lato FE). Permesso utente calcolato 1 volta (azione `approva_prezzo_override`); per-item la verifica della chiave riga corretta per la sorgente (`riga_preventivo_id`/`riga_contratto_id`/`riga_offerta_id`, fallback legacy `riga_id`). Codici stabili `action_reason` esposti come costanti modulo BE (`ACTION_REASON_PERMESSO_MANCANTE`, `ACTION_REASON_RIGA_NON_LINKATA`):
+- **Capability per item (Fase 5.B1)**: ogni item della coda ha `can_approve`/`can_reject`/`action_reason` **e `sorgente`** (`preventivo`/`contratto`/`offerta`, per il routing endpoint lato FE). Permesso utente calcolato 1 volta (azione `approva_prezzo_override`); per-item la verifica della chiave riga corretta per la sorgente (`riga_preventivo_id`/`riga_contratto_id`/`riga_offerta_id`; nessun ripiego sulla vecchia chiave `riga_id`).
+Poiché la coda pretende già `approva_prezzo_override`, `PERMESSO_MANCANTE` è di fatto difensivo. Codici stabili `action_reason` esposti come costanti modulo BE (`ACTION_REASON_PERMESSO_MANCANTE`, `ACTION_REASON_RIGA_NON_LINKATA`):
 
 | `action_reason`     | Quando                                                                      | Effetto FE                                                                         |
 | ------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `null`              | Tutto OK: utente HA permesso + riga linkata                                 | Bottoni Approva/Rifiuta abilitati                                                  |
 | `PERMESSO_MANCANTE` | Utente senza azione `approva_prezzo_override` (e non superuser)             | Bottoni disabilitati + tooltip i18n `approvazioni_prezzo.reason_permesso_mancante` |
-| `RIGA_NON_LINKATA`  | `meta.riga_preventivo_id` assente (pratica legacy o crash post-create_riga) | Bottoni disabilitati + tooltip i18n `approvazioni_prezzo.reason_riga_non_linkata`  |
+| `RIGA_NON_LINKATA`  | Chiave riga della sorgente assente nel meta, o `sorgente` sconosciuta        | Bottoni disabilitati + tooltip i18n `approvazioni_prezzo.reason_riga_non_linkata`  |
 
 - Errori:
-  - `E_PRICING_OVERRIDE_NON_AUTORIZZATO` (403) — utente non autenticato
+  - `E_PERMISSION_DENIED` (403) — utente senza `approva_prezzo_override` (cancello della view)
+  - `E_VENDITE_VALIDATION` (400) — `order_by` fuori whitelist (validato prima della risoluzione utente/emittente)
+  - `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` (422) — cancello perimetro emittente
   - `E_APPROVAZIONE_PREZZO_NON_AMMESSA` (409) — admin globale senza emittente assegnato (la coda è multi-tenant per emittente; admin globale deve usare `cerca_pratiche` generico per cross-tenant)
 
 ---
@@ -192,7 +198,10 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
 | `E_DOC_PREZZO_RIFIUTATO`              | 409  | Guard DB: documento verso emissione/accettazione con prezzi REJECTED      |
 | `E_RIGA_PREZZO_PENDENTE`              | 409  | Trigger DB su modifica struttura riga PENDING                             |
 | `E_APPROVAZIONE_PREZZO_NON_AMMESSA`   | 409  | Service: riga non PENDING, senza pratica, oppure approver senza emittente |
-| `E_PRICING_OVERRIDE_NON_AUTORIZZATO`  | 403  | Auth: utente non autenticato o senza `approva_prezzo_override`            |
+| `E_PERMISSION_DENIED`                 | 403  | Cancello view: utente senza `approva_prezzo_override` (POST e coda)       |
+| `E_PRICING_OVERRIDE_NON_AUTORIZZATO`  | 403  | Difesa interna del service (non raggiungibile dagli endpoint)             |
+| `E_VENDITE_VALIDATION`                | 400  | Coda: `order_by` fuori whitelist                                          |
+| `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`   | 422  | Coda: cancello perimetro emittente                                        |
 
 ## Riferimenti
 

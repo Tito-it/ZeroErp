@@ -438,6 +438,8 @@ def resolve_config_id_by_codice_interno(
     etichetta: str,
     not_found_message: str | None = None,
     function_name: str = "django_service",
+    codice_errore: str = "E_CONFIG_MANCANTE",
+    campo: str | None = None,
 ) -> int:
     """Risolve l'`id` di una riga config/lookup dal `codice_interno` IMMUTABILE.
 
@@ -458,6 +460,14 @@ def resolve_config_id_by_codice_interno(
     `not_found_message` permette al chiamante di preservare un messaggio
     diagnostico specifico (es. hint sul seed mancante); in assenza usa un
     default costruito da `etichetta`.
+
+    ⛔ **Chi ha scelto il codice decide il codice d'errore.** Il default
+    `E_CONFIG_MANCANTE` (TECNICO, 500) vale per un codice SCRITTO NEL CODICE:
+    la riga che manca e' un seed mancante, e l'operatore non puo' rimediare.
+    Quando il codice arriva dal CLIENT (`nuovo_stato`, `tipo_nota_codice`, ...)
+    la riga che manca e' un valore sbagliato di chi chiama: il chiamante passa
+    il suo codice di validazione (`codice_errore`, DATO_ERRATO → 400) e il
+    `campo`. Fino al 2026-10-20 un `nuovo_stato` inventato era un 500.
     """
     sql = f"""
         SELECT id FROM {tabella}
@@ -469,16 +479,67 @@ def resolve_config_id_by_codice_interno(
         row = cursor.fetchone()
     ErrorManager.require(
         row is not None,
-        code="E_CONFIG_MANCANTE",
+        code=codice_errore,
         message=(
             not_found_message
             or f"{etichetta} '{codice_interno}' non trovato in {tabella} "
             "(o non attivo)."
         ),
+        context={"field": campo} if campo else None,
         function_name=function_name,
     )
     assert row is not None
     return int(row[0])
+
+
+def richiedi_codice_a_vocabolario(
+    tabella: str,
+    colonna: str,
+    valore: str | None,
+    *,
+    codice_errore: str,
+    parametro: str,
+    function_name: str = "django_service",
+) -> str | None:
+    """Il valore di un FILTRO esiste nel vocabolario che lo possiede, oppure 400.
+
+    Per i filtri il cui vocabolario e' una TABELLA (`config.stati_doc_*`,
+    `config.tipi_entita`, ...): `None` passa (filtro assente), un valore che la
+    tabella non conosce e' `codice_errore` (il DATO_ERRATO del chiamante), col
+    nome del `parametro` nel messaggio e nel context diagnostico. ⛔ Senza, un
+    valore sbagliato finiva nel `WHERE` e la lista rispondeva vuota con un 200
+    — indistinguibile da «non c'e' niente» (2026-10-20,
+    brief-be-verifica-documentazione-api §3).
+
+    ⛔ **Niente `field`** (decisione di Tid 2026-10-20, api.md §«Escono solo i
+    nomi»): un filtro e' un parametro di QUERY, non un input del form in cui
+    l'operatore si trova. Il valore esce da una select o da un chip, quindi un
+    400 qui e' un client che sbaglia (bundle vecchio, URL a mano, client
+    esterno), e `field` accenderebbe un input che non esiste.
+
+    ⚠️ Esistenza e basta: nessun filtro `attivo`/`obsoleto_dal`. Filtrare su un
+    codice DISMESSO e' una domanda legittima — i documenti vecchi lo portano
+    ancora (decisione di Tid, 2026-10-20). E nessun id restituito: un filtro
+    non ne ha bisogno, e `config.tipi_entita` un id non ce l'ha. Per risolvere
+    un id da un codice c'e' `resolve_config_id_by_codice_interno`.
+
+    `tabella` e `colonna` sono identificatori controllati dal codice (mai input
+    utente): vengono interpolati nella query. Restituisce il valore.
+    """
+    if valore is None:
+        return None
+    sql = f"SELECT 1 FROM {tabella} WHERE {colonna} = %s LIMIT 1"  # noqa: S608 — identificatori controllati dal codice
+    with connection.cursor() as cursor:
+        cursor.execute(sql, [valore])
+        trovato = cursor.fetchone() is not None
+    ErrorManager.require(
+        trovato,
+        code=codice_errore,
+        message=f"Valore '{valore}' non ammesso per '{parametro}'.",
+        context={"parametro": parametro, parametro: valore},
+        function_name=function_name,
+    )
+    return valore
 
 
 def sql_order_direction(
@@ -617,6 +678,68 @@ def colonne_identita(*colonne: str) -> dict[str, str]:
     return {c: c for c in colonne}
 
 
+# Le chiavi di ordinamento che per NOME sono date, per la convenzione del
+# progetto: `data`, `data_*`, `*_at`, `valido_dal/al`, `validita_dal/al`, ogni
+# `*_dal`/`*_al`, `competenza_mese`. La usa `sql_order_clause` per la regola
+# di Tid del 2026-09-02 («le date partono DESC»).
+_CHIAVE_DATA = re.compile(r"^(data|data_.+|.+_at|.+_dal|.+_al|competenza_mese)$")
+
+
+def e_chiave_data(chiave: str) -> bool:
+    """La chiave di ordinamento e' una data per nome (vedi `_CHIAVE_DATA`)."""
+    return bool(_CHIAVE_DATA.match(chiave))
+
+
+def sql_order_direction_lista(
+    order_by: str | None,
+    order_dir: str | None,
+    *,
+    colonne: Mapping[str, str],
+    default: str | None = None,
+    default_desc: bool = False,
+    colonne_desc: Collection[str] = (),
+) -> str:
+    """La DIREZIONE di una lista, risolta dalla chiave chiesta: la regola di
+    `sql_order_clause`, per chi compone l'`ORDER BY` a mano.
+
+    Ritorna cio' che ritorna `sql_order_direction` (`'ASC NULLS FIRST'` /
+    `'DESC NULLS LAST'`); una direzione estranea e' `ValueError` su ogni ramo.
+
+    Senza `order_dir`, il verso si decide cosi':
+
+    - `order_by` assente o fuori `colonne` → `default_desc` (il ramo di
+      default della lista);
+    - `order_by` che nomina la colonna di DEFAULT (per espressione o per
+      chiave) → `default_desc`: la scelta della lista, che per una coda puo'
+      essere crescente apposta;
+    - ogni altra colonna → DESC se e' una data (`colonne_desc`, o per NOME con
+      `e_chiave_data`), altrimenti ASC.
+
+    ⛔ **L'inferenza guarda solo una chiave DENTRO la whitelist.** Una chiave
+    fuori `colonne` ripiega sulla colonna di default, e la direzione deve
+    essere quella del default, non quella del nome chiesto: `?order_by=data_x`
+    su una lista che ripiega su un codice partiva DESC.
+
+    ⭐ **Regola del 2 (ok Tid 2026-10-20).** La riga
+    `sql_order_direction(order_dir, default_desc=e_chiave_data(order_by))` era
+    stata ricopiata in 13 `ORDER BY` composti a mano (vendite, magazzino,
+    amm-software, emittenti), e le copie divergevano gia' da `sql_order_clause`:
+    guardavano la chiave chiesta e non la colonna risolta, e ignoravano la
+    precedenza del default. `sql_order_clause` ora passa di qui.
+    """
+    if not order_by or order_by not in colonne:
+        return sql_order_direction(order_dir, default_desc=default_desc)
+    colonna = colonne[order_by]
+    # Il default si riconosce dall'espressione O dalla chiave: un `default`
+    # scritto come chiave (`"data_scadenza"`) con una colonna qualificata
+    # (`"v.data_scadenza"`) perderebbe in silenzio il verso della coda.
+    if default is not None and default.strip() in (colonna.strip(), order_by):
+        verso_desc = default_desc
+    else:
+        verso_desc = order_by in colonne_desc or e_chiave_data(order_by)
+    return sql_order_direction(order_dir, default_desc=verso_desc)
+
+
 def sql_order_clause(
     order_by: str | None,
     order_dir: str | None,
@@ -673,6 +796,12 @@ def sql_order_clause(
     cio' che si e' chiesto. ⚠️ Vale solo quando `order_dir` NON e' indicato: una
     direzione esplicita vince sempre, altrimenti l'operatore non potrebbe
     invertire l'ordine di una colonna data.
+    ⭐ **Dal 2026-10-20 le date si riconoscono anche dal NOME** (`e_chiave_data`,
+    decisione di Tid): circa venti liste in sette app non dichiaravano le loro
+    colonne data, e la regola per loro non valeva. `colonne_desc` resta per le
+    date con un nome fuori convenzione. ⚠️ La colonna di DEFAULT, quando
+    `order_by` la nomina (la riempie `parse_list_params`), segue `default_desc`
+    — la scelta della lista, che per una coda puo' essere crescente apposta.
 
     ⛔ **Se la colonna risolta E' il tiebreak, lo spareggio non si scrive.**
     Senza questo, il ramo di default di una lista che ordina per `id` produceva
@@ -710,24 +839,23 @@ def sql_order_clause(
             "sql_order_clause: si passa `default` (una colonna) OPPURE "
             "`default_clause` (una clausola completa), mai entrambi ne' nessuno"
         )
+    # La direzione da UNA regola sola, la stessa degli `ORDER BY` composti a
+    # mano: precedenza del default, date DESC (vedi `sql_order_direction_lista`).
+    direzione = sql_order_direction_lista(
+        order_by, order_dir, colonne=colonne, default=default,
+        default_desc=default_desc, colonne_desc=colonne_desc,
+    )
     if not order_by or order_by not in colonne:
         # ⚠️ La clausola completa NON prende direzione: ce l'ha gia' dentro, e
         #    aggiungerne una produrrebbe `DESC DESC`.
         if default_clause is not None:
-            verso = sql_tiebreak_direction(
-                sql_order_direction(order_dir, default_desc=default_desc)
-            )
-            return f"{default_clause}, {tiebreak} {verso}"
+            return f"{default_clause}, {tiebreak} {sql_tiebreak_direction(direzione)}"
         # Il controllo «uno dei due» qui sopra garantisce `default` non None
         # quando `default_clause` lo e'.
         assert default is not None
         colonna = default
-        direzione = sql_order_direction(order_dir, default_desc=default_desc)
     else:
         colonna = colonne[order_by]
-        direzione = sql_order_direction(
-            order_dir, default_desc=order_by in colonne_desc,
-        )
     # ⚠️ Confronto sul TESTO dell'espressione, che e' l'unica cosa che abbiamo:
     #    e' esatto sul caso che conta (il default che vale gia' il tiebreak) e
     #    al massimo scrive uno spareggio in piu' su una colonna che il tiebreak

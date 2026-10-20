@@ -182,7 +182,7 @@ class GiornaleTrasversalePerimetroTests(TestCase):
     #    (brief-db-registri-giornale-catalogo, 2026-09-19): il lettore risponde
     #    esattamente i `codice_interno` di `config.registri_giornale`, ogni
     #    registro del catalogo attraversa il service senza errore SQL, e un
-    #    registro che il catalogo non conosce e' un rifiuto (`fields`), non
+    #    registro che il catalogo non conosce e' un rifiuto (400), non
     #    «zero righe». ⚠️ Non si pretende un elenco preciso: il giorno del
     #    quinto registro questo test deve restare verde da solo — e' la
     #    ragione per cui la costante e' uscita dal backend.
@@ -204,4 +204,6 @@ class GiornaleTrasversalePerimetroTests(TestCase):
                 get_giornale_trasversale(registri=["NON_A_CATALOGO"], limit=1)
             transaction.set_rollback(True)
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertEqual(ctx.exception.context.get("field"), "registro")
+        # Filtro di query: il parametro nominato nel context, mai `field`.
+        self.assertEqual(ctx.exception.context.get("parametro"), "registro")
+        self.assertNotIn("field", ctx.exception.context)

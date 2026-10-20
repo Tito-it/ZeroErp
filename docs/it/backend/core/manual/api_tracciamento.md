@@ -42,7 +42,7 @@ GET /api/v1/core/tracciamento/audit-log/
 | `date_to`       | string | No           | --      | Data fine (YYYY-MM-DD)                      |
 | `search`        | string | No           | --      | Ricerca libera ILIKE su function_name/message |
 | `page`          | int    | No           | 1       | Pagina (>= 1)                               |
-| `page_size`     | int    | No           | 50      | Righe per pagina (1-200)                    |
+| `page_size`     | int    | No           | 25      | Righe per pagina (1-200)                    |
 
 ### Domini Task
 
@@ -55,7 +55,7 @@ GET /api/v1/core/tracciamento/domini-task/
 | `attivo_only` | bool | No           | true    | Filtra solo domini attivi     |
 | `search`      | str  | No           | --      | ILIKE su codice/descrizione   |
 | `page`        | int  | No           | 1       | Pagina                        |
-| `page_size`   | int  | No           | 50      | Righe per pagina (1-200)      |
+| `page_size`   | int  | No           | 25      | Righe per pagina (1-200)      |
 
 ### Task Registry
 
@@ -69,7 +69,7 @@ GET /api/v1/core/tracciamento/task-registry/
 | `attivo_only` | bool   | No           | true    | Filtra solo task attivi             |
 | `search`      | str    | No           | --      | ILIKE su task_code/descrizione      |
 | `page`        | int    | No           | 1       | Pagina                              |
-| `page_size`   | int    | No           | 100     | Righe per pagina (1-200)            |
+| `page_size`   | int    | No           | 25      | Righe per pagina (1-200)            |
 
 ### Task Implementations
 
@@ -83,7 +83,7 @@ GET /api/v1/core/tracciamento/task-implementations/
 | `dominio`     | string | No           | --      | Filtra per codice dominio     |
 | `attivo_only` | bool   | No           | true    | Filtra solo impl attive       |
 | `page`        | int    | No           | 1       | Pagina                        |
-| `page_size`   | int    | No           | 100     | Righe per pagina (1-200)      |
+| `page_size`   | int    | No           | 25      | Righe per pagina (1-200)      |
 
 ### Job Runs
 
@@ -94,12 +94,12 @@ GET /api/v1/core/tracciamento/job-runs/
 | Parametro   | Tipo   | Obbligatorio | Default | Note                          |
 |-------------|--------|:------------:|---------|-------------------------------|
 | `jobname`   | string | No           | --      | Filtra per jobname esatto     |
-| `ok`        | bool   | No           | --      | Filtra per esito              |
+| `ok`        | bool   | No           | --      | Filtra per esito: `1`, `true`, `yes`, `y` (senza distinzione di maiuscole) = riuscite; **qualunque altro valore**, vuoto compreso, vale `false` senza errore |
 | `date_from` | string | No           | --      | Data inizio (YYYY-MM-DD)      |
 | `date_to`   | string | No           | --      | Data fine (YYYY-MM-DD)        |
 | `search`    | str    | No           | --      | ILIKE su jobname/stepname/message |
 | `page`      | int    | No           | 1       | Pagina                        |
-| `page_size` | int    | No           | 50      | Righe per pagina (1-200)      |
+| `page_size` | int    | No           | 25      | Righe per pagina (1-200)      |
 
 Ogni riga porta `saltata`: `true` sulla corsa che ha trovato il lock della corsia
 occupato (dal 2026-10-10, brief `brief-db-corsa-saltata-non-e-una-corsa`). Una
@@ -117,7 +117,7 @@ GET /api/v1/core/tracciamento/job-summary/
 | Parametro   | Tipo | Obbligatorio | Default | Note                    |
 |-------------|------|:------------:|---------|-------------------------|
 | `page`      | int  | No           | 1       | Pagina                  |
-| `page_size` | int  | No           | 50      | Righe per pagina (1-200)|
+| `page_size` | int  | No           | 25      | Righe per pagina (1-200)|
 
 Restituisce per ogni jobname: `total_runs` (le corse **vere**: una saltata non è
 un'esecuzione), `ok_count`, `fail_count`, `saltate_count`,
@@ -139,7 +139,7 @@ Tutti gli endpoint restituiscono l'envelope paginato standard:
   "data": {
     "count": 42,
     "page": 1,
-    "page_size": 50,
+    "page_size": 25,
     "total_pages": 1,
     "results": [...]
   },

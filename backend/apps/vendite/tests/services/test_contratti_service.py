@@ -45,6 +45,7 @@ Indice test eseguiti:
 33) update_componente_contratto_attivo — E_RIGA_DOC_NON_BOZZA, etichetta dal `numero` dello scope
 33b) update_componente_campi_del_workflow_rifiutati — niente auto-approvazione L3 dal client
 34) update_contratto_cambio/rimozione_listino_decide_il_db — il listino sotto le righe lo giudica il DB (E_DOC_LISTINO_*)
+35) riga_di_un_altro_contratto_rifiutata — update/delete_riga di una riga di un altro contratto: 404, il repository non e' toccato
 """
 
 from datetime import date, timedelta
@@ -629,7 +630,7 @@ class ContrattiServiceTests(TestCase):
         }
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_riga(99, {"prezzo_unitario": "20"})
+            ContrattiService().update_riga(1, 99, {"prezzo_unitario": "20"})
         self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
         self.assertIn(" modificare ", ctx.exception.message)
 
@@ -646,7 +647,7 @@ class ContrattiServiceTests(TestCase):
         }
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().delete_riga(99)
+            ContrattiService().delete_riga(1, 99)
         self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
         self.assertIn(" togliere ", ctx.exception.message)
 
@@ -992,7 +993,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()  # DRAFT
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_riga(5, {"prezzo_unitario": None})
+            ContrattiService().update_riga(1, 5, {"prezzo_unitario": None})
 
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         self.assertIn("prezzo_unitario obbligatorio", ctx.exception.detail or "")
@@ -1303,7 +1304,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()  # DRAFT
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_riga(77, {"articolo_id": "...".ljust(36, "0")})
+            ContrattiService().update_riga(1, 77, {"articolo_id": "...".ljust(36, "0")})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
@@ -1315,7 +1316,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()  # DRAFT
         repo.update_riga.return_value = True
 
-        ContrattiService().update_riga(77, {"prezzo_unitario": "30"})
+        ContrattiService().update_riga(1, 77, {"prezzo_unitario": "30"})
 
         args = repo.update_riga.call_args.args
         self.assertEqual(args[0], 77)
@@ -1518,7 +1519,7 @@ class ContrattiServiceTests(TestCase):
         mock_gate.return_value = (Decimal("28"), {"origine_prezzo": "MANUALE"})
 
         ContrattiService().update_riga(
-            77, {"prezzo_unitario": "28"}, auth_user_id=42,
+            1, 77, {"prezzo_unitario": "28"}, auth_user_id=42,
         )
 
         mock_gate.assert_called_once()
@@ -1545,7 +1546,7 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.update_riga.return_value = True
 
-        ContrattiService().update_riga(77, {"ordine": 50}, auth_user_id=42)
+        ContrattiService().update_riga(1, 77, {"ordine": 50}, auth_user_id=42)
 
         mock_gate.assert_not_called()
 
@@ -1559,8 +1560,33 @@ class ContrattiServiceTests(TestCase):
         repo.delete_riga.return_value = False
 
         with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().delete_riga(77)
+            ContrattiService().delete_riga(1, 77)
         self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+
+    # Scopo: ⛔ una riga di UN ALTRO contratto, chiesta con l'URL di questo,
+    #        e' un 404 e non arriva al repository. L'UPDATE e il DELETE vanno
+    #        per il solo `riga_id`: prima la bozza si verificava sul contratto
+    #        della riga, e la riga si modificava (o cancellava) da un URL che
+    #        non era il suo.
+    # ⚠️ Tutti e due i contratti sono in bozza: e' il caso che il vecchio
+    #    controllo lasciava passare.
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_riga_di_un_altro_contratto_rifiutata(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_riga.return_value = {"id": 77, "contratto_id": 2}
+        repo.get_contratto.return_value = _testata_default()  # DRAFT
+
+        for nome, chiamata in (
+            ("update_riga", lambda: ContrattiService().update_riga(1, 77, {"ordine": 50})),
+            ("delete_riga", lambda: ContrattiService().delete_riga(1, 77)),
+        ):
+            with self.subTest(nome), self.assertRaises(ServiceError) as ctx:
+                chiamata()
+            self.assertEqual(ctx.exception.code, "E_VENDITE_NOT_FOUND")
+        repo.update_riga.assert_not_called()
+        repo.delete_riga.assert_not_called()
 
     # --- utility 1:1 ---------------------------------------------------
 

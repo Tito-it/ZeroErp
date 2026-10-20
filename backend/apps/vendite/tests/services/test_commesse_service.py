@@ -488,7 +488,7 @@ class CommesseServiceTests(TestCase):
             handlers=[HandlerResult(
                 handler_name="HandlerPreventivi",
                 created=3,
-                errors=["Errore riga segment_key=PREV:abc:R:4: ServiceError: ..."],
+                errors=["Errore riga segment_key=PREVENTIVO:abc:R:4: ServiceError: ..."],
             )],
             push_log_id=99,
             durata_ms=42,
@@ -498,7 +498,7 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=7)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
-        self.assertIn("segment_key=PREV:abc:R:4", ctx.exception.detail or "")
+        self.assertIn("segment_key=PREVENTIVO:abc:R:4", ctx.exception.detail or "")
 
     # Scopo: all-or-nothing su ERRORE — stesso pattern del PARZIALE
     # (ogni handler con errors → rollback totale + raise).

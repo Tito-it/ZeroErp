@@ -11,7 +11,8 @@ via `soggetto_ruolo_id`).
 Tutti gli endpoint risiedono sotto `/api/v1/anagrafiche/fornitori/`.
 L'autenticazione avviene tramite token JWT (`Authorization: Bearer <token>`).
 Le risposte seguono l'envelope standard `{"data": ...}`.
-La view usa `DomainAPIView` con `area_funzionale = "anagrafiche"`.
+La view usa `DomainAPIView` con `area_funzionale = "anagrafiche"` e permesso
+`model_permission = ("anagrafiche", "fornitore")` (tutti gli endpoint, export compreso).
 
 ## Base URL
 
@@ -26,7 +27,7 @@ La view usa `DomainAPIView` con `area_funzionale = "anagrafiche"`.
 | `anagrafiche.fornitori` | Tabella | Tabella master fornitore |
 | `anagrafiche.vw_fornitori_dettaglio` | Vista | Source per lista/search (join soggetto + config) |
 | `config.stati_fornitore` | Tabella | Stati operativi (VE, AT, SO, CE, BL) |
-| `script.fn_get_or_create_soggetto_ruolo` | Funzione | Crea ruolo FO se non esiste |
+| `anagrafiche.fn_crea_fornitore` | Funzione | Creazione in un'istruzione: ruolo FO (get or create), fornitore in stato `VE`, contatto e indirizzi del ruolo |
 | `config.sistema_codici` + `script.fn_generate_codice` | Funzione | Auto-generazione codice fornitore |
 | `anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required` | Trigger | Verifica indirizzi obbligatori su assegnazione ruolo |
 
@@ -46,16 +47,18 @@ Restituisce l'elenco paginato dei fornitori con ricerca full-text e filtri.
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 | --- | --- | --- | --- |
-| `search` | string | No | Ricerca su codice, ragione_sociale, P.IVA, codice_fiscale (ILIKE) |
+| `search` | string | No | Ricerca full guidata dal catalogo `anagrafiche.fornitori` sui campi `codice`, `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva` |
 | `stato_fornitore_id` | int | No | Filtra per stato operativo (FK `config.stati_fornitore`) |
 | `attivo` | bool | No | Filtra per flag attivo (`true`/`false`). Se omesso: nessun filtro |
 | `limit` | int | No | Risultati per pagina (default: 25, max: 200) |
 | `offset` | int | No | Offset per paginazione |
 | `order_by` | string | No | Campo di ordinamento (default: `ragione_sociale_completa`) |
-| `order_dir` | string | No | Direzione: `asc` o `desc` |
+| `order_dir` | string | No | Direzione: `asc` o `desc`. Se omessa: `asc`, salvo le colonne data (`data_insert`, `data_update`) che partono `desc` |
 
-**Colonne ordinabili:** `codice`, `ragione_sociale_completa`, `codice_fiscale`,
-`partita_iva`, `stato_descrizione`, `attivo`, `modalita_pagamento_desc`, `data_insert`.
+**Colonne ordinabili:** `codice`, `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`,
+`stato_descrizione`, `modalita_pagamento_desc`, `data_insert`, `data_update`
+(`codice_fiscale`, `partita_iva` e `attivo` non sono ordinabili). Un valore fuori
+whitelist ripiega sul default.
 
 ### Risposta (200)
 
@@ -73,6 +76,7 @@ Restituisce l'elenco paginato dei fornitori con ricerca full-text e filtri.
     "results": [
       {
         "id": 1,
+        "soggetto_ruolo_id": 50,
         "codice": "FO-000001",
         "attivo": true,
         "stato_codice_interno": "AT",
@@ -83,6 +87,7 @@ Restituisce l'elenco paginato dei fornitori con ricerca full-text e filtri.
         "ragione_sociale_completa": "Acme Srl",
         "codice_fiscale": "01234567890",
         "partita_iva": "01234567890",
+        "id_fiscale_univoco_cf_piva": "01234567890",
         "valuta_iso": "EUR",
         "modalita_pagamento_codice": "BB",
         "modalita_pagamento_desc": "Bonifico Bancario",
@@ -109,8 +114,10 @@ Restituisce l'elenco paginato dei fornitori con ricerca full-text e filtri.
 
 ## 2. Crea fornitore
 
-Crea un fornitore in transazione atomica: assegna il ruolo FO al soggetto
-(get or create) e inserisce il record fornitore con stato iniziale `VE` (In verifica).
+Crea un fornitore con un'unica chiamata a `anagrafiche.fn_crea_fornitore`
+(atomica): assegna il ruolo FO al soggetto (get or create), inserisce il record
+fornitore con stato iniziale `VE` (In verifica), il contatto del ruolo (se
+presente) e gli indirizzi del ruolo.
 
 | | |
 |---|---|
@@ -131,6 +138,7 @@ Crea un fornitore in transazione atomica: assegna il ruolo FO al soggetto
 | Campo | Tipo | Obbligatorio | Descrizione |
 | --- | --- | --- | --- |
 | `soggetto_id` | UUID | **Si** | ID del soggetto base |
+| `codice` | string | No | Codice fornitore; se omesso lo genera `config.sistema_codici` |
 | `valuta_id` | int | No | FK `config.valute` |
 | `modalita_pagamento_id` | int | No | FK `config.modalita_pagamento` |
 | `termine_pagamento_id` | int | No | FK `config.termini_pagamento` |
@@ -146,6 +154,11 @@ Crea un fornitore in transazione atomica: assegna il ruolo FO al soggetto
 | `rating` | int | No | Rating qualifica 0-100 |
 | `qualifica_scadenza` | date | No | Data scadenza qualifica (ISO 8601) |
 | `note` | string | No | Note libere |
+| `contatto` | object | No | Contatto del ruolo (`nominativo`, `tipo_contatto_id`, `email`, `telefono`, `cellulare`, `pec`, `unita_organizzativa_id`, `note`); vedi regola sotto |
+| `indirizzi` | array | No | Indirizzi del ruolo (stessa grammatica degli indirizzi ruolo: `tipo_indirizzo_codice` + indirizzo libero, `indirizzo_dettaglio_id` o via da risolvere). Non lista → 400 `E_ANAG_VALIDAZIONE` |
+
+I booleani vanno inviati come booleani JSON (`true`/`false`); stringhe o numeri → 400 `E_VALIDATION_INPUT`.
+Le stringhe vuote e i `null` valgono come campo assente (default DB).
 
 ### Risposta (200)
 
@@ -163,7 +176,7 @@ Crea un fornitore in transazione atomica: assegna il ruolo FO al soggetto
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id` mancante o non valido |
+| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id` mancante o non valido; `indirizzi` non lista; elemento indirizzo non oggetto |
 | `E_ANAG_DUPLICATO` | 409 | Il soggetto ha gia' il ruolo FORNITORE |
 | `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` | 400 | Indirizzi obbligatori mancanti per il ruolo FO (trigger DB) |
 | `E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA` | 400 | `ritenuta_acconto = true` senza `ritenuta_aliquota > 0` (trigger DB `trgfn_fornitori_guard_normalize`) |
@@ -257,13 +270,14 @@ Restituisce il dettaglio completo di un fornitore con dati soggetto e decodifich
 ## 4. Aggiorna fornitore
 
 Aggiornamento parziale (delta) dei campi editabili del fornitore.
-Solo i campi inclusi nel payload vengono modificati.
+Solo i campi inclusi nel payload vengono modificati. Il corpo deve essere un
+oggetto JSON con sole chiavi della tabella sotto: una chiave fuori contratto → 400.
 
 | | |
 |---|---|
 | **Metodo** | `PATCH` |
 | **URL** | `/api/v1/anagrafiche/fornitori/{fornitore_id}/` |
-| **Body** | JSON (usa `request.data` DRF, non `handle_post_json`) |
+| **Body** | JSON oggetto |
 
 ### Campi editabili
 
@@ -302,7 +316,9 @@ Solo i campi inclusi nel payload vengono modificati.
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_ANAG_NOT_FOUND` | 404 | Fornitore non trovato o nessun campo modificato |
+| `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori contratto; corpo vuoto (dal 2026-10-14: prima 404) |
+| `E_VALIDATION_INPUT` | 400 | Corpo non JSON o non oggetto |
+| `E_ANAG_NOT_FOUND` | 404 | Fornitore non trovato |
 
 ---
 

@@ -36,9 +36,14 @@ from apps.config.sorgenti import (
     SORGENTE_PREVENTIVO,
 )
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
+from apps.core.db._helpers import (
+    colonne_identita,
+    sql_order_direction_lista,
+    sql_tiebreak_direction,
+)
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_order_params
+from apps.core.services.list_helpers import validate_enum_param, validate_order_params
 from apps.core.services.payload_helpers import (
     MissingType as _MissingType,
     PayloadValidator,
@@ -49,6 +54,8 @@ from apps.anagrafiche.services.billing_account_service import istanza_del_billin
 from apps.vendite.db.commesse_repository import (
     ATTIVITA_SORT_COLUMNS,
     TIPO_MOVIMENTO_RETTIFICA,
+    STATI_APPROVAZIONE_ATTIVITA,
+    STATI_EMISSIONE_ATTIVITA,
     TIPO_MOVIMENTO_VALUES,
     CommesseRepository,
 )
@@ -1028,6 +1035,19 @@ def aggiungi_onere_commessa(
     }
 
 
+# Scopo: il verso dell'elenco attivita' (`asc`/`desc`) da passare alla fn DB,
+#        che senza direzione parte crescente (`COALESCE(p_order_dir,'asc')`).
+# ⛔ Lo decide il BB delle liste (`sql_order_direction_lista`), non un default
+#    scritto qui: una colonna data senza direzione parte DESC come in ogni altra
+#    lista. Fino al 2026-10-20 il service passava `order_dir or "asc"`, e la
+#    regola non arrivava mai alla query (brief-be-verifica-documentazione-api §6.1).
+def _verso_attivita(order_by: str | None, order_dir: str | None) -> str:
+    direzione = sql_order_direction_lista(
+        order_by, order_dir, colonne=colonne_identita(*ATTIVITA_SORT_COLUMNS),
+    )
+    return sql_tiebreak_direction(direzione).lower()
+
+
 # Scopo: Restituisce la lista paginata delle attività di una commessa.
 def fn_list_commessa_attivita(
     *,
@@ -1075,6 +1095,17 @@ def fn_list_commessa_attivita(
         function_name="vendite.commesse_service.fn_list_commessa_attivita",
         nullable=True,
     )
+    # I due stati della riga nel loro vocabolario (specchi dei CHECK), o un 400
+    # sul campo: prima un valore sbagliato rispondeva lista vuota (2026-10-20).
+    for nome, valore, ammessi in (
+        ("stato_emissione", stato_emissione, STATI_EMISSIONE_ATTIVITA),
+        ("stato_approvazione", stato_approvazione, STATI_APPROVAZIONE_ATTIVITA),
+    ):
+        validate_enum_param(
+            valore, allowed=ammessi, param_name=nome,
+            error_code="E_COMMESSA_VALIDATION",
+            function_name="vendite.commesse_service.fn_list_commessa_attivita",
+        )
     # Filtro movimento: vocabolario chiuso, validato PRIMA del round-trip come
     # l'ordinamento. ⚠️ Vuoto e None sono la STESSA cosa — «tutti i movimenti» —
     # e non un valore da validare: un filtro azzerato dal frontend arriva come
@@ -1106,7 +1137,7 @@ def fn_list_commessa_attivita(
         limit=limit,
         offset=offset,
         order_by=order_by,
-        order_dir=order_dir or "asc",
+        order_dir=_verso_attivita(order_by, order_dir),
         tipo_movimento=tipo_movimento,
         max_rows=max_rows,
     )
@@ -1349,7 +1380,12 @@ def fn_riallinea_prezzo(
     versione_attuale = provenienza["listino_versione_id"]
     versione_cambiata = versione_originale is not None and versione_attuale != versione_originale
 
-    if versione_cambiata and not payload.get("conferma_versione_diversa"):
+    # ⛔ Dal BB: col test di verita' la stringa "false" valeva una conferma.
+    #    Col codice del dominio e senza log a DB, come le altre validazioni qui.
+    conferma = _V_TESTATA.optional_bool(
+        payload, "conferma_versione_diversa", log_to_db=False,
+    ) is True
+    if versione_cambiata and not conferma:
         return {
             "versione_cambiata": True,
             "versione_originale_id": versione_originale,

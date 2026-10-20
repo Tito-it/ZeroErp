@@ -37,6 +37,7 @@ from django.db import transaction
 
 from apps.config.db.sorgenti_repository import SorgentiRepository
 from apps.config.sorgenti import SORGENTE_DDT_VENDITA, SORGENTE_RESO_VENDITA
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
@@ -200,6 +201,13 @@ def list_resi_rows(
     order_dir: str = "desc",
     max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
+    # ⛔ Il filtro di stato esiste nel vocabolario, o e' un 400 sul campo: un
+    #    valore sbagliato finiva nel WHERE e la lista rispondeva vuota con un
+    #    200 (2026-10-20). Codici dismessi ammessi: i documenti vecchi li portano.
+    richiedi_codice_a_vocabolario(
+        "config.stati_doc_reso", "codice_interno", stato_codice,
+        codice_errore="E_RESO_VALIDAZIONE", parametro="stato_codice_interno",
+    )
     repo = ResiRepository()
     return repo.list_resi(
         stato_codice=stato_codice,
@@ -306,7 +314,7 @@ def _valida_filtro_documento(
         code="E_RESO_VALIDAZIONE",
         message="Filtri documento incompatibili.",
         detail="ddt_id e ordine_id sono alternativi: indicarne uno solo",
-        context={"field": "ordine_id"},
+        context={"parametro": "ordine_id"},
         function_name=function_name,
         log_to_db=True,
     )
@@ -322,7 +330,7 @@ def _valida_filtro_documento(
             code="E_RESO_VALIDAZIONE",
             message="Identificativo documento non valido.",
             detail=f"{nome} deve essere maggiore di zero (ricevuto: {valore})",
-            context={"field": nome},
+            context={"parametro": nome},
             function_name=function_name,
             log_to_db=True,
         )
@@ -463,7 +471,8 @@ def resolve_filtri_coda_export_label(
 #        transazione (compone 2+ scritture — guardrail atomicita' api.md).
 def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
     repo = ResiRepository()
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RESO}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _PAYLOAD.solo_chiavi_ammesse(payload, ammesse=CREATE_KEYS_RESO, function_name=f"{_FN}.crea_reso")
 
     ddt_id = _PAYLOAD.require_positive_int(
         data, "ddt_id",
@@ -562,7 +571,8 @@ def aggiorna_reso(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     # Prima la testata: fuori perimetro o inesistente e' un 404. Basta sapere
     # che esiste: il lettore leggero, non la testata intera.
     _get_testata_or_raise(repo, reso_id, op="aggiorna_reso", getter=repo.get_stato_codice)
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RESO}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _PAYLOAD.solo_chiavi_ammesse(payload, ammesse=UPDATE_KEYS_RESO, function_name=f"{_FN}.aggiorna_reso")
     _PAYLOAD.require_campi_da_aggiornare(
         data,
         function_name=f"{_FN}.aggiorna_reso",
@@ -647,7 +657,8 @@ def get_rientri(reso_id: int) -> dict[str, Any]:
 def _payload_rientro(
     payload: dict[str, Any], chiavi: frozenset[str], *, op: str, in_creazione: bool,
 ) -> dict[str, Any]:
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in chiavi}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _PAYLOAD.solo_chiavi_ammesse(payload, ammesse=chiavi, function_name=f"{_FN}.{op}")
     fn = f"{_FN}.{op}"
     if in_creazione:
         data["ddt_riga_prelievo_id"] = _PAYLOAD.require_positive_int(data, "ddt_riga_prelievo_id", function_name=fn)
@@ -980,7 +991,8 @@ def aggiorna_riga(
     repo = ResiRepository()
     _richiedi_righe_in_bozza(repo, reso_id, verbo="modificare", op="aggiorna_riga")
     _get_riga_or_raise(repo, reso_id, riga_id, op="aggiorna_riga")
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _PAYLOAD.solo_chiavi_ammesse(payload, ammesse=UPDATE_KEYS_RIGA, function_name=f"{_FN}.aggiorna_riga")
     _PAYLOAD.require_campi_da_aggiornare(
         data,
         message="Nessun campo aggiornabile nel payload riga.",
@@ -1016,7 +1028,8 @@ def _crea_riga(
     repo: ResiRepository, reso_id: int, ddt_id: int, payload: dict[str, Any],
     *, riga_nr: int | None = None,
 ) -> dict[str, Any]:
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RIGA}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _PAYLOAD.solo_chiavi_ammesse(payload, ammesse=CREATE_KEYS_RIGA, function_name=f"{_FN}._crea_riga")
     fn = f"{_FN}._crea_riga"
 
     ddt_riga_id = _PAYLOAD.require_positive_int(

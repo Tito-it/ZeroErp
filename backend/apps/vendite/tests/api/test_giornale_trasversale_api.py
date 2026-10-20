@@ -71,9 +71,14 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
         self.assertIs(resolve(_URL + "export/").func.view_class, ApiGiornaleExport)
 
     # 3.
+    # Il controllo del vocabolario di `entity_type` (BB
+    # `richiedi_codice_a_vocabolario`) legge il DB: qui lo si sostituisce
+    # restituendo il valore, e si verifica che riceva quello NORMALIZZATO.
     @_AUTH
+    @patch("apps.vendite.services.vendite_service.richiedi_codice_a_vocabolario",
+           side_effect=lambda tabella, colonna, valore, **_k: valore)
     @patch(_REPO)
-    def test_filtri_normalizzati(self, repo_cls, _auth) -> None:
+    def test_filtri_normalizzati(self, repo_cls, vocab, _auth) -> None:
         repo_cls.return_value.list_giornale_trasversale.return_value = ([], 0, 0, 0)
         repo_cls.return_value.registri_giornale_ammessi.return_value = _REGISTRI
         resp = self.client.get(_URL, {
@@ -92,6 +97,7 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
             sort_by="quando", sort_dir=None,
         )
         self.assertEqual(resp.json()["data"]["page"], 3)
+        self.assertEqual(vocab.call_args.args, ("config.tipi_entita", "codice", "LOTTO"))
 
     @_AUTH
     @patch(_REPO)
@@ -113,7 +119,8 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
     def test_gravita_fuori_vocabolario_400(self, repo_cls, _auth) -> None:
         resp = self.client.get(_URL, {"gravita": "GRAVE"})
         self.assertEqual(resp.status_code, 400, resp.content)
-        self.assertEqual(resp.json()["error"]["fields"], ["gravita"])
+        # Filtro di query: niente `fields` (non e' un input del form, Tid 2026-10-20).
+        self.assertNotIn("fields", resp.json()["error"])
         repo_cls.return_value.list_giornale_trasversale.assert_not_called()
 
     @_AUTH
@@ -125,7 +132,8 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
         repo_cls.return_value.registri_giornale_ammessi.return_value = _REGISTRI
         resp = self.client.get(_URL, {"registro": "PRATICHE"})
         self.assertEqual(resp.status_code, 400, resp.content)
-        self.assertEqual(resp.json()["error"]["fields"], ["registro"])
+        # Filtro di query: niente `fields` (non e' un input del form, Tid 2026-10-20).
+        self.assertNotIn("fields", resp.json()["error"])
         repo_cls.return_value.list_giornale_trasversale.assert_not_called()
         repo_cls.return_value.registri_giornale_ammessi.return_value = _REGISTRI | {"PRATICHE"}
         repo_cls.return_value.list_giornale_trasversale.return_value = ([], 0, 0, 0)

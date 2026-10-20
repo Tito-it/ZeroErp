@@ -21,7 +21,7 @@ L'elenco dei tool con il loro gemello sta in una sede sola: [guida AI §6](../..
 Un predicato solo, chiamato quando il catalogo si offre al modello, quando un tool viene eseguito e quando si conferma una scrittura. Tre filtri, in ordine:
 
 1. **Blacklist installazione**: `config.parameters` chiave `AI_DISABLED_TOOLS` (lista separata da virgola). Cache TTL 300s.
-2. **Permesso del gemello**: `valuta_accesso_endpoint(user, gemello.view, method=gemello.metodo)`, la stessa regola di `ZeroERPPermission` per la UI: area dal model o da `area_funzionale`, tipo di accesso del metodo, `<metodo>_permission`, override per oggetto, `skip_area_check`, `SUPER_ADMIN`, ruolo `DISABILITATO`.
+2. **Permesso del gemello**: `valuta_accesso_endpoint(user, gemello.view, method=gemello.metodo)`, la stessa regola di `ZeroERPPermission` per la UI: area dal model o da `area_funzionale`, tipo di accesso del metodo, `<metodo>_permission`, override per oggetto, `skip_area_check`, `SUPER_ADMIN`. Una veste spenta (`attivo = false`) non dà un'identità attiva, quindi niente `SUPER_ADMIN` e livello d'area negato.
 3. **Livello sull'assistente**: `valuta_accesso_endpoint(user, AIQueryView, method="POST", accesso=<tipo del tool>)`. Il tipo e' `view` se il tool legge, quello del gemello se scrive. Quindi `LETTURA` su `ai_assistant` concede solo i tool di lettura, `TUTTO` anche quelli di scrittura, `BLOCCATO` niente. Vale sempre il piu' stretto fra questo livello e quello del dominio.
 
 ## Output

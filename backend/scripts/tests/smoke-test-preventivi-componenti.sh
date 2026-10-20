@@ -214,7 +214,6 @@ print(json.dumps({
 PAYLOAD_COMPONENTE=$(payload_articolo "SMOKE-COMP-COMPONENTE" componente)
 PAYLOAD_COMPOSITO=$(payload_articolo "composito-${SUFFIX}" composito)
 LISTINO_TIPOLOGIA_ID=$(json_get "$LAST_BODY" "data.listino_tipologia_id")
-ARTICOLO_IVA_ID=$(json_get "$LAST_BODY" "data.iva_id")
 
 # 1b) Il componente stabile (crea se assente).
 COMPONENTE_ID_STABILE=$(id_per_codice "/api/v1/catalogo/articoli/" "SMOKE-COMP-COMPONENTE")
@@ -401,13 +400,14 @@ log_step "5) Aggiungi riga articolo composito qty=1"
 # qta_operativa-sorgente, CREATE_KEYS_RIGA): `quantita` la calcola il trigger e
 # il service la scarta. Fino al 2026-10-12 lo smoke mandava `quantita` e una UoM
 # cablata (7): 400 E_QTA_MISSING.
+# ⛔ Niente `iva_id`: l'aliquota della riga la decide il risolutore (I6), e dal
+# 2026-10-20 una chiave fuori contratto e' un 400 (prima veniva scartata).
 PAYLOAD=$(cat <<EOF
 {
   "articolo_id": "$NEW_COMPOSITO_ID",
   "qta_operativa": 1,
   "uom_operativa_id": $COMPOSITO_UOM_ID,
-  "prezzo_unitario": 0,
-  "iva_id": $ARTICOLO_IVA_ID
+  "prezzo_unitario": 0
 }
 EOF
 )

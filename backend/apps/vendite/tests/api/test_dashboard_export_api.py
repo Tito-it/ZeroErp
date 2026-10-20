@@ -97,7 +97,7 @@ class BuildDashExportResponseTests(SimpleTestCase):
     def test_filtri_inoltrati_intatti(self, mock_build) -> None:
         fetch = MagicMock(return_value=_envelope())
         filtri = {
-            "classe": "ANOMALIA", "area": "ORDINI",
+            "classe": "ANOMALIA", "area": "ORDINE_VENDITA",
             "ritardo_giorni": 30, "order_by": "anzianita_giorni", "order_dir": "desc",
         }
         build_dash_export_response(

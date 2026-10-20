@@ -38,7 +38,7 @@ Query string:
 | `attivo_only`| bool    | No           | `true`        | Se `false`, include anche record non attivi       |
 | `includi_obsoleti`| bool | No        | `true`        | Se `false`, esclude le voci obsolete (`obsoleto_dal <= oggi`) |
 | `page`       | int     | No           | `1`           | Pagina (>= 1)                                     |
-| `page_size`  | int     | No           | `50`          | Righe per pagina (1-200)                          |
+| `page_size`  | int     | No           | `25`          | Righe per pagina (1-200)                          |
 
 ### Validazione Python dei parametri
 
@@ -64,7 +64,7 @@ con `E_VALIDATION_INPUT` (HTTP 400).
   "data": {
     "count": 3,
     "page": 1,
-    "page_size": 50,
+    "page_size": 25,
     "total_pages": 1,
     "results": [
       {"id": 1, "codice": "SDI_OK",  "codice_interno": "001", "descrizione": "Consegnato"},

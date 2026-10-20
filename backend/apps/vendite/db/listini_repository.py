@@ -689,8 +689,6 @@ class ListiniRepository:
         versione_id: int,
         *,
         search: str | None = None,
-        billing_account_id: int | None = None,
-        utility_id: int | None = None,
         attivo: bool | None = True,
         order_by: str = "articolo_descrizione",
         order_dir: str | None = "asc",
@@ -715,13 +713,10 @@ class ListiniRepository:
         # Join guard: la versione deve appartenere al listino richiesto.
         join_guard_params: list[Any] = [listino_id]
 
-        # billing_account_id / utility_id / emittente_soggetto_ruolo_id sono
-        # stati droppati da listini_righe nel cleanup v5 (F1-DB-25): le
-        # dimensioni di contesto vivono ora sul listino o sul contratto.
-        # I parametri restano nella firma per retrocompatibilita' chiamanti
-        # ma sono ignorati.
-        _ = billing_account_id
-        _ = utility_id
+        # ⛔ Niente filtro per billing_account/utility: le colonne sono state
+        #    tolte da listini_righe (F1-DB-25), il contesto vive sul listino o
+        #    sul contratto. Fino al 2026-10-20 i parametri restavano nella firma
+        #    e venivano IGNORATI: un filtro accettato che non filtrava.
         if attivo is not None:
             conditions.append("r.attivo = %s")
             params.append(attivo)

@@ -57,8 +57,11 @@ Catena: `views_definizioni.py` → `definizioni_service` → `DefinizioniReposit
 }
 ```
 
-`drift` è `null` (in-sync) o valorizzato quando il preso d'origine ha una PUBBLICATA
-più recente di `versione_origine` (banner "preset aggiornato").
+`drift` è **sempre un oggetto** con le tre chiavi `versioni_indietro`,
+`preset_corrente_id`, `versione_preset_corrente` (mai `null`): le tre chiavi sono
+`null` quando l'edizione è in sync (e sempre sui preset), valorizzate quando il preset
+d'origine ha una PUBBLICATA più recente di `versione_origine` (banner "preset
+aggiornato").
 
 ## `GET /definizioni/<id>/` — dettaglio strutturale
 
@@ -171,7 +174,7 @@ DELETE /definizioni/<id>/steps/<step_id>/<kind>/<row_id>/
 ```
 
 Ownership doppia **riga → step → definizione** (via JOIN); l'immutabilità delle
-edizioni emesse è enforce dai guard DB (stesso `TEMPLATE_DEFINIZIONE_CONGELATA`). Campi
+edizioni emesse è enforce dai guard DB (stesso `E_TEMPLATE_DEFINIZIONE_CONGELATA`). Campi
 scrivibili e obbligatori per kind (gli altri hanno DEFAULT/validazione DB):
 
 | `<kind>` | Campi scrivibili | Obbligatori |
@@ -229,13 +232,15 @@ traduce in un errore parlante.
 | `E_INVALID_ID` | 400 | id ≤ 0 / mancante |
 | `E_VALIDATION_INPUT` | 400 | `codice`/`descrizione` mancanti (create) o payload PATCH senza campi core |
 | `E_DEFINIZIONE_NOT_FOUND` | 404 | definizione o step inesistente / fuori scope (ownership) |
-| `E_TEMPLATE_CODICE_DUPLICATO` | — | `codice` step già presente nella definizione |
-| `TEMPLATE_DEFINIZIONE_CONGELATA` | — | editing di un'edizione per-emittente già emessa |
-| `DEFINIZIONE_BOZZA_ESISTENTE` | — | fork / nuova-versione con una BOZZA già aperta nello scope |
-| `DEFINIZIONE_NO_PUBBLICATA` | — | nuova-versione da sorgente non PUBBLICATA |
-| `DEFINIZIONE_NON_PUBBLICABILE` | — | pubblica di una BOZZA senza step attivi o con ciclo di prerequisiti |
+| `E_TEMPLATE_CODICE_DUPLICATO` | 409 | `codice` step già presente nella definizione (campo `codice`) |
+| `E_TEMPLATE_DEFINIZIONE_CONGELATA` | 409 | editing di un'edizione per-emittente già emessa |
+| `E_DEFINIZIONE_PUBBLICATA_IMMUTABILE` | 409 | modifica di un'edizione non più modificabile per il suo stato |
+| `E_DEFINIZIONE_TRANSIZIONE_NON_AMMESSA` | 409 | passaggio di stato dell'edizione non ammesso |
+| `E_DEFINIZIONE_BOZZA_ESISTENTE` | 409 | fork / nuova-versione con una BOZZA già aperta nello scope |
+| `E_DEFINIZIONE_NO_PUBBLICATA` | 409 | nuova-versione da sorgente non PUBBLICATA |
+| `E_DEFINIZIONE_NON_PUBBLICABILE` | 409 | pubblica di una BOZZA senza step attivi o con ciclo di prerequisiti |
 
-I codici senza `E_` sono marker verbatim del catalogo DB (`config.messaggi_errore`),
-intercettati per substring stabile in `_KNOWN_DB_ERROR_MARKERS` e ripubblicati con lo
-stesso codice; l'HTTP status segue la policy in `error_policies.py` (i guard di dominio DB
-si presentano come banner, `ui_action=show_error_banner`).
+I codici dei guard DB arrivano col campo strutturato del database (forma `E_…`) e
+passano intatti; in sua assenza li riconosce il ripiego testuale di
+`_KNOWN_DB_ERROR_MARKERS`. Lo status segue la classe a catalogo
+(`error_policies_generated.py`: `CONFLITTO_STATO` → 409).

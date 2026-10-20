@@ -30,12 +30,13 @@ fornitori/clienti) per i parametri di fatturazione utility-specifici.
 | PATCH | `/api/v1/config/utilities-tipi-ruolo/<id>/` | Aggiorna `attivo` |
 | GET | `/api/v1/config/utilities-tipi-ruolo/<id>/usage/` | Emittenti che usano la matrice |
 
-Tutti gli endpoint richiedono ruolo ADMIN (`AdminAPIView`).
+Tutti gli endpoint sono riservati agli amministratori (`AdminAPIView` → `IsAdminZeroERP`): binding `SUPER_ADMIN` o superuser Django. Altrimenti `403` `E_ACCESSO_RISERVATO_ADMIN`.
 
 ### Query params lista
 
-- `search` (str, opzionale, min 3 char) — ILIKE su codice/descrizione di
-  utility e tipo_ruolo
+- `search` (str, opzionale) — ricerca libera su codice/descrizione di
+  utility e tipo_ruolo (colonne e soglia dal catalogo della lista; sotto
+  soglia il termine non filtra, nessun `400`)
 - `attivo` (bool, opzionale) — filtro per stato
 - `utility_id` (int, opzionale) — filtro per utility
 - `tipo_ruolo_id` (int, opzionale) — filtro per tipo ruolo
@@ -44,7 +45,7 @@ Tutti gli endpoint richiedono ruolo ADMIN (`AdminAPIView`).
 - `order_by` (str, default `utility_descrizione`) — whitelist:
   `utility_codice`, `utility_descrizione`, `tipo_ruolo_codice`,
   `tipo_ruolo_descrizione`, `attivo`, `data_insert`, `data_update`
-- `order_dir` (`asc`/`desc`, default `asc`)
+- `order_dir` (`asc`/`desc`). Assente: il default della lista — `asc` sulle colonne testo, `desc` sulle colonne data (`data_insert`, `data_update`; dal 2026-10-20, prima `asc`)
 
 ### Body POST
 
@@ -152,7 +153,7 @@ emittenti per ruoli diversi da Emittente Fiscale).
   `LookupRepository.list_utilities_per_ruolo` (filtro `utr.attivo = true`).
 - Validita' temporale (`valido_dal/al`): non gestita da questo CRUD (fuori
   scope per la prima iterazione, default DB applicato).
-- Permessi: tutti gli endpoint richiedono ruolo `ADMIN` di sistema.
+- Permessi: binding `SUPER_ADMIN` o superuser (`403` `E_ACCESSO_RISERVATO_ADMIN`).
 
 ## Codici errore
 

@@ -64,7 +64,7 @@ def _riga(**override):
         "errore_quando": datetime(2026, 9, 6, 17, 12, tzinfo=UTC),
         "riferimento": "ORD0036005",
         "tipo_gruppo": "ORDINE_VENDITA",
-        "area_documento": "ORDINI",
+        "documento_apribile": True,
         "documento_id": 43927,
         "commessa_id": 34137,
         "commessa_codice": "CMM-PGTAPEF202-2026-000000004",
@@ -266,6 +266,13 @@ class LottoGruppiRepositoryTests(SimpleTestCase):
 
 
 class LottoGruppiServiceTests(SimpleTestCase):
+    # Il cancello di perimetro (`_lotto_perimetro`) legge la testata prima della
+    # lista: qui il lotto e' visibile, il caso contrario ha il suo test.
+    def setUp(self) -> None:
+        patcher = patch.object(VenditeRepository, "get_lotto", return_value={"id": 1})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     # 4) Una colonna fuori whitelist non ordina in silenzio: rifiuta.
     def test_ordinamento_fuori_whitelist_rifiutato(self):
         with self.assertRaises(ServiceError):

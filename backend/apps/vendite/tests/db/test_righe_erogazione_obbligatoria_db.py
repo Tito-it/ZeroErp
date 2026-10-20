@@ -205,8 +205,11 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
     # 2. Contratto, PATCH: togliere l'erogazione a un OVERRIDE e' rifiutato.
     def test_contratto_patch_che_toglie_l_erogazione(self):
         def azione(cur):
-            cur.execute(_RIGA_CONTRATTO, [self._contratto(cur)])
-            ContrattiService().update_riga(cur.fetchone()[0], {"tipo_erogazione": None})
+            contratto_id = self._contratto(cur)
+            cur.execute(_RIGA_CONTRATTO, [contratto_id])
+            ContrattiService().update_riga(
+                contratto_id, cur.fetchone()[0], {"tipo_erogazione": None},
+            )
         self._assert_codice_e_campo(self._errore(azione))
 
     # 3. Offerta, create: la stessa regola (il push la ricopia nel contratto).

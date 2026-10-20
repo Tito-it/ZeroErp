@@ -23,26 +23,27 @@ Endpoint di scrittura che delega a `pratiche_service.cambia_stato_pratica`. Il s
 { "data": { "status": "ok" } }
 ```
 
-- `400`: `nuovo_stato` vuoto (`E_PRATICA_VALIDATION`), `pratica_id` non valido (`E_INVALID_ID`)
+- `400`: `nuovo_stato` assente o vuoto, o che non esiste in `config.stati_pratiche`
+  (`E_PRATICA_VALIDATION`, campo `nuovo_stato`; lo stato inesistente fino al 2026-10-20
+  era un `500 E_CONFIG_MANCANTE`), `pratica_id` non valido (`E_INVALID_ID`)
 - `401`: JWT mancante o non valido
 - `404`: pratica non trovata (`E_PRATICA_NOT_FOUND`)
-- `409`: transizione non in matrice (`PRATICHE_TRANSIZIONE_NON_AMMESSA`,
+- `409`: transizione non in matrice (`E_PRATICHE_TRANSIZIONE_NON_AMMESSA`,
   catalogo DB id 301): la coppia `(stato_da, stato_a)` non e' in
   `config.transizioni_stati_pratiche` (attiva). Guard
   `trgfn_pratiche_guard_transizione`, tradotto via marker;
-  **chiusura bloccata** (`PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI`,
+  **chiusura bloccata** (`E_PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI`,
   catalogo DB id 485, workflow v2 D4): la pratica sta andando a `CHIUSA` ma
   esistono template flussi `obbligatorio=true` ancora **percorribili**
   (prerequisiti soddisfatti) e mai completati. Il messaggio elenca i flussi
   mancanti. I rami resi non percorribili dall'esito di un bivio (ramo morto)
   **non** bloccano.
-- `500`: stato non trovato in `config.stati_pratiche` (`E_CONFIG_MANCANTE`)
 
 ## Regole
 
 - `pratica_id` deve essere > 0.
 - `nuovo_stato` non puo' essere vuoto.
-- Lo stato viene risolto da `config.stati_pratiche.codice_interno` a `id`; se non trovato → errore.
+- Lo stato viene risolto da `config.stati_pratiche.codice_interno` a `id`; se non trovato → `400 E_PRATICA_VALIDATION` sul campo `nuovo_stato`.
 - Guard chiusura (2026-06-12, D4): la transizione a `CHIUSA` e' validata a DB
   da `trg_pratiche_a10_guard_chiusura_flussi_upd` (su
   `fn_check_chiusura_pratica`); il service traduce l'errore DB nel codice

@@ -306,7 +306,9 @@ class ApiLottoSegnalazioniSummary(DomainAPIView):
     #    chiede il drawer a ogni apertura, e portarsi dietro l'elenco per
     #    mostrarne un numero sarebbe lavoro a ogni giro.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
-        return success_response(fn_get_lotto_segnalazioni_summary(lotto_id=lotto_id))
+        return success_response(fn_get_lotto_segnalazioni_summary(
+            lotto_id=lotto_id, auth_user_id=get_scope_user_id(request),
+        ))
 
 
 
@@ -347,6 +349,7 @@ class ApiLottoSegnalazioniRows(DomainAPIView):
         q = request.query_params
         data = fn_list_lotto_segnalazioni(
             lotto_id=lotto_id,
+            auth_user_id=get_scope_user_id(request),
             livello=(q.get("livello") or None),
             origine=(q.get("origine") or None),
             solo_attive=as_bool(q.get("solo_attive"), default=True),
@@ -395,6 +398,7 @@ class ApiLottoSegnalazioniExport(DomainAPIView):
         filtri: dict[str, Any] = {"livello": q.get("livello") or None, "origine": q.get("origine") or None}
         data = fn_list_lotto_segnalazioni(
             lotto_id=lotto_id,
+            auth_user_id=get_scope_user_id(request),
             **filtri,
             solo_attive=as_bool(q.get("solo_attive"), default=True),
             solo_job_corrente=as_bool(q.get("solo_job_corrente"), default=False),
@@ -470,6 +474,7 @@ class ApiLottoTaskRunsExport(DomainAPIView):
         solo_giro_corrente = as_bool(q.get("solo_giro_corrente"), default=False)
         data = fn_get_lotto_task_runs(
             lotto_id=lotto_id,
+            auth_user_id=get_scope_user_id(request),
             order_by=(q.get("order_by") or None),
             order_dir=(q.get("order_dir") or "desc"),
             task_stato=task_stato,
@@ -568,6 +573,7 @@ class ApiLottoTaskRuns(DomainAPIView):
         assert page_size is not None and offset is not None
         data = fn_get_lotto_task_runs(
             lotto_id=lotto_id,
+            auth_user_id=get_scope_user_id(request),
             page_size=page_size,
             offset=offset,
             order_by=(q.get("order_by") or None),
@@ -887,12 +893,16 @@ def _parse_lotti_query(qp, *, function_name: str) -> dict:
     order_by = raw_order_by.strip() or None if raw_order_by is not None else None
     order_dir = qp.get("order_dir")
     if order_by is not None:
+        # `nullable`: la direzione assente resta assente, e la decide il BB
+        # della lista (date DESC). Fino al 2026-10-20 qui si scriveva
+        # `order_dir or "asc"`, e la regola non arrivava al repository (§6.1).
         order_by, order_dir = validate_order_params(
             order_by,
-            order_dir or "asc",
+            order_dir,
             allowed_columns=_ORDER_BY_LOTTI,
             error_code="E_SEARCH_VALIDATION",
             function_name=function_name,
+            nullable=True,
         )
 
     return {
@@ -1222,7 +1232,7 @@ class ApiLottoFattureExport(DomainAPIView):
             stato_esecuzione=stato,
             auth_user_id=get_scope_user_id(request),
             sort_by=(q.get("sort_by") or "fattura_id"),
-            sort_dir=(q.get("sort_dir") or "asc"),
+            sort_dir=(q.get("sort_dir") or None),
             max_rows=EXPORT_MAX_ROWS + 1,
         )
         return build_export_response(
@@ -1278,7 +1288,8 @@ class ApiLottoFattureList(DomainAPIView):
         stato_esecuzione = raw_stato_esecuzione.strip() or None if raw_stato_esecuzione is not None else None
 
         sort_by = request.query_params.get("sort_by", "fattura_id").strip() or "fattura_id"
-        sort_dir = request.query_params.get("sort_dir", "asc").strip() or "asc"
+        # Assente resta assente: il verso lo decide il BB della lista (§6.1).
+        sort_dir = (request.query_params.get("sort_dir") or "").strip() or None
         page = optional_int({"page": request.query_params.get("page", "1")}, "page")
         page_size = optional_int({"page_size": request.query_params.get("page_size", str(DEFAULT_LIMIT))}, "page_size")
 

@@ -124,11 +124,10 @@ class DdtRepository(
     _riepilogo_iva_vista = "vendite.vw_ddt_riepilogo_iva_dettaglio"
     _riepilogo_iva_fk_documento = "ddt_id"
 
-    # Configurazione mixin indirizzi documento (whitelist ambito DDT: CON
+    # Configurazione mixin indirizzi documento (whitelist ambito DDT_VENDITA: CON
     # obbligatorio all'emissione, guard trigger a DB).
     _indirizzi_table = "vendite.ddt_indirizzi"
     _indirizzi_fk_documento = "ddt_id"
-    _indirizzi_ambito = "DDT"
     _indirizzi_documento = SORGENTE_DDT_VENDITA
 
     # ══════════════════════════════════════════════════════════

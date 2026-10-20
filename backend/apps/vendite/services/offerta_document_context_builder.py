@@ -59,7 +59,7 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
     CONTEXT_VERSION = 2
 
-    # Tipi indirizzo ammessi nell'ambito OFFERTE
+    # Tipi indirizzo ammessi nell'ambito OFFERTA_COMMERCIALE
     # (`config.tipi_indirizzi_allowed`). Dichiarati qui e non letti a runtime:
     # il context deve essere deterministico a parita' di documento (il
     # `context_hash` governa il dedup), e una modifica di configurazione non

@@ -373,7 +373,8 @@ class VenditePipelineApiTests(JwtMockedApiTest):
         # Il riepilogo CONTA e basta: le righe hanno un endpoint suo
         # (`/segnalazioni/rows/`), cosi' il drawer non si porta dietro l'elenco
         # a ogni apertura per mostrarne un numero.
-        mocked_summary.assert_called_once_with(lotto_id=80)
+        # L'utente della richiesta arriva al cancello di perimetro (2026-10-20).
+        mocked_summary.assert_called_once_with(lotto_id=80, auth_user_id=None)
 
     # Scopo: ⭐ L'ELENCO delle segnalazioni sta su una rotta SUA, e i filtri
     #        arrivano dal query string. Presidia anche i due default che non
@@ -389,7 +390,7 @@ class VenditePipelineApiTests(JwtMockedApiTest):
         )
         self.assertEqual(response.status_code, 200)
         mocked_rows.assert_called_once_with(
-            lotto_id=80, livello="W", origine="LOTTO",
+            lotto_id=80, auth_user_id=None, livello="W", origine="LOTTO",
             solo_attive=True, solo_job_corrente=False,
             page=2, page_size=10, order_by=None, order_dir="desc",
         )
@@ -444,7 +445,7 @@ class VenditePipelineApiTests(JwtMockedApiTest):
         #    chiedono: nessun default nasconde righe: chi chiama senza vede
         #    quello che vedeva prima.
         mocked_task_runs.assert_called_once_with(
-            lotto_id=80, page_size=50, offset=0, order_by=None, order_dir="desc",
+            lotto_id=80, auth_user_id=None, page_size=50, offset=0, order_by=None, order_dir="desc",
             task_stato=None, solo_giro_corrente=False,
         )
 

@@ -131,7 +131,10 @@ def validate_enum_param(
         code=error_code,
         message=f"Parametro {param_name} non valido.",
         detail=f"Valori ammessi: {', '.join(allowed)}",
-        context={param_name: value},
+        # ⛔ Niente `field`: e' un parametro di QUERY, non un input del form
+        # (api.md §«Escono solo i nomi», decisione di Tid 2026-10-20). Il nome
+        # resta nel context diagnostico come `parametro`, e nel messaggio.
+        context={param_name: value, "parametro": param_name},
         function_name=function_name,
         log_to_db=log_to_db,
     )

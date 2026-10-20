@@ -43,6 +43,15 @@ _UPDATE_CLIENTE_KEYS: frozenset[str] = CLIENTE_UPDATE_ALLOWED | {"ba_categoria_c
 # Validator stateless del dominio (solo il codice errore): condivisibile.
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
+# Il contratto della CREAZIONE di un cliente: le chiavi che `crea_cliente` legge.
+_CREATE_KEYS_CLIENTE: frozenset[str] = frozenset({
+    "soggetto_id", "utility_id", "istanza_utility_id", "billing_account_id",
+    "indirizzo_dettaglio_id", "ba_fatturazione_ordini", "ba_parent_account_id",
+    "ba_categoria_cliente_id", "termine_pagamento_id", "modalita_pagamento_id",
+    "garanzia_tipo", "servizio_da_fatturare", "garanzia_importo",
+    "contatto", "indirizzi",
+})
+
 
 class ClientiService:
     """Service per gestione clienti completa.
@@ -143,6 +152,10 @@ class ClientiService:
             if isinstance(payload, dict)
             else {}
         )
+        # Il flag con la stessa lettura della creazione: un booleano JSON, o 400
+        # (prima passava crudo, e `"abc"` era un errore di cast del DB).
+        if "servizio_da_fatturare" in cliente_fields:
+            cliente_fields["servizio_da_fatturare"] = _V.require_bool(payload, "servizio_da_fatturare")
 
         # Niente campi del cliente ne' categoria: 400, PRIMA della scrittura (il
         # cliente esiste, l'ha verificato `get_cliente`: non e' un 404). La
@@ -198,6 +211,11 @@ class ClientiService:
     def crea_cliente(
         self, payload: dict[str, Any], *, auth_user_id: int | None = None
     ) -> dict[str, Any]:
+        # ⛔ Una chiave fuori contratto e' un 400, come in modifica (2026-10-20):
+        #    prima la creazione SCARTAVA in silenzio anche i campi ritirati
+        #    (`tipo_gg_scadenza_ft`, `nr_giorni_scadenza`, ...) che la PATCH
+        #    gia' rifiutava.
+        _V.validate_allowed_keys(payload, allowed=_CREATE_KEYS_CLIENTE)
         soggetto_id = optional_uuid(payload, "soggetto_id")
         ErrorManager.require(soggetto_id is not None, code=E_ANAG_VALIDAZIONE,
                              message="soggetto_id obbligatorio.")
@@ -257,7 +275,7 @@ class ClientiService:
         if garanzia_tipo is not None:
             cliente_data["garanzia_tipo"] = garanzia_tipo
         if "servizio_da_fatturare" in payload:
-            cliente_data["servizio_da_fatturare"] = bool(payload["servizio_da_fatturare"])
+            cliente_data["servizio_da_fatturare"] = _V.require_bool(payload, "servizio_da_fatturare")
         if "garanzia_importo" in payload and payload["garanzia_importo"] is not None:
             cliente_data["garanzia_importo"] = payload["garanzia_importo"]
 

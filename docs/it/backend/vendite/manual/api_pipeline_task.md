@@ -148,9 +148,13 @@ annullamento percorre i passi a ritroso).
 ⚠️ **Non basta l'ordine del seed.** La configurazione la scrive un altro team, e
 una riga girata deve fermarsi prima, non scoprirsi a documenti numerati.
 
-Oggi ci sono due dipendenze: `genera_scadenze_lotto → ricalcola_iva_lotto` (la
-base delle rate è `totale_a_pagare`, che nasce dal ricalcolo) e
-`popola_fatture_rettifiche → numera_fatture`.
+Oggi ci sono tre dipendenze: `genera_scadenze_lotto → ricalcola_iva_lotto` (la
+base delle rate è `totale_a_pagare`, che nasce dal ricalcolo),
+`popola_fatture_rettifiche → numera_fatture` e `numera_fatture →
+consuma_plafond_lotto` (il consumo del plafond spezza le righe, e dopo la
+numerazione il documento è oltre la soglia di congelamento: la scrittura verrebbe
+rifiutata). ⚠️ Finché `consuma_plafond_lotto` non è nel seed della pipeline la
+terza non scatta (predecessore assente = configurazione valida).
 
 ### E dentro un task, l'ordine delle FATTURE (2026-08-21)
 

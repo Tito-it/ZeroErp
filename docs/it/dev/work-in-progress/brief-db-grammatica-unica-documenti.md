@@ -2,9 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-20
 
-**Riparte: Tid**, col commit del giro DB 2c-2e: `20261020-32` … `-98` applicati su dbdev, pgTAP come app verdi
-dopo l'adeguamento del §13.5-ter, SQL una tantum
-[sql-una-tantum-2e-chiavi-e-registri.sql](sql-una-tantum-2e-chiavi-e-registri.sql) eseguito su dbdev (2026-10-20). Poi la sessione BE/FE (§13.4). Le prove a video Tid le fa tutte alla fine. Il 2a e
+**Riparte: il team DB** col §13.6, poi la sessione BE/FE per il solo FE dell'apertura dalla commessa (6-octies-i). Il giro BE/FE del §13.4 è chiuso e **da committare** (Tid). Il giro DB 2c-2e è
+chiuso e mergiato su `Tito-dev` (PR #1910): `20261020-32` … `-98` applicati su dbdev, pgTAP come app verdi dopo
+l'adeguamento del §13.5-ter, SQL una tantum
+[sql-una-tantum-2e-chiavi-e-registri.sql](sql-una-tantum-2e-chiavi-e-registri.sql) eseguito su dbdev (2026-10-20). Le prove a video Tid le fa tutte alla fine. Il 2a e
 il 2b sono chiusi su DB e BE/FE; i lotti 0 e 1 pure.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -42,11 +43,13 @@ il 2b sono chiusi su DB e BE/FE; i lotti 0 e 1 pure.
 | 6-octies-f | ✅ **Tid** | Apply di `20261020-32` … `-98` su dbdev e corsa dei pgTAP come app: 16 rossi nuovi, poi verdi dopo il §13.5-ter; lo SQL una tantum del 2e eseguito: 350 chiavi, 62 copie nel `meta`, 24 registri (2026-10-20) | §13, §13.5-bis | 6-octies-e |
 | 6-octies-f-bis | ✅ team DB | La corsa come app ha dato 16 rossi nuovi: test col vocabolario ritirato. Adeguati, più sette file dal censimento (2026-10-20) | §13.5-ter | 6-octies-f |
 | 6-octies-f-ter | ✅ **Tid** | Nuova corsa dei pgTAP come app sui 23 file adeguati: verdi (2026-10-20) | §13.5-ter | 6-octies-f-bis |
-| 6-octies-g | sessione BE/FE | Il giro BE/FE dei sotto-giri 2c-2e | §13.4 | 6-octies-f |
+| 6-octies-g | ✅ sessione BE/FE | Il giro BE/FE dei sotto-giri 2c-2e, chiamata reale su dbdev (2026-10-20): mixin indirizzi su un codice solo; dashboard sui codici delle sorgenti e `documento_apribile` (BE e FE); lista attività di commessa su `sorgente_apribile` (BE); famiglie create da una sorgente (endpoint `famiglie/sorgenti/`, drawer, policy rigenerate, ripiego del codice nuovo); chiavi del push e registri (commenti, test, smoke). Suite Django intera col DB vero verde; **da committare** | §13.4 | 6-octies-f |
+| 6-octies-h | team DB | `fn_list_commessa_attivita` col `codice_interno` della sorgente (`sorgente_codice_interno`), whitelist d'ordinamento e `lista_colonna.csv`; `famiglie_documento.codice` a `varchar(50)` | §13.6 | — |
+| 6-octies-i | sessione BE/FE | Il FE dell'apertura del documento d'origine dalla commessa, fattura e reso compresi | §13.6 | 6-octies-h |
 | 6-sexies | team DB, poi sessione BE/FE | Sotto-giri 2c, 2d, 2e insieme (un apply; con lo SQL una tantum delle chiavi su dbdev, G-8), poi un giro BE/FE; lotto 3 anticipabile; censimento su `pg_get_functiondef`, non su `prosrc` (§12.3) | §10, §10.4, §5 G-4 | 6-octies-b |
 | 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6-sexies |
 
-**Decisioni aperte di Tid:** nessuna sul giro 2c-2e (L2e-2 = (a), L2c-1 = (a) in questo giro, 2026-10-20); il giro DB 2c-2e è **da committare**; il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
+**Decisioni aperte di Tid:** nessuna sul giro 2c-2e (L2e-2 = (a), L2c-1 = (a) in questo giro, 2026-10-20); il giro DB 2c-2e è committato (PR #1910); il giro BE/FE del §13.4 è **da committare** a fine giro; il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
 §12.8 e §12.9 (§12.10) è committato (PR #1904); il giro BE del §12.10.6 è committato (`323c96a5c`, PR #1907). Verificato su dbdev il 2026-10-20: lo standard e le
 copie degli emittenti 32 e 44 stampano l'ordine in forma 3, e nessuno legge più `origine.tipo`. Lo SQL una tantum
 di L2b-2 resta accanto al brief fino all'archiviazione. Il §12.8 è partito il 2026-10-19 sera, insieme al
@@ -1695,3 +1698,43 @@ scratch la lettura dei test, non il loro esito.
 | Chiavi del push (2e) | `ORD:`, `DDT:`, `PREV:`, `CONTR:`, `CONS:` | il codice della sorgente (`ORDINE_VENDITA:<uid>:R:<riga>`…); il backend appende `#CMP:` alla chiave che riceve dal lister, e resta così. Da rivedere: i commenti e i test di `_kit_meta.py` e `commesse_source_handlers.py`, gli smoke che scrivono chiavi; il FE mostra la chiave così com'è (`CommessaGestioneDrawer`), ora più lunga |
 | Codice dei registri provvisionati (L2c-1) | `ORD-31848` | `ORDINE_VENDITA-31848` per i nuovi e, dopo lo SQL una tantum, per quelli di dbdev; `registro_codice` delle liste a `varchar(80)` |
 | ⭐ Fattura e reso **apribili** (Tid, 2026-10-20) | `area` vuota: la riga non si apriva | `sorgente_apribile` / `documento_apribile` sono veri anche per `FATTURA` e `RESO_VENDITA`: il FE deve saperli aprire dal codice (rotta del dettaglio fattura e del reso), nella lista attività di commessa e nei gruppi della competenza. Il backend non ha logica sua: passa il valore |
+
+### 13.6 Richiesta della sessione BE/FE: il tipo del documento d'origine col `codice_interno` (team DB)
+
+> **Chi scrive:** sessione BE/FE, 2026-10-20, durante il giro del §13.4. **Deciso da Tid il 2026-10-20:** si usa
+> `codice_interno`.
+
+**Il difetto, sul contratto.** Il §13.4 chiede al frontend di aprire il documento d'origine di una riga di commessa
+dal codice della sorgente. `vendite.fn_list_commessa_attivita` lo restituisce come `sorgente_codice`, ma calcolato
+su **`s.codice`**: il nome **modificabile** di `config.sorgenti` (solo `uq_sorgenti_codice`). Il nome del tipo è
+**`codice_interno`** (G-1), l'unico protetto da `trgfn_lock_columns`. Oggi le due colonne coincidono su ogni
+sorgente di dbdev (fatto datato, 2026-10-20): è il motivo per cui il difetto non si vede, non una ragione per
+tenerlo. Basta rinominare il `codice` di una sorgente perché l'azione «apri documento d'origine» si spenga in
+silenzio, perché il frontend non trova più il drawer per quel tipo. `vw_dash_competenza_gruppi.tipo_gruppo` invece
+è già su `codice_interno`.
+
+**Che cosa si chiede** (un changeSet, DROP + CREATE come il `-63`):
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `RETURNS TABLE` di `fn_list_commessa_attivita` | `sorgente_codice` = `s.codice` | **`sorgente_codice_interno`** = `s.codice_interno`, ancorato con `%TYPE`. Il nome segue la colonna, come nelle API di magazzino (`sorgente_codice_interno`) |
+| whitelist di `p_order_by` | `'sorgente_codice'` → `s.codice` | `'sorgente_codice_interno'` → `s.codice_interno` |
+| `80_data/sql/ui/lista_colonna.csv`, riga 488 (`origine_tipo`, lista 38) | campo `sorgente_codice` | campo `sorgente_codice_interno` |
+
+**Il giro BE/FE che segue** (sessione BE/FE, dopo l'apply): `_ATTIVITA_COLS` e la whitelist d'ordinamento di
+`commesse_repository.py`, i test; in `CommessaGestioneDrawer` l'azione «apri documento d'origine» apre dal
+`sorgente_codice_interno` quando `sorgente_apribile` è vero, fattura e reso compresi (§13.4, ultima riga).
+⚠️ Fino all'apply il frontend del giro 3 resta fermo: la lista attività di commessa risponde (il `sorgente_area`
+ritirato è già sostituito da `sorgente_apribile` nel backend, 2026-10-20), ma l'azione d'apertura non trova il
+drawer, perché si appoggia ancora alle chiavi delle aree.
+
+**Secondo punto, trovato nello stesso giro (2026-10-20): `famiglie_documento.codice` è più corto del nome che
+riceve.** Il `-32` ha portato `codice_interno` a `varchar(50)`, la lunghezza di `config.sorgenti.codice_interno`
+(G-3). Il `codice` dell'operatore è rimasto `varchar(32)`, e alla nascita
+`vendite.trgfn_famiglie_documento_default_codice` ci copia il `codice_interno` (`NEW.codice :=
+NEW.codice_interno`). Una sorgente con un codice da 33 a 50 caratteri, che il modello ammette, non può avere
+una famiglia: la creazione cade su un `DataError` del trigger, che non è un errore di dominio e arriva come
+errore generico. Oggi il codice più lungo fra le sorgenti di documento è `OFFERTA_COMMERCIALE` (19): è il
+motivo per cui non si vede, non una ragione per tenerlo. Per G-3 («il vincolo si adegua al nome») la proposta è
+`famiglie_documento.codice` a `varchar(50)`, con i dipendenti che lo leggono. Il frontend si adegua nello stesso
+giro (`FIELD_LENGTH.FAMIGLIA_CODICE_OPERATORE_MAX`).

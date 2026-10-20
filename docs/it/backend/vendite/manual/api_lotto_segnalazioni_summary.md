@@ -9,10 +9,8 @@ Esporre via HTTP il riepilogo segnalazioni attive di un lotto, con indicazione d
 Endpoint di consultazione che invoca `fn_get_lotto_segnalazioni_summary` in `apps/vendite/services/pipeline_service.py`,
 il quale delega a `LottoSegnalazioniService.evaluate_lotto_status`.
 
-View in `apps/vendite/api/views.py`:
-
-- `ApiLottoSegnalazioniSummary`
-- `ApiLottoSegnalazioniSummary`
+View in `apps/vendite/api/views.py`: `ApiLottoSegnalazioniSummary` (riepilogo),
+`ApiLottoSegnalazioniRows` (elenco paginato), `ApiLottoSegnalazioniExport`.
 
 ## Input
 
@@ -20,10 +18,8 @@ View in `apps/vendite/api/views.py`:
 - Path canonico: `/api/v1/vendite/lotti/{lotto_id}/segnalazioni/`
 - Header sicurezza: `Authorization: Bearer <access_token>`
 - Path params: `lotto_id` (int)
-- Query param: `livello` — `C` critiche (default) · `W` avvisi · `I` attenzioni.
-  Normalizzato (trim + maiuscolo) dalla view; fuori vocabolario → `400`.
-  ⚠️ Nome italiano come gli altri query param di dominio, e mai `format` o altri
-  nomi che DRF intercetta.
+- Nessun query param. ⚠️ Il parametro `livello` e l'elenco `segnalazioni[]`
+  non stanno più qui: l'elenco è su `segnalazioni/rows/` (sotto).
 
 ## Output
 
@@ -50,68 +46,57 @@ View in `apps/vendite/api/views.py`:
       "critiche_giro_count": 0,
       "esiti_stato_esecuzione_errore_count": 0,
       "fermo": false
-    },
-    "livello": "C",
-    "segnalazioni": [
-      {
-        "riga_key": "FATTURA:3284",
-        "origine": "FATTURA",
-        "livello": "C",
-        "messaggio": "Non si può numerare il documento 15353: …",
-        "data_ora": "2026-08-21T17:39:39.675+02:00",
-        "codice": "E_FATTURA_RETTIFICATA_SENZA_NUMERO",
-        "fase": null,
-        "fattura_id": 15353,
-        "ragione_sociale_completa": "Azienda PG Test Natura",
-        "totale_doc": "-20.740000"
-      }
-    ]
+    }
   },
   "meta": { ... }
 }
 ```
 
-- `400`: `lotto_id` non valido o <= 0, oppure `livello` fuori vocabolario
+- `400 E_PIPELINE_VALIDATION`: `lotto_id` ≤ 0
+- `404 E_LOTTO_NON_TROVATO`: lotto inesistente o fuori perimetro — la testata
+  si legge prima dei conteggi. ⚠️ 2026-10-20: prima rispondeva zeri, cioè
+  «lotto pulito»
 
-## L'elenco, non solo i conteggi (2026-08-21)
+## Elenco paginato — `GET lotti/{lotto_id}/segnalazioni/rows/`
 
-I conteggi dicono **quante** segnalazioni ci sono; `segnalazioni[]` dice **cosa
-sono**, per il livello richiesto.
+`vendite.fn_list_lotto_segnalazioni`: le due origini (log di fattura via ponte
+del lotto, log di lotto) in un elenco solo, stessa fonte dei conteggi.
 
-⭐ **Stessa fonte e stessi filtri dei conteggi**, e va tenuto così:
-`fatture_log` attraverso il ponte del lotto **+** `fatturazione_lotti_log`,
-entrambe con `disabilitato IS FALSE` — esattamente ciò che somma
-`fn_get_lotto_segnalazioni_summary`. Un elenco che leggesse una fonte sola
-mostrerebbe «1 critica» nel banner e zero righe nella scheda, e la divergenza
-fra un contatore e il suo dettaglio è peggio del dettaglio assente.
-📌 Verificato sul lotto 6034: **C=1 → 1 riga · W=2 → 2 righe · I=11 → 11 righe**.
+Query param (tutti opzionali):
 
-⚠️ Il livello `I` esiste **solo** sulle segnalazioni di LOTTO (il riepilogo
-conta `lotto_info_count` e non ha il gemello per le fatture): il ramo fatture
-resta nella query e per `I` semplicemente non produce righe.
+| Parametro | Note |
+|---|---|
+| `livello` | `C` · `W` · `I`; assente = tutti. Vocabolario validato dalla funzione DB |
+| `origine` | `FATTURA` · `LOTTO`; assente = tutte |
+| `solo_attive` | bool, default `true` (le ritirate non si mostrano) |
+| `solo_job_corrente` | bool, default `false` |
+| `page` / `page_size` | default `1` / `25`, `page_size` max `500` |
+| `order_by` | passato alla funzione DB, che possiede la whitelist |
+| `order_dir` | `asc` \| `desc`, default `desc` |
 
-⭐ **Perché conteggi ed elenco viaggiano insieme**: li legge la stessa scheda e
-devono raccontare lo stesso istante. Due chiamate separate potrebbero cadere a
-cavallo di un giro e mostrare «2 critiche» sopra un elenco di tre.
+Risposta: `{lotto_id, count, page, page_size, total_pages, fuori_job_count,
+results}`. `fuori_job_count` = quante segnalazioni restano fuori dall'ultima
+corsa: senza, un elenco filtrato e uno vuoto si leggono uguali.
 
-⚠️ **`riga_key` è la chiave di riga** (`<origine>:<id>`), e serve: `data_ora`
-**non è univoco** — misurato, sei segnalazioni con lo stesso microsecondo,
-scritte dallo stesso giro — e il solo `id` nemmeno, perché le due tabelle hanno
-sequenze indipendenti. È anche il tiebreak dell'`ORDER BY`: a parità di istante
-l'ordine dev'essere deterministico, o due letture della stessa pagina si
-scambiano righe.
+Campi di riga: `riga_key` (`<origine>:<id>`, chiave di riga e tiebreak),
+`origine`, `data_ora`, `livello`, `messaggio` (la frase del database, non
+riscritta), `error_code`, `fase` (solo origine `LOTTO`), `fattura_id`,
+`documento_display` e `importo` (`null` sulle righe di lotto), `disabilitato`,
+`job_corrente`, `target` (bersagli `[{type, id}]`), `gruppo_key` (il documento
+di cui parla la riga; `null` = critica del giro), `uscita_blocco_reason` /
+`uscita_blocco_reason_key` (perché «Togli dal giro» è spento, da
+`script.fn_check_documento_escludibile_da_giro`), `riferimento` (il documento
+come lo legge una persona).
 
-⚠️ **Nessuna paginazione, per ora**: cap a 500 righe con `logger.warning` sul
-troncamento — un elenco tagliato somiglia in tutto a uno completo, e sopra c'è
-un contatore che direbbe un numero diverso. La paginazione arriva con il
-catalogo lista (`ui.lista_definizione`), prerequisito DB.
+Errori: `400 E_PIPELINE_VALIDATION` (`lotto_id`, paginazione, `order_dir`);
+`404 E_LOTTO_NON_TROVATO` come il riepilogo.
 
-⚠️ **`messaggio` non si riscrive**: contiene la frase del database, l'unica che
-nomina il documento bloccante e la via d'uscita. `ragione_sociale_completa` e
-`totale_doc` si **affiancano** — un id interno non è visibile da nessuna parte
-nell'interfaccia, quindi senza nome e importo «documento 835» non identifica
-niente. Sulle segnalazioni di LOTTO sono `null` e il consumer mostra `fase`.
-- `500`: errore applicativo gestito dal middleware
+## Export — `GET lotti/{lotto_id}/segnalazioni/export/?formato=csv|xlsx`
+
+Stessi filtri e ordinamento dell'elenco (`livello`, `origine`, `solo_attive`,
+`solo_job_corrente`, `order_by`, `order_dir`), senza paginazione; colonne dal
+catalogo `vendite.lotto_segnalazioni`. Oltre `EXPORT_MAX_ROWS` →
+`422 E_UI_EXPORT_LIMIT_EXCEEDED`. Stesso `404`.
 
 ## Regole
 
@@ -137,8 +122,8 @@ niente. Sulle segnalazioni di LOTTO sono `null` e il consumer mostra `fase`.
   il terzo addendo è l'unica (il pull rivede il documento e scrive l'esito nuovo).
   ⚠️ I dieci conteggi restano per la **frase** (banner, `detail` del rifiuto
   `E_PIPELINE_LOTTO_CRITICAL`, payload di `PIPELINE_COMPLETED`), non per la
-  decisione. Su un lotto fuori perimetro: zeri e `fermo = false` — ma il
-  cancello è la testata (404), quegli zeri non arrivano a video.
+  decisione. Su un lotto fuori perimetro la vista darebbe zeri e `fermo =
+  false`, ma il cancello è la testata (`404`): quegli zeri non arrivano a video.
 - `summary.fatture_stato_esecuzione_errore_count` — conteggio fatture del lotto con `stato_esecuzione = 'ERRORE'`; restituito direttamente da `fn_get_lotto_segnalazioni_summary` (6ª colonna).
 - `summary.documenti_bloccanti_count` · `documenti_presi_in_carico_count` ·
   `critiche_giro_count` — i tre numeri del **banner** (2026-09-08): contano

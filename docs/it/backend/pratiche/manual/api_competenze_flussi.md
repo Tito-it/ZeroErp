@@ -2,7 +2,7 @@
 
 ## Scopo
 
-Esporre via HTTP la gestione della matrice competenze flussi: per ogni tipo di flusso e reparto, quali operatori sono abilitati a eseguire il flusso. Configurazione statica gestita dall'amministratore.
+Esporre via HTTP la gestione della matrice competenze flussi: per ogni tipo di flusso e reparto, quali operatori sono abilitati a eseguire il flusso. Configurazione statica, scrivibile da chi ha il livello d'area `pratiche` richiesto dal metodo (nessun controllo «admin» in più).
 
 ## Contesto
 
@@ -28,7 +28,7 @@ CRUD semplice sulla tabella `pratiche.competenze_flussi`. La matrice competenze 
   - `template_flusso_id` (int, obbligatorio) — FK a `pratiche.template_flussi`
   - `unita_organizzativa_id` (int, obbligatorio) — FK a `config.unita_organizzative`
   - `risorsa_umana_id` (int, obbligatorio) — FK a `anagrafiche.risorse_umane`
-  - `attivo` (bool, opzionale, default `true`) — competenza attiva/sospesa
+  - `attivo` (booleano JSON `true`/`false`, opzionale, default `true`) — competenza attiva/sospesa; una stringa o un numero è `400 E_VALIDATION_INPUT`
 
 ### Elimina competenza
 
@@ -71,12 +71,14 @@ CRUD semplice sulla tabella `pratiche.competenze_flussi`. La matrice competenze 
 
 ### Errori
 
-- `400`: ID obbligatorio mancante o <= 0 (`E_INVALID_ID`)
-- `400`: Competenza non trovata per DELETE (`E_NOT_FOUND`)
+- `400`: ID obbligatorio assente dal corpo o <= 0 (`E_INVALID_ID`, col campo)
+- `404`: Competenza non trovata per DELETE (`E_FLUSSO_COMPETENZA_NOT_FOUND`)
 - `400`: Violazione unique constraint (stessa terna template+UO+risorsa)
 - `401`: JWT mancante o non valido
 
 ## Regole
+
+- Permesso: solo il livello dell'area `pratiche` (`DomainAPIView`, `area_funzionale = "pratiche"`).
 
 - La terna `(template_flusso_id, unita_organizzativa_id, risorsa_umana_id)` deve essere unica (constraint DB `uq_competenze_flussi`).
 - Il flag `attivo = false` sospende la competenza senza rimuovere la configurazione (utile per assenze temporanee).

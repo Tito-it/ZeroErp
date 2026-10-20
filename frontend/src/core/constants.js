@@ -155,15 +155,19 @@ export const FIELD_LENGTH = {
   //    diventa un 400 parlante — diventa un `DataError`, che NON e' un
   //    `IntegrityError` e quindi non passa da `map_integrity_error`: arriva
   //    all'operatore come errore generico di database.
-  REGISTRO_CODICE_MAX: 16,
+  // `varchar(80)` dal 2026-10-20 (era 16): il codice di un registro provvisionato
+  // e' il codice della famiglia piu' l'id dell'emittente (`ORDINE_VENDITA-31848`),
+  // L2c-1 di brief-db-grammatica-unica-documenti.
+  REGISTRO_CODICE_MAX: 80,
   REGISTRO_DESCRIZIONE_MAX: 120,
-  // Famiglie di documento: le tre `varchar` della tabella, verificate sul
+  // Famiglie di documento: le `varchar` della tabella, verificate sul
   // database il 2026-09-02. ⛔ Stanno qui e non nel template per la ragione di
   // sempre — un `maxlength` scritto a mano non e' un limite dichiarato, e' un
   // numero che nessuno ricontrolla il giorno che la colonna cambia.
-  FAMIGLIA_CODICE_MAX: 16,
+  // ⭐ Il `codice_interno` non ha piu' un limite qui: dal 2026-10-20 si SCEGLIE
+  //    fra le sorgenti (G-5 di brief-db-grammatica-unica-documenti), non si scrive.
   // Il `codice` dell'operatore (dal 2026-09-24): `varchar(32)`, come i codici
-  // di `config.*` (changeSet `20260924-03`) — il `codice_interno` resta 16.
+  // di `config.*` (changeSet `20260924-03`).
   FAMIGLIA_CODICE_OPERATORE_MAX: 32,
   FAMIGLIA_DESCRIZIONE_MAX: 120,
   FAMIGLIA_PREFISSO_MAX: 8,

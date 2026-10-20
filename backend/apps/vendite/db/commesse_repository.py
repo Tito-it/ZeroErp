@@ -208,6 +208,15 @@ TIPO_MOVIMENTO_VALUES: frozenset[str] = frozenset(
     {"NORMALE", TIPO_MOVIMENTO_RETTIFICA, "ONERE"}
 )
 
+# I vocabolari di emissione e approvazione di una riga di commessa, per i
+# filtri della lista attivita': SPECCHI dei CHECK
+# `chk_commesse_attivita_stato_emissione` / `_stato_approvazione`, che il
+# guardrail `test_specchi_dei_check_db` confronta col database (2026-10-20:
+# prima il filtro andava nel WHERE senza controllo, e un valore sbagliato
+# rispondeva lista vuota).
+STATI_EMISSIONE_ATTIVITA: tuple[str, ...] = (STATO_EMISSIONE_NON_EMESSA, "EMESSA", "ANNULLATA")
+STATI_APPROVAZIONE_ATTIVITA: tuple[str, ...] = (STATO_APPROVAZIONE_BOZZA, "APPROVATA", "RIFIUTATA")
+
 # Il tetto della lista attivita': quello che la fn DB applica da se' su
 # `p_limit`. Il tetto di PAGINA (`MAX_LIMIT`) NON sta qui — vive nel service, dove e'
 # un errore parlante invece di un troncamento muto.
@@ -1654,7 +1663,10 @@ class CommesseRepository(EventLogRepositoryMixin):
         # si presenterebbe come da fatturare.
         "fatturata_il",
         "fattura_id", "fattura_numero", "fattura_stato",
-        "sorgente_uid", "sorgente_area", "sorgente_documento_id",
+        # `sorgente_apribile` (dal 2026-10-20, brief-db-grammatica-unica-documenti
+        # 2d / L2d-1) al posto di `sorgente_area`, il plurale ritirato: dice se
+        # il documento d'origine ha una pagina; quale sia, lo dice la sorgente.
+        "sorgente_uid", "sorgente_apribile", "sorgente_documento_id",
         # Cinque colonne additive (changeSet 20260820-05): la riga dice
         # finalmente COSA e' e DA DOVE VIENE. Prima l'unica traccia della
         # provenienza era `segment_key`, una chiave tecnica — rilievo in-app di

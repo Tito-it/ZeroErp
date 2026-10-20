@@ -224,7 +224,7 @@ class OverrideAreeView(AdminAPIView):
         responses={200: inline_serializer(name="OverrideAreePutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_aree(auth_user_id, corpo_oggetto(request).get("items", []))
+        results = AmmSoftwareService().put_override_aree(auth_user_id, corpo_oggetto(request).get("items"))
         return success_response({"results": results})
 
 
@@ -240,7 +240,7 @@ class OverrideAzioniView(AdminAPIView):
         responses={200: inline_serializer(name="OverrideAzioniPutResp", fields={"data": serializers.DictField()})},
     )
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_azioni(auth_user_id, corpo_oggetto(request).get("items", []))
+        results = AmmSoftwareService().put_override_azioni(auth_user_id, corpo_oggetto(request).get("items"))
         return success_response({"results": results})
 
 
@@ -258,7 +258,7 @@ class OverrideOggettiView(AdminAPIView):
     )
     # Scopo: Sostituisce override oggetti di un operatore.
     def put(self, request: Request, auth_user_id: int) -> JsonResponse:
-        results = AmmSoftwareService().put_override_oggetti(auth_user_id, corpo_oggetto(request).get("items", []))
+        results = AmmSoftwareService().put_override_oggetti(auth_user_id, corpo_oggetto(request).get("items"))
         return success_response({"results": results})
 
 
@@ -947,7 +947,7 @@ def _parse_auth_user_ids(raw: str | None) -> list[int]:
             valore is not None and 0 < valore <= INTEGER_MAX,
             code=E_AMM_VALIDAZIONE,
             message="auth_user_ids: attesi id interi positivi separati da virgola.",
-            context={"field": "auth_user_ids"},
+            context={"parametro": "auth_user_ids"},
         )
         assert valore is not None
         if valore not in ids:
@@ -956,7 +956,7 @@ def _parse_auth_user_ids(raw: str | None) -> list[int]:
         bool(ids),
         code=E_AMM_VALIDAZIONE,
         message="auth_user_ids: obbligatorio, almeno un id.",
-        context={"field": "auth_user_ids"},
+        context={"parametro": "auth_user_ids"},
     )
     return ids
 

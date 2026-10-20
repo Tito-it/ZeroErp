@@ -472,11 +472,10 @@ class ApiContrattoRigaDetail(DomainAPIView):
     # Scopo: Aggiorna una riga (articolo_id immutabile). `auth_user_id`
     # serve al workflow L3 (gate L1+L2+L3 quando PATCH tocca prezzo_unitario).
     def patch(self, request: Request, contratto_id: int, riga_id: int) -> JsonResponse:
-        del contratto_id  # riga_id e' identificatore globale; contratto_id solo per coerenza URL.
         auth_user_id = get_actor_user_id(request)
         return success_response(
             ContrattiService().update_riga(
-                riga_id, corpo_oggetto(request), auth_user_id=auth_user_id,
+                contratto_id, riga_id, corpo_oggetto(request), auth_user_id=auth_user_id,
             )
         )
 
@@ -488,8 +487,8 @@ class ApiContrattoRigaDetail(DomainAPIView):
     )
     # Scopo: Cancella una riga (FK note_contratto blocca via trigger).
     def delete(self, request: Request, contratto_id: int, riga_id: int) -> JsonResponse:
-        del request, contratto_id
-        ContrattiService().delete_riga(riga_id)
+        del request
+        ContrattiService().delete_riga(contratto_id, riga_id)
         return success_response({"deleted": True, "id": riga_id})
 
 
@@ -655,6 +654,7 @@ class ApiContrattoRigaComponenteDetail(DomainAPIView):
         return success_response(
             ContrattiService().update_componente_riga(
                 contratto_id, riga_id, componente_id, dict(corpo_oggetto(request)),
+                auth_user_id=get_actor_user_id(request),
             )
         )
 

@@ -55,6 +55,11 @@ sistema o sul catalogo grezzo.
     `ui.lista_definizione.codice`. Convenzione `<schema>.<entita>` o
     `<schema>.<entita>:<contesto>` (es. `anagrafiche.clienti`,
     `anagrafiche.clienti:picker`).
+- Query param:
+  - `emittente_esplicito` (int, opzionale) — l'emittente già fissato dal contesto
+    che apre la lista (per esempio un tab dentro il drawer di un emittente). Se c'è,
+    la lista non è ambigua e `richiede_scelta_emittente` è `false`. Un valore non
+    intero o ripetuto è trattato come assente.
 
 #### Output
 
@@ -87,7 +92,8 @@ sistema o sul catalogo grezzo.
     "filtri": {"attivo": true},
     "pagina_dimensione": 25,
     "colonne_nuove": 0,
-    "ricerca_full": true
+    "ricerca_full": true,
+    "richiede_scelta_emittente": false
   },
   "meta": {"request_id": "..."}
 }
@@ -130,6 +136,14 @@ Campi top-level:
   (`UiService.get_lista_config_per_video`): la configurazione che leggono
   l'export e la modale di personalizzazione non la porta, e non paga la query
 
+- `richiede_scelta_emittente` — `true` se l'operatore deve scegliere un
+  emittente prima di vedere la lista: la lista ha un perimetro emittente, non è
+  certificata multi-emittente, non c'è un `emittente_esplicito` e il perimetro
+  effettivo dell'utente ha più di un emittente. Lo calcola il backend
+  (`perimetro_emittente.richiede_scelta_emittente`, lo stesso BB del cancello
+  `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` sulle rotte dati): il frontend non lo
+  ricalcola
+
 Errori:
 
 - `401` — JWT mancante o non valido
@@ -152,7 +166,9 @@ Errori:
 - Idempotente, no side effect. Cache lato FE con ETag e' un'evoluzione
   pianificata (vedi WIP §10.3).
 - Non accetta `emittente_fiscale_id` come query param: e' derivato
-  internamente dall'utente.
+  internamente dall'utente. L'unico parametro di perimetro è
+  `emittente_esplicito`, che non cambia la configurazione ma solo
+  `richiede_scelta_emittente`.
 
 ---
 

@@ -23,6 +23,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato_id
+from apps.core.api.payload_validators import optional_bool
 from apps.core.api.success_responses import success_response
 from apps.core.services.auth_constants import (
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,
@@ -65,7 +66,7 @@ class ClientiInvitaPortaleView(DomainAPIView):
 
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             email = str(payload.get("email") or "")
-            reinvio = bool(payload.get("reinvio") or False)
+            reinvio = optional_bool(payload, "reinvio", default=False)
             fn = (
                 service.reinvia_invito_cliente
                 if reinvio
@@ -123,7 +124,7 @@ class ClientiInvitaShopView(DomainAPIView):
 
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             email = str(payload.get("email") or "")
-            reinvio = bool(payload.get("reinvio") or False)
+            reinvio = optional_bool(payload, "reinvio", default=False)
             fn = (
                 service.reinvia_invito_shop_customer
                 if reinvio
@@ -164,7 +165,7 @@ class FornitoriInvitaPortaleView(DomainAPIView):
 
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             email = str(payload.get("email") or "")
-            reinvio = bool(payload.get("reinvio") or False)
+            reinvio = optional_bool(payload, "reinvio", default=False)
             fn = (
                 service.reinvia_invito_fornitore
                 if reinvio

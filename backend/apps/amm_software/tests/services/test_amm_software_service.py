@@ -637,6 +637,8 @@ class TestOverrideCache(TestCase):
     @patch(REPO)
     def test_put_override_aree_invalidates_cache(self, mock_repo_cls, mock_invalidate):
         mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_override_aree.return_value = []
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         AmmSoftwareService().put_override_aree(1, [])
@@ -646,6 +648,8 @@ class TestOverrideCache(TestCase):
     @patch(REPO)
     def test_put_override_azioni_invalidates_cache(self, mock_repo_cls, mock_invalidate):
         mock_repo = mock_repo_cls.return_value
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
+        mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_override_azioni.return_value = []
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
         AmmSoftwareService().put_override_azioni(1, [])

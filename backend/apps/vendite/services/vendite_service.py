@@ -27,6 +27,7 @@ from apps.config.sorgenti import (
     SORGENTE_PREVENTIVO,
     SORGENTE_RESO_VENDITA,
 )
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
@@ -51,14 +52,18 @@ from apps.vendite.db.vendite_repository import (
     MOTIVO_NON_FATTURATA_RESIDUO,
     DASH_APERTO_AREE,
     DASH_APERTO_FASI,
+    FASI_DOCUMENTO,
     DASH_BACKLOG_CLASSI,
     DASH_COMPETENZA_STADI,
     DASH_FATTURAZIONE_AREE,
     DASH_FATTURAZIONE_AREE_EURO,
     FONDI_DA_DECIDERE_MOTIVI,
     STATI_ESECUZIONE_DOCUMENTO,
+    STATI_ESECUZIONE_LOTTO,
+    STATI_LOTTO,
     VenditeRepository,
 )
+from apps.vendite.services._lotto_perimetro import lotto_visibile
 from apps.vendite.types import (
     DashApertoDocumentoRow,
     DashApertoRiepilogoRow,
@@ -256,6 +261,34 @@ def _pagina_effettiva(page: int, page_size: int, total_count: int) -> int:
     return min(page, math.ceil(total_count / page_size))
 
 
+# Scopo: I filtri della lista lotti che la query non sa rifiutare, validati in
+#        un posto solo per la lista e per il suo export (gemelli: un filtro
+#        sbagliato e' un 400 in entrambi, mai una lista o un file vuoti).
+#        - `stato_lotto` nel suo vocabolario (specchio del CHECK);
+#        - ⛔ «Recuperi del mese» ha senso solo RISPETTO A UN MESE: senza,
+#          il predicato diventa `competenza_mese < NULL`, cioe' zero righe.
+def _valida_filtri_lotti(
+    *,
+    stato_lotto: str | None,
+    competenza_mese: date | None,
+    solo_recuperi_mese: bool,
+    function_name: str,
+) -> None:
+    _validate_enum(
+        stato_lotto, allowed=STATI_LOTTO, param_name="stato_lotto",
+        function_name=function_name,
+    )
+    ErrorManager.require(
+        not solo_recuperi_mese or competenza_mese is not None,
+        code="E_VENDITE_VALIDATION",
+        message="Parametri non validi.",
+        detail="competenza_mese obbligatoria per i recuperi del mese",
+        context={"parametro": "competenza_mese"},
+        function_name=function_name,
+        log_to_db=False,
+    )
+
+
 # Scopo: Restituisce elenco lotti paginato con decodifica e filtri opzionali.
 # Obiettivo: esporre lista generica lotti con validazione paginazione.
 # Perimetro: sola lettura; delega query a VenditeRepository.
@@ -277,17 +310,11 @@ def fn_list_lotti(
     includi_annullati: bool = False,
 ) -> dict[str, Any]:
     offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotti")
-    # ⛔ La scheda «Recuperi del mese» ha senso solo RISPETTO A UN MESE: senza,
-    #    «competenza precedente» non ha un termine di paragone. Si rifiuta
-    #    invece di rispondere un elenco plausibile e senza significato.
-    ErrorManager.require(
-        not solo_recuperi_mese or competenza_mese is not None,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri non validi.",
-        detail="competenza_mese obbligatoria per l'elenco dei recuperi del mese",
-        context={"field": "competenza_mese"},
+    _valida_filtri_lotti(
+        stato_lotto=stato_lotto,
+        competenza_mese=competenza_mese,
+        solo_recuperi_mese=solo_recuperi_mese,
         function_name="vendite.vendite_service.fn_list_lotti",
-        log_to_db=False,
     )
     repository = VenditeRepository()
     results: list[LottoListRow]
@@ -376,18 +403,14 @@ def fn_export_lotti(
     solo_recuperi_mese: bool = False,
     includi_annullati: bool = False,
 ) -> tuple[list[LottoListRow], int]:
-    # ⛔ Stesso guard della lista, e per la stessa ragione: «competenza
-    #    precedente» senza un mese non ha un termine di paragone. Senza, il
-    #    predicato diventa `competenza_mese < NULL` — che non e' un errore, e'
-    #    zero righe: un file VUOTO consegnato come se fosse la risposta.
-    ErrorManager.require(
-        not solo_recuperi_mese or competenza_mese is not None,
-        code="E_VENDITE_VALIDATION",
-        message="Parametri non validi.",
-        detail="competenza_mese obbligatoria per l'export dei recuperi del mese",
-        context={"field": "competenza_mese"},
+    # ⛔ Stessi filtri della lista, validati dallo stesso helper: un filtro
+    #    sbagliato e' un 400 anche qui, mai un file VUOTO consegnato come se
+    #    fosse la risposta.
+    _valida_filtri_lotti(
+        stato_lotto=stato_lotto,
+        competenza_mese=competenza_mese,
+        solo_recuperi_mese=solo_recuperi_mese,
         function_name="vendite.vendite_service.fn_export_lotti",
-        log_to_db=False,
     )
     repository = VenditeRepository()
     return repository.list_lotti(
@@ -483,17 +506,10 @@ def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str,
         log_to_db=True,
     )
     repository = VenditeRepository()
-    lotto = repository.get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
-    if lotto is None:
-        ErrorManager.raise_error(
-            code="E_LOTTO_NON_TROVATO",
-            message="Lotto non trovato.",
-            detail=f"Nessun lotto accessibile con id={lotto_id}",
-            context={"lotto_id": lotto_id},
-            function_name="vendite.vendite_service.fn_get_lotto",
-            log_to_db=True,
-        )
-    assert lotto is not None
+    lotto = lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.vendite_service.fn_get_lotto", repository=repository,
+    )
     result = dict(lotto)
     result["capabilities"] = capabilities_o_vuoto(
         lambda: repository.get_available_actions_lotto(lotto_id),
@@ -512,7 +528,7 @@ def fn_list_lotto_fatture(
     stato_esecuzione: str | None = None,
     auth_user_id: int | None = None,
     sort_by: str = "fattura_id",
-    sort_dir: str = "asc",
+    sort_dir: str | None = None,
     page: int = 1,
     page_size: int = DEFAULT_LIMIT,
     max_rows: int | None = None,
@@ -528,17 +544,31 @@ def fn_list_lotto_fatture(
     #    con due `_validate_enum`: la direzione aveva qui un suo insieme
     #    `("asc", "desc")` case-sensitive, cioe' `DESC` era un 400 su questa
     #    lista e passava sulle altre. Il BB giudica con `order_dir_ammessa`.
-    sort_by, direzione = validate_order_params(
+    # `nullable`: una direzione assente resta None, e il verso lo decide il BB
+    # del repository (`sql_order_clause`: date DESC). Fino al 2026-10-20 il
+    # default era `"asc"` e la regola non arrivava mai alla query (§6.1).
+    sort_by, sort_dir = validate_order_params(
         sort_by,
         sort_dir,
         allowed_columns=_SORT_BY_VALIDI,
         error_code="E_VENDITE_VALIDATION",
         function_name="vendite.vendite_service.fn_list_lotto_fatture",
+        nullable=True,
     )
-    # Senza `nullable` il BB rifiuta la direzione assente: qui non e' None.
-    assert direzione is not None
-    sort_dir = direzione
+    # ⛔ Il vocabolario della FATTURA (non quello del documento, che ha in piu'
+    #    ESCLUSO): prima un valore sbagliato — anche `OK`, che la doc stessa
+    #    proponeva — rispondeva lista vuota (2026-10-20).
+    _validate_enum(
+        stato_esecuzione, allowed=STATI_ESECUZIONE_LOTTO, param_name="stato_esecuzione",
+        function_name="vendite.vendite_service.fn_list_lotto_fatture",
+    )
+    # ⛔ Il cancello di perimetro PRIMA dell'elenco (vedi `_lotto_perimetro`):
+    #    lo scope nella query da solo dava `200 []` su un lotto fuori perimetro.
     repository = VenditeRepository()
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.vendite_service.fn_list_lotto_fatture", repository=repository,
+    )
     results: list[LottoFattureRow]
     results, total_count = repository.list_lotto_fatture(
         lotto_id=lotto_id,
@@ -593,14 +623,21 @@ def fn_list_lotto_gruppi(
         page=page, page_size=page_size, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_list_lotto_gruppi",
     )
+    # ⛔ Il cancello di perimetro PRIMA dell'elenco (vedi `_lotto_perimetro`).
     repository = VenditeRepository()
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.vendite_service.fn_list_lotto_gruppi", repository=repository,
+    )
     results: list[LottoGruppoRow]
     results, total_count = repository.list_lotto_gruppi(
         lotto_id=lotto_id,
         auth_user_id=auth_user_id,
         stato_esecuzione=stato_esecuzione,
         sort_by=order_by,
-        sort_dir=order_dir or "asc",
+        # La direzione assente resta assente: la decide il BB della lista
+        # (date DESC), non un `"asc"` scritto qui (2026-10-20, §6.1).
+        sort_dir=order_dir,
         limit=limit,
         offset=offset,
         max_rows=max_rows,
@@ -732,6 +769,25 @@ def fn_dash_aperto_documenti(
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
 ) -> dict[str, Any]:
+    # ⛔ `area` e `fase` nel loro vocabolario, o un 400 sul campo: un valore
+    #    sbagliato finiva nel WHERE e la lista rispondeva vuota con un 200
+    #    (2026-10-20) — e col passaggio delle aree ai codici sorgente un client
+    #    rimasto a `ORDINI` non avrebbe avuto nessun segnale.
+    # ⚠️ Il vocabolario e' quello del MODELLO, non la whitelist del pivot: una
+    #    sorgente vera fuori da `DASH_APERTO_AREE` (o una fase fuori da
+    #    `DASH_APERTO_FASI`) e' la riga «extra» che il riepilogo accoda apposta
+    #    (fail-visible), e il suo drill-down deve continuare a mostrarla.
+    #    `COMMESSA` e `CHIUSO` sono codici veri che la vista non contiene: lista
+    #    vuota legittima, non un errore.
+    richiedi_codice_a_vocabolario(
+        "config.sorgenti", "codice_interno", area,
+        codice_errore="E_VENDITE_VALIDATION", parametro="area",
+        function_name="vendite.vendite_service.fn_dash_aperto_documenti",
+    )
+    _validate_enum(
+        fase, allowed=FASI_DOCUMENTO, param_name="fase",
+        function_name="vendite.vendite_service.fn_dash_aperto_documenti",
+    )
     _valida_ritardo_giorni(
         ritardo_giorni,
         function_name="vendite.vendite_service.fn_dash_aperto_documenti",
@@ -2242,16 +2298,10 @@ def get_lotto_giornale(
     #    che si legge come «lotto senza storia», non come «non lo puoi vedere».
     #    Inesistente e fuori scope danno la STESSA risposta, per non confermare
     #    l'esistenza del lotto di un altro emittente.
-    lotto = repository.get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
-    if lotto is None:
-        ErrorManager.raise_error(
-            code="E_LOTTO_NON_TROVATO",
-            message="Lotto non trovato.",
-            detail=f"Nessun lotto accessibile con id={lotto_id}",
-            context={"lotto_id": lotto_id},
-            function_name=_FN_LOTTO_GIORNALE,
-            log_to_db=True,
-        )
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name=_FN_LOTTO_GIORNALE, repository=repository,
+    )
 
     # 2. Solo ORA il giornale: il lotto e' gia' stato autorizzato.
     righe, vive, ritirate, info_vive = repository.list_giornale_lotto(
@@ -2322,7 +2372,7 @@ def get_giornale_trasversale(
         code="E_VENDITE_VALIDATION",
         message="Parametro gravita non valido.",
         detail=f"gravita={gravita_richiesta}, ammessi={list(GIORNALE_GRAVITA)}",
-        context={"field": "gravita"},
+        context={"parametro": "gravita"},
         function_name=_FN_GIORNALE,
     )
     registri_richiesti = [r.upper() for r in (registri or []) if r] or None
@@ -2337,17 +2387,24 @@ def get_giornale_trasversale(
             code="E_VENDITE_VALIDATION",
             message="Parametro registro non valido.",
             detail=f"registro={registri_richiesti}, ammessi={sorted(registri_ammessi)}",
-            context={"field": "registro"},
+            context={"parametro": "registro"},
             function_name=_FN_GIORNALE,
         )
     _valida_lettura_giornale(
         limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
         function_name=_FN_GIORNALE,
     )
+    # ⛔ Il tipo di entita' nel suo vocabolario, o un 400 sul campo: fino al
+    #    2026-10-20 un codice ignoto rispondeva zero righe, cioe' «niente di
+    #    andato storto». Tipi ritirati (`obsoleto_dal`) ammessi: il diario li porta.
+    tipo_entita = richiedi_codice_a_vocabolario(
+        "config.tipi_entita", "codice", entity_type.upper() if entity_type else None,
+        codice_errore="E_VENDITE_VALIDATION", parametro="entity_type",
+    )
     righe, vive, ritirate, _info_vive = repository.list_giornale_trasversale(
         gravita=gravita_richiesta,
         registri=registri_richiesti,
-        entity_type=entity_type.upper() if entity_type else None,
+        entity_type=tipo_entita,
         data_da=data_da,
         data_a=data_a,
         filo=filo,
@@ -2616,6 +2673,17 @@ def list_fatture_rows(
     order_dir: str = "desc",
     max_limit: int = MAX_LIMIT,
 ) -> tuple[list[dict[str, Any]], int]:
+    # ⛔ Il filtro di stato esiste nel vocabolario, o e' un 400 sul campo: un
+    #    valore sbagliato finiva nel WHERE e la lista rispondeva vuota con un
+    #    200 (2026-10-20). Codici dismessi ammessi: i documenti vecchi li portano.
+    richiedi_codice_a_vocabolario(
+        "config.stati_doc_fiscale", "codice_interno", stato_codice,
+        codice_errore="E_VENDITE_VALIDATION", parametro="stato_codice_interno",
+    )
+    richiedi_codice_a_vocabolario(
+        "config.nature_doc_fiscale", "codice_interno", natura_doc_codice,
+        codice_errore="E_VENDITE_VALIDATION", parametro="natura_doc_codice",
+    )
     return FattureRepository().list_fatture(
         stato_codice=stato_codice,
         billing_account_id=billing_account_id,

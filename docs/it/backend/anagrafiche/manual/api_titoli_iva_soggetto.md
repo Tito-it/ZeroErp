@@ -10,7 +10,8 @@ plafond.
 
 ## Contesto
 
-Famiglia di endpoint di area `anagrafiche`, permesso `titoli_iva`.
+Famiglia di endpoint di area `anagrafiche`, permesso `("anagrafiche", "soggetto")`
+(il titolo IVA e' un dato anagrafico del soggetto, non un oggetto di permesso a sé).
 Il modello è quello della Fase 2 del cantiere IVA:
 
 ```text
@@ -32,9 +33,9 @@ non si distinguono. Gli endpoint girano sempre sotto JWT, quindi il contesto c'�
 | Metodo | Path (sotto `/api/v1/anagrafiche/`) | Cosa |
 |---|---|---|
 | `GET`/`POST` | `soggetti/{soggetto_id}/titoli-iva/` | elenco e creazione |
-| `GET`/`PATCH`/`DELETE` | `soggetti/{soggetto_id}/titoli-iva/{titolo_id}/` | dettaglio, modifica, disattivazione |
+| `GET`/`PATCH`/`DELETE` | `soggetti/{soggetto_id}/titoli-iva/{titolo_id}/` | dettaglio, modifica, eliminazione (solo senza movimenti) |
 | `GET`/`POST` | `.../{titolo_id}/ambiti/` | gli ambiti del titolo |
-| `GET`/`PATCH`/`DELETE` | `.../{titolo_id}/ambiti/{ambito_id}/` | dettaglio ambito |
+| `DELETE` | `.../{titolo_id}/ambiti/{ambito_id}/` | toglie una riga di ambito (unico metodo) |
 | `GET`/`POST` | `.../{titolo_id}/movimenti/` | il registro, e la **forzatura** |
 | `POST` | `.../{titolo_id}/movimenti/{movimento_id}/annulla/` | ⭐ l'**annullo** di una forzatura |
 | `GET` | `soggetti/{soggetto_id}/titoli-iva/export/` | ⭐ export CSV/XLSX della lista del soggetto (DEF-1) |
@@ -67,9 +68,10 @@ Ora accetta `limit` / `offset` come ogni altra lista configurabile.
   query sullo stesso predicato, e due valutazioni possono non concordare se una
   riga entra fra l'una e l'altra — il totale racconterebbe una popolazione
   diversa da quella mostrata.
-- ⚠️ **`limit` assente = nessuna paginazione**, ed è il caso del **secondo
-  consumatore**: `SoggettiService` incorpora i titoli nel dettaglio del soggetto
-  e li vuole tutti. Il metodo è uno solo, la query è una sola.
+- Via HTTP la pagina c'e' sempre: senza `limit` vale il default di
+  `parse_list_params` (**25** righe, max 200). Solo il **secondo consumatore**,
+  `SoggettiService`, che incorpora i titoli nel dettaglio del soggetto, chiama il
+  repository senza `limit` e li riceve tutti. Il metodo è uno solo, la query è una sola.
 - Ordinamento opzionale: `order_by` / `order_dir`, whitelist
   `_ORDER_COLS_TITOLI_SOGGETTO` chiavata sui `campo_sorgente` fisici
   (`tipo_descrizione`, `emittente_ragione_sociale`, `iva_codice`, `residuo`).
@@ -141,12 +143,26 @@ vedeva, e nessuno poteva accorgersene. Il cap è stato **rimosso**.
 - Whitelist `_ORDER_COLS_SFONDATI`, 7 colonne, chiavata sui campi fisici;
   tiebreak `t.id` **allineato alla direzione primaria**.
 
+## `PATCH` / `DELETE` del titolo
+
+- `PATCH`: chiavi ammesse `tipo_titolo_iva_id`, `iva_id`, `ambito`, `valido_dal`,
+  `valido_al`, `protocollo`, `data_ricezione`, `riferimento`, `plafond`, `attivo`,
+  `note`; una chiave estranea o un corpo senza campi → 400 `E_ANAG_VALIDAZIONE`.
+  Risposta `{"updated": true}`.
+- `attivo` (in creazione e in modifica), se presente, deve essere un booleano
+  JSON: `null` o un altro tipo → 400 (2026-10-20).
+- `DELETE` è una **cancellazione vera**, ammessa solo se il titolo non ha
+  movimenti di plafond; altrimenti 400 `E_ANAG_VALIDAZIONE` («non si elimina, si
+  disattiva»: `PATCH {"attivo": false}`). Risposta `{"deleted": true}`.
+
 ## ⭐ `POST .../movimenti/{movimento_id}/annulla/`
 
 Annulla una **forzatura** del registro scrivendo un **contro-movimento**.
 
 - Body: `motivo` (string) — **obbligatorio**
-- `200`: il movimento di annullo creato
+- `200`: `{"id": <id del contro-movimento creato>}`
+- `400 E_ANAG_VALIDAZIONE`: `motivo` mancante o vuoto (`context.field = "motivo"`)
+- `404 E_ANAG_NOT_FOUND`: titolo non del soggetto, o movimento non di questo titolo
 - `409`: annullo non ammesso (`E_TITOLO_IVA_ANNULLO_NON_AMMESSO`)
 
 ⛔ **`annulla` come ultimo segmento e NON un `DELETE`**, perché l'azione **non
@@ -198,7 +214,7 @@ e l'errore un'altra.
 
 ## Regole comuni alla famiglia
 
-- Area `anagrafiche`, permesso `titoli_iva`; v1, JWT obbligatorio.
+- Area `anagrafiche`, permesso `("anagrafiche", "soggetto")`; v1, JWT obbligatorio.
 - **Ownership a due livelli** su tutte le rotte annidate: il titolo deve
   appartenere al `soggetto_id` del path, e il movimento/ambito al `titolo_id`.
   ⚠️ Senza il secondo livello, un id di un altro soggetto passerebbe il primo
@@ -211,7 +227,7 @@ e l'errore un'altra.
   **soggetto-ruolo**: sbagliare fra i due qui non dà zero righe per caso — dà un
   errore di colonna, ma su una JOIN sintatticamente valida darebbe **zero righe
   in silenzio**.
-- Disattivazione: **figli prima del padre** (i trigger DB lo impongono).
+- Disattivazione: **figli prima del padre** (i trigger DB lo impongono). L'eliminazione del titolo è ammessa solo senza movimenti (sopra).
 
 ## Dipendenze DB
 

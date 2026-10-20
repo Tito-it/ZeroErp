@@ -33,6 +33,7 @@ from django.db import DatabaseError, IntegrityError
 from apps.core.db._helpers import order_dir_ammessa
 from apps.core.services.db_error_fields import APP_ERROR_CODE_RE, diagnostica_db
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.value_normalizer import empty_to_none
 
 
 # Regex per int firmato: segno opzionale seguito da almeno una cifra.
@@ -145,6 +146,33 @@ class PayloadValidator:
             },
             **self._em_kwargs(log_to_db=log_to_db, function_name=function_name),
         )
+
+    # Scopo: Il CONTRATTO di un payload di scrittura in un gesto solo: una
+    #        chiave fuori `ammesse` e' un 400 (`validate_allowed_keys`), e si
+    #        restituisce il dict da scrivere, coi vuoti normalizzati a None
+    #        (`empty_to_none`).
+    #        `colonne`: quando le chiavi ammesse sono PIU' delle colonne scritte
+    #        (la mappa `componenti_overrides` di una riga, letta a parte), il
+    #        dict tiene le sole colonne; assente, tiene tutte le ammesse.
+    # ⭐ Regola del 2 (ok Tid 2026-10-20): le due righe «controlla, poi filtra»
+    #    erano ricopiate in 13 punti di ordini, resi e DDT, ciascuna con lo
+    #    stesso commento incollato sopra. Una chiave ignota scartata in silenzio
+    #    era il difetto che le aveva fatte nascere (brief-be-verifica-
+    #    documentazione-api §3.22): qui il controllo e il filtro non si separano.
+    def solo_chiavi_ammesse(
+        self,
+        payload: dict[str, Any],
+        *,
+        ammesse: frozenset[str],
+        colonne: frozenset[str] | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> dict[str, Any]:
+        self.validate_allowed_keys(
+            payload, allowed=ammesse, log_to_db=log_to_db, function_name=function_name,
+        )
+        tenute = ammesse if colonne is None else colonne
+        return {k: empty_to_none(v) for k, v in payload.items() if k in tenute}
 
     # =================================================================
     # Whitelist colonne ORDER BY

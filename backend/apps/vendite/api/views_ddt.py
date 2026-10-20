@@ -563,6 +563,7 @@ class ApiDdtRigaComponenteDetail(DomainAPIView):
         return success_response(
             ddt_service.update_componente(
                 int(ddt_id), int(riga_id), int(componente_id), dict(corpo_oggetto(request)),
+                auth_user_id=get_actor_user_id(request),
             ),
         )
 

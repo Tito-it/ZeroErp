@@ -33,10 +33,15 @@ from typing import Any
 from django.db import transaction
 
 from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.capability_blob import capabilities_o_vuoto
-from apps.core.services.testata_guard import pagina_dopo_testata, testata_o_not_found
+from apps.core.services.testata_guard import (
+    pagina_dopo_testata,
+    riga_del_padre_o_not_found,
+    testata_o_not_found,
+)
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
@@ -420,6 +425,13 @@ class OfferteService:
         #    applica il BB `add_ricerca_full_condition` nel repository, uguale
         #    per tutte le liste. Fino al 2026-09-23 qui era un 400: il frontend
         #    manda il termine a ogni tasto, e i primi due erano un errore.
+        # ⛔ Il filtro di stato esiste nel vocabolario, o e' un 400 sul campo: un
+        #    valore sbagliato finiva nel WHERE e la lista rispondeva vuota con un
+        #    200 (2026-10-20). Codici dismessi ammessi: i documenti vecchi li portano.
+        richiedi_codice_a_vocabolario(
+            "config.stati_doc_offerte", "codice_interno", stato_codice_interno,
+            codice_errore="E_VENDITE_VALIDATION", parametro="stato_codice_interno",
+        )
         filters: dict[str, Any] = {
             "billing_account_id": billing_account_id,
             "stato_codice_interno": stato_codice_interno,
@@ -1003,7 +1015,8 @@ class OfferteService:
             payload, auth_user_id, function_name="offerte_service.crea_eccezione",
         )
         # Flag opt-in workflow L3. Estratto qui per non finire nel payload INSERT.
-        richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
+        richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True
+        payload.pop("richiesta_approvazione", None)
 
         # Estrae overrides BoM prima di passare il payload al repo (la colonna
         # non esiste su `offerte_commerciali_eccezioni`); normalizza valori.
@@ -1126,21 +1139,21 @@ class OfferteService:
         payload = self._con_meta_normalizzato(payload)
         # Flag opt-in workflow L3 (estratto prima del guard non-vuoto: non e' un
         # campo di update di per se').
-        richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
+        richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True
+        payload.pop("richiesta_approvazione", None)
         self._v.require_campi_da_aggiornare(
             payload, context={"op": "aggiorna_eccezione"}, log_to_db=False,
         )
         # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
         # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
         self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
-        existing = self._repo.get_eccezione(eccezione_id)
-        ErrorManager.require(
-            existing is not None and existing.get("offerta_id") == offerta_id,
+        existing = riga_del_padre_o_not_found(
+            self._repo.get_eccezione, eccezione_id,
+            padre_id=offerta_id, chiave_padre="offerta_id",
             code=E_VENDITE_NOT_FOUND,
             message="Eccezione non trovata o non appartenente all'offerta.",
-            context={"offerta_id": offerta_id, "eccezione_id": eccezione_id},
+            function_name="vendite.offerte_service.aggiorna_eccezione",
         )
-        assert existing is not None
         # Gate prezzo L1+L2+L3 quando il PATCH tocca `prezzo_unitario` su
         # OVERRIDE/AGGIUNTA non composito. Il prezzo composito e' derivato →
         # nessun gate (i componenti hanno il proprio workflow). `articolo_id` e
@@ -1358,6 +1371,7 @@ class OfferteService:
         self,
         offerta_id: int, eccezione_id: int, componente_id: int,
         payload: dict[str, Any],
+        *, auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.guard_positive_int(eccezione_id, field="eccezione_id")
@@ -1375,7 +1389,7 @@ class OfferteService:
         #    `stato_approvazione_prezzo` — un operatore poteva approvarsi da
         #    solo un prezzo L3 PENDING. `origine_prezzo` la deriva il server.
         payload = dati_patch_componente(
-            payload,
+            payload, auth_user_id=auth_user_id,
             function_name="offerte_service.update_componente_eccezione",
         )
         with self._db_errors(
@@ -1452,12 +1466,12 @@ class OfferteService:
         # «Solo in bozza» lo dice il DB (`trgfn_doc_righe_lock_fuori_bozza` su
         # eccezioni e componenti, `E_RIGA_DOC_NON_BOZZA`, 409): qui l'esistenza.
         self._get_offerta_or_raise(offerta_id, op="righe", getter=self._repo.get_stato_codice)
-        existing = self._repo.get_eccezione(eccezione_id)
-        ErrorManager.require(
-            existing is not None and existing.get("offerta_id") == offerta_id,
+        riga_del_padre_o_not_found(
+            self._repo.get_eccezione, eccezione_id,
+            padre_id=offerta_id, chiave_padre="offerta_id",
             code=E_VENDITE_NOT_FOUND,
             message="Eccezione non trovata o non appartenente all'offerta.",
-            context={"offerta_id": offerta_id, "eccezione_id": eccezione_id},
+            function_name="vendite.offerte_service.elimina_eccezione",
         )
         with self._db_errors({"eccezione_id": eccezione_id}):
             with transaction.atomic():

@@ -19,6 +19,7 @@ Indice test eseguiti:
  8) test_limiti_utente_con_override_user — endpoint L2 con override utente
  9) test_limiti_utente_ba_malformato_400 — billing_account_id non numerico → 400 (F-6)
 10) test_limiti_utente_ba_non_risulta_404 — BA inesistente o fuori scope → 404 (F-6)
+11) test_resolve_e_diagnose_id_obbligatori_assenti_400 — uom/ba/utility assenti: 400 sul campo, resolver non chiamato
 """
 
 import json
@@ -138,6 +139,30 @@ class TestResolve(_BaseApiTest):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 400)
+
+    # Scopo: ⛔ i tre id obbligatori assenti sono un 400 sul campo, prima del
+    #        resolver. Fino al 2026-10-20 `int(x or 0)` li faceva diventare 0, e
+    #        il DB rispondeva con un errore generico invece che sul campo.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM)
+    @patch("apps.vendite.api.views_pricing.PricingDiagnoseService")
+    @patch(_SVC)
+    def test_resolve_e_diagnose_id_obbligatori_assenti_400(self, svc_cls, diag_cls, perm, _auth):
+        perm.get_emittenti_sr_ids.return_value = [42]
+        for url in (_BASE, "/api/v1/vendite/pricing/diagnose/"):
+            for campo in ("uom_id", "ba_id", "utility_id"):
+                payload = self._payload()
+                del payload[campo]
+                with self.subTest(url=url, campo=campo):
+                    resp = self.client.post(
+                        url, data=json.dumps(payload), content_type="application/json",
+                    )
+                    self.assertEqual(resp.status_code, 400)
+                    errore = resp.json()["error"]
+                    self.assertEqual(errore["code"], "E_VENDITE_VALIDATION")
+                    self.assertIn(campo, json.dumps(errore))
+        svc_cls.return_value.resolve_prezzo.assert_not_called()
+        diag_cls.return_value.diagnose.assert_not_called()
 
     # Scopo: `data_riferimento` vuota e' come assente: 400 col campo, senza
     #        arrivare al resolver. Fino al 2026-10-09 il controllo era sul valore

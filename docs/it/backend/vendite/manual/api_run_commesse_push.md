@@ -19,6 +19,7 @@ View: `ApiRunCommessePush` `ApiRunCommessePush` (`apps.vendite.api.views`).
 - Path canonico: `/api/v1/vendite/commesse/push/run/`
 - Header richiesto: `Idempotency-Key`
 - Header sicurezza: `Authorization: Bearer <access_token>`
+- Permesso: area `vendite` + `post_permission = "run_commesse_push"` (senza → `403 E_PERMISSION_DENIED`)
 - Body JSON (tutti i campi opzionali):
   - `source_types` (list[string]) — filtro sorgenti da processare (es. `["PREVENTIVO", "ORDINE_VENDITA"]`). Se omesso processa tutte le sorgenti attive in `config.sorgenti`.
   - `dry_run` (bool) — `true` = simula senza effetti reali (default `false`)
@@ -43,12 +44,18 @@ View: `ApiRunCommessePush` `ApiRunCommessePush` (`apps.vendite.api.views`).
         "skipped": 0,
         "errors": []
       }
-    ]
+    ],
+    "commesse_ids": [812, 813],
+    "emittibilita_errors": [],
+    "emittibilita_tipo_doc_mancante": []
   },
   "meta": { ... }
 }
 ```
 
+- `commesse_ids`: commesse toccate dal giro.
+- `emittibilita_errors`: un messaggio per commessa (`commessa_id=<id>: <errore>`) il cui passaggio a emittibile è fallito. Best-effort per commessa (una rotta non blocca le altre); ognuna lascia anche un evento `EMITTIBILITA_FALLITA` sul giornale della commessa. Vuoto in `dry_run`.
+- `emittibilita_tipo_doc_mancante`: sottoinsieme degli id falliti per `tipo_doc_fiscale_id` mancante sulle righe.
 - `200` con `stato: "SKIPPED"`: advisory lock occupato, nessuna esecuzione.
 - `400`: payload non valido o errore applicativo (`E_COMMESSA_VALIDATION`).
 

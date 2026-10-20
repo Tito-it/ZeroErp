@@ -28,9 +28,17 @@ card e drill-down, il BE **non** replica filtri (via il vecchio toggle
 Livello area `LETTURA` sufficiente; nessuna azione di processo.
 
 ```text
-GET /api/v1/vendite/dashboard-aperto/            (ApiDashboardAperto)
-GET /api/v1/vendite/dashboard-aperto/documenti/  (ApiDashboardApertoDocumenti)
+GET /api/v1/vendite/dashboard-aperto/                    (ApiDashboardAperto)
+GET /api/v1/vendite/dashboard-aperto/documenti/          (ApiDashboardApertoDocumenti)
+GET /api/v1/vendite/dashboard-aperto/documenti/export/   (ApiDashboardApertoDocumentiExport)
 ```
+
+L'export (`?formato=csv|xlsx`, default csv) prende gli stessi filtri e lo
+stesso ordinamento del drill-down; colonne e ordine dal catalogo
+`vendite.dash_aperto_documenti` (configurazione dell'operatore), tetto 10.000
+righe. Drill-down ed export dichiarano `lista_codice =
+"vendite.dash_aperto_documenti"`: il cancello di perimetro emittente può
+rispondere `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`.
 
 Catena: view (`views_dashboard_aperto.py`) →
 `vendite_service.fn_dash_aperto_{riepilogo,documenti}` →
@@ -44,36 +52,45 @@ Nessun parametro.
 
 ### `GET /dashboard-aperto/documenti/`
 
-- `area` (opzionale, case-insensitive; assente = tutte): `PREVENTIVI |
-  ORDINI | DDT | OFFERTE | CONTRATTI`. **Non whitellistato di proposito** (coerenza
-  fail-visible col riepilogo, che accoda le aree fuori whitelist e le rende
-  card cliccabili): un'area futura resta drillabile senza toccare il BE;
-  un'area sconosciuta — o `COMMESSE`, esclusa dal WHERE della vista (coperta
-  dalla Lente 1) — dà lista vuota, mai 400.
+- `area` (opzionale, case-insensitive; assente = tutte): `PREVENTIVO |
+  ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO`.
+> ⭐ **Dal 2026-10-20 l'`area` è il codice della sorgente** (`config.sorgenti.codice_interno`): `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `CONTRATTO`, `COMMESSA`, `RESO_VENDITA`. Il plurale (`ORDINI`, `RESI`…) è ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-in-progress/brief-db-grammatica-unica-documenti.md) (G-6).
+ **Validata sul vocabolario del modello, non sulla whitelist del pivot**:
+  un codice che non è una sorgente è **400 `E_VENDITE_VALIDATION`** sul campo
+  `area` (dal 2026-10-20; prima era lista vuota, e un client rimasto al
+  plurale non riceveva nessun segnale). Una sorgente vera fuori dalle cinque
+  resta drillabile: è la card «extra» che il riepilogo accoda (fail-visible).
+  `COMMESSA`, esclusa dal WHERE della vista (coperta dalla Lente 1), è un
+  codice vero e dà lista vuota.
 - `fase` (opzionale, case-insensitive; assente = tutte): vocabolario
-  `config.stati_doc_*.fase` — **3 fasi vive** `APERTO | IN_ATTESA | IN_CORSO`
-  (via `CHIUSO`: fuori perimetro serbatoio). **Non whitellistato di proposito**
-  (coerenza fail-visible col riepilogo): una fase futura resta drillabile senza
-  toccare il BE; una fase sconosciuta dà lista vuota, mai 400.
+  `config.stati_doc_*.fase` — `APERTO | IN_ATTESA | IN_CORSO | CHIUSO`
+  (specchio `FASI_DOCUMENTO` del CHECK, presidiato). Fuori vocabolario è
+  **400 `E_VENDITE_VALIDATION`**. Le fasi vive del serbatoio sono le prime tre:
+  `CHIUSO` è ammessa ma la vista non la contiene (lista vuota).
 - `ritardo_giorni` (opzionale, intero > 0; assente = nessuna soglia): filtro
   **"aperti da oltre N giorni"** su data documento (`data_riferimento <= oggi −
   N`, DL-17). Soglia del **solo drill-down**: le card del riepilogo restano la
   fotografia completa. **Strict**: non numerico → 400 (`qp_int_optional`);
   intero `<= 0` → 400 (`E_VENDITE_VALIDATION`, niente normalizzazione
-  silenziosa).
+  silenziosa); `N` che porti `oggi − N` prima del parametro
+  `VENDITE_DASHBOARD_RITARDO_DATA_MINIMA` → 400 (`E_VENDITE_VALIDATION`, il
+  `detail` dice il massimo di oggi). Vale anche per l'export.
 - `order_by` / `order_dir` (opzionali): **ordinamento colonne server-side**
   (convenzione delle liste standard, es. clienti/soggetti). `order_by` in
   whitelist — `anzianita_giorni` (default, "aperto da") | `area` | `codice` |
-  `cliente_display` | `fase` | `stato_codice` | `valore_totale`
+  `cliente_display` | `fase` | `stato_codice` | `valore_totale` |
+  `emittente_ragione_sociale`
   (`area`/`fase`/`stato_codice` aggiunte il 2026-08-03: erano colonne a video
   che non ordinavano, e `stato_codice` lasciava scoperto il nucleo *stato*);
-  `order_dir` = `asc` | `desc` (default
-  `desc` su `anzianita_giorni`: i più "in essere da" prima). Server-side perché
+  `order_dir` = `asc` | `desc`. Con `order_by` e senza `order_dir`: le colonne
+  data (per nome, `e_chiave_data`) partono DESC, le altre ASC — nessuna colonna
+  di questa whitelist è una data, quindi qui è sempre ASC (anche
+  `anzianita_giorni`, che è un numero di giorni). Server-side perché
   la lista è paginata: l'ordine è corretto su **tutte** le pagine, non solo su
   quella visibile. Colonna fuori whitelist o direzione ≠ asc/desc → 400
   (`E_VENDITE_VALIDATION`, whitelist definita una volta nel service). Tiebreak
   stabile `(area, documento_id)` per paginazione deterministica.
-- `page` / `page_size` (opzionali): paginazione standard (default 1/50, max 200).
+- `page` / `page_size` (opzionali): paginazione standard (default 1/25, max 200).
 
 ## Output
 
@@ -83,7 +100,7 @@ Nessun parametro.
 {
   "data": {
     "aree": [
-      { "area": "PREVENTIVI", "n_documenti": 5, "valore_totale": "2000.50",
+      { "area": "PREVENTIVO", "n_documenti": 5, "valore_totale": "2000.50",
         "fasi": [
           { "fase": "APERTO", "n_documenti": 3, "valore_totale": "1500.00" }
         ] }
@@ -93,8 +110,8 @@ Nessun parametro.
 }
 ```
 
-- **5 aree sempre presenti** nell'ordine del funnel (`PREVENTIVI, ORDINI,
-  DDT, OFFERTE, CONTRATTI`), ognuna con la **griglia delle 3 fasi vive sempre
+- **5 aree sempre presenti** nell'ordine del funnel (`PREVENTIVO, ORDINE_VENDITA,
+  DDT_VENDITA, OFFERTA_COMMERCIALE, CONTRATTO`), ognuna con la **griglia delle 3 fasi vive sempre
   presenti** nell'ordine della maturità verso la commessa (`APERTO, IN_ATTESA,
   IN_CORSO`) e zeri espliciti — DL-13: la griglia è neutra, il FE decide quali
   card mostrare. Aree o fasi **fuori whitelist** emesse dalla vista vengono
@@ -103,11 +120,11 @@ Nessun parametro.
   griglia di un'area); un'area extra che porta **valori** li espone (decisione
   data-driven, non la whitelist euro statica).
 - Totali per area = somma delle fasi (su Decimal). Misura mista (DL-11/16,
-  conferma D-2/D-3/D-4): aree euro (`PREVENTIVI`/`ORDINI`/`DDT`) con
+  conferma D-2/D-3/D-4): aree euro (`PREVENTIVO`/`ORDINE_VENDITA`/`DDT_VENDITA`) con
   `valore_totale` come stringa (`"0"` se vuote); aree a conteggi
-  (`OFFERTE`/`CONTRATTI`) con `valore_totale` `null` (il FE le legge da
+  (`OFFERTA_COMMERCIALE`/`CONTRATTO`) con `valore_totale` `null` (il FE le legge da
   `valore_totale !== null`).
-- ⚠️ **Misura MISTA dell'area ORDINI** (DL-23 emendato, `20260718-13`): gli
+- ⚠️ **Misura MISTA dell'area ORDINE_VENDITA** (DL-23 emendato, `20260718-13`): gli
   ordini con `fatturazione_trigger ∈ {SPEDITO, CONSEGNATO}` portano il **valore
   ancora da spedire** (il DDT prende in carico il resto); quelli con trigger
   `CONFERMATO` restano al valore pieno. Il calcolo vive nel resolver DB, il BE
@@ -123,10 +140,11 @@ riga: `area`, chiavi documento (`documento_id`, `documento_uid`, `codice`),
 gemello Backlog — alimenta la colonna "aperto da N gg" e allinea la lettura al
 filtro `ritardo_giorni`), `motivo_fermo` (può essere NULL: qui è un hint, non il
 criterio di popolazione), `data_riferimento` ("in essere da": data documento,
-`valido_dal` per i contratti). **Ordinamento BE-side** (le viste non
+`valido_dal` per i contratti), `emittente_ragione_sociale`. **Ordinamento BE-side** (le viste non
 garantiscono ORDER): default per `data_riferimento ASC NULLS LAST`, poi
 `valore_totale DESC NULLS LAST, area, documento_id`; con `order_by`/`order_dir`
-(vedi Input) l'ORDER BY diventa `<colonna whitelist> <asc|desc> NULLS LAST` +
+(vedi Input) l'ORDER BY diventa `<colonna whitelist> ASC NULLS FIRST` oppure
+`DESC NULLS LAST` (il vuoto vale come minimo, `sql_order_direction`) +
 tiebreak `area ASC, documento_id <stessa direzione della colonna>`. Colonna e
 direzione **whitelistate** (mai input grezzo nell'ORDER BY).
 

@@ -265,6 +265,9 @@ class PraticheRepository:
             colonne=PRATICHE_ORDER_COLS,
             default=PRATICHE_ORDER_COLS["data_insert"],
             tiebreak="p.id",
+            # Il default e' una DATA: parte dalla piu' recente (regola di Tid
+            # 2026-09-02). Fino al 2026-10-20 mancava, e la lista partiva ASC.
+            default_desc=True,
         )
 
         conditions: list[str] = ["p.emittente_fiscale_id = %s"]
@@ -428,8 +431,14 @@ class PraticheRepository:
 
     # Scopo: Aggiorna lo stato di una pratica tramite codice_interno dello stato.
     # Risolve lo stato prima dell'UPDATE per evitare SET NULL su colonna NOT NULL.
-    def update_stato_pratica(self, pratica_id: int, stato_codice_interno: str) -> None:
-        stato_id = self.resolve_stato_pratica(stato_codice_interno)
+    # `codice_errore`/`campo`: quando lo stato l'ha scelto il client (vedi il BB).
+    def update_stato_pratica(
+        self, pratica_id: int, stato_codice_interno: str,
+        *, codice_errore: str = "E_CONFIG_MANCANTE", campo: str | None = None,
+    ) -> None:
+        stato_id = self.resolve_stato_pratica(
+            stato_codice_interno, codice_errore=codice_errore, campo=campo,
+        )
         sql = """
             UPDATE pratiche.pratiche
             SET stato_id = %s
@@ -832,8 +841,11 @@ class PraticheRepository:
     def update_stato_flusso(
         self, flusso_id: int, stato_codice_interno: str,
         esito: str | None = None, note_esito: str | None = None,
+        *, codice_errore: str = "E_CONFIG_MANCANTE", campo: str | None = None,
     ) -> None:
-        stato_id = self.resolve_stato_flusso(stato_codice_interno)
+        stato_id = self.resolve_stato_flusso(
+            stato_codice_interno, codice_errore=codice_errore, campo=campo,
+        )
         sql = """
             UPDATE pratiche.flussi
             SET stato_id = %s,
@@ -1192,6 +1204,8 @@ class PraticheRepository:
             not_found_message=(
                 f"Tipo nota '{tipo_nota_codice}' non trovato o non attivo"
             ),
+            # Il codice l'ha scelto il client: e' un valore sbagliato, 400.
+            codice_errore="E_PRATICA_VALIDATION", campo="tipo_nota_codice",
         )
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1274,6 +1288,8 @@ class PraticheRepository:
             not_found_message=(
                 f"Tipo allegato '{tipo_allegato_codice}' non trovato o non attivo"
             ),
+            # Il codice l'ha scelto il client: e' un valore sbagliato, 400.
+            codice_errore="E_PRATICA_VALIDATION", campo="tipo_allegato_codice",
         )
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1348,7 +1364,11 @@ class PraticheRepository:
 
     # Scopo: Risolve l'ID di uno stato da codice_interno su una tabella config.
     # Metodo generico usato dai wrapper resolve_stato_pratica / resolve_stato_flusso.
-    def _resolve_stato(self, tabella: str, codice_interno: str, etichetta: str) -> int:
+    # `codice_errore`/`campo`: per un codice scelto dal CLIENT (vedi il BB).
+    def _resolve_stato(
+        self, tabella: str, codice_interno: str, etichetta: str,
+        *, codice_errore: str = "E_CONFIG_MANCANTE", campo: str | None = None,
+    ) -> int:
         return resolve_config_id_by_codice_interno(
             tabella,
             codice_interno,
@@ -1356,15 +1376,29 @@ class PraticheRepository:
             not_found_message=(
                 f"Stato {etichetta} '{codice_interno}' non trovato in {tabella}"
             ),
+            codice_errore=codice_errore,
+            campo=campo,
         )
 
     # Scopo: Risolve l'ID di uno stato pratica da codice_interno.
-    def resolve_stato_pratica(self, codice_interno: str) -> int:
-        return self._resolve_stato("config.stati_pratiche", codice_interno, "pratica")
+    def resolve_stato_pratica(
+        self, codice_interno: str,
+        *, codice_errore: str = "E_CONFIG_MANCANTE", campo: str | None = None,
+    ) -> int:
+        return self._resolve_stato(
+            "config.stati_pratiche", codice_interno, "pratica",
+            codice_errore=codice_errore, campo=campo,
+        )
 
     # Scopo: Risolve l'ID di uno stato flusso da codice_interno.
-    def resolve_stato_flusso(self, codice_interno: str) -> int:
-        return self._resolve_stato("config.stati_flussi_pratiche", codice_interno, "flusso")
+    def resolve_stato_flusso(
+        self, codice_interno: str,
+        *, codice_errore: str = "E_CONFIG_MANCANTE", campo: str | None = None,
+    ) -> int:
+        return self._resolve_stato(
+            "config.stati_flussi_pratiche", codice_interno, "flusso",
+            codice_errore=codice_errore, campo=campo,
+        )
 
     # Scopo: Risolve l'ID di una priorita' pratica da codice_interno
     #        (default NORMALE in crea_pratica — mai id hardcodato).

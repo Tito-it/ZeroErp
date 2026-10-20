@@ -20,6 +20,8 @@ Indice test eseguiti:
 8) test_attivo_ok
 9) test_il_crud_pretende_l_amministratore
 10) test_il_lookup_NON_pretende_l_amministratore
+11) test_il_lookup_torna_l_envelope_results
+12) test_le_sorgenti_pretendono_l_amministratore_e_tornano_results (2026-10-20)
 """
 
 import json
@@ -50,6 +52,7 @@ class FamiglieRotteTests(JwtMockedApiTest):
         self.assertEqual(reverse("vendite-famiglie-list"), _BASE)
         self.assertEqual(reverse("vendite-famiglie-lookup"), f"{_BASE}lookup/")
         self.assertEqual(reverse("vendite-famiglie-export"), f"{_BASE}export/")
+        self.assertEqual(reverse("vendite-famiglie-sorgenti"), f"{_BASE}sorgenti/")
         self.assertEqual(
             reverse("vendite-famiglie-detail", kwargs={"famiglia_id": 3}),
             f"{_BASE}3/",
@@ -232,3 +235,25 @@ class FamiglieCancelloTests(JwtMockedApiTest):
             "il frontend legge `data.data.results`",
         )
         self.assertEqual(corpo["data"]["results"], righe)
+
+    # 12. Le sorgenti fra cui il drawer sceglie la famiglia da creare (dal
+    #     2026-10-20, brief-db-grammatica-unica-documenti 2c): servono solo alla
+    #     creazione, quindi stanno dietro lo STESSO cancello del CRUD — e hanno
+    #     la forma `{"results": [...]}` di ogni lookup dedicato (vedi l'11).
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM_ADMIN)
+    @patch(_SVC)
+    def test_le_sorgenti_pretendono_l_amministratore_e_tornano_results(
+        self, mock_svc, perm, _auth,
+    ):
+        righe = [{"codice_interno": "PREVENTIVO", "etichetta": "Preventivo",
+                  "famiglia_esistente": False, "tabella_numerata_da": None}]
+        mock_svc.return_value.list_sorgenti_numerabili.return_value = righe
+        perm.return_value = False
+        resp = self.client.get(f"{_BASE}sorgenti/", HTTP_AUTHORIZATION="Bearer x")
+        self.assertEqual(resp.status_code, 403)
+        mock_svc.return_value.list_sorgenti_numerabili.assert_not_called()
+        perm.return_value = True
+        resp = self.client.get(f"{_BASE}sorgenti/", HTTP_AUTHORIZATION="Bearer x")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["data"]["results"], righe)

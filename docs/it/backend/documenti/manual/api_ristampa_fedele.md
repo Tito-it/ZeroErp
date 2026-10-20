@@ -36,7 +36,7 @@ delle versioni referenziate. Mancava solo chi la esercitasse.
 ## Input
 
 ```text
-GET /api/v1/<dominio>/<sorgente_id>/documenti/<documento_id>/ristampa/
+GET /api/v1/vendite/<dominio>/<sorgente_id>/documenti/<documento_id>/ristampa/
 ```
 
 Cablato su tutti e **6** i domini sorgente (preventivi, offerte, contratti,

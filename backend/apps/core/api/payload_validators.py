@@ -10,7 +10,7 @@ from rest_framework.exceptions import ParseError
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.request_parsers import oggetto_json, parse_iso_date
-from apps.core.services.payload_helpers import BIGINT_MAX, BIGINT_MIN
+from apps.core.services.payload_helpers import BIGINT_MAX, BIGINT_MIN, PayloadValidator
 from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
 # Validator centralizzati payload API (riusabili cross-domain).
@@ -279,20 +279,19 @@ def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = Fals
     raise ValueError(f"{key}_invalid")
 
 
-# Scopo: Valida e converte il campo opzionale `bool` mantenendo `None` se assente.
+# Scopo: Il flag `key` del CORPO JSON: assente o `null` -> `default`.
+# ⛔ Una regola sola per il corpo, ed e' quella di `PayloadValidator.optional_bool`,
+#    a cui questa funzione delega: un flag e' un booleano JSON, e qualunque altra
+#    cosa — `"false"`, `"1"`, `0` — e' un 400 `E_VALIDATION_INPUT` col campo.
+#    JSON ha il tipo: accettare una stringa vuol dire indovinarlo. Fino al
+#    2026-10-20 qui si accettava un vocabolario di stringhe (`"off"`, `"y"`…)
+#    diverso da quello di `as_bool` e rifiutato dal BB dei service: tre letture
+#    dello stesso flag (brief-be-verifica-documentazione-api §3).
+# ⚠️ Query string e multipart NON passano di qui: li' ogni valore e' una stringa
+#    per natura, e si leggono coi loro BB (`qp_bool`, …).
 def optional_bool(payload: dict[str, Any], key: str, default: bool = False) -> bool:
-    value = payload.get(key)
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "y", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "n", "off"}:
-            return False
-    raise ValueError(f"{key}_invalid")
+    value = PayloadValidator(validation_code=E_VALIDATION_INPUT).optional_bool(payload, key)
+    return default if value is None else value
 
 
 # Scopo: Valida e converte il campo opzionale `iso_date` mantenendo `None` se assente.

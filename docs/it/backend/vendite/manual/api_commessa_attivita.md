@@ -3,14 +3,17 @@
 ## Scopo
 
 Esporre via HTTP la lista paginata delle attività (`commesse_attivita`) di una commessa,
-con filtri opzionali per stato emissione, stato approvazione e mese di competenza.
+con filtri opzionali per stato emissione, stato approvazione, mese di competenza e
+natura del movimento. Export gemello: `GET …/attivita/export/?formato=csv|xlsx`
+(stessi filtri e ordinamento, colonne dal catalogo `vendite.commesse_attivita`).
 
 ## Contesto
 
 Endpoint applicativo che invoca il servizio Python `fn_list_commessa_attivita`
 (`apps.vendite.services.commesse_service`), il quale delega a
 `CommesseRepository.list_commessa_attivita()` che chiama la funzione DB
-`vendite.fn_list_commessa_attivita`.
+`vendite.fn_list_commessa_attivita` (righe) e conta il totale con una
+`SELECT COUNT(*)` sulla tabella con gli stessi filtri.
 
 View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 
@@ -22,13 +25,14 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 - Parametri path:
   - `commessa_id` (int) — ID della commessa
 - Query params (tutti opzionali):
-  - `stato_emissione` (string) — filtro stato emissione (es. `NON_EMESSA`, `EMESSA`)
-  - `stato_approvazione` (string) — filtro stato approvazione (es. `BOZZA`, `APPROVATA`)
+  - `stato_emissione` (string) — vocabolario chiuso `NON_EMESSA` | `EMESSA` | `ANNULLATA`
+  - `stato_approvazione` (string) — vocabolario chiuso `BOZZA` | `APPROVATA` | `RIFIUTATA`
   - `competenza_mese` (date `YYYY-MM-DD`) — filtro mese di competenza (normalizzato al primo del mese dal DB)
-  - `limit` (int) — righe per pagina (default 50, range 1-200)
+  - `tipo_movimento` (string) — `NORMALE` | `RETTIFICA` | `ONERE` (spazi/maiuscole tollerati); assente o vuoto = tutti
+  - `limit` (int) — righe per pagina (default 25 `DEFAULT_LIMIT`, range 1-200)
   - `offset` (int) — offset paginazione (default 0)
-  - `order_by` (string) — colonna di ordinamento, whitelist chiusa: `id`, `data_attivita`, `competenza_mese`, `segment_key`, `quantita`, `prezzo_snapshot`, `stato_approvazione`, `stato_emissione`. Assente = ordine storico per `id`
-  - `order_dir` (string) — `asc` | `desc` (default `asc`)
+  - `order_by` (string) — whitelist chiusa `ATTIVITA_SORT_COLUMNS`: `id`, `data_attivita`, `competenza_mese`, `segment_key`, `quantita`, `prezzo_snapshot`, `stato_approvazione`, `stato_emissione`, `fatturata_il`, `fattura_numero`, `tipo_movimento`, `articolo_codice`, `articolo_descrizione`, `sorgente_codice`, `sorgente_documento_numero`, `gruppo_key`. Assente = ordine storico per `id`
+  - `order_dir` (string) — `asc` | `desc` (default `asc` per qualunque colonna, date comprese: il service passa `asc` alla fn)
 
 ## Output
 
@@ -64,7 +68,20 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
         "sorgente_tipo_id": 1,
         "sorgente_codice": "PREVENTIVO",
         "meta": {},
-        "data_update": "2026-02-26T10:00:00+00:00"
+        "data_update": "2026-02-26T10:00:00+00:00",
+        "fatturata": false,
+        "fatturata_il": null,
+        "fattura_id": null,
+        "fattura_numero": null,
+        "fattura_stato": null,
+        "sorgente_uid": "abc123",
+        "sorgente_apribile": true,
+        "sorgente_documento_id": 42,
+        "tipo_movimento": "NORMALE",
+        "articolo_codice": "ART-01",
+        "articolo_descrizione": "Manutenzione",
+        "sorgente_documento_numero": "P-2026-0001",
+        "gruppo_key": "PREVENTIVO:42"
       }
     ]
   },
@@ -72,8 +89,9 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 }
 ```
 
-- `400`: parametri non validi (`E_COMMESSA_VALIDATION`) — es. `limit` fuori range 1-200, `order_by` fuori whitelist, `order_dir` diverso da asc/desc
-- `404`: commessa non trovata (gestito dalla funzione DB)
+- `400`: parametri non validi (`E_COMMESSA_VALIDATION`) — `commessa_id` ≤ 0, `limit` fuori range 1-200, `order_by` fuori whitelist, `order_dir` diverso da asc/desc, `tipo_movimento`, `stato_emissione` o `stato_approvazione` fuori vocabolario (questi ultimi due col campo; fino al 2026-10-20 un valore sbagliato rispondeva lista vuota)
+- `422`: `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` — cancello perimetro emittente (`lista_codice = "vendite.commesse_attivita"`)
+- Commessa inesistente o fuori perimetro: **nessun 404**, `200` con `count: 0` e `results: []`
 
 ## Regole
 
@@ -84,13 +102,14 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 - `competenza_mese` parsata via `optional_iso_date` e passata come `date` al repository.
 - La funzione DB normalizza `competenza_mese` al primo del mese (`date_trunc`).
 - JOIN su `config.sorgenti` per risolvere `sorgente_codice` (evita N+1 lato client).
-- `count` indica il numero di righe restituite nella pagina corrente, non il totale globale.
+- `sorgente_apribile` (dal 2026-10-20, al posto di `sorgente_area`, il plurale ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-in-progress/brief-db-grammatica-unica-documenti.md)): vero quando il documento d'origine ha una sua pagina (`config.sorgenti.apribile`), fattura e reso compresi; `null` sulle righe senza sorgente. ⚠️ `sorgente_codice` oggi è `config.sorgenti.codice` (il nome modificabile): diventa `sorgente_codice_interno` col §13.6 del brief, ed è da quello che il frontend aprirà il documento.
+- `count` è il **totale filtrato** (stessi filtri della lista, senza `LIMIT/OFFSET`), non le righe della pagina.
 - Ordinamento server-side (dal 2026-08-03, 7° lotto liste configurabili): `order_by`/`order_dir` sono validati nel service contro `ATTIVITA_SORT_COLUMNS` (specchio della whitelist chiusa dentro la fn DB, changeset `20260802-26`) e passati a `p_order_by`/`p_order_dir`. Ordine e paginazione vivono **dentro** la funzione: ordinare a valle ordinerebbe la sola pagina estratta. `order_by` assente = ordine storico `ca.id`; tiebreak `ca.id` sempre presente. La fn solleva `E_PARAMETRO_INVALIDO` su nome fuori whitelist (difesa in profondità, il service intercetta prima).
 - Funzione DB STABLE (read-only).
 
 ## Dipendenze DB
 
-- `vendite.fn_list_commessa_attivita(p_commessa_id, p_stato_emissione, p_stato_approvazione, p_competenza_mese, p_limit, p_offset, p_order_by, p_order_dir)` — funzione principale, restituisce TABLE con 21 colonne
+- `vendite.fn_list_commessa_attivita(p_commessa_id, p_stato_emissione, p_stato_approvazione, p_competenza_mese, p_limit, p_offset, p_order_by, p_order_dir, p_tipo_movimento)` — funzione principale (colonne lette: `CommesseRepository._ATTIVITA_COLS`)
 - `vendite.commesse_attivita` — tabella dati
 - `config.sorgenti` — JOIN per `sorgente_codice`
 

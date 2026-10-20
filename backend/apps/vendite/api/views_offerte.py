@@ -28,6 +28,7 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
+    optional_bool,
     paginated_envelope,
     parse_list_params,
     qp_bool,
@@ -521,7 +522,9 @@ class ApiOffertaPushContratto(DomainAPIView):
                     context={"pratica_id": pratica_id_raw},
                     cause=exc,
                 )
-        chiudi_esistente = bool(body.get("chiudi_esistente"))
+        # ⛔ Dal BB, non `bool(...)`: `bool("false")` e' True, e la successione
+        #    CHIUDE il contratto esistente. Un non-booleano e' un 400.
+        chiudi_esistente = optional_bool(body, "chiudi_esistente", default=False)
         return success_response(
             OfferteService().push_a_contratto(
                 offerta_id,
@@ -825,6 +828,7 @@ class ApiOffertaEccezioneComponenteDetail(DomainAPIView):
         return success_response(
             OfferteService().update_componente_eccezione(
                 offerta_id, eccezione_id, componente_id, dict(corpo_oggetto(request)),
+                auth_user_id=get_actor_user_id(request),
             )
         )
 

@@ -23,14 +23,14 @@ unificato cross-dominio per emissione + allegati su offerta / preventivo
 fetcha l'entità e ai messaggi i18n-aware: l'helper accetta l'entità già
 fetchata + i messaggi già formulati.
 
-Caller noti:
-
-- `apps.vendite.api.offerte_documenti_views._resolve_contesto_offerta`
-- `apps.vendite.api.preventivi_documenti_views._resolve_contesto_preventivo`
-- `apps.vendite.api.contratti_documenti_views._resolve_contesto_contratto`
-
-Estendibili a futuri domini documentali (es. ordini, DDT, fatture
-PRO-FORMA) senza altra duplicazione.
+Caller: la factory `build_documenti_sorgente_views(...)`
+(`apps/documenti/api/sorgente_documenti_views.py`), che chiama
+`resolve_contesto_documentale` da ogni view (`_resolve_contesto`) ed
+`extract_allegati` da `emetti/` e `allegati/`. La factory è cablata su **6
+domini**, ciascuno col suo `apps/vendite/api/<dominio>_documenti_views.py`:
+preventivi (`PREVENTIVO`), offerte (`OFFERTA_COMMERCIALE`), contratti
+(`CONTRATTO`), ordini (`ORDINE_VENDITA`), DDT (`DDT_VENDITA`), fatture
+(`FATTURA`). Mappa delle rotte: [api_documenti_per_sorgente](api_documenti_per_sorgente.md).
 
 ## Input
 
@@ -58,7 +58,7 @@ Parametri (tutti keyword-only):
 | `entity_id`          | `int`               | ID dell'entità (usato per `detail` degli errori) |
 | `not_found_message`  | `str`               | Messaggio business-safe quando l'entità non esiste                                          |
 | `emittente_message`  | `str`               | Messaggio business-safe quando l'entità esiste ma non ha emittente risolto                  |
-| `sorgente_codice`    | `str`               | Codice in `documenti.sorgenti_tipi` (es. `"OFFERTA_COMMERCIALE"`, `"PREVENTIVO"`, `"CONTRATTO"`) |
+| `sorgente_codice`    | `str`               | `codice_interno` di `config.sorgenti` (es. `"OFFERTA_COMMERCIALE"`, `"PREVENTIVO"`, `"CONTRATTO"`) |
 
 ### `extract_allegati`
 
@@ -113,23 +113,23 @@ persiste solo il PDF principale.
 2. **Codici errore unificati** (allineati alla convenzione delle view
    documentali):
    - `E_DOCUMENTI_NOT_FOUND` (404) — entità non trovata
-   - `E_DOCUMENTI_VALIDATION` (400/422) — emittente non risolto o
+   - `E_DOCUMENTI_VALIDATION` (400) — emittente non risolto o
      sorgente non configurata/non attiva
 3. **Neutro vs UploadedFile**: `extract_allegati` materializza i bytes
    eagerly (chiamata `read()`) e ritorna un dict semplice — il
    `DocumentGenerationService` non dipende dall'oggetto DRF/Django, è
    testabile con fixture in-memory.
-4. **Idempotente sul resolver sorgente**: la lookup
-   `DocumentiRepository.get_sorgente_tipo_id_by_codice` è cached lato DB
-   (config statica); il check `attivo` blocca sorgenti
-   disabilitate/deprecate.
+4. **Resolver sorgente**: `SorgentiRepository().get_sorgente_attiva(codice)`
+   (`apps/config/db/sorgenti_repository.py`) legge `config.sorgenti` per
+   `codice_interno` con `attivo IS TRUE`; una query a chiamata, nessuna cache.
+   Sorgente assente o disattivata: `E_DOCUMENTI_VALIDATION`.
 5. **Niente i18n nei messaggi**: le stringhe arrivano dalla view caller
    già formulate per il dominio (es. articolo determinativo italiano —
    "l'offerta" vs "il preventivo"). L'helper resta neutrale.
 
 ## Dipendenze DB
 
-- `documenti.sorgenti_tipi` — lookup `get_sorgente_tipo_id_by_codice`
+- `config.sorgenti` — lookup `SorgentiRepository.get_sorgente_attiva` (per `codice_interno`, solo attive)
 - `documenti.documenti_generati` (a valle, via service) — persistenza
   documento + allegati
 
@@ -138,14 +138,14 @@ persiste solo il PDF principale.
 | Codice                    | HTTP    | Quando                                                                       |
 | ------------------------- | ------- | ---------------------------------------------------------------------------- |
 | `E_DOCUMENTI_NOT_FOUND`   | 404     | `entity is None` (record dominio inesistente)                                |
-| `E_DOCUMENTI_VALIDATION`  | 400/422 | `emittente_fiscale_id is None` su entity, oppure `sorgente_codice` non trovato/non `attivo` |
+| `E_DOCUMENTI_VALIDATION`  | 400     | `emittente_fiscale_id is None` su entity, oppure `sorgente_codice` non trovato/non `attivo` |
 
 ## Riferimenti
 
 - File helper:
   - `backend/apps/documenti/api/contesto_helpers.py`
   - `backend/apps/documenti/api/multipart_helpers.py`
-- Endpoint che li usano:
+- Endpoint che li usano (tutte le rotte in [api_documenti_per_sorgente](api_documenti_per_sorgente.md)):
   - [api_offerte](../../vendite/manual/api_offerte.md) — sezione "Cambio stato BOZZA -> EMESSA"
   - [api_preventivi](../../vendite/manual/api_preventivi.md) — §5b "Emissione" + §18 "Documenti preventivo"
   - [api_contratti](../../vendite/manual/api_contratti.md) — "Attivazione DRAFT→ATTIVO" + "Documenti contratto"

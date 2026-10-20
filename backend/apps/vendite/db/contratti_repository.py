@@ -321,7 +321,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     # Configurazione mixin indirizzi documento.
     _indirizzi_table = "vendite.contratti_indirizzi"
     _indirizzi_fk_documento = "contratto_id"
-    _indirizzi_ambito = "CONTRATTI"
     _indirizzi_documento = SORGENTE_CONTRATTO
 
     # =================================================================

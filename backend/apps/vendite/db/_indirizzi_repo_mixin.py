@@ -42,16 +42,15 @@ class IndirizziDocumentoRepositoryMixin:
 
     - ``_indirizzi_table``: nome FQN tabella (es. ``"vendite.ddt_indirizzi"``).
     - ``_indirizzi_fk_documento``: colonna FK al documento (es. ``"ddt_id"``).
-    - ``_indirizzi_ambito``: ambito whitelist in config.tipi_indirizzi_allowed
-      (es. ``"DDT"``).
-    - ``_indirizzi_documento``: il documento per i building block DB, col
-      codice di ``config.sorgenti`` (costanti ``SORGENTE_*`` di
-      ``apps/config/sorgenti.py``), selettore di
-      ``vendite.fn_doc_indirizzo_default``. Dal 2026-10-19
-      (brief-db-grammatica-unica-documenti, lotto 2a) la grammatica delle
-      testate e' quella delle sorgenti: ``DDT_VENDITA``, ``ORDINE_VENDITA``,
-      ``OFFERTA_COMMERCIALE``, ``PREVENTIVO``, ``CONTRATTO``. ⚠️
-      ``_indirizzi_ambito`` e' un altro vocabolario, e resta fino al 2d.
+    - ``_indirizzi_documento``: il documento, col codice di
+      ``config.sorgenti`` (costanti ``SORGENTE_*`` di
+      ``apps/config/sorgenti.py``: ``DDT_VENDITA``, ``ORDINE_VENDITA``,
+      ``OFFERTA_COMMERCIALE``, ``PREVENTIVO``, ``CONTRATTO``). Un codice solo
+      per due usi: l'ambito della whitelist ``config.tipi_indirizzi_allowed``
+      (FK verso le sorgenti) e il selettore di
+      ``vendite.fn_doc_indirizzo_default``. Fino al 2026-10-20 l'ambito era
+      un attributo a parte col plurale (``ORDINI``, ``OFFERTE``…), ritirato
+      col sotto-giro 2d di brief-db-grammatica-unica-documenti (G-6).
 
     Chi e' il cliente del documento non lo sa piu' il mixin: lo legge il DB
     (``script.fn_get_cliente_testata_documento``), che tiene anche la regola
@@ -61,7 +60,6 @@ class IndirizziDocumentoRepositoryMixin:
 
     _indirizzi_table: str
     _indirizzi_fk_documento: str
-    _indirizzi_ambito: str
     _indirizzi_documento: str
 
     # Scopo: Tipi indirizzo ammessi per l'ambito del documento (slot del
@@ -80,7 +78,7 @@ class IndirizziDocumentoRepositoryMixin:
              ORDER BY a.obbligatorio DESC, ti.id
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [self._indirizzi_ambito])
+            cursor.execute(sql, [self._indirizzi_documento])
             return rows_to_list(cursor)
 
     # Scopo: Indirizzi del documento con tipo denormalizzato (drawer + PDF

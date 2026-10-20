@@ -61,6 +61,18 @@ Endpoint di sola lettura su `pratiche.flussi`. Utilizza il pattern `_get_flusso_
 - Tutti gli endpoint nested su flussi usano la stessa verifica ownership tramite `_get_flusso_verificato`.
 - Endpoint v1 richiede JWT.
 
+## `GET /api/v1/pratiche/flussi/<flusso_id>/pratica/` — la pratica di un flusso
+
+L'unica rotta dei flussi **non annidata** sotto la pratica: serve a chi conosce solo
+l'id del flusso (per esempio il bersaglio di un errore `E_FLUSSI_*`) per sapere dove
+aprirlo. Risponde l'id, non il flusso: il dettaglio resta la rotta sopra, con la sua
+verifica di appartenenza.
+
+- Risposta 200: `{"data": {"pratica_id": 1}}`
+- `400`: `flusso_id` <= 0 (`E_INVALID_ID`)
+- `404`: flusso inesistente o non visibile (`E_FLUSSO_NOT_FOUND`)
+- Permesso: area `pratiche` + `view` su `pratiche.pratica`.
+
 ## Dipendenze DB
 
 - `pratiche.flussi` (tabella principale)

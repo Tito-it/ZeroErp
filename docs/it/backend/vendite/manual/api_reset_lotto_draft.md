@@ -1,31 +1,58 @@
 # API reset_lotto_draft (Django)
 
 ## Scopo
-Esporre via HTTP il reset tecnico di un lotto MASSIVO in DRAFT.
+Esporre via HTTP l'**annullamento** di un lotto in DRAFT (`reset-draft`) e, accanto,
+il suo opposto: il **ritorno a bozza** (`riporta-a-draft`). Sono i due verbi che
+disfano il lavoro di un lotto, ma fanno cose opposte: il primo **chiude** il lotto
+(fiscale `ANNULLATA`, non si riapre), il secondo lo rimette in lavorazione.
 
 ## Contesto
-Endpoint applicativo che invoca il servizio Python `fn_reset_lotto_draft`, wrapper della funzione SQL `vendite.fn_reset_lotto_draft`.
+View `ApiResetLottoDraft` → `fn_annulla_lotto_da_draft`
+(`apps/vendite/services/pipeline_service.py` → `LottoResetService`) → funzione SQL
+`vendite.fn_annulla_lotto_da_draft`. URL e permesso conservano il nome storico
+«reset-draft»: sono contratti verso client e catalogo permessi.
 
 ## Input
 - Metodo: `POST`
-- Path canonico: `/api/v1/vendite/lotti/{id}/reset-draft/`
-- Path legacy (deprecato): `/api/vendite/lotti/{id}/reset-draft/` (disabilitato di default)
-- Header richiesto: `Idempotency-Key`
-- Header sicurezza (solo path `/api/v1/...`): `Authorization: Bearer <access_token>`
+- Path: `/api/v1/vendite/lotti/{lotto_id}/reset-draft/`
+- Header: `Authorization: Bearer <access_token>`, `Idempotency-Key` (obbligatorio)
+- Permesso: `post_permission = "reset_lotto_draft"` (area `vendite`)
 - Body JSON: vuoto
 
 ## Output
 - `200`: `{ "data": { "updated_lotti": <int>, "updated_attivita": <int>, "deleted_fatture": <int>, "deleted_righe": <int> }, "meta": { ... } }`
-- `400/409/404`: errore applicativo o stato lotto non valido
+- `400 E_RESET_LOTTO_VALIDATION`: `lotto_id` ≤ 0
+- `404 E_LOTTO_NON_TROVATO`; rifiuti di dominio col codice del **primo** motivo di
+  `script.fn_check_lotto_annullabile` (sede unica della regola, letta anche da
+  `fn_available_actions_lotto` per il pulsante): `E_LOTTO_NON_ANNULLABILE` (lotto non
+  in DRAFT), `E_LOTTO_FATTURE_NON_PRE_FISCALI`, `E_LOTTO_FATTURE_NUMERATE`,
+  `E_FATTURE_RIGHE_RETTIFICATE`, `E_FATTURE_PLAFOND_CONSUMATO`
 
 ## Regole
-- `lotto_id` valido e > 0.
-- Ammesso solo per lotti MASSIVO in DRAFT (validato dal DB).
-- Usa il pattern standard core `handle_post_json(...)`.
-- Endpoint write protetto con obbligo `Idempotency-Key`.
+- Ammesso per lotti `MASSIVO` **e** `GIORNALIERO` in DRAFT; le precondizioni sono del
+  DB e non si ricopiano nel backend.
+- Cancella le fatture pre-fiscali, rimette le attività «da emettere», chiude i task
+  run e lascia un guscio col fiscale `ANNULLATA` (fuori dal registro lotti di
+  default, vedi [api_lotti_list.md](api_lotti_list.md)).
+- Pattern core `handle_post_json(..., require_idempotency_key=True)`.
+
+## Ritorno a bozza — `POST lotti/{lotto_id}/riporta-a-draft/`
+
+- View `ApiRiportaLottoADraft` → `fn_riporta_lotto_a_draft` → SQL
+  `vendite.fn_riporta_lotto_a_draft`. È un'azione dell'operatore, non un task di
+  pipeline.
+- Stesso permesso `reset_lotto_draft`, `Idempotency-Key` obbligatorio, body vuoto.
+- È la via d'uscita da EMESSA, dove l'annullamento è rifiutato: il lotto torna in
+  lavorazione e il giro successivo rifà lo step (`riaperto`). Precondizioni (tipo
+  lotto, stato, nessuna fattura numerata) nella funzione DB.
+- `200`: `{ "data": { "updated_lotti", "updated_attivita", "deleted_fatture",
+  "deleted_righe", "riemesse_attivita", "annullati_task_run" } }` —
+  `riemesse_attivita` = attività di commessa tornate `NON_EMESSA`;
+  `annullati_task_run` = task run chiusi ad `ANNULLATO` su tutti gli step (senza,
+  il lotto riaperto rilancerebbe a vuoto).
+- `400 E_RESET_LOTTO_VALIDATION` su `lotto_id` ≤ 0; rifiuti di dominio dalla
+  funzione DB.
 
 ## Dipendenze DB
-- `vendite.fn_reset_lotto_draft`
-
-## Note di migrazione
-- Azione applicativa introdotta per orchestrare il reset senza duplicare logica SQL.
+- `vendite.fn_annulla_lotto_da_draft`, `script.fn_check_lotto_annullabile`
+- `vendite.fn_riporta_lotto_a_draft`

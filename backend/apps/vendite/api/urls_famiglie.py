@@ -15,6 +15,7 @@ from apps.vendite.api.views_famiglie import (
     ApiFamiglieExport,
     ApiFamiglieList,
     ApiFamiglieLookup,
+    ApiFamiglieSorgenti,
 )
 
 urlpatterns = [
@@ -24,6 +25,7 @@ urlpatterns = [
     #    tiene il file leggibile quando le rotte cresceranno.
     path("lookup/", ApiFamiglieLookup.as_view(), name="vendite-famiglie-lookup"),
     path("export/", ApiFamiglieExport.as_view(), name="vendite-famiglie-export"),
+    path("sorgenti/", ApiFamiglieSorgenti.as_view(), name="vendite-famiglie-sorgenti"),
     path(
         "<int:famiglia_id>/",
         ApiFamigliaDetail.as_view(),

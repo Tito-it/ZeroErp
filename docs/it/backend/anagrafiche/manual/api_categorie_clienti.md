@@ -26,12 +26,14 @@ sono implementati in:
 - `apps/anagrafiche/db/categorie_clienti_repository.py`
 
 L'autenticazione avviene tramite token JWT (`Authorization: Bearer <token>`).
-Le risposte seguono l'envelope standard `{"data": ...}` per il successo e
-`{"error": {"code": "...", "message": "..."}}` per gli errori.
+Le risposte seguono l'envelope standard `{"data": ..., "meta": {...}}` per il
+successo e `{"error": {"code": "...", "message": "..."}, "meta": {...}}` per gli
+errori.
 
 **Accesso riservato agli amministratori**: tutte le view ereditano da
-`AdminAPIView` (`apps.core.api.base_views`), che applica `IsAdminZeroERP`. Un
-utente non admin riceve `403 Forbidden`.
+`AdminAPIView` (`apps.core.api.base_views`), che applica `IsAdminZeroERP`
+(superuser Django o binding `SUPER_ADMIN`). Un utente non admin riceve
+`403 E_ACCESSO_RISERVATO_ADMIN`.
 
 ## Lookup generico — preferire dove possibile
 
@@ -56,7 +58,7 @@ dropdown nei form cliente/BA.
 
 | Header | Valore | Note |
 | --- | --- | --- |
-| `Authorization` | `Bearer <jwt>` | Token di accesso valido (utente con `ruolo_sistema = ADMIN`) |
+| `Authorization` | `Bearer <jwt>` | Token di accesso valido (superuser o utente `SUPER_ADMIN`) |
 | `Content-Type` | `application/json` | Richiesto per POST/PATCH |
 | `Accept` | `application/json` | Opzionale, default JSON |
 
@@ -73,8 +75,9 @@ dropdown nei form cliente/BA.
 
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
-| `E_AUTH_REQUIRED` | 401 | Token JWT mancante o non valido |
-| `E_FORBIDDEN_ROLE` | 403 | Utente autenticato ma non admin |
+| `E_NOT_AUTHENTICATED` | 401 | Token JWT mancante |
+| `E_AUTHENTICATION_FAILED` | 401 | Token JWT non valido o scaduto |
+| `E_ACCESSO_RISERVATO_ADMIN` | 403 | Utente autenticato ma non admin |
 | `E_ANAG_VALIDAZIONE` | 400 | Payload non valido (campi obbligatori mancanti, tipi errati, boundary violati) |
 | `E_ANAG_NOT_FOUND` | 404 | Categoria inesistente |
 | `E_ANAG_DUPLICATO` | 409 | Vincolo univocita` violato (`codice` duplicato) |
@@ -110,13 +113,13 @@ Validazione payload e traduzione vincoli DB delegate al building block
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 | --- | --- | --- | --- |
-| `search` | string | No | Ricerca ILIKE su `codice` e `descrizione` |
-| `attivo` | bool | No | Filtro flag attivo. `true`/`false`/`1`/`0`/`yes`/`no`. Stringa vuota (`attivo=`) e` interpretata come `false` — per omettere il filtro NON inviare la chiave |
+| `search` | string | No | Ricerca ILIKE sulle colonne (fra `codice` e `descrizione`) che il catalogo della lista `anagrafiche.categorie_clienti` accende; sotto la soglia del catalogo non filtra (nessun 400) |
+| `attivo` | bool | No | Filtro flag attivo. `true`/`false`/`1`/`0`/`yes`/`no`. Stringa vuota (`attivo=`) equivale a chiave assente (nessun filtro); altro valore -> 400 |
 | `partecipa_promo` | bool | No | Filtro flag partecipazione promo (stesso contratto di `attivo`) |
-| `page` | int | No | Numero pagina, default `1` |
-| `page_size` | int | No | Righe per pagina, default `25`, max `200` |
+| `limit` | int | No | Righe per pagina, default `25`, max `200` |
+| `offset` | int | No | Righe da saltare, default `0` (la risposta riporta `page`/`page_size` calcolati da `limit`/`offset`) |
 | `order_by` | string | No | `codice` \| `descrizione` \| `ordinamento` \| `partecipa_promo` \| `attivo` \| `data_insert` \| `data_update`. Default: `ordinamento` |
-| `order_dir` | string | No | `asc` (default) oppure `desc` |
+| `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc`, salvo le colonne data (`data_insert`, `data_update`) che partono `desc` |
 
 ### Risposta (200)
 
@@ -274,7 +277,7 @@ Campi ammessi (tutti opzionali; almeno uno deve essere presente):
 ## Regole trasversali
 
 - Tutti gli endpoint richiedono JWT.
-- Tutti gli endpoint sono admin-only: utente non admin -> `403 E_FORBIDDEN_ROLE`.
+- Tutti gli endpoint sono admin-only: utente non admin -> `403 E_ACCESSO_RISERVATO_ADMIN`.
 - Le view write (`POST`, `PATCH`) usano il pattern core `handle_post_json(...)` per POST e delegate diretta al service per PATCH.
 - Error envelope uniforme dal middleware `api_exception_middleware`.
 - Paginazione deterministica con tiebreaker `id ASC` lato repository.

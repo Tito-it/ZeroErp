@@ -500,7 +500,7 @@ class TitoliIvaService:
             val = payload["plafond"]
             dati["plafond"] = None if val in (None, "") else val
         if "attivo" in payload:
-            dati["attivo"] = bool(payload["attivo"])
+            dati["attivo"] = _V.require_bool(payload, "attivo")
         return dati
 
     # Scopo: Normalizza una riga di ambito: valorizza la colonna del livello

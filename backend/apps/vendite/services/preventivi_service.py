@@ -21,6 +21,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
 
 from apps.config.sorgenti import SORGENTE_COMMESSA, SORGENTE_PREVENTIVO
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
@@ -121,7 +122,8 @@ UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
 })
 # Il contratto della CREAZIONE (testata e riga): le chiavi che `crea_preventivo`
 # e `gestisci_riga` leggono, ne' una di piu' ne' una di meno — e una chiave fuori
-# elenco viene SCARTATA in ingresso, come in ordini e DDT.
+# elenco e' un 400 (dal 2026-10-20; prima veniva scartata in silenzio), come in
+# ordini e DDT.
 # ⭐ Dichiarati il 2026-09-26: fino a quel giorno le chiavi si leggevano una per
 #    una e non stavano in nessun elenco, e lo schema OpenAPI scritto a mano
 #    pubblicava ancora `iva_id` (chiuso da `I6`, 2026-08-31) e `quantita` (la
@@ -197,6 +199,13 @@ def list_preventivi_rows(
     order_dir: str = "desc",
     max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
+    # ⛔ Il filtro di stato esiste nel vocabolario, o e' un 400 sul campo: un
+    #    valore sbagliato finiva nel WHERE e la lista rispondeva vuota con un
+    #    200 (2026-10-20). Codici dismessi ammessi: i documenti vecchi li portano.
+    richiedi_codice_a_vocabolario(
+        "config.stati_doc_preventivi", "codice_interno", stato_codice,
+        codice_errore="E_PREV_VALIDAZIONE", parametro="stato",  # il query param della lista
+    )
     repo = PreventiviRepository()
     return repo.list_preventivi(
         stato_codice=stato_codice,
@@ -367,6 +376,10 @@ def list_riepilogo_iva(preventivo_id: int) -> list[dict[str, Any]]:
 #        applica la stessa logica al momento del calcolo prezzi riga.
 def get_contesto_pricing(preventivo_id: int) -> dict[str, Any] | None:
     repo = PreventiviRepository()
+    # ⛔ Prima la testata: un preventivo inesistente o fuori perimetro e' il
+    #    404 del dominio, non `200 {}` (2026-10-20, l'ordine di lettura dei
+    #    satelliti di api.md §«Scope emittente»).
+    _get_testata_or_raise(repo, preventivo_id, op="get_contesto_pricing")
     return repo.resolve_contesto_pricing(preventivo_id)
 
 
@@ -470,7 +483,10 @@ def _vincoli_cliente_preventivo() -> Iterator[None]:
 #    Specificarlo esplicito solo per admin globale (utente senza emittente
 #    assegnato che sceglie l'emittente del documento).
 def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
-    payload = {k: v for k, v in payload.items() if k in CREATE_KEYS_PREVENTIVO}
+    # ⛔ Una chiave fuori whitelist e' un 400, non uno scarto silenzioso (2026-10-20,
+    #    la regola del 2026-10-19 estesa ai gemelli): la risposta era ok e il valore
+    #    non arrivava, senza che nessuno lo sapesse.
+    _V.validate_allowed_keys(payload, allowed=CREATE_KEYS_PREVENTIVO, function_name=f"{_FN}.crea_preventivo")
     repo = PreventiviRepository()
 
     utility_id = payload.get("utility_id")
@@ -954,7 +970,7 @@ def gestisci_riga(
     *,
     auth_user_id: int | None = None,
 ) -> dict[str, Any]:
-    payload = {k: v for k, v in payload.items() if k in CREATE_KEYS_RIGA}
+    _V.validate_allowed_keys(payload, allowed=CREATE_KEYS_RIGA, function_name=f"{_FN}.gestisci_riga")
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="gestisci_riga")
     richiedi_righe_in_bozza(
@@ -993,7 +1009,7 @@ def gestisci_riga(
 
     uom_id = payload.get("uom_operativa_id")
     payload_prezzo = payload.get("prezzo_unitario")
-    richiesta_approvazione = bool(payload.get("richiesta_approvazione", False))
+    richiesta_approvazione = _V.optional_bool(payload, "richiesta_approvazione") is True
     prezzo_finale, prezzo_meta = _resolve_or_check_override_prezzo(
         testata=testata,
         articolo_id=articolo_id,
@@ -1188,6 +1204,15 @@ def aggiorna_riga(
         testata, documento=SORGENTE_PREVENTIVO, documento_id=preventivo_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
+    # ⛔ La riga dev'essere DEL preventivo dell'URL: la bozza appena verificata
+    #    e' quella del preventivo chiesto, e l'UPDATE va per il solo `riga_id`.
+    #    Senza, una riga di un altro preventivo si modificava con il controllo
+    #    di stato fatto sul documento sbagliato.
+    riga_esistente = riga_del_padre_o_not_found(
+        repo.get_riga, riga_id, padre_id=preventivo_id, chiave_padre="preventivo_id",
+        code="E_PREV_RIGA_NOT_FOUND", message="Riga preventivo non trovata.",
+        function_name=f"{_FN}.aggiorna_riga",
+    )
 
     # Validazione vincoli economici: anticipa i CHECK DB con messaggio
     # parlante. In update i campi possono essere assenti: il helper li
@@ -1213,7 +1238,14 @@ def aggiorna_riga(
             function_name=f"{_FN}.aggiorna_riga",
         )
 
-    richiesta_approvazione = bool(payload.get("richiesta_approvazione", False))
+    # ⛔ Dopo il rifiuto parlante dei componenti, ogni altra chiave ignota e' un
+    #    400 (2026-10-20): prima la PATCH riga la scartava in silenzio. Oltre
+    #    alle colonne, le chiavi lette a parte (la stessa costante dello schema).
+    _V.validate_allowed_keys(
+        payload, allowed=UPDATE_KEYS_RIGA | UPDATE_RIGA_LETTE_A_PARTE,
+        function_name=f"{_FN}.aggiorna_riga",
+    )
+    richiesta_approvazione = _V.optional_bool(payload, "richiesta_approvazione") is True
     update_fields: dict[str, Any] = {}
     # `quantita` (base) e' derivata dal trigger e non e' aggiornabile dal client:
     # la sorgente e' `qta_operativa`.
@@ -1234,30 +1266,10 @@ def aggiorna_riga(
 
     pratica_id_l3: int | None = None
 
-    # Riga esistente — fetch lazy condiviso tra blocco prezzo e blocco quantita
-    # per evitare 2 round-trip DB quando entrambi i campi sono nel payload.
-    # None = non ancora fetchata, False = fetchata e non trovata.
-    riga_esistente: dict[str, Any] | None | bool = None
-
-    def _get_riga_esistente() -> dict[str, Any]:
-        nonlocal riga_esistente
-        if riga_esistente is None:
-            # Lookup mirato per id: evita di caricare l'intero elenco
-            # righe del preventivo (vecchio pattern list_righe + filter).
-            riga_esistente = repo.get_riga(riga_id) or False
-        ErrorManager.require(
-            riga_esistente is not False,
-            code="E_PREV_RIGA_NOT_FOUND",
-            message="Riga preventivo non trovata.",
-            detail=f"riga_id={riga_id}",
-            function_name=f"{_FN}.aggiorna_riga",
-        )
-        return riga_esistente  # type: ignore[return-value]
-
     # L1 check + audit meta se prezzo toccato esplicitamente. Serve contesto
-    # riga esistente per articolo_id/uom_id non sempre presenti nel payload.
+    # riga esistente (`riga_esistente`, letta sopra) per articolo_id/uom_id
+    # non sempre presenti nel payload.
     if "prezzo_unitario" in update_fields:
-        riga_esistente = _get_riga_esistente()
         articolo_id = riga_esistente["articolo_id"]
         uom_id = update_fields.get("uom_operativa_id") or riga_esistente.get("uom_operativa_id")
         prezzo_finale, prezzo_meta = _resolve_or_check_override_prezzo(
@@ -1308,7 +1320,7 @@ def aggiorna_riga(
             #
             # Cleanup denormalizzato meta: rimuoviamo `approvazione_rifiuto`
             # (motivazione precedente irrilevante post-correzione).
-            stato_attuale = riga_esistente.get("stato_approvazione_prezzo") if riga_esistente else None
+            stato_attuale = riga_esistente.get("stato_approvazione_prezzo")
             if stato_attuale in {STATO_APPROVAZIONE_REJECTED, STATO_APPROVAZIONE_APPROVED}:
                 update_fields["stato_approvazione_prezzo"] = None
                 update_fields["pratica_approvazione_prezzo_id"] = None
@@ -1660,6 +1672,13 @@ def elimina_riga(preventivo_id: int, riga_id: int) -> dict[str, Any]:
         testata, documento=SORGENTE_PREVENTIVO, documento_id=preventivo_id, verbo="togliere",
         function_name=f"{_FN}.elimina_riga",
     )
+    # ⛔ La riga dev'essere DEL preventivo dell'URL (vedi `aggiorna_riga`): il
+    #    DELETE va per il solo `riga_id`.
+    riga_del_padre_o_not_found(
+        repo.get_riga, riga_id, padre_id=preventivo_id, chiave_padre="preventivo_id",
+        code="E_PREV_RIGA_NOT_FOUND", message="Riga preventivo non trovata.",
+        function_name=f"{_FN}.elimina_riga",
+    )
 
     deleted = repo.delete_riga(riga_id)
     ErrorManager.require(
@@ -1859,7 +1878,7 @@ def update_componente(
     componente_id: int,
     payload: dict[str, Any],
     *,
-    auth_user_id: int | None = None,  # riservato a L1/L2/L3 futuro
+    auth_user_id: int | None = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
     _load_componente_for_modification(
@@ -1875,7 +1894,7 @@ def update_componente(
     #    `origine_prezzo` la deriva il server dal prezzo.
     # Il prezzo_unitario del padre verra' ricalcolato dal trigger DB.
     data = dati_patch_componente(
-        payload, function_name=f"{_FN}.update_componente",
+        payload, auth_user_id=auth_user_id, function_name=f"{_FN}.update_componente",
         error_code=E_PREV_VALIDAZIONE,
     )
     repo.update_componente(componente_id, **data)

@@ -349,7 +349,7 @@ class LottoGruppoRow(TypedDict):
     # sua chiave — perche' e' proprio quella per cui questa lista esiste.
     riferimento: str | None
     tipo_gruppo: str | None
-    area_documento: str | None
+    documento_apribile: bool | None
     documento_id: int | None
     # ⭐ LA COMMESSA DA CORREGGERE: nel caso vero il fallimento non era un
     # difetto del programma ma un dato mancante sulla commessa, e senza questo
@@ -1254,7 +1254,12 @@ class DashCompetenzaGruppoRow(TypedDict):
     # la STESSA che si rimanda al POST di emissione mirata, senza mapping.
     gruppo_key: str
     tipo_gruppo: str
-    area_documento: str | None
+    # «Il documento del gruppo ha una sua pagina» (`config.sorgenti.apribile`):
+    # allora `tipo_gruppo` e' il codice della sorgente da cui il frontend apre
+    # il documento. NULL sui gruppi SOURCELESS (oneri di commessa). Fino al
+    # 2026-10-20 era `area_documento`, il plurale (`ORDINI`…), ritirato col
+    # sotto-giro 2d di brief-db-grammatica-unica-documenti (G-6, L2d-1).
+    documento_apribile: bool | None
     # Nome leggibile del gruppo. NON nullable, ed e' il CONTRATTO della vista, non
     # una fortuna dei dati: `riferimento` e'
     # `COALESCE(documento_numero, commessa_codice, gruppo_key)` e l'ultimo ramo e'
@@ -1262,7 +1267,7 @@ class DashCompetenzaGruppoRow(TypedDict):
     # nel frontend una seconda copia della stessa catena di ripiego — tolta il
     # 2026-09-01 (brief-db-riferimento-gruppi-lateral-costosa §9 FE-2).
     # ⚠️ `documento_numero` arriva da vendite.fn_get_sorgente_documento_ref: sui
-    # gruppi SOURCELESS (sorgente senza `config.sorgenti.area`) e' NULL e qui
+    # gruppi SOURCELESS (sorgente non `config.sorgenti.apribile`) e' NULL e qui
     # esce il codice commessa — che per quei gruppi E' il riferimento.
     riferimento: str
     commessa_id: int | None
@@ -1465,7 +1470,7 @@ class DashCompetenzaGruppoTipoRow(TypedDict):
     # NON contiene `ONERI_COMMESSA`, che e' un valore sintetico della vista —
     # cioe' proprio il caso che si vuole poter isolare.
     tipo_gruppo: str
-    area_documento: str | None
+    documento_apribile: bool | None
     n_gruppi: int
     n_attivita: int
 

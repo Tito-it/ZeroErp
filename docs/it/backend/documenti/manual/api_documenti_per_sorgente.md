@@ -94,8 +94,18 @@ orfano, niente stato avanzato senza stampa.
 ### 3.2 `POST /api/v1/vendite/<dominio>/{id}/documenti/genera/`
 
 Body JSON: `template_documento_id` (opz.), `tipo_documento_output_id` (opz.).
-Senza override usa il template `is_default = true` per (sorgente, emittente).
-Risposta **201** con il documento; scrive il record e l'evento `GENERATO`.
+Senza `template_documento_id` il modello lo sceglie il DB
+(`documenti.fn_risolvi_template_applicabile`), a **due livelli**: il
+predefinito dell'emittente, se l'emittente ha modelli suoi che possono stampare
+per (tipo, sorgente); altrimenti il predefinito **standard**. Con l'override il
+modello deve essere della stessa sorgente e dello stesso emittente, oppure uno
+standard. Rifiuti della risoluzione: `409` `E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO`
+(l'emittente ha modelli ma nessuno predefinito: lo standard non subentra), `404`
+`E_DOCUMENTI_TEMPLATE_NON_RISOLTO` (né modello dell'emittente né standard
+utilizzabile), `500` `E_DOCUMENTI_TEMPLATE_AMBIGUO` (senza
+`tipo_documento_output_id` su una sorgente con più tipi).
+Risposta **200** con il documento (lo schema OpenAPI dichiara ancora 201); scrive
+il record e l'evento `GENERATO`. Stessa risoluzione per `emetti/` e `anteprima/`.
 
 ### 3.3 `POST /api/v1/vendite/<dominio>/{id}/documenti/anteprima/`
 
@@ -160,8 +170,8 @@ servirebbe:
 | sorgente inesistente o fuori perimetro | `E_DOCUMENTI_NOT_FOUND` | 404 |
 | sorgente senza emittente fiscale risolto | `E_DOCUMENTI_VALIDATION` | 400 |
 | tipo sorgente non configurato o non attivo | `E_DOCUMENTI_VALIDATION` | 400 |
-| render fallito | `E_DOCUMENTI_RENDER_FAILED` | — |
-| storage non disponibile | `E_DOCUMENTI_STORAGE_FAILED` | — |
+| render fallito | `E_DOCUMENTI_RENDER_FAILED` | 500 (`TECNICO`) |
+| storage non disponibile | `E_DOCUMENTI_STORAGE_FAILED` | 500 (`TECNICO`) |
 
 ⚠️ **Perche' il controllo c'e' anche dove sembra inutile.** Su `file/`,
 `allegati/` e `ristampa/` lo scope vero e' sul `documento_id`; la verifica sulla
@@ -171,8 +181,25 @@ c'e' lo scope sul documento» e' esattamente il passo che apre il buco.
 
 ## 5. Permessi
 
-Tutte le view dichiarano `area_funzionale = "vendite"`: valgono i permessi di
-area (lettura/scrittura) del profilo operatore.
+Tutte le view dichiarano `area_funzionale = "vendite"` **e** l'oggetto del
+catalogo permessi della sorgente (`model_permission`, applicato dalla factory a
+tutte le otto view): i documenti sono una parte dell'oggetto e ne chiedono il
+livello.
+
+| dominio | `model_permission` |
+|---|---|
+| `preventivi` | `("vendite", "preventivo")` |
+| `offerte` | `("vendite", "offerta_commerciale")` |
+| `contratti` | `("vendite", "contratto")` |
+| `ordini` | `("vendite", "ordine")` |
+| `ddt` | `("vendite", "ddt")` |
+| `fatture` | `("vendite", "fattura")` |
+
+Il livello segue il metodo: i `GET` (lista, `file/`, `ristampa/`, elenco
+allegati) bastano con **LETTURA**; i `POST` chiedono **TUTTO**, anche quelli che
+non scrivono — `anteprima/` compresa — perché solo la lista ha
+`is_search_endpoint`. Chi ha la sola lettura vede e scarica i documenti, ma non
+genera né l'anteprima né un documento nuovo.
 
 ⚠️ **Un'asimmetria da decidere, non un difetto accertato.** Fra i cinque domini
 che espongono `emetti/`, **solo `preventivi` dichiara anche un permesso di

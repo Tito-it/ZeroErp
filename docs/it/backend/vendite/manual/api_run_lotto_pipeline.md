@@ -14,6 +14,7 @@ Endpoint applicativo che invoca il servizio Python `run_lotto_pipeline`.
 - Path canonico: `/api/v1/vendite/pipeline/run/`
 - Header richiesto: `Idempotency-Key`
 - Header sicurezza: `Authorization: Bearer <access_token>`
+- Permesso: `post_permission = "genera_fatture_lotti"` (area `vendite`)
 - Body JSON (tutti i campi opzionali):
   - `lotto_id` (int) — `0`/`null` = crea/risolvi lotto
   - `competenza_mese` (date `YYYY-MM-DD`) — mese di competenza
@@ -23,7 +24,9 @@ Endpoint applicativo che invoca il servizio Python `run_lotto_pipeline`.
   - `emittente_soggetto_ruolo_id` (int) — emittente fiscale (ruolo `anagrafiche.soggetti_ruoli`)
   - `lock_batch_id` (uuid) — correlatore lotto (vedi Regole)
   - `meta` (object) — metadati liberi del run
-  - `dry_run` (bool) — esegue senza effetti reali
+  - `dry_run` (bool JSON) — esegue senza effetti reali. Solo `true`/`false`:
+    una stringa (`"true"`, `"1"`) o un numero → `400 E_VALIDATION_INPUT` col
+    campo (2026-10-20: prima si accettavano stringhe)
   - `tipo_lotto` (string) — `MASSIVO` (default) o `GIORNALIERO`
 
 > **Esegue UN solo step per chiamata.** Per concatenare gli step fino alla
@@ -48,7 +51,7 @@ Endpoint applicativo che invoca il servizio Python `run_lotto_pipeline`.
 ## Regole
 
 - Valida JSON e formato date (`YYYY-MM-DD`).
-- Converte `dry_run` in boolean.
+- `dry_run` letto con `optional_bool` (booleano JSON stretto, assente = `false`).
 - Converte `0` in `null` sugli ID opzionali (`lotto_id`, `tipo_doc_fiscale_id`, `utility_id`, `billing_account_id`, `emittente_soggetto_ruolo_id`).
 - **Validazione lookup ID** — `tipo_doc_fiscale_id` e `utility_id`, se valorizzati, sono validati pre-flight contro le rispettive tabelle config (`config.tipi_doc_fiscale`, `config.utilities`) con filtro `attivo = true`. ID inesistenti o non attivi restituiscono `E_PIPELINE_VALIDATION` con dettaglio esplicito.
 - `lock_batch_id` è il correlatore del lotto: se passato è **RIUSO** lotto; per creare un lotto nuovo **ometterlo** o passare `null` (il DB lo genera). Riutilizzare un `lock_batch_id` di un lotto `COMPLETATO` produce errore.

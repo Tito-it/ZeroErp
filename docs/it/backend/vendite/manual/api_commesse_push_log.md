@@ -9,7 +9,8 @@ operativa e diagnostica delle esecuzioni push.
 
 Endpoint applicativo che invoca il servizio Python `fn_get_commesse_push_log`
 (`apps.vendite.services.commesse_service`), il quale legge il record da
-`CommesseRepository.get_push_log()`.
+`CommesseRepository.get_push_log()` con una `SELECT` diretta su
+`vendite.commesse_push_log` (nessuna funzione DB).
 
 View: `ApiCommessePushLog` `ApiCommessePushLog` (`apps.vendite.api.views`).
 
@@ -53,4 +54,3 @@ View: `ApiCommessePushLog` `ApiCommessePushLog` (`apps.vendite.api.views`).
 ## Dipendenze DB
 
 - `vendite.commesse_push_log` (tabella consultata)
-- `vendite.fn_get_commesse_push_log` (o query diretta via repository)

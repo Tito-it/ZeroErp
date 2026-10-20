@@ -22,6 +22,7 @@ Indice test eseguiti:
 7) test_gestisci_riga_articolo_mancante — validazione articolo_id obbligatorio
 8) test_elimina_riga_ok — soft delete riga
 9) test_elimina_riga_not_found — riga inesistente
+9b) test_riga_di_un_altro_preventivo_rifiutata — aggiorna/elimina_riga di una riga di un altro preventivo: 404, il repository non e' toccato
 10) test_push_a_commessa_ok — push preventivo ACCETTATO con righe eleggibili; lo stato lo proietta il DB (D-10)
 10b) test_push_a_commessa_propaga_fatturazione_immediata — flag testata nel payload
 10c) test_push_a_commessa_parziale_propaga_e_non_evade — all-or-nothing: ServiceError, niente transizione
@@ -973,8 +974,13 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.create_riga.return_value = {"id": 10}
         self.MockIva.return_value = (9, {"iva_origine": "TITOLO"})
 
-        gestisci_riga(1, {"articolo_id": "uuid-art-1", "iva_id": 999})
+        # ⛔ Dal 2026-10-20 `iva_id` nel payload e' un 400, non uno scarto.
+        with self.assertRaises(ServiceError) as ctx:
+            gestisci_riga(1, {"articolo_id": "uuid-art-1", "iva_id": 999})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.create_riga.assert_not_called()
 
+        gestisci_riga(1, {"articolo_id": "uuid-art-1"})
         self.assertIsNone(self.MockIva.call_args.kwargs["payload_iva_id"])
         self.assertEqual(self.mock_repo.create_riga.call_args.kwargs["iva_id"], 9)
 
@@ -990,7 +996,13 @@ class TestPreventiviService(unittest.TestCase):
         }
         self.mock_repo.update_riga.return_value = {"id": 10}
 
-        aggiorna_riga(1, 10, {"descrizione": "nuova", "iva_id": 999})
+        # ⛔ Dal 2026-10-20 `iva_id` e' un 400, non uno scarto.
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_riga(1, 10, {"descrizione": "nuova", "iva_id": 999})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.update_riga.assert_not_called()
+
+        aggiorna_riga(1, 10, {"descrizione": "nuova"})
 
         # ⛔ I campi arrivano come **kwargs sparsi** (`update_riga(id, **campi)`),
         #    non dentro una chiave `update_fields`: la prima stesura di questo
@@ -1149,6 +1161,29 @@ class TestPreventiviService(unittest.TestCase):
         with self.assertRaises(ServiceError) as ctx:
             elimina_riga(1, 999)
         self.assertEqual(ctx.exception.code, "E_PREV_RIGA_NOT_FOUND")
+
+    # Scopo: ⛔ una riga di UN ALTRO preventivo, chiesta con l'URL di questo,
+    #        e' un 404 e non arriva al repository. La bozza si verifica sul
+    #        preventivo dell'URL, l'UPDATE e il DELETE vanno per il solo
+    #        `riga_id`: senza il guard di appartenenza la riga di B si
+    #        modificava (o cancellava) col controllo di stato fatto su A.
+    def test_riga_di_un_altro_preventivo_rifiutata(self):
+        from apps.vendite.services.preventivi_service import aggiorna_riga, elimina_riga
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc",
+        }
+        self.mock_repo.get_riga.return_value = {"id": 10, "preventivo_id": 2}
+
+        for nome, chiamata in (
+            ("aggiorna_riga", lambda: aggiorna_riga(1, 10, {"descrizione": "nuova"})),
+            ("elimina_riga", lambda: elimina_riga(1, 10)),
+        ):
+            with self.subTest(nome), self.assertRaises(ServiceError) as ctx:
+                chiamata()
+            self.assertEqual(ctx.exception.code, "E_PREV_RIGA_NOT_FOUND")
+        self.mock_repo.update_riga.assert_not_called()
+        self.mock_repo.delete_riga.assert_not_called()
 
     # ── Componenti BoM CASO A ──
 
@@ -1398,9 +1433,9 @@ class TestPreventiviService(unittest.TestCase):
     # Scopo: `aggiorna_riga` NON ammette cambio articolo (whitelist update
     # exclude `articolo_id`). I componenti CASO A iniziali dell'init
     # restano stabili: nessun purge/re-init scatta dal flusso update.
-    # Verifica defense-in-depth: anche se il caller passa `articolo_id`
-    # nel payload, viene ignorato dalla whitelist e i componenti non
-    # vengono toccati.
+    # Verifica defense-in-depth: se il caller passa `articolo_id` nel
+    # payload e' un 400 (dal 2026-10-20; prima veniva scartato in silenzio),
+    # e i componenti non vengono toccati.
     def test_aggiorna_riga_non_tocca_componenti(self):
         from apps.vendite.services.preventivi_service import aggiorna_riga
 
@@ -1411,12 +1446,15 @@ class TestPreventiviService(unittest.TestCase):
         }
         self.mock_repo.update_riga.return_value = True
 
-        # Payload con articolo_id (ignorato) + descrizione (ammessa)
-        aggiorna_riga(
-            1, 10,
-            {"articolo_id": "uuid-new-art", "descrizione": "nuova"},
-            auth_user_id=100,
-        )
+        # Payload con articolo_id (rifiutato) + descrizione (ammessa)
+        with self.assertRaises(ServiceError) as ctx:
+            aggiorna_riga(
+                1, 10,
+                {"articolo_id": "uuid-new-art", "descrizione": "nuova"},
+                auth_user_id=100,
+            )
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.mock_repo.update_riga.assert_not_called()
         self.mock_repo.purge_componenti_riga.assert_not_called()
         self.mock_repo.init_componenti_riga.assert_not_called()
 
@@ -1510,7 +1548,13 @@ class TestPreventiviService(unittest.TestCase):
         }
         self.mock_repo.update_componente.return_value = True
 
-        result = update_componente(1, 10, 50, {"prezzo_unitario": "150.00"})
+        # Un prezzo scritto passa dal gate L1 con l'utente (2026-10-20).
+        with patch(
+            "apps.vendite.services._componenti_service_helpers.check_permesso_override_prezzo",
+        ) as gate:
+            result = update_componente(1, 10, 50, {"prezzo_unitario": "150.00"}, auth_user_id=42)
+        gate.assert_called_once()
+        self.assertEqual(gate.call_args.args[0], 42)
         self.assertEqual(result["componente_id"], 50)
         # `origine_prezzo` la scrive il server: un prezzo dell'operatore e'
         # MANUALE per definizione (contratto PATCH, 2026-09-26).
@@ -1706,7 +1750,7 @@ class TestPreventiviService(unittest.TestCase):
         mock_push_one.side_effect = ServiceError(
             code="E_COMMESSA_PUSH_PARZIALE_VIETATO",
             message="Push fallito: nessuna riga inviata.",
-            detail="Errore riga segment_key=PREV:abc:R:3: ...",
+            detail="Errore riga segment_key=PREVENTIVO:abc:R:3: ...",
         )
 
         with self.assertRaises(ServiceError) as ctx:
@@ -2662,7 +2706,7 @@ class TestPreventiviService(unittest.TestCase):
             "billing_account_id": 10, "utility_id": 3,
         }
         riga_esistente = {
-            "id": 50, "articolo_id": "art-uuid", "uom_operativa_id": 7,
+            "id": 50, "preventivo_id": 1, "articolo_id": "art-uuid", "uom_operativa_id": 7,
             "stato_approvazione_prezzo": "REJECTED",
             "pratica_approvazione_prezzo_id": 99,
             "meta": {
@@ -2697,7 +2741,7 @@ class TestPreventiviService(unittest.TestCase):
             "billing_account_id": 10, "utility_id": 3,
         }
         self.mock_repo.get_riga.return_value = {
-            "id": 50, "articolo_id": "art-uuid", "uom_operativa_id": 7,
+            "id": 50, "preventivo_id": 1, "articolo_id": "art-uuid", "uom_operativa_id": 7,
             "stato_approvazione_prezzo": "REJECTED",
             "pratica_approvazione_prezzo_id": 99,
             "meta": {},

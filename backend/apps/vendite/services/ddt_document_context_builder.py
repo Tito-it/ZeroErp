@@ -188,8 +188,8 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
             "ba_codice": testata.get("ba_codice"),
         }
 
-    # Tipi indirizzo ammessi nell'ambito DDT (`config.tipi_indirizzi_allowed`,
-    # ambito DDT = solo `CON`, obbligatorio). Dichiarati qui e non letti a
+    # Tipi indirizzo ammessi nell'ambito DDT_VENDITA (`config.tipi_indirizzi_allowed`,
+    # ambito DDT_VENDITA = solo `CON`, obbligatorio). Dichiarati qui e non letti a
     # runtime: il context deve essere deterministico a parita' di documento.
     _INDIRIZZI_CODICI: tuple[str, ...] = ("CON",)
 

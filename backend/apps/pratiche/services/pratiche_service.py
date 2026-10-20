@@ -471,7 +471,11 @@ def cambia_stato_pratica(pratica_id: int, nuovo_stato: str) -> None:
 
     repo = PraticheRepository()
     try:
-        repo.update_stato_pratica(pratica_id, nuovo_stato)
+        # Lo stato l'ha scelto il client: uno che non esiste e' un 400 sul
+        # campo, non il 500 di un seed mancante (2026-10-20).
+        repo.update_stato_pratica(
+            pratica_id, nuovo_stato, codice_errore="E_PRATICA_VALIDATION", campo="nuovo_stato",
+        )
     except DatabaseError as exc:
         # Guard chiusura (D4, trg_pratiche_a10_guard_chiusura_flussi_upd) →
         # PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI parlante.
@@ -874,7 +878,11 @@ def cambia_stato_flusso(
 
     repo = PraticheRepository()
     try:
-        repo.update_stato_flusso(flusso_id, nuovo_stato, esito=esito, note_esito=note_esito)
+        # Lo stato l'ha scelto il client: vedi `cambia_stato_pratica`.
+        repo.update_stato_flusso(
+            flusso_id, nuovo_stato, esito=esito, note_esito=note_esito,
+            codice_errore="E_FLUSSO_VALIDATION", campo="nuovo_stato",
+        )
     except DatabaseError as exc:
         # Guard pratica terminale → PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE.
         _raise_known_db_error(exc, function_name="pratiche_service.cambia_stato_flusso")

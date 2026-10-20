@@ -47,7 +47,7 @@ Ogni dominio espone **due** rotte:
 | `target_riga_id` | — | filtra le note **di una riga**; vuoto = tutte |
 | `include_invisible` | `true` | `false` esclude le note con `visibile = false` |
 | `page` | 1 | |
-| `page_size` | 50 | il service lo riporta in silenzio fra 1 e 200 |
+| `page_size` | 25 | il service lo riporta in silenzio fra 1 e 200 |
 
 Risposta: `data: {count, page, page_size, results}`. `page` e `page_size`
 sono quelli **richiesti**, non quelli effettivamente applicati dopo il
@@ -106,11 +106,11 @@ solo in stampa, tardi.
 
 | codice | HTTP | quando |
 |---|---|---|
-| `E_NOTA_VALIDATION` | 400 | payload fuori whitelist o non valido; ripiego per i vincoli non mappati |
+| `E_NOTA_VALIDATION` | 400 | payload fuori whitelist o non valido — compresa, in creazione, l'incoerenza `anchor_tipo` / `target_riga_id`, che il service intercetta prima del DB; ripiego per i vincoli non mappati |
 | `E_NOTA_PARENT_NOT_FOUND` | 404 | il documento padre non esiste (lista, creazione) |
 | `E_NOTA_NOT_FOUND` | 404 | nota inesistente, o appartenente a un altro documento (dettaglio, PATCH, DELETE) |
 | `E_NOTA_RIGA_INCOERENTE` | 400 | `target_riga_id` di una riga che non appartiene al documento |
-| `E_NOTA_CHECK_VIOLATION` | 400 | vincolo `chk_note_*` violato — tipicamente coerenza `anchor_tipo` / `target_riga_id` |
+| `E_NOTA_CHECK_VIOLATION` | 400 | vincolo `chk_note_*` o di partizione violato a DB: ripiego per ciò che la validazione del service non ha già fermato |
 | `E_NOTA_FK` | 400 | riferimento inesistente (stile, lingua, riga) |
 
 `E_NOTA_CHECK_VIOLATION` ed `E_NOTA_FK` nascono dalla traduzione degli

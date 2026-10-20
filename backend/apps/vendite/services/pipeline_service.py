@@ -23,6 +23,7 @@ from apps.vendite.db.pipeline_repository import (
     VenditePipelineRepository,
 )
 from apps.vendite.services._fatturazione_job_helpers import JOB_TYPES_FATTURAZIONE_APP
+from apps.vendite.services._lotto_perimetro import lotto_visibile
 from apps.vendite.services.lotto_segnalazioni_service import LottoSegnalazioniService
 from apps.vendite.services.pipeline_runner import LottoPipelineParams, LottoPipelineRunner
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
@@ -227,27 +228,6 @@ def run_lotto_pipeline_until_done(
     return runner.run_lotto_until_done(params)
 
 
-# Scopo: Carica un lotto NELLO SCOPE dell'operatore, con il 404 unificato dei
-#        verbi per-lotto (fuori scope e inesistente danno la stessa risposta,
-#        come la RLS — api.md §scope).
-# ⭐ Estratto alla 2ª occorrenza (regola del 2): lo usano il guard di stato dei
-#    verbi (`_get_lotto_in_stato`) e la lettura della finestra di numerazione,
-#    che NON vuole un gate di stato — e' una GET, e rifiutare un lotto DRAFT
-#    con un 409 sarebbe una risposta a un'altra domanda.
-def _get_lotto_visibile(
-    *, lotto_id: int, auth_user_id: int | None,
-) -> LottoListRow:
-    from apps.vendite.db.vendite_repository import VenditeRepository
-
-    lotto = VenditeRepository().get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
-    ErrorManager.require(
-        lotto is not None,
-        code="E_LOTTO_NON_TROVATO",
-        message="Lotto non trovato.",
-        detail=f"lotto_id={lotto_id}",
-    )
-    assert lotto is not None
-    return lotto
 
 
 # Scopo: BE-5 — LA FINESTRA DI NUMERAZIONE di un perimetro: con quale data si
@@ -280,7 +260,7 @@ def _get_lotto_visibile(
 #    Chi usasse questa risposta AL POSTO del cancello starebbe sostituendo un
 #    presidio con un suggerimento.
 # Scopo: il repository vendite, importato al bisogno.
-# ⚠️ Import LOCALE come gia' fa `_get_lotto_visibile` in questo modulo: la
+# ⚠️ Import LOCALE come gia' fa `lotto_visibile` (`_lotto_perimetro`): la
 #    catena `vendite_repository` non va caricata al boot di `pipeline_service`.
 def _vendite_repo():
     from apps.vendite.db.vendite_repository import VenditeRepository
@@ -340,7 +320,7 @@ def finestra_numerazione(
         }
 
     if lotto_id is not None:
-        lotto = _get_lotto_visibile(lotto_id=lotto_id, auth_user_id=auth_user_id)
+        lotto = lotto_visibile(lotto_id=lotto_id, auth_user_id=auth_user_id)
         return _risposta(
             minima=repo.get_data_minima_numerabile_lotto(lotto_id),
             corrente=repo.get_data_documento_corrente(lotto_id=lotto_id),
@@ -390,7 +370,7 @@ def _get_lotto_in_stato(
     error_code: str,
     error_message: str,
 ) -> LottoListRow:
-    lotto = _get_lotto_visibile(lotto_id=lotto_id, auth_user_id=auth_user_id)
+    lotto = lotto_visibile(lotto_id=lotto_id, auth_user_id=auth_user_id)
 
     stato_id = VenditePipelineRepository().get_stato_doc_fiscale_id(stato_codice)
     ErrorManager.require(
@@ -495,6 +475,7 @@ def numera_lotto(
 def fn_list_lotto_segnalazioni(
     *,
     lotto_id: int,
+    auth_user_id: int | None,
     livello: str | None = None,
     origine: str | None = None,
     solo_attive: bool = True,
@@ -535,6 +516,11 @@ def fn_list_lotto_segnalazioni(
         context={"lotto_id": lotto_id, "order_dir": order_dir},
         function_name="vendite.pipeline_service.fn_list_lotto_segnalazioni",
         log_to_db=False,
+    )
+    # ⛔ Il cancello di perimetro PRIMA dell'elenco (vedi `_lotto_perimetro`).
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.pipeline_service.fn_list_lotto_segnalazioni",
     )
     righe, total_count, fuori_job = VenditePipelineRepository().list_lotto_segnalazioni(
         lotto_id=lotto_id,
@@ -966,7 +952,7 @@ def _parse_gruppo_keys(raw: Any) -> tuple[str, ...]:
 
 
 # Scopo: Restituisce riepilogo segnalazioni del lotto con regola di blocco step successivo.
-def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, Any]:
+def fn_get_lotto_segnalazioni_summary(*, lotto_id: int, auth_user_id: int | None) -> dict[str, Any]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
         code="E_PIPELINE_VALIDATION",
@@ -975,6 +961,12 @@ def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, Any]:
         context={"lotto_id": lotto_id},
         function_name="vendite.pipeline_service.fn_get_lotto_segnalazioni_summary",
         log_to_db=True,
+    )
+    # ⛔ Il cancello di perimetro PRIMA dei conteggi: senza, un lotto fuori
+    #    scope rispondeva zero segnalazioni, cioe' «lotto pulito» (2026-10-20).
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.pipeline_service.fn_get_lotto_segnalazioni_summary",
     )
     service = LottoSegnalazioniService()
     status = service.evaluate_lotto_status(lotto_id)
@@ -993,6 +985,7 @@ def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, Any]:
 def fn_get_lotto_task_runs(
     *,
     lotto_id: int,
+    auth_user_id: int | None,
     page_size: int = DEFAULT_LIMIT_EVENTI,
     offset: int = 0,
     order_by: str | None = None,
@@ -1039,6 +1032,11 @@ def fn_get_lotto_task_runs(
         context={"lotto_id": lotto_id, "order_dir": order_dir},
         function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
         log_to_db=False,
+    )
+    # ⛔ Il cancello di perimetro PRIMA dell'elenco (vedi `_lotto_perimetro`).
+    lotto_visibile(
+        lotto_id=lotto_id, auth_user_id=auth_user_id,
+        function_name="vendite.pipeline_service.fn_get_lotto_task_runs",
     )
     repository = VenditePipelineRepository()
     runs: list[LottoTaskRunRow]

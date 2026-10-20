@@ -493,6 +493,12 @@ if [[ "$LAST_STATUS" == "200" ]]; then
     # (PARAM_MAX_SCONTO_PCT): lo smoke prova che l'override vince, non il limite.
     # Con 30 (-40%) rispondeva 403 E_PRICING_SCONTO_ECCESSIVO.
     check "Riga override contratto B" "200" ".data.id"
+    # Il resolver legge solo i contratti ATTIVI (scenario B, passo 26): un B
+    # rimasto in bozza fa ricadere il prezzo sulla categoria del cliente. Fino
+    # al 2026-10-20 non si attivava, e il passo 26 passava solo finche' il
+    # cliente di prova aveva per caso una categoria mappata.
+    smoke_emetti contratti "$CONTRATTO_B_ID"
+    check "Contratto B attivato (/emetti/)" "200"
 else
     log_info "Contratto B salta (HTTP $LAST_STATUS) — continuo"
     CONTRATTO_B_ID=""

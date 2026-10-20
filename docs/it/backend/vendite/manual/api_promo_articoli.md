@@ -18,6 +18,11 @@ primo stadio se la categoria del BA ha `partecipa_promo = TRUE`. L'EXCLUDE
 `ex_promo_articoli_no_overlap` garantisce al massimo una promo attiva per
 `(articolo, uom)` per periodo — il resolver non ha bisogno di tie-break.
 
+## Autorizzazione
+
+Area `vendite` **e** permesso modello `("vendite", "promo_articolo")`
+(`model_permission`) su lista e dettaglio: senza, `403`.
+
 ## Input
 
 ### Query params lista (`GET /api/v1/vendite/promo-articoli/`)
@@ -33,7 +38,7 @@ primo stadio se la categoria del BA ha `partecipa_promo = TRUE`. L'EXCLUDE
 | `limit` | int | 25 default, max 200 |
 | `offset` | int | Paginazione |
 | `order_by` | string | `codice \| descrizione \| articolo_codice \| articolo_descrizione \| uom_codice \| valido_dal \| valido_al \| attivo \| data_insert \| data_update` |
-| `order_dir` | string | `asc \| desc` (default `desc` su `valido_dal`) |
+| `order_dir` | string | `asc \| desc`; assente = `desc` (default `valido_dal DESC`) |
 
 ### Payload create (`POST`)
 

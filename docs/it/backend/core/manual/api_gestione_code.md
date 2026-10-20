@@ -80,8 +80,8 @@ area `core`. I POST richiedono `Idempotency-Key` (header).
   operatore**: la coda è una risorsa condivisa; `code_manage` serve solo per
   azioni e dettaglio sui job altrui),
   `stato`, `tipo` (job_type), `solo_vivi`, `data_da`/`data_a` (YYYY-MM-DD,
-  inclusiva; giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09)), `archiviate` (bool, default `false` — vedi §6), `limit` (max
-  200)/`offset`, `sort_by`/`sort_dir`.
+  inclusiva; giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09)), `archiviate` (bool, default `false` — vedi §6), `limit` (default
+  25, max 200)/`offset`, `sort_by`/`sort_dir`.
 - Ogni riga porta `is_mio` (calcolato dal BE: la `scope_key` del job coincide
   con quella del chiamante) e `proprietario` (`scope->>'username'`).
 

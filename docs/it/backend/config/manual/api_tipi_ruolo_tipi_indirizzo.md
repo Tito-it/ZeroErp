@@ -28,12 +28,13 @@ e fornitori, e supporta il fallback automatico per tipi indirizzo mancanti.
 | GET | `/api/v1/config/tipi-ruolo-tipi-indirizzo/<id>/` | Dettaglio |
 | PATCH | `/api/v1/config/tipi-ruolo-tipi-indirizzo/<id>/` | Aggiorna campi modificabili |
 
-Tutti gli endpoint richiedono ruolo ADMIN (`AdminAPIView`).
+Tutti gli endpoint sono riservati agli amministratori (`AdminAPIView` → `IsAdminZeroERP`): binding `SUPER_ADMIN` o superuser Django. Altrimenti `403` `E_ACCESSO_RISERVATO_ADMIN`.
 
 ### Query params lista
 
-- `search` (str, opzionale, min 3 char) — ILIKE su codice/descrizione di
-  tipo ruolo e tipo indirizzo
+- `search` (str, opzionale) — ricerca libera su codice/descrizione di
+  tipo ruolo e tipo indirizzo (colonne e soglia dal catalogo della lista; sotto
+  soglia il termine non filtra, nessun `400`)
 - `attivo` (bool, opzionale) — filtro per stato
 - `tipo_ruolo_id` (int, opzionale) — filtro per tipo ruolo
 - `tipo_indirizzo_id` (int, opzionale) — filtro per tipo indirizzo
@@ -41,9 +42,10 @@ Tutti gli endpoint richiedono ruolo ADMIN (`AdminAPIView`).
 - `offset` (int, default 0)
 - `order_by` (str, default `tipo_ruolo_descrizione`) — whitelist:
   `tipo_ruolo_codice`, `tipo_ruolo_descrizione`, `tipo_indirizzo_codice`,
-  `tipo_indirizzo_descrizione`, `obbligatorio`, `attivo`, `data_insert`,
+  `tipo_indirizzo_descrizione`, `obbligatorio`, `attivo`, `valido_dal`
+  (vuoto = `-infinity`), `valido_al` (vuoto = `infinity`), `data_insert`,
   `data_update`
-- `order_dir` (`asc`/`desc`, default `asc`)
+- `order_dir` (`asc`/`desc`). Assente: il default della lista — `asc` sulle colonne testo, `desc` sulle colonne data (`valido_dal`, `valido_al`, `data_insert`, `data_update`; dal 2026-10-20, prima `asc`)
 
 ### Body POST
 
@@ -104,6 +106,8 @@ modifica rifiutati con `E_CONFIG_VALIDATION`.
         "fallback_codice": "SEDEOP",
         "fallback_descrizione": "Sede operativa",
         "attivo": true,
+        "valido_dal": "2026-04-10",
+        "valido_al": null,
         "data_insert": "2026-04-10T10:00:00Z",
         "data_update": "2026-04-10T10:00:00Z",
         "user_insert": "admin",
@@ -166,9 +170,12 @@ di edit di una singola riga).
   indirizzo viene clonato su quel tipo.
 - Il flag `attivo` influenza la lettura via
   `LookupRepository.list_matrice_indirizzi_ruolo` (filtro `attivo = true`).
-- Validita' temporale (`valido_dal/al`): presente nella tabella ma non gestita
-  da questo CRUD (default DB applicato).
-- Permessi: tutti gli endpoint richiedono ruolo `ADMIN` di sistema.
+- Validita' temporale: `valido_dal`/`valido_al` sono esposti in lista e
+  dettaglio ma non si scrivono nel corpo (chiave fuori contratto → `400`). La
+  `POST` imposta `valido_dal = script.fn_data_operativa()` (l'oggi aziendale);
+  in `PATCH`, `attivo` trascina `valido_al`: `false` lo chiude a
+  `fn_data_operativa()`, `true` lo azzera.
+- Permessi: binding `SUPER_ADMIN` o superuser (`403` `E_ACCESSO_RISERVATO_ADMIN`).
 
 ## Codici errore
 

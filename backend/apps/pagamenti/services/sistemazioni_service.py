@@ -105,7 +105,7 @@ def list_eccedenze(
         code=E_VALIDAZIONE,
         message="Valore non riconosciuto per «chi e' in credito».",
         detail=f"Ammessi: {', '.join(CHI_E_IN_CREDITO)}.",
-        context={"field": "chi_e_in_credito", "chi_e_in_credito": chi_e_in_credito},
+        context={"parametro": "chi_e_in_credito", "chi_e_in_credito": chi_e_in_credito},
         function_name=f"{_FN}.list_eccedenze",
     )
     order_by, order_dir = validate_order_params(
