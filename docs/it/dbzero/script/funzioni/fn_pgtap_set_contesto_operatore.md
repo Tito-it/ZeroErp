@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_set_contesto_operatore(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_pgtap_set_contesto_operatore(p_auth_user_id integer DEFAULT NULL::integer)
  RETURNS integer
@@ -93,6 +95,8 @@ $function$
 COMMENT ON FUNCTION script.fn_pgtap_set_contesto_operatore(p_auth_user_id integer)
 IS 'Imposta nella sessione le GUC che le policy RLS leggono (app.ruolo_applicativo, app.current_user_id), scegliendo da se'' un operatore con almeno un emittente fiscale in whitelist — o quello passato come argomento. Dal 2026-09-20, se nessun operatore esiste (database ricostruito dai changelog: CI, installazione nuova) costruisce azienda+operatore con dbops.fn_pgtap_crea_emittente_operatore() e apre il contesto su quello, invece di lasciare le GUC vuote e far morire il file a valle; con argomento o dove un operatore c''e'' il comportamento e'' invariato. ⛔ VINCOLI DIFFERITI (dichiarato il 2026-09-21): QUANDO COSTRUISCE, esce con i vincoli IMMEDIATE come ogni helper pgTAP — il builder richiude la finestra della propria saga e il modo di una transazione non si puo'' ne'' leggere ne'' ripristinare; con argomento, o dove un operatore esiste, non li tocca. Un file che dopo questa riga costruisce una saga contando sulla finestra differita di DEFAULT e'' verde su dev e rosso sul database da zero (anagrafiche/create-cliente, CI 2026-09-21): chi vuole la finestra la riapre con SET CONSTRAINTS ALL DEFERRED subito dopo. Serve ai test pgTAP per girare come l''applicazione invece che come owner: con FORCE ROW LEVEL SECURITY disattivo l''owner salta la RLS, quindi una suite lanciata da lui non esercita nessuna policy. Ritorna l''auth_user_id usato. Brief: brief-db-pgtap-runner-rls-baseline §8; migliorie-generali-da-test-valutazione D7.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

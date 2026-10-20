@@ -7,6 +7,8 @@ CREATE FUNCTION fn_reset_fondi_fattura(p_fattura_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_reset_fondi_fattura(p_fattura_id bigint)
  RETURNS TABLE(deleted_source integer, deleted_fondi integer)
@@ -221,6 +223,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_reset_fondi_fattura(p_fattura_id bigint)
 IS 'Reset dei fondi applicati a una fattura FIGLIA. ⭐ rev 2026-08-31 (D-21 di brief-db-fondo-fattura-ricalcolo-e-governo §9.7-b): il CRITERIO non sta piu'' qui — sta in vendite.fn_check_fondo_cancellabile — e i tre DELETE nell''ordine che la FK impone stanno in vendite.fn_cancella_fondo_fattura. Qui resta la sola REAZIONE, che e'' l''opposto di quella del gesto manuale: si SEGNALA E SI PROSEGUE, perche'' e'' un giro tecnico su N atti e un''eccezione fermerebbe il reset di un lotto intero per colpa di una fattura sola. ⛔ Non si e'' estratta la funzione ma il PREDICATO, proprio perche'' le due reazioni sono opposte; due copie del criterio direbbero, senza errori e senza log, che un atto e'' intoccabile mentre il reset lo cancella. ⚠️ Il predicato si legge UNA VOLTA SOLA per atto (difetto di Fase C). ⚠️ Comportamento invariato: il blocco degli ESEGUITO chiede al predicato invece di guardare lo stato, e la popolazione e'' la stessa perche'' ATTO_ESEGUITO e'' il primo motivo che il predicato prova. ⭐ La quarta condizione FIGLIA_CONGELATA non si accende in questo percorso: l''unico chiamante, fn_cleanup_fatture_by_ids, imposta zeroerp.maintenance_reset_lotto_draft — ed e'' cosi'' che il gesto di una persona e la pulizia di un lotto restano due porte diverse. Il ramo resta scritto perche'' il vocabolario e'' chiuso e un motivo senza reazione sarebbe un atto saltato in silenzio. ⭐ SISTEMAZIONE_ATTIVA e'' nuovo e migliora un difetto latente: un riporto sulla figlia faceva fallire il reset con un 23503 nudo, adesso l''atto viene saltato e il diario ne dice la ragione (il reset fallira'' comunque piu'' avanti, ma non piu'' in silenzio). ⭐ rev 2026-08-21 (cantiere incassi, lotto 3, passo S1-17, decisione D11): l''atto NON eseguito si CANCELLA invece di tornare DISPONIBILE, e un atto ESEGUITO non si tocca mai. ⚠️ Due conseguenze accettate: la tabella non e'' storicizzata, quindi il DELETE e'' definitivo (un atto mai eseguito e'' una PROPOSTA, non un fatto); e cancellare RIAPRE la rigenerazione, perche'' l''«atto unico» di fn_fondo_fattura_proponibile guarda se un atto esiste in qualunque stato. ⚠️ Il blocco «distinta CHIUSA» guarda anche le righe non attive: una riga archiviata in una distinta chiusa resta un fatto. ⚠️ E'' un''operazione TECNICA sul ciclo di vita della figlia e NON una reazione ai pagamenti: nessun incasso la chiama e nessun incasso deve chiamarla. ⚠️ Firma invariata (deleted_source, deleted_fondi): il conteggio delle righe contabili lo espone fn_cancella_fondo_fattura, e nessun consumatore lo chiede qui.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

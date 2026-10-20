@@ -7,6 +7,8 @@ CREATE FUNCTION fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id b
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id bigint)
  RETURNS bigint
@@ -107,6 +109,8 @@ $function$
 COMMENT ON FUNCTION script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id bigint)
 IS 'Clona il catasto dalla parent_istanza sulla istanza corrente. Se parent o sorgente non disponibili ritorna NULL senza errore.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

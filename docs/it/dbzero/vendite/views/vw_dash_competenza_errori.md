@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_dash_competenza_errori
 WITH (security_invoker=on) AS
@@ -134,6 +136,8 @@ WITH escope AS (
              LEFT JOIN vendite.commesse c ON ((c.id = (((ll.meta -> 'context'::text) ->> 'commessa_id'::text))::bigint)))
           WHERE (((e.tipo_evento)::text = 'TASK_ERRORE'::text) AND (ll.lotto_id = e.lotto_id) AND (ll.disabilitato IS FALSE) AND (ll.status = 'C'::bpchar) AND (((ll.meta -> 'context'::text) ->> 'commessa_id'::text) ~ '^[0-9]+$'::text) AND (((ll.meta -> 'context'::text) ->> 'task'::text) = (e.task_code)::text) AND (ll.data_ora >= e.data_evento))) cf ON (true));
 ```
+
+</div>
 
 
 ---

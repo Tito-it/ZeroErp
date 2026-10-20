@@ -6,6 +6,8 @@ CREATE FUNCTION fn_get_fornitura_da_anagrafica(p_istanza_utility_id bigint, p_ut
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_fornitura_da_anagrafica(p_istanza_utility_id bigint, p_utility_id integer)
  RETURNS TABLE(istanza_dati_precontrattuali_id bigint, classe_utenza_id integer, tipo_utenza_id integer, param_1_num numeric, param_2_txt character varying, meta jsonb)
@@ -50,6 +52,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_fornitura_da_anagrafica(p_istanza_utility_id bigint, p_utility_id integer)
 IS 'La scheda di fornitura che i dati precontrattuali danno a una coppia (istanza, utility): il record di anagrafiche.istanze_dati_precontrattuali con il tipo d''uso derivato dalla classe (config.classi_utenze), meta mai NULL. Zero righe = la coppia non ha dati precontrattuali; al piu'' una riga (uq_istanze_dati_precontrattuali_id_utility_id: il vecchio ORDER BY data_update ... LIMIT 1 del trigger di nascita nascondeva il vincolo). La sede unica della scheda «dall''anagrafica»: la scrive vendite.fn_doc_fornitura_da_anagrafica (nascita del contratto, cambio di cliente in bozza di contratto e offerta, D-5), e il drawer la mostra all''operatore prima della creazione perche'' la veda e la corregga (D-7). Coppia NULL: E_DOC_FORNITURA_PARAMETRO_MANCANTE (TECNICO). STABLE, INVOKER: legge sotto la RLS di chi chiama. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_bank_guard_ruolo_bank_branches()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_bank_guard_ruolo_bank_branches()
  RETURNS trigger
@@ -35,6 +37,8 @@ IS 'Trigger che, prima di inserire/aggiornare in anagrafiche.bank,
 chiama fn_guard_soggetto_ruolo per validare il legame
 soggetto→ruolo (cd_int_ruolo = ''BANK_B'').';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

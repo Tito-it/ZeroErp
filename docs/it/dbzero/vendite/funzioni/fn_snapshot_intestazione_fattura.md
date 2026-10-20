@@ -7,6 +7,8 @@ CREATE FUNCTION fn_snapshot_intestazione_fattura(p_fattura_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_snapshot_intestazione_fattura(p_fattura_id bigint)
  RETURNS TABLE(scritta boolean)
@@ -133,6 +135,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_snapshot_intestazione_fattura(p_fattura_id bigint)
 IS 'Congela sulla testata l''identita'' fiscale delle due parti al momento in cui la fattura nasce: emittente (denominazione, CF, id fiscale, regime fiscale, REA, capitale sociale, socio unico, liquidazione, forma giuridica e SEDE LEGALE) e cliente (denominazione, CF, id fiscale, billing account e instradamento SDI). SORELLA di fn_snapshot_indirizzi_fattura e non sua estensione: quella conta RIGHE di indirizzo, e scriverci dentro la testata farebbe mentire i suoi contatori. La sede dell''emittente usa la stessa catena del cliente — script.fn_resolve_indirizzo_documento(sr, NULL, ''SEDELEG'') — cioe'' RUOLO e, in mancanza, SOGGETTO: e'' li'' che la sede degli emittenti effettivamente sta, ed e'' il motivo per cui non era mai comparsa in stampa. Di ogni entita'' referenziata si congela il VALORE e si tiene l''id come provenienza: uno snapshot che contiene solo id non e'' uno snapshot. Ogni testo passa da NULLIF(btrim(...)) perche'' destinatario_fe e la sigla provincia sono character a larghezza fissa. L''UPDATE ha il WHERE IS DISTINCT FROM: a dati invariati non scrive. Ritorna scritta = true solo se ha davvero cambiato qualcosa. Shape NON contrattuale finche'' il builder XML FatturaPA non esiste. brief-db-snapshot-intestazione-fattura §3.1/§3.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

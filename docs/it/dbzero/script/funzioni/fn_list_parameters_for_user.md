@@ -7,6 +7,8 @@ CREATE FUNCTION fn_list_parameters_for_user(p_django_user_id integer, p_group_id
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_list_parameters_for_user(p_django_user_id integer, p_group_ids integer[] DEFAULT NULL::integer[], p_emittente_fiscale_id bigint DEFAULT NULL::bigint, p_categoria_cliente_id smallint DEFAULT NULL::smallint)
  RETURNS TABLE(code character varying, description text, default_value text, emittente_value text, emittente_override_id bigint, group_value text, user_value text, user_override_id bigint, categoria_cliente_value text, categoria_cliente_override_id bigint, resolved_value text)
@@ -89,6 +91,8 @@ $function$
 COMMENT ON FUNCTION script.fn_list_parameters_for_user(p_django_user_id integer, p_group_ids integer[], p_emittente_fiscale_id bigint, p_categoria_cliente_id smallint)
 IS 'Lista tutti i parametri con l''override di ciascun livello mostrato (emittente, gruppo, utente, categoria_cliente) e gli id (emittente_override_id, user_override_id, categoria_cliente_override_id) per la DELETE del backend. Una riga per parametro per costruzione del modello: ogni override ha esattamente un ambito (chk_parameter_overrides_un_ambito) e ce n''e'' al piu'' uno per parametro e ambito (uq_overrides_full_scope_v5, NULLS NOT DISTINCT). resolved_value e'' script.fn_get_parameter_full con gli stessi ambiti (sessione e funzione NULL): il valore del runtime, non una sua copia. p_categoria_cliente_id NULL: livello categoria saltato. Rev 20261007-71 (brief-db-codici-sfilati-e-lista-parametri §3): livelli puri e cascata delegata (prima ricopiata). Rev 20261007-73 (§7.6): i filtri «puri» escono, li dicono i vincoli.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

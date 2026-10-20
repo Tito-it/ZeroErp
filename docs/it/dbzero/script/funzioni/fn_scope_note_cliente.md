@@ -6,6 +6,8 @@ CREATE FUNCTION fn_scope_note_cliente(p_identita_id bigint, p_target_tipo charac
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_note_cliente(p_identita_id bigint, p_target_tipo character varying, p_target_id bigint)
  RETURNS boolean
@@ -27,6 +29,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_note_cliente(p_identita_id bigint, p_target_tipo character varying, p_target_id bigint)
 IS 'Smistatore per il padre vendite.note, veste CLIENTE_PORTALE. ⚠️ Copre solo FATTURA e ORDINE: e'' l''unione esatta delle vesti cliente che le partizioni gia'' concedono. Le altre cinque famiglie non ne hanno, e il padre non deve inventarne — aprirebbe piu'' delle partizioni.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

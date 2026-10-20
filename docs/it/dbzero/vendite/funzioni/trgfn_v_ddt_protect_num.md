@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_v_ddt_protect_num()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_v_ddt_protect_num()
  RETURNS trigger
@@ -37,6 +39,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_v_ddt_protect_num()
 IS 'Protect condizionale ddt.numero: immutabile dopo la prima assegnazione (a EMESSO), consente NULL->valore. Sostituisce il lock piatto framework (disabilitato in automation_lock_columns) perche'' il numero DDT si assegna a EMESSO, non in DRAFT (C6). rev 2026-07-09.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

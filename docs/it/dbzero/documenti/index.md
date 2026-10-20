@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `documenti`
 
 ## 📚 Tabelle
@@ -16,9 +21,13 @@
 - [tipi_file_documento](tabelle/tipi_file_documento.md) — (latest review 29-04-2026) `documenti.tipi_file_documento` definisce il catalogo dei **tipi di file persistiti** a valle della generazione di un documento.
 
 ## ⚙️ Funzioni
+- [fn_crea_bozza_da_versione](funzioni/fn_crea_bozza_da_versione.md)
 - [fn_guard_versione_contesto](funzioni/fn_guard_versione_contesto.md)
+- [fn_personalizza_template_standard](funzioni/fn_personalizza_template_standard.md)
 - [fn_pubblica_template_documento_versione](funzioni/fn_pubblica_template_documento_versione.md) — (latest review 30-09-2026 — il patto versione/forma dei dati: brief-db-documenti-versione-contesto-template)
 - [fn_risolvi_template_applicabile](funzioni/fn_risolvi_template_applicabile.md)
+- [fn_template_esito_risoluzione](funzioni/fn_template_esito_risoluzione.md)
+- [fn_template_motivo_non_coerente](funzioni/fn_template_motivo_non_coerente.md)
 - [trgfn_documenti_generati_block_delete](funzioni/trgfn_documenti_generati_block_delete.md)
 - [trgfn_documenti_generati_check_coerenza](funzioni/trgfn_documenti_generati_check_coerenza.md)
 - [trgfn_documenti_generati_eventi_block_delete](funzioni/trgfn_documenti_generati_eventi_block_delete.md)
@@ -35,3 +44,5 @@
 
 ## 🔍 Views
 - [vw_template_personalizzati_scarto](views/vw_template_personalizzati_scarto.md)
+- [vw_template_risoluzione_emittente](views/vw_template_risoluzione_emittente.md)
+- [vw_template_versioni_stampabili](views/vw_template_versioni_stampabili.md)

@@ -5,6 +5,8 @@
 >
 > Vista flat conti bancari con istanza_utility_id. Tutte le candidate RUOLO + SOGGETTO. Selezione singola in fn_get_conto_bancario_predefinito.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_conti_bancari_per_ruolo AS
 WITH role_cand AS (
@@ -84,6 +86,8 @@ WITH role_cand AS (
             ELSE NULL::integer
         END, predefinito DESC, data_update DESC;
 ```
+
+</div>
 
 
 ---

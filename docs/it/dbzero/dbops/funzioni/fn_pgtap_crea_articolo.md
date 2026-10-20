@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_crea_articolo(p_codice character varying, p_gestito boo
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_articolo(p_codice character varying, p_gestito boolean DEFAULT true, p_requires_lotto boolean DEFAULT false, p_requires_serial boolean DEFAULT false, p_uom_id bigint DEFAULT NULL::bigint, p_listino_tipologia_id smallint DEFAULT NULL::smallint, p_is_composito boolean DEFAULT false, p_is_solo_componente boolean DEFAULT false, p_natura_vendita_id bigint DEFAULT NULL::bigint, p_causale_onere_id bigint DEFAULT NULL::bigint)
  RETURNS uuid
@@ -80,6 +82,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_articolo(p_codice character varying, p_gestito boolean, p_requires_lotto boolean, p_requires_serial boolean, p_uom_id bigint, p_listino_tipologia_id smallint, p_is_composito boolean, p_is_solo_componente boolean, p_natura_vendita_id bigint, p_causale_onere_id bigint)
 IS 'Fixture pgTAP: un articolo COSTRUITO INTERO, con la struttura scelta dal test. Pescare un articolo dal catalogo darebbe uno qualunque, e un rifiuto che sembra un test rosso (brief magazzino Lotto 2, sezione 5). p_uom_id: la UoM BASE, colonna loccata (rev 20260923-01); senza, la prima attiva del seed. ⭐ Rev 20261017-01: in coda listino_tipologia_id, is_composito, is_solo_componente, natura_vendita_id (NULL = il default di tabella) e causale_onere_id: con gestito_a_magazzino, requires_lotto e requires_serial sono le otto colonne che catalogo.trgfn_articoli_guard_struttura_se_usato congela su un articolo usato, e il builder le valorizza tutte nell''INSERT. Un UPDATE di correzione dopo il builder dipende dall''ordine della fixture. Le combinazioni le giudicano i guard della tabella. Solo per i pgTAP.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

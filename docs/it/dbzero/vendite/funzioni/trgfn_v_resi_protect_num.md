@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_v_resi_protect_num()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_v_resi_protect_num()
  RETURNS trigger
@@ -35,6 +37,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_v_resi_protect_num()
 IS 'Protect condizionale resi.numero: immutabile dopo la prima assegnazione (a CONFERMATO), consente NULL->valore. Mirror trgfn_v_ddt_protect_num. rev 2026-07-13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

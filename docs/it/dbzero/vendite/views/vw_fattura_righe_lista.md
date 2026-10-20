@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_fattura_righe_lista
 WITH (security_invoker=true) AS
@@ -92,6 +94,8 @@ SELECT x.riga_key,
      LEFT JOIN vendite.fatture forig ON ((forig.id = orig.fattura_id)))
   WHERE (x.livello = 0);
 ```
+
+</div>
 
 
 ---

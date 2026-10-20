@@ -6,6 +6,8 @@ CREATE FUNCTION fn_accensione_a_mano_ammessa_su_valori(p_acceso_a_mano boolean, 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_accensione_a_mano_ammessa_su_valori(p_acceso_a_mano boolean, p_accendibile_in_produzione boolean, p_ambiente text)
  RETURNS boolean
@@ -28,6 +30,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_accensione_a_mano_ammessa_su_valori(p_acceso_a_mano boolean, p_accendibile_in_produzione boolean, p_ambiente text)
 IS 'Il divieto di accendere a mano in PRODUZIONE un processo non accendibile (dbops.processi.accendibile_in_produzione = false), puro sui valori: l''unico posto dove e'' scritto. In ordine: una scelta che non accende (false, o NULL = torna al default) -> true; processo accendibile, o senza sveglia -> true; ambiente SVILUPPO -> true; PRODUZIONE -> false; ambiente non dichiarato -> NULL (non decidibile). Lo leggono il guard di dbops.processi_accensione (rifiuta con E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE; NULL -> E_CONFIG_MANCANTE), la regola dbops.fn_processo_acceso_su_valori (ignora una riga accesa che il divieto non ammette) e il backend per la capability del drawer, con acceso = true. IMMUTABLE e LANGUAGE sql (si inlinea), senza STRICT. Sui valori perche'' l''ambiente e'' immutabile e la CI e'' SVILUPPO. Brief: brief-db-processi-accensione-per-ambiente (R-BE-5).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

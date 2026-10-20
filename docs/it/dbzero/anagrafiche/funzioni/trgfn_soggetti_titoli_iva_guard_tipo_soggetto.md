@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_soggetti_titoli_iva_guard_tipo_soggetto()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_tipo_soggetto()
  RETURNS trigger
@@ -83,6 +85,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_tipo_soggetto()
 IS 'Guard BEFORE INSERT OR UPDATE OF tipo_titolo_iva_id, soggetto_id, attivo, valido_al su anagrafiche.soggetti_titoli_iva: un titolo VIGENTE (anagrafiche.fn_titolo_iva_vigente) deve essere ammesso dalla natura del soggetto (anagrafiche.fn_titolo_iva_ammesso, matrice config.tipi_titolo_iva_tipi_soggetto_dettaglio: nessuna riga = non ammesso). Tipo non ammesso: E_TITOLO_IVA_NON_AMMESSO_PER_TIPO_SOGGETTO, campo tipo_titolo_iva_id. Soggetto senza natura: E_DATO_FISCALE_SENZA_TIPO_SOGGETTO. Un titolo chiuso o scaduto non si giudica. imponibile_utilizzato fuori dall''aggancio: un movimento di plafond non inciampa in una regola di anagrafica. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

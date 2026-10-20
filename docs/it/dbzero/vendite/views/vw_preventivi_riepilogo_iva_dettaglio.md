@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_preventivi_riepilogo_iva_dettaglio
 WITH (security_invoker=true) AS
@@ -31,6 +33,8 @@ SELECT ri.id,
      LEFT JOIN config.iva_natura n ON ((n.id = ri.natura_id)))
   ORDER BY ri.preventivo_id, iva.aliquota_iva, ri.id;
 ```
+
+</div>
 
 
 ---

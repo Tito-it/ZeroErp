@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_enti_incasso_guard_psp()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_enti_incasso_guard_psp()
  RETURNS trigger
@@ -99,6 +101,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

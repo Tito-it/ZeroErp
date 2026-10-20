@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_totale_fondi_fattura(p_fattura_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_totale_fondi_fattura(p_fattura_id bigint)
  RETURNS numeric
@@ -31,6 +33,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_totale_fondi_fattura(p_fattura_id bigint)
 IS 'Totale fondi fattura attivi per fattura.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

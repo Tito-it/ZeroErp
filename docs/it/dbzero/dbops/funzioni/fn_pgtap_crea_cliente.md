@@ -6,6 +6,8 @@ CREATE FUNCTION fn_pgtap_crea_cliente(p_etichetta text, p_utility_id integer, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_cliente(p_etichetta text DEFAULT 'pgTAP'::text, p_utility_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_stato_codice_interno character varying DEFAULT 'AT'::character varying)
  RETURNS TABLE(cliente_id bigint, billing_account_id bigint, istanza_utility_id bigint, soggetto_ruolo_id bigint, soggetto_id uuid, utility_id integer)
@@ -81,6 +83,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_cliente(p_etichetta text, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_stato_codice_interno character varying)
 IS 'Fixture pgTAP: un cliente COMPLETO, cioe'' dbops.fn_pgtap_crea_cliente_ba (soggetto, ruolo CL, istanza, billing account; stessi primi tre parametri) piu'' la riga di anagrafiche.clienti sul BA appena nato. Rev 20261018-38: la riga la scrive la madre anagrafiche.fn_crea_cliente (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 5), che la rilegge a istruzione finita. Stato dal quarto parametro (codice_interno, default AT) e le date che quello stato pretende (trgfn_clienti_guard_stato_date), decise qui: attivazione = data operativa per attivi, sospesi e chiusi; sospensione per SF/SC; chiusura per i chiusi. Utility di default: la prima che non richiede il PDP. Rende cliente_id e le colonne di fn_pgtap_crea_cliente_ba. Usabile come zeroerp_app con un operatore dell''emittente del BA in sessione; altrimenti la rilettura risponde E_SCRIPT_CHIAMATA_NON_VALIDA.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

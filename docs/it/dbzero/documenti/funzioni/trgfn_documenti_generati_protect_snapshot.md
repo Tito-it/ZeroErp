@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_documenti_generati_protect_snapshot()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_protect_snapshot()
  RETURNS trigger
@@ -68,6 +70,8 @@ $function$
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_protect_snapshot()
 IS 'Guard A7: blocca UPDATE su snapshot. Documento generato = istantanea immutabile di generazione. Solo stato e meta modificabili.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

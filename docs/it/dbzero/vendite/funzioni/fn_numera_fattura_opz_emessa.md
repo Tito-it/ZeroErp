@@ -7,6 +7,8 @@ CREATE FUNCTION fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa b
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa boolean DEFAULT true, p_codice_interno_emessa character varying DEFAULT 'EMESSA'::character varying)
  RETURNS TABLE(registro_id bigint, anno smallint, serie character varying, numero bigint)
@@ -213,6 +215,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_numera_fattura_opz_emessa(p_fattura_id bigint, p_set_emessa boolean, p_codice_interno_emessa character varying)
 IS 'Assegna numero fattura (idempotente) e opzionalmente imposta stato EMESSA. ⭐ rev 2026-08-21: rifiuta di numerare un documento che RETTIFICA le righe di una fattura ancora senza numero (E_FATTURA_RETTIFICATA_SENZA_NUMERO). Non e'' cronologia: una nota di credito deve citare numero e data del documento corretto nel blocco DatiFattureCollegate della TD04, e con il padre senza numero quel blocco non e'' compilabile — la nota nascerebbe gia'' inadatta allo SDI. Il rifiuto arriva PRIMA di consumare un numero. ⚠️ Il predicato e'' PER RIGA (fatture_righe.riga_rettificata_id -> riga -> fattura): una nota puo'' rettificare righe di fatture diverse e ne basta UNA senza numero. ⭐ NON guarda la natura del documento: una nota di DEBITO che rettifica ha lo stesso problema, e una fattura ordinaria non ha righe con riga_rettificata_id. ⛔ FAIL-CLOSED sulla visibilita'': fatture e fatture_righe hanno la RLS e la funzione e'' SECURITY INVOKER, quindi i JOIN sono LEFT e una riga il cui padre non e'' visibile conta come BLOCCANTE — il predicato e'' «non posso dimostrare che sia numerata», non «risulta non numerata». ⚠️ La guardia sta DOPO il ritorno idempotente. ⭐ rev 2026-08-23/24 (T-3b): l''errore porta un BERSAGLIO a DUE RUOLI — il documento DA NUMERARE (sempre, e per PRIMO, cosi'' sopravvive al tetto di cinque elementi del canale compatto) e i padri bloccanti VISIBILI in ordine di id — e nella frase va un CONTEGGIO, non gli id. ⛔ Il bersaglio dei padri resta a JOIN INTERNI contro i LEFT JOIN del predicato: un padre invisibile entra nel CONTEGGIO ma NON fra i pulsanti. ⭐ rev 2026-08-25 (DB-12, cantiere numerazione-data-documento): `mese` ESCE dal RETURNS TABLE. Era calcolato da registri_fatturazione.reset_policy, che ammetteva tre valori e ne implementava uno — e non lo leggeva NESSUNO: il backend drena il result set (pipeline_repository.py, due punti: uno scalare e uno con fetchall), i pgTAP leggono per nome di colonna o fanno PERFORM. Con lui sono caduti v_reset, v_data e il JOIN su registri_fatturazione, che serviva solo a portare reset_policy (era INNER e in teoria filtrava, in pratica mai: registro_id e'' NOT NULL con una FK). Cambiare il RETURNS TABLE ha richiesto DROP + CREATE, con firma invariata: revisione, non overload. ⛔ Questo changeSet va applicato PRIMA di quello su fn_assign_numero_fattura: qui si smette di chiedere t.mese mentre la funzione chiamata ancora lo espone, e selezionare 4 colonne su 5 e'' legittimo — il contrario e'' un errore a runtime. Brief: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-12.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

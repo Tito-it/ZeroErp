@@ -6,6 +6,8 @@ CREATE FUNCTION fn_pgtap_crea_pdp(p_utility_codice character varying)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_pdp(p_utility_codice character varying DEFAULT 'GAS'::character varying)
  RETURNS TABLE(pdp_id bigint, pdp_codice character varying, utility_id bigint, indirizzo_dettaglio_id bigint)
@@ -62,6 +64,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_pdp(p_utility_codice character varying)
 IS 'Fixture pgTAP: un PUNTO DI PRELIEVO nuovo (anagrafiche.pdp, dato di MACCHINA: da zero e'' vuota) per l''utility scelta per codice_interno (default GAS), su un indirizzo di dettaglio suo. ⭐ Codice e indirizzo derivano da UN numero libero sui codici PGTAPPDPnnnnnn: uq_pdp_codice e uq_pdp_addr_utility sono rispettate per costruzione. ⚠️ L''indirizzo va nuovo apposta: dbops.fn_pgtap_crea_indirizzo_dettaglio e'' idempotente sull''etichetta (troncata a 10 caratteri), e due PDP della stessa utility sullo stesso indirizzo il modello non li ammette. ⛔ Cliente e istanza sul PDP NON li scrive: sono il caso del test. Ritorna pdp_id, pdp_codice, utility_id, indirizzo_dettaglio_id. Brief: brief-db-fixture-che-costruiscono-giro-2.md';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_crea_emittente_fiscale(p_soggetto_id uuid, p_codice character
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_emittente_fiscale(p_soggetto_id uuid, p_codice character varying, p_campi jsonb DEFAULT '{}'::jsonb)
  RETURNS TABLE(emittente_fiscale_id bigint, soggetto_ruolo_id bigint)
@@ -79,6 +81,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_crea_emittente_fiscale(p_soggetto_id uuid, p_codice character varying, p_campi jsonb)
 IS 'Madre (2026-10-17): crea l''emittente fiscale di un soggetto, cioe'' il ruolo EF (script.fn_get_or_create_soggetto_ruolo) e la riga di anagrafiche.emittenti_fiscali, in una sola istruzione. p_campi: le chiavi opzionali attivo, regime_fiscale_rf, bollo_auto, bollo_soglia, rounding_policy, valuta_id (le assenti al DEFAULT; una chiave estranea: E_CAMPO_NON_AMMESSO, col campo). Un regime dichiarato e'' CONFERMATO: dopo la INSERT, un UPDATE del regime (la INSERT non conferma mai). Registri di numerazione e mapping di default nascono dai trigger. Duplicati (uq_emittenti_fiscali_ruolo, uq:codice) e regime fuori catalogo (fk_emittenti_fiscali_regimi_fiscali) escono dai vincoli, che il backend traduce per nome. Non controlla la partita IVA del soggetto (pre-check del backend, debito dichiarato) ne'' il permesso (dominio anagrafiche: al backend, precedente B-5). INVOKER. Ritorna (emittente_fiscale_id, soggetto_ruolo_id). Prende il posto di EmittentiFiscaliService.crea_emittente (2b-2) e dell''INSERT di dbops.fn_pgtap_crea_emittente. Brief: brief-db-processi-accensione-per-ambiente (2b-1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

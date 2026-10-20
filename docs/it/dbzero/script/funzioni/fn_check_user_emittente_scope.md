@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_user_emittente_scope(p_auth_user_id integer, p_emittent
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
  RETURNS boolean
@@ -76,6 +78,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
 IS '⭐ rev 2026-10-18 (20261018-18, D-3b-2): le regole stanno in una sede sola, script.fn_get_emittenti_scope_pk_ids (il perimetro come insieme); qui la domanda su un emittente la fa script.fn_scope_ef_perimetro, la stessa funzione delle policy. Stesse risposte. Verifica accesso utente a emittente fiscale. Sede unica read+write: la usano gli adapter RLS (fn_scope_ef_whitelist e famiglia), i verbi DEFINER che ricopiano il filtro e i trigger di guardia. Regole, in ordine: utente NULL -> false (rev 2026-10-04, Q-1: era true, «job batch»; con la veste OPERATORE e l''utente vuoto una sessione vedeva tutte le aziende. Il guard di scrittura aveva tolto lo stesso ramo il 2026-09-04 e decide da se'' il caso senza utente con row_security_active); emittente attivo (GUC app.current_emittente_id) diverso da quello richiesto -> false, PRIMA del bypass super admin (impersonazione di scope: solo restringente, mai allargante, rev 2026-08-04); super admin -> true; identita'' OPERATORE mancante -> false; whitelist vuota -> false (P-2a, 2026-08-18: la riga mancante e'' un errore di configurazione, non un permesso); altrimenti match EXISTS. Brief perimetro-emittente §2.5, brief-db-esclusioni-implicite Q-1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

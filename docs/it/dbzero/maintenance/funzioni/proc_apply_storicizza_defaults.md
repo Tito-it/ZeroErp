@@ -7,6 +7,8 @@ CREATE PROCEDURE proc_apply_storicizza_defaults()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_apply_storicizza_defaults()
  LANGUAGE plpgsql
@@ -87,6 +89,8 @@ $procedure$
 COMMENT ON PROCEDURE maintenance.proc_apply_storicizza_defaults()
 IS 'Rimette DEFAULT true sulla colonna `storicizza` di ogni tabella di config.storico_set_storicizza. ⭐ Rev 2026-09-05 (R-12): salta le righe che non risolvono a nessun oggetto e ISOLA il fallimento di una riga dalle altre. Prima una sola riga stantia sollevava undefined_table e fermava il giro per tutte — ed e'' cosi'' che questo job e'' morto ogni settimana per SEI MESI senza che nessuno lo sapesse. ⛔ Non e'' una conseguenza delle tre righe morte trovate quel giorno: produttore (proc_sync_storico_set_storicizza) e consumatore girano su due job pgAgent con schedulazioni diverse, quindi una riga non ancora potata e'' una possibilita'' STRUTTURALE. ⚠️ Non «ingoia gli errori»: cambia il posto dove si raccontano — un WARNING nel log del server invece di un''eccezione che nessuno vede, e un''eccezione qui cancellava anche il proprio verbale (fn_run_and_log scrive la riga ok=false e poi rilancia: il RAISE fa rollback anche di quella). ⭐ Il nome della tabella si risolve una volta con to_regclass e non si smonta mai: split_part sul punto sbaglia su un nome con piu'' punti o su un identificatore quotato. ⚠️ Il WARNING distingue una riga derivata da una manuale: la prima la potera'' il sync, la seconda no — e'' una decisione che ha perso il suo bersaglio e va guardata da una persona.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

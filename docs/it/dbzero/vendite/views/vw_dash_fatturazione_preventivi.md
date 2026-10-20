@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_preventivi
 WITH (security_invoker=on) AS
@@ -52,6 +54,8 @@ WITH righe AS (
   WHERE p.is_attiva
   GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal, p.data, p.emittente_fiscale_id, sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito, s.ragione_sociale_completa;
 ```
+
+</div>
 
 
 ---

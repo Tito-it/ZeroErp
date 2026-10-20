@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `acquisti`
 
 ## 📚 Tabelle (manuale)

@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_efba_guard_clienti_chiave()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_efba_guard_clienti_chiave()
  RETURNS trigger
@@ -49,6 +51,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_efba_guard_clienti_chiave()
 IS 'Constraint trigger function (AFTER INSERT OR UPDATE OR DELETE DEFERRABLE INITIALLY DEFERRED su anagrafiche.emittenti_fiscali_billing_account): l''azienda di un BA e'' nella chiave del cliente manuale. Per un collegamento creato, cambiato o tolto controlla i clienti del BA (anagrafiche.fn_guard_clienti_chiave_unica_di); per la riga di default il raggio N (anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale). E_CLIENTE_STESSA_CHIAVE. Tassonomia di anagrafiche.trgfn_efba_guard_istanza_emittente. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

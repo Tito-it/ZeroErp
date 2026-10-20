@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_saldo_fattura(p_fattura_id bigint, p_escludi_contabile_ri
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldo_fattura(p_fattura_id bigint, p_escludi_contabile_riga_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(saldo numeric, in_lavorazione numeric, incassato numeric, has_movimenti boolean)
@@ -133,6 +135,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.fn_get_saldo_fattura(p_fattura_id bigint, p_escludi_contabile_riga_id bigint)
 IS 'Il saldo di un DOCUMENTO, in tre numeri: `saldo` = totale_a_pagare meno i movimenti attivi; `in_lavorazione` = quanto e'' gia'' dichiarato su righe contabili pronte sotto una testata non finale; `incassato` = quanto di cio'' che e'' registrato e'' DENARO DAVVERO ARRIVATO. ⭐ Rev 2026-09-18 (P-6, brief-db-distinta-ricerca-rate §4.6): + p_escludi_contabile_riga_id DEFAULT NULL — chi sta scrivendo una riga chiede quanto c''era PRIMA di se''. La riga esclusa esce dal dichiarato (delegato a fn_get_saldo_fattura_contabili, che la riceve) E dal registrato (il movimento con quel contabile_riga_id), esattamente come nel nucleo fn_get_saldi_rate: lo stesso nome di parametro risponde alla stessa domanda su rata e documento, o il pannello dei saldi direbbe due cose diverse con le stesse parole. DROP + CREATE perche'' cambia la firma (un overload accanto alla vecchia sarebbe ambiguo), e la vista vw_eccedenze_da_sistemare — che dipende per OID — e'' stata ricreata identica nello stesso changeSet. ⭐ Rev 2026-08-25 (S5-1): fino a ieri rispondeva DUE numeri mentre la sorella fn_get_saldo_rata ne rispondeva tre — cioe'' la distinzione fra registrato e incassato, che il dominio dichiara obbligatoria, esisteva sulla rata e NON sul documento, che e'' il livello guardato per primo e quello su cui nascera'' il saldo CLIENTE. Nessun predicato preesistente e'' cambiato: `saldo` e `has_movimenti` rispondono come prima. ⭐ `in_lavorazione` NON e'' ricalcolato qui: si delega a fn_get_saldo_fattura_contabili, che e'' la sede del dichiarato — riscriverne il predicato avrebbe creato la seconda sede proprio nel passo che costruisce la base unica dei saldi. Quella funzione resta anche perche'' da'' `has_righe_postabili`, che serve a vendite.fn_saldo_sorgente_fondo. ⚠️ `incassato` esclude i centri is_fondo_fattura e is_compensazione — NON SONO CASSA: un movimento li'' salda il documento perche'' il denaro si e'' mosso per trasferimento, ma in banca non e'' entrato niente. E un movimento SENZA centro non ci entra: «canale non dichiarato» non e'' «denaro arrivato», e su una misura di cassa si sta dalla parte prudente. ⚠️ `saldo` e `in_lavorazione` restano DUE colonne e non si sommano, o non si capisce piu'' che cosa si sta guardando. ⚠️ La fattura ha la RLS: «non esiste» e «non la vedi» danno lo stesso E_FATTURA_NON_TROVATA, per scelta. ⚠️ NON e'' dichiarata STABLE: il ramo d''errore scrive nel registro, e promettere stabilita'' su una funzione che in un ramo scrive autorizza il planner a scelte che quel ramo non regge. S5-1 del cantiere incassi, richiesta DB-10 del brief BE/FE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_build_gruppo_fatturabile_key(p_sorgente_tipo_id bigint, p_sor
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_build_gruppo_fatturabile_key(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_commessa_id bigint)
  RETURNS text
@@ -118,6 +120,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_build_gruppo_fatturabile_key(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_commessa_id bigint)
 IS 'Unica fonte di verita'' della chiave di GRUPPO FATTURABILE di una riga vendite.commesse_attivita. Due forme: riga con documento sorgente -> ''<codice_interno_sorgente>:<sorgente_uid>''; riga sourceless (oneri della porta manuale, sorgente_* NULL) -> ''MAN:<commessa_id>'' (tutti gli oneri di una commessa sono UN gruppo). Prefisso da codice_interno (immutabile), mai da codice. ⚠️ L''identificativo del documento e'' l''UID, perche'' e'' cio'' che commesse_attivita.sorgente_uid contiene per TUTTE le sorgenti, anche quelle con config.sorgenti.key_selector=''id'': NON allineare a commesse_sorgenti, che e'' normalizzata da fn_link_commessa_sorgente e per lo stesso documento contiene un valore diverso (decisione D-9; guida /guide/sorgente-polimorfa §4a). La chiave non esce mai dal perimetro di commesse_attivita: la produce vw_dash_competenza_gruppi e la consumano i filtri p_gruppi dell''emissione mirata. Non derivarla da segment_key. STABLE (lookup su config.sorgenti). Guard: ID <= 0, riga sourceless senza commessa, coppia sorgente incoerente. brief-db-emissione-fattura-per-documento-sorgente A1, rev 2026-07-27.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

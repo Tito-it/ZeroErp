@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_offerte_commerciali_revisione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_revisione()
  RETURNS trigger
@@ -72,6 +74,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_revisione()
 IS 'AFTER INSERT su offerte_commerciali: se revisione_padre_id IS NOT NULL, porta la revisione padre nello stato di superamento. Lo stato si risolve dalla dichiarazione di catalogo config.stati_doc_offerte.is_superato (rev 2026-08-28) — la stessa che la vista di lista legge — e non piu'' da un letterale. Guard sull''ARITA'': se gli stati marcati non sono esattamente uno, E_CONFIG_MANCANTE; prima zero righe lasciavano la variabile NULL e l''errore era un 23502 che nominava la colonna invece della riga di catalogo. Innesca il guard _a10_ (EMESSA->SUPERATA ammessa in stati_doc_offerte_transizioni). Nota O4: agisce su riga diversa dall''INSERT scatenante, nessun conflitto.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

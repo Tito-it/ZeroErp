@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_logs_guard_delete()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_logs_guard_delete()
  RETURNS trigger
@@ -73,6 +75,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_logs_guard_delete()
 IS 'BEFORE DELETE su vendite.fatture_log e vendite.fatturazione_lotti_log. Vieta la cancellazione di una riga VIVA; ammette quella con GUC di manutenzione (zeroerp.maintenance_allow_delete_logs / zeroerp.maintenance_reset_lotto_draft) e — rev 2026-09-18, Passo D di analisi-osservabilita-log.md — quella di una riga SCADUTA (cleanup_at <= now()): e'' la retention che passa, con lo stesso criterio di trgfn_event_log_append_only (non CHI cancella ma COSA), cosi'' dbops.fn_purge_cleanup_expired funziona com''e''. ⚠️ cleanup_at NULL = non scade mai. ⛔ Legge OLD.cleanup_at: si monta solo su tabelle che hanno la colonna.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

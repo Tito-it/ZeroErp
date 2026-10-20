@@ -7,6 +7,8 @@ CREATE FUNCTION fn_documento_lineage(p_tipo_id bigint, p_uid text, p_direzione t
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage(p_tipo_id bigint, p_uid text, p_direzione text DEFAULT 'avanti'::text)
  RETURNS TABLE(livello integer, ordine integer, arco text, ruolo character varying, from_tipo_id bigint, from_uid text, from_codice text, to_tipo_id bigint, to_uid text, to_codice text, to_stato_codice_interno character varying, to_fase character varying, to_is_abortito boolean, is_ramo_inverso boolean, from_natura_doc_codice_interno character varying, to_natura_doc_codice_interno character varying, is_legame_ritirato boolean)
@@ -172,6 +174,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_documento_lineage(p_tipo_id bigint, p_uid text, p_direzione text)
 IS '⭐ rev 2026-10-13 (20261013-70, R-17 del BE): + is_legame_ritirato, in coda. Il NODO dice se la destinazione e'' viva; il LEGAME — quello che questo documento ha portato dall''altra parte e'' ancora li''? — lo dice vendite.fn_documento_lineage_legami, letto una volta alla fine come i nodi. Colonna dell''ARCO: vale nei due versi. true = ritirato (dal preventivo annullato la commessa resta viva ma le sue righe sono annullate); NULL = arco non censito. DROP + CREATE: GRANT e COMMENT ripristinati. ⭐ rev 2026-10-11 (20261011-93): la catena si risale UN LIVELLO ALLA VOLTA da vendite.fn_documento_lineage_archi (seme = i nodi correnti dei percorsi aperti) e si decora una volta, alla fine, da vendite.fn_documento_lineage_nodi per i soli nodi toccati: il costo segue la catena, non il grafo intero. Semantica identica (percorsi, guardia dei cicli sul percorso, 10 livelli, ordine). La «sorgente unica» qui sotto e'' ora la grammatica degli archi in fn_documento_lineage_archi, di cui la vista e'' la proiezione. Traversal ricorsivo del grafo di genealogia documenti (pannello «Passaggi»): ritorna la catena degli archi dal nodo di partenza, con livello/ordine per il rendering e lo stato di ogni tappa. Sorgente unica: vendite.vw_documento_lineage_archi. STABLE, SECURITY INVOKER: la RLS emittente delle viste security_invoker resta applicata. Cycle guard sul percorso (set dei visitati) e livello < 10. ⭐ rev 2026-08-20 — DUE COSE, entrambe per la nota di credito. (1) espone from_natura_doc_codice_interno/to_natura_doc_codice_interno: senza, due nodi FATTURA della stessa commessa — la fattura e la nota di credito che la rettifica — erano la stessa riga scritta due volte (stesso tipo, stesso stato, `codice` NULL finche'' non numerati). (2) is_ramo_inverso non e'' piu'' ricalcolato qui come `arco = ''R''` ma arriva dalla vista, che e'' l''unica sede dell''elenco dei rami di ritorno: con l''arco N quella lettera viveva in TRE posti e il terzo dimenticato non avrebbe dato errori, solo un ramo di ritorno reso come avanzamento. ⛔ La firma e'' cambiata (RETURNS TABLE), quindi questa revisione e'' un DROP + CREATE: il DROP porta via i GRANT, ri-concessi a zeroerp_app nello stesso changeSet. ⭐ rev 2026-10-10 (20261010-44): la vista degli archi si legge UNA volta, in una CTE MATERIALIZED, e la ricorsione attraversa la copia: prima la vista — che costruisce l''intero grafo decorato — si rivalutava nel passo iniziale e a ogni livello, ~0,6-0,8 s a chiamata come app; ora ~0,18 s, righe identiche. brief-db-plancache-funzioni-con-query-incorporate §5.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

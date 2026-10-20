@@ -7,6 +7,8 @@ CREATE FUNCTION fn_esigibilita_iva(p_iva_per_cassa boolean, p_cliente_split_paym
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_esigibilita_iva(p_iva_per_cassa boolean, p_cliente_split_payment character, p_cliente_partita_iva text, p_iva_id integer)
  RETURNS TABLE(esigibilita character, split_payment boolean)
@@ -83,6 +85,8 @@ $function$
 COMMENT ON FUNCTION script.fn_esigibilita_iva(p_iva_per_cassa boolean, p_cliente_split_payment character, p_cliente_partita_iva text, p_iva_id integer)
 IS 'La regola UNICA di esigibilita'' IVA (I immediata, D differita, S scissione) e del flag split_payment di una riga, sui VALORI: il regime dell''emittente come attributo (config.regimi_fiscali.iva_per_cassa, D-10), la scissione e la partita IVA del cliente (D-2), il codice IVA della riga. ''D'' SOLO su una riga con imposta (codice senza Natura e aliquota > 0) di un emittente per cassa, verso un cliente soggetto passivo IVA, fuori dalla scissione; ogni Natura N1-N7, inversione contabile compresa, va a ''I'' (D-12, rev 20261001-40). Ordine: cliente non noto -> NULL/NULL; scissione -> S/true; regime non noto -> NULL; regime ordinario -> I; per cassa verso un cliente senza partita IVA -> I; per cassa senza codice IVA -> NULL; per cassa con Natura o aliquota zero -> I; per cassa con imposta -> D. ⭐ Derivazione PURA (D-7): chi la usa riscrive sempre il valore. Le parti le risolvono i chiamanti: vendite.fn_esigibilita_iva_fattura (trigger di riga e ricalcolo del riepilogo), vendite.fn_resolve_iva_riga_it, script.fn_esigibilita_iva_documento (riepiloghi di preventivi, ordini, DDT). STABLE: legge il solo codice IVA. Brief: brief-db-esigibilita-iva-per-cassa-emittente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

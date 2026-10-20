@@ -7,6 +7,8 @@ CREATE FUNCTION fn_audit_log_once(p_function_name text, p_status text, p_params 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_audit_log_once(p_function_name text, p_status text, p_params jsonb DEFAULT '{}'::jsonb, p_message text DEFAULT NULL::text, p_exec_mode text DEFAULT NULL::text, p_parts text[] DEFAULT NULL::text[], p_rule_type text DEFAULT NULL::text, p_dry_run boolean DEFAULT NULL::boolean, p_sqlstate text DEFAULT NULL::text, p_error_context text DEFAULT NULL::text, p_rows_affected integer DEFAULT NULL::integer, p_result jsonb DEFAULT NULL::jsonb, p_host text DEFAULT NULL::text, p_app_version text DEFAULT NULL::text)
  RETURNS bigint
@@ -65,6 +67,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

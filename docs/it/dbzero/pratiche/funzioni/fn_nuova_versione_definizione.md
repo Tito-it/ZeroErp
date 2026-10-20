@@ -7,6 +7,8 @@ CREATE FUNCTION fn_nuova_versione_definizione(p_definizione_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_nuova_versione_definizione(p_definizione_id integer)
  RETURNS integer
@@ -66,6 +68,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_nuova_versione_definizione(p_definizione_id integer)
 IS 'Crea una nuova versione BOZZA nello stesso scope, derivata dalla PUBBLICATA corrente (la sorgente DEVE essere PUBBLICATA: da BOZZA/RITIRATA -> DEFINIZIONE_NO_PUBBLICATA 516). Guard invariante ≤1 BOZZA per scope (DEFINIZIONE_BOZZA_ESISTENTE 515). Wrapper di fn_copia_definizione(..., false). SECURITY DEFINER (search_path fisso).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_imposta_data_documento_lotto(p_lotto_id bigint, p_data date)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_imposta_data_documento_lotto(p_lotto_id bigint, p_data date)
  RETURNS TABLE(aggiornate integer, saltate_numerate integer, rate_rigenerate integer)
@@ -196,6 +198,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_imposta_data_documento_lotto(p_lotto_id bigint, p_data date)
 IS 'Dichiara la data documento di un lotto: la scrive sul lotto, la propaga alle fatture NON ancora numerate e rigenera i loro piani rate. ⭐ E'' una funzione MADRE — quattro scritture, una sola SELECT, atomica per costruzione (linee-guida-sql §5b): farle in sequenza dal backend lascerebbe una data nuova con le rate vecchie. ⛔ LA RIGENERAZIONE DELLE RATE NON E'' OPZIONALE: le scadenze si calcolano da f.data nello step EMESSA, cioe'' PRIMA del numero, e il guard D-K verifica che la SOMMA delle rate quadri col totale — la somma non cambia, cambiano le DATE, quindi una data nuova con rate vecchie passerebbe in silenzio. ⚠️ Si rigenera SOLO dove un piano esiste gia'': su una DRAFT senza totali fn_genera_scadenze_fattura alzerebbe E_SCADENZE_BASE_NON_PRONTA e farebbe fallire l''intera dichiarazione su un caso legittimo. ⚠️ Le fatture GIA'' NUMERATE si SALTANO e si contano, non fanno fallire il lotto: il caso «lotto numerato a meta''» esiste nei dati e rifiutare l''intero lotto renderebbe irrisolvibile proprio il caso per cui questa funzione esiste. ⛔ Il filtro e'' `numero IS NULL` e NON lo stato: una fattura viene numerata MENTRE e'' in EMESSA. ⭐ rev 2026-08-26 (cantiere limite-emissione, DB-9): il guard sul pavimento legge la COPPIA (pavimento, origine) da vendite.fn_get_pavimento_lotto e sceglie fra DUE CODICI — E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO quando a mordere e'' la sequenza, E_FATTURA_DATA_OLTRE_LIMITE_EMISSIONE quando e'' il limite di emissione. Sono due frasi e due rimedi: la prima si risolve risalendo alla fattura che porta quel numero, la seconda solo avvicinando la data a oggi, e dire la prima quando vale la seconda manda a cercare la cosa sbagliata. A parita'' di data vince SEQUENZA, perche'' la sua frase puo'' portare un BERSAGLIO — sul limite di emissione non c''e'' nessun documento da aprire, e un pulsante verso il nulla e'' peggio di nessun pulsante. ⭐ La data nella frase e'' SEMPRE il pavimento EFFETTIVO e non quello di `origine`: nominarne un altro direbbe all''operatore di scegliere una data che verrebbe rifiutata di nuovo. ⭐ QUI IL CONTROLLO E'' SEVERO E NON PER CASO: questa e'' la porta da cui una PERSONA dichiara una data, e qui c''e'' il LOTTO, quindi la competenza vera. Il cancello di fn_get_next_progressivo riceve solo il documento e la sua data e la DEDUCE dalla data stessa (decisione D-7): due severita'' diverse, questa e'' la piu'' stretta, e chi le confronta non deve leggere la differenza come un difetto. ℹ️ Non e'' un secondo presidio: e'' l''anticamera del cancello — la lettura del pavimento e'' fail-open sotto RLS e se sfugge rifiutera'' il cancello vero, che legge il contatore. ℹ️ Torna TRE numeri: rate_rigenerate c''e'' perche'' senza di esso il punto 5 sarebbe invisibile al backend. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-9.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

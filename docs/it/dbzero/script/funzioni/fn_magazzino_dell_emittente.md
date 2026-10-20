@@ -6,6 +6,8 @@ CREATE FUNCTION fn_magazzino_dell_emittente(p_magazzino_id bigint, p_emittente_f
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_magazzino_dell_emittente(p_magazzino_id bigint, p_emittente_fiscale_id bigint)
  RETURNS boolean
@@ -40,6 +42,8 @@ $function$
 COMMENT ON FUNCTION script.fn_magazzino_dell_emittente(p_magazzino_id bigint, p_emittente_fiscale_id bigint)
 IS 'Building block (regola del 2, 2026-09-28): true se il magazzino e'' visibile ed e'' dell''emittente passato — la regola M-6 di un documento che nomina un magazzino. INVOKER: letto sotto RLS, un magazzino di un altro emittente risponde come uno inesistente (false), cosi'' il rifiuto non rivela niente fuori dal perimetro. Magazzino NULL -> NULL (il chiamante salta). Consumatori: vendite.trgfn_ddt_guard_magazzino, vendite.trgfn_resi_guard_magazzino. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso (D-3b-a).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

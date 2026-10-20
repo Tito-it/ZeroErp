@@ -7,6 +7,8 @@ CREATE FUNCTION fn_genera_pratica_da_preventivo(p_preventivo_id bigint, p_tipo_p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_genera_pratica_da_preventivo(p_preventivo_id bigint, p_tipo_prestazione_id integer, p_priorita_id integer DEFAULT NULL::integer, p_descrizione text DEFAULT NULL::text)
  RETURNS TABLE(pratica_id bigint)
@@ -84,6 +86,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_genera_pratica_da_preventivo(p_preventivo_id bigint, p_tipo_prestazione_id integer, p_priorita_id integer, p_descrizione text)
 IS 'Funzione madre atomica: crea la pratica (via figlia pratiche.fn_crea_pratica) e il link ROOT preventivo->pratica in un''unica statement (o tutto o rollback). SECURITY INVOKER. Ritorna pratica_id. Il check stato ACCETTATO resta pre-check del service. Piano: analisi-fix-transazioni Classe A #3. rev 2026-10-08 (20261008-68): la pratica nasce col BA del preventivo (la sorgente e'' il cliente di cui parla); via il ramo «preventivo senza BA», irraggiungibile dal 20261008-52. Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

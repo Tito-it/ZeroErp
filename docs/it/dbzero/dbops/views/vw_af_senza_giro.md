@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_af_senza_giro
 WITH (security_invoker=true) AS
@@ -23,6 +25,8 @@ SELECT id AS attivita_fatturabile_id,
    FROM vendite.attivita_fatturabili a
   WHERE ((emit_batch_id IS NULL) AND (fatturato IS FALSE) AND (COALESCE(lock_in_fatturazione, false) IS FALSE));
 ```
+
+</div>
 
 
 ---

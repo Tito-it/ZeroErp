@@ -6,6 +6,8 @@ CREATE FUNCTION fn_pgtap_registro_fattura(p_emittente_sr_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_pgtap_registro_fattura(p_emittente_sr_id bigint DEFAULT NULL::bigint)
  RETURNS bigint
@@ -83,6 +85,8 @@ $function$
 COMMENT ON FUNCTION script.fn_pgtap_registro_fattura(p_emittente_sr_id bigint)
 IS 'Helper pgTAP: il registro di fatturazione COERENTE con l''emittente indicato — quello dell''operatore di contesto se non si passa niente — creandolo se quell''emittente non ne ha ancora uno. ⛔ Nasce il 2026-08-30 perche'' vendite.trgfn_fatture_guard_registro_emittente ha reso visibile un difetto diffuso nelle fixture: 44 file pgTAP sceglievano il registro con una pescata INDIPENDENTE da quella dell''emittente, e che i due coincidessero era un caso. ⚠️ CREA il registro se manca, con limite_emissione_giorni = 9999: le fixture datano i documenti nel passato, e un limite attivo le farebbe cadere su un presidio che non stanno provando; chi il limite lo prova davvero (test-limite-emissione-v1) si costruisce il registro da se''. ⭐ Rev 2026-10-18 (20261019-12, R-BE-14): SALTA il registro delle fatture STANDARD (codice vendite.fn_codice_registro_provisionato(''FATTURA'', emittente)), che dal 20261019-08 nasce con ogni emittente col limite di emissione di DEFAULT. Su un emittente che aveva gia'' un registro restituisce lo stesso di prima (il primo per id, piu'' vecchio dello standard); su uno nuovo crea come prima il suo. Chi prova lo standard lo legge da vendite.fn_get_registro_id, il percorso vero. Compagna di script.fn_pgtap_emittente_sr_operatore. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C1-3; brief-db-processi-accensione-per-ambiente §6.14.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

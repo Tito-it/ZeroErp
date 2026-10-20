@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_user_permissions_map(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_user_permissions_map(p_auth_user_id integer)
  RETURNS jsonb
@@ -99,6 +101,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_user_permissions_map(p_auth_user_id integer)
 IS 'Mappa dei livelli di accesso di un utente su tutte le aree attive, in una chiamata ({schema_db: livello}). Stessa catena di script.fn_resolve_livello_area: gate di contesto (veste diversa da OPERATORE -> tutto BLOCCATO), identita'' OPERATORE attiva, super admin -> TUTTO, override utente, ereditato dal profilo (script.fn_get_permessi_ereditati_aree: sola veste OPERATORE), default BLOCCATO. Rev 20260925-85 (brief-db-pgtap-permessi-ereditati, D-1 e D-2): l''ereditato non si ricalcola qui, e non conta piu'' i profili delle altre vesti dell''utente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

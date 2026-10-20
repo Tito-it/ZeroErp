@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_super_admin(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_guard_super_admin(p_auth_user_id integer)
  RETURNS void
@@ -35,6 +37,8 @@ $function$
 COMMENT ON FUNCTION script.fn_guard_super_admin(p_auth_user_id integer)
 IS 'Guard dei verbi di scrittura che chiedono SUPER_ADMIN (modello «una scrittura = un verbo»; D-B1 di brief-db-blocco-login-per-credenziale: la gestione accessi e'' amm_software, che non e'' un''area del catalogo ma una porta per soli SUPER_ADMIN). La regola NON e'' qui: la decide script.fn_is_super_admin, la stessa del backend, gate di contesto compreso (fuori dalla veste OPERATORE risponde false). Risposta no -> E_PERMESSO_NEGATO (NON_PERMESSO, lo stesso codice del backend), anche a utente NULL: fail-closed, con senza_utente nel contesto. Gemello di script.fn_guard_azione. L''utente arriva come parametro: il chiamante legge app.current_user_id (linee-guida-sql §10.4). INVOKER.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

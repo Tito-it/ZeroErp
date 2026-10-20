@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_soggetti_titoli_iva_guard_ambito()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito()
  RETURNS trigger
@@ -46,6 +48,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito()
 IS 'La stessa regola dell''ambito, applicata quando a cambiare e'' il TITOLO invece delle sue righe. ⭐ Non e'' un doppione del guard sulle figlie: due titoli diventano sovrapposti anche allargando valido_al, riattivando un titolo spento o cambiandone il tipo — e in nessuno di quei casi la tabella figlia viene toccata, quindi quel guard non scatta. Chiama la stessa anagrafiche.fn_check_titolo_iva_ambito: la regola e'' scritta in un posto solo. ⚠️ AFTER UPDATE, perche'' la fn_check legge la riga com''e'' DOPO la modifica. I7 di brief-db-be-iva-risolutore-e-regime-cliente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

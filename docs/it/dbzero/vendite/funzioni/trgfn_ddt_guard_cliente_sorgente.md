@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ddt_guard_cliente_sorgente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_cliente_sorgente()
  RETURNS trigger
@@ -111,6 +113,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_cliente_sorgente()
 IS 'Guard BEFORE INSERT OR UPDATE su vendite.ddt, fascia _z10_ (dopo trgfn_ddt_normalize): il DDT ha il billing account del documento da cui nasce (D-6 di brief-db-esecutivi-ba-coppia, «un esecutivo derivato ha il BA della sua sorgente»). (1) sorgente di testata ORDINE_VENDITA -> BA dell''ordine, RESO_VENDITA -> BA del reso, NULL compreso; (2) su UPDATE il BA non cambia se il DDT evade gia'' righe d''ordine (quelle righe hanno il BA di prima: si rifiuta il cambio, senza ricopiare il predicato del guard del fulfillment). E_DOC_CLIENTE_DIVERSO_DA_SORGENTE, VARIADIC documento e sorgente leggibili. Ordine e reso letti come INVOKER, come il normalize. rev 2026-10-10 (§10.2 domanda 3, Tid): una sorgente ORDINE_VENDITA o RESO_VENDITA dichiarata e non trovata — inesistente o invisibile sotto RLS, che rispondono uguale — e'' E_DOC_SORGENTE_NON_TROVATA (fail-closed: prima passava, e una bolla poteva dichiarare l''ordine di un altro emittente col BA del proprio). Una sorgente di un altro tipo resta fuori dal confronto. La terza porta, il fulfillment, e'' in vendite.trgfn_ordini_ful_guard_consistenza; il reso ha vendite.trgfn_resi_guard_cliente_ddt. rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-1): il predicato («da dove viene il cliente della bolla») esce dal corpo in vendite.fn_ddt_vincoli_cliente, che legge anche la capability script.fn_available_actions_ddt per spegnere billing_account_id: guard e capability non possono rispondere in due modi. Codici, contesto e valori della frase invariati; il fulfillment si legge solo quando il BA cambia su UPDATE, come prima.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pratiche_giornale_assegnazione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_assegnazione()
  RETURNS trigger
@@ -35,6 +37,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_giornale_assegnazione()
 IS 'AFTER UPDATE su pratiche: logga ASSEGNAZIONE_CAMBIATA quando risorsa/UO cambia.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

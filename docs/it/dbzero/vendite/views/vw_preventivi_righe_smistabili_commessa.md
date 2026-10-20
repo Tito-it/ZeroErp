@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_preventivi_righe_smistabili_commessa
 WITH (security_invoker=on) AS
@@ -29,6 +31,8 @@ SELECT pr.preventivo_id,
      LEFT JOIN config.nature_vendita nv ON ((nv.id = pr.natura_vendita_id)))
   WHERE ((pr.attivo IS TRUE) AND (pr.quantita > (0)::numeric) AND (pr.prezzo_unitario >= (0)::numeric) AND ((pr.natura_vendita_id IS NULL) OR ((nv.destinazione_tipo)::text = 'COMMESSA'::text)) AND (script.fn_get_stato_push_segment(script.fn_segment_key('PREVENTIVO'::character varying, (p.uid)::text, pr.id)) = 'LIBERA'::text));
 ```
+
+</div>
 
 
 ---

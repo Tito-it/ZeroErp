@@ -7,6 +7,8 @@ CREATE FUNCTION fn_lega_profilo_reparto(p_profilo_accesso_id integer, p_unita_or
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_lega_profilo_reparto(p_profilo_accesso_id integer, p_unita_organizzativa_id integer)
  RETURNS bigint
@@ -57,6 +59,8 @@ $function$
 COMMENT ON FUNCTION config.fn_lega_profilo_reparto(p_profilo_accesso_id integer, p_unita_organizzativa_id integer)
 IS 'MADRE (2026-10-19): lega un reparto (unita'' organizzativa) a un profilo di accesso, la riga di config.profili_accesso_bindings con unita_organizzativa_id. Gemella di config.fn_lega_profilo_identita. Un reparto ha un binding solo (uq_profili_accesso_bindings_uo): lo stesso profilo gia'' legato ritorna quel binding (idempotente), un altro profilo gia'' legato lo rifiuta il vincolo col suo nome (non sostituisce in silenzio: il backend con ON CONFLICT DO UPDATE sostituiva, ma il profilo di un reparto ha sempre lo stesso codice e quindi lo stesso id). Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Coerenza e notifica dei permessi: i trigger della tabella. Non controlla il permesso (backend). INVOKER. Il contrario: config.fn_slega_profilo_reparto. Sede unica dell''UPSERT di AmmSoftwareRepository.put_profilo_reparto. R-BE-7, D-16b di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

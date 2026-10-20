@@ -7,6 +7,8 @@ CREATE FUNCTION fn_articolo_usato(p_articolo_id uuid)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.fn_articolo_usato(p_articolo_id uuid)
  RETURNS boolean
@@ -63,6 +65,8 @@ $function$
 COMMENT ON FUNCTION catalogo.fn_articolo_usato(p_articolo_id uuid)
 IS 'Predicato (A-10 di brief-db-articoli-ammessi-per-documento, 2026-10-13): true se l''articolo e'' USATO, cioe'' compare in una tabella che lo punta con una FK, in qualunque stato (anche chiusa, annullata o attivo = false). Le tabelle si leggono da pg_constraint: una tabella nuova che punta all''articolo conta da sola (fail-closed). Escluse, perche'' anagrafica dell''articolo e non un suo uso: catalogo.articoli_componenti (la distinta ha i suoi guard), catalogo.articoli_uom_operativa, catalogo.note_articoli, vendite.articoli_descrizioni_aggiuntive, vendite.articolo_regole_fatturazione, anagrafiche.soggetti_titoli_iva_ambiti. SECURITY DEFINER: gli articoli sono unici per tutte le aziende, i documenti hanno la RLS per emittente; letto con la RLS di chi modifica l''articolo il predicato non vedrebbe i documenti delle altre aziende. Ritorna solo un boolean. Lo leggono catalogo.trgfn_articoli_guard_struttura_se_usato e dbops.lock_columns_conditional (il form). NULL -> false.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

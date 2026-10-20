@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «PUO' STAMPARE», SCRITTO UNA VOLTA SOLA
+#   documenti.vw_template_versioni_stampabili (vista nuova)
+#   Brief: brief-db-modelli-documento-standard §10.3 K-1 (R-1 del BE, §9.6)
+#
+# Una riga per ogni modello che PUO' STAMPARE oggi, con la versione con cui
+#   stampa: modello attivo, versione PUBBLICATA, attiva e valida alla data
+#   operativa (rev 20261020-26 della risoluzione).
+#
+# Perche' una vista: il predicato era scritto due volte dentro
+#   fn_risolvi_template_applicabile (deduzione del tipo e scelta del modello) e una
+#   nel BE (get_versione_pubblicata_attiva, per il modello indicato a mano), e la
+#   copia del BE era gia' diversa: non guardava se il modello e' attivo. Da qui lo
+#   leggono l'esito della risoluzione (20261021-07), la porta unica col modello
+#   indicato (-09), «personalizza» attraverso la porta (-11) e lo scarto (-12). Vista e non funzione chiamata riga per riga: chi la legge
+#   fa letture su insieme, e il pianificatore la riscrive dentro la query.
+#
+# Una riga per modello: ex_template_documenti_versioni_no_overlap_pubblicata
+#   (EXCLUDE su template e validita, parziale su attivo e PUBBLICATA) ammette al
+#   massimo una versione pubblicata attiva per data.
+#
+# La data operativa in una sotto-select: si calcola una volta per la query, non
+#   per riga (linee guida §13.2).
+# security_invoker: la vista legge come chi la interroga (linee guida §13.7). Le
+#   due tabelle non hanno RLS: lo standard si legge da tutti, il perimetro dei
+#   modelli d'emittente lo applica il BE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261021-04-create-vw-template-versioni-stampabili-mctit.yaml
+
+  - changeSet:
+      id: 20261021-04-create-vw-template-versioni-stampabili
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.vw_template_versioni_stampabili: una riga per ogni modello che puo' stampare oggi,
+        con la versione con cui stampa. Sede unica del predicato «puo' stampare». Brief:
+        brief-db-modelli-documento-standard §10.3 K-1.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: documenti
+            tableName: template_documenti_versioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW documenti.vw_template_versioni_stampabili
+                  WITH (security_invoker = true) AS
+              SELECT t.id                         AS template_documento_id,
+                     v.id                         AS template_versione_id,
+                     t.tipo_documento_output_id,
+                     t.sorgente_tipo_id,
+                     t.emittente_fiscale_id,
+                     t.standard,
+                     t.is_default
+                FROM documenti.template_documenti t
+                JOIN documenti.template_documenti_versioni v
+                  ON v.template_documento_id = t.id
+                 AND v.stato = 'PUBBLICATA'
+                 AND v.attivo
+                 AND v.validita @> (SELECT script.fn_data_operativa())
+               WHERE t.attivo;
+
+              COMMENT ON VIEW documenti.vw_template_versioni_stampabili IS
+                'I modelli che possono stampare oggi, una riga per modello con la versione con cui stampa (2026-10-21, brief-db-modelli-documento-standard §10.3 K-1): modello attivo, versione PUBBLICATA, attiva e valida alla data operativa. Sede unica del predicato «puo'' stampare»: la leggono documenti.fn_risolvi_template_applicabile (anche per il modello indicato), documenti.fn_template_esito_risoluzione, documenti.fn_personalizza_template_standard e documenti.vw_template_personalizzati_scarto. Una riga per modello per costruzione: ex_template_documenti_versioni_no_overlap_pubblicata.';

@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_situazione_merce_ordine
 WITH (security_invoker=on) AS
@@ -33,6 +35,8 @@ SELECT ordine_riga_id,
     giorni_ritardo
    FROM vendite.fn_situazione_merce_ordine(NULL::bigint[], NULL::bigint[]) s(ordine_riga_id, ordine_id, riga_nr, articolo_id, ordinato, consegnato, reso, in_riconsegna, tenuti, fatturato_merce, fatturato_da_ordine, fatturato, fatturato_anticipato, da_spedire, partite_merce, misurabile, differenza, stato, data_consegna_richiesta_cliente, data_consegna_confermata, giorni_ritardo);
 ```
+
+</div>
 
 
 ---

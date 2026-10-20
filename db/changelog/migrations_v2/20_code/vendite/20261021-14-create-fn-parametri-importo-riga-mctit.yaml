@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CON CHE COSA SI ARROTONDA L'IMPORTO DI UNA RIGA, IN UN PUNTO SOLO
+#   vendite.fn_parametri_importo_riga (BB nuovo)
+#   Brief: brief-db-modelli-documento-standard §10.7 R-3 (Tid, 2026-10-20)
+#
+# Il difetto: quando l'articolo non ha regole sue
+#   (vendite.articolo_regole_fatturazione), l'importo di riga si arrotondava a
+#   «2 / HALF_UP», un letterale scritto in vendite.trgfn_fatture_righe_importo e
+#   di nuovo nel BE (pipeline_repository, _GROUP_ATTIVITA_SELECT). E' il valore di
+#   sistema che K-7 ha appena messo su config.utilities, ripetuto a mano in due
+#   posti.
+#
+# La regola: la regola dell'articolo se c'e'; altrimenti i parametri effettivi
+#   dell'emittente per l'utility della fattura
+#   (anagrafiche.fn_parametri_importo_utility, 20261021-01: la sua riga, poi per
+#   il metodo la sua policy generale, poi il sistema dell'utility). Riga e totale
+#   seguono cosi' la stessa catena.
+#
+# Una riga sempre. NULL solo se l'articolo non ha regole E l'utility manca o non
+#   esiste: chi la legge decide (il trigger solleva E_CONFIG_MANCANTE, come il
+#   ricalcolo dei totali per la fattura senza utility).
+# Lettori: vendite.trgfn_fatture_righe_importo (20261021-15) e, dopo l'apply, il
+#   BE (_GROUP_ATTIVITA_SELECT), che ritira i suoi COALESCE degli importi.
+# Forma: LANGUAGE sql BEGIN ATOMIC (§5c), STABLE, SECURITY INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261021-14-create-fn-parametri-importo-riga-mctit.yaml
+
+  - changeSet:
+      id: 20261021-14-create-fn-parametri-importo-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_parametri_importo_riga: decimali e metodo con cui si arrotonda l'importo di una riga
+        (la regola dell'articolo, altrimenti i parametri effettivi dell'emittente per l'utility). Brief:
+        brief-db-modelli-documento-standard §10.7 R-3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'fn_parametri_importo_utility';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_parametri_importo_riga(
+                  p_articolo_id                  vendite.articolo_regole_fatturazione.articolo_id%TYPE,
+                  p_emittente_soggetto_ruolo_id  vendite.fatture.emittente_soggetto_ruolo_id%TYPE,
+                  p_utility_id                   vendite.fatture.utility_id%TYPE
+              )
+               RETURNS TABLE(
+                  arrotondamento_importi_dec     vendite.articolo_regole_fatturazione.arrotondamento_importi_dec%TYPE,
+                  metodo_arrotondamento_importi  vendite.articolo_regole_fatturazione.metodo_arrotondamento_importi%TYPE
+              )
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT COALESCE(r.arrotondamento_importi_dec, p.arrotondamento_importi_dec),
+                         COALESCE(r.metodo_arrotondamento_importi, p.metodo_arrotondamento_importi)
+                    FROM (SELECT 1) base
+                    LEFT JOIN vendite.articolo_regole_fatturazione r
+                      ON r.articolo_id = p_articolo_id
+                    LEFT JOIN LATERAL anagrafiche.fn_parametri_importo_utility(
+                           p_emittente_soggetto_ruolo_id, p_utility_id) p ON true;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_parametri_importo_riga(
+                  vendite.articolo_regole_fatturazione.articolo_id%TYPE,
+                  vendite.fatture.emittente_soggetto_ruolo_id%TYPE,
+                  vendite.fatture.utility_id%TYPE) IS
+                  'Decimali e metodo con cui si arrotonda l''importo di una riga di fattura (2026-10-21, brief-db-modelli-documento-standard §10.7 R-3): la regola dell''articolo (vendite.articolo_regole_fatturazione) se c''e'', altrimenti i parametri effettivi dell''emittente per l''utility della fattura (anagrafiche.fn_parametri_importo_utility). Sempre una riga; NULL solo senza regole dell''articolo e senza utility. Sede unica: la leggono vendite.trgfn_fatture_righe_importo e il BE (gruppo delle attivita'' fatturabili). Prima il default 2 / HALF_UP era un letterale nel trigger e nel BE.';

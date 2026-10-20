@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_tipi_titolo_iva_tipi_soggetto_dettaglio_guard_ritiro()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_tipi_titolo_iva_tipi_soggetto_dettaglio_guard_ritiro()
  RETURNS trigger
@@ -72,6 +74,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_tipi_titolo_iva_tipi_soggetto_dettaglio_guard_ritiro()
 IS 'Guard AFTER UPDATE OR DELETE su config.tipi_titolo_iva_tipi_soggetto_dettaglio: una riga che smette di ammettere un tipo di titolo IVA per una natura (attivo true -> false, DELETE, coppia cambiata) e'' rifiutata con E_TITOLO_IVA_AMMISSIONE_IN_USO finche'' esistono titoli VIGENTI di quel tipo su soggetti di quella natura (anagrafiche.fn_titolo_iva_vigente_su_natura_esiste, SECURITY DEFINER). AFTER perche'' la domanda «la coppia e'' ancora ammessa?» (anagrafiche.fn_titolo_iva_ammesso) va fatta alla matrice gia'' aggiornata. La riscrittura della stessa riga attiva (il mirror del CSV) tace. Ritiro: attivo = f nel CSV, dopo aver chiuso i titoli (D-6). Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_guard_soggetto_ruolo(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_cd_int_ruolo character varying)
  RETURNS bigint
@@ -113,6 +115,8 @@ IS 'Verifica che il soggetto_ruolo_id sia coerente con il ruolo atteso (p_cd_int
     In caso di esito positivo, restituisce p_soggetto_ruolo_id.
     Il parametro p_soggetto_id è opzionale: se NULL, non viene verificato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

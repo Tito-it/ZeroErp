@@ -7,6 +7,8 @@ CREATE FUNCTION fn_documento_listino_operativo(p_documento character varying, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_documento_listino_operativo(p_documento character varying, p_documento_id bigint)
  RETURNS TABLE(listino_id bigint, listino_versione_id bigint, tipo_variazione_globale character varying, valore_variazione_globale numeric)
@@ -63,6 +65,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_documento_listino_operativo(p_documento character varying, p_documento_id bigint)
 IS 'La versione di listino che governa le righe di un documento di vendita con eccezioni (p_documento = CONTRATTO | OFFERTA): listino_versione_id della testata se fissata (attivazione del contratto, emissione dell''offerta), altrimenti la versione in vigore oggi (vendite.fn_listino_versione_in_vigore: ATTIVA o CHIUSA, la BOZZA non e'' operativa), NULL senza listino. Porta anche la variazione globale della testata. Zero righe se il documento non c''e'' o non si vede (INVOKER, testate in RLS). Altro p_documento: E_DOC_TIPO_NON_GESTITO. Sede unica (regola del 2) per script.fn_check_esclusione_articolo_documento, script.trgfn_righe_guard_aggiunta_fuori_listino e vendite.fn_documento_righe_preview, che prima la riscrivevano ciascuno per il solo contratto. Nasce il 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende (R4, R5). Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.3): la versione la chiede a vendite.fn_listino_versione_operativa, la stessa regola sui valori con cui i guard congelano la versione all''emissione dell''offerta e all''attivazione del contratto. ⭐ rev 2026-10-19 (20261019-18, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

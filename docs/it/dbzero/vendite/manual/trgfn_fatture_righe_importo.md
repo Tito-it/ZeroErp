@@ -21,8 +21,9 @@ Armato come `BEFORE INSERT OR UPDATE FOR EACH ROW`, fase `a20`:
 ```
 imponibile_riga = script.fn_arrotonda_importo(
       qta × prezzo_unitario × (1 − COALESCE(sconto_percentuale,0)/100),
-      decimali,   ← articolo_regole_fatturazione.arrotondamento_importi_dec   (default 2)
-      metodo      ← articolo_regole_fatturazione.metodo_arrotondamento_importi (default HALF_UP)
+      decimali,   ← vendite.fn_parametri_importo_riga(articolo, emittente, utility)
+      metodo      ← idem: la regola dell'articolo, altrimenti i parametri
+                    effettivi dell'emittente per l'utility della fattura
   )
 ```
 
@@ -85,11 +86,17 @@ nessuno la cerca.
 
 ### Fallback e ordine
 
-Le regole per articolo sono opzionali: la `LEFT JOIN` da una riga-base garantisce
-sempre un risultato, e i `COALESCE` applicano `2 / HALF_UP` quando la riga di
-regole non esiste. È lo stesso pattern che usava `fn_group_attivita_fatturabili`
-(funzione ritirata il 2026-07-28, changeset `20260728-21`) e che oggi vive nel
-servizio Python `FattureRigheService`.
+Le regole per articolo sono opzionali. Dal 21-10-2026 (brief-db-modelli-documento-standard
+§10.7 R-3) i parametri li dice il BB
+[vendite.fn_parametri_importo_riga](/dbzero/vendite/funzioni/fn_parametri_importo_riga): la
+regola dell'articolo se c'è, altrimenti i parametri effettivi dell'emittente per l'utility della
+fattura (la sua riga, poi per il metodo la policy generale, poi il valore di sistema), cioè la
+stessa catena del totale. Prima era il letterale `2 / HALF_UP`, ripetuto anche nel servizio Python
+(`_GROUP_ATTIVITA_SELECT`), che passa al BB nello stesso giro.
+
+Senza regole dell'articolo e su una fattura **senza utility** non c'è da dove prendere i
+parametri: `E_CONFIG_MANCANTE`, come il ricalcolo dei totali. Nell'applicazione non succede: la
+testata non nasce senza utility.
 
 Ordine dei trigger `BEFORE` sulla tabella:
 
@@ -107,4 +114,4 @@ Un'operazione respinta dal guard non arriva mai al calcolo.
 <!-- rev-2026-09-28-liste-righe -->
 ### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
 
-L'imponibile **pieno** viene da [script.fn_imponibile_riga](/dbzero/script/funzioni/fn_imponibile_riga) (`20260928-26`); l'arrotondamento configurato per articolo (decimali e metodo, ripiego 2 / HALF_UP) resta esattamente dov'era: è la politica del documento fiscale, non della formula. Il valore scritto non cambia.
+L'imponibile **pieno** viene da [script.fn_imponibile_riga](/dbzero/script/funzioni/fn_imponibile_riga) (`20260928-26`); l'arrotondamento configurato per articolo (decimali e metodo, ripiego sui parametri dell'emittente per l'utility dal 21-10-2026) resta esattamente dov'era: è la politica del documento fiscale, non della formula. Il valore scritto non cambia.

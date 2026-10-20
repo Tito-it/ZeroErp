@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_preventivi_guard_annullamento()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_annullamento()
  RETURNS trigger
@@ -69,6 +71,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_annullamento()
 IS 'Trigger function: blocca l''annullamento di un preventivo che ha gia'' un figlio a valle (ordine generato o riga in commesse_sorgenti), delegando il verdetto a script.fn_check_preventivo_annullabile — la stessa funzione letta da fn_available_actions_preventivo. Creata 2026-08-04 con la riattivazione delle transizioni verso ANNULLATO (brief-db-vie-uscita-operatore).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

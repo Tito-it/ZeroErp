@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_registro_documento(p_billing_account_id_riga bigint, 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_resolve_registro_documento(p_billing_account_id_riga bigint, p_tipo_doc_fiscale_id bigint, p_natura_doc_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(ba_fatturazione_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, registro_id bigint, serie character varying, politica_data_documento character varying)
@@ -96,6 +98,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_resolve_registro_documento(p_billing_account_id_riga bigint, p_tipo_doc_fiscale_id bigint, p_natura_doc_id bigint)
 IS 'La catena che sceglie il SEZIONALE di un documento, incapsulata per intero e in un punto solo: dal billing account della riga fino a registro, serie e politica della data. La usano sia chi SCRIVE (vendite.fn_build_fattura_key) sia chi LEGGE (le viste della dashboard di competenza, per la colonna «data prevista»), ed e'' questo che impedisce alla previsione di mentire: e'' la stessa funzione, non una copia della stessa logica. ⛔ I DUE ANCORAGGI, ed e'' il motivo per cui esiste: il BA di FATTURAZIONE e'' il PADRE quando c''e'' (COALESCE su parent_account_id), la UTILITY e'' quella della RIGA. Chi ricopia la catena a occhio li scambia, e il difetto e'' silenzioso — la lista mostra un sezionale e la fattura ne prende un altro. ⚠️ Sull''EMITTENTE l''ancoraggio e'' innocuo, e va detto per non far cercare il rischio dove non e'': anagrafiche.fn_guard_albero_ba_emittente impone che padre e figlio abbiano lo stesso emittente (due trigger z95, in entrambi i versi, SECURITY DEFINER contro la RLS, nessuna GUC di override). ⛔ Sulla UTILITY no: billing_account.utility_id e'' NOT NULL e nessun guard la vincola fra padre e figlio, ed e'' l''altro dei due assi con cui si sceglie il sezionale — la differenza fra i due ancoraggi e'' viva proprio li''. ⛔ Il parametro si chiama p_billing_account_id_riga APPOSTA: dev''essere il BA della riga, perche'' e'' da li'' che esce la utility; passargli il ba_fatturazione_id — che la vista gruppi gia'' espone — da'' una previsione plausibile e sbagliata proprio sui BA con padre. ⭐ Restituisce anche gli anelli intermedi (BA di fatturazione, utility, emittente) perche'' a fn_build_fattura_key servono per la chiave e per il reseller: senza, dovrebbe ricalcolarseli e i due ancoraggi resterebbero scritti in due posti. ⛔ NON SOLLEVA SUI DATI — tipo documento assente, natura non risolvibile, registro non mappato: tutto NULL. L''unico raise e'' il guard di parametro sul billing account, TECNICO perche'' nessuna interfaccia lo produce. ⛔ E con la riga del billing account NON VISIBILE sotto RLS si FERMA invece di tirare dritto: utility ed emittente sarebbero entrambi NULL e la gerarchia ripiegherebbe sul registro «di nessuno», restituendo un sezionale plausibile e sbagliato. «Non lo so» e'' una risposta; «il registro generico» e'' una bugia. ℹ️ L''emittente si legge con script.fn_get_ba_emittente_sr_id (lettore puro, STABLE) e non con l''involucro che solleva: le due divergono solo sul BA nullo, gia'' rifiutato dal guard. STABLE, e onestamente: tutte le funzioni che chiama lo sono. Piano: brief-db-registro-e-data-prevista-in-competenza, DB-1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

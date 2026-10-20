@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_enti_incasso_guard_conto_incasso()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_enti_incasso_guard_conto_incasso()
  RETURNS trigger
@@ -75,6 +77,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_enti_incasso_guard_conto_incasso()
 IS 'Guard di configurazione: il conto agganciato a un canale di incasso deve avere uso = ''INCASSO''. ⭐ Serve perche'' l''unicita'' che regge il perimetro (ex_src_bancari_conto_incasso_un_solo_soggetto) vive SOLO sulle righe INCASSO: un ente appeso al conto dei pagamenti starebbe fuori da quella garanzia e nessuno se ne accorgerebbe. ⛔ NON guarda bloccato ne'' valido_al di proposito: sono stati che cambiano per ragioni che non riguardano questo ente, e rifiutare il blocco di un conto perche'' «c''e'' un ente che lo cita» sposterebbe l''errore sul gesto sbagliato. ⚠️ Legge sotto RLS ma la tabella puntata ce l''ha spenta: se un giorno entra sotto row security, va portata su SECURITY DEFINER.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

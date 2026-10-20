@@ -7,6 +7,8 @@ CREATE FUNCTION fn_calcola_data_documento(p_registro_id bigint, p_competenza_mes
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_calcola_data_documento(p_registro_id bigint, p_competenza_mese date, p_serie character varying, p_data_dichiarata date DEFAULT NULL::date)
  RETURNS date
@@ -160,6 +162,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_calcola_data_documento(p_registro_id bigint, p_competenza_mese date, p_serie character varying, p_data_dichiarata date)
 IS 'Che data porta un documento emesso su questo sezionale, gia'' CONFORME ai due pavimenti. Ordine: (1) la data DICHIARATA sul lotto vince su tutto — vale per tutti i documenti dell''atto, qualunque sia il loro registro; (2) altrimenti decide la politica del sezionale — OGGI usa script.fn_data_operativa(), FINE_MESE_COMPETENZA l''ultimo giorno di competenza_mese; (3) poi la data CALCOLATA entra nei due pavimenti. ⛔ IL CLAMP VALE SOLO SUL RAMO CALCOLATO, MAI SU QUELLO DICHIARATO, e il RETURN della dichiarata sta PRIMA dei clamp apposta: spostare in silenzio una scelta esplicita e'' la classe di difetto che il cantiere della numerazione ha passato tre giorni a togliere — il clamp vale per il default, il cancello vale per la dichiarazione. ⭐ IL CLAMP DEL LIMITE ATTERRA SU OGGI E NON SUL PAVIMENTO: un GREATEST farebbe nascere il documento esattamente sul pavimento, cioe'' con margine di trasmissione ZERO — nato il 14/08 quando oggi e'' il 26/08, sarebbe intrasmissibile il giorno dopo (brief §10 V-4). ⚠️ SUL RAMO OGGI QUEL CLAMP E'' UN NO-OP PER COSTRUZIONE (politica = oggi, pavimento = oggi - giorni), ed e'' scritto perche'' non lo si provi con una fixture impossibile: sull''immediata il limite vive come cancello e come targa, mai come clamp. ⭐ IL CLAMP DELLA SEQUENZA RESTA UN GREATEST: quello spinge IN AVANTI verso una data ammessa, e un documento nato sotto di esso verrebbe rifiutato al primo tentativo di numerarlo. ⚠️ Conseguenza accettata (D-3): su un sezionale che porta gia'' una data FUTURA il documento nasce con quella data, anche su un registro OGGI. ⭐ rev 2026-08-26: arriva p_serie, OBBLIGATORIO e in TERZA posizione (i parametri con DEFAULT stanno in coda). Il pavimento di sequenza e'' per (registro, SERIE) e senza la serie si leggerebbe il contatore di un''ALTRA sequenza, rispondendo «nessun pavimento» — la risposta piu'' permissiva possibile proprio dove il cancello rifiuta. ⛔ p_serie NON ha DEFAULT: un default farebbe dimenticare il parametro. NULL resta legittimo e significa «la serie di default del registro». ⛔ LA FIRMA SERVE DUE CANTIERI (decisione D-8): la chiamano fn_get_or_create_fattura_header e le due viste della dashboard di brief-db-registro-e-data-prevista-in-competenza, che la serie ce l''hanno gia'' da fn_resolve_registro_documento. ⚠️ LA DATA DI NASCITA E'' DIPENDENTE DAL TEMPO, ED E'' UNA DECISIONE: lo stesso lotto generato oggi e domani nasce con due date diverse. E'' il prezzo di «nascere conforme», ed e'' cio'' che fa comparire nei «recuperi del mese» un lotto lavorato in ritardo. ℹ️ Tre letture del registro per fattura CREATA (questa piu'' le due delle funzioni chiamate): e'' il prezzo per non avere tre copie della stessa regola. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

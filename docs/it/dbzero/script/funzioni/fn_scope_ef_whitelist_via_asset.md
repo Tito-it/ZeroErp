@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_asset(p_auth_user_id integer, p_asset_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_asset(p_auth_user_id integer, p_asset_id bigint)
  RETURNS boolean
@@ -29,6 +31,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_asset(p_auth_user_id integer, p_asset_id bigint)
 IS '⭐ rev 2026-10-18 (20261018-49, D-3b-2 ondata 2): l''emittente dal risolutore DEFINER (via_efba: dalla composizione delle policy, in convenzione soggetto_ruolo); una strada sola, nessuna policy del padre per chiamata. Stesse risposte. Adattatore di scope per gli asset, che portano l''emittente in proprio (un asset presso un cliente non e'' in nessun magazzino). Fail-closed su asset inesistente. Lo usano le policy di assets, eventi_assets (per delega) e note_asset.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

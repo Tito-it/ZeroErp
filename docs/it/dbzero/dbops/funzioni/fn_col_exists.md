@@ -7,6 +7,8 @@ CREATE FUNCTION fn_col_exists(p_schema text, p_table text, p_col text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_col_exists(p_schema text, p_table text, p_col text)
  RETURNS boolean
@@ -47,6 +49,8 @@ IS '
       - Sensibile a maiuscole/minuscole se i nomi sono stati creati con doppie virgolette e case mixing.
     ';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

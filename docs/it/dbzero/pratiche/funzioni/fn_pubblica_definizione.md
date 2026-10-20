@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pubblica_definizione(p_definizione_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_pubblica_definizione(p_definizione_id integer)
  RETURNS integer
@@ -101,6 +103,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_pubblica_definizione(p_definizione_id integer)
 IS 'Valida una BOZZA e la pubblica, ritirando in transazione la precedente PUBBLICATA dello scope (una sola per scope). Validazioni fail-fast DEFINIZIONE_NON_PUBBLICABILE (511): non-BOZZA, nessuno step attivo, ciclo prerequisiti. SECURITY DEFINER (search_path fisso): gli UPDATE passano senza grant diretto; autorizzazione al gate app-layer (AdminAPIView).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

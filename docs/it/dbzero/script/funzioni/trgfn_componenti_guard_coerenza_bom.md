@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_componenti_guard_coerenza_bom()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_componenti_guard_coerenza_bom()
  RETURNS trigger
@@ -121,6 +123,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_componenti_guard_coerenza_bom()
 IS 'Trigger BEFORE INS/UPD su *_righe_componenti: 4 guard BoM modello unificato. (1) padre is_composito, (2) articolo_componente_id in BoM padre, (3) componente_id coerente, (4) validita BoM @> data documento. TG_ARGV[0..5]: schema, tab_padre, col_fk_figli_padre, tab_testata, col_fk_padre_testata, col_data_testata. Rimosso guard esposto_in_fattura (rev 2026-05-13, modello unificato).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -6,6 +6,8 @@ CREATE FUNCTION fn_get_emittente_distinta(p_emittente_soggetto_ruolo_id bigint, 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.fn_get_emittente_distinta(p_emittente_soggetto_ruolo_id bigint, p_ente_incasso_id bigint)
  RETURNS bigint
@@ -164,6 +166,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.fn_get_emittente_distinta(p_emittente_soggetto_ruolo_id bigint, p_ente_incasso_id bigint)
 IS 'La SEDE UNICA che dice DI CHI E'' una distinta contabile (D4 del brief distinta-numerata-sul-registro) e torna il soggetto_ruolo dell''emittente. Quattro livelli, in ordine: (0) l''emittente dato non e'' un emittente fiscale -> E_PAGAMENTI_CHIAMATA_NON_VALIDA, TECNICO, perche'' la FK verso soggetti_ruoli non lo ferma e lo produce solo un chiamante rotto; (1) dato, e se c''e'' anche il canale deve essere il suo, altrimenti E_CONTABILE_CANALE_DI_ALTRO_EMITTENTE (DATO_ERRATO, campo ente_incasso_id); (2) solo il canale -> il suo emittente, per la catena canale -> conto -> soggetto_ruolo -> emittente (il conto ha un solo padrone); un canale che non porta a un emittente e'' E_CONFIG_MANCANTE e NON si cade sulla sessione; (3) l''operatore in sessione, via script.fn_resolve_emittente_for_user (che legge prima app.current_emittente_id: un super admin con un emittente attivo scelto risolve qui); (4) niente -> E_CONTABILE_EMITTENTE_OBBLIGATORIO (DATO_ERRATO, campo emittente_fiscale_id). ⛔ NESSUN livello «default dell''installazione»: dichiarare di un emittente il denaro di un altro e'' l''attribuzione che la numerazione per emittente esiste per impedire. ⭐ E'' una FUNZIONE e non solo un trigger perche'' la chiave di riuso di fn_get_or_create_vendite_contabile deve includere l''emittente PRIMA dell''INSERT; il trigger pagamenti.trgfn_vendite_contabili_emittente la applica a ogni scrittura, la madre la chiama per cercare. Due copie della risoluzione sarebbero la seconda sede che D4 esiste per impedire. ⚠️ SECURITY INVOKER: il canale si legge SOLO dal risolutore script.fn_resolve_emittente_fiscale_id, che e'' DEFINER — enti_incasso ha la row security, e da qui «canale di un altro» diventerebbe «canale inesistente». Rev 2026-09-15.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

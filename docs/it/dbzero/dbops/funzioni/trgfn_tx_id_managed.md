@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_tx_id_managed()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.trgfn_tx_id_managed()
  RETURNS trigger
@@ -175,6 +177,8 @@ $function$
 COMMENT ON FUNCTION dbops.trgfn_tx_id_managed()
 IS 'Trigger function di audit: valorizza NEW.tx_id. USCITA ANTICIPATA (rev 2026-07-24, brief-db-tx-id-uscita-anticipata): se NEW.tx_id e'' gia'' valorizzato la funzione normalizza la stringa vuota e ritorna subito, senza leggere config.parameters ne'' toccare script.* -- tutto il corpo sottostante serve solo a calcolare il valore da assegnare quando manca. Conseguenze: niente lavoro inutile sulle 280 tabelle tracciate, e il canale di log dblink (che fornisce sempre il proprio tx_id e ha grant sul solo schema dbops) smette di fallire per permessi. Sulle righe che portano il proprio tx_id non viene piu'' emesso W_TXID_NOT_REGISTERED: e'' una diagnosi di SESSIONE, che qualunque altra scrittura senza tx_id fa scattare comunque. Percorso completo invariato quando NEW.tx_id IS NULL: bypass a due livelli (config.parameters.tx_id_bypass_enabled e GUC myapp.bypass_tx_id_check); se la GUC dbops.tx_id e'' impostata, l''id deve esistere in dbops.transaction_ids -- altrimenti AVVERTE (W_TXID_NOT_REGISTERED, non bloccante) e assegna script.uuid_nil(); se la GUC e'' assente chiama dbops.fn_get_or_create_session_tx_id(). Convenzione: E_ = errore bloccante, W_ = avvertimento. Vedi brief-db-coerenza-tx-id-non-registrato.md.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

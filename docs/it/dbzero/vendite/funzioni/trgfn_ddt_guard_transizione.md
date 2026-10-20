@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ddt_guard_transizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_transizione()
  RETURNS trigger
@@ -141,6 +143,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione()
 IS 'Trigger function: enforcement grafo transizioni stato DDT letto da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Regola 2: DRAFT->EMESSO richiede almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE) — verdetto delegato a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt). Mirror di trgfn_ordini_guard_transizione. rev 2026-07-19 (brief-db-guard-righe-avanzamento-stato Rev 2). rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-e): Regola 3, la PORTA DEL REGISTRO. DRAFT->EMESSO, EMESSO->ANNULLATO e ->CONSEGNATO di una bolla di trasferimento, su una bolla che muove merce (vendite.fn_ddt_muove_merce sulla riga NUOVA), passano solo dal verbo vendite.fn_cambia_stato_ddt: GUC transazionale zeroerp.ddt_cambio_stato = NEW.id E chi esegue e'' il proprietario della tabella (script.fn_is_proprietario_tabella), altrimenti E_DDT_STATO_SOLO_DA_VERBO. Le bolle che non muovono merce restano all''UPDATE diretto. rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-8): Regola 4, L''ANNULLO CON LEGAMI CHIEDE CONFERMA. Verso ANNULLATO, una bolla che porta legami con ordini o resi (vendite.fn_ddt_legami: fulfillment e ponti di ri-consegna) e'' rifiutata con E_DDT_ANNULLO_CON_LEGAMI (CONFLITTO_STATO; valori: etichetta della bolla, numero di righe legate): e'' l''avviso, su ogni strada. L''annullo vero passa dal verbo vendite.fn_annulla_ddt, che riceve la conferma, ritira i legami (vendite.fn_ddt_riga_ritira_legami) e poi cambia lo stato: qui arriva senza legami e passa. rev 2026-10-11 (20261011-83, brief-db-annullo-documento-con-legami D-4): la Regola 4 si RITIRA. L''avviso dell''annullo con legami vale per bolla, ordine, preventivo e contratto e sta nel BB vendite.trgfn_doc_guard_annullo_con_legami (trg_ddt_m10_guard_annullo_con_legami_upd), con il codice E_DOC_ANNULLO_CON_LEGAMI; E_DDT_ANNULLO_CON_LEGAMI e vendite.fn_ddt_legami si ritirano.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

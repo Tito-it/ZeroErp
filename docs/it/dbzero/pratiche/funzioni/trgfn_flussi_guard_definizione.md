@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_guard_definizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_definizione()
  RETURNS trigger
@@ -56,6 +58,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_definizione()
 IS 'BEFORE INSERT su pratiche.flussi: il template del flusso deve appartenere alla definizione (edizione di workflow) pinnata dalla pratica -> FLUSSI_TEMPLATE_FUORI_DEFINIZIONE (508). Difesa a DB della coerenza pin<->step (V6/versionamento).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

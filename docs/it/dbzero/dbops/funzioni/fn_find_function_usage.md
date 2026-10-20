@@ -7,6 +7,8 @@ CREATE FUNCTION fn_find_function_usage(p_function_name text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_find_function_usage(p_function_name text)
  RETURNS TABLE(object_type text, schema_name text, object_name text)
@@ -52,6 +54,8 @@ COMMENT ON FUNCTION dbops.fn_find_function_usage(p_function_name text)
 IS 'trova tutte le foreign key che fanno riferimento
       ad una tabella specificata in input.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

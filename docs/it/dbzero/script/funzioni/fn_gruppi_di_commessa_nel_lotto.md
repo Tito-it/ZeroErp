@@ -7,6 +7,8 @@ CREATE FUNCTION fn_gruppi_di_commessa_nel_lotto(p_lotto_id bigint, p_commessa_id
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_gruppi_di_commessa_nel_lotto(p_lotto_id bigint, p_commessa_id bigint)
  RETURNS jsonb
@@ -84,6 +86,8 @@ $function$
 COMMENT ON FUNCTION script.fn_gruppi_di_commessa_nel_lotto(p_lotto_id bigint, p_commessa_id bigint)
 IS 'Quali DOCUMENTI (gruppi fatturabili) di un lotto sono alimentati da una commessa: array ORDINATO di gruppo_key, [] se nessuno. ⭐ SEDE UNICA della catena commessa -> vendite.commesse_attivita -> vendite.fn_build_gruppo_fatturabile_key: fino al 2026-09-08 viveva dentro vendite.fn_segna_esito_gruppo_lotto e non era chiamabile, mentre chi fallisce al pull ha in mano la COMMESSA e non il documento. ⛔ La parte fragile non e'' la costruzione della chiave ma DA QUALE TABELLA SI LEGGE: calcolarla su vendite.attivita_fatturabili da'' COMMESSA:<hash del segment_key>, che non aggancia nessun perimetro e non fallisce (misurato il 2026-09-08: zero corrispondenze su quattro documenti noti). Una copia di quella scelta, il giorno che si sposta, produce chiavi mute. ⚠️ E'' 1:N — una commessa puo'' alimentare piu'' documenti — quindi chi scrive una segnalazione ne produce UNA PER DOCUMENTO: sceglierne una sola lascerebbe le altre a bloccare il lotto per sempre e non togliibili. ⭐ Il perimetro e'' parte della domanda: se il lotto ne dichiara uno, fuori da quello non stava lavorando; se non lo dichiara (giri di massa) li stava lavorando tutti. ⚠️ [] vuol dire «questo fallimento non ha un proprietario in questo lotto» ⇒ chi scrive mette UNA segnalazione a gruppo_key NULL, che vuol dire «e'' del GIRO» e blocca — non zero righe. ⚠️ Fail-loud sui parametri (E_PARAMETRO_INVALIDO): la chiama anche il backend, e li'' un id <= 0 e'' un chiamante rotto; un [] sarebbe indistinguibile da «nessun documento». STABLE, SECURITY INVOKER: commesse_attivita ha la RLS e il chiamante vede le commesse dei propri emittenti. Brief: brief-db-uscita-documento-dal-giro §6.1 (richiesta BE §3.2).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

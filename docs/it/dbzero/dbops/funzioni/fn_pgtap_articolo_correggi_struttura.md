@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_articolo_correggi_struttura(p_articolo_id uuid, p_campi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_articolo_correggi_struttura(p_articolo_id uuid, p_campi jsonb)
  RETURNS void
@@ -34,6 +36,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_articolo_correggi_struttura(p_articolo_id uuid, p_campi jsonb)
 IS 'Builder pgTAP (A-10 di brief-db-articoli-ammessi-per-documento, 2026-10-13): cambia i flag strutturali di un articolo gia'' usato dalla porta vera, catalogo.fn_articolo_correggi_struttura, come un SUPER_ADMIN costruito (dbops.fn_pgtap_crea_operatore_umano(.., true)), poi rimette app.current_user_id e app.ruolo_applicativo di chi chiama (anche vuoti). INVOKER: non aggira niente. Per i test che provano cosa succede a valle quando un articolo cambia dopo l''uso.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

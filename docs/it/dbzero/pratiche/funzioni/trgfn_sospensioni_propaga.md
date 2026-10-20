@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_sospensioni_propaga()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_propaga()
  RETURNS trigger
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_sospensioni_propaga()
 IS 'AFTER INSERT: propaga sospensione pratica ai flussi attivi.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE PROCEDURE proc_bump_indirizzi_dettaglio(IN p_stradario_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_bump_indirizzi_dettaglio(IN p_stradario_id integer)
  LANGUAGE plpgsql
@@ -46,6 +48,8 @@ $procedure$
 COMMENT ON PROCEDURE maintenance.proc_bump_indirizzi_dettaglio(IN p_stradario_id integer)
 IS 'Rinormalizza anagrafiche.indirizzi_dettaglio per una via, attraversando trgfn_indirizzi_dettaglio_protect_update tramite il flag zeroerp.maintenance_indirizzi_dettaglio. Il flag viene rimesso a ''off'' prima di uscire, anche in caso di errore: altrimenti il bypass resterebbe attivo per tutta la transazione chiamante e ogni modifica successiva a indirizzi_dettaglio girerebbe senza protezione.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

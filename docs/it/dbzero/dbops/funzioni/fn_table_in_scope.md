@@ -7,6 +7,8 @@ CREATE FUNCTION fn_table_in_scope(p_schema text, p_table text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_table_in_scope(p_schema text, p_table text)
  RETURNS boolean
@@ -63,6 +65,8 @@ AS $function$
   END;
   $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

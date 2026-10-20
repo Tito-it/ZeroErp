@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_fatturazione_pipeline_step(p_tipo_lotto text, p_stato
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_resolve_fatturazione_pipeline_step(p_tipo_lotto text, p_stato_doc_fiscale_id bigint, p_utility_id integer DEFAULT NULL::integer, p_tipo_doc_fiscale_id bigint DEFAULT NULL::bigint, p_rollback boolean DEFAULT false)
  RETURNS TABLE(pipeline_id bigint, stato_doc_fiscale_id bigint, descrizione text, ordine smallint, processi jsonb, utility_id integer, tipo_doc_fiscale_id bigint, livello_match text)
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_resolve_fatturazione_pipeline_step(p_tipo_lotto text, p_stato_doc_fiscale_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_rollback boolean)
 IS 'Risoluzione step pipeline con precedenza specifica e fallback globale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

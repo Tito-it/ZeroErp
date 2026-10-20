@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_ordini_riepilogo_iva_dettaglio
 WITH (security_invoker=on) AS
@@ -51,6 +53,8 @@ WITH imponibili AS (
      LEFT JOIN config.iva iva ON ((iva.id = r.iva_id)))
      LEFT JOIN LATERAL script.fn_esigibilita_iva_documento(d.emittente_fiscale_id, d.billing_account_id, r.iva_id) e(esigibilita, split_payment) ON (true));
 ```
+
+</div>
 
 
 ---

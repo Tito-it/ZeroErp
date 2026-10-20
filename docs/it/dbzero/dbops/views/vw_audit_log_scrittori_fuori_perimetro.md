@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_audit_log_scrittori_fuori_perimetro
 WITH (security_invoker=true) AS
@@ -33,6 +35,8 @@ WITH perimetro AS (
           WHERE (pe.nspname = s.nspname)))) AND (NOT ((nspname = 'dbops'::name) AND (proname = ANY (ARRAY['fn_audit_log_once'::name, 'fn_audit_begin'::name, 'fn_audit_end'::name])))))
   ORDER BY (((nspname)::text || '.'::text) || (proname)::text);
 ```
+
+</div>
 
 
 ---

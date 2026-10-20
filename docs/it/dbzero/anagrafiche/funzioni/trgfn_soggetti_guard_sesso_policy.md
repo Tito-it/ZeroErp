@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_soggetti_guard_sesso_policy()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_sesso_policy()
  RETURNS trigger
@@ -79,6 +81,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_sesso_policy()
 IS 'Guard BEFORE INSERT OR UPDATE OF sesso, tipo_soggetto_dettaglio_id su anagrafiche.soggetti: il sesso rispetta config.tipi_soggetto_dettaglio.sesso_policy della natura (REQUIRED: NULL rifiutato con E_SESSO_OBBLIGATORIO; NONE: un valore rifiutato con E_SESSO_NON_AMMESSO; OPTIONAL: tutto ammesso). Il valore (M, F, X o NULL) lo presidia il CHECK chk_soggetti_sesso. Senza natura tace, come il guard su CF e P.IVA. Campo «sesso» nel contesto, per il form. Brief: brief-db-sesso-senza-default.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

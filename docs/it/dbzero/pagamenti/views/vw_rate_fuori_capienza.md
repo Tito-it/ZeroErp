@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW pagamenti.vw_rate_fuori_capienza
 WITH (security_invoker=on) AS
@@ -60,6 +62,8 @@ WITH candidate AS (
           WHERE ((cr.scadenza_id = c.scadenza_id) AND (cr.attivo IS TRUE) AND (cr.forzata IS TRUE))) fz ON (true))
   WHERE (((sign(x.saldo) <> sign(c.importo)) AND (x.saldo <> (0)::numeric)) OR (abs(x.saldo) > abs(c.importo)));
 ```
+
+</div>
 
 
 ---

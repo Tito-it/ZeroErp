@@ -7,6 +7,8 @@ CREATE FUNCTION fn_aggiungi_onere_commessa(p_commessa_id bigint, p_istanza_utili
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_aggiungi_onere_commessa(p_commessa_id bigint, p_istanza_utility_id bigint, p_articolo_onere_id uuid, p_importo numeric, p_tipo_doc_fiscale_id bigint, p_motivo text DEFAULT NULL::text, p_data_attivita date DEFAULT NULL::date)
  RETURNS bigint
@@ -233,6 +235,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_aggiungi_onere_commessa(p_commessa_id bigint, p_istanza_utility_id bigint, p_articolo_onere_id uuid, p_importo numeric, p_tipo_doc_fiscale_id bigint, p_motivo text, p_data_attivita date)
 IS 'Madre DB porta oneri (brief-db-immutabilita-quantita-e-porta-oneri §4c). Da un ARTICOLO-ONERE (catalogo.articoli.causale_onere_id NOT NULL, 1:1) crea una riga commesse_attivita di puro valore (qta=1, tipo_movimento=ONERE) gia'' APPROVATA, SOURCELESS. Deriva causale+uom (e a valle IVA) dall''articolo; snapshotta la causale su commesse_attivita.causale_onere_id. Importo solo positivo. Riusa fn_upsert_commessa_attivita e scrive commesse_attivita_log (evento ONERE_AGGIUNTO). Usabile da endpoint o processo autorizzato (presidio permessi sul BE). Ritorna attivita_id. CONCORRENZA (brief-db-race-segment-key-onere, 2026-07-23): progressivo segment_key MAN:<commessa>:<n> da MAX(...)+1 sotto pg_advisory_xact_lock per commessa (serializza solo gli oneri della stessa commessa); guard E_ONERE_SEGMENT_DUPLICATO se la upsert aggiorna invece di creare (la porta e'' una CREATE, non una upsert). Buchi nella numerazione ammessi. rev 2026-07-23.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

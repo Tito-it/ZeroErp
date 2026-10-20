@@ -7,6 +7,8 @@ CREATE FUNCTION fn_contratto_sovrapposto(p_billing_account_id bigint, p_istanza_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_contratto_sovrapposto(p_billing_account_id bigint, p_istanza_utility_id bigint, p_utility_id integer, p_ambito character varying, p_valido_dal date, p_valido_al date)
  RETURNS bigint
@@ -65,6 +67,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_contratto_sovrapposto(p_billing_account_id bigint, p_istanza_utility_id bigint, p_utility_id integer, p_ambito character varying, p_valido_dal date, p_valido_al date)
 IS 'Rilevamento read-only (STABLE) del contratto VINCOLANTE (partecipa_overlap_snapshot: non abortito e non in bozza) sovrapposto alla quintupla (billing_account, istanza_utility, utility, ambito, periodo). Ritorna l''id dell''incumbent o NULL. I DRAFT non contano. Meccanismo generico di successione. Daterange con COALESCE simmetrico identico a contratti.validita. rev 2026-06-02.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

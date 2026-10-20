@@ -6,6 +6,8 @@ CREATE FUNCTION fn_ordine_proietta_stato_evasione(p_ordine_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ordine_proietta_stato_evasione(p_ordine_id bigint)
  RETURNS void
@@ -69,6 +71,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ordine_proietta_stato_evasione(p_ordine_id bigint)
 IS 'Building block (2026-10-11, brief-db-ddt-righe-evase-dall-ordine §5.2): porta l''ordine nello stato che la sua evasione dice. Nessun fulfillment su nessuna riga -> CONFERMATO; residuo su almeno una riga (vendite.fn_ordine_ha_residuo_evasione, reso-aware) -> PARZIALMENTE_EVASO; altrimenti EVASO. Il discrimine del CONFERMATO e'' l''ESISTENZA di un legame, non il residuo pieno: un ordine evaso e poi reso per intero resta PARZIALMENTE_EVASO. La transizione passa dalla matrice (vendite.trgfn_ordini_guard_transizione), che rifiuta uno stato di partenza che non ammette il passaggio; UPDATE solo se lo stato cambia. SECURITY INVOKER: scrive con la RLS di chi chiama. Estratta dalle sei madri che la scrivevano a mano (fn_genera_ddt_da_ordine, fn_conferma_reso, fn_annulla_reso, fn_chiudi_riconsegna_reso, fn_riapri_riconsegna_reso, fn_genera_ddt_riconsegna), ritirate lo stesso giorno (20261011-06 … -11); consumatori nuovi: vendite.fn_ddt_riga_correggi_qta_evasa e il ritiro del legame in vendite.trgfn_dlt_block_ordrig_ddtrig. Parametro non valido: E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

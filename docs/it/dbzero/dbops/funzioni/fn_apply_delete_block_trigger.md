@@ -7,6 +7,8 @@ CREATE FUNCTION fn_apply_delete_block_trigger(p_schema text, p_table text, p_guc
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_apply_delete_block_trigger(p_schema text, p_table text, p_guc_key text, p_trigger_name text DEFAULT NULL::text)
  RETURNS void
@@ -65,6 +67,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_apply_delete_block_trigger(p_schema text, p_table text, p_guc_key text, p_trigger_name text)
 IS 'Crea trigger delete-block con template trg_<tabella>_a10_delete_block_dlt e GUC di bypass.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_guard_istanza_del_ruolo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_guard_istanza_del_ruolo()
  RETURNS trigger
@@ -77,6 +79,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_guard_istanza_del_ruolo()
 IS 'Guard (2026-10-19), un corpo per anagrafiche.indirizzi e anagrafiche.soggetti_ruoli_conti_bancari: l''istanza della riga (istanza_utility_id) e'' del soggetto del suo ruolo (soggetto_ruolo_id). BEFORE INSERT OR UPDATE in fascia a10, per ogni scrittore (madri e UPDATE del backend). Esce senza istanza, e in UPDATE se ruolo e istanza non cambiano. Rifiuto E_ISTANZA_ALTRO_SOGGETTO (DATO_ERRATO), contesto campo = istanza_utility_id e la tabella; nella frase il codice dell''istanza. Il confronto dal BB anagrafiche.fn_istanza_di_altro_soggetto. L''altra porta (il soggetto dell''istanza o del ruolo che cambia) la chiudono i lock E_ISTANZA_SOGGETTO_IMMUTABILE ed E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE. R-BE-15, D-17a e D-17c di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

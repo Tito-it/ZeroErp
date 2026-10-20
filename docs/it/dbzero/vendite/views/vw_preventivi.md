@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_preventivi
 WITH (security_invoker=on) AS
@@ -52,6 +54,8 @@ SELECT p.id,
                    FROM vendite.preventivi p3
                   WHERE (((p3.numero)::text = (p.numero)::text) AND (p3.rev > p.rev)))) AS has_next_revisione) d);
 ```
+
+</div>
 
 
 ---

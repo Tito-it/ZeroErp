@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_totp_recovery_hash(p_hash jsonb)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_totp_recovery_hash(p_hash jsonb)
  RETURNS boolean
@@ -34,6 +36,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_totp_recovery_hash(p_hash jsonb)
 IS 'Un mazzo NUOVO di codici di recupero del secondo fattore ha la forma giusta? true se e'' un array jsonb con almeno un elemento, tutti stringhe non vuote (gli hash calcolati dal backend: il formato e'' suo), senza doppioni (il consumo toglie l''hash con l''operatore jsonb -, che li toglierebbe tutti). Un mazzo vuoto e'' uno stato legittimo della riga (codici finiti), non un mazzo nuovo: e'' un check dei verbi, non un CHECK della tabella. La chiedono script.fn_totp_registra_device e script.fn_totp_rigenera_recovery. NULL -> false. Non solleva (fn_check_*). IMMUTABLE. Brief: brief-db-secondo-fattore-totp §3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

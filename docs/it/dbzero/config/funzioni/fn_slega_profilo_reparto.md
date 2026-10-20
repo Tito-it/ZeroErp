@@ -6,6 +6,8 @@ CREATE FUNCTION fn_slega_profilo_reparto(p_profilo_accesso_id integer, p_unita_o
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_slega_profilo_reparto(p_profilo_accesso_id integer, p_unita_organizzativa_id integer)
  RETURNS integer
@@ -46,6 +48,8 @@ $function$
 COMMENT ON FUNCTION config.fn_slega_profilo_reparto(p_profilo_accesso_id integer, p_unita_organizzativa_id integer)
 IS 'MADRE (2026-10-19): toglie il binding di un reparto (unita'' organizzativa) da QUEL profilo di accesso; ritorna quanti binding ha tolto, 0 se non ce n''era (idempotente). Il contrario di config.fn_lega_profilo_reparto, gemella di config.fn_slega_profilo_identita. Nasce con la madre che lega, prima che qualcuno ne abbia bisogno: senza, il primo scrittore farebbe un DELETE suo. Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Non controlla il permesso (backend). INVOKER. R-BE-7, D-16c di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

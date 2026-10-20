@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_fattura_eliminabile_da_lotto(p_lotto_id bigint, p_fattu
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_fattura_eliminabile_da_lotto(p_lotto_id bigint, p_fattura_id bigint)
  RETURNS jsonb
@@ -189,6 +191,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_fattura_eliminabile_da_lotto(p_lotto_id bigint, p_fattura_id bigint)
 IS 'Funzione PURA (fn_check_*): motivi ostativi all''eliminazione di UNA fattura da un lotto. Togliere = CANCELLARE (RD-7, 2026-08-04). Ritorna [] oppure array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (831) — allargamento RD-7. Motivo 2: fattura non collegata a questo lotto (832). Motivo 3: fattura oltre il pre-fiscale (833). Motivo 4: fattura gia'' NUMERATA (834), deliberatamente ridondante rispetto al 3. ⭐ Motivo 5 (2026-08-22): righe gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ e'' la porta piu'' esposta delle tre, perche'' lavora su UNA fattura e la ammette anche a lotto EMESSA, cioe'' proprio lo stato in cui vive un accredito registrato prima della numerazione; il motivo 4 non lo copre, l''accredito e'' ancorato alla coda dei resi e non al numero. Sorgente UNICA letta da vendite.fn_elimina_fattura_da_lotto. rev 2026-08-22. ⭐ Motivo 6 (2026-10-04): fatture che hanno gia'' CONSUMATO il plafond di un titolo IVA, delegato a script.fn_check_fatture_con_plafond_consumato — il consumo avviene PRIMA della numerazione, quindi il motivo sul numero non lo copre; un movimento e'' un fatto contabile e la fattura non si disfa piu'' (brief-db-bom-flag-quantita-e-kit-in-fattura §14, strada A). ⭐ rev 2026-10-04 bis (R-DB-A2, scelta A di Tid): sul motivo 6 la reason_key e'' vendite.lotti.azione_reason.fattura_plafond_consumato — il tooltip parla di QUESTA fattura, non del lotto; codice, reason e dettaglio restano quelli della sede unica. Stessa coppia singolare/plurale dei motivi 3 e 4 con le porte del lotto.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

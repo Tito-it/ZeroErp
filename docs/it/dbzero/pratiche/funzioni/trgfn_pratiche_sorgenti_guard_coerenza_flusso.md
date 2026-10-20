@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pratiche_sorgenti_guard_coerenza_flusso()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso()
  RETURNS trigger
@@ -64,6 +66,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_sorgenti_guard_coerenza_flusso()
 IS 'BEFORE INSERT/UPDATE OF flusso_id,pratica_id su pratiche_sorgenti: se flusso_id e'' valorizzato, il flusso deve appartenere alla stessa pratica del link. Flusso inesistente -> lascia sollevare la FK (brief-db-aggancio-documento-flusso).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

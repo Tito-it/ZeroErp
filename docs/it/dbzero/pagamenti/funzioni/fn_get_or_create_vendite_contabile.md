@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigin
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date DEFAULT script.fn_data_operativa(), p_ente_incasso_id bigint DEFAULT NULL::bigint, p_lotto_id bigint DEFAULT NULL::bigint, p_codice_stato_interno text DEFAULT 'BOZZA'::text, p_meta jsonb DEFAULT '{}'::jsonb, p_origine character varying DEFAULT 'GENERATA'::character varying, p_emittente_fiscale_id bigint DEFAULT NULL::bigint)
  RETURNS bigint
@@ -348,6 +350,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date, p_ente_incasso_id bigint, p_lotto_id bigint, p_codice_stato_interno text, p_meta jsonb, p_origine character varying, p_emittente_fiscale_id bigint)
 IS 'Recupera o crea la testata contabile per un centro, un canale e una giornata. ⭐ Su una distinta MANUALE la chiave di riuso comprende CHI STA LAVORANDO (D12-a): il raggruppamento «giornata + canale» non ha un referente nel mondo, il lotto di lavoro di una persona si'' — e con quello la contesa fra due operatori non esiste, quindi il lock che sarebbe servito a governarla non si costruisce. ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, L6): LA DISTINTA SA DI CHI E'' (D3). Parametro in coda p_emittente_fiscale_id (la PK, cio'' che backend e frontend conoscono; PK -> SR esplicito nel corpo); se manca si deriva dal LOTTO — chi passa un lotto sa gia'' di chi e'' la distinta, e il giro di massa di un admin globale in modalita'' «tutti gli emittenti» ha lotti di N aziende e una sessione che non risolve nessuno — con un ramo STRICT (lotto inesistente o fuori perimetro = TECNICO, non la sessione: la distinta del lotto di un altro nascerebbe di chi agisce, agganciata a un lotto altrui); poi la sede unica pagamenti.fn_get_emittente_distinta (canale / operatore in sessione / rifiuto parlante). L''emittente ENTRA NELLA CHIAVE DI RIUSO di entrambi i rami e nell''INSERT: la GENERATA senza lotto smette di raccogliere i fondi di tutti — e'' la decisione aperta del changeSet 20260822-20, chiusa nel verso «una per emittente» a costo zero, perche'' nessun percorso vivo la esercitava nell''altro. ⛔ `codice` non si passa: lo assegna il trigger a10_gen_codice sul registro DISTINTA dell''emittente (D5); il DEFAULT di colonna della rev 28-08 e'' caduto. 🔴 La firma e'' cambiata, quindi la funzione a otto parametri e'' stata eliminata e ricreata: una sostituzione con parametri diversi affianca un overload, e coi default le chiamate diventano ambigue. I due chiamanti vivi (backend pagamenti_repository, vendite.fn_sync_contabili_fondo_fattura) passano gli argomenti per nome e non cambiano. ⚠️ Rev 2026-08-22 (lotto 7, D15-e): sparisce p_compensazione_id — girato il verso del legame e'' l''ATTO a tenere l''id della sua contabile; l''unicita'' «una contabile per atto» vive su uq_sistemazioni_contabile.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

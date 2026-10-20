@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resi_riga_residuo_riconsegna(p_resi_riga_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_resi_riga_residuo_riconsegna(p_resi_riga_id bigint)
  RETURNS numeric
@@ -69,6 +71,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_resi_riga_residuo_riconsegna(p_resi_riga_id bigint)
 IS 'Residuo RI-CONSEGNABILE di una riga reso: quantita - Sigma resi_righe_riconsegne.qta - Sigma resi_righe_rinunce.qta (brief-db-chiusura-riconsegna-reso-definitivo S4.2-bis). PUNTO UNICO della formula, prima ripetuta in vw_resi_da_riconsegnare, fn_genera_ddt_riconsegna e trgfn_resi_riconsegne_guard: modificarla qui la allinea in tutti. Non filtra stato reso / attivo / tipo riapre_residuo: e'' aritmetica di copertura sulla singola riga, i filtri di dominio restano ai chiamanti. Ritorna 0 su riga inesistente (letta da viste su insiemi in movimento) e mai un valore negativo. DA NON CONFONDERE con fn_ordine_riga_qta_riconsegna, che calcola l''addendo del residuo ORDINE. rev 2026-07-26.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

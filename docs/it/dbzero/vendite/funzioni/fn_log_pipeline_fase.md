@@ -7,6 +7,8 @@ CREATE FUNCTION fn_log_pipeline_fase(p_lotto_id bigint, p_stato_doc_fiscale_id b
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_log_pipeline_fase(p_lotto_id bigint, p_stato_doc_fiscale_id bigint, p_fase text, p_status character DEFAULT 'I'::bpchar, p_messaggio text DEFAULT NULL::text, p_meta jsonb DEFAULT '{}'::jsonb, p_error_code text DEFAULT NULL::text, p_gruppo_key text DEFAULT NULL::text)
  RETURNS void
@@ -141,6 +143,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_log_pipeline_fase(p_lotto_id bigint, p_stato_doc_fiscale_id bigint, p_fase text, p_status character, p_messaggio text, p_meta jsonb, p_error_code text, p_gruppo_key text)
 IS 'Scrive una riga di log di FASE su vendite.fatturazione_lotti_log, arricchendola col tipo lotto e lo stato operativo letti dalla testata. ⭐ rev 2026-09-08 (brief-db-uscita-documento-dal-giro §6.1, richiesta BE §3.1): accetta p_gruppo_key e lo scrive nella COLONNA omonima. E'' l''unico canale con cui il backend scrive quel registro, quindi senza il parametro la colonna nata col 20260908-02 resta vuota — e il verbo «togli questo documento dal giro» non sblocca niente sulla corsia del pull, perche'' l''unica segnalazione che blocca nasce a NULL, cioe'' «e'' del giro». ⭐ In una COLONNA e non in meta, all''opposto di error_code: la gruppo_key e'' un ASSE DI JOIN — la leggono il conteggio di fn_get_lotto_segnalazioni_summary e il presidio vw_segnalazioni_con_documento_ignoto — e un dato su cui si fa EXISTS non vive in un jsonb. ⚠️ NULL significa «la segnalazione e'' del GIRO» e blocca: e'' un valore dichiarato, non un''assenza. Una stringa vuota o di soli spazi viene normalizzata a NULL e il caso viene DICHIARATO con un WARNING — la colonna ha due stati, e un terzo passerebbe per «nomina un documento» lasciando una riga che blocca il lotto per sempre e che nessuno puo'' togliere. ⛔ NESSUNA verifica che il documento esista, di proposito: un log non deve poter fallire per un riferimento sbagliato in cio'' che registra — fallirebbe dentro il ramo EXCEPTION di qualcun altro. Il presidio e'' vw_segnalazioni_con_documento_ignoto, che guarda e non blocca. Il parametro e'' l''OTTAVO, in coda: le quattro funzioni DB chiamanti e la chiamata posizionale a sei argomenti del backend continuano a funzionare identiche. ⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-2): accetta p_error_code e lo scrive in meta->>''error_code''. Nasce da una misura: NESSUNA funzione del database cattura CONSTRAINT_NAME, quindi il codice di dominio non veniva conservato da nessuna parte, e i log tenevano solo RETURNED_SQLSTATE, che per un errore di dominio e'' SEMPRE P0001 e non distingue niente. ⛔ NESSUNA validazione contro config.codici_errore, per la stessa ragione: il presidio dei codici non dichiarati vive in dbops.vw_codici_errore_da_dichiarare. ⚠️ E'' comunque un DROP + CREATE — un parametro nuovo crea un overload, e con la vecchia firma viva ogni chiamata a sei o sette argomenti sarebbe ambigua.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

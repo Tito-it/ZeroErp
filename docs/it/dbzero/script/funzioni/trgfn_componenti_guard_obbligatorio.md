@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_componenti_guard_obbligatorio()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_componenti_guard_obbligatorio()
  RETURNS trigger
@@ -48,6 +50,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_componenti_guard_obbligatorio()
 IS 'Trigger BEFORE UPDATE OF attivo su *_righe_componenti: blocca disattivazione (TRUE->FALSE) di componenti obbligatori. Raise E_DOC_COMPONENTE_OBBLIGATORIO (443). rev 2026-05-13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

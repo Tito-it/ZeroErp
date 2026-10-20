@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_parameters_fk_surrogate_dispatch()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_parameters_fk_surrogate_dispatch()
  RETURNS trigger
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_parameters_fk_surrogate_dispatch()
 IS 'Dispatcher framework FK-surrogata su config.parameters. Legge regole da config.parameter_fk_surrogate via script.fn_check_parameter_fk_surrogate. Raise E_PARAMETER_DEFAULT_VALUE_INVALID. Sostituisce trgfn_parameters_guard_default_tipo_soggetto_dettaglio (droppato 20260502-07).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -72,9 +72,11 @@ standard, non ha emittente).
 * **Lo scrivono solo il seed e i changeSet.** Dall'applicazione si legge e
   basta (`E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA`, guard
   `trg_template_documenti_a05_guard_standard_ins_upd_dlt`, che copre anche le
-  versioni). Chi vuole un modello diverso lo **personalizza**: crea il modello
-  del suo emittente partendo da una versione standard, e la versione nuova
-  dichiara da dove è partita (`template_documenti_versioni.derivata_da_versione_id`).
+  versioni). Chi vuole un modello diverso lo **personalizza**
+  ([fn_personalizza_template_standard](/dbzero/documenti/funzioni/fn_personalizza_template_standard)):
+  crea il modello del suo emittente partendo dalla versione con cui lo standard
+  stampa oggi, e la versione nuova dichiara da dove è partita
+  (`template_documenti_versioni.derivata_da_versione_id`).
 * **Un'evoluzione ha una sede sola.** I changeSet che cambiano un modello
   scrivono sullo standard, trovato per `standard + tipo + sorgente +
   codice_interno`, non sulle copie degli emittenti. Quanto una copia è rimasta

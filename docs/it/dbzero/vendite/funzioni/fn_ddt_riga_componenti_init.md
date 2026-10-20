@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ddt_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ddt_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb DEFAULT NULL::jsonb)
  RETURNS integer
@@ -199,6 +201,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ddt_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
 IS 'Popola vendite.ddt_righe_componenti per una riga composita. BoM = contratto immutabile: l''operatore non sceglie quali componenti includere. rev 2026-08-19: usa il NUCLEO fn_resolve_prezzo_listino_v2_esito. Se il prezzo di un componente non si risolve la riga si crea lo stesso con prezzo_unitario NULL e con esito_codice in prezzo_resolver_context — prima l''intera riga-kit falliva, ed era l''unica ragione per cui un kit non poteva viaggiare su un DDT che non vende. Il divieto dell''override a zero sui componenti obbligatori si applica solo se la causale e'' fatturabile (stessa regola della WHEN del trigger 20260819-15). Brief: brief-ddt-righe-senza-prezzo §9 slice C (C5).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

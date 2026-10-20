@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_doc_indirizzi_guard_cliente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente()
  RETURNS trigger
@@ -102,6 +104,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente()
 IS 'Building block BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, <colonna verso la testata> FOR EACH ROW sulle sei vendite.*_indirizzi, TG_ARGV[0] = documento (DDT | ORDINE | PREVENTIVO | OFFERTA | CONTRATTO | FATTURA, script.fn_doc_indirizzi_sede). Un indirizzo d''anagrafica (origine valorizzata) deve essere del cliente del documento: il predicato e'' script.fn_indirizzo_documento_fuori_cliente, il cliente lo legge script.fn_get_cliente_testata_documento (DEFINER). Rifiuta con E_INDIRIZZO_DOC_NON_DEL_CLIENTE (DATO_ERRATO, campo tipo_indirizzo_id, valore: il tipo leggibile; nel contesto il motivo ALTRO_CLIENTE | ALTRA_FORNITURA). Una-tantum, testata assente, UPDATE che non cambia origini ne'' documento: passa. Montaggio con un documento ignoto: E_DOC_TIPO_NON_GESTITO (TECNICO). Sostituisce il guard d''origine del backend (upsert_indirizzo_documento), che lo diceva solo per chi passava dal service. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§5.4, §7.2 c).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_accoda_stampe_lotto(p_lotto_id bigint, p_tipo_documento_outpu
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_accoda_stampe_lotto(p_lotto_id bigint, p_tipo_documento_output_id bigint DEFAULT NULL::bigint)
  RETURNS integer
@@ -77,6 +79,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_accoda_stampe_lotto(p_lotto_id bigint, p_tipo_documento_output_id bigint)
 IS 'Accoda in vendite.fatture_stampa_coda un work-item PENDING per ogni fattura del lotto (sorgente FATTURA, sorgente_uid=id::text), col tipo di documento da stampare p_tipo_documento_output_id (NULL = decide il DB alla stampa, se fra i modelli che possono stampare ce n''e'' uno solo). Idempotente via il vincolo di esclusione ex_fatture_stampa_coda_vivo (ON CONFLICT DO NOTHING): una riga viva per (fattura, tipo), e una riga col tipo NULL esclude le altre righe vive della stessa fattura. Ritorna il numero di righe effettivamente accodate. Chiamata dal task pipeline stampa_documenti_lotto; numerazione (backstop) e render vivono nel worker drainer. Brief: brief-db-processi-fatturazione-cockpit §4; rev 2026-08-04 (D-M): via il predicato su lf.esclusa; rev 2026-10-20 (brief-db-modelli-documento-standard §9): il parametro del tipo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

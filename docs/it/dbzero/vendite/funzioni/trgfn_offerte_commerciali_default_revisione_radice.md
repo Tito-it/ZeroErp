@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_offerte_commerciali_default_revisione_radice()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_default_revisione_radice()
  RETURNS trigger
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_default_revisione_radice()
 IS 'BEFORE INSERT su offerte_commerciali: deriva revisione_radice_id (l''id della rev.1 su se'' stessa; la radice del padre sulle revisioni successive). Il valore passato dal chiamante non conta. Padre non visibile o inesistente: E_OFFERTA_REVISIONE_PADRE_NON_TROVATO. Brief: brief-db-liste-datatable-grezze §3.2 (2026-09-27).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

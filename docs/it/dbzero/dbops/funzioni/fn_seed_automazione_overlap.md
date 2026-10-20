@@ -7,6 +7,8 @@ CREATE FUNCTION fn_seed_automazione_overlap(p_schemas text[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_seed_automazione_overlap(p_schemas text[] DEFAULT NULL::text[])
  RETURNS void
@@ -237,6 +239,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_seed_automazione_overlap(p_schemas text[])
 IS 'Popola dbops.automazione_overlap rilevando tabelle con valido_dal/valido_al o valid_from/valid_to. Rileva anche la presenza di colonna daterange nativa (validita) e popola range_col.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

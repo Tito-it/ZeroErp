@@ -7,6 +7,8 @@ CREATE FUNCTION fn_run_automations_delete_block(p_exec_mode text, p_schemas text
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_run_automations_delete_block(p_exec_mode text, p_schemas text[], p_dry_run boolean)
  RETURNS void
@@ -114,6 +116,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_run_automations_delete_block(p_exec_mode text, p_schemas text[], p_dry_run boolean)
 IS 'Applica i trigger DELETE_BLOCK configurati in dbops.automation_delete_block. ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

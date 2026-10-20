@@ -7,6 +7,8 @@ CREATE FUNCTION fn_run_automations(p_exec_mode text, p_schemas text[], p_dry_run
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_run_automations(p_exec_mode text DEFAULT 'AUTO'::text, p_schemas text[] DEFAULT NULL::text[], p_dry_run boolean DEFAULT false, p_parts text[] DEFAULT ARRAY['TX_ID'::text, 'AUDIT_UPDATE'::text, 'STORICO'::text, 'LOCK_COLUMNS'::text, 'ATTIVO'::text, 'DATE_VALIDITA'::text])
  RETURNS void
@@ -86,6 +88,8 @@ IS '
     Rev 20260923-42: parte DATE_VALIDITA (dbops.fn_run_automations_date_validita, il guard della regola del periodo montato dalla sola presenza di valido_dal/valido_al), anche nel default.
   ';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

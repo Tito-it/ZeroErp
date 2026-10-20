@@ -7,6 +7,8 @@ CREATE FUNCTION fn_totp_registra_device(p_auth_user_id integer, p_secret_encrypt
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_totp_registra_device(p_auth_user_id integer, p_secret_encrypted character varying, p_recovery_codes_hash jsonb)
  RETURNS void
@@ -72,6 +74,8 @@ $function$
 COMMENT ON FUNCTION script.fn_totp_registra_device(p_auth_user_id integer, p_secret_encrypted character varying, p_recovery_codes_hash jsonb)
 IS 'Registra il device del secondo fattore (TOTP) di una credenziale, NON confermato: segreto cifrato dal backend e hash dei codici di recupero (script.fn_check_totp_recovery_hash: array non vuoto di stringhe distinte). Sostituisce un device non confermato (il setup ricomincia); su un device confermato -> E_TOTP_DEVICE_GIA_ATTIVO (va prima disabilitato). Una istruzione (upsert con WHERE NOT confermato): nessuna finestra fra domanda e scrittura. Chi agisce: la credenziale stessa (script.fn_guard_utente_stesso). Forma sbagliata -> E_AUTH_CHIAMATA_NON_VALIDA; credenziale inesistente -> E_CREDENZIALE_NON_TROVATA. SECURITY DEFINER del PROPRIETARIO, search_path bloccato: all''app solo SELECT. Brief: brief-db-secondo-fattore-totp §3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

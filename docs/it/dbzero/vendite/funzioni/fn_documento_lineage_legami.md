@@ -7,6 +7,8 @@ CREATE FUNCTION fn_documento_lineage_legami(p_archi text[], p_from_tipo_ids bigi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage_legami(p_archi text[], p_from_tipo_ids bigint[], p_from_uids text[], p_to_tipo_ids bigint[], p_to_uids text[])
  RETURNS TABLE(arco text, from_tipo_id bigint, from_uid text, to_tipo_id bigint, to_uid text, is_legame_ritirato boolean)
@@ -85,6 +87,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_documento_lineage_legami(p_archi text[], p_from_tipo_ids bigint[], p_from_uids text[], p_to_tipo_ids bigint[], p_to_uids text[])
 IS 'Decoratore SECURITY DEFINER degli ARCHI della lineage (2026-10-13, R-17/R-18 del BE, collaudo PRV0000144), gemello di vendite.fn_documento_lineage_nodi: i nodi danno lo stato, questo il LEGAME. Per ogni arco (array paralleli: lettera, tipo e chiave dei due estremi) dice se il legame e'' ritirato con i due nodi vivi: true / false; NULL per una lettera non censita («non so», non «vivo»). Censimento: B, E, F, U (documento -> commessa) ritirato se nella commessa non resta nessuna riga di quel documento con stato_emissione <> ANNULLATA — una riga EMESSA e'' viva; chiave delle righe <testata>.uid::text, quella di vendite.fn_documento_legami; commessa annullata -> true insieme a to_is_abortito. A (preventivo -> ordine) ritirato se nessuna riga ATTIVA dell''ordine viene da una riga del preventivo (bozza svuotata, o righe staccate all''annullo). H (ordine -> bolla) se nessuna riga ATTIVA della bolla evade una riga dell''ordine (ordini_righe_fulfillment): calcolato, ma oggi coincide con l''annullo della bolla, perche'' una riga evasa non si spegne ne'' si cancella. R (bolla -> reso) se nessuna riga ATTIVA del reso viene da una riga della bolla. C, D (offerta -> contratto/ordine): false, il legame e'' solo di testata. G, N, S, T: false per costruzione, l''arco nasce dalle righe di legame e sparisce con loro. ⛔ SECURITY DEFINER: righe di commessa, ordine, bolla e reso hanno la RLS, e righe vive fuori perimetro farebbero dire «ritirato» a torto; restituisce un booleano per un arco che chi legge ha gia''. Consumatori: vendite.fn_documento_lineage (colonna is_legame_ritirato, il pannello «Passaggi»: l''arco resta come storia) e vendite.fn_documento_lineage_sintesi (20261013-71, D-15 di Tid: un arco ritirato non e'' destinazione ne'' sorgente).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

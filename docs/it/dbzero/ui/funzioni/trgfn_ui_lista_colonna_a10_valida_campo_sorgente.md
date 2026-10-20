@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
  RETURNS trigger
@@ -100,6 +102,8 @@ $function$
 COMMENT ON FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
 IS 'Guard INSERT/UPDATE: verifica esistenza di campo_sorgente in pg_catalog.pg_attribute sulla view della lista. Skip per tipo_colonna=azione o campo_sorgente NULL/vuoto (colonne calcolate FE).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

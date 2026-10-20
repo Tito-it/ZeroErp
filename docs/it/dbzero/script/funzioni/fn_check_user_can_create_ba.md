@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_user_can_create_ba(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_user_can_create_ba(p_auth_user_id integer)
  RETURNS boolean
@@ -67,6 +69,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_user_can_create_ba(p_auth_user_id integer)
 IS 'Pure check: l''utente puo'' creare un billing account? Regola (rev 2026-08-04): true se sta lavorando dentro un emittente valido (GUC app.current_emittente_id verificata da fn_check_user_emittente_scope), oppure se ha una riga in config.user_emittenti_fiscali, oppure se l''istanza non ha alcun emittente attivo (bootstrap). Altrimenti false. Usata dal guard a10 anagrafiche.trgfn_billing_account_guard_admin_globale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

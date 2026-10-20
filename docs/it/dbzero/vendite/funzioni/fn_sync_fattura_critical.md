@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sync_fattura_critical(p_fattura_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_sync_fattura_critical(p_fattura_id bigint)
  RETURNS void
@@ -29,6 +31,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_sync_fattura_critical(p_fattura_id bigint)
 IS 'Allinea fatture.critical in base ai log attivi di gravita C.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ubicazioni_guard_parent()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.trgfn_ubicazioni_guard_parent()
  RETURNS trigger
@@ -128,6 +130,8 @@ $function$
 COMMENT ON FUNCTION magazzino.trgfn_ubicazioni_guard_parent()
 IS 'Guard R-1 sulle ubicazioni: il padre (parent_id) sta nello stesso magazzino della figlia — altrimenti E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO (DATO_ERRATO, campo parent_id; fail-closed: un padre fuori perimetro RLS non risolve e si rifiuta lo stesso) — e la gerarchia non ha cicli di nessuna lunghezza: E_MAG_UBICAZIONE_PADRE_CICLICO (stessa classe, stesso campo). Il cambio di magazzino_id non passa di qui: colonna immutabile via automation_lock_columns. Brief: brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici, R-1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

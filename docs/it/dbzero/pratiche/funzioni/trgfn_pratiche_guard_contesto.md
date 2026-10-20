@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pratiche_guard_contesto()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_contesto()
  RETURNS trigger
@@ -146,6 +148,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_guard_contesto()
 IS 'BEFORE INSERT OR UPDATE su pratiche.pratiche: coerenza del contesto anagrafico (soggetto / soggetto_ruolo / istanza_utility / billing_account). Codici rinominati il 2026-08-05 (20260805-20): E_PRATICHE_RUOLO_SENZA_SOGGETTO (846), E_PRATICHE_RUOLO_NON_COERENTE (847), E_PRATICHE_ISTANZA_NON_COERENTE (848), E_PRATICHE_ISTANZA_SENZA_SOGGETTO (849). I vecchi nomi senza prefisso restano a catalogo, ritirati con obsoleto_dal. rev 2026-10-08 (20261008-66): regola 5, il billing account della pratica e'' del suo ruolo (E_PRATICHE_BA_NON_COERENTE); il trigger scatta anche su billing_account_id. Brief: brief-db-istanza-nasce-col-ba (R-8, D-9). rev 2026-10-19 (20261019-85, D-17b di brief-db-processi-accensione-per-ambiente §6.17.1): regole 3 e 4 dai BB anagrafiche.fn_ruolo_di_altro_soggetto e fn_istanza_di_altro_soggetto (regola del 2); un ruolo o un''istanza che non esistono li rifiuta la FK.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

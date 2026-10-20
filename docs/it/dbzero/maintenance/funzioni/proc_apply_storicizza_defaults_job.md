@@ -7,6 +7,8 @@ CREATE PROCEDURE proc_apply_storicizza_defaults_job()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_apply_storicizza_defaults_job()
  LANGUAGE plpgsql
@@ -27,6 +29,8 @@ AS $procedure$
 COMMENT ON PROCEDURE maintenance.proc_apply_storicizza_defaults_job()
 IS 'Job wrapper per chiamare proc_apply_storicizza_defaults con logging e lock.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

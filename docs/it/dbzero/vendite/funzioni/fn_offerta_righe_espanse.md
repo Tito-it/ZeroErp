@@ -7,6 +7,8 @@ CREATE FUNCTION fn_offerta_righe_espanse(p_offerta_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
  RETURNS TABLE(articolo_id uuid, articolo_codice character varying, descrizione character varying, is_composito boolean, quantita numeric, uom_operativa_id bigint, qta_operativa numeric, factor_to_base numeric, prezzo_unitario numeric, sconto_percentuale numeric, iva_id integer, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, componenti jsonb)
@@ -147,6 +149,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
 IS 'Righe effettive ordine-ready di un''offerta (listino + variazione globale + eccezioni) per la conversione offerta->ordine. Parte 1 dal core fn_espandi_listino_versione + overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle. iva_id da articolo (iva_perc non esiste su ordini_righe: si deriva da iva_id); sconto_percentuale NULL (prezzo gia'' netto); quantita default 1 per righe da-listino. Versione operativa e variazione da vendite.fn_documento_listino_operativo(''OFFERTA'', id) (rev 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende: sede unica con la lista delle righe e coi guard). Non e'' la lista del drawer: quella e'' vendite.fn_offerta_righe_preview. ⭐ rev 2026-10-19 (20261019-25, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

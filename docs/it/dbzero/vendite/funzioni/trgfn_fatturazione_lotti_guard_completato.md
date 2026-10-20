@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_fatturazione_lotti_guard_completato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fatturazione_lotti_guard_completato()
  RETURNS trigger
@@ -84,6 +86,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fatturazione_lotti_guard_completato()
 IS 'Guard BEFORE UPDATE OF stato_lotto su vendite.fatturazione_lotti: COMPLETATO si rifiuta (E_LOTTO_COMPLETATO_NON_GUADAGNATO, TECNICO) se lo stato fiscale del lotto e'' abortito (config.stati_doc_fiscale.is_abortito, letto da NEW) o se la sede unica vendite.vw_lotti_segnalazioni_summary lo dice fermo — letto, non ricalcolato. ⭐ Sulla COLONNA e non in fn_set_fatturazione_lotto_stato: il runner scrive stato_lotto con un UPDATE diretto e quella funzione non la chiama nessuno. Nasce da LTF-0010972 (2026-09-12): un rilancio ha scritto COMPLETATO con due documenti ancora in ERRORE. ⚠️ Non chiude la porta dell''esito (ERRORE scritto su un lotto gia'' COMPLETATO): quella la sorveglia vw_lotti_chiusi_con_gruppi_in_errore. Solo UPDATE: un lotto che nasce COMPLETATO non ha righe figlie. Brief: brief-db-annullamento-chiude-la-vita §9.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

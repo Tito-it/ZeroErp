@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_billing_account_guard_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_normalize()
  RETURNS trigger
@@ -199,6 +201,8 @@ codice fiscale manca, il confronto ripiega sul SOGGETTO
 NULL senza rifiutare due BA dello stesso soggetto privo di CF.
 Rev 20260923-43: l''ordine delle date (valido_al non precede valido_dal) non e'' piu'' qui: ha una sede sola, script.trgfn_guard_date_validita (automazione DATE_VALIDITA). Resta la regola propria di questa tabella: valido_al richiede valido_dal.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

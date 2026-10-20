@@ -7,6 +7,8 @@ CREATE FUNCTION fn_valuta_tempo_esecuzione_da_a(p_pratica_id bigint, p_flusso_da
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_valuta_tempo_esecuzione_da_a(p_pratica_id bigint, p_flusso_da_id bigint, p_flusso_a_id bigint)
  RETURNS TABLE(giorni_netti integer, giorni_esecuzione integer, giorni_rimanenti integer, stato_tempo text)
@@ -86,6 +88,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_valuta_tempo_esecuzione_da_a(p_pratica_id bigint, p_flusso_da_id bigint, p_flusso_a_id bigint)
 IS 'Check pura STABLE: valuta tempo netto tra due flussi vs formula configurata. Ritorna OK/WARNING/CRITICO/SFORATO.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

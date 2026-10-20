@@ -7,6 +7,8 @@ CREATE FUNCTION fn_disdetta_cliente(p_cliente_id bigint, p_data_cessazione date)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_disdetta_cliente(p_cliente_id bigint, p_data_cessazione date)
  RETURNS bigint
@@ -151,6 +153,8 @@ $function$
 COMMENT ON FUNCTION script.fn_disdetta_cliente(p_cliente_id bigint, p_data_cessazione date)
 IS 'Cessazione cliente senza subentro (disdetta): data_chiusura e stato CH. Da quale stato si chiude lo decide il grafo config.transizioni_stati_cliente (guard anagrafiche.trgfn_clienti_guard_stato_date: AT, SF, SC; rev 2026-10-14, prima solo AT). I trigger aggiornano periodo, PDP e storico. Il billing account resta per fatture finali e conguagli e non si riattiva: chi torna apre una catena nuova (C-5). Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

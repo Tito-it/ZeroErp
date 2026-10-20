@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_documento_escludibile_da_giro(p_lotto_id bigint, p_grup
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_documento_escludibile_da_giro(p_lotto_id bigint, p_gruppo_key text)
  RETURNS jsonb
@@ -135,6 +137,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_documento_escludibile_da_giro(p_lotto_id bigint, p_gruppo_key text)
 IS 'I motivi che impediscono di togliere UN documento dal giro di fatturazione: [] se si puo'', altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. ⭐ SEDE UNICA del predicato: vendite.fn_escludi_documento_da_giro la CHIAMA e solleva il codice del primo motivo, il frontend legge lo stesso elenco per spegnere il pulsante col perche'' — cosi'' tooltip e rifiuto non possono divergere. ⚠️ L''ORDINE e'' il contratto (la madre solleva il primo): lotto, poi assenza di esito, poi «gia'' uscito», poi «non in errore». La terza precede la quarta perche'' un documento ESCLUSO e'' ANCHE non-in-errore, e senza precedenza scatterebbero entrambe. ⭐ Riusa E_LOTTO_NON_PRE_FISCALE e la sua chiave i18n dalla sorella fn_check_fattura_eliminabile_da_lotto: stessa condizione, stesso rimedio, un codice solo. Il confine pre-fiscale arriva dal derivato pre_fiscale di vendite.vw_lotti_fase (rev 2026-09-09, sede unica della fase di un lotto), gia'' fail-closed: mai un elenco di stati scritto a mano, e mai la COALESCE ricopiata qui. ⭐ E'' lo STESSO flag con cui vw_documenti_trattenuti_da_lotto dice «trattenuto»: trattenuto ⇔ si puo'' ancora uscire. ⛔ La bozza CONDIVISA non e'' un motivo: e'' una conseguenza (D-2b), la dichiara script.fn_gruppi_trascinati_da_uscita e la nomina la conferma. Brief: brief-db-uscita-documento-dal-giro §5.4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

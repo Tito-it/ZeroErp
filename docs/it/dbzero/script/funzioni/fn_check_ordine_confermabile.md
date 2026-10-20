@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_ordine_confermabile(p_ordine_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_ordine_confermabile(p_ordine_id bigint)
  RETURNS jsonb
@@ -97,6 +99,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_ordine_confermabile(p_ordine_id bigint)
 IS 'Single source dei motivi che impediscono la CONFERMA di un ordine. Ritorna [] se confermabile, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio}. PURA: non solleva e non scrive. Consumatori: vendite.trgfn_ordini_guard_transizione (solleva il codice del primo motivo) e script.fn_available_actions_ordine (spegne il bottone ed espone la reason) — la stessa funzione da entrambi i lati, cosi'' bottone e guard non divergono. ⭐ Oggi UN motivo: E_ORDINE_RIGA_IVA_MANCANTE, una riga attiva che porta un prezzo senza aliquota IVA. Chiude un difetto silenzioso gemello di quello sanato sul DDT il 2026-08-28: vw_ordini_righe_iva_base filtra solo attivo e quantita > 0 — non guarda ne'' prezzo ne'' iva_id — e vw_ordini_riepilogo_iva_dettaglio aggrega con COALESCE(aliquota, 0), producendo imponibile pieno e imposta zero su un ordine confermato e stampato. ⛔ NON contiene il motivo «documento senza righe»: quello non e'' una regola della conferma ma una precondizione generica guidata dalla matrice (config.transizioni_stati_ordini, meta.requires_righe), e portarlo qui trasformerebbe un meccanismo data-driven in codice cablato sulla base del seed di oggi. ⚠️ La condizione prezzo_unitario IS NOT NULL e'' oggi sempre vera (colonna NOT NULL): si scrive perche'' e'' la forma vera della regola e perche'' in questo progetto una colonna prezzo e'' gia'' diventata facoltativa una volta (20260819-13). Piano: brief-db-be-iva-risolutore-e-regime-cliente, I9.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

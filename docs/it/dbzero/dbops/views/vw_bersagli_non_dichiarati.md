@@ -6,6 +6,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_bersagli_non_dichiarati
 WITH (security_invoker=true) AS
@@ -29,6 +31,8 @@ SELECT m.m[1] AS tipo,
             ELSE 'OBSOLETO'::text
         END;
 ```
+
+</div>
 
 
 ---

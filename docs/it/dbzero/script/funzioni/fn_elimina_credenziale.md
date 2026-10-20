@@ -7,6 +7,8 @@ CREATE FUNCTION fn_elimina_credenziale(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_elimina_credenziale(p_auth_user_id integer)
  RETURNS void
@@ -87,6 +89,8 @@ $function$
 COMMENT ON FUNCTION script.fn_elimina_credenziale(p_auth_user_id integer)
 IS 'Elimina una CREDENZIALE (django.auth_user) che non ha nessuna veste ne'' storia: il gesto che il presidio dbops.vw_credenziali_da_sanare (NESSUNA_VESTE) chiede all''amministratore. Prima riga script.fn_guard_super_admin(app.current_user_id) (D-3). Id NULL o <= 0 -> E_AUTH_CHIAMATA_NON_VALIDA; credenziale inesistente -> E_CREDENZIALE_NON_TROVATA. Blocca la riga di django.auth_user (FOR UPDATE) PRIMA di leggere la check: una veste concorrente o e'' gia'' scritta o aspetta e muore sulla FK. Poi solleva il primo motivo di script.fn_check_credenziale_eliminabile, la stessa regola che spegne il pulsante (§12.5.2): CON_VESTI, STORIA_NON_VERIFICABILE (senza il ponte django, fail-closed), CON_STORIA. Scrive la traccia in config.credenziali_eliminate (id, username, email, chi, quando), poi il DELETE: le tabelle CASCADE (config.credenziali, preferenze, TOTP, token, override) seguono. Un 23503 dal DELETE si rilegge dalla check e ne solleva il primo motivo; se la check non lo spiega si rilancia l''originale. Le FK differite di Django si verificano al commit. SECURITY DEFINER del PROPRIETARIO, search_path bloccato: all''app niente DELETE diretto su django.auth_user. Brief: brief-db-elimina-credenziale-senza-veste §4.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

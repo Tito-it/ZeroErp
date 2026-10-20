@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_province_guard_sigla()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_province_guard_sigla()
  RETURNS trigger
@@ -49,6 +51,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_province_guard_sigla()
 IS 'Guard BEFORE INSERT OR UPDATE OF sigla, regione_id su config.province: la sigla deve essere ammessa da config.fn_sigla_provincia_ammessa per lo stato della regione (Italia: due lettere). E_PROVINCIA_SIGLA_NON_VALIDA. Brief: brief-db-character-n-spazi-di-riempimento D-2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_istanza_utility_id bigint DEFAULT NULL::bigint, p_tipo_contatto_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer)
  RETURNS TABLE(id bigint, tipo_contatto_id integer, soggetto_id uuid, soggetto_ruolo_id bigint, istanza_utility_id bigint, nominativo character varying, email character varying, telefono character varying, cellulare character varying, pec character varying, note text, is_default boolean, default_context character varying)
@@ -139,6 +141,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_contatti(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_tipo_contatto_id integer, p_unita_organizzativa_id integer)
 IS 'Contatto migliore per tipo_contatto_id con cascata 3 livelli: (1) ruolo+istanza, (2) ruolo generico, (3) soggetto. p_soggetto_id obbligatorio.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

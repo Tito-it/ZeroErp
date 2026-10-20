@@ -7,6 +7,8 @@ CREATE FUNCTION fn_log_event(p_entity_type text, p_entity_id bigint, p_event_cod
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_log_event(p_entity_type text, p_entity_id bigint, p_event_code text, p_severity text DEFAULT 'INFO'::text, p_correlation_id uuid DEFAULT NULL::uuid, p_payload jsonb DEFAULT '{}'::jsonb)
  RETURNS bigint
@@ -65,6 +67,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_log_event(p_entity_type text, p_entity_id bigint, p_event_code text, p_severity text, p_correlation_id uuid, p_payload jsonb)
 IS 'Inserisce un evento append-only in vendite.event_log e ritorna id evento. ⭐ Perimetro (emittente_soggetto_ruolo_id), identita'' (auth_user_id) e scadenza (cleanup_at) NON sono parametri: li deriva trg_event_log_a10_deriva_scope_ins, perche'' sono fatti del database. ⭐ E nemmeno il DOMINIO: e'' una proprieta'' del codice evento e vive in config.eventi_dominio — chiederlo al chiamante gli permetterebbe di scriverne uno diverso da quello del codice, cioe'' due verita''. ⚠️ Rev 2026-08-22 (L4): tolto p_domain, sei parametri. Rev precedente dello stesso giorno (L1): tolti p_actor e p_source. Entrambe le volte la firma vecchia e'' stata DROPpata esplicitamente: con i DEFAULT due firme rendono ambigua ogni chiamata. ⭐ §9.4 del brief dichiara questa come la forma FINALE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

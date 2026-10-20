@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ui_lista_definizione_a10_valida_vista_sql()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()
  RETURNS trigger
@@ -59,6 +61,8 @@ $function$
 COMMENT ON FUNCTION ui.trgfn_ui_lista_definizione_a10_valida_vista_sql()
 IS 'Guard INSERT/UPDATE: verifica esistenza di vista_sql in pg_catalog. Skip se NULL o attivo=FALSE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

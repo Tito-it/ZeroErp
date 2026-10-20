@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_crea_commessa(p_etichetta text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_commessa(p_etichetta text DEFAULT 'pgTAP'::text)
  RETURNS TABLE(commessa_id bigint, commessa_codice character varying, emittente_fiscale_id bigint, emittente_soggetto_ruolo_id bigint, auth_user_id integer, billing_account_id bigint, istanza_utility_id bigint, cliente_soggetto_ruolo_id bigint, utility_id integer)
@@ -66,6 +68,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_commessa(p_etichetta text)
 IS 'Fixture pgTAP: una COMMESSA del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la commessa aperta dalla madre vendite.fn_get_or_create_commessa (p_force_new), con competenza nel mese corrente. Codice, emittente e stato iniziale li decide la madre, come in produzione. ⛔ NON scrive attivita'': sono il caso del test (dbops.fn_pgtap_crea_commessa_attivita ne da'' una). ⛔ Non cambia stato: vendite.commesse ha un guard di transizione. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

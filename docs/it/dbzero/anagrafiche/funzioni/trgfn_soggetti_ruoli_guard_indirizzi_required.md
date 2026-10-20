@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_soggetti_ruoli_guard_indirizzi_required()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()
  RETURNS trigger
@@ -82,6 +84,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()
 IS 'Constraint trigger DEFERRABLE: per soggetti_ruoli verifica presenza indirizzi obbligatori da config.tipi_ruolo_tipi_indirizzo. Se matrice assente -> libero.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

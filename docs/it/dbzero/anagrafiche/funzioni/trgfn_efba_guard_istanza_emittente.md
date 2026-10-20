@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_efba_guard_istanza_emittente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_efba_guard_istanza_emittente()
  RETURNS trigger
@@ -51,6 +53,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_efba_guard_istanza_emittente()
 IS 'Trigger AFTER su anagrafiche.emittenti_fiscali_billing_account: presidia i movimenti che cambiano l''emittente di un BA — collegamento creato, cambiato o tolto (fn_guard_istanza_ba_emittente) e riga del gestore globale (fn_guard_istanza_ba_gestore_globale, raggio N) — perche'' nessuna istanza finisca con billing account di due emittenti (E_ISTANZA_EMITTENTI_DIVERSI). Gemello di trgfn_efba_guard_albero_emittente, che presidia gli stessi movimenti per l''albero padre/figlio. AFTER perche'' il guard rilegge il collegamento. Brief: brief-db-istanza-nasce-col-ba (R-7).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

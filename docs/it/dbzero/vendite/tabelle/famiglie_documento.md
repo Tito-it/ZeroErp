@@ -26,7 +26,7 @@
 | colonna_serie | text | YES |  |
 | ammette_regole_fiscali | boolean | NO | false |
 | anno_nel_numero_default | boolean | NO | false |
-| codice | character varying(32) | NO |  |
+| codice | character varying(50) | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

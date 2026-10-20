@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_emittenti_scope_pk_ids(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_emittenti_scope_pk_ids(p_auth_user_id integer)
  RETURNS bigint[]
@@ -103,6 +105,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_emittenti_scope_pk_ids(p_auth_user_id integer)
 IS '⭐ rev 2026-10-18 (20261018-17, D-3b-2): COST 5000. E'' la sede delle regole del perimetro (la canonica fn_check_user_emittente_scope si appoggia a lei) e le policy ef_whitelist dirette la chiamano una volta per istruzione. Scope emittenti per filtri su colonne PK (emittenti_fiscali.id). Semantica: NULL=tutto, ''{}''=nessuno, array=whitelist. Identita OPERATORE mancante -> []; SUPER_ADMIN -> NULL; altrimenti whitelist PK. Post 2026-08-04: uscita unica e intersezione con la GUC app.current_emittente_id (universo ∩ {X} = {X}; whitelist senza X -> []). Post 2026-08-18 (P-2a): operatore non super admin SENZA riga in config.user_emittenti_fiscali -> ''{}'' e non piu'' NULL. Prima vedeva TUTTI gli emittenti ed era indistinguibile da un super admin: non uno stato del modello, un errore di configurazione non rilevato. Allinea la lettura alla scrittura, che gia'' rispondeva false (fn_check_user_can_create_ba). Gemella di fn_get_emittenti_scope_sr_ids (che e'' un wrapper su questa e aveva gia'' ricevuto la correzione). Vedi guida soggetti-e-ruoli §5b e brief perimetro-emittente §2.5.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_close_commessa_push_run(p_id bigint, p_stato character varyin
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_close_commessa_push_run(p_id bigint, p_stato character varying, p_risultato jsonb DEFAULT NULL::jsonb, p_durata_ms integer DEFAULT NULL::integer, p_source_types text[] DEFAULT NULL::text[])
  RETURNS void
@@ -104,6 +106,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_close_commessa_push_run(p_id bigint, p_stato character varying, p_risultato jsonb, p_durata_ms integer, p_source_types text[])
 IS 'Chiude il giro di push aperto da vendite.fn_start_commessa_push_run: esito finale, risultato per handler, durata. ⛔ Due rifiuti, ed erano il punto della richiesta del backend: (1) IN_ESECUZIONE non e'' un esito — un giro «chiuso in esecuzione» resterebbe aperto per sempre agli occhi di chi lo conta; (2) una riga che non e'' IN_ESECUZIONE non si chiude — o non esiste, o e'' gia'' chiusa, e sovrascriverne l''esito perderebbe la storia di due corse. Entrambi TECNICO: quel dato lo produce solo un chiamante che ha perso il filo. ⭐ L''elenco degli esiti finali sta in UNA sede dentro la funzione, e il messaggio lo compone da li'': il difetto da cui nasce questo changeSet e'' proprio un CHECK di tabella e un guard di funzione che dicevano cose diverse senza saperlo. ⚠️ I COALESCE non cancellano cio'' che l''apertura aveva dichiarato: chi chiude senza ripetere gli handler li conserva.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

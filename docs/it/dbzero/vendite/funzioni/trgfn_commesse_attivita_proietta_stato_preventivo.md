@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_commesse_attivita_proietta_stato_preventivo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_proietta_stato_preventivo()
  RETURNS trigger
@@ -60,6 +62,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_proietta_stato_preventivo()
 IS 'Funzione trigger (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-1/D-10 di Tid): una riga di vendite.commesse_attivita con sorgente PREVENTIVO che nasce, cambia stato_emissione o sparisce riproietta lo stato del suo preventivo (ACCETTATO <-> EVASO) dal BB vendite.fn_preventivo_proietta_stato_smistamento. Trigger e non chiamata da una madre perche'' l''invio in commessa nel DB non ha una madre (lo orchestra il backend riga per riga): la riga di commessa e'' il solo punto che vede ogni strada (invio singolo e batch, ritiro all''annullo di un documento, annullo della commessa, cancellazione). Prende il posto del gate EVASO del backend dopo l''invio in commessa. Il preventivo si trova dal suo uid (sorgente_uid = uid::text); le righe sourceless e delle altre sorgenti escono subito. SECURITY INVOKER: la RLS di chi scrive la riga; un preventivo invisibile non si tocca. Montaggio: trg_commesse_attivita_z90_proietta_stato_preventivo_ins_dlt e _upd (20261012-15).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

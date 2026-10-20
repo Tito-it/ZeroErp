@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sync_lotto_fatture_stato(p_lotto_id bigint, p_target_stato_do
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_sync_lotto_fatture_stato(p_lotto_id bigint, p_target_stato_doc_fiscale_id bigint DEFAULT NULL::bigint)
  RETURNS void
@@ -74,6 +76,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_sync_lotto_fatture_stato(p_lotto_id bigint, p_target_stato_doc_fiscale_id bigint)
 IS 'Allinea stato fatture del lotto e sincronizza stato_esecuzione. GIORNALIERO+INVIATA chiude lotto. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera, e via l''argomento p_esclusa all''helper.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

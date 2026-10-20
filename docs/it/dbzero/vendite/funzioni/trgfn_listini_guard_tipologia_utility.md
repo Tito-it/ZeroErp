@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_listini_guard_tipologia_utility()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_listini_guard_tipologia_utility()
  RETURNS trigger
@@ -47,6 +49,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_listini_guard_tipologia_utility()
 IS 'Guard: verifica ammissibilita` coppia (utility_id, tipologia_id) nella matrice config.listini_tipologie_utilities.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO SCARTO SI MISURA DALLO STANDARD DA CUI LA COPIA DERIVA, SULLA VERSIONE CHE STAMPA
+#   documenti.vw_template_personalizzati_scarto (rev di 20261020-11; corpo vivo dalla doc dbzero)
+#   Brief: brief-db-modelli-documento-standard §10.3 K-10, D-9 di Tid; R-2 del BE (§6.1)
+#
+# -- I DUE DIFETTI (R-2, verificati sul corpo) -----------------------------------
+#   * Il riferimento era sempre lo standard PREDEFINITO della coppia, ma la
+#     derivazione ammette qualunque standard della coppia: la copia di uno
+#     standard non predefinito era confrontata con un altro modello.
+#   * La versione era la PUBBLICATA col numero piu' alto, senza guardare `attivo`
+#     ne' la data: con l'ultima pubblicata spenta una copia nasceva gia'
+#     STANDARD_AVANTI, e una pubblicata con decorrenza futura contava gia' come
+#     «la versione dello standard». Ed era diversa dalla versione che il BE
+#     copiava in «personalizza».
+#
+# -- LA REGOLA (D-9) -----------------------------------------------------------------
+#   * Lo standard di riferimento e' quello da cui la copia deriva (il modello della
+#     versione in derivata_da_versione_id). Per una copia senza origine dichiarata,
+#     il predefinito standard della coppia, come prima.
+#   * Le due versioni confrontate sono quelle che STAMPANO OGGI
+#     (documenti.vw_template_versioni_stampabili, 20261021-04): la stessa
+#     definizione da cui «personalizza» parte (20261021-11). Una copia appena nata
+#     e pubblicata esce ALLINEATA.
+#   * Gli stati non cambiano: CONTESTO_SUPERATO, ORIGINE_NON_DICHIARATA, ALLINEATA,
+#     STANDARD_AVANTI, con le stesse condizioni.
+#
+# -- LA FORMA ------------------------------------------------------------------------
+#   CREATE OR REPLACE VIEW: stesse colonne, stesso ordine. Cambia il significato di
+#   standard_template_documento_id (lo standard di riferimento) e delle versioni.
+#   ⚠️ Una copia o uno standard di riferimento che oggi non stampano non hanno
+#   riga, come prima una copia senza versione pubblicata: lo scarto si misura fra
+#   due cose che stampano. security_invoker ripetuto (linee guida §13.7).
+#   L'origine si eredita ancora dalla versione piu' recente che la dichiara,
+#   fino a quella in uso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261021-12-update-vw-template-personalizzati-scarto-riferimento-mctit.yaml
+
+  - changeSet:
+      id: 20261021-12-update-vw-template-personalizzati-scarto-riferimento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.vw_template_personalizzati_scarto: il riferimento e' lo standard da cui la copia
+        deriva (il predefinito della coppia solo senza origine), e le versioni confrontate sono quelle
+        che stampano oggi. Brief: brief-db-modelli-documento-standard §10.3 K-10.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'documenti'
+                 AND c.relname = 'vw_template_versioni_stampabili';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW documenti.vw_template_personalizzati_scarto
+                  WITH (security_invoker = true) AS
+              SELECT c.id AS template_documento_id,
+                     c.emittente_fiscale_id,
+                     c.tipo_documento_output_id,
+                     c.sorgente_tipo_id,
+                     c.codice,
+                     c.is_default,
+                     cv.id AS versione_id,
+                     cv.versione,
+                     cv.versione_contesto,
+                     orig.derivata_da_versione_id,
+                     ov.versione AS standard_versione_origine,
+                     rif.template_documento_id AS standard_template_documento_id,
+                     sv.id AS standard_versione_id,
+                     sv.versione AS standard_versione,
+                     sv.versione_contesto AS standard_versione_contesto,
+                     CASE
+                       WHEN cv.versione_contesto < sv.versione_contesto THEN 'CONTESTO_SUPERATO'
+                       WHEN orig.derivata_da_versione_id IS NULL THEN 'ORIGINE_NON_DICHIARATA'
+                       WHEN orig.derivata_da_versione_id = sv.id THEN 'ALLINEATA'
+                       ELSE 'STANDARD_AVANTI'
+                     END AS stato
+                FROM documenti.template_documenti c
+                -- la versione con cui la copia stampa oggi
+                JOIN documenti.vw_template_versioni_stampabili cs
+                  ON cs.template_documento_id = c.id
+                JOIN documenti.template_documenti_versioni cv
+                  ON cv.id = cs.template_versione_id
+                -- l'origine: dalla versione piu' recente che la dichiara, fino a
+                -- quella in uso
+                LEFT JOIN LATERAL (
+                     SELECT v.derivata_da_versione_id
+                       FROM documenti.template_documenti_versioni v
+                      WHERE v.template_documento_id = c.id
+                        AND v.versione <= cv.versione
+                        AND v.derivata_da_versione_id IS NOT NULL
+                      ORDER BY v.versione DESC
+                      LIMIT 1
+                   ) orig ON true
+                LEFT JOIN documenti.template_documenti_versioni ov
+                  ON ov.id = orig.derivata_da_versione_id
+                -- lo standard di riferimento: quello da cui deriva; senza
+                -- origine, il predefinito della coppia. Con la versione con cui
+                -- stampa oggi.
+                JOIN documenti.vw_template_versioni_stampabili rif
+                  ON rif.standard
+                 AND rif.template_documento_id = COALESCE(
+                       ov.template_documento_id,
+                       (SELECT d.id
+                          FROM documenti.template_documenti d
+                         WHERE d.standard AND d.attivo AND d.is_default
+                           AND d.tipo_documento_output_id = c.tipo_documento_output_id
+                           AND d.sorgente_tipo_id = c.sorgente_tipo_id))
+                JOIN documenti.template_documenti_versioni sv
+                  ON sv.id = rif.template_versione_id
+               WHERE NOT c.standard
+                 AND c.attivo;
+
+              COMMENT ON VIEW documenti.vw_template_personalizzati_scarto IS
+                  'Per ogni modello d''emittente attivo che stampa oggi: quanto la versione con cui stampa e'' rimasta indietro rispetto allo standard di riferimento, cioe'' quello da cui la copia deriva (derivata_da_versione_id) o, senza origine dichiarata, il predefinito standard della coppia (tipo, sorgente), sulla versione con cui quello standard stampa oggi. Le versioni sono quelle di documenti.vw_template_versioni_stampabili, la stessa definizione da cui parte fn_personalizza_template_standard (rev 2026-10-21, 20261021-12, brief-db-modelli-documento-standard §10.3 K-10, D-9). stato: CONTESTO_SUPERATO (legge una forma dei dati piu'' vecchia di quella dello standard, che i changeSet tengono al passo col builder: si rompera'' alla stampa), ORIGINE_NON_DICHIARATA (nessuna versione dichiara derivata_da_versione_id), ALLINEATA, STANDARD_AVANTI. L''origine si eredita dalla versione piu'' recente che la dichiara. La legge la lista Modelli documento. Brief: brief-db-modelli-documento-standard §4.1 Q-5.';

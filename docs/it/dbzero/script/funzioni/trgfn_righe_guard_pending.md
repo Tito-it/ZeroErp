@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_righe_guard_pending()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_righe_guard_pending()
  RETURNS trigger
@@ -89,6 +91,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_righe_guard_pending()
 IS 'Guard L3 BEFORE UPDATE generico per tabelle RIGA-LEVEL approvazione prezzo (preventivi_righe, contratti_righe, offerte_commerciali_eccezioni). Blocca modifiche ai campi struttura quando stato_approvazione_prezzo=PENDING, via ALLOWLIST su to_jsonb (workflow/audit ammessi). TG_ARGV[0] = nome colonna FK padre per contesto errore. Raise E_RIGA_PREZZO_PENDENTE (390). Rev 2026-06-01 — estrazione di trgfn_{preventivi,contratti}_righe_guard_pending.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

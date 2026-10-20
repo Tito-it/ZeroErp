@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_righe_guard_esclusione_immutabile()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_righe_guard_esclusione_immutabile()
  RETURNS trigger
@@ -61,6 +63,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_righe_guard_esclusione_immutabile()
 IS 'Guard: una riga ESCLUSIONE di vendite.contratti_righe o di vendite.offerte_commerciali_eccezioni non si modifica (E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE, CONFLITTO_STATO, nessun valore). Si crea (Escludi) e si cancella (Ripristina articolo). Ammesse le sole colonne tecniche data_update, user_update, tx_id: elenco delle AMMESSE, una colonna nuova nasce bloccata; attivo e le FK sono vietate. TG_ARGV[0] = colonna del padre (contratto_id | offerta_id), solo per il contesto (riga_id, padre, articolo_id, colonne cambiate). Trigger _a05_ BEFORE UPDATE WHEN (OLD.tipo_eccezione = ''ESCLUSIONE''): parla prima dei guard _a10_ e dei CHECK. Prende il posto di vendite.trgfn_contratti_righe_guard_esclusione_immutabile (solo contratto, ritirata nello stesso giro). Nasce il 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende (R3); la regola e'' di brief-db-contratto-esclusione-non-modificabile (decisione di Tid).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

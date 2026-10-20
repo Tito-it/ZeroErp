@@ -7,6 +7,8 @@ CREATE FUNCTION fn_af_merce_per_riga(p_segment_keys character varying[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_af_merce_per_riga(p_segment_keys character varying[] DEFAULT NULL::character varying[])
  RETURNS TABLE(corsia character varying, riga_id bigint, tipo_movimento character varying, quantita numeric, misurabile boolean, da_componenti boolean, voci integer)
@@ -91,6 +93,8 @@ END
 COMMENT ON FUNCTION vendite.fn_af_merce_per_riga(p_segment_keys character varying[])
 IS 'IL CONTATORE DELLE ATTIVITA'' FATTURABILI PER RIGA DI DOCUMENTO, PER CHIAVE (D14 giro 4 — D5, 2026-09-21): lo stesso conto di vendite.vw_af_merce_per_riga — che ne e'' la proiezione senza filtro, fn_af_merce_per_riga(NULL) — ristretto alle CHIAVI DI SEGMENTO chieste. Il seme sono chiavi senza suffisso (''DDT:<uid>:R:<riga>'', ''ORD:<uid>:R:<riga>''): di ciascuna entrano la chiave esatta e le chiavi con un suffisso (#RET:<n>, #CMP:<id>, anche combinati) — la base e'' cio'' che precede il primo #, la stessa grammatica con cui il conto ricava riga_id e kit_key. NULL = tutte; un array VUOTO semina zero righe. Le chiavi sono NORMALIZZATE (la base prima del primo #, DISTINCT): un duplicato, o una chiave passata col suffisso accanto alla sua base, non raddoppia la somma. ⛔ LA FORMA DEL PREDICATO NON E'' STILE: commesse_attivita e'' sotto RLS e sotto una policy salgono nell''indice solo clausole interamente leakproof — `=` e gli operatori del pattern `~>=~`/`~<~` con il bordo PRECALCOLATO nella CTE MATERIALIZED `chiavi` (scritto nella clausola, `k || ''$''` sarebbe textcat, non leakproof); un LIKE non diventa MAI Index Cond sotto una policy (textlike non e'' leakproof), nemmeno a costante (provato il 21-09 come app). Il range [k#, k$) e'' esattamente «comincia per k#» (''$'' e'' il byte dopo ''#''): il vicino numerico :R:1 non prende :R:12. Indice: ix_commesse_attivita_segment_key con varchar_pattern_ops (90_end/20260921-50). Rami in UNION ALL, mai `p IS NULL OR`. BEGIN ATOMIC: dipendenze in pg_depend, catena RLS leggibile dal presidio security_invoker. INVOKER: la RLS resta di chi legge. Stesse 7 colonne e stessi numeri della vista (rev 20260818-73); tipo_movimento perde il typmod nel RETURNS e la vista lo ricasta. Chiamanti per chiave: fn_partite_merce (chiavi DDT delle origini O + chiavi ORD dei fulfillment della chiusura), fn_situazione_merce_ordine (chiavi ORD delle righe in uscita). Brief: brief-db-partita-merce-per-documento §11. ⭐ rev 2026-10-10 (20261010-81): si entra in commesse_attivita dall''UGUAGLIANZA su segment_base (la base della chiave, colonna generata di 20261010-80): texteq e'' leakproof e la stima viene dalle statistiche della colonna. Il predicato a intervallo resta come filtro residuo e implica l''uguaglianza: risultati identici. Perche'': con il seme come parametro (piano generico, dentro la capability del DDT) l''intervallo era stimato all''11 % della tabella per chiave e la tabella si leggeva per intero sotto la policy. brief-db-segment-base-commesse-attivita. Rev 2026-10-20 (20261020-86, brief-db-grammatica-unica-documenti 2e, G-8): la corsia e'' il codice della sorgente (ORDINE_VENDITA | DDT_VENDITA) e la riga si leggono dalla chiave con script.fn_segment_key_sorgente/_riga, non con split_part.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

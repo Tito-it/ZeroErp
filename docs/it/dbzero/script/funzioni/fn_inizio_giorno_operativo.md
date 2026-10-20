@@ -6,6 +6,8 @@ CREATE FUNCTION fn_inizio_giorno_operativo(p_giorno date)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_inizio_giorno_operativo(p_giorno date)
  RETURNS timestamp with time zone
@@ -38,6 +40,8 @@ $function$
 COMMENT ON FUNCTION script.fn_inizio_giorno_operativo(p_giorno date)
 IS 'L''ISTANTE in cui comincia il giorno p_giorno nel fuso dell''azienda (script.fn_fuso_operativo). ⭐ Confine dei filtri per giorno su colonne timestamptz: col >= fn_inizio_giorno_operativo(da) AND col < fn_inizio_giorno_operativo(a + 1), con la funzione sui confini e non sulla colonna, cosi'' il predicato resta servito dall''indice. ⛔ Sostituisce `%s::date` confrontato con un timestamptz, che da'' la mezzanotte nel fuso della SESSIONE (dal backend: UTC) e mette nel giorno sbagliato cio'' che succede fra la mezzanotte dell''azienda e quella della sessione. Ai cambi d''ora il giorno ha 23 o 25 ore e il confine li segue. NULL -> NULL (filtri opzionali). Fail-loud sul fuso ereditato da fn_fuso_operativo. Brief: brief-be-db-fe-un-solo-fuso-aziendale D-2 (20261009-42).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

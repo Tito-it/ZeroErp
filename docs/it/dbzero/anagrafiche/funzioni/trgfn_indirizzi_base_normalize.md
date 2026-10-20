@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_indirizzi_base_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_base_normalize()
  RETURNS trigger
@@ -51,6 +53,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_base_normalize()
 IS 'Trigger function generica: normalizza indirizzi (ruolo/soggetto). Se indirizzo_dettaglio_id presente pulisce fallback/liberi; altrimenti, nell''indirizzo libero, porta a NULL i testi vuoti (indirizzo_libero, locality, postal_code, administrative_area, sublocality) e scrive lo stato non detto con script.fn_stato_proposto_id. Rev 2026-10-18 (D-1 e D-3 di Tid): prima leggeva state_code_iso3 con fn_get_default_by_param, e la colonna si chiamava postal_box. Il guard della forma, anagrafiche.trgfn_indirizzi_guard_forma_libera, gira dopo (z10).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

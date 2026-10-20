@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_sistemazioni_guard_dati()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_sistemazioni_guard_dati()
  RETURNS trigger
@@ -206,6 +208,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_sistemazioni_guard_dati()
 IS 'Coerenza interna dell''atto di sistemazione: la destinazione vuole i documenti che le servono (un rimborso non ha un secondo documento, un riporto e una compensazione si'', e diverso dal primo); i due documenti sono dello stesso cliente e della stessa azienda (D15-b: compensare significa mettere insieme due documenti DI UN SOLO CLIENTE); cliente ed emittente dichiarati corrispondono alla fattura di partenza. ⭐ L''ultima regola ha un codice TECNICO apposta: quei due non li sceglie una persona in un modulo, li deriva chi costruisce l''atto — il codice si sceglie da CHI PUO'' RIMEDIARE. 🔴 Le fatture si leggono FUORI dalla row security (script.fn_get_fattura_intestazione): da SECURITY INVOKER il guard direbbe «e'' di un altro cliente» anche quando il cliente e'' lo stesso, solo perche'' una delle due non si vede. ⚠️ Ospita anche la regola del centro di compensazione, che su vendite_contabili non ha piu'' un momento in cui scattare: girato il verso del legame, alla nascita della contabile nessun atto la cita ancora. ⛔ NON decide chi puo'' scrivere: quello e'' trgfn_guard_emittente_scope, montato accanto su entrambe le colonne di fattura.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

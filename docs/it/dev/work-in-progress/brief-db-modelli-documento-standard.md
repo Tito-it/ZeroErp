@@ -2,10 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-20
 
-**Riparte: Tid, col via al giro unico (D-4 … D-9 decise, §10.4); poi il team DB fa il giro unico
-K-1 … K-10 (§10.3); poi il BE/FE una volta sola (§10.5). Il BE ha già fatto P-2 per il modello
-risolto, la coda e «personalizza» lato BE (§9.6, §6.1): le sue richieste R-1 e R-2 sono righe del
-§10.**
+**Riparte: il BE, con il passaggio unico del §11 (la prima voce è il test che oggi si salta da
+solo), poi il FE sulla lista Modelli documento. Lato DB non resta niente: tutto applicato su scratch
+e dbdev, pgTAP verdi, nessuna regressione (Tid, 2026-10-20).**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -21,7 +20,7 @@ risolto, la coda e «personalizza» lato BE (§9.6, §6.1): le sue richieste R-1
 | 8-ter | **Tid** | ✅ Apply di `20261020-26` e dei due CSV dei codici, pgTAP verdi (2026-10-20) | §8.4 | 8-bis |
 | 9 | **BE** | ✅ La risoluzione a due livelli: `risolvi_template_applicabile`, ritiro di `count_templates_attivi_no_default`, perimetro di lettura con lo standard, test e smoke allineati, policy rigenerate dopo `-26` (`fad3ad71f` PR #1905, `323c96a5c` PR #1907) | §6 | 5, 8-ter |
 | 9-bis | **BE/FE** | ✅ BE «personalizza» (`POST templates/<id>/personalizza/`, §6.1). FE: la lista Modelli documento (badge standard, «si usa lo standard», emittente senza predefinito, stato dello scarto) e l'azione nel drawer; ⚠️ prima va sciolto il difetto delle versioni dello standard (§6.1) | §6 | 9 |
-| 9-ter | **team DB** | Censimento, voce «parametri d'importo per utility» (`emittenti_fiscali_utilities`): risposte a Q-6 … Q-8; DEVA non chiude una fattura | §2 | — |
+| 9-ter | **team DB** | ✅ Censimento chiuso: Q-6 … Q-8 risposte con K-7 (valore di sistema, D-7), le altre voci nel §10.7 | §2, §10.7 | — |
 | 9-quater | **team DB** | ✅ Coda di stampa: risposte a Q-1 … Q-4 della richiesta BE, sulla struttura (2026-10-20). Nessun changeSet scritto | §9 | — |
 | 9-quinquies | **Tid** | ✅ C-1 … C-3, P-1 e P-2 come da proposta, e via allo sviluppo (2026-10-20) | §9.3, §8.4 | 9-quater |
 | 9-sexies | **team DB** | ✅ ChangeSet `20261020-27` … `-31`, tre righe di CSV, pgTAP e manuali, provati sullo scratch (2026-10-20) | §9.5 | 9-quinquies |
@@ -31,16 +30,25 @@ risolto, la coda e «personalizza» lato BE (§9.6, §6.1): le sue richieste R-1
 | 9-decies | **BE** | → nel passaggio unico (§10.5). Dopo R-1: il ramo del modello indicato chiama il DB, e `get_versione_pubblicata_attiva` si ritira | §9.6 | 9-nonies |
 | 9-undecies | **team DB** | R-2: la versione di partenza di una copia, con la stessa definizione della vista dello scarto; e se si personalizza uno standard non predefinito o spento → **assorbita in K-6 e K-10** | §6.1, §10 | — |
 | 9-duodecies | **BE** | → nel passaggio unico (§10.5). Dopo R-2: «personalizza» chiama il DB, e `get_ultima_versione_pubblicata` si ritira | §6.1 | 9-undecies |
-| 9-terdecies | **Tid** | ✅ D-4 … D-9 come da proposta (2026-10-20); il via al giro unico resta da dare | §10.4 | — |
-| 9-quaterdecies | **team DB** | Giro unico K-1 … K-10: viste, porta unica, codici, BB della coerenza, «personalizza», parametri d'importo, guida, colonne della lista 24, riferimento dello scarto | §10.3 | 9-terdecies |
-| 9-quindecies | **BE/FE** | Il passaggio unico: assorbe 9-bis (FE), 9-decies e 9-duodecies, e il difetto del drawer delle versioni dello standard (§6.1) | §10.5 | 9-quaterdecies |
-| 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard) | §7 | 9-quindecies |
+| 9-terdecies | **Tid** | ✅ D-4 … D-9 come da proposta, e via al giro unico (2026-10-20) | §10.4 | — |
+| 9-quaterdecies | **team DB** | ✅ Giro unico K-1 … K-10: tredici changeSet, quattro CSV, tre pgTAP nuovi, guida e manuali, provati su scratch e dbdev (2026-10-20) | §10.6 | 9-terdecies |
+| 9-quaterdecies-bis | **Tid** | ✅ Apply del giro unico su scratch e dbdev, pgTAP verdi (2026-10-20) | §10.6 | 9-quaterdecies |
+| 9-quaterdecies-ter | **team DB** | ✅ Verifica finale: apply controllato, censimento del §2 chiuso, elenco dei residui | §10.7 | 9-quaterdecies-bis |
+| 9-quaterdecies-quater | **Tid** | ✅ R-1 … R-5 tutti in questo brief, nessun brief nuovo (2026-10-20) | §10.7 | 9-quaterdecies-ter |
+| 9-quaterdecies-quinquies | **team DB** | ✅ R-1 (fixture costruita) e R-5 (sede del cedente, `20261021-13`), provati; ✅ `-13` applicata da Tid | §10.8 | 9-quaterdecies-quater |
+| 9-quaterdecies-sexies | **team DB** | ✅ R-2, R-3, R-4 (`20261021-14` … `-17`), provati | §10.9 | 9-quaterdecies-quinquies |
+| 9-quaterdecies-septies | **Tid** | ✅ Apply di `-13` … `-17` su scratch e dbdev, pgTAP verdi, nessuna regressione (2026-10-20) | §10.8, §10.9 | 9-quaterdecies-sexies |
+| 9-quindecies | **BE** | **Il passaggio unico**: le voci B-1 … B-11 (assorbe 9-bis BE, 9-decies, 9-duodecies) | §11 | 9-quaterdecies-septies |
+| 9-sexdecies | **FE** | La lista e il drawer dei Modelli documento, «personalizza», i testi delle due chiavi i18n: le voci F-1 … F-5 | §11 | 9-quindecies |
+| 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard e chiude una fattura) | §7, §11 | 9-quindecies, 9-sexdecies |
 | 11 | **Tid** | Archiviazione in `work-done/` | — | 10 |
 
-**Decisioni aperte di Tid: nessuna. D-4 … D-9 decise come da proposta il 2026-10-20 (§10.4). Il via allo sviluppo non è dato.** P-1, P-2 e C-1 … C-3 decise come da proposta (2026-10-20).
-Committati: tranche 1 e 2 (`560d5d97e`, PR #1899), `20261020-26` (`0ff115bf0`, PR #1906), BE
-(`fad3ad71f`, `323c96a5c`), e la coda di stampa con P-2 (`20261020-27` … `-31`, tre CSV, pgTAP,
-manuali, 2026-10-20).
+**Decisioni aperte di Tid: nessuna** (facoltativa: `fatture.utility_id NOT NULL`, §10.9). D-4 … D-9,
+P-1, P-2 e C-1 … C-3 decise come da proposta (2026-10-20). Committati: tranche 1 e 2 (`560d5d97e`,
+PR #1899), `20261020-26` (`0ff115bf0`, PR #1906), BE (`fad3ad71f`, `323c96a5c`), la coda di stampa
+con P-2 (`20261020-27` … `-31`). **Da committare** (tutto applicato): il giro unico (§10.6), R-1 …
+R-5 (§10.8, §10.9), la doc auto-generata rigenerata, la guida `documenti-e-stampe.md`, le pagine
+`manual/` e questo documento.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-18. **A chi:** Tid (§5), poi il team DB;
 > la §6 al BE/FE.
@@ -1208,3 +1216,326 @@ l'ultima pubblicata spenta.
 * **FE.** La lista e il drawer dei Modelli documento come al §6, sui campi di K-5 e sulle due
   colonne di K-9 (con i testi delle chiavi i18n); l'azione «personalizza».
 * **Smoke** (§7), poi l'archiviazione.
+
+### 10.6 Sviluppo del giro unico (2026-10-20; ✅ applicato da Tid su scratch e dbdev, pgTAP verdi)
+
+| ChangeSet | Che cosa | K |
+| --- | --- | --- |
+| `00_schema/config/20261020-99-alter-utilities-parametri-importo-di-sistema` | `config.utilities`: `arrotondamento_importi_dec` (default 2) e `metodo_arrotondamento_importi` (default `HALF_UP`), `NOT NULL`, coi CHECK della riga dell'emittente | K-7 |
+| `20_code/anagrafiche/20261021-01-create-fn-parametri-importo-utility` | BB: i parametri effettivi. Decimali: la riga dell'emittente, poi il sistema; metodo: la riga, poi la policy generale dell'emittente (`rounding_policy`), poi il sistema; soglie solo dalla riga | K-7 |
+| `20_code/vendite/20261021-02-update-fn-ricalcola-totali-fattura-parametri-di-sistema` | il ricalcolo legge il BB: senza la riga la fattura si chiude; `E_CONFIG_MANCANTE` resta per la fattura senza utility | K-7 |
+| `20_code/anagrafiche/20261021-03-update-fn-lookup-utilities-per-ba-parametri-effettivi` | il lookup mostra i parametri effettivi invece di NULL | K-7 |
+| `20_code/documenti/20261021-04-create-vw-template-versioni-stampabili` | la sede unica di «può stampare» | K-1 |
+| `20_code/documenti/20261021-05-create-fn-template-motivo-non-coerente` | BB: il modello va bene per il documento? NULL o il motivo | K-4 |
+| `20_code/documenti/20261021-06-update-trgfn-documenti-generati-check-coerenza-su-bb` | le regole 2-4 della coerenza leggono il BB; il contesto porta il motivo | K-4 |
+| `20_code/documenti/20261021-07-create-fn-template-esito-risoluzione` | BB: la regola dei due livelli per (emittente, tipo, sorgente) | K-5 |
+| `20_code/documenti/20261021-08-create-vw-template-risoluzione-emittente` | la vista della lista: emittente × coppia, con l'esito | K-5 |
+| `20_code/documenti/20261021-09-update-fn-risolvi-template-applicabile-porta-unica` | la porta unica: quarto parametro `p_template_documento_id` (DROP + CREATE), livello `INDICATO`, due codici nuovi | K-2, K-3 |
+| `20_code/documenti/20261021-10-create-fn-crea-bozza-da-versione` | BB: copia una versione in bozza, sede unica dei campi copiati | K-6 |
+| `20_code/documenti/20261021-11-create-fn-personalizza-template-standard` | la madre di «personalizza»: la versione di partenza la chiede alla porta unica | K-6 |
+| `20_code/documenti/20261021-12-update-vw-template-personalizzati-scarto-riferimento` | lo scarto: lo standard da cui la copia deriva, sulle versioni che stampano oggi | K-10 |
+
+**Dati:**
+
+* `config/codici_errore.csv` e `config/messaggi_errore.csv`: `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE`
+  (`CONFLITTO_STATO`, id 1378), `E_DOCUMENTI_TEMPLATE_NON_COERENTE` (`DATO_ERRATO`, 1379),
+  `E_DOCUMENTI_PERSONALIZZA_NON_STANDARD` (`DATO_ERRATO`, 1380), ognuno coi suoi motivi per nome;
+* `ui/lista_colonna.csv`: lista 24, colonne `standard` (1111) e `stato_scarto` (1112), K-9.
+
+**Scelte dichiarate, emerse scrivendo:**
+
+* **Il terzo livello del metodo** (K-7). `emittenti_fiscali.rounding_policy` è la policy
+  **generale** dell'emittente: lo dice la sua manuale («i dettagli per utility nella matrice»), ma
+  nessuna funzione la leggeva, la scriveva solo `fn_crea_emittente_fiscale`. Il BB la mette fra la
+  riga per utility e il sistema. I decimali non hanno un livello dell'emittente. Nessuna delle due
+  tabelle ha RLS, quindi il ripiego non scatta per una riga nascosta.
+* **L'esito è una funzione, la lista una vista sopra** (K-5). La stampa non legge
+  `emittenti_fiscali`, quindi non dipende da cosa la RLS lascia vedere delle aziende; la vista
+  aggiunge solo le righe.
+* **«Personalizza» passa dalla porta** (K-6). La versione di partenza è quella che
+  `fn_risolvi_template_applicabile` restituisce col modello indicato: lo standard spento o senza
+  versione valida esce con lo stesso codice della stampa, senza una seconda copia del controllo.
+* **La copia di una versione è un BB** (K-6). Con «personalizza» nel DB, l'elenco dei campi copiati
+  (oggi `dati_bozza_copiata` del BE, usato anche dal clone) sarebbe finito in due posti:
+  `fn_crea_bozza_da_versione` lo tiene, con le sostituzioni facoltative del clone.
+* **Lo scarto misura fra due cose che stampano** (K-10). Una copia, o uno standard di riferimento,
+  che oggi non stampano non hanno riga, come prima una copia senza versione pubblicata.
+* **Il contesto della coerenza** (K-4). Le coppie atteso/fornito delle regole 2-4 diventano il
+  motivo per nome: nessun lettore le usava (censito su BE e pgTAP).
+
+**pgTAP:**
+
+* `documenti/test-documenti-template-porta-unica-v1.sql` (17, da owner): K-1, il modello indicato
+  coi suoi sei esiti, K-4, e la **parità** fra la vista della lista e la stampa;
+* `documenti/test-documenti-personalizza-v1.sql` (14, da owner): la madre (predefinita o no, dalla
+  versione che stampa oggi e non da quella futura, tutto o niente), il BB della copia, lo scarto con
+  il riferimento nuovo;
+* `vendite/test-parametri-importo-utility-v1.sql` (10, come app): il BB nei suoi livelli, **Q-8**
+  (un emittente nuovo, senza la riga, porta una fattura al ricalcolo: il totale arrotondato col
+  valore di sistema, calcolato con `script.fn_arrotonda_importo`), il lookup. La matrice ruoli-utility
+  la costruisce il test: sullo scratch è vuota.
+
+**La prova (2026-10-20, da owner, in transazione annullata, SQL estratto dagli YAML).**
+
+* Le dodici `preConditions` danno il valore atteso nell'ordine del migrate, e tutto il DDL compila,
+  sullo scratch `zeroerp_ruoli`.
+* Il seed dei codici è **simulato** con degli `INSERT` dalle righe nuove; le colonne della lista 24
+  no (nessun pgTAP le legge). Il loader non è esercitato.
+* Prima e dopo sugli stessi 174 file (tutto `documenti/`, ogni pgTAP che nomina gli oggetti
+  toccati, i presidi trasversali), sullo scratch e su dbdev: cambiano **solo** i tre file nuovi
+  (17/17, 14/14, 10/10). I rossi già noti sono identici prima e dopo: da owner
+  `documenti-generati-eventi` 16 e il file app 1-5; su dbdev anche i file che pescano i dati della
+  macchina (`documenti-template-documenti`, il ricalcolo e i fondi della fattura, le liste
+  multi-emittente…).
+* Mutazioni: senza la `21-02` sono rossi i test 7 e 8 dei parametri d'importo; senza la `21-12`
+  i test 12-14 dello scarto.
+* Dopo ogni corsa, sui due database: nessun oggetto nuovo rimasto, la funzione di stampa ancora a
+  tre argomenti, nessuna riga `pgtap-%`, la matrice ruoli-utility invariata.
+* Non provati: il loader dei quattro CSV, le automazioni di `ci_apply`, la corsa come app dei due
+  file da owner.
+
+**Al FE, una richiesta e un rosso atteso.** Le due colonne della lista 24 portano le chiavi
+`config.modelli_documenti.col_standard` e `config.modelli_documenti.col_stato_scarto`:
+`scripts/check_i18n_keys.py` le legge da `lista_colonna.csv`, e la CI resta rossa finché il FE non
+aggiunge i due testi ai locale (proposta: «Standard», «Allineamento allo standard»).
+
+**Al BE, oltre al §10.5:**
+
+* `fn_risolvi_template_applicabile` ha il quarto parametro: il modello indicato passa da lì, e
+  il ramo di `_resolve_template` che lo legge da sé si ritira;
+* il clone di una versione chiama `fn_crea_bozza_da_versione` (con le sostituzioni del payload), e
+  `dati_bozza_copiata` si ritira;
+* la colonna `standard` della lista 24 legge `template_documenti.standard` nella proiezione;
+  `stato_scarto` in `LEFT JOIN` su `vw_template_personalizzati_scarto`;
+* policy dei tre codici nuovi da rigenerare.
+
+**Fuori da questo brief, trovati censendo (per un brief nuovo, se Tid vuole):**
+
+* `fn_ricalcola_totali_fattura` arrotonda con una sua copia delle quattro formule invece di
+  `script.fn_arrotonda_importo`, la sede dichiarata del vocabolario;
+* il default dell'arrotondamento **di riga** (`2` / `HALF_UP` quando l'articolo non ha regole) è
+  un letterale in `trgfn_fatture_righe_importo` e nel BE (`pipeline_repository`): è un altro
+  livello, ma lo stesso difetto del valore di sistema scritto in più posti;
+* `dbops.fn_pgtap_crea_fattura` scrive ancora la riga dell'emittente per l'utility «perché una
+  testata fiscale la pretende»: non è più vero. È innocua (scrive i valori di sistema).
+
+### 10.7 Verifica finale prima del passaggio al BE (team DB, 2026-10-20)
+
+**L'apply, controllato sui due database** (`databasechangelog` e cataloghi, dopo i migrate di
+Tid): i 13 changeSet ci sono; i tre codici e i tre messaggi nuovi (1378-1380) e le due colonne
+della lista 24 (1111, 1112) sono caricati; `fn_risolvi_template_applicabile` ha quattro
+argomenti. La doc auto-generata è rigenerata nell'albero, da committare.
+
+**Il censimento del §2 è chiuso.** La domanda era: che cosa serve a un emittente nuovo per
+emettere ognuno dei sei documenti, e per ogni voce se nasce con l'emittente o ha uno standard.
+Fatto sulla struttura: le tabelle legate all'emittente, i punti dei percorsi di emissione che si
+fermano su una configurazione mancante (`E_CONFIG_MANCANTE` e affini), e i trigger di nascita
+dell'emittente.
+
+| Voce | Dove si legge | Esito |
+| --- | --- | --- |
+| Modelli di stampa | `fn_risolvi_template_applicabile` | ✅ standard di sistema (tranche 1-2, K-1 … K-10) |
+| Registri di numerazione (fattura, DDT, ordine, commessa, reso, distinta) | `fn_get_registro_id`, `fn_get_registro_documento` | ✅ nascono con l'emittente (`trg_emittenti_fiscali_z90_provision_registri_ins_upd`; R-BE-14 per la fattura) |
+| Parametri d'importo per utility | `fn_ricalcola_totali_fattura` | ✅ valore di sistema (K-7) |
+| Valuta | `fn_get_valuta_id` | ✅ catena BA → emittente → gestore: senza la sua, l'emittente usa quella del gestore |
+| Mapping di default | `trgfn_emittenti_fiscali_default_bootstrap` | ✅ nasce con l'emittente |
+| Stati iniziali, causali di magazzino, sorgenti, termini di pagamento, policy dei task, limiti di emissione | catalogo d'installazione | — non sono dell'emittente: c'è un seed, e se manca e' un difetto dell'installazione |
+| Magazzino | `magazzino.magazzini` | — non serve per emettere (`ddt.magazzino_id` nullable, il controllo di emissione non lo chiede); serve alla merce che si muove, ed è una scelta operativa dell'azienda, come i listini (§7) |
+| Listini e mappa categoria → listino | §7 | — scelta commerciale dell'azienda: nessuno standard, per decisione |
+| Sede legale dell'emittente | `fn_snapshot_intestazione_fattura` | ⚠️ dato d'identità, non una configurazione: non può avere uno standard. Ma **nessun guard la pretende** all'emissione: una fattura esce senza la sede del cedente. Residuo R-5 |
+
+**I residui.**
+
+| # | Che cosa | Di chi | Proposta |
+| --- | --- | --- | --- |
+| R-1 ✅ §10.8 | `documenti/test-documenti-template-documenti` su dbdev si interrompe: crea un predefinito per l'emittente 32, che ne ha già uno suo (modello 40, maggio). È un test che **pesca** l'emittente invece di costruirlo | team DB | **in questo brief**: la fixture costruisce il suo emittente (helper), come i file nuovi. È del dominio, ed è l'unico rosso di `documenti/` su dbdev che non sia per costruzione |
+| R-2 | `fn_ricalcola_totali_fattura` arrotonda con una sua copia delle quattro formule invece di `script.fn_arrotonda_importo` | team DB | ✅ §10.9 |
+| R-3 | Il default dell'arrotondamento **di riga** (2 / `HALF_UP` senza regole dell'articolo) è un letterale in `trgfn_fatture_righe_importo` e nel BE (`pipeline_repository`) | DB + BE | ✅ §10.9 |
+| R-4 | `dbops.fn_pgtap_crea_fattura` scrive ancora la riga dell'emittente per l'utility «perché una testata fiscale la pretende»: non è più vero | team DB | ✅ §10.9 |
+| R-5 | Una fattura esce senza la sede legale del cedente: nessun guard la pretende | DB | ✅ **in questo brief** per decisione di Tid (2026-10-20): §10.8 |
+
+**Al BE, in testa al passaggio unico (§10.5):** ⛔ `documenti/tests/db/test_template_standard_db.py`
+apre con `richiedi_db_provvisto("documenti.fn_risolvi_template_applicabile(bigint, bigint,
+bigint)")`, cioè `to_regprocedure` sulla firma a **tre** argomenti. Dall'apply la firma ne ha
+quattro: la sonda risponde NULL e **l'intera classe si salta**, verde senza verificare niente. La
+sonda passa a `(bigint, bigint, bigint, bigint)`. Le altre chiamate a tre argomenti per posizione
+(`documenti_repository`, `test_documenti_repository_render`) restano valide: il quarto ha il
+DEFAULT.
+
+**Il resto del passaggio** è al §10.5 e al §10.6 (il modello indicato dalla porta, il clone sul BB,
+«personalizza» sulla madre, la lista sulle due viste e sulle due colonne, il drawer delle versioni
+dello standard, le policy dei tre codici). Al FE: la lista e il drawer, i testi delle due chiavi
+i18n. Poi gli smoke (§7) e l'archiviazione.
+
+### 10.8 R-1 e R-5 (2026-10-20; ✅ `20261021-13` applicata da Tid su scratch e dbdev)
+
+**R-1 — `documenti/test-documenti-template-documenti` costruisce la sua fixture.** Due aziende
+nuove dall'helper (`dbops.fn_pgtap_crea_emittente_operatore`) al posto del «primo emittente
+attivo». Il test 5, che senza un secondo emittente passava lo stesso («skip soft»), diventa un
+`lives_ok` vero. 6/6 sullo scratch e su dbdev, dove prima si fermava al primo INSERT.
+
+**R-5 — una fattura non esce dalla bozza senza la sede legale del cedente.**
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261021-13-update-trgfn-fatture-guard-uscita-draft-sede-cedente` | il guard d'uscita da DRAFT pretende `emittente_snapshot.sede` (oggetto non vuoto) dentro un'intestazione che c'è. Stesso codice, `E_FATTURA_NON_EMETTIBILE_INCOMPLETA`; la mancanza nel messaggio («intestazione incompleta: manca la sede legale dell'emittente») e nel contesto (`intestazione_incompleta`) |
+
+* **Perché nel guard d'uscita, e solo per la fattura.** È l'unico documento con l'intestazione
+  congelata, e lo snapshot la scrive dalla stessa catena del cliente (ruolo → soggetto,
+  `SEDELEG`). Il rimedio è anagrafico: si inserisce la sede dell'azienda e si rigira lo step DRAFT,
+  che riscrive lo snapshot finché la fattura è in bozza. Gli altri documenti stampano l'anagrafica
+  viva.
+* `messaggi_errore.csv`: causa e soluzione del codice nominano la sede del cedente. Il testo del
+  messaggio non cambia (due segnaposto).
+* Manuale: `vendite/manual/trgfn_fatture_guard_uscita_draft.md` (§ «La sede legale del cedente»).
+* Fatto datato, non un motivo: su dbdev le quattro aziende hanno tutte la sede (2026-10-20).
+
+**pgTAP:**
+
+* `vendite/test-fattura-guard-uscita-draft-v1.sql` (da 11 a 12): il caso nuovo 6-bis
+  (intestazione senza sede: rifiutata, e il messaggio dice perché), e il 7 ha la sede
+  nell'intestazione completa. ⛔ **Anche la fixture ora si costruisce**: pescava «il primo BA con un
+  emittente risolvibile», e sullo scratch, come in CI, era rossa dal test 2, cioè non verificava
+  niente. Ora l'azienda e il cliente vengono dagli helper;
+* due fixture che scrivevano a mano un'intestazione **senza sede** per emettere la fattura,
+  `test-fatture-righe-importo-e-kit-v1` e `test-guard-lotto-fatture-stato-coerente`, portano ora la
+  sede. È proprio il caso che R-5 chiude: col guard nuovo si fermavano.
+
+**La prova.**
+
+* Sullo scratch e su dbdev, `test-fattura-guard-uscita-draft-v1`: col corpo vecchio è rosso il
+  solo 6-bis (la mutazione), col nuovo 12/12.
+* Regressione su tutto `vendite/`, `pagamenti/`, `anagrafiche/`, `documenti/` e tre presidi
+  (464 file): sullo scratch l'unica differenza è il guard. ⚠️ Durante la corsa Tid ha applicato la
+  `-13` (17:01): su dbdev le due corse erano tutte e due dopo l'apply. Confrontati allora i rossi
+  di dbdev con quelli della corsa del mattino: l'unico nuovo era
+  `test-fatture-righe-importo-e-kit-v1`, la fixture senza sede, poi corretta (19/19).
+* `test-fatture-righe-importo-e-kit-v1` e `test-guard-lotto-fatture-stato-coerente` sono rossi
+  sullo scratch dal test 1, **prima e dopo**: pescano dati che un database da zero non ha. Non è di
+  questo giro; sono candidati allo stesso trattamento di R-1.
+
+**Al BE (nel passaggio unico):** i test e gli smoke che emettono una fattura su un'azienda senza
+sede legale ricevono ora `E_FATTURA_NON_EMETTIBILE_INCOMPLETA`. Le aziende di sviluppo del verbo
+`fn_provisiona_dati_di_sviluppo` nascono con gli indirizzi obbligatori del loro tipo di soggetto;
+un test che costruisce un'azienda a mano deve darle la sede. Policy del codice da rigenerare (cambiano
+causa e soluzione).
+
+### 10.9 R-2, R-3, R-4 (2026-10-20; ✅ applicati da Tid su scratch e dbdev, pgTAP verdi, nessuna regressione)
+
+Decisione di Tid (2026-10-20): niente brief nuovo, si fanno qui.
+
+| ChangeSet | Che cosa | R |
+| --- | --- | --- |
+| `20_code/vendite/20261021-14-create-fn-parametri-importo-riga` | BB: decimali e metodo dell'importo di riga, la regola dell'articolo e poi i parametri effettivi dell'emittente per l'utility della fattura | R-3 |
+| `20_code/vendite/20261021-15-update-trgfn-fatture-righe-importo-parametri-di-riga` | il trigger delle righe legge il BB invece del letterale `2 / HALF_UP`; senza regole e senza utility, `E_CONFIG_MANCANTE` | R-3 |
+| `20_code/vendite/20261021-16-update-fn-ricalcola-totali-fattura-arrotonda-col-bb` | il totale si arrotonda con `script.fn_arrotonda_importo` invece di una copia delle quattro formule | R-2 |
+| `20_code/dbops/20261021-17-update-fn-pgtap-crea-fattura-senza-riga-utility` | l'helper della fattura di prova non scrive più la riga dei parametri: la fattura di prova è quella di un emittente nuovo | R-4 |
+
+**Scelte dichiarate:**
+
+* **R-2.** Le formule sono le stesse. L'unica differenza: la copia ricadeva in silenzio su
+  `HALF_UP` per un metodo sconosciuto, la funzione unica lo rifiuta. I CHECK sulle colonne non lo
+  lasciano arrivare.
+* **R-3.** La riga segue la stessa catena del totale: un emittente con parametri suoi li vede ora
+  anche sulle righe, prima solo sul totale. Una riga senza regole dell'articolo, su una fattura
+  **senza utility**, si ferma con `E_CONFIG_MANCANTE`. È uno stato che l'applicazione non produce:
+  le fatture le crea solo `fn_get_or_create_fattura_header`, che senza utility solleva (censito sui
+  corpi DB e sul BE: il BE non inserisce fatture).
+
+**pgTAP:**
+
+* `vendite/test-parametri-importo-utility-v1.sql` (da 10 a 12): 11) una riga senza regole
+  dell'articolo si arrotonda coi parametri dell'emittente (0 decimali), non col 2 fisso;
+  12) senza utility, `E_CONFIG_MANCANTE`;
+* `dbops/test-fn-pgtap-crea-fattura-v1.sql`: il test 4 è rovesciato. L'helper non scrive la
+  riga, e la fattura usa i parametri di sistema;
+* quattro fixture creavano a mano una fattura **senza utility** e poi ci scrivevano righe:
+  `anagrafiche/test-billing-account-guard-parent`, `vendite/test-esito-gruppi-giro-v1`,
+  `vendite/test-lista-commessa-attivita-fatturata-v1`, `vendite/test-vw-dash-competenza-v1`. Ora
+  l'utility la prendono dal BA, come la testata vera.
+
+**La prova.**
+
+* L'SQL estratto compila, e le precondizioni danno il valore atteso.
+* ⚠️ Tid ha applicato `-14` … `-17` (17:27) mentre girava la corsa «prima». Il confronto si è fatto
+  allora fra il database applicato e le corse delle 17:00, prima di R-2 … R-4, sugli stessi file
+  (472: `vendite/`, `pagamenti/`, `anagrafiche/`, `documenti/`, i presidi, ogni file che scrive
+  righe di fattura o usa l'helper). Prima della correzione delle quattro fixture si fermavano,
+  come previsto, proprio quelle quattro. Dopo, sui due database, cambiano solo file che
+  migliorano: il pgTAP dei parametri (12/12) e, su dbdev, le due fixture corrette per R-5.
+* Tre di quelle quattro fixture sono rosse sullo scratch dal test 1 prima e dopo: pescano dati che
+  un database da zero non ha (come `test-fatture-righe-importo-e-kit-v1` e
+  `test-guard-lotto-fatture-stato-coerente`, §10.8).
+* Due file con due righe `BEGIN;` (`test-soggetti-indirizzi-required`,
+  `test-soggetti-ruoli-indirizzi-required`) il runner della prova non li compone: fuori dal
+  confronto, e non toccati dal giro.
+
+**Manuali:** `vendite/manual/fn_parametri_importo_riga.md` (nuova),
+`vendite/manual/trgfn_fatture_righe_importo.md`, `vendite/manual/fn_ricalcola_totali_fattura.md`,
+`anagrafiche/manual/fn_parametri_importo_utility.md`.
+
+**Al BE (nel passaggio unico):** `_GROUP_ATTIVITA_SELECT` di `pipeline_repository` legge decimali e
+metodo d'importo da `vendite.fn_parametri_importo_riga(articolo, emittente, utility)` e ritira i
+suoi `COALESCE(…, 2)` e `COALESCE(…, 'HALF_UP')` degli importi. I default delle **quantità** (3 /
+`HALF_UP`) e di `calcolo_qta_padre` vivono solo lì: una copia sola, non un doppione.
+
+**Fatti di struttura lasciati come sono, dichiarati:**
+
+* `articolo_regole_fatturazione` ha `DEFAULT 2` / `'HALF_UP'` sulle sue colonne. Non è un ripiego:
+  è il valore proposto quando si crea la regola di un articolo, cioè un dato scritto.
+* `vendite.fatture.utility_id` è nullable, ma l'unico creatore applicativo la pretende. Renderla
+  `NOT NULL` chiuderebbe il caso anche nello schema; oggi molte fixture pgTAP inseriscono fatture
+  senza utility. Non fatto: lo decide Tid.
+
+## 11. Ripartenza al BE/FE — il passaggio unico (2026-10-20)
+
+> **A chi:** sessione BE (`dev/backend-tid`), poi FE. **Stato DB:** tutto applicato su scratch e
+> dbdev, pgTAP verdi, nessuna regressione (Tid, 2026-10-20). Non ci sono altre richieste aperte al
+> DB in questo brief: una richiesta nuova va confrontata con il §10 e, se non c'è, è un brief nuovo.
+
+### 11.1 Che cosa il DB ha consegnato
+
+| Che cosa | Oggetti | Dettaglio |
+| --- | --- | --- |
+| I modelli standard, uno per tipo di documento, e la risoluzione a due livelli | `template_documenti.standard`, i sei seed, `fn_risolvi_template_applicabile` | §4.1, §8 |
+| «Può stampare» in una sede sola | `documenti.vw_template_versioni_stampabili` | §10.6 K-1 |
+| La **porta unica** della stampa: modello **e** versione, anche per il modello indicato | `fn_risolvi_template_applicabile(sorgente, emittente, tipo, p_template_documento_id)`, livelli `EMITTENTE` / `STANDARD` / `INDICATO` | K-2 |
+| Due codici nuovi del modello indicato, e uno di «personalizza» | `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` (`CONFLITTO_STATO`), `E_DOCUMENTI_TEMPLATE_NON_COERENTE` (`DATO_ERRATO`), `E_DOCUMENTI_PERSONALIZZA_NON_STANDARD` (`DATO_ERRATO`) | K-3, K-6 |
+| La coerenza del documento generato e quella del modello indicato: una regola sola | `fn_template_motivo_non_coerente` | K-4 |
+| Con che cosa stampa ogni azienda, per la lista | `fn_template_esito_risoluzione`, `vw_template_risoluzione_emittente` | K-5 |
+| «Personalizza» come funzione madre, e la copia di una versione in un BB | `fn_personalizza_template_standard`, `fn_crea_bozza_da_versione` | K-6 |
+| Lo scarto delle copie, sullo standard da cui derivano | `vw_template_personalizzati_scarto` | K-10 |
+| Due colonne nuove della lista 24 | `standard`, `stato_scarto` (`ui/lista_colonna.csv`) | K-9 |
+| La coda di stampa dice che cosa stampare | `fatture_stampa_coda.tipo_documento_output_id`, `fn_accoda_stampe_lotto(lotto, tipo)` | §9 |
+| I parametri d'importo hanno un valore di sistema; riga e totale seguono la stessa catena | `config.utilities` (2 / `HALF_UP`), `fn_parametri_importo_utility`, `fn_parametri_importo_riga` | K-7, R-3 |
+| Una fattura non esce dalla bozza senza la sede legale del cedente | `trgfn_fatture_guard_uscita_draft` | R-5 |
+
+### 11.2 Le voci del BE
+
+| # | Che cosa | Si ritira | Dettaglio |
+| --- | --- | --- | --- |
+| **B-1** ⛔ **per prima** | `documenti/tests/db/test_template_standard_db.py`: la sonda `richiedi_db_provvisto("documenti.fn_risolvi_template_applicabile(bigint, bigint, bigint)")` cerca la firma a tre argomenti. Dall'apply ne ha quattro: **l'intera classe si salta**, verde senza verificare niente. La sonda passa a `(bigint, bigint, bigint, bigint)` | — | §10.7 |
+| **B-2** | La stampa (genera, anteprima, worker della coda, viste di `sorgente_documenti_views`) fa **una chiamata sola** a `fn_risolvi_template_applicabile`, col modello indicato quando c'è, e usa modello e versione restituiti. I due codici nuovi si traducono con le policy generate | `_guard_template_coerente`, `_resolve_versione_pubblicata`, `get_versione_pubblicata_attiva` e la data `_today` del percorso di stampa | §10.5, K-2 |
+| **B-3** | «Personalizza» (`POST templates/<id>/personalizza/`) chiama `fn_personalizza_template_standard(standard, emittente, codice, codice_interno, descrizione, is_default)`. Il perimetro dell'emittente resta un controllo del BE (`_guard_emittente_in_scope`). ⚠️ `is_default` si passa **solo se l'operatore lo indica**: altrimenti decide il DB (D-6, predefinita se l'azienda non ne ha già uno). Oggi il service lo forza a vero | la transazione del service, `get_ultima_versione_pubblicata`, `dati_bozza_copiata` per questo verbo | §6.1, K-6 |
+| **B-4** | Il clone di una versione chiama `fn_crea_bozza_da_versione(origine, modello, NULL, titolo, valido_dal, valido_al, attivo, meta)` con le sostituzioni del payload | `dati_bozza_copiata`, il calcolo `MAX(versione)+1` del repository | K-6 |
+| **B-5** | La lista Modelli documento (24): la colonna `standard` dalla proiezione (`template_documenti.standard`), `stato_scarto` in `LEFT JOIN` su `vw_template_personalizzati_scarto`; «si usa lo standard» e «senza predefinito» da `vw_template_risoluzione_emittente`. Il perimetro delle aziende resta del BE | — | K-5, K-9 |
+| **B-6** | Il drawer delle versioni di uno **standard**: il cancello della lista 88 (`documenti.template_versioni`) chiede l'emittente del padre, che lo standard non ha. Per un padre standard si usa il ramo «padre senza emittente suo» che `lista_figlia_views` ha già (`lista_emittente_param = None`, come la distinta) | — | §6.1 |
+| **B-7** | Il gruppo delle attività fatturabili (`_GROUP_ATTIVITA_SELECT` di `pipeline_repository`) legge decimali e metodo d'importo da `vendite.fn_parametri_importo_riga(articolo, emittente, utility)` | i `COALESCE(…, 2)` e `COALESCE(…, 'HALF_UP')` degli importi (quelli delle quantità restano: copia unica) | §10.9 R-3 |
+| **B-8** | La matrice utility dell'emittente (`lookup_repository.list_entity_utility_matrix`) mostra l'override grezzo: dove non c'è, conviene mostrare i parametri di sistema da `anagrafiche.fn_parametri_importo_utility` (consigliato, non bloccante) | — | K-7 |
+| **B-9** | Le policy rigenerate: i tre codici nuovi, e causa e soluzione nuove di `E_FATTURA_NON_EMETTIBILE_INCOMPLETA` (la sede del cedente) | — | K-3, R-5 |
+| **B-10** | I test DB e gli smoke che **emettono una fattura**: l'azienda deve avere la sede legale (R-5), altrimenti `E_FATTURA_NON_EMETTIBILE_INCOMPLETA` con «intestazione incompleta». Le aziende del verbo di sviluppo nascono con gli indirizzi obbligatori; un test che ne costruisce una a mano deve darle la sede. Una fattura costruita a mano deve avere l'utility (R-3) | — | §10.8, §10.9 |
+| **B-11** | Gli smoke (§7): DEVA emette con lo standard e **chiude una fattura** (i parametri d'importo ora hanno il valore di sistema) | — | §7 |
+
+### 11.3 Le voci del FE
+
+| # | Che cosa | Dettaglio |
+| --- | --- | --- |
+| **F-1** | Lista Modelli documento: la colonna **Standard** (filtrabile), la colonna **Allineamento allo standard** (`stato_scarto`: `ALLINEATA`, `STANDARD_AVANTI`, `CONTESTO_SUPERATO`, `ORIGINE_NON_DICHIARATA`), e per ogni azienda «si usa lo standard» / «nessun predefinito» | §6, B-5 |
+| **F-2** | I testi delle due chiavi i18n nei locale: `config.modelli_documenti.col_standard` («Standard») e `config.modelli_documenti.col_stato_scarto` («Allineamento allo standard»). ⚠️ Fino ad allora `scripts/check_i18n_keys.py` tiene la CI rossa | K-9 |
+| **F-3** | Il drawer: lo standard in sola lettura, l'azione **«personalizza»** (azienda; facoltativi codice, codice interno, descrizione, predefinito) | §6, B-3 |
+| **F-4** | Le versioni di uno standard nel drawer, dopo B-6 | §6.1 |
+| **F-5** | Il messaggio di stampa del modello indicato: i due codici nuovi arrivano già con la frase del DB («oggi non può stampare: è disattivato», «non è adatto a questo documento: è di un'altra azienda»…). Niente da tradurre lato FE | K-3 |
+
+### 11.4 Dopo il BE/FE
+
+Il giro degli smoke (§7, B-11), poi l'archiviazione del brief in `work-done/` (Tid).

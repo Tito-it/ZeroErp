@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_ba_cambio_emittente(p_billing_account_id bigint, p_emit
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_ba_cambio_emittente(p_billing_account_id bigint, p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
  RETURNS jsonb
@@ -146,6 +148,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_ba_cambio_emittente(p_billing_account_id bigint, p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
 IS 'Pure check (§12.5.1): elenca i motivi che impediscono di togliere o cambiare una riga di anagrafiche.emittenti_fiscali_billing_account. [] = ammesso; altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA i codici e non solleva. ⭐ rev 2026-08-31 (brief-db-registri-di-numerazione-emittente-e-trasloco, C2-17): la storia non e'' piu'' «fatture e commesse» ma «qualunque documento gia'' NUMERATO su un registro», derivata da vendite.famiglie_documento — e la frase deve dirlo. ⛔ Con cinque famiglie, una frase che ne nomina due («ha gia'' 3 fatture e 1 commesse») sarebbe PEGGIO di una che non ne nomina nessuna: manderebbe a cercare fatture a un cliente bloccato da un DDT. I valori diventano tre — cliente, emittente, ELENCO — e l''elenco lo compone il DB, che e'' l''unico posto dove il catalogo e'' gia'' aperto. ⭐ Le parole dell''elenco sono le descrizioni del catalogo e non cinque etichette ricopiate qui: una famiglia in piu'' domani cambia la frase da se'', senza toccare questa funzione. ⚠️ WITH ORDINALITY e non un ORDER BY sul codice: l''ordine e'' quello del catalogo (la fattura per prima), e senza ordinalita'' l''ordine di uno string_agg su una function scan non e'' garantito — la stessa frase cambierebbe di corsa in corsa e un test sulla frase diventerebbe instabile. ⭐ EXISTS PRIMA, CONTEGGI DOPO: il ramo «nessuna storia» e'' quello che la lista dei mapping attraversa a ogni caricamento, una volta per riga, e ora costa un anagrafiche.fn_ba_ha_storia_emittente che esce al primo documento trovato; i conteggi per famiglia si pagano solo quando si e'' gia'' deciso di rifiutare. ⚠️ CAMBIA IL `dettaglio`: spariscono n_fatture e n_commesse, arrivano `storia` (array di {famiglia, descrizione, n}) e `n_documenti` (il totale). Il `reason_key` NON cambia, quindi la traduzione del frontend resta agganciata dov''era. ⛔ IL PREDICATO DEL MAPPING SPECIFICO E'' UNA COPPIA: togliere l''aggancio fa ricadere il billing account sul gestore globale, quindi il cambio esiste solo se l''emittente della riga e'' DIVERSO da quello del default — se coincidono non si sposta nessun documento e la rimozione resta ammessa. ⭐ UNA sola funzione per entrambe le specie di riga: il frontend chiama una cosa per riga, e con due check sarebbe il chiamante a dover dedurre in Python «che tipo di riga e'' questa», cioe'' a ricalcolare fuori sede cio'' che qui e'' un IF. ⚠️ La riga del gestore globale (billing_account_id NULL) risponde col singleton, incondizionatamente, e non con la storia. ⚠️ SECURITY DEFINER: la storia si conta su tabelle con la RLS. Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-17; e brief-db-motivo-rimozione-mapping-ba, N1 e N7.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

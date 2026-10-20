@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_prerequisiti_flusso(p_pratica_id bigint, p_template_flu
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_check_prerequisiti_flusso(p_pratica_id bigint, p_template_flusso_id integer)
  RETURNS TABLE(prerequisito_id integer, codice character varying, descrizione text, soddisfatto boolean)
@@ -54,6 +56,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_check_prerequisiti_flusso(p_pratica_id bigint, p_template_flusso_id integer)
 IS 'Pure check: ritorna prerequisiti con flag soddisfatto per pratica/template. Esito-aware (2026-06-08): rispetta template_flussi_prerequisiti.esito_richiesto (NULL = qualsiasi esito).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

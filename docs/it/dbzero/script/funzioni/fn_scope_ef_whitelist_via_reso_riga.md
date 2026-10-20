@@ -6,6 +6,8 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_reso_riga(p_auth_user_id integer, p_ri
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_reso_riga(p_auth_user_id integer, p_riga_id bigint)
  RETURNS boolean
@@ -32,6 +34,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_reso_riga(p_auth_user_id integer, p_riga_id bigint)
 IS '⭐ rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l''emittente lo chiede a script.fn_resolve_emittente_fiscale_id (DEFINER), non lo legge sotto la RLS del padre: una strada sola, e nessuna policy del padre rieseguita a ogni chiamata. Stesse risposte. Come fn_scope_ef_whitelist_via_reso ma a partire da una riga di reso: e'' la chiave che portano resi_righe_accrediti, resi_righe_riconsegne e resi_righe_rinunce. ⚠️ Risale dal RESO e non dal DDT: vendite.resi_righe ha due genitori NOT NULL (reso_id e ddt_riga_id) e la riga appartiene al documento di reso.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

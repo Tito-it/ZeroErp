@@ -7,6 +7,8 @@ CREATE FUNCTION fn_update_cliente(p_cliente_id bigint, p_ba_categoria_cliente_id
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_update_cliente(p_cliente_id bigint, p_ba_categoria_cliente_id smallint DEFAULT NULL::smallint, p_cliente_fields jsonb DEFAULT '{}'::jsonb)
  RETURNS TABLE(cliente_id bigint, categoria_aggiornata boolean, campi_aggiornati boolean)
@@ -103,6 +105,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_update_cliente(p_cliente_id bigint, p_ba_categoria_cliente_id smallint, p_cliente_fields jsonb)
 IS 'Funzione madre atomica: aggiorna la categoria cliente sul billing_account e/o i campi editabili del cliente in un''unica statement (o tutto o rollback). SECURITY INVOKER: RLS e scope emittente restano applicati. Ritorna (cliente_id, categoria_aggiornata, campi_aggiornati). Cliente inesistente => E_CLIENTE_NON_TROVATO. rev 2026-07-31 (D-I): rimossi dalla whitelist e dalle assegnazioni `tipo_gg_scadenza_ft` e `nr_giorni_scadenza` — le condizioni di pagamento hanno un solo meccanismo, il termine di catalogo, e le due colonne cadono con la 3a.5. La firma non cambia: i campi editabili viaggiano nel payload jsonb. Piano: analisi-fix-transazioni Classe A #1 + piano-db-satelliti-fattura 3a.5.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

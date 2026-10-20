@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_articoli_guard_listino_se_composito()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_listino_se_composito()
  RETURNS trigger
@@ -46,6 +48,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_listino_se_composito()
 IS 'Trigger BEFORE UPDATE OF is_composito su articoli: blocca promozione a composito se esistono righe attive in listini_righe. Raise E_LISTINO_RIGA_COMPOSITO_VIETATO (446). rev 2026-05-13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_fatture_con_plafond_consumato(p_fatture_ids bigint[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_fatture_con_plafond_consumato(p_fatture_ids bigint[])
  RETURNS jsonb
@@ -78,6 +80,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_fatture_con_plafond_consumato(p_fatture_ids bigint[])
 IS 'Funzione PURA (fn_check_*): dice se queste fatture hanno gia'' consumato il plafond di un titolo IVA, cioe'' se nel registro anagrafiche.soggetti_titoli_iva_movimenti c''e'' almeno una riga che le nomina. Ritorna [] oppure un array con {codice E_FATTURE_PLAFOND_CONSUMATO, reason PLAFOND_CONSUMATO, reason_key, dettaglio = quante fatture}. ⭐ Sede UNICA condivisa dalle tre porte di reset (riporta a draft, annulla lotto, elimina fattura) e dal guard di vendite.fn_cleanup_fatture_by_ids, sullo stampo di script.fn_check_fatture_con_rettifiche (brief-db-bom-flag-quantita-e-kit-in-fattura §14, strada A di Tid del 2026-10-04). ⭐ Il consumo del plafond e'' un PUNTO DI NON RITORNO come il numero: avviene all''emissione, PRIMA della numerazione, e un movimento e'' un fatto contabile — registro append-only, FK NO ACTION verso fattura e riga di proposito. Disfare la fattura vorrebbe dire cancellare il fatto, e uno storno non basterebbe perche'' nominerebbe anch''esso la fattura. Il lotto va AVANTI: il passaggio a DEFINITIVA riprende fattura per fattura e il consumo e'' idempotente. ⚠️ Conta qualunque movimento che nomini la fattura (anche un kit a netto zero ne ha due) e conta le FATTURE, non i movimenti. ⚠️ Legge sotto RLS: fuori perimetro non vede, e allora e'' la FK a fermare la cancellazione col 23503 di prima — nessun peggioramento.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

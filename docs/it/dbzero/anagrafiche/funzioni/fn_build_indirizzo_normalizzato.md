@@ -7,6 +7,8 @@ CREATE FUNCTION fn_build_indirizzo_normalizzato(p_stradario_id integer, p_civico
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_build_indirizzo_normalizzato(p_stradario_id integer, p_civico integer DEFAULT NULL::integer, p_estensione character varying DEFAULT NULL::character varying, p_palazzina character varying DEFAULT NULL::character varying, p_scala character varying DEFAULT NULL::character varying, p_piano character varying DEFAULT NULL::character varying, p_interno character varying DEFAULT NULL::character varying, OUT o_estensione_civico character varying, OUT o_palazzina character varying, OUT o_scala character varying, OUT o_piano character varying, OUT o_interno character varying, OUT o_via_norm text, OUT o_civico_norm text, OUT o_indirizzo_normalizzato text)
  RETURNS record
@@ -91,6 +93,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_build_indirizzo_normalizzato(p_stradario_id integer, p_civico integer, p_estensione character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying, OUT o_estensione_civico character varying, OUT o_palazzina character varying, OUT o_scala character varying, OUT o_piano character varying, OUT o_interno character varying, OUT o_via_norm text, OUT o_civico_norm text, OUT o_indirizzo_normalizzato text)
 IS 'Centralizza TUTTA la logica di normalizzazione indirizzi. Ritorna record con colonne strutturali normalizzate + via_norm + civico_norm + indirizzo_normalizzato. Usata dal trigger (zero logica) e dal backend Python (check duplicato via GIN index).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

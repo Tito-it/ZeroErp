@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_righe_guard_erogazione_obbligatoria()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria()
  RETURNS trigger
@@ -47,6 +49,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria()
 IS 'Guard: una riga di vendite.contratti_righe o di vendite.offerte_commerciali_eccezioni che si fattura (ogni tipo che non e'' ESCLUSIONE: oggi OVERRIDE e AGGIUNTA) vuole tipo_erogazione (E_RIGA_EROGAZIONE_OBBLIGATORIA, DATO_ERRATO, campo = tipo_erogazione). Sull''ESCLUSIONE e'' vuota, come gli altri dati di vendita: lo dice script.trgfn_righe_guard_esclusione_senza_dati (rev 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende). Una funzione per le due tabelle gemelle, come trgfn_righe_default_fonte_qta: fn_push_offerta_a_contratto ricopia l''erogazione dall''offerta, e la regola deve essere la stessa ai due capi. TG_ARGV[0] = colonna del documento padre (contratto_id, offerta_id), solo per il contesto. Trigger _a10_ BEFORE INSERT OR UPDATE OF tipo_erogazione, tipo_eccezione: parla prima dei CHECK chk_contrighe_erogazione_per_tipo_eccezione / chk_offerte_eccezioni_erogazione_per_tipo_eccezione, che restano la rete. Contesto: campo, riga_id, la colonna padre, articolo_id, tipo_eccezione. Nasce il 2026-10-04, brief-db-erogazione-obbligatoria-righe-fatturate (decisione di Tid).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

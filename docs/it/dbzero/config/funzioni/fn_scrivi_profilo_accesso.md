@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scrivi_profilo_accesso(p_tipo config.tipo_profilo_accesso, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_scrivi_profilo_accesso(p_tipo config.tipo_profilo_accesso, p_codice character varying, p_descrizione text, p_aree jsonb DEFAULT NULL::jsonb, p_azioni jsonb DEFAULT NULL::jsonb, p_campi jsonb DEFAULT '{}'::jsonb)
  RETURNS integer
@@ -108,6 +110,8 @@ $function$
 COMMENT ON FUNCTION config.fn_scrivi_profilo_accesso(p_tipo config.tipo_profilo_accesso, p_codice character varying, p_descrizione text, p_aree jsonb, p_azioni jsonb, p_campi jsonb)
 IS 'BB (2026-10-18): scrive un profilo di accesso per codice (uq_profili_accesso_codice): lo crea, o ne aggiorna descrizione e campi; poi ne SOSTITUISCE le aree (p_aree: elenco di {area_id, livello}) e le azioni (p_azioni: elenco di {azione_id, abilitata}) se indicate, NULL = invariate. p_campi: attivo, richiede_secondo_fattore; assenti = DEFAULT alla nascita (true, false), invariati dopo (la regola COALESCE del backend); chiave estranea: E_CAMPO_NON_AMMESSO. Un codice che esiste con un altro tipo, argomenti mancanti o elenchi malformati: E_SCRIPT_CHIAMATA_NON_VALIDA. FK, unicita'' dell''area e livello valido li dicono i vincoli. Non scrive binding (quello di un''identita'' e'' config.fn_lega_profilo_identita) ne'' controlla il permesso (backend). INVOKER. Ritorna l''id. Prende il posto dei passi del profilo di AmmSoftwareRepository.put_profilo_reparto (2b-2) ed e'' la sede dei profili AD_HOC del verbo dei dati di sviluppo (2b-3). Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 8).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

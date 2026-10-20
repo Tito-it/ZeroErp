@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_sospensioni_giornale_ins()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_giornale_ins()
  RETURNS trigger
@@ -36,6 +38,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_sospensioni_giornale_ins()
 IS 'AFTER INSERT su sospensioni: registra SOSPENSIONE_REGISTRATA nel giornale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

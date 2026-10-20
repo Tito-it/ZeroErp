@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW config.vw_email_in_coda
 WITH (security_invoker=true) AS
@@ -28,6 +30,8 @@ SELECT id,
    FROM config.email_log l
   WHERE (((stato)::text = 'PENDING'::text) OR (((stato)::text = ANY ((ARRAY['FAILED'::character varying, 'RETRY'::character varying])::text[])) AND (tentativi < max_tentativi) AND ((prossimo_tentativo IS NULL) OR (prossimo_tentativo <= now()))));
 ```
+
+</div>
 
 
 ---

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fondi_source_guard_importo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fondi_source_guard_importo()
  RETURNS trigger
@@ -64,6 +66,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fondi_source_guard_importo()
 IS 'Guard di corrispondenza fra il fondo e la sua fattura sorgente: importo dello stesso segno del totale_a_pagare e non superiore in valore assoluto; totale non calcolato = rifiuto (fail-closed). ⚠️ Si applica ai soli atti con origine = AUTOMATICA: sulla strada MANUALE il caso principale ha segno opposto per costruzione — l''eccedenza di un sovra-incasso e'' un credito su una fattura dal totale positivo — e un guard applicato a tutti rifiuterebbe proprio l''atto per cui quella strada esiste. Li'' il presidio non e'' un vincolo ma il GOVERNO: motivo obbligatorio, azione di processo, e il processo rimborsi di `pagamenti`, che l''eccedenza la conosce mentre il database no (il posting non esiste ancora). ⚠️ NON vieta il fondo negativo, che e'' legittimo: le due soglie del minimo formano una banda che contiene lo zero e il capo inferiore serve a riportare avanti i CREDITI. Vieta il fondo che racconta un''altra fattura — 8 euro di documento e -32 di fondo, prodotti da una riga contabile piu'' grande della fattura. ⚠️ La regola e'' scritta come segno + valore assoluto e MAI come «compreso fra 0 e il totale»: su una sorgente a credito gli estremi si invertono. ⚠️ E'' un trigger e non un CHECK perche'' deve leggere vendite.fatture — e i trigger BEFORE ROW girano PRIMA dei CHECK, quindi su una sorgente non nulla intercetta lui anche l''importo zero. D-3(a) + coda D-5 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE PROCEDURE proc_sync_storico_set_storicizza()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_sync_storico_set_storicizza()
  LANGUAGE plpgsql
@@ -73,6 +75,8 @@ $procedure$
 COMMENT ON PROCEDURE maintenance.proc_sync_storico_set_storicizza()
 IS 'Tiene config.storico_set_storicizza allineato alla sua DERIVAZIONE (le tabelle ordinarie con la colonna `storicizza` a DEFAULT true): aggiunge cio'' che la derivazione produce e POTA le righe derivate che non hanno piu'' un referente. ⭐ La potatura e'' la meta'' che mancava (rev 2026-09-05, R-12): il set si popolava da solo e non si potava da solo, quindi ogni tabella ritirata lasciava una riga che puntava a niente — ed e'' cosi'' che apply_storicizza_weekly e'' morto ogni settimana per SEI MESI senza che nessuno lo sapesse. ⛔ Si pota SOLO il caso «il nome non risolve piu'' a nessun oggetto»: una tabella che esiste ma ha perso il DEFAULT NON si pota, perche'' e'' il caso transitorio che apply_storicizza_weekly ripara e le due meta'' si combatterebbero. ⛔ Le righe insert_manuale = true non si toccano mai: sono una decisione di una persona, e se il loro bersaglio sparisce va detto a qualcuno invece che cancellato di nascosto. ⚠️ Il nome si scrive schema-qualificato esplicitamente: regclass::text lo omette per gli schemi nel search_path del chiamante, e una chiave che dipende dal search_path un giorno non ritrova la propria riga.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

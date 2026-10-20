@@ -27,10 +27,14 @@ EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza();
 
 1. Recupera dal `template_versione_id` indicato la coppia `(template_documento_id, ...derivati...)`.
 2. Verifica che `NEW.template_documento_id` coincida con il `template_documento_id` della versione (la versione deve appartenere al template indicato).
-3. Verifica che `NEW.tipo_documento_output_id` coincida con il `tipo_documento_output_id` del template.
-4. Verifica che `NEW.sorgente_tipo_id` coincida con il `sorgente_tipo_id` del template.
-5. Verifica che `NEW.emittente_fiscale_id` coincida con l'`emittente_fiscale_id` del template.
-6. La prima incoerenza solleva `E_DOCUMENTI_GENERATO_COERENZA` con il payload del campo non allineato (atteso vs fornito); le altre verifiche non sono raggiunte.
+3. Chiede a `documenti.fn_template_motivo_non_coerente` se il modello va bene per il documento:
+   stessa sorgente, stesso tipo di output, e la stessa azienda **oppure** un modello standard
+   (lo standard vale per tutte). È la stessa domanda che `fn_risolvi_template_applicabile` fa sul
+   modello indicato prima del render: la regola sta in un punto solo (rev 21-10-2026, §10.3 K-4).
+4. Un'incoerenza solleva `E_DOCUMENTI_GENERATO_COERENZA`. Per la regola 1 il contesto porta il
+   modello atteso e quello fornito; per le altre il **motivo** per nome (`SORGENTE`, `TIPO`,
+   `EMITTENTE`) e i valori del documento. Se più regole falliscono, il motivo è il primo
+   nell'ordine del BB (sorgente, tipo, azienda).
 
 ## Codice errore
 

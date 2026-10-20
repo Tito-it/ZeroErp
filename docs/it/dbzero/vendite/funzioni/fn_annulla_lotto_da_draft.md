@@ -7,6 +7,8 @@ CREATE FUNCTION fn_annulla_lotto_da_draft(p_lotto_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_annulla_lotto_da_draft(p_lotto_id bigint)
  RETURNS TABLE(updated_lotti integer, updated_attivita integer, deleted_fatture integer, deleted_righe integer, annullati_task_run integer)
@@ -205,6 +207,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_annulla_lotto_da_draft(p_lotto_id bigint)
 IS 'Annullo di un lotto in DRAFT (MASSIVO e GIORNALIERO): precondizioni da script.fn_check_lotto_annullabile, cancella le fatture pre-fiscali e ripristina le attivita'' (fn_cleanup_fatture_by_ids), chiude i task run con esito ANNULLATO, porta il lotto a CHIUSO/ANNULLATA senza toccare stato_lotto (rev 2026-09-07). ⭐ rev 2026-09-23: chiude anche gli ESITI — ogni riga di vendite.fatturazione_lotti_esiti non ancora ESCLUSO passa a ESCLUSO con uscita_motivo «Annullo del lotto <codice>» (timbro dal trigger) — e scrive una riga I nel giornale (fase ANNULLO_LOTTO) col numero di documenti usciti. Un lotto annullato e'' VUOTO: nessun controllo deve escluderlo. ⚠️ La sorella fn_riporta_lotto_a_draft non chiude gli esiti, ed e'' voluto: il lotto resta vivo e il giro dopo li riscrive. Firma invariata (il backend legge le cinque colonne per posizione). Brief: brief-db-annullamento-chiude-la-vita §9.4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ddt_guard_causale_emissione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_causale_emissione()
  RETURNS trigger
@@ -118,6 +120,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_causale_emissione()
 IS 'Gate all''emissione DDT sul VALORE DELLA RIGA (brief-db-fatturazione-ddt-resi §4a, DL-28), in tre facce: (1) causale di trasporto obbligatoria — in DRAFT il NULL resta legittimo; (2) se la causale e'' fatturabile, ogni riga attiva deve avere un prezzo risolvibile (proprio o ereditato dalla riga ordine via fulfillment); (3) ogni riga attiva CHE PORTA UN PREZZO deve avere anche l''aliquota. rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore e argomenti invariati (544/545). ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter): + E_DDT_RIGA_IVA_MANCANTE. Si e'' esteso questo guard invece di crearne uno nuovo perche'' e'' gia'' il gate del valore della riga e il LOOP con ELSIF per codice e'' fatto per crescere cosi''. ⚠️ Nel VARIADIC del codice nuovo va il NUMERO di riga e non l''id: quel valore compone la frase che legge una persona, e un id tecnico non si cerca a mano; l''id resta nel context. ⚠️ Il nome nomina la sola causale ed e'' rimasto quello di quando il motivo era uno: non si rinomina (costerebbe trigger, doc auto-gen e pgTAP per sola leggibilita''), ma lo Scopo nel corpo lo dichiara. rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-2/D-2-bis): + E_DDT_CLIENTE_OBBLIGATORIO, la causale manda merce a un cliente (config.causali_trasporto.richiede_cliente) e la bolla non ha il billing account; VARIADIC: documento e codice della causale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

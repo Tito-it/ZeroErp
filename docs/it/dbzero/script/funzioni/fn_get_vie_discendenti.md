@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_vie_discendenti(p_via_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_vie_discendenti(p_via_id integer)
  RETURNS TABLE(id_chain integer, livello integer)
@@ -30,6 +32,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_log_evento_dominio(p_pratica_id bigint, p_flusso_id bigint, p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_log_evento_dominio(p_pratica_id bigint, p_flusso_id bigint, p_tipo_evento text, p_meta jsonb DEFAULT '{}'::jsonb)
  RETURNS bigint
@@ -78,6 +80,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_log_evento_dominio(p_pratica_id bigint, p_flusso_id bigint, p_tipo_evento text, p_meta jsonb)
 IS 'Canale append-only per eventi di dominio DOMINIO_* sul giornale pratiche (origine HANDLER). La forma DOMINIO_* e'' garantita da chk_giornale_azione.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

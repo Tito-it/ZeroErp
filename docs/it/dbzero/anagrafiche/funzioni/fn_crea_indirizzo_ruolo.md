@@ -7,6 +7,8 @@ CREATE FUNCTION fn_crea_indirizzo_ruolo(p_soggetto_ruolo_id bigint, p_indirizzo 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_indirizzo_ruolo(p_soggetto_ruolo_id bigint, p_indirizzo jsonb)
  RETURNS bigint
@@ -77,6 +79,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_crea_indirizzo_ruolo(p_soggetto_ruolo_id bigint, p_indirizzo jsonb)
 IS 'MADRE SINGOLARE (2026-10-19): scrive UN indirizzo di un ruolo, anche di un''istanza (chiave facoltativa istanza_utility_id), e ne ritorna l''id. L''elemento ha la grammatica di anagrafiche.fn_indirizzo_elemento (tipo per id o codice interno; forma libera, dettaglio gia'' risolto o via da risolvere; chiavi estranee E_CAMPO_NON_AMMESSO); l''istanza la legge questa madre, perche'' il BB e'' comune al soggetto. Un tipo gia'' presente lo rifiuta il vincolo col suo nome (uq_indirizzi_ruolo_tipo_no_istanza / uq_indirizzi_ruolo_istanza_tipo): il salto dei tipi presenti e'' della plurale anagrafiche.fn_crea_indirizzi_ruolo, che scrive un elenco e usa questa. Ruolo inesistente: E_SOGGETTO_RUOLO_NON_TROVATO. Matrice dei tipi ammessi e forma dell''indirizzo libero: i trigger della tabella. Gemella di anagrafiche.fn_crea_indirizzo_soggetto (D-16a). Sede unica della INSERT di SoggettiRepository.crea_indirizzo_ruolo. R-BE-6, D-16a di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fatture_guard_data_numerata()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_guard_data_numerata()
  RETURNS trigger
@@ -59,6 +61,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fatture_guard_data_numerata()
 IS 'Rende immutabile vendite.fatture.data da quando la fattura ha un numero. ⭐ Nasce il 2026-08-25 da una MISURA, non dal piano: trgfn_fattura_satellite_guard_congelamento — che il brief dava per «congela tutto oltre EMESSA» — e'' agganciata alla TESTATA con BEFORE UPDATE OF emittente_snapshot, cliente_snapshot e basta (su fatture_indirizzi e fatture_scadenze copre tutti gli eventi, sulla testata no). Fino a oggi un UPDATE della data su una fattura numerata e DEFINITIVA passava, e la data e'' il dato da cui dipendono l''anno del sezionale, la chiave del contatore e il piano rate: il cantiere costruiva un cancello sull''ingresso principale lasciando aperto il retro. ⛔ IL DISCRIMINANTE E'' OLD.numero, NON LO STATO, e non e'' un dettaglio: fn_numera_fattura_opz_emessa assegna il numero MENTRE la fattura e'' in EMESSA — lo stato passa a DEFINITIVA dopo, nella finalizzazione dello step — quindi una soglia scritta sugli stati DRAFT|EMESSA lascerebbe una finestra reale in cui il documento ha un numero fiscale e la data e'' ancora scrivibile. ℹ️ Il codice e'' nuovo e non riusa E_COLONNA_NON_MODIFICABILE, che pure esiste sulla stessa tabella: quel messaggio dice «Colonna non modificabile: %s» e non dice PERCHE'', mentre il perche'' e'' tutto. Gemello per forma di E_FATTURA_NON_ANNULLABILE. Nel segnaposto va il NUMERO e non l''id: e'' quello che compare sul documento. ℹ️ Nessun `campo` nel contesto: su un CONFLITTO_STATO non c''e'' niente da accendere, ed e'' la situazione a non consentirlo. Brief: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-14.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

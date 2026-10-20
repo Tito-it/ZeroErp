@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scope_ba_ownership(p_identita_id bigint, p_billing_account_id
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership(p_identita_id bigint, p_billing_account_id bigint)
  RETURNS boolean
@@ -43,6 +45,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ba_ownership(p_identita_id bigint, p_billing_account_id bigint)
 IS 'Scope policy BA_OWNERSHIP ruolo-aware (post 20-04-2026): true se l''identita e'' in veste cliente (CLIENTE_PORTALE o SHOP_CUSTOMER) attiva e condivide il soggetto_ruolo col BA. Il filtro canale_origine e'' demandato alle policy RLS (portale B2B senza filtro, shop con canale=SHOP). STABLE, inlineable, fail-closed. Rev 2026-10-07 (brief-db-veste-utilizzabile): «attiva» e'' diventata «utilizzabile oggi» (script.fn_veste_utilizzabile): una veste scaduta non vede piu'' i suoi dati.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

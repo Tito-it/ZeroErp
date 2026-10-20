@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_evento_stato_corrente_cliente(p_cliente_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_get_evento_stato_corrente_cliente(p_cliente_id bigint)
  RETURNS TABLE(data_evento_stato date, tipo_evento text)
@@ -77,6 +79,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_get_evento_stato_corrente_cliente(p_cliente_id bigint)
 IS 'Restituisce (data_evento_stato, tipo_evento) confrontando data_sospensione vs data_riattivazione del cliente. tipo_evento: SOSPENSIONE | RIATTIVAZIONE | NULL. Pareggio = RIATTIVAZIONE. Caso anomalo (riatt senza sosp) ritorna RIATTIVAZIONE (no validation).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

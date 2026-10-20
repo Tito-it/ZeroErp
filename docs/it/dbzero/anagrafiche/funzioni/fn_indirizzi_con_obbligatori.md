@@ -6,6 +6,8 @@ CREATE FUNCTION fn_indirizzi_con_obbligatori(p_indirizzi jsonb, p_tipi_obbligato
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzi_con_obbligatori(p_indirizzi jsonb, p_tipi_obbligatori integer[])
  RETURNS jsonb
@@ -31,6 +33,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_indirizzi_con_obbligatori(p_indirizzi jsonb, p_tipi_obbligatori integer[])
 IS 'BB puro (2026-10-19): all''elenco di indirizzi gia'' normalizzati (ognuno col tipo_indirizzo_id, cioe'' passato da anagrafiche.fn_indirizzo_elemento) aggiunge, per ogni tipo obbligatorio che non c''e'', una copia del PRIMO indirizzo col tipo sostituito; in ordine di tipo, una per tipo. Elenco vuoto: nessuna copia. Non legge tabelle: gli obbligatori li legge chi chiama, ognuno dalla sua matrice. Lettori: anagrafiche.fn_crea_indirizzi_ruolo (config.tipi_ruolo_tipi_indirizzo) e anagrafiche.fn_crea_indirizzi_soggetto (config.tipi_soggetto_dettaglio_tipi_indirizzo). Regola del 2: era scritta nella plurale del ruolo e nella saga del backend SoggettiService._apply_auto_clone. R-BE-12, D-16a di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

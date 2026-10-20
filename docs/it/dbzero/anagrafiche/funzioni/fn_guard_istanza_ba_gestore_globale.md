@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_istanza_ba_gestore_globale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_istanza_ba_gestore_globale()
  RETURNS void
@@ -77,6 +79,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_guard_istanza_ba_gestore_globale()
 IS 'Guard fail-fast per lo spostamento del gestore globale (is_default), che cambia in blocco l''emittente di tutti i BA senza collegamento specifico: verifica che nessuna istanza finisca su due emittenti. Cerca la prima coppia (BA non collegato, fratello di istanza) le cui aziende PER L''INSTALLAZIONE (script.fn_get_ba_emittente_sr_id_installazione: collegamento, altrimenti la predefinita) sono diverse, e solleva E_ISTANZA_EMITTENTI_DIVERSI con gli stessi valori di fn_guard_istanza_ba_emittente. Due collegati non si spostano, due non collegati si spostano insieme: conta la coppia MISTA. rev 2026-10-10 (20261010-58, D-5): fino a quel giorno delegava al guard per BA, che risolve PER CHI AGISCE; spostata da un utente con un''azienda, la predefinita passava sopra una coppia mista. Gemello di fn_guard_albero_ba_gestore_globale; lo stesso movimento ha anche il cancello fn_guard_ba_gestore_globale_storia, e i due si sommano. SECURITY DEFINER: legge billing_account, che ha la RLS. Brief: brief-db-istanza-nasce-col-ba (R-7), brief-db-istanza-nasce-col-ba-residui (D-5).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

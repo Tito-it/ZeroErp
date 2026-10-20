@@ -7,6 +7,8 @@ CREATE FUNCTION fn_indirizzo_elemento(p_el jsonb, p_chi text, p_contesto jsonb)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzo_elemento(p_el jsonb, p_chi text, p_contesto jsonb DEFAULT '{}'::jsonb)
  RETURNS jsonb
@@ -84,6 +86,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_indirizzo_elemento(p_el jsonb, p_chi text, p_contesto jsonb)
 IS 'BB (2026-10-18): legge un indirizzo in jsonb per le madri degli indirizzi. Un oggetto (E_SCRIPT_CHIAMATA_NON_VALIDA), solo chiavi ammesse (E_CAMPO_NON_AMMESSO: le colonne della riga, tipo_indirizzo_codice e i campi di una via da risolvere), il tipo risolto da tipo_indirizzo_id o tipo_indirizzo_codice (codice interno; E_TIPO_INDIRIZZO_NON_TROVATO). Ritorna l''elemento con tipo_indirizzo_id e senza il codice. p_chi: la madre che chiama; p_contesto: chiavi aggiunte al contesto dei rifiuti. Non giudica completezza ne'' forma: e'' anagrafiche.trgfn_indirizzi_guard_forma_libera. Chiamanti: anagrafiche.fn_crea_indirizzi_ruolo e fn_crea_indirizzo_soggetto (una grammatica sola, D-4 di Tid, richiesta BE in brief-db-processi-accensione-per-ambiente §6.11).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

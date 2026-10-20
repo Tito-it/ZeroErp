@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_lotto_fatture_stato_coerente(p_lotto_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_guard_lotto_fatture_stato_coerente(p_lotto_id bigint)
  RETURNS void
@@ -98,6 +100,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_guard_lotto_fatture_stato_coerente(p_lotto_id bigint)
 IS 'Guard dell''invariante lotto <-> fatture: solleva E_LOTTO_FATTURE_STATO_INCOERENTE (556) se il lotto ha fatture non critical con stato_doc_fiscale_id diverso dal proprio. Pensata per essere invocata da un CONSTRAINT TRIGGER DEFERRED (valutazione al COMMIT): gli stati intermedi dentro la transazione sono leciti. No-op se il lotto non esiste piu'' o ha stato NULL. rev 2026-08-04 (D-M): via l''eccezione `esclusa` — il flag era dormiente — e via il campo omonimo dal jsonb di diagnostica, che diceva sempre false. Resta la sola eccezione `critical`, che e'' viva e valorizzata da fn_sync_fatture_log_critical_lotto.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

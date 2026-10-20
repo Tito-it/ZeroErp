@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ricalcola_totali_ordine(p_ordine_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_totali_ordine(p_ordine_id bigint)
  RETURNS TABLE(ordine_id bigint, imponibile_tot numeric, sconto_tot numeric, iva_tot numeric, totale_doc numeric)
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ricalcola_totali_ordine(p_ordine_id bigint)
 IS 'Ricalcola i totali di testata ordine sommando vendite.vw_ordini_riepilogo_iva_dettaglio. IVA calcolata su imponibile aggregato per aliquota, come nei preventivi. sconto_tot = lordo righe arrotondato meno imponibile aggregato. Firma e RETURNS TABLE usano %TYPE su vendite.ordini.*.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

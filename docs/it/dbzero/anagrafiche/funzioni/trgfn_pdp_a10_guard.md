@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pdp_a10_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_pdp_a10_guard()
  RETURNS trigger
@@ -48,6 +50,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_pdp_a10_guard()
 IS 'Blocca modifiche a pdp e indirizzo_dettaglio_id (immutabili dopo prima valorizzazione).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

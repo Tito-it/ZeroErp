@@ -7,6 +7,8 @@ CREATE FUNCTION fn_validate_cf_piva_it(p_tipo_det_id bigint, p_partita_iva text,
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_validate_cf_piva_it(p_tipo_det_id bigint, p_partita_iva text, p_piva_gruppo text, p_codice_fiscale text)
  RETURNS void
@@ -130,6 +132,8 @@ In caso di valore non valido richiama script.fn_log_and_raise_error con i codici
 - PIVA_NON_VALIDA per P.IVA principale o di gruppo non valida,
 - CF_NON_VALIDO per Codice Fiscale non valido.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

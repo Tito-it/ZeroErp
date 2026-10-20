@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_fattura_righe_esposte
 WITH (security_invoker=on) AS
@@ -146,6 +148,8 @@ UNION ALL
      JOIN kit k ON (((k.fattura_id = r.fattura_id) AND (k.kit_key = r.kit_key) AND (NOT (k.iva_id IS DISTINCT FROM r.iva_id)) AND (NOT (k.dest_billing_account_id IS DISTINCT FROM r.dest_billing_account_id)) AND (k.competenza_dal = r.competenza_dal) AND (k.competenza_al = r.competenza_al))))
   WHERE ((r.kit_key IS NOT NULL) AND ((r.kit_esposizione)::text <> 'NASCOSTO'::text));
 ```
+
+</div>
 
 
 ---

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_arrotondamento_scope(p_billing_account_id bigint, p_utili
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_arrotondamento_scope(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_termine_pagamento_id bigint DEFAULT NULL::bigint, p_modalita_pagamento_id integer DEFAULT NULL::integer)
  RETURNS numeric
@@ -85,6 +87,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_arrotondamento_scope(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_termine_pagamento_id bigint, p_modalita_pagamento_id integer)
 IS 'Saldo arrotondamento dell''ambito di compensazione. Da D-N l''ambito comprende (termine_pagamento_id, modalita_pagamento_id), confrontati con IS NOT DISTINCT FROM perche'' sono NULL nella maggioranza dei casi. Assenza di riga = 0. Post 18-08-2026: guard esplicito su p_billing_account_id e p_emittente_soggetto_ruolo_id (NULL o <= 0 -> E_PARAMETRO_INVALIDO). Senza, un parametro nullo non trovava riga e la funzione restituiva 0 — indistinguibile dallo zero legittimo del contratto ''assenza di riga = saldo zero''. Gli altri tre parametri di ambito NON sono guardati di proposito: sono nullable su vendite.fatture, quindi l''unico chiamante (fn_ricalcola_totali_fattura) puo'' passarli NULL legittimamente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

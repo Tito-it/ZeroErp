@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_ultimo_super_admin_attivo(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_ultimo_super_admin_attivo(p_auth_user_id integer)
  RETURNS boolean
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_ultimo_super_admin_attivo(p_auth_user_id integer)
 IS 'Predicato per-utente: true sse questo auth_user e'' l''unico SUPER_ADMIN SENZA SCADENZA del sistema, cioe'' togliergli la garanzia (spegnerlo, dargli una data di fine sulla veste o sul rapporto, bloccarne la credenziale, togliergli il profilo) lascerebbe il sistema senza amministratori, subito o col calendario. «Senza scadenza» = script.fn_identita_super_admin_senza_scadenza (utilizzabile oggi, nessuna data di fine su veste e rapporto, credenziale non bloccata): la stessa regola di fn_check_almeno_un_super_admin_attivo, dallo stesso building block. Un amministratore che ha gia'' una data di fine risponde false: spegnerlo non riduce la garanzia. Usato per le capability can_disable / can_demote_super_admin del drawer Operatore. Rev 2026-10-07 (brief-db-veste-utilizzabile): prima «attivo e raggiungibile» era un blocco di filtri ricopiato due volte, con la finestra della veste e senza il rapporto; ora e'' il building block, con la garanzia sulla data di fine decisa da Tid.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

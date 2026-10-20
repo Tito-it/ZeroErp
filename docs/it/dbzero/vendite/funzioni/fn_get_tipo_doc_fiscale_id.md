@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_tipo_doc_fiscale_id(p_sorgente_tipo_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_tipo_doc_fiscale_id(p_sorgente_tipo_id bigint)
  RETURNS bigint
@@ -35,6 +37,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_tipo_doc_fiscale_id(p_sorgente_tipo_id bigint)
 IS 'Risoluzione tipo_doc_fiscale_id dalla sorgente (no fallback).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

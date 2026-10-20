@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_dati_societari_guard_forma_giuridica()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()
  RETURNS trigger
@@ -144,6 +146,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()
 IS 'Guard BEFORE INSERT OR UPDATE OF forma_giuridica_id, soggetto_id, id_prov_iscri_rea, iscrizione_rea, capitale_sociale su anagrafiche.dati_societari. La forma regge, nell''ordine: paese del soggetto (E_FORMA_GIURIDICA_PAESE); ammessa dalla natura (anagrafiche.fn_forma_giuridica_ammessa, E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO, C-1); REA secondo rea_policy (E_REA_OBBLIGATORIO / E_REA_NON_AMMESSO) e capitale secondo capitale_sociale_policy (E_CAPITALE_SOCIALE_OBBLIGATORIO / _NON_AMMESSO), B-6: REQUIRED presente, NONE assente, OPTIONAL libero. Tace con forma NULL (la colonna e'' NOT NULL dal 20261011-03), con soggetto o forma inesistenti e, sulla matrice, col soggetto senza natura. Il cambio di natura del soggetto lo giudica il guard al COMMIT su anagrafiche.soggetti. Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

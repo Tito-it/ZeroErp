@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_preventivi_righe_ricalcola_totali()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_righe_ricalcola_totali()
  RETURNS trigger
@@ -44,6 +46,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_preventivi_righe_ricalcola_totali()
 IS 'Trigger function STATEMENT-level: ricalcola totali testata per ogni preventivo coinvolto. Usa EXECUTE + transition tables PG 18.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_coda_archiviazione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.trgfn_coda_archiviazione()
  RETURNS trigger
@@ -103,6 +105,8 @@ $function$
 COMMENT ON FUNCTION dbops.trgfn_coda_archiviazione()
 IS 'Governa la bandiera `archiviato` delle due code (dbops.coda_lavori, vendite.fatture_stampa_coda): rifiuta l''archiviazione di una riga VIVA, riabbassa la bandiera quando una riga archiviata torna viva, e deriva `archiviato_il`/`archiviato_da`. ⭐ UNA funzione per DUE tabelle: le colonne sono identiche per costruzione e due copie divergerebbero al primo che tocca una sola delle due code. ⭐ «Viva» e'' PENDING|IN_CORSO — la stessa definizione che conta il badge in topbar — e il predicato e'' scritto in NEGATIVO e non come elenco dei terminali, che fra le due code sono elenchi diversi. ⭐ Il RESET (una riga che torna al lavoro torna nell''elenco) non e'' cortesia: senza, una riga archiviata e poi rimessa in coda dal requeue sarebbe viva e invisibile, cioe'' il difetto che il guard impedisce, rientrato dalla porta di servizio. ⛔ Il nome non porta `guard` perche'' la funzione scrive NEW. Errore: E_CODA_ARCHIVIAZIONE_NON_AMMESSA (CONFLITTO_STATO): non c''e'' nessun campo da correggere, c''e'' una riga ancora viva. Piano: brief-db-archiviazione-righe-code.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -3,6 +3,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_dash_commesse_respinte
 WITH (security_invoker=on) AS
@@ -30,6 +32,8 @@ WITH escope AS (
      CROSS JOIN escope)
   WHERE ((ll.disabilitato IS FALSE) AND (ll.status = 'C'::bpchar) AND (((ll.meta -> 'context'::text) ->> 'commessa_id'::text) ~ '^[0-9]+$'::text) AND ((escope.sr_ids IS NULL) OR (fl.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))));
 ```
+
+</div>
 
 
 ---

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_offerte_commerciali_default_valuta()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_default_valuta()
  RETURNS trigger
@@ -41,6 +43,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_default_valuta()
 IS 'BEFORE INSERT trigger fn: setta offerte_commerciali.valuta_id via vendite.fn_get_valuta_id (catena BA -> emittente -> gestore). Skip se valorizzato esplicitamente. Solleva E_CONFIG_MANCANTE (dalla fn) se nulla risolve. Pattern simmetrico a trgfn_preventivi_default_valuta / trgfn_contratti_default_valuta.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

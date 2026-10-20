@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_guard_prerequisiti()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_prerequisiti()
  RETURNS trigger
@@ -34,6 +36,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_prerequisiti()
 IS 'BEFORE INSERT su flussi: verifica prerequisiti per flussi template-based.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_conto_bancario_predefinito(p_soggetto_ruolo_id bigint, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_conto_bancario_predefinito(p_soggetto_ruolo_id bigint, p_uso character varying, p_istanza_utility_id bigint DEFAULT NULL::bigint)
  RETURNS anagrafiche.vw_conti_bancari_per_ruolo
@@ -94,6 +96,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_conto_bancario_predefinito(p_soggetto_ruolo_id bigint, p_uso character varying, p_istanza_utility_id bigint)
 IS 'Selezione conto bancario con cascata 7 livelli (istanza_utility_id): ruolo+istanza+uso, ruolo+generico+uso, soggetto+uso, poi fallback GENERICO.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

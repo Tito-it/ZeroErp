@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_documenti_generati_eventi_block_delete()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_eventi_block_delete()
  RETURNS trigger
@@ -42,6 +44,8 @@ $function$
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_eventi_block_delete()
 IS 'Guard append-only: blocca DELETE su documenti_generati_eventi. La timeline e'' immutabile, correzioni vanno registrate come nuovo evento.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_template_asset_block_delete()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.trgfn_template_asset_block_delete()
  RETURNS trigger
@@ -42,6 +44,8 @@ $function$
 COMMENT ON FUNCTION documenti.trgfn_template_asset_block_delete()
 IS 'Guard A3: blocca DELETE fisico su asset. Asset sono immutabili; disattivarli via valido_al invece di cancellarli.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

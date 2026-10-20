@@ -6,6 +6,8 @@ CREATE FUNCTION fn_ordine_riga_spedita(p_ordine_riga_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ordine_riga_spedita(p_ordine_riga_id bigint)
  RETURNS boolean
@@ -31,6 +33,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ordine_riga_spedita(p_ordine_riga_id bigint)
 IS 'Lettore (2026-10-11, brief-db-date-consegna-righe-in-blocco D-7, P-1): la riga d''ordine e'' gia'' partita con un DDT? Vero se almeno un suo legame (vendite.ordini_righe_fulfillment) porta a una riga di DDT il cui stato dice merce partita: il BB script.vw_stati_doc_ddt_merce_partita (uscito dalla bozza, ordine >= EMESSO, e non abortito). Basta un DDT, anche per una parte della riga: una spedizione parziale ferma la data confermata come una totale (P-1 di Tid). Un DDT in bozza non conta. Un id assente risponde falso. ⛔ SECURITY DEFINER: la legge il guard della data di consegna confermata, e DDT e righe di DDT hanno RLS; sotto la RLS di chi scrive un DDT fuori perimetro sparirebbe e il guard diventerebbe fail-open (stessa scelta di script.fn_get_stato_testata_documento). PERIMETRO: un booleano su una riga d''ordine, nessuna colonna esposta. Consumatore: script.fn_check_ordine_riga_data_consegna_confermata. rev 2026-10-12 (20261012-31): lo stato dal BB, non piu'' la copia dell''espressione di vendite.fn_partite_merce (regola del 2, scelta (a) di Tid).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

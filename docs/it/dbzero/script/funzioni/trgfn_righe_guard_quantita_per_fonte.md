@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_righe_guard_quantita_per_fonte()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_righe_guard_quantita_per_fonte()
  RETURNS trigger
@@ -59,6 +61,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_righe_guard_quantita_per_fonte()
 IS 'Guard: una riga di vendite.contratti_righe o di vendite.offerte_commerciali_eccezioni con una fonte a valle (script.fn_fonte_porta_quantita = false: oggi MANUALE, LETTURE, TIMESHEET) non porta qta_operativa: la quantità arriva a valle, periodo per periodo (E_RIGA_QUANTITA_CON_FONTE_A_VALLE, DATO_ERRATO, nessun valore, campo qta_operativa nel canale COLUMN). quantita non è materia del rifiuto: è calcolata, e con una fonte a valle la porta a NULL script.trgfn_qta_from_operativa, che gira dopo. Fonte NULL: non giudica. I CHECK chk_contrighe_quantita_per_fonte / chk_offerte_eccezioni_quantita_per_fonte (stesso elenco) restano la rete. TG_ARGV[0] = colonna del padre (contratto_id | offerta_id), solo per il contesto. Trigger _a10_ BEFORE INSERT OR UPDATE WHEN (NEW.tipo_eccezione <> ''ESCLUSIONE''), senza colonne sull''UPDATE perché la fonte la può riallineare un altro BEFORE. Nasce il 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §D.4 punto 2); rev 2026-10-08 (§F.1, F-1.2: solo l''input).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

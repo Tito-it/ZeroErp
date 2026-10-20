@@ -7,6 +7,8 @@ CREATE FUNCTION fn_subentro_cliente(p_pdp_id bigint, p_data_attivazione date)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_subentro_cliente(p_pdp_id bigint, p_data_attivazione date)
  RETURNS bigint
@@ -158,6 +160,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

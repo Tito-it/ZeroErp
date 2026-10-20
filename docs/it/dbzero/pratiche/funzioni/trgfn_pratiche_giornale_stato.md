@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pratiche_giornale_stato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_stato()
  RETURNS trigger
@@ -33,6 +35,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_giornale_stato()
 IS 'AFTER UPDATE su pratiche: logga STATO_CAMBIATO quando stato_id cambia.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_documento_interno_righe_guard_testata()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata()
  RETURNS trigger
@@ -84,6 +86,8 @@ $function$
 COMMENT ON FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata()
 IS 'Guard delle righe dei documenti interni di magazzino (inventari_righe, rettifiche_righe; TG_ARGV = tabella testata, colonna FK, colonna di stato, nome della GUC), BEFORE INSERT OR UPDATE OR DELETE: righe scrivibili solo con la testata in DRAFT; in CONFIRM scrive solo l''operazione — la stessa GUC transazionale della porta POSTED, e'' lei a fissare qta_sistema — e dal 2026-09-25 solo dentro un verbo: chi esegue deve essere il proprietario della tabella, script.fn_is_proprietario_tabella(TG_RELID) (D-V1: la GUC l''app puo'' accenderla da se''); POSTED e CANCEL congelate (E_MAG_DOCUMENTO_RIGHE_CONGELATE, CONFLITTO_STATO). Un UPDATE che sposta la riga controlla entrambe le testate. Testata assente = cascata gia'' ammessa a monte (DELETE solo in DRAFT) o fuori perimetro: passa. Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-h); brief-db-magazzino-verbi-con-permesso D-V1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

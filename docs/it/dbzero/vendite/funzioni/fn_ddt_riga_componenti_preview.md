@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ddt_riga_componenti_preview(p_articolo_id uuid, p_uom_id bigi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ddt_riga_componenti_preview(p_articolo_id uuid, p_uom_id bigint, p_quantita_padre numeric, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_sr_id bigint, p_classe_utenza_id integer DEFAULT NULL::integer)
  RETURNS TABLE(articolo_componente_id uuid, componente_id uuid, componente_codice character varying, componente_descrizione character varying, coeff_qta_snapshot numeric, quantita_componente numeric, uom_id bigint, uom_codice character varying, iva_id bigint, prezzo_suggerito numeric, origine_prezzo character varying, resolver_error_reason text, obbligatorio boolean, esposizione_in_fattura character varying)
@@ -123,6 +125,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ddt_riga_componenti_preview(p_articolo_id uuid, p_uom_id bigint, p_quantita_padre numeric, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_sr_id bigint, p_classe_utenza_id integer)
 IS 'Preview read-only dei componenti BoM CASO A per il drawer riga DDT. rev 2026-08-19: chiama il NUCLEO fn_resolve_prezzo_listino_v2_esito invece del guscio, e perde il BEGIN..EXCEPTION. Per il chiamante il risultato e'' identico (prezzo_suggerito NULL + resolver_error_reason quando non si risolve); sparisce la riga di dbops.error_log che il DB scriveva comunque, via dblink fuori transazione, PRIMA di sollevare — una per componente non risolto, a ogni apertura del drawer. Brief: brief-ddt-righe-senza-prezzo §9 slice C (C5). rev 2026-10-01: esposto_in_fattura (boolean) diventa esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO), letta dalla distinta (brief-db-esposizione-componenti-kit-in-fattura).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

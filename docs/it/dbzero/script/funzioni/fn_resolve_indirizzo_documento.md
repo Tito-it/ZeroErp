@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_indirizzo_documento(p_soggetto_ruolo_id bigint, p_ist
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_resolve_indirizzo_documento(p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_tipo_codice character varying)
  RETURNS TABLE(snapshot jsonb, origine_indirizzo_id bigint, origine_soggetto_ruolo_id bigint)
@@ -127,6 +129,8 @@ $function$
 COMMENT ON FUNCTION script.fn_resolve_indirizzo_documento(p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_tipo_codice character varying)
 IS 'Catena UNICA di risoluzione dell''indirizzo di un documento, condivisa da tutti i domini: layer RUOLO (anagrafiche.indirizzi, con origine_indirizzo_id agganciato) e, come fallback, layer SOGGETTO (anagrafiche.indirizzi_soggetti, origine_indirizzo_id NULL + origine_soggetto_ruolo_id valorizzato — la coppia che distingue «derivato dall''anagrafica del soggetto» da un una-tantum digitato). PRECEDENZA PER ISTANZA UTILITY, poi il generico: un soggetto_ruolo puo'' avere piu'' indirizzi dello stesso tipo (uq_indirizzi_ruolo_istanza_tipo + uq_indirizzi_ruolo_tipo_no_istanza), e in un ERP di utilities la stessa persona con luce, gas e idrico e'' UN ruolo con TRE istanze. Determinismo garantito dalle due unique parziali: i candidati sono al massimo due e l''ORDER BY sceglie fra quelli. Composizione dello snapshot sempre delegata a fn_snapshot_indirizzo / fn_snapshot_indirizzo_soggetto, mai a mano (D-5). Assenza = ZERO RIGHE e non errore: l''obbligatorieta'' di un tipo la conosce il chiamante. STABLE. piano-db-satelliti-fattura C-14b, Fase 2.0-b.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

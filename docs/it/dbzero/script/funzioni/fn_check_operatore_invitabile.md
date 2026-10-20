@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_operatore_invitabile(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id integer)
  RETURNS jsonb
@@ -151,6 +153,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id integer)
 IS 'Dice se un operatore puo'' ricevere l''invito che ACCENDE la sua veste OPERATORE. ⭐ Rev 20260925-43 (brief-db-blocco-login-per-credenziale §12; R-1 del piano BE/FE, D-8): regola unica dell''invito — la veste nasce spenta (fn_crea_operatore_v2) e la accende l''attivazione; il reinvito riapre una veste spenta (D-3). Invitabile se: credenziale esistente, almeno una veste OPERATORE, NESSUNA veste OPERATORE gia'' attiva (veste attiva -> rifiuto), UNA SOLA veste OPERATORE (rev 20260925-53, R-9: con piu'' vesti spente non si sa quale riaccendere, e l''invito del backend lo rifiuta), veste nella sua finestra, email presente. Non contano piu'' last_login (D-8) ne'' is_active (derivato dalle vesti, false per costruzione con la sola veste spenta). Ritorna jsonb {invitabile, reason, reason_key, email}. ⭐ Rev 20260927-01 (§16): il motivo e'' un codice macchina con la sua chiave i18n, nell''ordine delle condizioni (il primo vince); la frase `motivo` e'' ritirata. Codici -> chiavi: UTENTE_NON_TROVATO -> amministrazione.operatori.invito_reason.utente_non_trovato; SENZA_VESTE_OPERATORE -> amministrazione.operatori.invito_reason.senza_veste_operatore; VESTE_GIA_ATTIVA -> amministrazione.operatori.invito_reason.veste_gia_attiva; PIU_VESTI_SPENTE -> amministrazione.operatori.invito_reason.piu_vesti_spente; VESTE_FUORI_FINESTRA -> amministrazione.operatori.invito_reason.veste_fuori_finestra; SENZA_EMAIL -> amministrazione.operatori.invito_reason.senza_email. reason e reason_key li inoltra fn_get_operatore_detail come invite_reason e invite_reason_key.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

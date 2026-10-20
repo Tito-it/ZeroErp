@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_articoli_componenti_block_modifica_struttura()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()
  RETURNS trigger
@@ -96,6 +98,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()
 IS 'Trigger function: blocca DELETE e UPDATE dei campi di struttura di catalogo.articoli_componenti (BoM immutabile, pattern chiudi+inserisci): coeff_qta, componente_id, obbligatorio, esposizione_in_fattura, valido_dal. Ammette UPDATE di valido_al (chiusura), attivo, note, meta, audit. validita e'' STORED generated: scritture dirette rifiutate da PG. Error code: E_BOM_MODIFICA_VIETATA (387). Rev 20260924-01: l''ordine delle date (valido_al non precede valido_dal) non e'' piu'' qui: ha una sede sola, script.trgfn_guard_date_validita (automazione DATE_VALIDITA); E_BOM_VALIDO_AL_INVALIDO ritirato. Rev 20261001-43: il campo di struttura esposto_in_fattura e'' ora esposizione_in_fattura (tre modi, brief-db-esposizione-componenti-kit-in-fattura). Rev 20261002-61: partecipa_qta e determina_qta_padre ritirate dalla tabella (20261002-60): nessuna logica le leggeva (brief-db-bom-flag-quantita-e-kit-in-fattura, D-1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

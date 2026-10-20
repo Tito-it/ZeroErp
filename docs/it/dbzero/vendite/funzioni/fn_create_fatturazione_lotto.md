@@ -7,6 +7,8 @@ CREATE FUNCTION fn_create_fatturazione_lotto(p_competenza_mese date, p_tipo_doc_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_create_fatturazione_lotto(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_utility_id integer DEFAULT NULL::integer, p_billing_account_id bigint DEFAULT NULL::bigint, p_lock_batch_id uuid DEFAULT NULL::uuid, p_meta jsonb DEFAULT NULL::jsonb, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint)
  RETURNS bigint
@@ -208,6 +210,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_create_fatturazione_lotto(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_utility_id integer, p_billing_account_id bigint, p_lock_batch_id uuid, p_meta jsonb, p_emittente_soggetto_ruolo_id bigint)
 IS 'Crea lotto fatturazione validando coerenza competenza/utility/tipo_doc e risolvendo emittente fiscale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

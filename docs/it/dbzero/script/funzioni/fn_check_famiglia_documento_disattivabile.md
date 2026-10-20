@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_famiglia_documento_disattivabile(p_famiglia_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_famiglia_documento_disattivabile(p_famiglia_id integer)
  RETURNS jsonb
@@ -157,6 +159,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_famiglia_documento_disattivabile(p_famiglia_id integer)
 IS 'Pure check (§12.5.1): i motivi che impediscono di SPEGNERE una famiglia di documento. Torna [] se si puo'', altrimenti l''array ORDINATO dei motivi — prima HA_REGISTRI_ATTIVI (E_ATTIVO_BLOCK_CHILDREN_ACTIVE), poi HA_DOCUMENTI_NUMERATI (E_ATTIVO_BLOCK_CHILDREN_EXIST). ⛔ PERCHE'' ESISTE: anagrafiche.fn_ba_ha_storia_emittente e fn_get_storia_emittente_ba iterano `WHERE fd.attivo`, quindi spegnere una famiglia non nasconde una voce di catalogo — la fa USCIRE dal presidio sul cambio emittente del billing account, e i suoi documenti smettono di trattenere il BA dove sono stati numerati. ⭐ L''ORDINE E'' IL CONTRATTO: la madre solleva il PRIMO motivo, e per primo va quello RIMEDIABILE (spegnere i registri); i numeri gia'' usciti non si disfano. ⚠️ SECURITY DEFINER e non INVOKER: le cinque tabelle dei documenti hanno la RLS attiva (verificato 2026-09-01) e un conteggio invoker tornerebbe ZERO a chi non le vede — cioe'' «si puo'' spegnere». Uno zero sotto RLS non e'' un dato, e'' una risposta troncata: stessa scelta di anagrafiche.fn_get_storia_emittente_ba. ⭐ Le tabelle dei documenti NON sono elencate qui: si compongono dalla famiglia stessa in SQL dinamico, cosi'' una famiglia nuova entra nel controllo il giorno che nasce; to_regclass e non un cast, perche'' una famiglia ritirata puo'' nominare una tabella che non esiste piu''. ⚠️ La reason_key e'' un debito verso il FE (§12.3). Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.4 (DB-2). Rev 2026-10-20 (20261020-38, brief-db-grammatica-unica-documenti 2c, G-5): la tabella dei documenti e'' la target_table della sorgente (config.fn_sorgente_tabella).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_registri_fatturazione_guard_coppia_unica()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_registri_fatturazione_guard_coppia_unica()
  RETURNS trigger
@@ -76,6 +78,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_registri_fatturazione_guard_coppia_unica()
 IS 'Guard BEFORE UPDATE OF emittente_soggetto_ruolo_id, utility_id su vendite.registri_fatturazione (2026-10-18): spostare un registro sposta tutti i suoi collegamenti (tipo documento, natura), e nessuno puo'' finire accanto a un registro dello stesso emittente e utility che copre gia'' la stessa coppia (E_REGISTRO_COPPIA_GIA_COPERTA, campo utility_id o emittente_soggetto_ruolo_id). Gemello di vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica, stessa chiave (vendite.fn_registro_che_copre_coppia), stesso lock consultivo per emittente. Uscita sul no-op. R-BE-14, D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

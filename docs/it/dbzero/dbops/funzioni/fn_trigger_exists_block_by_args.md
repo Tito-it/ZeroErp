@@ -7,6 +7,8 @@ CREATE FUNCTION fn_trigger_exists_block_by_args(p_parent_rel regclass, p_child_s
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_block_by_args(p_parent_rel regclass, p_child_schema text, p_child_table text, p_fk_col text, p_parent_ref_col text, p_parent_attivo_col text)
  RETURNS boolean
@@ -34,6 +36,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_trigger_exists_block_by_args(p_parent_rel regclass, p_child_schema text, p_child_table text, p_fk_col text, p_parent_ref_col text, p_parent_attivo_col text)
 IS 'Verifica esistenza trigger BLOCK (trgfn_prevent_deactivate_if_children) su tabella padre matchando la signature a 5 args.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

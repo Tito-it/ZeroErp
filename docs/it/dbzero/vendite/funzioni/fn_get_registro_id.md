@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_registro_id(p_tipo_doc_fiscale_id bigint, p_natura_doc_id
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_registro_id(p_tipo_doc_fiscale_id bigint, p_natura_doc_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(registro_id bigint, serie character varying)
@@ -92,6 +94,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_registro_id(p_tipo_doc_fiscale_id bigint, p_natura_doc_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint)
 IS 'Dato un tipo documento fiscale E UNA NATURA (piu'', opzionalmente, utility ed emittente), il registro di numerazione e la SERIE su cui il documento va scritto — e SOLLEVA se non e'' risolvibile. rev 2026-08-26 (brief-db-registro-e-data-prevista-in-competenza, L1): la RICERCA e'' stata estratta in vendite.fn_lookup_registro_id e questa funzione e'' diventata il suo INVOLUCRO. ⭐ E'' la stessa coppia gia'' in casa sull''emittente — script.fn_get_ba_emittente_sr_id legge e torna NULL, anagrafiche.fn_get_emittente_fiscale_id trasforma il NULL in errore — e serve alla stessa cosa: chi LEGGE (le viste della dashboard di competenza, che mostrano una previsione) consuma il lettore, chi SCRIVE consuma questo, dove un buco di configurazione DEVE fermare. ⛔ Firma, RETURNS TABLE e i tre errori sono INVARIATI: i pgTAP che la esercitano chiamano con parametri nominati e asseriscono sui risultati. ⭐ Il lookup restituisce anche la NATURA risolta, ed e'' cosi'' che qui si distingue «natura non risolta» da «registro non trovato» senza rifare il COALESCE del default — cioe'' senza una terza copia della regola che l''estrazione serviva a unificare. ⭐ Il guard su p_tipo_doc_fiscale_id e'' passato da E_PARAMETRO_INVALIDO (DATO_ERRATO, 400) a E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO, 500) — decisione di Tid, 2026-08-26. L''argomento e'' strutturale, non di gusto: l''unico chiamante e'' fn_build_fattura_key, che il tipo documento lo legge da attivita_fatturabili, riga creata dall''emit a partire da un''attivita'' APPROVATA — e chk_commesse_attivita_tipo_doc_emittibile garantisce che li'' il tipo documento ci sia. Un NULL non e'' quindi «l''operatore ha dimenticato un campo» ma un guasto a monte. ⛔ E la spia decisiva: nel contesto NON c''e'' la chiave `campo`, cioe'' finora era un 400 che al frontend non diceva nessun campo da accendere — un 400 solo di nome. ⭐ Nominare il parametro nella frase qui e'' AUTORIZZATO dalla registrazione del codice, il cui lettore e'' chi ha scritto la chiamata. ℹ️ Costo backend zero: il codice e'' gia'' nel catalogo, in error_messages_fallback.py e in error_policies_generated.py. ⚠️ Per chi consuma lo status passa da 400 a 500. ⚠️ I due E_CONFIG_MANCANTE restano invece INTATTI, area e nome compresi: cambiarli sarebbe rumore su punti di log che nessuno ha chiesto di toccare. ℹ️ Volatilita'' invariata: STABLE serve al lookup, che finisce nel target list di una vista; questa la chiama solo chi scrive.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

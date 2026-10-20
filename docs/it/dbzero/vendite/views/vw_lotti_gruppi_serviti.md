@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_lotti_gruppi_serviti
 WITH (security_invoker=on) AS
@@ -22,6 +24,8 @@ SELECT flf.lotto_id,
      JOIN vendite.commesse_attivita ca ON ((ca.id = af.commessa_attivita_id)))
   GROUP BY flf.lotto_id, (vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)), ca.commessa_id;
 ```
+
+</div>
 
 
 ---

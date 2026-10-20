@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_resi_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_normalize()
  RETURNS trigger
@@ -81,6 +83,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_normalize()
 IS 'Normalize reso: anno/data; eredita billing/destinatario/utility/valuta/emittente dal DDT sorgente (DDT_VENDITA, per codice_interno, JOIN vendite.ddt su uid) su INSERT; fallback emittente da billing_account. Mirror trgfn_ddt_normalize (fonte = DDT). rev 2026-07-13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

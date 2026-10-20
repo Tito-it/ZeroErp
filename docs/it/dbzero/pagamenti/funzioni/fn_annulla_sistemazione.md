@@ -7,6 +7,8 @@ CREATE FUNCTION fn_annulla_sistemazione(p_sistemazione_id bigint, p_motivo text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.fn_annulla_sistemazione(p_sistemazione_id bigint, p_motivo text DEFAULT NULL::text)
  RETURNS character varying
@@ -127,6 +129,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.fn_annulla_sistemazione(p_sistemazione_id bigint, p_motivo text)
 IS 'Scarta un atto di sistemazione lasciandolo a REGISTRO con la ragione per cui e'' stato scartato — annullare non e'' cancellare, ed e'' il senso stesso di avere un registro: l''eccedenza continuera'' a comparire nell''elenco (e'' vera, non se n''e'' andata) e chi guarda trovera'' scritto perche'' la volta scorsa si e'' deciso di lasciarla li''. ⭐ rev 2026-08-31 (D-25 di brief-db-fondo-fattura-ricalcolo-e-governo §9.6, decisione G-4 di Tid): su un atto gia'' CONFERMATA di destinazione RIPORTO fa cadere anche il FONDO che aveva creato, chiamando vendite.fn_cancella_fondo_fattura — l''atto e il suo effetto cadono insieme, o il registro racconta un fatto che non e'' avvenuto. ⭐ Guida pagamenti e non vendite per tre ragioni: chi alza la bandiera la abbassa (il fondo l''ha creato fn_conferma_sistemazione), api.md vieta le chiamate laterali fra moduli di pari livello quindi la sola sede in cui i due schemi si toccano e'' il database, e l''atto sta qui mentre il fondo e'' la sua conseguenza. ⚠️ L''ORDINE e'' invertito rispetto al brief — prima si stacca e si annulla, poi si cancella — perche'' fk_sistemazioni_fondo_source e'' NO ACTION e trattiene il DELETE finche'' l''atto punta il fondo; la garanzia «solo se la cancellazione riesce» regge per costruzione, essendo tutto dentro una funzione: se la cancellazione solleva, l''UPDATE non sopravvive. ⚠️ Il composito dell''esito (data_esecuzione, user_esecuzione, fondo_source_id) cade INTERO, come pretende chk_sistemazioni_eseguita, e cio'' che il registro perderebbe finisce sotto meta->''annullata_dopo_esecuzione'' — scritta solo quando l''atto era davvero stato eseguito, perche'' su una BOZZA una chiave con dentro tre null direbbe il falso. ⚠️ Cancellare il fondo RIAPRE la rigenerazione automatica: l''«atto unico» guarda se un atto esiste in qualunque stato, e il giro successivo ne rifa'' uno leggendo il residuo di adesso. ⭐ Non e'' una madre nel senso stretto: scrive una riga e ne cancella una in un altro schema, e sta qui perche'' e'' tutto SQL. ⛔ NON ricontrolla lo stato: su un atto gia'' terminale parla trgfn_sistemazioni_guard_transizione, che dal changeSet 20260831-66 porta il varco CONFERMATA -> ANNULLATA sul solo RIPORTO e rifiuta l''annullamento degli altri due nominando la correzione guidata. La riga si legge per sapere se c''e'' un ESITO da disfare, non per rideliberare. ⭐ Il motivo si fonde e non si sovrascrive: se l''atto ne aveva gia'' uno e la chiamata arriva vuota, si tiene quello che c''era.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

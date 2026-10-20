@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_processi_accensione_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.trgfn_processi_accensione_guard()
  RETURNS trigger
@@ -112,6 +114,8 @@ $function$
 COMMENT ON FUNCTION dbops.trgfn_processi_accensione_guard()
 IS 'Guard BEFORE INSERT OR UPDATE su dbops.processi_accensione. In ordine: un processo senza sveglia (canale CODA o ritirato) non ha scelta a mano (E_PROCESSO_SENZA_SVEGLIA); un processo non spegnibile non si spegne (E_PROCESSO_NON_SPEGNIBILE, A-5); in un''installazione PRODUZIONE un processo non accendibile (dbops.processi.accendibile_in_produzione = false) non si accende a mano (E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE, R-BE-5; predicato dbops.fn_accensione_a_mano_ammessa_su_valori, ambiente non dichiarato -> E_CONFIG_MANCANTE); il motivo e'' obbligatorio (E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO). La regola e'' del dato: il verbo dbops.fn_imposta_accensione_processo non la ripete. Se il catalogo cambia dopo che una riga e'' stata scritta (un non spegnibile spento, un non accendibile acceso), lo stato effettivo (dbops.fn_processo_acceso_su_valori) ignora la riga. Brief: brief-db-processi-accensione-per-ambiente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

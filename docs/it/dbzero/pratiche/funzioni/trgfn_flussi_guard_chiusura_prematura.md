@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_guard_chiusura_prematura()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_chiusura_prematura()
  RETURNS trigger
@@ -74,6 +76,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_chiusura_prematura()
 IS 'BEFORE UPDATE OF stato_id su flussi: blocca il completamento del flusso di chiusura (template.chiude_pratica) se la pratica non e'' chiudibile escludendo se stesso (fn_check_pratica_chiudibile con p_escludi_template_id + p_escludi_flusso_id=NEW.id).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

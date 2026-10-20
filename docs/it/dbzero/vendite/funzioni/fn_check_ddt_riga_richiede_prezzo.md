@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_ddt_riga_richiede_prezzo(p_riga_ddt_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_check_ddt_riga_richiede_prezzo(p_riga_ddt_id bigint)
  RETURNS boolean
@@ -63,6 +65,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_check_ddt_riga_richiede_prezzo(p_riga_ddt_id bigint)
 IS 'TRUE se la riga di DDT appartiene a un documento che vende (causale di trasporto fatturabile). PURA: non solleva, non scrive. Consumata dalla clausola WHEN del trigger che vieta il prezzo zero sui componenti obbligatori, per non dover insegnare la nozione di causale alla funzione trigger condivisa con preventivi, ordini e contratti. Causale ASSENTE -> FALSE: in bozza il NULL e'' legittimo e il presidio e'' il gate all''emissione (DL-28). Riga non leggibile -> TRUE, fail-closed: sotto RLS «non trovata» non distingue «non esiste» da «non la vedo», e dei due errori possibili solo quello opposto arriva in fattura. Brief: brief-ddt-righe-senza-prezzo §9 slice C (C3).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

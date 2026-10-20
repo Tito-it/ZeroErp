@@ -6,6 +6,8 @@ CREATE FUNCTION fn_ddt_riga_ritira_legami(p_ddt_riga_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ddt_riga_ritira_legami(p_ddt_riga_id bigint)
  RETURNS integer
@@ -74,6 +76,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ddt_riga_ritira_legami(p_ddt_riga_id bigint)
 IS 'Building block (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-3, D-7, D-8): ritira i legami di UNA riga di DDT con la sua origine — fulfillment (riga d''ordine) e ponte di ri-consegna (riga di reso) — e riproietta gli ordini toccati con vendite.fn_ordine_proietta_stato_evasione (il residuo torna all''ordine; ultimo legame -> CONFERMATO). Il reso non ha stato da riproiettare: la sua copertura da ri-consegnare si ricalcola. Apre e richiude la porta del guard del legame (GUC transazionale zeroerp.ddt_riga_ritira_legame = id della riga): il guard la onora solo con la bolla in bozza, o dentro l''annullo (porta zeroerp.ddt_annullo del verbo vendite.fn_annulla_ddt, dal proprietario). Ritorna quanti legami ha ritirato. Consumatori: vendite.trgfn_dlt_block_ordrig_ddtrig (riga tolta in bozza) e vendite.fn_annulla_ddt (bolla annullata). Parametro non valido: E_VENDITE_CHIAMATA_NON_VALIDA.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

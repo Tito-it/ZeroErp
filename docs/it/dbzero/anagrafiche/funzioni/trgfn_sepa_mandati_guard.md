@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_sepa_mandati_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_sepa_mandati_guard()
  RETURNS trigger
@@ -69,6 +71,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_sepa_mandati_guard()
 IS 'Guard trigger per pagamenti.sepa_mandati: validazione stato/dati e normalizzazione campi testuali.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

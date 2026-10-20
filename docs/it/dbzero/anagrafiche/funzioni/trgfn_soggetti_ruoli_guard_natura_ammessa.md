@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_soggetti_ruoli_guard_natura_ammessa()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa()
  RETURNS trigger
@@ -107,6 +109,8 @@ per il ruolo che si sta assegnando, secondo la matrice config.tipi_ruoli_nature_
 Se la matrice non ha righe per il tipo_ruolo, nessun vincolo viene applicato (natura libera).
 Segue lo stesso pattern di trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

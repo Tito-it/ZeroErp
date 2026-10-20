@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_emittenti_scope_sr_ids(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_emittenti_scope_sr_ids(p_auth_user_id integer)
  RETURNS bigint[]
@@ -51,6 +53,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_emittenti_scope_sr_ids(p_auth_user_id integer)
 IS '⭐ rev 2026-10-18 (20261018-51, D-3b-2 ondata 2): COST 5000. Legge tabelle ed e'' nominata dalle policy ef_whitelist del billing account (20261018-50). Wrapper su fn_get_emittenti_scope_pk_ids (refactor 2026-05-02). Mappa PK reali -> soggetto_ruolo_id per query su colonne <ruolo>_soggetto_ruolo_id (fatture, ordini, commesse, listini, BA scope, search universale). Semantica: NULL=tutto, ''{}''=nessuno, array=whitelist. Single source of truth dei guard nella fn _pk_ids. Post 2026-08-04: mappatura a vuoto -> ''{}'' e non NULL (fail-closed su emittente attivo inesistente). Vedi guida soggetti-e-ruoli §5b per quando usare _sr_ids vs _pk_ids.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

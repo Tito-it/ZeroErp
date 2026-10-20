@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_user_emittenti_fiscali_guard_delete()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_user_emittenti_fiscali_guard_delete()
  RETURNS trigger
@@ -55,6 +57,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_user_emittenti_fiscali_guard_delete()
 IS 'Guard BEFORE DELETE su config.user_emittenti_fiscali: ammette la cancellazione solo se django.auth_user.is_active=false (cessazione utente). Override via GUC zeroerp.allow_user_emittente_delete_override=''on''. Solleva E_USER_EMITTENTE_DELETE_VIETATO.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pratiche_set_data_apertura()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_set_data_apertura()
  RETURNS trigger
@@ -68,6 +70,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_set_data_apertura()
 IS 'BEFORE INSERT/UPDATE: valorizza data_apertura quando la pratica entra in APERTA (creazione diretta o transizione BOZZA -> APERTA). Immutabile dopo prima valorizzazione.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

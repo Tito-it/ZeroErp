@@ -7,6 +7,8 @@ CREATE FUNCTION fn_escludi_documento_da_giro(p_lotto_id bigint, p_gruppo_key tex
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_escludi_documento_da_giro(p_lotto_id bigint, p_gruppo_key text, p_motivo text)
  RETURNS jsonb
@@ -157,6 +159,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_escludi_documento_da_giro(p_lotto_id bigint, p_gruppo_key text, p_motivo text)
 IS 'Toglie UN documento rotto dal giro di fatturazione, cosi'' che il lotto possa ripartire con quelli che restano. Funzione MADRE: una sola SELECT, atomica per costruzione, SECURITY INVOKER (RLS e perimetro emittente restano applicati). ⭐ Non riscrive il predicato: CHIAMA script.fn_check_documento_escludibile_da_giro — la stessa da cui il frontend prende il motivo del pulsante spento — e solleva il codice del PRIMO motivo, perche'' l''ordine dell''array e'' il contratto. ⭐ Compone vendite.fn_elimina_fattura_da_lotto invece di riscriverne la semantica (RD-7: togliere = cancellare, le attivita'' tornano NON_EMESSA). ⭐ D-2b: se la bozza copre PIU'' documenti si cancella lo stesso e li TRASCINA — tornano da emettere, con l''esito riportato a PENDING e non a ESCLUSO (non sono usciti da niente) ne'' lasciato a COMPLETED (non hanno piu'' una fattura). Rifiutare su bozza condivisa lascerebbe bloccati anche i documenti di un''ALTRA bozza. ⚠️ I trascinati si leggono PRIMA di cancellare: dopo, il legame non esiste piu''. ⚠️ uscita_quando/uscita_da le deriva il trigger dalla GUC, non questa funzione. ⛔ Il perimetro (fatturazione_lotti_gruppi) non si tocca (D-1): il lotto ricorda di aver preso in carico anche il documento uscito. Brief: brief-db-uscita-documento-dal-giro.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

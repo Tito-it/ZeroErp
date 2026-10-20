@@ -6,6 +6,8 @@ CREATE FUNCTION fn_check_listino_documento(p_listino_id bigint, p_utility_id int
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_listino_documento(p_listino_id bigint, p_utility_id integer, p_emittente_fiscale_id bigint)
  RETURNS jsonb
@@ -86,6 +88,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_listino_documento(p_listino_id bigint, p_utility_id integer, p_emittente_fiscale_id bigint)
 IS 'Check pura: i motivi per cui un listino non può essere quello di un documento (vendite.contratti, vendite.offerte_commerciali) di questa utility e di questo emittente. ''[]'' = può. Sui valori (listino, utility del documento, emittente_fiscale_id del documento): la chiamano un guard BEFORE ROW e, in creazione, la lettura per il form. Motivi in ordine: 1) E_DOC_LISTINO_UTILITY_DIVERSA (reason LISTINO_UTILITY_DIVERSA): la utility del listino non è quella del documento; 2) E_DOC_LISTINO_EMITTENTE_DIVERSO (reason LISTINO_EMITTENTE_DIVERSO): l''emittente del listino (emittente_soggetto_ruolo_id) non è quello del documento, tradotto qui da emittente_fiscale_id; anche un listino che sotto RLS non si legge (fuori dal perimetro di chi agisce, mentre il documento ci sta). Campo listino_id in dettaglio.campo, frase chiusa. Listino NULL (negoziato puro del contratto): nessun motivo. Utility o emittente NULL: diversi per costruzione. Lettori: script.trgfn_doc_guard_listino_documento (solleva il primo motivo) e vendite.fn_listini_selezionabili (propone solo i listini senza motivi). Nasce il 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2 (decisione F-2 di Tid).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

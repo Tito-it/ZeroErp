@@ -7,6 +7,8 @@ CREATE PROCEDURE proc_sync_storico_set_storicizza_job()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_sync_storico_set_storicizza_job()
  LANGUAGE plpgsql
@@ -27,6 +29,8 @@ $procedure$
 COMMENT ON PROCEDURE maintenance.proc_sync_storico_set_storicizza_job()
 IS 'Job wrapper per chiamare proc_sync_storico_set_storicizza con logging e lock.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

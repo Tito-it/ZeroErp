@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_or_create_indirizzo_dettaglio(p_stradario_id integer, p_c
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_get_or_create_indirizzo_dettaglio(p_stradario_id integer, p_civico integer DEFAULT NULL::integer, p_estensione_civico character varying DEFAULT NULL::character varying, p_palazzina character varying DEFAULT NULL::character varying, p_scala character varying DEFAULT NULL::character varying, p_piano character varying DEFAULT NULL::character varying, p_interno character varying DEFAULT NULL::character varying)
  RETURNS bigint
@@ -102,6 +104,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_get_or_create_indirizzo_dettaglio(p_stradario_id integer, p_civico integer, p_estensione_civico character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying)
 IS 'Building block: upsert indirizzo dettaglio (civico). Cerca per chiave naturale, crea se non esiste. Gestisce race condition. Riusabile da orchestratori.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

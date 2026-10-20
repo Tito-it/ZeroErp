@@ -243,7 +243,9 @@ SELECT (SELECT id FROM tmp_fattura_fri),
        '{"intestazione":"Cliente pgTAP","via":"Via Importo Riga"}'::jsonb;
 
 UPDATE vendite.fatture
-   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP"}'::jsonb,
+   -- ⚠️ con la sede del cedente: senza, la fattura non lascia DRAFT
+   --   (20261021-13, brief-db-modelli-documento-standard §10.7 R-5).
+   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","sede":{"via":"Via Cedente 1","cap":"83100"}}'::jsonb,
        cliente_snapshot   = '{"denominazione":"Cliente pgTAP"}'::jsonb
  WHERE id = (SELECT id FROM tmp_fattura_fri);
 

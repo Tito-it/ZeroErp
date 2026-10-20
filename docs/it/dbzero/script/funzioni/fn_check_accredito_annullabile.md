@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_accredito_annullabile(p_resi_riga_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_accredito_annullabile(p_resi_riga_id bigint)
  RETURNS jsonb
@@ -143,6 +145,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_accredito_annullabile(p_resi_riga_id bigint)
 IS 'I motivi che impediscono di ANNULLARE l''accredito di una riga di reso. Funzione PURA (fn_check_*), undicesima della famiglia: nessun raise di dominio, nessuna scrittura. Ritorna [] se si puo'' annullare, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. ⭐ SORGENTE UNICA condivisa da vendite.fn_annulla_accredito_riga_reso (che solleva il codice del PRIMO motivo) e dal read-side — vw_resi_da_accreditare e le righe del reso — che spegne il pulsante e mostra il perche''. Nasce da una richiesta del team BE del 2026-08-25: il pulsante «Annulla l''accredito» era acceso anche quando l''annullo non era piu'' possibile, e l''operatore scopriva il vincolo dopo aver scritto il motivo obbligatorio e confermato. ⛔ E'' UNA SEDE SOLA, non un predicato gemello: se lettura e guardia divergessero si tornerebbe al punto di partenza, col pulsante spento su un annullo che sarebbe passato. E la madre avverte gia'' di un vincolo reciproco su TRE posti (C-3) — un predicato ricopiato ne farebbe un quarto. ⚠️ L''ORDINE dei motivi e'' il contratto, perche'' la madre solleva il primo: (1) nessun accredito, che copre insieme «mai accreditato» e «gia'' annullato» perche'' l''annullo cancella; (2) fuori perimetro, che nasce dalla RLS su commesse_attivita mentre il ponte non ce l''ha — e'' l''unico motivo che dipende da CHI GUARDA; (3) almeno una rettifica bloccata. I motivi 2 e 3 leggono l''insieme, quindi ognuno esce subito: senza insieme direbbero il falso, e su un insieme non visibile per intero il conteggio uscirebbe piu'' basso del vero. ⚠️ Le TRE condizioni del motivo 3 si tengono tutte e tre: dopo un reset di lotto la riga di attivita_fatturabili SOPRAVVIVE sbloccata e senza fattura_riga_id, quindi «esiste una AF -> bloccato» vieterebbe per sempre l''annullo dopo un reset legittimo. ⛔ TUTTO-O-NIENTE: basta UNA rettifica bloccata per rifiutare l''intero accredito, perche'' un annullo parziale lascerebbe la coda a chiedere un residuo che nessuno puo'' piu'' soddisfare. ℹ️ `valori` porta il VARIADIC che la madre passa a fn_log_and_raise_error: sta qui perche'' la frase che l''operatore legge non si ricomponga in due posti. I tre `codice` esistono gia'' a catalogo — questa funzione non li solleva, li nomina. Brief: brief-design-note-credito-resi §45.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

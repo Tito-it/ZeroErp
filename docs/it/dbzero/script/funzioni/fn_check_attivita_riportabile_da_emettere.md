@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_attivita_riportabile_da_emettere(p_attivita_fatturabili
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_attivita_riportabile_da_emettere(p_attivita_fatturabili_ids bigint[])
  RETURNS jsonb
@@ -227,6 +229,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_attivita_riportabile_da_emettere(p_attivita_fatturabili_ids bigint[])
 IS 'Elenca i motivi che impediscono di riportare «da emettere» un insieme di vendite.attivita_fatturabili. Funzione PURA: nessuna scrittura e nessun raise di dominio — la mutazione vendite.fn_riporta_attivita_da_emettere solleva il codice del PRIMO motivo, mentre il backend li mostra tutti. Ritorna [] se si puo'' fare su tutte. ⛔ IL PERIMETRO NON USA `fatturato`, ed e'' deliberato: con la colonna generata prevista dal lotto L3b il predicato «fatturato IS TRUE AND fattura_riga_id IS NULL» diventerebbe sempre falso e il verbo smetterebbe di funzionare IN SILENZIO. Le tre condizioni vere sono fattura_riga_id IS NULL (non e'' in nessuna fattura), lock_in_fatturazione (e'' ancora lucchettata, nessun giro la riprende) e stato_esecuzione = COMPLETED (il giro che la lucchettava ha dichiarato di aver finito) — ⭐ e la terza e'' cio'' che separa l''ORFANA dal GIRO VIVO: PENDING/RUNNING vuol dire lotto in corso, e quello non si tocca. E'' anche il motivo per cui la card «Emesse non fatturate» non e'' il perimetro del verbo: contiene due popolazioni strutturalmente diverse. ⛔ E LO SCOPE STA SULLA COMMESSA: vendite.attivita_fatturabili non ha row level security, vendite.commesse_attivita si'' — quindi l''attivita'' si risolve passando per quel JOIN, che E'' il cancello. Leggere la sola attivita_fatturabili sarebbe fail-open, e il danno non sarebbe un permesso concesso a vuoto: la mutazione libererebbe l''attivita'' (tabella senza RLS) e NON riporterebbe la riga di commessa a NON_EMESSA (tabella con RLS, zero righe toccate), cioe'' lo stato SPEZZATO che la primitiva condivisa di L1 esiste per impedire. Chi non vede la riga riceve «non trovata», che dal suo punto di vista e'' la verita''. ℹ️ Il primo motivo e'' AGGREGATO (quante mancano) e gli altri sono PER ATTIVITA'': di una riga che non si vede non si puo'' dire niente che l''operatore riconosca, mentre delle altre si nomina «commessa <codice>, competenza <MM/AAAA>», che e'' come le vede sulla card. I campi attivita_fatturabile_id, commessa_id e fattura_id non servono all''interfaccia: servono alla mutazione per comporre il bersaglio dell''errore senza rileggersi le stesse righe. Piano: brief-db-lavoro-che-non-torna-indietro, L5 / D-4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

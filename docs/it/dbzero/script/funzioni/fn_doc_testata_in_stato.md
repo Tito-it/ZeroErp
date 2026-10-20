@@ -7,6 +7,8 @@ CREATE FUNCTION fn_doc_testata_in_stato(p_tabella regclass, p_stato text, p_semp
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_doc_testata_in_stato(p_tabella regclass, p_stato text, p_sempre jsonb DEFAULT '[]'::jsonb)
  RETURNS jsonb
@@ -43,6 +45,8 @@ $function$
 COMMENT ON FUNCTION script.fn_doc_testata_in_stato(p_tabella regclass, p_stato text, p_sempre jsonb)
 IS 'Building block (2026-10-10, brief-db-testata-dopo-emissione fase 2): la testata di un documento in p_stato (codice_interno), letta dal montaggio del lock di testata (script.fn_doc_lock_montaggi, decisione di script.fn_doc_lock_colonna_bloccata). jsonb {modificabile, non_modificabili}: non_modificabili = p_sempre (le colonne che la capability dichiara non modificabili in ogni stato) seguite dalle colonne nominate dal lock che in p_stato non si cambiano, nell''ordine del montaggio e senza doppioni; modificabile = almeno una colonna nominata si cambia in p_stato (in bozza tutte; senza lock di testata false). Sostituisce nelle capability di ordine, DDT, contratto, offerta, preventivo e reso le liste scritte a mano dei campi bloccati fuori bozza e gli stati scritti di can_edit_testata: la terza copia della regola, accanto a lock e backend.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

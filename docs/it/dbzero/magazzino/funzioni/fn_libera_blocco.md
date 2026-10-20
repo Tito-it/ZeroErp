@@ -6,6 +6,8 @@ CREATE FUNCTION fn_libera_blocco(p_blocco_id bigint, p_nota text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.fn_libera_blocco(p_blocco_id bigint, p_nota text)
  RETURNS void
@@ -64,6 +66,8 @@ $function$
 COMMENT ON FUNCTION magazzino.fn_libera_blocco(p_blocco_id bigint, p_nota text)
 IS 'VERBO: libera un blocco manuale (M-3: si libera con un atto, non si consuma da se''). Prima riga script.fn_guard_azione(utente, ''blocca_merce''). SECURITY DEFINER, blocco nel perimetro del suo magazzino e SENZA sorgente (i blocchi manuali): altrimenti E_MAG_BLOCCO_NON_TROVATO; gia'' CHIUSA -> E_MAG_BLOCCO_GIA_CHIUSO. Porta lo stato a CHIUSA con data_chiusura e scrive in meta liberato_da, liberato_il, nota_liberazione. Non cancella mai. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

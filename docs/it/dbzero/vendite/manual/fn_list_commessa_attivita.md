@@ -63,12 +63,13 @@ Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri 
   * `p_limit` default `1000`, massimo `10000`
   * `p_offset` minimo `0`
 * Ordinamento (dal 02-08-2026, esteso il 16 e il 20-08-2026):
-  * `p_order_by` — nome della colonna, **whitelist chiusa** di 15 voci:
+  * `p_order_by` — nome della colonna, **whitelist chiusa** di 16 voci:
     `data_attivita`, `competenza_mese`, `segment_key`, `quantita`,
     `prezzo_snapshot`, `stato_approvazione`, `stato_emissione` (più `id`);
     `fatturata_il`, `fattura_numero` (16-08); `tipo_movimento`,
-    `articolo_codice`, `articolo_descrizione`, `sorgente_codice`,
-    `sorgente_documento_numero`, `gruppo_key` (20-08).
+    `articolo_codice`, `articolo_descrizione`, `sorgente_etichetta` (era
+    `sorgente_codice` fino al 21-10-2026), `sorgente_documento_numero`,
+    `gruppo_key` (20-08).
   * `p_order_dir` — `asc` (default) o `desc`.
   * ⚠️ **La whitelist e il catalogo `ui.lista_colonna` si muovono insieme.** Una
     colonna dichiarata a catalogo con `ordinabile = t` su un nome che questa
@@ -84,7 +85,7 @@ Restituisce il dettaglio righe di una commessa (`commesse_attivita`) con filtri 
   * Tiebreak `ca.id` sempre in coda all'`ORDER BY`: senza, due righe con la
     stessa chiave possono scambiarsi di posto fra una pagina e l'altra, e
     l'operatore vede una riga due volte o mai.
-* Include `sorgente_codice` tramite join su `config.sorgenti`, evitando risoluzioni N+1 lato backend.
+* Il tipo dell'origine arriva con una join su `config.sorgenti`, evitando risoluzioni N+1 lato backend.
 
 > ⚠️ **Perché l'ordinamento sta qui e non nel backend.** `ORDER BY` e
 > `LIMIT/OFFSET` vivono nella stessa funzione: ordinare a valle ordinerebbe **la
@@ -115,11 +116,34 @@ Elenco righe `commesse_attivita` della commessa con i principali campi operativi
 * identificativi (`id`, `commessa_id`, `segment_key`)
 * dati di competenza/quantita`/prezzo
 * stati (`stato_approvazione`, `stato_emissione`)
-* classificazione sorgente (`sorgente_tipo_id`, `sorgente_codice`, `sorgente_uid`,
-  `sorgente_area`)
+* classificazione sorgente (`sorgente_tipo_id`, `sorgente_codice_interno`,
+  `sorgente_uid`, `sorgente_apribile`, `sorgente_etichetta`) — vedi sotto
+  «Il tipo dell'origine»
 * legame con la fattura (`fatturata`, `fatturata_il`, `fattura_id`,
   `fattura_numero`, `fattura_stato`) — dal 16-08-2026
 * `meta` e `data_update`
+
+#### Il tipo dell'origine (dal 21-10-2026)
+
+Tre colonne dicono **di che tipo è il documento d'origine** e come trattarlo,
+e ognuna risponde a una domanda sola:
+
+| Colonna | A che cosa serve |
+| --- | --- |
+| `sorgente_codice_interno` | **aprire** il documento: è il nome del tipo (`DDT_VENDITA`, `FATTURA`…), lo stesso con cui il frontend sceglie la pagina |
+| `sorgente_apribile` | **se** il documento si apre: alcuni tipi una pagina non ce l'hanno |
+| `sorgente_etichetta` | **mostrarlo** all'utente («DDT», «Fattura»…): è la colonna «Tipo origine» della lista, e anche la chiave per ordinarla |
+
+> ⚠️ **Perché non `codice`.** Fino al 21-10-2026 usciva `sorgente_codice`, cioè
+> `config.sorgenti.codice`: è il nome che l'operatore può cambiare. Un
+> documento che si apre da un valore modificabile smette di aprirsi il giorno
+> in cui qualcuno lo rinomina. `codice_interno` è l'unico protetto dal lock.
+> Oggi sulle sorgenti seminate i due valori coincidono, ed è il motivo per cui
+> il pgTAP costruisce una sorgente rinominata invece di guardare quelle che ci
+> sono (`test-fn-list-commessa-attivita-sorgente-codice-interno-v1`).
+>
+> ℹ️ `sorgente_etichetta` è **l'ultima** colonna della `RETURNS TABLE`: è
+> arrivata dopo, ed è stata messa in coda per non spostare le altre.
 
 #### La provenienza della riga (dal 20-08-2026)
 

@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_storico_scope_da_dichiarare
 WITH (security_invoker=true) AS
@@ -56,6 +58,8 @@ UNION ALL
           WHERE (md.madre_oid = (r.madre_oid)::oid)))))
   ORDER BY 3, 1;
 ```
+
+</div>
 
 
 ---

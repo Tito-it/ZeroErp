@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_resi_guard_magazzino()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_magazzino()
  RETURNS trigger
@@ -45,6 +47,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_guard_magazzino()
 IS 'Guard BEFORE INSERT OR UPDATE su vendite.resi (D-3b-a), che esce subito se magazzino ed emittente non cambiano. E_RESO_MAGAZZINO_INCOERENTE: il magazzino non e'' dell''emittente del reso, dal BB script.fn_magazzino_dell_emittente (letto sotto RLS: invisibile e inesistente rispondono uguale). Fascia z10: dopo trgfn_resi_normalize, che all''INSERT eredita l''emittente dalla bolla. Il magazzino mancante NON e'' qui: e'' un motivo della conferma (script.fn_check_reso_merce). Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso. rev 2026-10-09 (brief-db-esecutivi-ba-coppia, regola del 2): «immutabile fuori bozza» (E_RESO_MAGAZZINO_IMMUTABILE) passa al BB vendite.trgfn_doc_testata_lock_fuori_bozza, trigger trg_resi_a05_lock_fuori_bozza_upd: stesso codice, stessa frase, e parla prima di questo guard.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

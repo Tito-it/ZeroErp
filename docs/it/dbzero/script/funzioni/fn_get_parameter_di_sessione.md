@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_parameter_di_sessione(p_code character varying, p_chi tex
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_parameter_di_sessione(p_code character varying, p_chi text DEFAULT NULL::text)
  RETURNS text
@@ -73,6 +75,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_parameter_di_sessione(p_code character varying, p_chi text)
 IS 'BB (2026-10-18): il valore di un parametro con la cascata degli override di script.fn_get_parameter_full, col contesto preso dalla SESSIONE invece che dal chiamante. Per i lettori dentro il database (trigger, madri), che non ricevono utente, gruppi ed emittente: il backend li passa da se''. Utente da app.current_user_id (auth_user.id = parameter_overrides.django_user_id); gruppi da django.auth_user_groups, letti solo se la tabella esiste e il ruolo la legge (cercata per OID nel catalogo), altrimenti il livello gruppo resta spento senza errore: e'' una proposta, non apre accessi (zeroerp_job non ha USAGE su django; su un database senza le tabelle di Django la tabella non c''e''); emittente da app.current_emittente_id; session key da app.session_key; funzione da p_chi (chi chiede). La categoria cliente non fa parte della sessione: resta NULL. GUC vuota o assente = livello saltato. Non valida il valore: e'' compito del lettore. Primo lettore: script.fn_stato_proposto_id. D-13a e D-13b di Tid, R-BE-13 in brief-db-processi-accensione-per-ambiente §6.12.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_crea_risorsa_umana_v2(p_soggetto_id uuid, p_qualifica_id inte
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id uuid DEFAULT NULL::uuid, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_valido_dal date DEFAULT script.fn_data_operativa(), p_valido_al date DEFAULT NULL::date, p_auth_user_id integer DEFAULT NULL::integer, p_is_super_admin boolean DEFAULT false, p_attivo boolean DEFAULT true)
  RETURNS bigint
@@ -186,6 +188,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id uuid, p_qualifica_id integer, p_unita_organizzativa_id integer, p_valido_dal date, p_valido_al date, p_auth_user_id integer, p_is_super_admin boolean, p_attivo boolean)
 IS 'Building block multi-face native (v2 Chunk A Fase 7 2026-04-29). Sostituisce v1 (firma con p_ruolo_sistema config.ruolo_sistema) con p_is_super_admin/p_attivo. Body invariato salvo: identita_digitali.attivo=p_attivo (era hardcoded true) e binding SUPER_ADMIN gated su p_is_super_admin invece di p_ruolo_sistema=ADMIN. v1 droppata in Chunk B post BE migrato. ⛔ Rev 20260923-10: il profilo del binding SUPER_ADMIN si RISOLVE per config.profili_accesso.tipo = SUPER_ADMIN fra i profili attivi (chiave stabile, linee-guida-sql §6d), non piu'' con l''id cablato 9100; se i profili attivi di quel tipo non sono esattamente uno solleva E_CONFIG_MANCANTE prima di ogni scrittura. ⛔ Rev 20261002-01: una persona e'' una risorsa umana sola (uq_risorse_umane_soggetto_ruolo, anche spenta): se il soggetto lo e'' gia'' solleva E_RISORSA_UMANA_GIA_PRESENTE (campo soggetto_id) invece di lasciar arrivare il 23505; vale per ogni chiamante, non solo per fn_crea_operatore_v2. Rev 2026-10-18: il binding SUPER_ADMIN lo scrive il BB config.fn_lega_profilo_identita (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1 lotto 8); comportamento invariato. ⭐ Rev 2026-10-18 (20261019-17, R-BE-11, regola del 2): il profilo SUPER_ADMIN lo risolve config.fn_profilo_super_admin_id, sede unica della regola che era scritta qui e nel backend; la firma si ancora con %TYPE. Comportamento invariato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

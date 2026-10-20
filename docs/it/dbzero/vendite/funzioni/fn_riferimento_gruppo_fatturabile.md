@@ -7,6 +7,8 @@ CREATE FUNCTION fn_riferimento_gruppo_fatturabile(p_gruppo_key text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_riferimento_gruppo_fatturabile(p_gruppo_key text)
  RETURNS text
@@ -70,6 +72,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_riferimento_gruppo_fatturabile(p_gruppo_key text)
 IS 'Il RIFERIMENTO leggibile di un gruppo fatturabile: cio'' che una persona riconosce al posto della chiave — ''ORDINE_VENDITA:01a06ce4-…'' diventa ''ORD0036004''. ⭐ Nasce per la scheda Critiche del lotto, dove il documento di una segnalazione si leggeva come uuid: la gruppo_key e'' la chiave che serve al PULSANTE (fn_escludi_documento_da_giro la vuole), non all''occhio. Compone vendite.fn_split_gruppo_fatturabile_key e vendite.fn_get_sorgente_documento_ref, che risolve il numero leggendo il label_selector dichiarato dalla sorgente a catalogo. ⭐ Ripiego a TRE livelli: numero del documento, poi codice della commessa (la forma sourceless ''MAN:<id>'', dove un documento non c''e'' per progetto), poi la CHIAVE GREZZA — e l''ultimo non e'' una resa: e'' esattamente cio'' che si vedeva prima, quindi peggiorare e'' impossibile. ⚠️ NULL entra e NULL esce: una chiave assente vuol dire «la segnalazione e'' del GIRO», e li'' non c''e'' nessun documento da nominare — inventare un''etichetta direbbe il falso. ⚠️ NON SOLLEVA MAI: la chiama una lista. ⚠️ Stessa scala di ripiego di vw_dash_competenza_gruppi.riferimento, che NON la chiama per non risolvere due volte per riga (le serve anche documento_id dallo stesso LATERAL): la seconda scrittura e'' dichiarata e presidiata da un pgTAP che chiede alle due la stessa stringa sulla stessa chiave. STABLE, SECURITY INVOKER. Brief: brief-db-uscita-documento-dal-giro §6.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

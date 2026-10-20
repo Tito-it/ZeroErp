@@ -7,6 +7,8 @@ CREATE FUNCTION fn_esito_gruppi_giro(p_lotto_ids bigint[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_esito_gruppi_giro(p_lotto_ids bigint[])
  RETURNS TABLE(gruppo_key text, richiesto boolean, esito text, n_attivita_fatturate bigint, n_attivita_residue bigint, lotti_serventi bigint[], lotti_altrui bigint[])
@@ -179,6 +181,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_esito_gruppi_giro(p_lotto_ids bigint[])
 IS 'CONSUNTIVO di un giro di fatturazione, un gruppo fatturabile per riga: SERVITO (almeno un''attivita'' finita su una fattura di questi lotti), NON_SERVITO (no, e restano righe non emesse: e'' il caso su cui si agisce), FATTURATO_ALTROVE (no, non resta nulla da emettere, e le righe risultano fatturate da lotti diversi da questi — il «lavoro rubato da un altro giro», che non e'' un errore ma andava potuto nominare). Risponde alla richiesta §8.2 di brief-db-emittibilita-visibile-e-sbloccabile. ⭐ Prende SOLO i lotti: i gruppi richiesti sono gia'' persistiti su vendite.fatturazione_lotti_gruppi (set_lotto_gruppi scrive l''intera tupla su OGNI lotto del giro), quindi richiesti e serviti sono ENTRAMBI misurati e l''invarianza «richiesti = serviti + non serviti» regge per costruzione. Un parametro p_gruppi_richiesti avrebbe riaperto la porta a passare la previsione (gruppi_coperti) al posto della misura. 🔒 Cancello RLS: la catena e'' asimmetrica (fatturazione_lotti_gruppi e fatturazione_lotti_fatture non hanno RLS, fatturazione_lotti / fatture / fatture_righe / commesse_attivita si''), quindi i lotti sono validati PRIMA — uno non visibile solleva E_LOTTO_NON_TROVATO invece di produrre un falso «non servito» — e il richiesto si legge attraverso fatturazione_lotti. «Non esiste» e «non lo puoi vedere» rispondono uguale di proposito. ⚠️ n_attivita_residue non e'' decorativo: senza, un gruppo con vecchie righe fatturate altrove e nuovo lavoro fermo verrebbe classificato FATTURATO_ALTROVE, cioe'' archiviato come sistemato; l''ordine dei rami del CASE e'' la regola. Conta le sole righe NON_EMESSA, senza riapplicare i criteri della lane: il PERCHE'' una riga non sia candidata lo dice vendite.fn_diagnostica_gruppi_fatturabili. Giro di MASSA (nessun perimetro persistito): restituisce i serviti con richiesto=false, perche'' l''unico insieme di riferimento sensato e'' quello che il giro ha fatto. STABLE, sola lettura. Costo: la chiave vale ~5 µs a riga candidata (misurato), ed e'' una lettura su richiesta.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

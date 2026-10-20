@@ -6,6 +6,8 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_lotto(p_auth_user_id integer, p_lotto_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_lotto(p_auth_user_id integer, p_lotto_id bigint)
  RETURNS boolean
@@ -32,6 +34,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_lotto(p_auth_user_id integer, p_lotto_id bigint)
 IS '⭐ rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l''emittente lo chiede a script.fn_resolve_emittente_fiscale_id (DEFINER), non lo legge sotto la RLS del padre: una strada sola, e nessuna policy del padre rieseguita a ogni chiamata. Stesse risposte. Adattatore di scope per i satelliti di vendite.fatturazione_lotti: risale da lotto_id a `emittente_soggetto_ruolo_id` e delega a script.fn_scope_ef_whitelist_via_sr. ⚠️ Via SR e non la canonica fn_scope_ef_whitelist: la testata dei lotti nomina l''emittente per soggetto-ruolo, come vendite.fatture e a differenza delle sei famiglie di documento — e le due numerazioni non sono confrontabili. STABLE e NON security definer, come gli altri fn_scope_*. Lotto inesistente -> emittente NULL -> false a whitelist valorizzata (fail-closed). Brief: brief-db-perimetro-emittente-righe-documento.md §11.9';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

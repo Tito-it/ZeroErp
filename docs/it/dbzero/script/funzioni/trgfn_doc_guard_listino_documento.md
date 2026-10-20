@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_doc_guard_listino_documento()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_doc_guard_listino_documento()
  RETURNS trigger
@@ -47,6 +49,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_doc_guard_listino_documento()
 IS 'Guard generico (vendite.contratti, vendite.offerte_commerciali): solleva il primo motivo di script.fn_check_listino_documento — E_DOC_LISTINO_UTILITY_DIVERSA o E_DOC_LISTINO_EMITTENTE_DIVERSO — col campo listino_id (canale COLUMN). Il listino di un documento è della sua utility e del suo emittente (decisione F-2 di Tid del 2026-10-08). TG_ARGV[0] = documento (CONTRATTO | OFFERTA), solo per il contesto. Montato BEFORE INSERT e BEFORE UPDATE quando cambiano listino_id, utility_id o emittente_fiscale_id (le righe già scritte restano come sono), dopo a10_default_emittente e a10_guard_emittente_ba. Listino NULL (negoziato puro del contratto): nessun rifiuto. Nasce il 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2. ⭐ rev 2026-10-19 (20261019-70, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

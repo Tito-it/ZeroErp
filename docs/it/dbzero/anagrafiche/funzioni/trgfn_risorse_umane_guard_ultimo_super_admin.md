@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_risorse_umane_guard_ultimo_super_admin()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin()
  RETURNS trigger
@@ -87,6 +89,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin()
 IS 'Guard anti-lockout sul rapporto (AFTER UPDATE di attivo, valido_dal, valido_al, soggetto_ruolo_id su risorse_umane): rifiuta una scrittura che riduce la garanzia del rapporto di un SUPER_ADMIN (spegnerlo, dargli una data di fine, spostarne l''inizio nel futuro, spostarlo su un altro soggetto_ruolo) se dopo non resta nessun SUPER_ADMIN senza scadenza (script.fn_check_almeno_un_super_admin_attivo). Le scritture che migliorano non si fermano mai. Codice E_PROFILO_ULTIMO_SUPER_ADMIN. Gemello di trgfn_identita_digitali_guard_ultimo_super_admin. Nasce il 2026-10-07 (brief-db-veste-utilizzabile, decisione di Tid): con D-2 la fine del rapporto chiude l''accesso dell''operatore, e il calendario non scrive.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

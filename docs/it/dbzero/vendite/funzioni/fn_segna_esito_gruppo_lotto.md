@@ -7,6 +7,8 @@ CREATE FUNCTION fn_segna_esito_gruppo_lotto(p_lotto_id bigint, p_stato text, p_g
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_segna_esito_gruppo_lotto(p_lotto_id bigint, p_stato text, p_gruppo_key text DEFAULT NULL::text, p_commessa_id bigint DEFAULT NULL::bigint, p_errore_codice text DEFAULT NULL::text, p_errore_messaggio text DEFAULT NULL::text)
  RETURNS TABLE(marcati integer, usciti integer, fuori_perimetro integer)
@@ -228,6 +230,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

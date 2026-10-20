@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «PERSONALIZZA»: LA COPIA DI UNO STANDARD PER UN EMITTENTE, IN UNA MOSSA
+#   documenti.fn_personalizza_template_standard (funzione madre nuova)
+#   Brief: brief-db-modelli-documento-standard §10.3 K-6; D-2, D-6, D-9 di Tid; R-2 del BE (§6.1)
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   Il BE scrive la copia in una sua transazione (TemplateAdminService.
+#   personalizza_template): la testata, poi la versione 1 copiata da quella che
+#   sceglie lui (get_ultima_versione_pubblicata: PUBBLICATA, attiva, numero piu'
+#   alto). Una terza definizione della «versione dello standard», diversa da
+#   «puo' stampare» e da quella della vista dello scarto, e scritture multiple
+#   fuori dal DB (linee guida §5b).
+#
+# -- LA REGOLA -----------------------------------------------------------------------
+#   * Si personalizza solo uno standard: altrimenti E_DOCUMENTI_PERSONALIZZA_NON_STANDARD.
+#   * La versione da cui si parte e' quella con cui lo standard STAMPA OGGI (D-9).
+#     Non la si cerca qui: la si chiede alla porta unica,
+#     fn_risolvi_template_applicabile col modello indicato (20261021-09). Uno
+#     standard spento, o senza una versione valida oggi, non si personalizza:
+#     E_DOCUMENTI_TEMPLATE_NON_STAMPABILE, lo stesso codice della stampa. Uno
+#     standard non predefinito si', e la vista dello scarto lo confronta con se'
+#     stesso (20261021-12).
+#   * La copia nasce predefinita se l'emittente non ha gia' un suo predefinito
+#     attivo per la coppia (D-6); altrimenti no, e scegliere fra i due resta
+#     all'operatore. p_is_default la impone: se vera accanto a un predefinito,
+#     risponde uq_template_documenti_default_attivo, come oggi nel BE.
+#   * codice, codice_interno, descrizione: quelli dello standard se non indicati.
+#     L'unicita' e' per emittente + sorgente: uq_template_documenti_emittente_
+#     sorgente_codice[_interno] rispondono come oggi.
+#   * La bozza v1 la scrive documenti.fn_crea_bozza_da_versione (20261021-10), con
+#     derivata_da_versione_id = la versione di partenza. Finche' e' in bozza la
+#     copia non stampa e l'emittente resta sullo standard (-26).
+#
+# -- LA FORMA ------------------------------------------------------------------------
+#   Funzione madre (§5b): le due scritture riescono o falliscono insieme. INVOKER:
+#   il perimetro degli emittenti lo applica il BE prima di chiamarla
+#   (_guard_emittente_in_scope), come per ogni modello d'emittente (le tabelle non
+#   hanno RLS). Restituisce l'id del modello nuovo.
+#   Dopo l'apply l'endpoint del BE resta e chiama questa: si ritirano la sua
+#   transazione e get_ultima_versione_pubblicata (§10.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261021-11-create-fn-personalizza-template-standard-mctit.yaml
+
+  - changeSet:
+      id: 20261021-11-create-fn-personalizza-template-standard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.fn_personalizza_template_standard: crea il modello di un emittente da uno standard e
+        la sua bozza v1, copiata dalla versione con cui lo standard stampa oggi, con l'origine
+        dichiarata. Brief: brief-db-modelli-documento-standard §10.3 K-6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'documenti'
+                 AND p.proname = 'fn_crea_bozza_da_versione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION documenti.fn_personalizza_template_standard(
+                  p_template_standard_id  documenti.template_documenti.id%TYPE,
+                  p_emittente_fiscale_id  documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  p_codice                documenti.template_documenti.codice%TYPE DEFAULT NULL,
+                  p_codice_interno        documenti.template_documenti.codice_interno%TYPE DEFAULT NULL,
+                  p_descrizione           documenti.template_documenti.descrizione%TYPE DEFAULT NULL,
+                  p_is_default            documenti.template_documenti.is_default%TYPE DEFAULT NULL
+              )
+               RETURNS documenti.template_documenti.id%TYPE
+               LANGUAGE plpgsql
+               VOLATILE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: crea il modello dell'emittente p_emittente_fiscale_id
+              --   dallo standard p_template_standard_id, con la bozza v1 copiata
+              --   dalla versione con cui lo standard stampa oggi e l'origine
+              --   dichiarata (brief-db-modelli-documento-standard §10.3 K-6).
+              --   Restituisce l'id del modello nuovo.
+              DECLARE
+                  v_std        documenti.template_documenti%ROWTYPE;
+                  v_origine_id documenti.template_documenti_versioni.id%TYPE;
+                  v_is_default documenti.template_documenti.is_default%TYPE;
+                  v_id         documenti.template_documenti.id%TYPE;
+              BEGIN
+                  IF p_template_standard_id IS NULL OR p_template_standard_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_personalizza_template_standard', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_template_standard_id', 'valore', p_template_standard_id),
+                          NULL::uuid, 'p_template_standard_id obbligatorio e > 0');
+                  END IF;
+                  IF p_emittente_fiscale_id IS NULL OR p_emittente_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_personalizza_template_standard', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_emittente_fiscale_id', 'valore', p_emittente_fiscale_id),
+                          NULL::uuid, 'p_emittente_fiscale_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT * INTO v_std
+                    FROM documenti.template_documenti t
+                   WHERE t.id = p_template_standard_id;
+
+                  IF v_std.id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_personalizza_template_standard', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_template_standard_id', 'valore', p_template_standard_id),
+                          NULL::uuid, 'p_template_standard_id: il modello non esiste');
+                  END IF;
+
+                  IF v_std.standard IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_personalizza_template_standard',
+                          'E_DOCUMENTI_PERSONALIZZA_NON_STANDARD',
+                          jsonb_build_object('template_documento_id', p_template_standard_id),
+                          NULL::uuid,
+                          v_std.codice::text);
+                  END IF;
+
+                  -- La versione di partenza: quella con cui lo standard stampa
+                  -- oggi, chiesta alla porta unica (D-9). Solleva lei
+                  -- E_DOCUMENTI_TEMPLATE_NON_STAMPABILE se non ce n'e'.
+                  SELECT r.template_versione_id INTO v_origine_id
+                    FROM documenti.fn_risolvi_template_applicabile(
+                           v_std.sorgente_tipo_id, p_emittente_fiscale_id,
+                           v_std.tipo_documento_output_id, v_std.id) r;
+
+                  -- D-6: predefinita se l'emittente non ne ha gia' uno suo.
+                  v_is_default := COALESCE(p_is_default, NOT EXISTS (
+                      SELECT 1
+                        FROM documenti.template_documenti t
+                       WHERE t.emittente_fiscale_id = p_emittente_fiscale_id
+                         AND t.tipo_documento_output_id = v_std.tipo_documento_output_id
+                         AND t.sorgente_tipo_id = v_std.sorgente_tipo_id
+                         AND t.is_default
+                         AND t.attivo));
+
+                  INSERT INTO documenti.template_documenti (
+                      tipo_documento_output_id, codice, codice_interno, descrizione,
+                      sorgente_tipo_id, context_builder_code, file_name_pattern,
+                      emittente_fiscale_id, is_default, attivo)
+                  VALUES (
+                      v_std.tipo_documento_output_id,
+                      COALESCE(p_codice, v_std.codice),
+                      COALESCE(p_codice_interno, v_std.codice_interno),
+                      COALESCE(p_descrizione, v_std.descrizione),
+                      v_std.sorgente_tipo_id, v_std.context_builder_code, v_std.file_name_pattern,
+                      p_emittente_fiscale_id, v_is_default, true)
+                  RETURNING id INTO v_id;
+
+                  PERFORM documenti.fn_crea_bozza_da_versione(
+                      p_versione_origine_id     => v_origine_id,
+                      p_template_documento_id   => v_id,
+                      p_derivata_da_versione_id => v_origine_id);
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.fn_personalizza_template_standard(
+                  documenti.template_documenti.id%TYPE,
+                  documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  documenti.template_documenti.codice%TYPE,
+                  documenti.template_documenti.codice_interno%TYPE,
+                  documenti.template_documenti.descrizione%TYPE,
+                  documenti.template_documenti.is_default%TYPE) IS
+                  '«Personalizza» (2026-10-21, brief-db-modelli-documento-standard §10.3 K-6; D-2, D-6, D-9 di Tid): crea il modello di un emittente da uno standard e la sua bozza v1, copiata (fn_crea_bozza_da_versione) dalla versione con cui lo standard stampa oggi, chiesta a fn_risolvi_template_applicabile col modello indicato, con derivata_da_versione_id = quella versione. Solo da uno standard (E_DOCUMENTI_PERSONALIZZA_NON_STANDARD), che stampi oggi (E_DOCUMENTI_TEMPLATE_NON_STAMPABILE). Nasce predefinita se l''emittente non ha gia'' un suo predefinito attivo per la coppia, salvo p_is_default; codice, codice_interno e descrizione dello standard se non indicati. Funzione madre: tutto o niente. Il perimetro dell''emittente lo applica il chiamante. Restituisce l''id del modello nuovo.';

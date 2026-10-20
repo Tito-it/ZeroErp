@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sorgenti_orfane_perimetro()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_sorgenti_orfane_perimetro()
  RETURNS TABLE(tabella regclass, col_tipo name, col_riga name, col_uid name)
@@ -48,6 +50,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_sorgenti_orfane_perimetro()
 IS 'Il PERIMETRO di dbops.fn_sorgenti_orfane, reso visibile: le tabelle con una FK verso config.sorgenti su una colonna sola (sorgente_tipo_id), le due colonne sorgente_riga / sorgente_uid E il guard trgfn_guard_sorgente_polimorfa_tipizzata montato — e'' il guard il contratto del modello A (tipo => una chiave verso il bersaglio di key_selector). Le tabelle di vendite con FK e colonne ma senza guard hanno un''altra semantica e restano fuori finche'' non lo prendono (D-3). Derivato dal catalogo (pg_constraint + pg_trigger), non da un elenco: una tabella nuova con quella forma entra da sola. Il pgTAP asserisce che le sei di magazzino ci sono: un presidio che esamina zero tabelle e'' verde e muto. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.7.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

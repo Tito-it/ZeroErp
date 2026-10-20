@@ -7,6 +7,8 @@ CREATE FUNCTION fn_contratto_riga_componenti_init(p_riga_id bigint, p_emittente_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_contratto_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb DEFAULT NULL::jsonb)
  RETURNS integer
@@ -198,6 +200,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_contratto_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
 IS 'Inizializza componenti BoM per riga contratto. rev 2026-08-07, tre correzioni dal quarto lato (brief §18.3/§19.4): (1) riga inesistente -> E_CONTRATTO_RIGA_NON_TROVATA (897) invece di E_PARAMETRO_INVALIDO, 400 su un 404; (2) componente obbligatorio con prezzo override zero -> E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO, che gia'' esisteva: e'' una regola di dominio, non un parametro malformato, e il suo messaggio nomina il COMPONENTE quindi cambia anche il valore variadico; (3) tolto l''handler EXCEPTION WHEN SQLSTATE P0001, che inghiottiva SETTE codici diversi del resolver listini e li ri-sollevava tutti come listino mancante, perdendo il codice strutturato originale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

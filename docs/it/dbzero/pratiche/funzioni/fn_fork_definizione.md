@@ -7,6 +7,8 @@ CREATE FUNCTION fn_fork_definizione(p_definizione_id integer, p_emittente_fiscal
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_fork_definizione(p_definizione_id integer, p_emittente_fiscale_id bigint)
  RETURNS integer
@@ -80,6 +82,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_fork_definizione(p_definizione_id integer, p_emittente_fiscale_id bigint)
 IS 'Crea l''edizione di un emittente da una definizione (di solito il preset), in BOZZA, con provenance per il drift. Wrapper di fn_copia_definizione(..., true). Guard: emittente NOT NULL; scope destinazione senza BOZZA aperta (DEFINIZIONE_BOZZA_ESISTENTE 515, invariante ≤1 BOZZA per scope). SECURITY DEFINER (search_path fisso): DML interna senza grant diretto; autorizzazione al gate app-layer (AdminAPIView). ⭐ rev 2026-08-24: E_DEFINIZIONE_BOZZA_ESISTENTE porta il BERSAGLIO sulle bozze che bloccano il fork — ed e'' il caso piu'' netto del roll-out del bersaglio. La frase nomina lo SCOPE (tipo prestazione, emittente) e la bozza che blocca non la nomina affatto: quel documento un nome utile non ce l''ha. Qui il bersaglio non aggiunge comodita'', aggiunge un''informazione che la frase per come e'' costruita non puo'' dare. L''EXISTS e'' diventato una raccolta (stessa scansione, in piu'' gli id) ed e'' un array perche'' se le bozze fossero piu'' d''una l''operatore deve vederle tutte. Brief: brief-db-bersaglio-errore.md §6 L6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

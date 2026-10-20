@@ -7,6 +7,8 @@ CREATE FUNCTION fn_accoda_lavoro(p_job_type text, p_payload jsonb, p_run_as text
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_accoda_lavoro(p_job_type text, p_payload jsonb DEFAULT '{}'::jsonb, p_run_as text DEFAULT NULL::text, p_scope jsonb DEFAULT NULL::jsonb, p_idempotency_key text DEFAULT NULL::text, p_priorita smallint DEFAULT 100, p_run_after timestamp with time zone DEFAULT NULL::timestamp with time zone, p_max_tentativi integer DEFAULT NULL::integer, p_origine text DEFAULT 'API'::text)
  RETURNS bigint
@@ -134,6 +136,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_accoda_lavoro(p_job_type text, p_payload jsonb, p_run_as text, p_scope jsonb, p_idempotency_key text, p_priorita smallint, p_run_after timestamp with time zone, p_max_tentativi integer, p_origine text)
 IS 'Enqueue atomico idempotente nella coda lavori generica dbops.coda_lavori. Valida il job_type contro dbops.coda_lavori_tipi (E_JOB_TYPE_NON_TROVATO/NON_ATTIVO), risolve i default per-tipo, verifica la coerenza OPERATORE<->scope, INSERT ON CONFLICT DO NOTHING sull''unique parziale vivo. ⭐ Rev 2026-09-04: guard di CLASSE — un job il cui processo e'' di classe DOMINIO non puo'' essere accodato con run_as diverso da OPERATORE (E_JOB_DOMINIO_SENZA_OPERATORE). Serve perche'' il run_as_default del tipo e'' un suggerimento che p_run_as sovrascrive, e il CHECK di tabella guarda la coerenza run_as/scope, non la natura del lavoro. La classe si legge da dbops.processi via coda_lavori_tipi.processo_codice: fonte unica, mai duplicata. Brief: brief-db-processi-automatici-identita-e-perimetro §5.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

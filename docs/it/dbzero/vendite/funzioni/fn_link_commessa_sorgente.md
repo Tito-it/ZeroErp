@@ -7,6 +7,8 @@ CREATE FUNCTION fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_sorgente_riga bigint DEFAULT NULL::bigint, p_meta jsonb DEFAULT '{}'::jsonb)
  RETURNS bigint
@@ -214,6 +216,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_link_commessa_sorgente(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text, p_sorgente_riga bigint, p_meta jsonb)
 IS 'La porta del link documento -> commessa (vendite.commesse_sorgenti): collega una sorgente a una commessa in modo idempotente decidendo il ruolo (prima sorgente della commessa -> ROOT, successive -> COLLEGATO: commessa multi-sorgente, aggregazione del fatturabile). NORMALIZZA la chiave secondo config.sorgenti.key_selector prima di idempotenza e insert (id -> id::text, traducendo l''uuid dei chiamanti via target_table.uid; uid -> uuid testuale; forma canonica con script.fn_sorgente_chiave_id / _uuid); formato non conforme o uuid non risolvibile -> E_SORG_FORMATO / E_SORG_NORM_NON_RISOLTA. ⭐ rev 2026-10-12 (20261012-45, brief-db-annullo-a-valle-riapre-a-monte D-12/D-13 di Tid): un documento sta in UNA SOLA COMMESSA APERTA alla volta, non piu'' in una commessa per sempre. Il link resta come storia dopo la chiusura o l''annullo della commessa (unicita'' della tabella per commessa, 20261012-43); se il documento sta gia'' in un''altra commessa aperta (vendite.fn_commessa_viva_di_sorgente) solleva E_COMMESSA_SORGENTE_ALTRA_COMMESSA. Due invii dello stesso documento verso commesse diverse li serializza un lock advisory sulla sorgente (forma a due argomenti, namespace = questa funzione; vale in READ COMMITTED, come l''applicazione); il lock sulla commessa serializza il ruolo. Senza piu'' il blocco EXCEPTION sull''unique_violation (irraggiungibile, e una sottotransazione per chiamata). Il meta si riscrive solo se cambia. Chiamante: vendite.fn_upsert_commessa_attivita, per ogni riga con una sorgente di scope PUSH_COMMESSA (D-13: il link nasce con la riga); il backend la chiamava a parte e la ritira. Storia: rev 2026-07-18 (brief-db-guard-sorgente-polimorfa §2a, normalizzazione), rev 2026-10-05 (20261005-25, forma canonica).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

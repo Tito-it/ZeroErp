@@ -7,6 +7,8 @@ CREATE FUNCTION fn_preventivo_riga_componenti_init(p_riga_id bigint, p_emittente
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_preventivo_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb DEFAULT NULL::jsonb)
  RETURNS integer
@@ -188,6 +190,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_preventivo_riga_componenti_init(p_riga_id bigint, p_emittente_sr_id bigint, p_data_riferimento date, p_componenti_overrides jsonb)
 IS 'Inizializza componenti BoM per riga preventivo. rev 2026-08-07: tolto l''handler EXCEPTION WHEN SQLSTATE P0001 che catturava qualunque errore del resolver listini e lo ri-sollevava come E_DOC_COMPONENTE_LISTINO_MANCANTE tenendo solo MESSAGE_TEXT (brief terzo lato §18.3). rev 2026-08-07 (bis): la riga inesistente solleva E_PREVENTIVO_RIGA_NON_TROVATA (901) invece di E_PARAMETRO_INVALIDO, che dava 400 su un 404 — sesto e ultimo dei punti trovati dalla lente del quarto lato (§19.4).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

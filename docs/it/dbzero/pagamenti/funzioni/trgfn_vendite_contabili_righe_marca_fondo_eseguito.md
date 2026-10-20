@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_vendite_contabili_righe_marca_fondo_eseguito()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito()
  RETURNS trigger
@@ -82,6 +84,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito()
 IS 'Porta l''atto di fondo fattura (vendite.fatture_fondi_fattura_source) a ESEGUITO quando la riga contabile che ne nasce entra in POSTATA. Nasce il 2026-08-21 col lotto 3 del cantiere incassi (S1-16, decisione D11). ⭐ E'' un trigger e non una riga dentro la madre del posting perche'' scatta sul FATTO: la madre non e'' l''unica strada per cui una riga puo'' finire registrata (correzione a mano, import da flusso, ri-posting), e un trigger sulla tabella protegge il dato invece di proteggere una funzione. ⭐ Effetto strutturale: i tre lettori dei fondi (fn_sync_contabili_fondo_fattura, fn_applica_fondi_fattura, vw_fondi_fattura_da_decidere) filtrano su ASSEGNATO o DISPONIBILE, quindi un atto che passa a ESEGUITO esce da tutti e tre senza che nessuno di loro cambi: e'' cosi'' che i difetti C-2 (il sync che riscriveva una riga gia'' registrata) e C-3 (il fondo interamente postato che si auto-annullava) smettono di essere raggiungibili. ⚠️ Scrive da pagamenti verso vendite: quella tabella non ha RLS e `stato` non e'' fra le colonne bloccate dal lock, ma l''UPDATE fa scattare vendite.trgfn_fondi_source_guard_transizione — da cui l''ordine obbligato CHECK (20260821-49) -> matrice (-50) -> trigger (questo). ⚠️ Idempotente: l''UPDATE filtra stato = ASSEGNATO, quindi un ri-posting non cambia nulla e un atto ANNULLATO non viene resuscitato. ⚠️ «Stato registrato» e'' oggi POSTATA e basta, confrontato per codice_interno; se un giorno gli stati registrati diventassero due, la mossa giusta e'' una bandiera di catalogo accanto a is_postabile/is_final/richiede_abbinamento.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

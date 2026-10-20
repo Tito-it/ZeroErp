@@ -7,6 +7,8 @@ CREATE FUNCTION fn_documento_righe_preview(p_documento character varying, p_docu
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_documento_righe_preview(p_documento character varying, p_documento_id bigint)
  RETURNS TABLE(articolo_id uuid, articolo_codice character varying, articolo_descrizione character varying, is_composito boolean, uom_id bigint, uom_codice character varying, prezzo_listino numeric, tipo_variazione character varying, valore_variazione numeric, override_riga_id bigint, override_prezzo numeric, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, prezzo_finale numeric, componenti jsonb, quantita numeric, qta_operativa numeric, tipo_erogazione character varying, fonte_quantita_attesa character varying, riga_key text, azioni text[], escludi_blocco_codice text, ordine smallint, uom_operativa_id bigint)
@@ -193,6 +195,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_documento_righe_preview(p_documento character varying, p_documento_id bigint)
 IS 'Le righe di un contratto o di un''offerta come le vede il drawer (p_documento = CONTRATTO | OFFERTA): righe della versione operativa del listino (vendite.fn_documento_listino_operativo) con l''overlay OVERRIDE/ESCLUSIONE, piu'' le AGGIUNTA standalone e bundle (eccezioni da vendite.fn_documento_righe_eccezione). Colonne in coda: riga_key, azioni (DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI), escludi_blocco_codice (primo motivo di script.fn_check_esclusione_articolo_documento, lo stesso predicato del guard), ordine e uom_operativa_id della riga eccezione. Il blocco «fuori bozza» non e'' qui: e'' di documento. Documento assente o fuori perimetro (INVOKER): nessuna riga. Sorgente unica (regola del 2) di vendite.fn_contratto_righe_preview e vendite.fn_offerta_righe_preview, involucri di una riga. Nasce il 2026-10-04 dal corpo di fn_contratto_righe_preview (20261004-14), brief-db-righe-esclusione-solo-non-si-vende (R4). ⭐ rev 2026-10-19 (20261019-23, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

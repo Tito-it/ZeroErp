@@ -7,6 +7,8 @@ CREATE FUNCTION fn_list_commesse_emittibili(p_competenza_mese date, p_billing_ac
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_commesse_emittibili(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_fatturazione_immediata boolean DEFAULT NULL::boolean, p_limit integer DEFAULT 1000, p_gruppi text[] DEFAULT NULL::text[], p_emit_batch_id uuid DEFAULT NULL::uuid)
  RETURNS TABLE(commessa_id bigint, codice character varying, stato_commessa_id bigint, stato_commessa character varying, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, fatturazione_immediata boolean, competenza_dal date, competenza_al date, total_non_emesse bigint)
@@ -151,6 +153,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_list_commesse_emittibili(p_competenza_mese date, p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_fatturazione_immediata boolean, p_limit integer, p_gruppi text[], p_emit_batch_id uuid)
 IS 'Read-only: elenca le commesse in stato emittibile con righe che il pull puo'' prendere. Filtro competenza_mese su commesse_attivita (coerente con pipeline AF). Filtri opzionali per billing_account_id, utility_id, emittente_soggetto_ruolo_id e fatturazione_immediata (corsia immediata/differita, NULL=indifferente). Espone fatturazione_immediata in output. Usata dal backend come discovery del batch di emissione. rev 2026-07-27 (brief emissione mirata A6): p_gruppi text[] restringe alle commesse che contengono almeno una riga di un gruppo richiesto — NULL = nessuna restrizione (G1). ⚠️ NON sostituisce il filtro per RIGA dentro fn_emit_attivita_fatturabili_da_commessa: qui si sceglie QUALI COMMESSE visitare, li'' QUALI RIGHE emettere. Con p_gruppi valorizzato anche total_non_emesse segue il filtro. ⭐ rev 2026-09-09: le righe «che contano» si leggono come CLASSE da vendite.vw_commesse_attivita_emittibilita, whitelist PRONTA/RIFIUTATA/NON_APPROVATA. ⭐⭐ rev 2026-09-12 (brief-db-rilancio-step-non-rivede-le-proprie-commesse, D1): p_emit_batch_id e'' l''identita'' del giro (lo stesso parametro dell''emit; il lotto si risolve con vendite.fn_lotto_da_emit_batch) e la classe si legge VISTA DAL GIRO con vendite.fn_classe_emittibilita_per_giro: una riga TRATTENUTA soltanto dal lotto corrente e'' PRONTA, quindi al RILANCIO di un pull fallito la commessa viene visitata e l''emit riprende i propri documenti. Trattenuta da un ALTRO lotto in gioco → la commessa non si visita (niente pull a vuoto registrato come lavorato). p_emit_batch_id NULL = chiamante fuori pipeline = nessuna auto-esclusione, comportamento precedente. ⛔ Il pull DEVE passarlo: senza, scarta i propri documenti in silenzio — il backend fa il guard su lock_batch_id PRIMA di chiamare questa funzione.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

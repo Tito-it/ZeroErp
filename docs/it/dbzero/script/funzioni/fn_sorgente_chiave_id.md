@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sorgente_chiave_id(p_sorgente_uid text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_sorgente_chiave_id(p_sorgente_uid text)
  RETURNS bigint
@@ -35,6 +37,8 @@ $function$
 COMMENT ON FUNCTION script.fn_sorgente_chiave_id(p_sorgente_uid text)
 IS 'Building block della sorgente polimorfa (20261005-24), gemella di script.fn_sorgente_chiave_uuid per i tipi a key_selector = id: la chiave testuale nel suo tipo bigint, per cercarla su script.vw_stato_sorgente.sorgente_chiave_id. NULL se il testo non e'' un intero in forma CANONICA (identica a bigint::text: niente zeri davanti, spazi, segno). Mai un errore. Stesse ragioni della gemella. Consumatori: pratiche.fn_stato_sorgente, script.vw_pratica_doc_sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

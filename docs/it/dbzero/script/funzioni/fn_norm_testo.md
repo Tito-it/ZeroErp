@@ -7,6 +7,8 @@ CREATE FUNCTION fn_norm_testo(p_txt text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_norm_testo(p_txt text)
  RETURNS text
@@ -28,6 +30,8 @@ AS $function$
 
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

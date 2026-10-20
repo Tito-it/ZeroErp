@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_contratti_set_categoria_cliente_snapshot()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_set_categoria_cliente_snapshot()
  RETURNS trigger
@@ -59,6 +61,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_contratti_set_categoria_cliente_snapshot()
 IS 'Auto-populate categoria_cliente_id_snapshot da BA su INSERT. In UPDATE: modifica ammessa solo in stato DRAFT; fuori da DRAFT il valore e'' congelato (immutabile).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

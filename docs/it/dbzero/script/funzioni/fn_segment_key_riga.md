@@ -6,6 +6,8 @@ CREATE FUNCTION fn_segment_key_riga(p_segment_key character varying)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_segment_key_riga(p_segment_key character varying)
  RETURNS bigint
@@ -25,6 +27,8 @@ $function$
 COMMENT ON FUNCTION script.fn_segment_key_riga(p_segment_key character varying)
 IS 'La riga del documento da cui viene una riga di commessa, letta dalla chiave (:R:<riga>); NULL se la chiave non ne ha. LANGUAGE sql IMMUTABLE senza SET: si espande in linea. Brief: brief-db-grammatica-unica-documenti §13.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

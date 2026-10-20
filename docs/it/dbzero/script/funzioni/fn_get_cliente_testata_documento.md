@@ -6,6 +6,8 @@ CREATE FUNCTION fn_get_cliente_testata_documento(p_documento character varying, 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_cliente_testata_documento(p_documento character varying, p_testata_id bigint)
  RETURNS TABLE(soggetto_ruolo_id bigint, istanza_utility_id bigint)
@@ -95,6 +97,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_cliente_testata_documento(p_documento character varying, p_testata_id bigint)
 IS 'Lettore SECURITY DEFINER del cliente di un documento, l''ancora dei suoi indirizzi: (soggetto_ruolo_id, istanza_utility_id). DDT: destinatario e istanza del BA (NULL senza BA). ORDINE: soggetto_ruolo_id e istanza del BA. PREVENTIVO, OFFERTA, CONTRATTO: ruolo del BA e istanza nativa. FATTURA: ruolo e istanza del BA, come vendite.fn_snapshot_indirizzi_fattura. Col BA colonna nativa e BA coincidono per costruzione (fk_*_ba_cliente, fk_*_ba_coppia). E'' la stessa ancora che il backend leggeva da solo (get_ancora_indirizzi_documento). ⛔ SECURITY DEFINER come script.fn_get_stato_testata_documento: testate e billing_account hanno la RLS, e un guard che leggesse sotto RLS non distinguerebbe «non c''e''» da «non la vedo». Zero righe = testata assente. Selettore ignoto: E_DOC_TIPO_NON_GESTITO (TECNICO). Chiamanti: vendite.trgfn_doc_indirizzi_guard_cliente, vendite.fn_doc_indirizzo_default, vendite.trgfn_doc_indirizzi_seguono_cliente, script.fn_check_indirizzi_documento_cliente. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§7.2 c). ⭐ rev 2026-10-19 (20261019-42, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

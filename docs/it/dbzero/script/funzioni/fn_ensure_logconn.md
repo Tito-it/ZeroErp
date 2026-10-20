@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ensure_logconn()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_ensure_logconn()
  RETURNS void
@@ -43,6 +45,8 @@ COMMENT ON FUNCTION script.fn_ensure_logconn()
 IS 'Verifica che la connessione dblink logconn sia attiva. 
       Se non lo è, la crea usando la GUC dblink.log_connection.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

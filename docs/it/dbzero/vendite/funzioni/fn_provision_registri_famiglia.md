@@ -7,6 +7,8 @@ CREATE FUNCTION fn_provision_registri_famiglia(p_famiglia_documento character va
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_provision_registri_famiglia(p_famiglia_documento character varying)
  RETURNS integer
@@ -49,6 +51,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_provision_registri_famiglia(p_famiglia_documento character varying)
 IS 'Da a UNA famiglia di documento il suo registro di numerazione su tutti gli emittenti fiscali che ancora non ce l''hanno, e torna quanti ne ha creati. ⛔ E'' la gemella che mancava: il provisioning esisteva solo per emittente (trigger su anagrafiche.emittenti_fiscali), quindi una famiglia nuova nasceva senza registri e i suoi documenti non si numeravano — il fail-closed di fn_get_registro_documento lo dice, ma al primo documento, non alla creazione. La chiama la madre vendite.fn_crea_famiglia_documento. ⭐ INVOLUCRO SOTTILE: la regola sta nella primitiva vendite.fn_provision_registri, qui c''e'' solo il filtro. ⚠️ Una famiglia NON ATTIVA non provisiona niente, e il filtro sta nella primitiva: una famiglia spenta non deve far nascere registri. ⚠️ A differenza della gemella per emittente, un parametro NULL qui SOLLEVA: nessun trigger la chiama a tappeto, ci arriva chi ha deciso di provisionare una famiglia precisa, e un NULL li'' e'' un chiamante rotto. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.6 (DB-4).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

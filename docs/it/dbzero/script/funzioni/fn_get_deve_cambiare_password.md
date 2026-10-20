@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_deve_cambiare_password(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_deve_cambiare_password(p_auth_user_id integer)
  RETURNS boolean
@@ -40,6 +42,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_deve_cambiare_password(p_auth_user_id integer)
 IS 'Cambio password obbligatorio della CREDENZIALE (D-7: la password e'' una). La riga di config.credenziali nasce alla prima scrittura e la sua assenza vale false: questa e'' la sola sede di quel default (regola del 2), e la chiamano script.fn_get_user_profile, script.fn_get_operatore_detail e il backend. Parametro: django.auth_user.id (integer esplicito, niente %TYPE su Django); NULL o <= 0 -> E_AUTH_CHIAMATA_NON_VALIDA. INVOKER, STABLE. Brief: brief-db-blocco-login-per-credenziale §3.4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

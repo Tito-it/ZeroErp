@@ -7,6 +7,8 @@ CREATE FUNCTION fn_approva_commessa_attivita(p_commessa_id bigint, p_righe_ids b
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_approva_commessa_attivita(p_commessa_id bigint, p_righe_ids bigint[] DEFAULT NULL::bigint[], p_user text DEFAULT NULL::text)
  RETURNS integer
@@ -46,6 +48,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_approva_commessa_attivita(p_commessa_id bigint, p_righe_ids bigint[], p_user text)
 IS 'Approva righe commessa (stato_approvazione BOZZA->APPROVATA, solo NON_EMESSA). p_righe_ids NULL = tutte. Idempotente. Prerequisito di riga per emissione e per testata ->PRONTA_FATTURAZIONE. rev 2026-06-07.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

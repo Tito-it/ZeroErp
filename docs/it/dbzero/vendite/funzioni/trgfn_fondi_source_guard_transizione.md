@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fondi_source_guard_transizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fondi_source_guard_transizione()
  RETURNS trigger
@@ -101,6 +103,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fondi_source_guard_transizione()
 IS 'Matrice degli stati del fondo fattura, dalla NASCITA in poi. Nascita: DISPONIBILE (giro automatico) o ASSEGNATO (riporto di pagamenti.fn_conferma_sistemazione); ESEGUITO e ANNULLATO alla nascita sono rifiutati. Transizioni: DISPONIBILE -> ASSEGNATO|ANNULLATO, ASSEGNATO -> DISPONIBILE|ANNULLATO|ESEGUITO, ANNULLATO e ESEGUITO terminali. ⭐ rev 2026-08-31 (D-22 di brief-db-fondo-fattura-ricalcolo-e-governo §9.2-c): il guard era montato SOLO in UPDATE e chk_fondi_source_stato ammette tutti e quattro i valori, quindi l''unico presidio sullo stato di nascita era la buona volonta'' di chi faceva l''INSERT — un atto poteva nascere gia'' terminale, cioe'' un record che non e'' mai stato vero. ⚠️ Il ramo INSERT e'' separato e sta in testa: su un INSERT OLD non esiste e il confronto delle transizioni darebbe NULL, facendo cadere ogni INSERT nell''ELSE. ⭐ ASSEGNATO alla nascita e'' un percorso VIVO e non una concessione: il riporto nomina gia'' la fattura di destinazione, e farlo nascere DISPONIBILE sarebbe un credito che aspetta una decisione gia'' presa. ⭐ rev 2026-08-21 (cantiere incassi, lotto 3, passo S1-15): il quarto stato ESEGUITO entra nella matrice. Nasce perche'' ANNULLATO portava TRE significati — non si deve fare piu'', non si e'' piu'' capienti, e'' gia'' stato eseguito — e il terzo produceva un record autocontraddittorio (ANNULLATO con fattura_figlia_id ancora valorizzato). ⚠️ ESEGUITO e'' TERMINALE perche'' descrive un fatto avvenuto: il trasferimento e'' stato registrato in contabilita'', e uscire da li'' non lo annullerebbe — lo renderebbe invisibile all''atto che l''ha prodotto, cioe'' il doppio conteggio che il lotto 3 chiude. Un fondo eseguito sbagliato non si corregge tornando indietro: si compie un atto NUOVO, ed e'' la ragione per cui i rimborsi sono un processo (pagamenti.sistemazioni) e non un UPDATE. ⚠️ ASSEGNATO -> DISPONIBILE resta ammessa ma dal changeSet 20260821-54 NON la percorre piu'' nessuno: fn_reset_fondi_fattura cancella l''atto non eseguito invece di riaprirlo. Guard e non lookup di transizioni: sono quattro valori interni senza etichette ne'' azioni di UI. D11 del brief incassi; D-7 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2 e'' SUPERATA in due riprese (diceva «tre stati e non quattro», e non descriveva la nascita).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

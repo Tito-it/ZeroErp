@@ -7,6 +7,8 @@ CREATE PROCEDURE apply_fk_index_policy()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE dbops.apply_fk_index_policy()
  LANGUAGE plpgsql
@@ -82,6 +84,8 @@ $procedure$
 COMMENT ON PROCEDURE dbops.apply_fk_index_policy()
 IS 'Applica dbops.fk_index_policy: crea o rimuove gli indici sulle foreign key secondo il flag consentito. Dal 2026-07-27 con due guardie. (1) Con consentito=true crea SOLO se la FK figura ancora in dbops.vw_fk_senza_indice: una FK gia'' servita da una UNIQUE piu'' larga o da un parziale "IS NOT NULL" non riceve un indice dedicato nemmeno se il flag e'' true, cosi'' un true rimesso per errore non puo'' rigenerare le ridondanze bonificate. (2) Con consentito=false RIFIUTA il DROP, con RAISE WARNING, se il nome estratto dal comando appartiene a un UNIQUE, a una PK, a un indice a supporto di un constraint o alla REPLICA IDENTITY: un flag non deve poter togliere un vincolo di integrita''. Si sceglie il warning e non l''eccezione perche'' la procedura gira runAlways in 90_end e nel job settimanale, e un errore bloccherebbe ogni migrate. Emette a fine ciclo un RAISE NOTICE con creati / saltati / droppati / rifiutati.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

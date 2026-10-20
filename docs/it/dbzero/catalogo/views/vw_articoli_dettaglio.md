@@ -5,6 +5,8 @@
 >
 > Vista della lista (ui.lista_definizione 26) e del drawer articolo: catalogo.articoli + decodifiche (uom, tipologia, gruppo, spesa, iva, tipologia listino, natura di vendita) + capability BoM. Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli non ha RLS e la vista non attraversa tabelle protette (presidio sul merito: db/pgtap/rls/test-rls-viste-security-invoker.sql). ⭐ rev 2026-09-18 (P-1, brief-db-magazzino-lotto-2-motore sezione 4.9): + requires_lotto in coda — la primitiva di magazzino pretende il lotto quando e' vero (passo 6), e l'operatore deve poterlo vedere e impostare; SENZA lock BoM (Lotto 1 sezione 4.3: il lotto non entra nella distinta), quindi ne' fra i non_editable_fields del BE ne' disabilitato nel drawer. rev 2026-09-13 (P-6, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + modo_approvvigionamento_id, modo_approvvigionamento_codice_interno, modo_approvvigionamento_descrizione, gestito_a_magazzino, lead_time_giorni, in coda (CREATE OR REPLACE VIEW puo' solo appendere). La decodifica e' sulla forma di natura_vendita_*: codice_interno per la logica, descrizione a video; NON `_codice`, che mentirebbe sulla sorgente (linee-guida-sql 6c). ⚠️ catalogo_repository proietta ARTICOLI_DETAIL_COLUMNS per nome: una colonna nuova non esce finche' il BE non la nomina.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW catalogo.vw_articoli_dettaglio AS
 SELECT a.id,
@@ -79,6 +81,8 @@ SELECT a.id,
      LEFT JOIN config.nature_vendita nv ON ((nv.id = a.natura_vendita_id)))
      LEFT JOIN config.modi_approvvigionamento ma ON ((ma.id = a.modo_approvvigionamento_id)));
 ```
+
+</div>
 
 
 ---

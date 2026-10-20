@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_ba_gestore_globale_storia(p_emittente_sr_prima bigint, 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_ba_gestore_globale_storia(p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
  RETURNS void
@@ -70,6 +72,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_guard_ba_gestore_globale_storia(p_emittente_sr_prima bigint, p_emittente_sr_dopo bigint)
 IS 'Guard fail-fast per lo spostamento del GESTORE GLOBALE (la riga di anagrafiche.emittenti_fiscali_billing_account con billing_account_id IS NULL e is_default = true), l''unica operazione del cantiere con RAGGIO N: quella riga decide l''emittente di TUTTI i billing account che non hanno un mapping specifico, quindi cambiarla li sposta in blocco e puo'' ri-attribuire retroattivamente l''emittente di un numero arbitrario di documenti gia'' emessi. E'' il gemello esatto di anagrafiche.fn_guard_albero_ba_gestore_globale, che lo stesso movimento lo presidia gia'' per l''omogeneita'' dell''albero. ⭐ Un SEMI-JOIN e non un ciclo, e la differenza col gemello e'' motivata: a quello serve visitare ogni BA perche'' deve dire QUALE coppia e'' mista, qui la domanda e'' «esiste storia» e la risposta non cambia dopo il primo che la trova. Si cerca il primo (ORDER BY ba.id + LIMIT 1, deterministico — un LIMIT 1 senza ORDER BY deciderebbe a caso quale cliente compare nell''errore) e si delega ad anagrafiche.fn_guard_ba_cambio_emittente, che compone il messaggio nominando un cliente vero invece di dire «da qualche parte»: una implementazione, due superfici. ⭐ Esce subito se l''emittente non cambia davvero. ⚠️ SECURITY DEFINER: il semi-join legge billing_account, fatture e commesse, che hanno tutte la RLS. ⚠️ In pratica questo cancello chiude quasi sempre, ed e'' corretto: spostare il gestore globale su un''installazione che ha gia'' fatturato non e'' una configurazione, e'' una riscrittura della storia. Piano: brief-db-billing-account-cambio-emittente, M2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -36,7 +36,13 @@ specifici di fatturazione per **emittente fiscale** e **utility**:
   * valida con `script.fn_guard_utility_tipo_ruolo(...)`;
   * semantica fail-open se la matrice `config.utilities_tipi_ruolo` non e configurata per la utility.
 * La tabella e` **opzionale**: si popola solo quando servono parametri dedicati
-  per una specifica coppia **(emittente, utility)**.
+  per una specifica coppia **(emittente, utility)**. Senza la riga valgono i parametri di
+  sistema dell'utility (`config.utilities`) e, per il solo metodo, la policy generale
+  dell'emittente (`emittenti_fiscali.rounding_policy`). Senza la riga non c'e` fattura minima.
+* I parametri **effettivi** non si leggono da qui: li dice
+  [anagrafiche.fn_parametri_importo_utility](/dbzero/anagrafiche/funzioni/fn_parametri_importo_utility),
+  che mette insieme i tre livelli. La leggono il ricalcolo dei totali della fattura e il lookup
+  delle utility di un BA (rev 21-10-2026, brief-db-modelli-documento-standard §10.3 K-7).
 
 ---
 

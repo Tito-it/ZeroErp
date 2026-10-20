@@ -6,6 +6,8 @@ CREATE FUNCTION fn_riattiva_utente_tecnico(p_processo_codice text, p_emittente_c
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_riattiva_utente_tecnico(p_processo_codice text, p_emittente_codice character varying)
  RETURNS integer
@@ -124,6 +126,8 @@ $function$
 COMMENT ON FUNCTION script.fn_riattiva_utente_tecnico(p_processo_codice text, p_emittente_codice character varying)
 IS 'Riaccende un utente tecnico che ESISTE ed e'' spento, per la coppia (processo, emittente): il legame in dbops.processi_identita, l''identita'' in anagrafiche.identita_digitali e l''utente in django.auth_user. Ritorna l''auth_user_id. ⭐ Esiste perche'' lo username degli utenti tecnici e'' deterministico (processo@emittente) e il suo UNIQUE non ha condizioni: disattivare il legame non libera lo username, quindi la fabbrica non puo'' rifare l''utente — e senza questo verbo la strada di sostituzione documentata resta chiusa. ⛔ NON ricostruisce niente: non crea soggetti, non tocca il perimetro, non assegna profili. Se manca un pezzo la coppia non e'' «da riattivare», e'' rotta. ⛔ E il perimetro NON si sposta: config.user_emittenti_fiscali e'' 1-a-1 con emittente immutabile, quindi se l''utente aveva un''altra azienda la funzione si ferma invece di riaccenderlo — riaccenderlo lo farebbe lavorare per l''azienda sbagliata. Compagna di script.fn_crea_utente_tecnico: quella CREA cio'' che non c''e'', questa RIACCENDE cio'' che c''e''. Brief: brief-db-processi-automatici-residui-be, DB-6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

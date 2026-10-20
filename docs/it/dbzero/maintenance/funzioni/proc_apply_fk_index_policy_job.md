@@ -7,6 +7,8 @@ CREATE PROCEDURE proc_apply_fk_index_policy_job(IN p_populate boolean)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_apply_fk_index_policy_job(IN p_populate boolean DEFAULT false)
  LANGUAGE plpgsql
@@ -31,6 +33,8 @@ $procedure$
 COMMENT ON PROCEDURE maintenance.proc_apply_fk_index_policy_job(IN p_populate boolean)
 IS 'Job wrapper per chiamare apply_fk_index_policy con logging e lock.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

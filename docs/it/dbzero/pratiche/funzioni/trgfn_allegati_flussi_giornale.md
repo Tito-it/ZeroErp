@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_allegati_flussi_giornale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_allegati_flussi_giornale()
  RETURNS trigger
@@ -51,6 +53,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_allegati_flussi_giornale()
 IS 'AFTER INSERT su allegati_flussi: logga ALLEGATO_AGGIUNTO nel giornale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

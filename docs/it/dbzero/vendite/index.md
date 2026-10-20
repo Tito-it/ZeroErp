@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `vendite`
 
 ## 📚 Tabelle
@@ -253,6 +258,7 @@
 - [fn_ordine_riga_componenti_preview](funzioni/fn_ordine_riga_componenti_preview.md)
 - [fn_ordine_riga_qta_riconsegna](funzioni/fn_ordine_riga_qta_riconsegna.md) — (rev 2026-07-26)
 - [fn_ordine_riga_spedita](funzioni/fn_ordine_riga_spedita.md)
+- [fn_parametri_importo_riga](funzioni/fn_parametri_importo_riga.md)
 - [fn_partite_merce](funzioni/fn_partite_merce.md) — (latest review 2026-09-21)
 - [fn_popola_fatture_rettifiche](funzioni/fn_popola_fatture_rettifiche.md) — (rev 2026-08-18)
 - [fn_posta_ddt](funzioni/fn_posta_ddt.md)

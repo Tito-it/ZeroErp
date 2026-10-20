@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sorgenti_orfane()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_sorgenti_orfane()
  RETURNS TABLE(tabella regclass, riga_id bigint, sorgente_tipo_id bigint, sorgente_codice_interno character varying, sorgente_riga bigint, sorgente_uid text, target_table regclass)
@@ -72,6 +74,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_sorgenti_orfane()
 IS 'Le righe la cui SORGENTE (sorgente_tipo_id + sorgente_riga | sorgente_uid) punta a un record di config.sorgenti.target_table che non esiste piu'' (D-9, aggancio 8-quater). Perimetro derivato dal vincolo (fn_sorgenti_orfane_perimetro: FK verso config.sorgenti + le due colonne di chiave), anti-join dinamico per tabella e per tipo sulla chiave che key_selector dichiara (id | uid). Il guard tipizzato del Lotto 1 impedisce di inserire un orfano; qui si trovano quelli creati dopo, cancellando il bersaglio — la FK non c''e'' e non puo'' esserci. SECURITY DEFINER del PROPRIETARIO, non di un superuser (attraversa la RLS), STABLE. Letta da dbops.vw_sorgenti_orfane, che deve restare vuota. ⚠️ rev 18-09 (20260918-27): il ciclo interno legge tre scalari con %TYPE su config.sorgenti e non un record — un record riempito da SQL dinamico ha tupla indeterminata per plpgsql_check, e il presidio dei riferimenti morti (test-riferimenti-morti-v1) lo riferiva REALE (55000 sul RETURN QUERY). Chi tocca questa funzione tenga la forma: la regola vale per ogni FOR ... IN EXECUTE. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.7.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

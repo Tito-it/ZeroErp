@@ -20,7 +20,7 @@
 --   1) la funzione esiste con la firma dichiarata
 --   2) la testata esiste davvero, e porta il registro e il BA tornati
 --   3) il registro e' dell'azienda di chi agisce
---   4) la coppia (emittente, utility) risulta configurata
+--   4) la coppia (emittente, utility) NON e' scritta: valgono i parametri di sistema (R-4)
 --   5) stato: quello chiesto alla nascita (EMESSA, non il default)
 --   6) terzo parametro: stesso cliente, stesso registro, testata NUOVA
 --   7) senza terzo parametro: cliente nuovo, stessa azienda
@@ -85,15 +85,18 @@ SELECT is(
 );
 
 -- ============================================================
--- 4) La coppia (emittente, utility) e' configurata
+-- 4) La coppia (emittente, utility) non si scrive piu'
 -- ============================================================
-SELECT ok(
-    EXISTS (SELECT 1
-              FROM anagrafiche.emittenti_fiscali_utilities efu, t_f1
-             WHERE efu.emittente_soggetto_ruolo_id = t_f1.emittente_soggetto_ruolo_id
-               AND efu.utility_id = t_f1.utility_id
-               AND efu.attivo),
-    'la coppia (emittente, utility) risulta configurata: senza, la testata non sarebbe scrivibile'
+-- ⚠️ Rovesciato il 2026-10-21 (20261021-17, brief-db-modelli-documento-standard
+--   §10.7 R-4): l'helper non scrive piu' la riga, perche' la testata non la
+--   pretende piu'. La fattura del mondo e' quella di un emittente nuovo: i
+--   parametri d'importo sono quelli di sistema dell'utility.
+SELECT is(
+    (SELECT row(p.personalizzata, p.arrotondamento_importi_dec IS NOT NULL)::text
+       FROM t_f1, anagrafiche.fn_parametri_importo_utility(
+                    t_f1.emittente_soggetto_ruolo_id, t_f1.utility_id) p),
+    row(false, true)::text,
+    'la coppia (emittente, utility) non e'' scritta: la fattura usa i parametri di sistema'
 );
 
 -- ============================================================

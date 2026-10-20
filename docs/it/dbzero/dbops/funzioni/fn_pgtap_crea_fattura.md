@@ -7,14 +7,16 @@ CREATE FUNCTION fn_pgtap_crea_fattura(p_etichetta text, p_stato_codice_interno c
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_fattura(p_etichetta text DEFAULT 'pgTAP'::text, p_stato_codice_interno character varying DEFAULT 'DRAFT'::character varying, p_billing_account_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(fattura_id bigint, registro_id bigint, emittente_fiscale_id bigint, emittente_soggetto_ruolo_id bigint, auth_user_id integer, billing_account_id bigint, istanza_utility_id bigint, cliente_soggetto_ruolo_id bigint, utility_id integer, tipo_doc_fiscale_id bigint, stato_doc_fiscale_id bigint, valuta_id integer)
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: dare a una fixture pgTAP una FATTURA del mondo in una
---   chiamata — azienda, operatore, cliente, configurazione della
---   coppia (emittente, utility), registro coerente e testata —
+--   chiamata — azienda, operatore, cliente, registro coerente e
+--   testata —
 --   con l'ordine obbligato dentro l'oggetto invece che nel file.
 -- Uso:
 --   CREATE TEMP TABLE tmp_f AS
@@ -72,17 +74,12 @@ BEGIN
          WHERE ba.id = p_billing_account_id;
     END IF;
 
-    -- 2. La coppia (emittente, utility): una testata fiscale la
-    --    pretende. Si scrive una volta sola — la seconda fattura
-    --    dello stesso mondo la trova gia' fatta.
-    INSERT INTO anagrafiche.emittenti_fiscali_utilities
-        (emittente_soggetto_ruolo_id, utility_id,
-         arrotondamento_importi_dec, metodo_arrotondamento_importi, attivo)
-    SELECT v_ef_sr_id, v_utility, 2, 'HALF_UP', TRUE
-     WHERE NOT EXISTS (
-        SELECT 1 FROM anagrafiche.emittenti_fiscali_utilities efu
-         WHERE efu.emittente_soggetto_ruolo_id = v_ef_sr_id
-           AND efu.utility_id = v_utility);
+    -- 2. La coppia (emittente, utility) NON si scrive piu' (rev
+    --    20261021-17, brief-db-modelli-documento-standard §10.7 R-4):
+    --    senza la riga valgono i parametri di sistema dell'utility
+    --    (anagrafiche.fn_parametri_importo_utility), e una testata
+    --    fiscale non la pretende piu'. Scriverla nascondeva ai test
+    --    proprio il caso dell'emittente nuovo.
 
     -- 3. Il catalogo si SCEGLIE, e ogni scelta ha il suo ORDER BY.
     SELECT t.id INTO v_tipo_id
@@ -126,8 +123,10 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_fattura(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint)
-IS 'Fixture pgTAP: una FATTURA del mondo in una chiamata — azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente), la coppia (emittente, utility) configurata, il registro coerente con l''emittente di chi agisce (script.fn_pgtap_registro_fattura) e la testata nello stato scelto. ⭐ Esiste per la CATENA D''ORDINE: cliente legato a chi agisce, coppia configurata, registro dell''azienda giusta, valuta risolvibile — quattro anelli che su un database ricostruito non esistono e che ogni file riscriveva a mano. ⚠️ Terzo parametro: un billing account gia'' costruito, per la SECONDA fattura dello stesso cliente; viene verificato, e un BA di un''altra azienda solleva. ⛔ NON scrive righe, scadenze, contabili ne'' movimenti: sono il caso del test. ⛔ E non cambia stato: quello si sceglie alla nascita, perche'' vendite.fatture ha un guard di transizione. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2.';
+IS 'Fixture pgTAP: una FATTURA del mondo in una chiamata — azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente), il registro coerente con l''emittente di chi agisce (script.fn_pgtap_registro_fattura) e la testata nello stato scelto. ⭐ Esiste per la CATENA D''ORDINE: cliente legato a chi agisce, registro dell''azienda giusta, valuta risolvibile — tre anelli che su un database ricostruito non esistono e che ogni file riscriveva a mano. ⚠️ Terzo parametro: un billing account gia'' costruito, per la SECONDA fattura dello stesso cliente; viene verificato, e un BA di un''altra azienda solleva. ⛔ NON scrive righe, scadenze, contabili ne'' movimenti: sono il caso del test. ⛔ E non cambia stato: quello si sceglie alla nascita, perche'' vendite.fatture ha un guard di transizione. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2. Rev 2026-10-21 (20261021-17, brief-db-modelli-documento-standard §10.7 R-4): la coppia (emittente, utility) non si scrive piu'': senza la riga valgono i parametri di sistema dell''utility, e la fattura del mondo e'' quella di un emittente nuovo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_indirizzo_by_soggetto(p_soggetto_id uuid, p_tipo_codice c
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzo_by_soggetto(p_soggetto_id uuid, p_tipo_codice character varying)
  RETURNS SETOF anagrafiche.vw_indirizzi_resolved_soggetto
@@ -82,6 +84,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_indirizzo_by_soggetto(p_soggetto_id uuid, p_tipo_codice character varying)
 IS 'Restituisce l''indirizzo di un soggetto per tipo richiesto, con fallback configurato in tipi_soggetto_dettaglio_tipi_indirizzo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

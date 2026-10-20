@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_doc_fornitura_guard_coppia()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_doc_fornitura_guard_coppia()
  RETURNS trigger
@@ -84,6 +86,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_doc_fornitura_guard_coppia()
 IS 'Guard BB BEFORE INSERT OR UPDATE OF istanza_utility_id, utility_id, <colonna verso la testata> sulle schede di fornitura (vendite.contratti_utilities, vendite.offerte_commerciali_utilities), TG_ARGV[0] = documento (CONTRATTO | OFFERTA, vendite.fn_doc_fornitura_sede). La coppia (istanza, utility) della scheda e'' quella della testata, altrimenti E_DOC_FORNITURA_FUORI_TESTATA (TECNICO: la coppia la deriva dalla testata chi scrive, non la sceglie una persona). Testata assente o fuori dalla RLS di chi scrive: passa, parlano la FK e la policy della scheda. Un guard e non una FK composta con ON UPDATE CASCADE (D-6 di Tid, 2026-10-12): la cascata cambierebbe la coppia della scheda prima che vendite.trgfn_doc_fornitura_segue_cliente la rifaccia, e il guard tipo/classe del contratto giudicherebbe la classe vecchia contro la utility nuova. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

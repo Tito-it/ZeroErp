@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_indirizzi_guard_forma_libera()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_guard_forma_libera()
  RETURNS trigger
@@ -166,6 +168,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_guard_forma_libera()
 IS 'Guard (2026-10-18) della forma dell''indirizzo libero, un corpo per anagrafiche.indirizzi e indirizzi_soggetti, in fascia z10: dopo il normalize, che scrive lo stato proposto e porta a NULL i testi vuoti. Testo e stato sempre; poi la forma la decide lo stato (config.stati.catalogo_comuni_completo): catalogo = comune e CAP del catalogo, coerenti fra loro e con lo stato, senza localita'', codice postale libero e regione (la sotto-localita'' e'' ammessa); estera = la localita'', il resto facoltativo, senza comune e CAP. Uno stato senza catalogo completo accetta anche la forma del catalogo se il chiamante sceglie comune o CAP. Rifiuti DATO_ERRATO col nome della colonna in contesto campo: E_INDIRIZZO_LIBERO_INCOMPLETO (il primo campo che manca), E_INDIRIZZO_CAMPO_ALTRA_FORMA, E_INDIRIZZO_COMUNE_ALTRO_STATO (anche a catena del catalogo interrotta), E_INDIRIZZO_CAP_ALTRO_COMUNE. Indirizzo normalizzato, o UPDATE che non tocca le colonne dell''indirizzo: esce (le righe di prima restano valide finche'' non si toccano). Il CHECK chk_*_free_requirements resta la rete; le madri non ripetono la completezza. Richiesta BE in brief-db-processi-accensione-per-ambiente §6.11, D-2 e D-3 di Tid.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

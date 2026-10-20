@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_articoli_componenti_guard_componente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_componenti_guard_componente()
  RETURNS trigger
@@ -49,6 +51,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_guard_componente()
 IS 'Guard BEFORE INSERT OR UPDATE OF componente_id, prodotto_id, attivo su catalogo.articoli_componenti (Lotto 3c di brief-db-articoli-ammessi-per-documento, 2026-10-13): solleva il primo motivo di script.fn_check_articolo_riga per il componente (documento ARTICOLO, padre = prodotto_id): componente uguale al padre (E_BOM_COMPONENTE_PADRE), composito (E_BOM_COMPONENTE_COMPOSITO, D-4), IVA diversa dal padre (E_BOM_IVA_DISCORDANTE). Giudica un legame attivo quando nasce, quando si attiva e quando cambia componente o padre; un legame spento no. Guard suo perche'' qui articolo e padre sono componente_id e prodotto_id (uuid), non articolo_id e un id di documento; la regola resta una, nella check. Sostituisce catalogo.trgfn_articoli_componenti_guard_un_livello e catalogo.trgfn_articoli_componenti_guard_iva (ritirati da 20261013-61).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

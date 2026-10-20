@@ -11,6 +11,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_punti_canale_campo
 WITH (security_invoker=true) AS
@@ -240,6 +242,8 @@ UNION ALL
            FROM motivo m
           WHERE ((m.funzione = l.funzione) AND (m.codice = l.codice))))));
 ```
+
+</div>
 
 
 ---

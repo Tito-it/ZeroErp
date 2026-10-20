@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_user_profile(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
  RETURNS jsonb
@@ -350,6 +352,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
 IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti). La chiave emittente.emittente_descrizione porta la ragione_sociale_completa del soggetto emittente (Fase 1 cantiere emittente 2026-08-02: prima leggeva emittenti_fiscali.descrizione nuda, cioe'' l''etichetta interna). La chiave deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password, non piu'' dall''identita OPERATORE. ⭐ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): la veste OPERATORE e'' quella di riferimento della credenziale (script.fn_veste_di_riferimento: l''accesa, o la spenta piu'' recente), non una qualunque; spenta si legge solo da attivo (E_UTENTE_DISABILITATO), DISABILITATO non esiste piu'' nella tabella viva. Il segnaposto di E_UTENTE_DISABILITATO e'' lo username. Rev 2026-10-07 (brief-db-veste-utilizzabile, D-4): un solo guard, «la veste OPERATORE e'' utilizzabile oggi» (script.fn_veste_utilizzabile: veste accesa e nelle sue date, soggetto attivo, rapporto attivo e nelle sue date), con un solo codice, E_UTENTE_DISABILITATO; i due codici delle date sono ritirati. La risorsa umana mancante resta E_ADMIN_VALIDAZIONE e viene prima.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

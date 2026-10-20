@@ -5,6 +5,8 @@
 >
 > Indici DUPLICATI ESATTI negli schemi in dbops.automation_scope. Raggruppa per firma normalizzata (pg_get_indexdef senza nome, senza WITH(...) e senza TABLESPACE): due indici nello stesso gruppo sono intercambiabili, quindi tutti tranne uno sono eliminabili. Prima del 2026-07-27 raggruppava per sole colonne e produceva 16 falsi positivi su 19 (GIN trgm contro btree, UNIQUE parziali disgiunte, colonne-espressione scartate). Il flag UNIQUE NON e' nella chiave di raggruppamento ma nel criterio di ordinamento: un btree non-unique identico a un UNIQUE e' ridondante e deve restare visibile. Usare indice_da_tenere / indici_da_droppare. NON copre la ridondanza per prefisso: per quella vedere dbops.vw_indici_ridondanti_prefisso.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_duplicate_indexes AS
 WITH idx AS (
@@ -41,6 +43,8 @@ WITH idx AS (
  HAVING (count(*) > 1)
   ORDER BY schema_name, table_name;
 ```
+
+</div>
 
 
 ---

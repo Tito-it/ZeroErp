@@ -7,6 +7,8 @@ CREATE FUNCTION fn_posta_riga_tardiva(p_riga_id bigint, p_fattura_id bigint, p_b
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.fn_posta_riga_tardiva(p_riga_id bigint, p_fattura_id bigint, p_billing_account_id bigint, p_scadenza_id bigint DEFAULT NULL::bigint, p_forzata boolean DEFAULT false, p_motivo_forzatura text DEFAULT NULL::text)
  RETURNS TABLE(movimento_id bigint, riga_id bigint, importo numeric, esito text)
@@ -295,6 +297,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.fn_posta_riga_tardiva(p_riga_id bigint, p_fattura_id bigint, p_billing_account_id bigint, p_scadenza_id bigint, p_forzata boolean, p_motivo_forzatura text)
 IS 'LA REGISTRAZIONE TARDIVA PER RIGA (D20-b, 2026-09-18): una riga SOSPESA sotto una distinta REGISTRATA (finale E con data_conferma) si abbina — fattura, cliente, rata facoltativa, forzatura a due tempi — e si registra NELLO STESSO GESTO: movimento scritto, riga a POSTATA, distinta che resta CHIUSA senza toccare data_conferma / user_conferma (la conferma e'' l''atto della PRIMA registrazione; chi ha registrato tardi sta sull''audit del movimento). La quadratura del giorno resta intatta: la riga era gia'' contata. E'' la strada del «resto» di D3-a, che dalla chiusura automatica in poi non ne aveva: sotto una CHIUSA una sospesa poteva solo restare, o oscillare con SCARTATA. ⭐ Passa da ABBINATA, cosi'' girano TUTTI i guard dell''abbinamento normale — transizione (in matrice), dati, rata (coerenza rifiutata, capienza col doppio tempo: primo tentativo senza forzata -> E_RIGA_CONTABILE_CAPIENZA_SUPERATA, confirm_and_retry), scope — e alla quarta mossa del guard sulla distinta finale SI PRESENTA con la GUC transazionale app.registrazione_tardiva_riga_id = <id> (set_config is_local), che apre SOLO per quella riga; la porta si richiude in coda alla madre, non al COMMIT. Poi il movimento (origine POSTING_TARDIVO, data_registrazione e data_contabilizzazione = oggi, il resto dalla riga e dalla testata; fattura/cliente/distinta/rata derivati dalla riga dal mirror), poi POSTATA: tre statement separati con WHERE id = <id> (RLS: padre e figlio nella stessa snapshot non si vedono). ⛔ Nessun NULLA_DA_POSTARE: una tardiva su una riga che non si puo'' registrare e'' un RIFIUTO — E_RIGA_CONTABILE_TARDIVA_STATO (non attiva o non SOSPESA: da SCARTATA si passa prima da «Riprendi») ed E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA (annullata, chiusa senza registrazione, o ancora aperta: «usa il giro normale»). Riga non leggibile -> E_RIGA_CONTABILE_NON_TROVATA (404, no-leak). Guard di parametro TECNICO su E_PAGAMENTI_CHIAMATA_NON_VALIDA (riga e fattura obbligatorie; cliente NULL lo rifiuta il guard sui dati col campo); forzatura senza motivo ammessa (Q-8). Chi la chiama: SOLO il verbo BE POST /pagamenti/righe/{id}/registra/ (coda «Sospese» e drawer della distinta chiusa), stesso cancello della registrazione — mai un job: e'' una decisione di chi ha identificato il denaro. Perche'' non le alternative (brief §2.2): ricreare la riga in una distinta di recupero raddoppia l''euro; allentare la quarta mossa riapre il caso che chiude; SOSPESA -> POSTATA diretta salta la capienza. Brief: brief-db-validata-e-registrazione-tardiva §2.2, §4 P-5, §4.1; pgTAP test-posta-riga-tardiva-v1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

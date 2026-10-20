@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ddt_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_normalize()
  RETURNS trigger
@@ -121,6 +123,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ddt_normalize()
 IS 'Normalize DDT: anno/data; eredita billing/utility/valuta/emittente da ordine sorgente (ORDINE_VENDITA, per codice_interno) su INSERT; fallback emittente da billing_account (fn_get_emittente_fiscale_pk). rev 2026-07-10 (§15 emittente). rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): punto 2-bis, utility e destinatario sono copie del billing account. rev 2026-10-10 (stesso brief, §10.2 domanda 2, regola del 2): il cosa del 2-bis lo dice il BB script.fn_cliente_dal_billing_account — copie scritte se mancano, E_DOC_CLIENTE_DIVERSO_DA_BA se dissentono (prima il 23503 di fk_ddt_ba_cliente, che resta la rete sotto); il quando resta qui — INSERT, e UPDATE in bozza di BA, destinatario o utility, con la copia non toccata che segue il BA nuovo. Un BA tolto toglie la utility e lascia il destinatario.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

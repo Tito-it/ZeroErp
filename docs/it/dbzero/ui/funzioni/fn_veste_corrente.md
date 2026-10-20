@@ -7,6 +7,8 @@ CREATE FUNCTION fn_veste_corrente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION ui.fn_veste_corrente()
  RETURNS config.ruolo_applicativo
@@ -38,6 +40,8 @@ $function$
 COMMENT ON FUNCTION ui.fn_veste_corrente()
 IS 'Veste corrente della sessione per la configurazione delle schermate: legge la GUC app.ruolo_applicativo e la converte in config.ruolo_applicativo. NULL = tutte le vesti dell''utente, sia per GUC assente o vuota sia per un valore fuori dominio: mai eccezione. Estratta il 2026-09-23 dalle due copie identiche in fn_resolve_lista_config e fn_resolve_dashboard_config (regola del 2), terzo consumatore fn_lista_colonne_ricerca_full. ⚠️ Semantica di presentazione, non di permesso: le funzioni di script che decidono un accesso sono fail-closed sulla veste. Brief: brief-db-ricerca-full-colonne-permessi.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -266,9 +266,11 @@ CREATE TEMP TABLE tmp_dc_fattura AS
 WITH ins AS (
   INSERT INTO vendite.fatture (
     registro_id, data, tipo_doc_fiscale_id, stato_doc_fiscale_id,
-    emittente_soggetto_ruolo_id, billing_account_id, meta)
+    emittente_soggetto_ruolo_id, billing_account_id, utility_id, meta)
   SELECT r.registro_id, DATE '2080-03-15', r.tipo_doc_fiscale_id, r.stato_fiscale_id,
          r.ef_a_sr, r.billing_account_id,
+         -- utility dal BA, come la testata vera (R-3, 20261021-15)
+         (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE ba.id = r.billing_account_id),
          jsonb_build_object('test_scope','pgtap_dash_competenza')
     FROM tmp_dc_refs r
   RETURNING id)
