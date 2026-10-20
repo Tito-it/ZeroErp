@@ -2,8 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-19 (verifica della sessione BE)
 
-**Riparte: il BE, con la risoluzione a due livelli (§6, «Stato al 2026-10-19»); il lato DB è chiuso
-e committato.**
+**Riparte: il BE, con la risoluzione a due livelli (§6, «Stato al 2026-10-19»); il team DB, con la
+voce nuova del censimento (§2, Q-6 … Q-8: `emittenti_fiscali_utilities`). Tranche 1 e 2 sono chiuse
+e committate.**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -16,7 +17,8 @@ e committato.**
 | 7 | **team DB** | ✅ Tranche 2: il seed dei sei standard (`20261020-13` … `-18`), provato sullo scratch e su dbdev | §8.2 | 6 |
 | 8 | **Tid** | ✅ Apply della tranche 2, pgTAP verdi (2026-10-19) | §8.2 | 7 |
 | 9 | **BE/FE** | La risoluzione a due livelli e la lista Modelli documento (policy dei codici nuovi già rigenerate) | §6 | 5 |
-| 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard) | §7 | 8, 9 |
+| 9-bis | **team DB** | Censimento, voce «parametri d'importo per utility» (`emittenti_fiscali_utilities`): risposte a Q-6 … Q-8; DEVA non chiude una fattura | §2 | — |
+| 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard) | §7 | 8, 9, 9-bis |
 | 11 | **Tid** | Archiviazione in `work-done/` | — | 10 |
 
 **Decisioni aperte di Tid: nessuna.** Tranche 1 e tranche 2 committate (`560d5d97e`, PR #1899) e
@@ -61,6 +63,40 @@ censimento si fa sulla struttura (funzioni di risoluzione, FK, guard), non sulle
 emittente nasceva col registro delle fatture. ✅ Fatto il 2026-10-18 (`20261019-07` … `-12`, applicati su
 dbdev, pgTAP verdi): il registro delle fatture standard nasce con l'emittente, dallo stesso meccanismo che crea già
 i registri delle altre famiglie. Le altre voci del censimento restano da fare.
+
+➡️ **La voce «parametri d'importo per utility»: al team DB** (sessione BE, 2026-10-19, smoke
+`push-termine-documento-commessa`). Con il registro a posto, il giro arriva alla fattura e si ferma
+in `vendite.fn_ricalcola_totali_fattura` con `E_CONFIG_MANCANTE` «configurazione emittente/utility
+mancante». I fatti di struttura (doc `dbzero`):
+
+* `anagrafiche.emittenti_fiscali_utilities` porta, per la coppia (emittente, utility), i decimali
+  e il metodo dell'arrotondamento degli importi (`arrotondamento_importi_dec`,
+  `metodo_arrotondamento_importi`, entrambi `NOT NULL`) e le soglie del minimo
+  (`minimo_soglia_min`/`_max`, nullable). La chiave unica è `(emittente_soggetto_ruolo_id,
+  utility_id)`;
+* `fn_ricalcola_totali_fattura` la legge con una `SELECT … LIMIT 1` e, se non trova la riga
+  (`v_decimali IS NULL`), solleva `E_CONFIG_MANCANTE`: **senza la riga la fattura non si chiude**;
+* nessun meccanismo la crea alla nascita dell'emittente, né per le utility che l'emittente
+  esercita: si scrive solo dalla UI.
+
+⚠️ **E il modello la legge in due modi.** `anagrafiche.fn_lookup_utilities_per_ba` la prende in
+`LEFT JOIN`, con il commento «override parametri per emittente (politica ibrida)»: lì è un
+**override facoltativo**. `fn_ricalcola_totali_fattura` la tratta invece come **obbligatoria**.
+Le due letture non possono essere vere insieme, ed è la prima cosa da decidere.
+
+**Le domande al team DB:**
+
+* **Q-6.** La riga è un override facoltativo o una configurazione obbligatoria? Se è un override,
+  qual è il valore di sistema da cui si parte quando manca (decimali e metodo — la valuta
+  dell'emittente ha già la sua precisione?), e `fn_ricalcola_totali_fattura` deve ripiegare lì
+  invece di sollevare. Se è obbligatoria, chi la crea: nasce con l'emittente per ogni utility
+  ammessa al suo tipo di ruolo, o nasce quando l'emittente comincia a esercitare una utility?
+* **Q-7.** Le soglie del minimo restano dell'emittente, senza standard (sono una scelta
+  commerciale, come i listini al §7)? Oggi sono già nullable: va solo confermato che il NULL
+  significa «nessun minimo».
+* **Q-8.** C'è un pgTAP che costruisce un emittente nuovo e porta una fattura fino al ricalcolo
+  dei totali? È il presidio che avrebbe visto il buco prima dello smoke
+  (`dbops.fn_pgtap_crea_fattura` scrive la riga a mano, quindi non lo vede).
 
 C'è anche un secondo difetto, e riguarda come i modelli **evolvono**:
 
@@ -365,19 +401,20 @@ predefiniti e attivi, ognuno con la versione 1 `PUBBLICATA`.
 **Il BE, già fatto:** le policy dei sei codici nuovi sono rigenerate in `error_policies_generated.py`
 ed `error_messages_fallback.py`.
 
-**Il BE, da fare** (nessuno di questi punti è iniziato):
+**Il BE, da fare** (aggiornato a fine giro, 2026-10-20 — ✅ fatto e non ancora committato):
 
-1. `DocumentiRepository.find_template_applicabile` filtra ancora per emittente e chiude con
+1. ✅ `DocumentiRepository.find_template_applicabile` filtra ancora per emittente e chiude con
    `ORDER BY t.id LIMIT 1`, quindi lo standard non si usa mai. Deve chiamare
-   `fn_risolvi_template_applicabile`.
-2. `count_templates_attivi_no_default` e il suo ramo in
+   `fn_risolvi_template_applicabile`. → ora `risolvi_template_applicabile`.
+2. ✅ `count_templates_attivi_no_default` e il suo ramo in
    `DocumentGenerationService._resolve_template` si ritirano.
 3. Il tipo di output non lo passa nessun chiamante di `genera_documento`
    (`stampa_coda_drainer_service`, `sorgente_documenti_views`). Va passato dove il BE lo conosce.
 4. Il filtro `emittente_ids_scope` delle letture (lista, dettaglio, versioni, asset) deve lasciar
-   passare lo standard.
+   passare lo standard. ✅ lista e dettaglio dei modelli (`_TEMPLATE_IN_SCOPE`), e le versioni che
+   passano dal dettaglio; gli asset restano dell'emittente del documento.
 5. L'azione «personalizza», che scrive `derivata_da_versione_id`.
-6. Si allineano i test dei due metodi (`test_document_generation_service*.py`,
+6. ✅ Si allineano i test dei due metodi (`test_document_generation_service*.py`,
    `test_documenti_repository_render.py`) e lo smoke `smoke-fatturazione-render-stampa.py`, che
    li usano.
 

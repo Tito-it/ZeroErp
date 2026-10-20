@@ -201,8 +201,9 @@ def build_documenti_sorgente_views(
         # Scopo: EMETTE un documento NUOVO dalla sorgente: template pubblicato
         #        OGGI + dati CORRENTI, record nuovo in `documenti_generati` +
         #        evento `GENERATO`. `template_documento_id` esplicito
-        #        (override) oppure template `is_default=true` per
-        #        (sorgente, emittente).
+        #        (override) oppure la risoluzione a due livelli del DB per
+        #        (sorgente, emittente): il predefinito dell'emittente, se no
+        #        lo standard.
         #
         #        ⚠️ **NON e' una ristampa**, benche' fino al 2026-08-03 questo
         #        commento la chiamasse cosi': per un documento del 2025

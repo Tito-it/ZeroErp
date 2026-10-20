@@ -6,7 +6,8 @@
 #        (Tranche I). Pipeline:
 #         1. valida user + scope emittente (PermissionResolver);
 #         2. risolve template applicabile (override esplicito via id, oppure
-#            `is_default=true` per (sorgente_tipo, emittente, output));
+#            la risoluzione a due livelli del DB per (sorgente_tipo,
+#            emittente, output): predefinito dell'emittente, se no lo standard);
 #         3. carica versione PUBBLICATA attiva (`validita @> oggi`, giorno dell'azienda);
 #         4. risolve context_builder via registry (`get_builder_del_template`,
 #            whitelist Decisione 18+74)
@@ -81,6 +82,7 @@ E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 E_RENDER_FAILED = "E_DOCUMENTI_RENDER_FAILED"
 E_STORAGE_FAILED = "E_DOCUMENTI_STORAGE_FAILED"
 E_VERSIONE_CONTESTO_NON_VERIFICABILE = "E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE"
+E_TEMPLATE_NON_RISOLTO = "E_DOCUMENTI_TEMPLATE_NON_RISOLTO"
 
 # Codice del tipo file usato in v1 (seed `tipi_file_documento` Fase A).
 # Memoria feedback_no_hardcoded_ids: lookup per codice, non ID numerici.
@@ -179,8 +181,9 @@ class DocumentGenerationService:
     # Scopo: Genera e persiste un documento PDF a partire da una sorgente.
     #        Il caller fornisce gli identificativi della sorgente
     #        (`sorgente_tipo_id`, `sorgente_uid`, opzionale `sorgente_riga`)
-    #        e l'`emittente_fiscale_id`. Il template si risolve per
-    #        default (`is_default=true`) oppure tramite override esplicito
+    #        e l'`emittente_fiscale_id`. Il template si risolve a due
+    #        livelli dal DB (predefinito dell'emittente, se no lo standard:
+    #        `_resolve_template`) oppure tramite override esplicito
     #        `template_documento_id`. Ritorna un dict con id+uid+nome_file
     #        del documento generato + storage_uri del file persistito.
     #        C-0: `emittente_scope` separa CHI AUTORIZZA da COSA GENERA —
@@ -237,24 +240,11 @@ class DocumentGenerationService:
         # blocca eventuali incongruenze di input (es. caller passa
         # emittente=11 ma template_documento_id punta a un template di
         # emittente=22 dentro lo scope dell'admin).
-        if template["emittente_fiscale_id"] != emittente_fiscale_id:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="Template non coerente con l'emittente richiesto.",
-                detail=(
-                    f"emittente_richiesto={emittente_fiscale_id} "
-                    f"emittente_template={template['emittente_fiscale_id']}"
-                ),
-            )
-        if template["sorgente_tipo_id"] != sorgente_tipo_id:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="Template non coerente con il tipo sorgente richiesto.",
-                detail=(
-                    f"sorgente_tipo_richiesto={sorgente_tipo_id} "
-                    f"sorgente_tipo_template={template['sorgente_tipo_id']}"
-                ),
-            )
+        self._guard_template_coerente(
+            template,
+            emittente_fiscale_id=emittente_fiscale_id,
+            sorgente_tipo_id=sorgente_tipo_id,
+        )
 
         # 3) carica versione PUBBLICATA attiva
         versione = self._resolve_versione_pubblicata(template["id"])
@@ -488,16 +478,11 @@ class DocumentGenerationService:
             tipo_documento_output_id=tipo_documento_output_id,
             template_documento_id=template_documento_id,
         )
-        if template["emittente_fiscale_id"] != emittente_fiscale_id:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="Template non coerente con l'emittente richiesto.",
-            )
-        if template["sorgente_tipo_id"] != sorgente_tipo_id:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="Template non coerente con il tipo sorgente richiesto.",
-            )
+        self._guard_template_coerente(
+            template,
+            emittente_fiscale_id=emittente_fiscale_id,
+            sorgente_tipo_id=sorgente_tipo_id,
+        )
 
         versione = self._resolve_versione_pubblicata(template["id"])
         # Anche l'anteprima: una versione che legge un'altra forma darebbe a
@@ -1077,14 +1062,14 @@ class DocumentGenerationService:
         )
         return emittente_scope
 
-    # Scopo: Risolve il template da generare. Tre casi:
+    # Scopo: Risolve il template da generare. Due casi:
     #         a) caller passa `template_documento_id` -> get_template via
-    #            reader (404 unificato + scope automatico);
-    #         b) caller passa `tipo_documento_output_id` (e/o
-    #            sorgente_tipo+emittente) -> repo.find_template_applicabile
-    #            con `is_default=true`;
-    #         c) caller passa solo sorgente_tipo+emittente -> idem (b).
-    #        Se nessun template matcha -> E_DOCUMENTI_NOT_FOUND.
+    #            reader (404 unificato + scope automatico, standard compresi);
+    #         b) altrimenti -> la risoluzione a due livelli del DB
+    #            (`repo.risolvi_template_applicabile`): il predefinito
+    #            dell'emittente se ha modelli attivi suoi, se no lo standard.
+    #            `tipo_documento_output_id` si passa quando il chiamante lo ha;
+    #            senza, il DB lo deduce se il candidato e' uno.
     def _resolve_template(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
@@ -1113,45 +1098,69 @@ class DocumentGenerationService:
             assert row is not None
             return row
 
-        row = self._repo.find_template_applicabile(
-            sorgente_tipo_id=sorgente_tipo_id,
-            emittente_fiscale_id=emittente_fiscale_id,
-            tipo_documento_output_id=tipo_documento_output_id,
-            emittente_ids_scope=scope,
-        )
-        if row is None:
-            # Discrimina due casi diversi (UX: il fix richiesto e' diverso).
-            # 1) esistono template per la coppia ma nessuno e' marcato default
-            #    -> messaggio "manca predefinito", admin attiva il flag
-            # 2) non esiste alcun template -> messaggio "carica template",
-            #    admin deve creare il record da capo
-            templates_no_default = self._repo.count_templates_attivi_no_default(
+        # La regola dei due livelli (emittente, poi standard) e' del DB: qui si
+        # traduce il suo rifiuto, che porta il codice del caso
+        # (E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO / _NON_RISOLTO / _AMBIGUO).
+        # ServiceError anche per il worker della coda di stampa, che scrive il
+        # motivo sulla riga.
+        with translate_db_errors(
+            context={
+                "sorgente_tipo_id": sorgente_tipo_id,
+                "emittente_fiscale_id": emittente_fiscale_id,
+                "tipo_documento_output_id": tipo_documento_output_id,
+            },
+            fallback_code=E_TEMPLATE_NON_RISOLTO,
+            fallback_message=USER_MESSAGE_FALLBACK[E_TEMPLATE_NON_RISOLTO],
+        ):
+            risolto = self._repo.risolvi_template_applicabile(
                 sorgente_tipo_id=sorgente_tipo_id,
                 emittente_fiscale_id=emittente_fiscale_id,
                 tipo_documento_output_id=tipo_documento_output_id,
-                emittente_ids_scope=scope,
             )
-            if templates_no_default > 0:
-                message = (
-                    "Esistono template per questa sorgente/emittente, "
-                    "ma nessuno e' impostato come predefinito. "
-                    "Marcare un template come 'predefinito' per renderlo applicabile."
-                )
-            else:
-                message = "Nessun template applicabile per la sorgente."
-            ErrorManager.require(
-                False,
-                code=E_NOT_FOUND,
-                message=message,
+        row = self._repo.get_template(
+            int(risolto["template_documento_id"]), emittente_ids_scope=scope,
+        )
+        # Il modello risolto e' dell'emittente del documento (gia' in scope) o
+        # standard (sempre in scope): non trovarlo e' un'invariante rotta.
+        # RuntimeError e non `assert`: dipende da cosa risponde il DB, e il
+        # controllo resta acceso anche con `python -O`.
+        if row is None:
+            raise RuntimeError(f"template risolto {risolto!r} non leggibile")
+        return row
+
+    # Scopo: Il modello scelto deve poter stampare QUESTO documento: stesso
+    #        tipo sorgente, e lo stesso emittente oppure lo standard (la regola
+    #        4 di `trgfn_documenti_generati_check_coerenza`, detta prima del
+    #        render). Copre l'override esplicito `template_documento_id`: un
+    #        admin che vede piu' emittenti potrebbe indicare il modello di un
+    #        altro.
+    # ⭐ Un metodo solo per genera e anteprima (2026-10-19): erano due copie, e
+    #    lo standard andava ammesso in tutte e due.
+    def _guard_template_coerente(
+        self,
+        template: dict[str, Any],
+        *,
+        emittente_fiscale_id: int,
+        sorgente_tipo_id: int,
+    ) -> None:
+        if not template["standard"] and template["emittente_fiscale_id"] != emittente_fiscale_id:
+            ErrorManager.raise_error(
+                code=E_VALIDATION,
+                message="Template non coerente con l'emittente richiesto.",
                 detail=(
-                    f"sorgente_tipo_id={sorgente_tipo_id} "
-                    f"emittente_fiscale_id={emittente_fiscale_id} "
-                    f"tipo_documento_output_id={tipo_documento_output_id!r} "
-                    f"templates_attivi_senza_default={templates_no_default}"
+                    f"emittente_richiesto={emittente_fiscale_id} "
+                    f"emittente_template={template['emittente_fiscale_id']}"
                 ),
             )
-        assert row is not None
-        return row
+        if template["sorgente_tipo_id"] != sorgente_tipo_id:
+            ErrorManager.raise_error(
+                code=E_VALIDATION,
+                message="Template non coerente con il tipo sorgente richiesto.",
+                detail=(
+                    f"sorgente_tipo_richiesto={sorgente_tipo_id} "
+                    f"sorgente_tipo_template={template['sorgente_tipo_id']}"
+                ),
+            )
 
     # Scopo: Carica la versione PUBBLICATA attiva OGGI, nel giorno
     #        dell'azienda (`_today` = `oggi_aziendale()`, passata come
