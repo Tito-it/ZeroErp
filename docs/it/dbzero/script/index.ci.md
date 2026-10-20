@@ -37,6 +37,7 @@
 - [fn_check_commessa_chiudibile](manual/fn_check_commessa_chiudibile.md) — (rev 2026-08-21 — funzione rev 2026-07-24)
 - [fn_check_commessa_pronta_fatturazione](manual/fn_check_commessa_pronta_fatturazione.md) — (rev 2026-08-21)
 - [fn_check_contabile_validabile](manual/fn_check_contabile_validabile.md) — (scritta il 18-09-2026)
+- [fn_check_contratto_sovrapposto](manual/fn_check_contratto_sovrapposto.md) — (latest review 20-10-2026)
 - [fn_check_credenziale_bloccabile](manual/fn_check_credenziale_bloccabile.md) — (scritta il 03-10-2026)
 - [fn_check_credenziale_eliminabile](manual/fn_check_credenziale_eliminabile.md) — (scritta il 06-10-2026)
 - [fn_check_ddt_emittibile](manual/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)

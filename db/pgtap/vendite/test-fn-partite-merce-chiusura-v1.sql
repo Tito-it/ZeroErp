@@ -5,7 +5,7 @@
 --       (D14 quarta leva; brief-db-partita-merce-per-documento §2, §2-bis, §3;
 --        changeSet 20260921-21..-24).
 --
--- Indice test (plan 15):
+-- Indice test (plan 16):
 --   1) la funzione esiste, e' BEGIN ATOMIC (dipendenze nel catalogo) e NON e'
 --      SECURITY DEFINER (la RLS resta di chi legge)
 --   2) ⭐ pin di D1: la vista e' la PROIEZIONE della funzione — nomina
@@ -36,6 +36,10 @@
 --      fatturato_da_ordine 0 e non 5, differenza 0 e non -5 — ereditato il
 --      22-09 da test-vw-contatore-merce-v1 (ritirato con la vista, D6): era il
 --      solo presidio di questa cintura
+--  16) ⭐ la riga che evade UNA riga d'ordine ha origine ORDINE_VENDITA, il
+--      codice della sorgente, e il codice esiste in config.sorgenti (rev
+--      2026-10-20, 20261020-24, brief-db-grammatica-unica-documenti §12.8:
+--      prima era il codice corto ORDINE; rosso senza il changeSet)
 --
 -- Scopo:
 --  - la chiusura e' «equivalente per costruzione» alla vista; questo file la
@@ -66,7 +70,7 @@ DO $az$ BEGIN
         NULLIF(current_setting('app.current_user_id', true), '')::integer, 'conferma_reso');
 END $az$;
 
-SELECT plan(15);
+SELECT plan(16);
 
 -- ⛔ Niente `SET LOCAL app.current_user_id = '1'` dopo la riga di contesto:
 --    l'operatore lo sceglie (o lo COSTRUISCE, su un database vuoto)
@@ -461,6 +465,18 @@ SELECT is(
     WHERE p.ddt_riga_id <> (SELECT ddt_riga_id FROM tmp_d3m)),
   'NESSUNA|true',
   '11) la riga a mano con l''articolo gia'' nell''ordine: origine NESSUNA e sospetto acceso, anche per chiusura');
+
+-- 16) Sullo stesso DDT, la riga che evade la riga d'ordine: l'origine e' il
+--     codice della sorgente (grammatica unica, §12.8), non il codice corto, e
+--     nomina una riga di config.sorgenti. Funzione e vista dicono lo stesso.
+SELECT results_eq(
+  $q$SELECT p.origine::text,
+            EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = p.origine),
+            (SELECT v.origine::text FROM vendite.vw_partite_merce v WHERE v.ddt_riga_id = p.ddt_riga_id)
+       FROM vendite.fn_partite_merce(ARRAY[(SELECT ddt_id FROM tmp_d3m)]) p
+      WHERE p.ddt_riga_id = (SELECT ddt_riga_id FROM tmp_d3m)$q$,
+  $q$VALUES ('ORDINE_VENDITA', true, 'ORDINE_VENDITA')$q$,
+  '16) la riga che evade una riga d''ordine: origine ORDINE_VENDITA, codice di config.sorgenti, per la funzione come per la vista');
 
 -- ============================================================
 -- CASO 4 — niente da seminare
