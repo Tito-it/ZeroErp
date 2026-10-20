@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_sync_stato_iso2()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_sync_stato_iso2()
  RETURNS trigger
@@ -31,6 +33,8 @@ IS '
   coerenti.
 ';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

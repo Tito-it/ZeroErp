@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_soggetti_guard_cf_piva_obbligatori()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori()
  RETURNS trigger
@@ -79,6 +81,8 @@ in base alla configurazione di config.tipi_soggetto_dettaglio (piva_obbligatoria
 Se tipo_soggetto_dettaglio_id e'' NULL, nessun controllo viene eseguito.
 Complementare a trgfn_soggetti_valida_cf_piva_dispatch che valida il FORMATO.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

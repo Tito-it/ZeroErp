@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_or_create_session_tx_id()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_get_or_create_session_tx_id()
  RETURNS uuid
@@ -154,6 +156,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_get_or_create_session_tx_id()
 IS '⭐ rev 2026-10-18 (20261018-52, D-3b-3): genera sulla connessione persistente logconn invece di aprirne una a ogni transazione (~12 -> ~1,3 ms); la stringa di connessione resta il ripiego. Restituisce il tx_id della sessione (GUC dbops.tx_id) o ne genera uno nuovo via dblink verso il canale di log (dbops.fn_generate_tx_id), registrandolo in dbops.transaction_ids fuori dalla transazione di business. Senza canale: sentinella uuid_nil, nessuna GUC pubblicata. SECURITY DEFINER di postgres: dal 2026-09-12 (D6) con search_path pinnato a pg_catalog, public, pg_temp — public e'' necessario perche'' dblink vive li''; il pin sta nella definizione, un CREATE OR REPLACE che lo dimentica lo azzera.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

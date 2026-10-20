@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_righe_natura_vendita()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_righe_natura_vendita()
  RETURNS trigger
@@ -68,6 +70,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_righe_natura_vendita()
 IS 'BB trigger BEFORE INSERT OR UPDATE OF articolo_id, natura_vendita_id sulle righe di documento che portano la natura di vendita (vendite.preventivi_righe, vendite.ordini_righe, vendite.ddt_righe). La natura e'' quella con cui la riga e'' stata venduta: si scrive alla nascita (dall''articolo; in modo CHIAMANTE quella portata dal verbo che copia la riga dal documento d''origine, se la porta) e quando cambia l''articolo (dal nuovo articolo), poi resta, anche se l''articolo cambia natura in anagrafica. TG_ARGV[0]: ARTICOLO | CHIAMANTE (altrimenti E_TRIGGER_ARGOMENTI_INVALIDI). Scriverla a mano lo rifiuta il lock di colonna (dbops.automation_lock_columns, E_RIGA_NATURA_VENDITA_IMMUTABILE), che parla prima di questo trigger nell''ordine dei nomi; a parita'' di articolo questo trigger non tocca la colonna: la regola e la sua porta di manutenzione (zeroerp.allow_lock_columns_override) stanno solo nel lock. rev 2026-10-13 (20261013-14): tolta la riassegnazione a OLD «per difesa», che richiudeva in silenzio quella porta. Estratto alla terza copia: prima la scriveva vendite.trgfn_preventivi_righe_set_natura_vendita, che da 20261013-10 e'' solo il guard della ricorrenza. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-4).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

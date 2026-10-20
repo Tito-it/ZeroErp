@@ -7,6 +7,8 @@ CREATE FUNCTION fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_i
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'ASC'::text)
  RETURNS TABLE(total_count bigint, soggetto_id uuid, soggetto_ruolo_id bigint, tipo_ruolo_id integer, soggetto_codice text, ragione_sociale_completa text, id_fiscale_univoco text, utility_list text, emittente_ragione_sociale text)
@@ -243,6 +245,8 @@ $function$
 COMMENT ON FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
 IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa, id_fiscale_univoco_cf_piva, codice soggetto e codice entita'' (config.tipi_ruoli.entita_tabella, che serve solo a questo). ⭐ Conteggio, ordine e pagina (rev 2026-10-10, brief-db-ricerca-universale-tetto-10000, strada B di Tid) si fanno sulle colonne semplici del soggetto, su TUTTE le corrispondenze: total_count e'' il totale vero e le pagine sono contigue (tie-breaker soggetto_ruolo_id). Gli aggregati utility_list ed emittente_ragione_sociale si calcolano solo per le righe della pagina. Nessun tetto: fino al 2026-10-10 un LIMIT 10000 senza ORDER BY rendeva falsi totale e pagine oltre il tetto. Ordinamento: p_order_by in whitelist (ragione_sociale_completa, soggetto_codice, id_fiscale_univoco; utility_list tolta il 2026-10-10, D-2: gli aggregati non sono ordinabili), p_order_dir ASC/DESC. Paginazione LIMIT/OFFSET, p_limit al massimo 200. ⭐ Chi si vede (rev 2026-10-10, brief-db-codici-non-trovato-email-e-permessi R-6): il filtro di riga e'' il predicato della regola unica script.fn_predicato_soggetto_ruolo_visibile, lo stesso della verifica d''esistenza di fn_get_search_detail — almeno una riga visibile della entita_esistenza del ruolo (CL clienti sotto la RLS, FO fornitori, VT vettori, BANK_B bank_branches), o il solo soggetto-ruolo per i ruoli che non ne hanno. Lo stato dell''entita'' non conta; nessun filtro su soggetti.attivo (il modello non ammette un soggetto-ruolo col soggetto spento). Tipo ruolo validato dal BB: NULL o <= 0 E_PARAMETRO_INVALIDO, inesistente E_TIPO_RUOLO_NON_TROVATO, non ricercabile E_TIPO_RUOLO_NON_RICERCABILE. ⭐ emittente_ragione_sociale: AGGREGATA (string_agg), una riga per soggetto, perche'' un soggetto non ha un emittente — il legame e'' transitivo via billing account. ⚠️ Elenca solo gli emittenti dei clienti che la RLS restituisce: chi ha in whitelist il solo A, su un soggetto cliente di A e di B, legge «A». NULL sui rami non-CL. SECURITY INVOKER: la RLS vale con l''identita'' di chi chiama.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

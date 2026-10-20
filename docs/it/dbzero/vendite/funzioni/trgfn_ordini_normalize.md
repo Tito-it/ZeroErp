@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ordini_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_normalize()
  RETURNS trigger
@@ -99,6 +101,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ordini_normalize()
 IS 'Normalize: imposta anno/data se numero presente; fatturazione_trigger risolto per precedenza TESTATA -> billing_account.fatturazione_ordini -> CONFERMATO, entrambe SOLO su INSERT. rev 2026-08-17: prima l''eredita'' dal BA era una SOVRASCRITTURA incondizionata e la scelta in testata veniva scartata — con tutti i BA a CONFERMATO nessun ordine poteva nascere SPEDITO/CONSEGNATO e il ramo order-backed di fn_list_ddt_da_pushare era irraggiungibile (segnalazione BE 2026-08-16; brief-be-fan-out-isolato-e-esito-parziale.md §13.2, brief-design-fatturazione-due-lenti.md §6-quater DL-19). Il NULL in NEW e'' il modo in cui il chiamante dice «non ho scelto» e funziona solo perche'' il changeSet 20260817-02 toglie il DEFAULT dalla colonna: i due vanno letti insieme. Il cambio BA su UPDATE non e'' supportato (billing_account_id immutabile - DB-ORD-LOCK). rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-5): utility_id dal billing account se il chiamante non la dice; la colonna e'' NOT NULL dal 20261009-64. rev 2026-10-10 (stesso brief, §10.2 domanda 2, regola del 2): ruolo del cliente e utility li risolve il BB script.fn_cliente_dal_billing_account — scritti se mancano, E_DOC_CLIENTE_DIVERSO_DA_BA se dissentono (prima il 23503 di fk_ordini_ba_cliente, che resta la rete sotto) — su INSERT e su un UPDATE che tocca una delle tre colonne (BA e ruolo li ferma prima il lock E_ORD_CLIENTE_IMMUTABILE).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

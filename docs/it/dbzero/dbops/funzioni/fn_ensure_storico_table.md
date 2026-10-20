@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ensure_storico_table(p_schema_base text, p_table_base text, p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_ensure_storico_table(p_schema_base text, p_table_base text, p_fk_col text, p_create_gin_index boolean, p_dry_run boolean)
  RETURNS void
@@ -258,6 +260,8 @@ IS 'Provisioning idempotente della tabella di storico (schema storico) per una t
 Crea storico.<table_base> se mancante, con struttura standard (snapshot jsonb, audit cols, finestre valid_from/to)
 e indice BTree su fk logica. La FK fisica verso la tabella base NON viene creata per scelta progettuale. Supporta dry-run con audit. Rev 2026-09-11: dopo la creazione chiama dbops.fn_storico_arma_scope, che aggiunge origine_schema e scope_emittente_fiscale_id (con indice) e, se dbops.storico_scope_policy dice che la madre è protetta, accende la RLS con le policy dello scope congelato. Rev 2026-09-11 (decisione a): creata e armata, la shadow viene CEDUTA al proprietario della madre — l''archivio di una tabella è di chi possiede la tabella — così la convergenza da Liquibase non la salta anche quando a crearla è il job pgAgent come postgres. Solo se chi crea può cederla (superuser o membro), altrimenti WARN. Brief: brief-db-rls-storico-scope-congelato §4b, §4d. ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

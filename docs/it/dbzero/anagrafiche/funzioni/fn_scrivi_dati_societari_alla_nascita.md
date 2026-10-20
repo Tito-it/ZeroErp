@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scrivi_dati_societari_alla_nascita(p_soggetto_id uuid, p_form
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_scrivi_dati_societari_alla_nascita(p_soggetto_id uuid, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_data_costituzione date)
  RETURNS bigint
@@ -85,6 +87,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_scrivi_dati_societari_alla_nascita(p_soggetto_id uuid, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_data_costituzione date)
 IS 'Alla nascita di un soggetto decide se i suoi dati societari vanno scritti, e li scrive col verbo anagrafiche.fn_scrivi_dati_societari (stato intero). Si scrivono se la natura li pretende (dati_societari_policy REQUIRED) o se la sezione c''e'': almeno un campo con un valore fra forma, provincia e numero REA, capitale, canale FE, PEC, codice SDI e data di costituzione (testi vuoti esclusi; socio unico e liquidazione da soli non contano, hanno sempre un valore). Una sezione passata a una natura NONE va al verbo e la rifiuta il guard della natura (E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO), mai scartata in silenzio. Restituisce l''id dei dati societari, o NULL se non c''era niente da scrivere. Soggetto NULL: E_PARAMETRO_INVALIDO; inesistente: E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO. SECURITY INVOKER: la porta di scrittura resta il verbo. Lo chiamano anagrafiche.fn_crea_soggetto_pg e anagrafiche.fn_crea_soggetto_pf (regola del 2, 20261020-01). Brief: brief-db-dati-societari-in-creazione.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

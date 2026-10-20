@@ -6,6 +6,8 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_ddt_riga(p_auth_user_id integer, p_rig
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ddt_riga(p_auth_user_id integer, p_riga_id bigint)
  RETURNS boolean
@@ -32,6 +34,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_ddt_riga(p_auth_user_id integer, p_riga_id bigint)
 IS '⭐ rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l''emittente lo chiede a script.fn_resolve_emittente_fiscale_id (DEFINER), non lo legge sotto la RLS del padre: una strada sola, e nessuna policy del padre rieseguita a ogni chiamata. Stesse risposte. Come fn_scope_ef_whitelist_via_ddt ma a partire da una riga di DDT: e'' la chiave che porta vendite.ddt_righe_componenti. Delega alla sorella invece di ripetere la risalita alla testata.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

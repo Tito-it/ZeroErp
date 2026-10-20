@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_indirizzi_by_soggetto(p_soggetto_id uuid)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_soggetto(p_soggetto_id uuid)
  RETURNS SETOF anagrafiche.vw_indirizzi_resolved_soggetto
@@ -27,6 +29,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_indirizzi_by_soggetto(p_soggetto_id uuid)
 IS 'Restituisce tutti gli indirizzi layer SOGGETTO (identitario) per un dato soggetto_id, ordinati per tipo e id. Legge vw_indirizzi_resolved_soggetto, il suo tipo di ritorno (rev 20261010-31: proiettava la base e restituiva troppe colonne).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

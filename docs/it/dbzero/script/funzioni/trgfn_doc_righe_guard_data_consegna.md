@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_doc_righe_guard_data_consegna()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_doc_righe_guard_data_consegna()
  RETURNS trigger
@@ -67,6 +69,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_doc_righe_guard_data_consegna()
 IS 'Guard di riga (2026-10-13, collaudo date di consegna): una data di consegna di una riga non viene prima della data del documento. Rifiuto E_DOC_RIGA_DATA_CONSEGNA_ANTERIORE (DATO_ERRATO), campo = la colonna fuori regola; valori: etichetta del documento, data di consegna, data del documento. La data NULL resta ammessa («nessuna data»), la stessa data del documento pure. Il predicato non sta qui: lo dice script.fn_doc_date_consegna_anteriori (DEFINER, sede unica dell''elenco delle colonne di consegna), che in UPDATE giudica solo le date cambiate — tutte se la riga torna attiva o cambia testata — e non giudica una riga spenta. Montaggio: TG_ARGV[0] = documento (ORDINE, PREVENTIVO), TG_ARGV[1] = colonna della testata. BEFORE INSERT OR UPDATE FOR EACH ROW, fascia _a10_. Il lato opposto (la testata che si sposta oltre le righe) e'' script.trgfn_doc_testata_guard_data_consegna_righe.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

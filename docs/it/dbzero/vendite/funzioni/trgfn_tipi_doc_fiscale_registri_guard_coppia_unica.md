@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_tipi_doc_fiscale_registri_guard_coppia_unica()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica()
  RETURNS trigger
@@ -78,6 +80,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_tipi_doc_fiscale_registri_guard_coppia_unica()
 IS 'Guard BEFORE INSERT OR UPDATE OF tipo_doc_fiscale_id, natura_doc_id, registro_id su vendite.tipi_doc_fiscale_registri (2026-10-18): rifiuta un collegamento che affianca, sulla stessa coppia (tipo documento, natura), un altro registro dello stesso emittente e della stessa utility (E_REGISTRO_COPPIA_GIA_COPERTA, campo registro_id). Senza, vendite.fn_lookup_registro_id sceglieva il primo per id. Il gemello sul registro e'' vendite.trgfn_registri_fatturazione_guard_coppia_unica; la chiave la dice vendite.fn_registro_che_copre_coppia. Lock consultivo per emittente (namespace vendite.coppia_registro_fattura) prima di guardare. Uscita sul no-op. R-BE-14, D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

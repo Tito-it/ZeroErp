@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_calcoli_tempo_set_periodo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_calcoli_tempo_set_periodo()
  RETURNS trigger
@@ -30,6 +32,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_calcoli_tempo_set_periodo()
 IS 'Sync periodo_calcolo tstzrange da data_inizio_calcolo/data_fine_calcolo. Migrazione daterange.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

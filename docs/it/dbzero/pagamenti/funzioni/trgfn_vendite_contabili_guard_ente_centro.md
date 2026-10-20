@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_vendite_contabili_guard_ente_centro()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro()
  RETURNS trigger
@@ -84,6 +86,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_guard_ente_centro()
 IS 'Coerenza fra il CANALE e il CENTRO della testata contabile: un ente di incasso deve avere un centro, e dev''essere quello della distinta. ⭐ Dal lotto 6 il canale porta anche il CONTO su cui atterra il denaro, ed e'' il perimetro: questo guard e'' cio'' che tiene insieme le due cose. ⚠️ Rev 2026-08-22 (lotto 7, D15-e): tolto il ramo «regole specifiche compensazione», che si apriva su NEW.compensazione_id — colonna sparita girando il verso del legame. Le due regole hanno cambiato casa e non sono state perse: il centro dedicato vive su trgfn_sistemazioni_guard_dati, il divieto di aggancio al lotto su trgfn_vendite_contabili_lotti_guard_sistemazione. Un controllo che scatta quando l''informazione non c''e'' ancora non e'' un presidio: alla nascita della distinta nessun atto la cita.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

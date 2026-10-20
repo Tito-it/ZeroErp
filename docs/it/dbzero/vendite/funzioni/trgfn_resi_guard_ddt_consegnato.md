@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_resi_guard_ddt_consegnato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
  RETURNS trigger
@@ -67,6 +69,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
 IS 'Guard: reso ammesso solo se il DDT sorgente (DDT_VENDITA, per sorgente_uid) e in stato CONSEGNATO (E_RESO_DDT_NON_CONSEGNATO). brief §3. rev 2026-07-13. rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-c): una bolla di TRASFERIMENTO fra depositi (causale di magazzino TRASF_OUT) non genera un reso — E_RESO_DA_DDT_TRASFERIMENTO, prima del controllo di stato: la merce e'' rimasta nostra, un reso la farebbe rientrare due volte.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

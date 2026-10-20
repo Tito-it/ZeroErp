@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_contratto_sovrapposto(p_billing_account_id bigint, p_is
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_contratto_sovrapposto(p_billing_account_id bigint, p_istanza_utility_id bigint, p_utility_id integer, p_ambito character varying, p_valido_dal date, p_valido_al date)
  RETURNS jsonb
@@ -62,6 +64,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_contratto_sovrapposto(p_billing_account_id bigint, p_istanza_utility_id bigint, p_utility_id integer, p_ambito character varying, p_valido_dal date, p_valido_al date)
 IS 'Motivo d''attivazione del contratto (richiesta BE del 2026-10-19): il periodo si sovrappone a un contratto VINCOLANTE (partecipa_overlap_snapshot: non in bozza e non abortito, quindi ATTIVO o CESSATO) sulla stessa quintupla dell''EXCLUDE ex_contratti_no_overlap (billing_account, istanza_utility, utility, ambito, periodo). PURA: non solleva, non scrive. Ritorna [] o un motivo {codice E_CONTRATTO_OVERLAP_ESISTENTE, reason CONTRATTO_SOVRAPPOSTO, reason_key vendite.contratti.azione_reason.contratto_sovrapposto, dettaglio {contratto_sovrapposto_id, contratto_sovrapposto_numero}, valori [numero]}. Predicato vendite.fn_contratto_sovrapposto. La quintupla entra come PARAMETRI: il guard BEFORE UPDATE passa NEW.*, la capability i valori salvati. Si chiama per un contratto che non partecipa ancora (verso ATTIVO solo da DRAFT): nessun id da escludere. INVOKER sotto la RLS degli emittenti: un vincolante fuori perimetro non da'' motivo e resta il 23P01 dell''EXCLUDE (D-2 di Tid). Lettori: script.fn_available_actions_contratto e vendite.trgfn_contratti_guard_transizione_stato (verso ATTIVO). ⚠️ La reason_key e'' un debito verso il frontend (locales).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

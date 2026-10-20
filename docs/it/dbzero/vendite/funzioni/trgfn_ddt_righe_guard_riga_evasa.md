@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_ddt_righe_guard_riga_evasa()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_righe_guard_riga_evasa()
  RETURNS trigger
@@ -76,6 +78,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ddt_righe_guard_riga_evasa()
 IS 'Guard (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-1): su una riga di DDT EVASA (vendite.fn_ddt_riga_evasa: ha un legame con una riga d''ordine o con una riga di reso da ri-consegnare, D-7) non cambiano articolo_id, uom_operativa_id, factor_to_base, qta_operativa, quantita: sono la fotografia di cio'' che si evade, e prima cambiavano senza che il legame lo vedesse (ordine evaso per 10, bolla a 6; reso da ri-consegnare 4, bolla a 2). Rifiuto E_DDT_RIGA_EVASA_FERMA (CONFLITTO_STATO; valori: numero di riga, etichetta del DDT; contesto: colonne cambiate). Il resto della riga resta libero in bozza; fuori bozza parla prima il lock delle righe (_a05_). La quantita'' passa solo dal verbo vendite.fn_ddt_riga_correggi_qta_evasa: GUC transazionale zeroerp.ddt_riga_correggi_qta = id della riga E proprietario della tabella (script.fn_is_proprietario_tabella), come la porta del registro di trgfn_ddt_guard_transizione; articolo, UoM e fattore non passano nemmeno dalla porta. BEFORE UPDATE senza OF (quantita la riscrive trgfn_qta_from_operativa): il confronto e'' nel corpo, ed esce subito se nessuna delle cinque colonne cambia. ⭐ rev 2026-10-19 (20261019-65, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

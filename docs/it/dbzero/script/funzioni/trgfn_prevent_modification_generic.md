@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_prevent_modification_generic()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_prevent_modification_generic()
  RETURNS trigger
@@ -53,6 +55,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_prevent_modification_generic()
 IS 'Segnala errore su attività non consentite sulle tabelle. rev 2026-08-06: il nome registrato in dbops.error_log e'' TG_NAME e non piu'' il letterale ''trgfn_prevent_parameters_audit_modification'', funzione che non esiste piu'' nel database — il diario degli errori puntava a un pezzo fantasma e chi indagava partiva da un nome inesistente. Una funzione generica montata su N tabelle non ha UN nome da dichiarare: TG_NAME dice quale trigger ha rifiutato. Brief brief-db-be-terzo-lato-presidio-codici §15.4c.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

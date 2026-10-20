@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_registro_forma_modificabile(p_registro_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_registro_forma_modificabile(p_registro_id bigint)
  RETURNS jsonb
@@ -124,6 +126,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_registro_forma_modificabile(p_registro_id bigint)
 IS 'Pure check (§12.5.1): i motivi che impediscono di CAMBIARE LA FORMA DEL NUMERO di un registro — prefisso, suffisso, lunghezza_numero. Ritorna [] se la modifica e'' ammessa, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA il codice e non solleva (salvo i due guard di chiamata). Consumatori: vendite.trgfn_registri_fatturazione_guard_forma_numero, che la CHIAMA per rifiutare (§12.5.2), e la maschera del registro, che tiene i tre campi in sola lettura e dice perche''. ⭐ IL PREDICATO E'' «HA CONSEGNATO UN NUMERO», non «ha una riga di contatore»: vendite.fn_get_next_progressivo inserisce la riga a last_numero = 0 e nella stessa chiamata la porta a >= 1, quindi una riga ferma a 0 significa che da quel bucket non e'' mai uscito niente. ⚠️ E'' di proposito PIU'' STRETTO del predicato della disattivazione (script.fn_check_registro_disattivabile, motivo HA_PROGRESSIVI), che guarda `attivo` a prescindere dal contatore: la'' si protegge il contatore in quanto tale, qui il danno comincia col PRIMO numero consegnato — due divieti imparentati, non lo stesso divieto. ⛔ PERCHE'' IL DIVIETO ESISTE: cambiare la forma non fa ripartire il contatore, lo lascia proseguire — quindi sullo stesso sezionale convivono due forme con numeri consecutivi, e nessun vincolo se ne accorge perche'' la coppia (forma, numero) non e'' vincolata da nessuna parte. E'' la stessa specie di difetto riparato dal cantiere del prefisso il 2026-08-31 (difetto A: forma identica, contatore ripartito da 1) presa dal verso opposto. ⛔ serie_default NON E'' COPERTA, e per due ragioni indipendenti: entra nella chiave del contatore (uq_regprog_key), quindi cambiarla apre un bucket nuovo sotto una serie che distingue i documenti — che e'' il modo legittimo di aprire una serie — e il mirror CSV 80_data/sql/vendite/registri_fatturazione.csv (runOnChange, validCheckSums ANY) la riscrive a OGNI migrate: un BEFORE UPDATE OF serie_default scatta anche a valore invariato e farebbe fallire il migrate. ⚠️ RESIDUO DICHIARATO: il COMMENT della tabella dice che cambiare serie_default su un registro vivo «sposta il sezionale» — resta vero e resta senza presidio, ed e'' un''altra decisione. ⚠️ SECURITY INVOKER ed e'' motivato: si leggono solo vendite.registri_fatturazione e vendite.registri_fatturazione_progressivi, nessuna delle due con RLS (verificato 2026-09-01) — la gemella e'' DEFINER perche'' legge vendite.fatture, che ce l''ha. ⚠️ Registro inesistente: si SOLLEVA E_VENDITE_CHIAMATA_NON_VALIDA invece di rispondere [], perche'' «la forma si puo'' cambiare» su una riga che non esiste e'' una frase senza senso. ⛔ Il `reason` non porta il prefisso E_, riservato ai codici a catalogo (§12.5.1). ⚠️ La reason_key amministrazione.registri_fatturazione.forma_blocco.ha_numerato e'' un DEBITO VERSO IL FE (§12.3): va nei locales it/en nello stesso giro del lavoro frontend. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 8 (D-2).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

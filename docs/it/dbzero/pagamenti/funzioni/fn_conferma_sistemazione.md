@@ -7,6 +7,8 @@ CREATE FUNCTION fn_conferma_sistemazione(p_sistemazione_id bigint, p_ente_incass
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.fn_conferma_sistemazione(p_sistemazione_id bigint, p_ente_incasso_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(contabile_id bigint, fondo_source_id bigint, esito text)
@@ -332,6 +334,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.fn_conferma_sistemazione(p_sistemazione_id bigint, p_ente_incasso_id bigint)
 IS 'La MADRE che esegue un atto di sistemazione: sceglie la strada e ci mette sopra il denaro. ⭐ Non inventa nessuna macchina — le tre esistevano gia'' tutte (D15-a): il RIPORTO e'' un fondo fattura con origine MANUALE, il RIMBORSO una distinta a importi negativi (D3-d, «il denaro non ha versi, ha segni»), la COMPENSAZIONE una distinta sul centro dedicato con due righe che sommano a zero. ⭐ Il segno della riga lo da'' il SALDO — sign(saldo) x |importo| — e non un IF sul tipo di documento: la formula non nomina ne'' fatture ne'' note di credito, ed e'' la stessa famiglia della regola di capienza del lotto 5. 🔴 Il controllo dell''eccedenza sta alla CONFERMA e non alla registrazione: fra decidere e confermare puo'' arrivare un altro incasso, e una garanzia data prima e'' una garanzia che scade (stessa forma di D13). ⭐ Ogni atto ha la SUA distinta e non passa da fn_get_or_create_vendite_contabile, che e'' costruita per condividere: due rimborsi lo stesso giorno sbatterebbero su uq_sistemazioni_contabile con un 23505 muto. ⭐ Rev 2026-09-15 (brief distinta-numerata-sul-registro, L7): la distinta di una sistemazione prende il numero dal registro DISTINTA dell''emittente dell''ATTO (DIS-<sigla>-<anno>-<progressivo>, assegnato dal trigger a10_gen_codice) e non porta piu'' un codice composto qui (SIS_<atto>_<ts>): l''atto si ritrova da meta.sistemazione_id e da sistemazioni.contabile_id. L''emittente entra nell''INSERT dall''atto — NOT NULL, ed e'' lo stesso valore scritto sul fondo nel ramo RIPORTO. ⚠️ Il canale del rimborso e'' un PARAMETRO e non una colonna dell''atto: da quale conto esce il bonifico si decide quando si paga. ⚠️ Distinta e righe si scrivono in due istruzioni separate: padre e figlio nella stessa CTE non passano sotto la row security.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

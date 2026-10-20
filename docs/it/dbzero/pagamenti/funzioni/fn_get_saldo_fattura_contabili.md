@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_saldo_fattura_contabili(p_fattura_id bigint, p_escludi_co
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldo_fattura_contabili(p_fattura_id bigint, p_escludi_contabile_riga_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(saldo_contabile numeric, has_righe_postabili boolean)
@@ -87,6 +89,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.fn_get_saldo_fattura_contabili(p_fattura_id bigint, p_escludi_contabile_riga_id bigint)
 IS 'Restituisce il saldo contabile fattura dalle righe in stato postabile sotto una testata non finale. ⭐ Rev 2026-09-18 (P-6, brief-db-distinta-ricerca-rate §4.6): + p_escludi_contabile_riga_id DEFAULT NULL — la riga che sta scrivendo chiede quanto era dichiarato PRIMA di se'', la stessa forma della sorella fn_get_saldo_rata e del nucleo fn_get_saldi_rate; senza, chi corregge una riga SENZA rata (fondo fattura, riga manuale «fattura si'', rata no») leggeva un in-lavorazione che contava la riga stessa. DROP + CREATE perche'' cambia la firma: un secondo overload accanto alla vecchia (bigint) sarebbe ambiguo per ogni chiamata a un argomento. Rev 2026-08-21: tolto il ramo "testata senza stato" (LEFT JOIN + COALESCE su is_final), reso impossibile dal NOT NULL su vendite_contabili.stato_id; guard di chiamata su E_PAGAMENTI_CHIAMATA_NON_VALIDA (TECNICO): un p_fattura_id <= 0 — e un p_escludi <= 0 — non esce da nessuna interfaccia, e l''operatore non ha niente da correggere; tipi ancorati con %TYPE in firma e RETURNS TABLE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

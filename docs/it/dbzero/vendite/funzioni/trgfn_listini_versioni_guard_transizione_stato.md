@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_listini_versioni_guard_transizione_stato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_listini_versioni_guard_transizione_stato()
  RETURNS trigger
@@ -75,6 +77,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_listini_versioni_guard_transizione_stato()
 IS 'Guard transizione stato versione listino: ammette BOZZA->ATTIVA e ATTIVA->CHIUSA solo con valido_al<CURRENT_DATE. Raise E_VERSIONE_STATO_TRANSIZIONE_INVALIDA.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

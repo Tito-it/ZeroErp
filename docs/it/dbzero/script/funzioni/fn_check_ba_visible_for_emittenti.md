@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_ba_visible_for_emittenti(p_billing_account_id bigint, p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_ba_visible_for_emittenti(p_billing_account_id bigint, p_emittente_ids bigint[])
  RETURNS boolean
@@ -44,6 +46,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_ba_visible_for_emittenti(p_billing_account_id bigint, p_emittente_ids bigint[])
 IS 'Pure check (fn_check_*, boolean, no raise): un billing_account e'' visibile per un set di emittenti autorizzati? Rev 2026-08-18 (R-5, brief perimetro-emittente Fase E): la regola «quale emittente fattura questo BA» NON e'' scritta qui. Vive in script.fn_get_ba_emittente_sr_id, e questa funzione si limita a chiedere «l''emittente risolto sta fra quelli autorizzati?». ⭐ Dal 20260913-01 (D13) quella regola ha TRE livelli — mapping specifico; altrimenti, in sessione, l''emittente dell''operatore che sta agendo; altrimenti il default — e questo check li eredita senza una riga di modifica: e'' il motivo per cui la regola sta in un posto solo. ⚠️ p_emittente_ids NULL o vuoto = «nessun emittente autorizzato» = false, e la risposta arriva prima di risolvere: e'' il ramo fail-closed. ⚠️ STABLE e NON PARALLEL SAFE dal 20260913-02: la delegata legge la GUC di sessione e chiama fn_resolve_emittente_for_user, che non e'' SAFE — la marcatura si dichiara onestamente, come gia'' il 18-08 sulla ricerca universale. Usata da fn_search_soggetti_universale e fn_get_search_detail (ramo CL) e dalla policy RLS via_efba del billing account. Brief: brief-db-ba-riserva-emittente-operatore-d13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

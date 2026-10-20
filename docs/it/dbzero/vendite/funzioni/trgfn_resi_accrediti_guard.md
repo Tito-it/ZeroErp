@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_resi_accrediti_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_accrediti_guard()
  RETURNS trigger
@@ -92,6 +94,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_accrediti_guard()
 IS 'Guard del ponte accrediti: il tetto del DOCUMENTO — Sigma qta per riga di FATTURA <= qta della riga (E_RESO_ACCREDITO_SUPERA_RIGA_FATTURA). E'' il limite che parla la lingua del documento invece che della merce, e prima non esisteva: l''unico tetto all''accredito era il conto della merce. Si legge da vendite.fn_resi_riga_tetti_accredito, che e'' SECURITY DEFINER perche'' sotto RLS una riga fuori perimetro si legge come «non c''e''». ⚠️ Il tetto della MERCE NON sta qui, e non e'' una dimenticanza: si misura in unita'' PADRE, e su un articolo composito tre righe di ponte valgono UNA unita'' di merce — sommarle riga per riga direbbe «3» dove la merce dice «1» e rifiuterebbe il secondo componente di un accredito legittimo (e'' il primo caso reale della coda: la riga di reso 24, kit a tre componenti). Lo tiene vendite.fn_accredita_riga_reso come UGUAGLIANZA (D-NC-6, l''accredito e'' sempre pieno), che e'' anche piu'' forte di una disuguaglianza e costa lo stesso. Lock: FOR UPDATE sulla riga di reso padre e sul gruppo della riga di fattura, come nelle due sorelle; nessun advisory lock. rev 2026-08-18.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,6 +1,8 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/vw_indirizzi_resolved_base.md" %}
 # 🔍 View `vw_indirizzi_resolved_base`
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_base AS
 SELECT b.scope,
@@ -113,6 +115,8 @@ SELECT b.scope,
      LEFT JOIN config.regioni re_s ON ((re_s.id = pr_s.regione_id)))
      LEFT JOIN config.stati st ON ((st.id = COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id))));
 ```
+
+</div>
 
 
 ---

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_articoli_guard_onere_natura()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_onere_natura()
  RETURNS trigger
@@ -63,6 +65,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_onere_natura()
 IS 'Guard BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id su catalogo.articoli: un articolo-onere (causale_onere_id valorizzato) non e'' merce, la sua natura non ha destinazione_tipo ORDINE (E_ARTICOLO_ONERE_NATURA_MERCE, campo natura_vendita_id). Senza, un onere creato senza dire la natura prendeva il DEFAULT (MERCE): un addebito trattato come bene da evadere in ordine e in bolla, e come cessione di beni. La regola legge la destinazione dal vocabolario (config.nature_vendita), come le viste di smistamento: segue la natura se cambia destinazione. Un UPDATE che non cambia le due colonne non rigiudica. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-9). ⭐ rev 2026-10-19 (20261019-98, brief-db-grammatica-unica-documenti lotto 2b): la destinazione della merce e'' ORDINE_VENDITA, il codice della sorgente (era ORDINE).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

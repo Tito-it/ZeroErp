@@ -7,6 +7,8 @@ CREATE FUNCTION fn_rendi_commessa_emittibile(p_commessa_id bigint, p_righe_ids b
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_rendi_commessa_emittibile(p_commessa_id bigint, p_righe_ids bigint[] DEFAULT NULL::bigint[], p_user text DEFAULT NULL::text)
  RETURNS integer
@@ -61,6 +63,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_rendi_commessa_emittibile(p_commessa_id bigint, p_righe_ids bigint[], p_user text)
 IS 'Madre (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-10 di Tid): dopo un invio in commessa approva le righe dell''invio (vendite.fn_approva_commessa_attivita) e porta la commessa a PRONTA_FATTURAZIONE (vendite.fn_cambia_stato_commessa). Prima lo faceva il backend (commesse_service._rendi_commessa_emittibile), che ora la chiama. p_righe_ids: NULL = nessun filtro; vuoto = nessuna riga di questo invio atterrata, niente approvazione ma la testata va comunque a PRONTA_FATTURAZIONE; pieno = le sole righe dell''invio (non si approvano le righe BOZZA di terzi). Gia'' PRONTA_FATTURAZIONE: il cambio non si tenta (la matrice non ammette da = a); CHIUSA o ANNULLATA: si tenta e la matrice rifiuta (non si invia in una commessa chiusa). Una madre e non un trigger: «le righe di questo invio» le conosce solo chi orchestra l''invio. SECURITY INVOKER. Ritorna le righe approvate.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

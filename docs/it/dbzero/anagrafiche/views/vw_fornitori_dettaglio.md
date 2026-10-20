@@ -5,6 +5,8 @@
 >
 > Dettaglio fornitore con soggetto, stato, valuta, modalita' e termine pagamento. Include id_fiscale_univoco_cf_piva per lista configurabile DEF-8. stato_codice_interno = codice_interno (logica), stato_codice = codice (display).
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_fornitori_dettaglio AS
 SELECT f.id,
@@ -51,6 +53,8 @@ SELECT f.id,
      LEFT JOIN config.modalita_pagamento mp ON ((mp.id = f.modalita_pagamento_id)))
      LEFT JOIN config.termini_pagamento tp ON ((tp.id = f.termine_pagamento_id)));
 ```
+
+</div>
 
 
 ---

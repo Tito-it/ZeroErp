@@ -7,6 +7,8 @@ CREATE FUNCTION fn_admin_merge_comune(p_id_orig integer, p_id_target integer, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_admin_merge_comune(p_id_orig integer, p_id_target integer, p_event_type character DEFAULT 'F'::bpchar, p_event_date date DEFAULT script.fn_data_operativa(), p_note text DEFAULT NULL::text)
  RETURNS void
@@ -85,6 +87,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_admin_merge_comune(p_id_orig integer, p_id_target integer, p_event_type character, p_event_date date, p_note text)
 IS 'Strumento DBA: fonde due comuni di config.comuni — registra la trasformazione in storico.comune_trasformazioni (il registro delle fusioni, non una shadow) e ripunta sulla destinazione chi riferiva l''origine. Rev 2026-09-12: l''audit si scrive dalla porta dbops.fn_audit_log_once, una volta a fine lavoro (prima: INSERT con status STARTED, non ammesso dal CHECK, e UPDATE di chiusura che l''app non puo'' piu'' fare). Le validazioni sollevano ancora messaggi in chiaro senza codice registrato: debito dichiarato, da saldare quando la funzione sara'' chiamata dall''applicazione. Brief: brief-db-rls-storico-scope-congelato §4d.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

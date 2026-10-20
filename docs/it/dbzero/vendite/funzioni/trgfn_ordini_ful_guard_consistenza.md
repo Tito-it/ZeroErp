@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ordini_ful_guard_consistenza()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()
  RETURNS trigger
@@ -179,6 +181,8 @@ AS $function$
 COMMENT ON FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()
 IS 'Guard consistenza fulfillment: articolo/uom/residuo + over-fulfillment (E_QTA_SUPERA_RESIDUO). RESO-AWARE: residuo include addendo ri-consegna (fn_ordine_riga_qta_riconsegna), coerente con fn_ordine_ha_residuo_evasione. rev 2026-07-13. rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-6): + il cliente, E_DOC_CLIENTE_DIVERSO_DA_SORGENTE — la riga di DDT evade solo righe d''ordine dello stesso billing account.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

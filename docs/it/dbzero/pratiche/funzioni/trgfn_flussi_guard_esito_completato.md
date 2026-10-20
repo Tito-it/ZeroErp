@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_guard_esito_completato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_esito_completato()
  RETURNS trigger
@@ -45,6 +47,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_esito_completato()
 IS 'BEFORE INSERT OR UPDATE OF stato_id su flussi: COMPLETATO richiede esito NOT NULL (nessuna fase si chiude senza verdetto).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

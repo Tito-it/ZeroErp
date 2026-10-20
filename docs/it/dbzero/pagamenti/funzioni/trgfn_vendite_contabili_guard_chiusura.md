@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_vendite_contabili_guard_chiusura()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_guard_chiusura()
  RETURNS trigger
@@ -79,6 +81,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_guard_chiusura()
 IS 'C-5, porta d''USCITA: una distinta contabile non si chiude finche'' ha righe is_postabile ancora attive. E'' il percorso che capita davvero - si registra, restano righe non pronte, qualcuno chiude comunque - e quelle righe spariscono da entrambi i conti. ⚠️ Vale su CHIUSA e NON su ANNULLATA: «e'' fatta» e «non e'' mai successa» sono opposti. ⚠️ Il blocco lo danno le righe PRONTE (is_postabile), non le non-finali: con NOT is_final una distinta con una riga DA_ABBINARE non si chiuderebbe mai. ⭐ Con questo guard la chiusura smette di essere una scelta della funzione madre e diventa una conseguenza (chiude in gran parte Q-6).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

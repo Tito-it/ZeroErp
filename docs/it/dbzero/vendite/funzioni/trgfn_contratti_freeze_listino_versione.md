@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_contratti_freeze_listino_versione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_freeze_listino_versione()
  RETURNS trigger
@@ -84,6 +86,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_contratti_freeze_listino_versione()
 IS 'Trigger BEFORE UPDATE su vendite.contratti, solo su DRAFT->ATTIVO. Negoziato puro (listino_id NULL): richiede almeno una AGGIUNTA attiva con prezzo (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE). Con listino: solleva il primo motivo di script.fn_check_listino_congelabile(''CONTRATTO'', ...) — nessuna versione in vigore oggi, E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO — e congela listino_versione_id := vendite.fn_listino_versione_operativa (la fissata, altrimenti quella in vigore oggi). Una versione già fissata (dal push dell''offerta) resta anche se nel frattempo si è chiusa: è quella che il cliente ha accettato. Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.2, decisione A-D2 di Tid): prima il contratto si attivava con la versione NULL (§4.4 del 2026-05-18) e il risolutore delle righe lo faceva galleggiare sulla versione in vigore di ogni giorno. La capability script.fn_available_actions_contratto legge la stessa check e spegne «Attiva» col motivo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

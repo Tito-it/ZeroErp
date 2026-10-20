@@ -6,6 +6,8 @@ CREATE FUNCTION fn_ddt_muove_merce(p_ddt vendite.ddt)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ddt_muove_merce(p_ddt vendite.ddt)
  RETURNS boolean
@@ -25,6 +27,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ddt_muove_merce(p_ddt vendite.ddt)
 IS 'La bolla muove merce: la sua causale di trasporto e'' mappata su una causale di magazzino (fn_ddt_causale_magazzino) e almeno una voce e'' gestita (fn_ddt_merce_da_movimentare). Condizione della porta del registro nel guard di transizione, della check della merce e del verbo (D-L3-e). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

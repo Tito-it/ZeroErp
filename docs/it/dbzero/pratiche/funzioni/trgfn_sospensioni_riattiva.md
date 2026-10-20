@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_sospensioni_riattiva()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_riattiva()
  RETURNS trigger
@@ -77,6 +79,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_sospensioni_riattiva()
 IS 'AFTER UPDATE OF data_fine: ripristina stati flussi e pratica alla riattivazione.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

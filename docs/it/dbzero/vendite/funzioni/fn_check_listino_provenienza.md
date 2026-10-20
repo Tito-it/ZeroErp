@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_listino_provenienza(p_commessa_id bigint, p_articolo_id
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_check_listino_provenienza(p_commessa_id bigint, p_articolo_id uuid, p_uom_id bigint, p_listino_versione_id bigint, p_listino_riga_id bigint)
  RETURNS text
@@ -83,6 +85,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_check_listino_provenienza(p_commessa_id bigint, p_articolo_id uuid, p_uom_id bigint, p_listino_versione_id bigint, p_listino_riga_id bigint)
 IS 'Check (brief-db-coerenza-listino-della-riga-di-commessa, D-1 2026-10-15 e §6 2026-10-16): il codice del primo motivo per cui la provenienza del prezzo di una riga della commessa data (versione e riga di listino) non e'' ammessa; NULL = ammessa. Motivi in ordine: 1) E_ATTIVITA_LISTINO_RIGA_INCOERENTE: la riga di listino non c''e'', o non e'' dell''articolo e dell''unita'' di misura dati, o (se la versione e'' data) non e'' di quella versione; 2) E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO: il listino della versione (data, o quella della riga) e'' di un altro emittente rispetto alla commessa; 3) E_ATTIVITA_LISTINO_VERSIONE_BOZZA: quella versione e'' in BOZZA (mai un prezzo da una bozza). Ne'' riga ne'' versione: NULL. SECURITY DEFINER: listini e commesse hanno la RLS per emittente, e letto con la RLS di chi scrive un listino di un''altra azienda tornerebbe a vuoto. Ritorna solo un codice. Non solleva: lo fa vendite.trgfn_attivita_guard_listino_riga. Sostituisce vendite.fn_listino_riga_coerente (20261015-20, ritirata).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

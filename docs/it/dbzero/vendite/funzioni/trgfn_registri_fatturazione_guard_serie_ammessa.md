@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_registri_fatturazione_guard_serie_ammessa()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_registri_fatturazione_guard_serie_ammessa()
  RETURNS trigger
@@ -72,6 +74,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_registri_fatturazione_guard_serie_ammessa()
 IS 'Guard `_a10_` su vendite.registri_fatturazione: rifiuta un `serie_default` valorizzato quando la famiglia del registro non dichiara `colonna_serie`, cioe'' quando i suoi documenti non hanno dove registrare la serie. ⛔ PERCHE'': la serie entra nella chiave del contatore, quindi cambiarla apre un secchio nuovo che riparte da 1 — e se il documento non la registra ne'' ce l''ha nel proprio vincolo di unicita'' (resi, commesse) quel numero collide con uno gia'' emesso, il vincolo rifiuta e col rollback torna indietro anche il contatore: il documento non si numera piu''. ⭐ §12.5.2 — QUI NON C''E'' IL PREDICATO: si chiama script.fn_check_registro_serie_ammessa e si solleva il codice del primo motivo, cosi'' il rifiuto e il tooltip della maschera non possono divergere. ⛔ SI RIFIUTA E NON SI IGNORA: lasciar scrivere il valore facendolo poi ignorare al motore sarebbe il difetto appena tolto da config.sistema_codici — un campo editabile dal pannello che l''amministratore cambia senza ottenere niente e senza accorgersene. ⚠️ UN TRIGGER E NON UN CHECK: la condizione attraversa vendite.famiglie_documento, e un CHECK non fa sottoquery. ⛔ INSERT *E* UPDATE, perche'' un registro non deve nemmeno NASCERE con una serie che la sua famiglia non porta; verificato che i sei CHECK della tabella riguardano condizioni diverse, quindi il ramo INSERT non li oscura. ⭐ DUE ACCORGIMENTI TENGONO IN PIEDI IL MIGRATE: in UPDATE si confrontano i VALORI (il mirror CSV 20260127-57 riscrive serie_default a ogni migrate e `UPDATE OF` scatta comunque), e il ramo «famiglia non trovata» della check TACE (su un database ricostruito da zero il mirror dei registri gira prima di quello delle famiglie, perche'' includeAll ordina per nome file). Lo stato finale lo verifica il pgTAP. ⚠️ Il context porta `campo = serie_default`: e'' il canale che diventa error.fields e accende l''input giusto nel form. ⚠️ tx_id NULL e non NEW.tx_id: `_a10_` scatta prima del trigger che lo genera. Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 5 (S-3).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

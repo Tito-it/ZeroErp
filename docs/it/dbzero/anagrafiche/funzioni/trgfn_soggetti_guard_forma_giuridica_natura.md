@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_soggetti_guard_forma_giuridica_natura()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura()
  RETURNS trigger
@@ -64,6 +66,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura()
 IS 'Guard al COMMIT (constraint trigger AFTER UPDATE OF tipo_soggetto_dettaglio_id, DEFERRABLE INITIALLY DEFERRED) su anagrafiche.soggetti: la natura del soggetto deve ammettere la forma giuridica dei suoi dati societari (anagrafiche.fn_forma_giuridica_ammessa), altrimenti E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA, campo forma_giuridica_id. Differito perche'' natura e forma si cambiano insieme: nella stessa transazione prima la natura, poi la forma (il guard immediato della forma la confronta con la natura nuova). Rilegge le tabelle, non NEW. Tace senza dati societari o con forma o natura NULL. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (C-1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

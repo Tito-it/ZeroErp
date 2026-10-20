@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_soggetti_ruoli_conti_bancari_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
  RETURNS trigger
@@ -51,6 +53,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()
 IS 'Guard-rail: impedisce uso di conti non attivi. Rev 20260923-45: la coerenza delle date (valido_al non precede valido_dal) non e'' piu'' qui, ha una sede sola: script.trgfn_guard_date_validita (automazione DATE_VALIDITA).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

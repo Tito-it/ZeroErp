@@ -7,6 +7,8 @@ CREATE FUNCTION fn_articolo_righe_vive_non_ammesse(p_articolo_id uuid)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.fn_articolo_righe_vive_non_ammesse(p_articolo_id uuid)
  RETURNS TABLE(documento text, documento_id bigint, riga_id bigint, motivo jsonb)
@@ -79,6 +81,8 @@ $function$
 COMMENT ON FUNCTION catalogo.fn_articolo_righe_vive_non_ammesse(p_articolo_id uuid)
 IS 'Le righe VIVE di un articolo che la check dei guard di riga non ammette: {documento (codice di config.tipi_entita), documento_id, riga_id, motivo = il primo motivo di script.fn_check_articolo_riga, con la natura e il tipo d''eccezione della riga}; solo le righe con un motivo. Viva = attiva, e il documento non e'' chiuso: fase dello stato diversa da CHIUSO per preventivo, ordine, bolla, offerta e contratto; versione di listino non CHIUSA; promo col periodo non finito alla data operativa (script.fn_data_operativa). Le sette tabelle sono quelle dove e'' montato script.trgfn_righe_guard_articolo_ammesso (per la promo documento_id = riga_id = id della promo). SECURITY INVOKER: sotto RLS chi la chiama vede le sue righe; il verbo catalogo.fn_articolo_correggi_struttura (SECURITY DEFINER) la chiama su tutte le aziende, prima e dopo la correzione, e rifiuta solo le righe che la correzione rende non ammesse (A-11 di brief-db-articoli-ammessi-per-documento). Nasce il 2026-10-18 (§9.8.6).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

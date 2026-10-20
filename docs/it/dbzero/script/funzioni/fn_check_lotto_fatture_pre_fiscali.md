@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_lotto_fatture_pre_fiscali(p_lotto_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_lotto_fatture_pre_fiscali(p_lotto_id bigint)
  RETURNS jsonb
@@ -83,6 +85,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_lotto_fatture_pre_fiscali(p_lotto_id bigint)
 IS 'Funzione PURA (fn_check_*): motivi ostativi, sul versante FATTURE, alla demolizione del contenuto di un lotto. Ritorna [] se tutte le fatture sono pre-fiscali (DRAFT o EMESSA, cioe'' non ancora numerate — C-19), altrimenti {codice, reason, reason_key, dettaglio} con il conteggio (codice 799). Sede UNICA della definizione di «pre-fiscale» per le fatture di un lotto: la usano script.fn_check_lotto_annullabile e script.fn_check_lotto_riportabile_a_draft, e per loro tramite le due fn di mutazione e le capabilities. ⚠️ La condizione e'' IS DISTINCT FROM sui due id e non un NOT IN sui codici: una fattura con stato_doc_fiscale_id NULL deve contare come NON pre-fiscale (fail-closed). rev 2026-08-04.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

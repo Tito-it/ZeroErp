@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ordini_righe_ricalcola_totali()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_righe_ricalcola_totali()
  RETURNS trigger
@@ -38,6 +40,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ordini_righe_ricalcola_totali()
 IS 'Trigger function STATEMENT-level: ricalcola i totali testata per ogni ordine coinvolto da INSERT/UPDATE/DELETE su vendite.ordini_righe. Usa transition tables PG 18.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

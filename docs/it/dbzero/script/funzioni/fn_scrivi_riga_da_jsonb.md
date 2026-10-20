@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scrivi_riga_da_jsonb(p_tabella regclass, p_dati jsonb, p_dove
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scrivi_riga_da_jsonb(p_tabella regclass, p_dati jsonb, p_dove jsonb DEFAULT NULL::jsonb, p_rileggi_per text[] DEFAULT NULL::text[])
  RETURNS jsonb
@@ -154,6 +156,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scrivi_riga_da_jsonb(p_tabella regclass, p_dati jsonb, p_dove jsonb, p_rileggi_per text[])
 IS 'BB (2026-10-17, rev 2026-10-18): scrive una riga di p_tabella con le SOLE colonne di p_dati, valori convertiti da jsonb_populate_record sul tipo di riga. p_dove NULL: INSERT, le colonne assenti al DEFAULT (p_dati vuoto: DEFAULT VALUES). p_dove {colonna: valore, ...}: UPDATE delle righe con quei valori, le colonne assenti invariate (p_dati vuoto: nessuna scrittura, ritorna la riga). Ritorna la riga scritta (to_jsonb), NULL se l''UPDATE non trova righe. p_rileggi_per (rev 2026-10-18, solo INSERT): le colonne di p_dati che individuano la riga, tutte valorizzate; la INSERT non fa RETURNING e la riga si rilegge a istruzione finita, per le tabelle in RLS il cui legame lo scrive un trigger AFTER (billing account e cliente: la policy passa dal legame BA -> emittente di z90_link_ef). Una riga scritta e non visibile: E_SCRIPT_CHIAMATA_NON_VALIDA. Le chiavi le sceglie chi chiama: ogni chiave deve essere una colonna (rifiutare o scartare quelle estranee e'' una regola del chiamante). I trigger della tabella scattano come sempre. INVOKER. Chiamata malformata: E_SCRIPT_CHIAMATA_NON_VALIDA. Regola del 2: prende il posto delle copie in config.fn_pannello_scrivi (passo 3) e vendite.fn_create_contratto (passi 3 e 4); la rilettura, della forma dei builder pgTAP del cliente (20260912-38). Brief: brief-db-processi-accensione-per-ambiente (2b-1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

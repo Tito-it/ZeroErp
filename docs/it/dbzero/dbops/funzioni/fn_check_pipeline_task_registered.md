@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_pipeline_task_registered(p_dominio_id bigint, p_task_co
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_check_pipeline_task_registered(p_dominio_id bigint, p_task_code text)
  RETURNS boolean
@@ -69,6 +71,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_check_pipeline_task_registered(p_dominio_id bigint, p_task_code text)
 IS 'Verifica che un task sia registrato e attivo nel registry per dominio.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

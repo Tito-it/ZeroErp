@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_guard_sorgente_polimorfa_testuale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_guard_sorgente_polimorfa_testuale()
  RETURNS trigger
@@ -179,6 +181,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_guard_sorgente_polimorfa_testuale()
 IS 'Guard polimorfo MODELLO B (tabelle di collegamento a chiave unica testuale: pratiche.pratiche_sorgenti, vendite.commesse_sorgenti): valida che NEW.sorgente_uid TEXT rispetti il formato dettato da config.sorgenti.key_selector (id::text per i tipi id, uuid testuale per i tipi uid — E_SORG_FORMATO) e che la riga esista nella target_table (E_SORG_NOT_FOUND). NON valida sorgente_riga (grana di riga del link, non chiave documento; D4 rinviata). Sorella di trgfn_guard_sorgente_polimorfa_tipizzata (modello A). Brief-db-guard-sorgente-polimorfa, 2026-07-18. ⭐ rev 2026-10-05 (20261005-25): il formato si controlla sulla FORMA CANONICA con i building block script.fn_sorgente_chiave_id / script.fn_sorgente_chiave_uuid — la stessa regola con cui la chiave si cerca (fn_stato_sorgente, vw_pratica_doc_sorgente) — e sul valore che verra'' SALVATO (NEW.sorgente_uid), non sulla sua copia ripulita. Prima: regex larghe su btrim(sorgente_uid), e la riga salvava il valore non ripulito; passavano ''007'', '' 42 '', un uuid maiuscolo, chiavi che esistono ma che nessun lettore ritrova. Ora E_SORG_FORMATO. La verifica di esistenza usa la chiave gia'' convertita.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

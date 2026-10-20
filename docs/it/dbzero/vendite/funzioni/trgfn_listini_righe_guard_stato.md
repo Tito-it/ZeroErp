@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_listini_righe_guard_stato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_listini_righe_guard_stato()
  RETURNS trigger
@@ -91,6 +93,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_listini_righe_guard_stato()
 IS 'Guard N6: protegge righe listino in base a stato versione. BOZZA=passa, ATTIVA=solo se non propagata, CHIUSA=blocca. Solo UPDATE/DELETE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ricalcola_valore_giacenza(p_magazzino_id bigint, p_articolo_i
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.fn_ricalcola_valore_giacenza(p_magazzino_id bigint, p_articolo_id uuid DEFAULT NULL::uuid)
  RETURNS TABLE(articolo_id uuid, magazzino_id bigint, valore_prima numeric, valore_dopo numeric)
@@ -77,6 +79,8 @@ $function$
 COMMENT ON FUNCTION magazzino.fn_ricalcola_valore_giacenza(p_magazzino_id bigint, p_articolo_id uuid)
 IS 'Riscrive la COPIA del valore (valore_giacenza) dal registro per un magazzino (obbligatorio: e'' di un emittente, 7-sexies) e opzionalmente un articolo: RI-SOMMA round(qta * costo_unitario, 6) — lo stesso arrotondamento del passo 14 della primitiva (C7), cosi'' copia e ri-somma coincidono per costruzione — mai ri-esecuzione: i costi scritti sono fatti (M-4). Le copie del magazzino senza movimenti si cancellano (possono venire solo da fuori porta). Ritorna le coppie toccate con valore prima e dopo (NULL dopo = tolta). DEFINER del PROPRIETARIO, non di un superuser: scrive dove l''app ha solo SELECT (D-L2-b). Brief: brief-db-magazzino-lotto-2-motore, sezione 4.4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

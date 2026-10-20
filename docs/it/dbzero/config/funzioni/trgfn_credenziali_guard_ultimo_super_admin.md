@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_credenziali_guard_ultimo_super_admin()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_credenziali_guard_ultimo_super_admin()
  RETURNS trigger
@@ -64,6 +66,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_credenziali_guard_ultimo_super_admin()
 IS 'Guard anti-lockout sul blocco dell''amministratore: impedisce di bloccare la credenziale che porta l''ultimo SUPER_ADMIN raggiungibile. Terza porta della stessa regola dopo i guard su profili_accesso_bindings e identita_digitali: delega a script.fn_check_almeno_un_super_admin_attivo, che conosce il blocco (rev 2026-09-25). Solo la transizione non bloccata -> bloccata, solo se la credenziale portava un binding SUPER_ADMIN attivo. Codice E_PROFILO_ULTIMO_SUPER_ADMIN, lo stesso dei gemelli. Brief: brief-db-blocco-login-per-credenziale §3.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

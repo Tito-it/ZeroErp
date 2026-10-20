@@ -7,6 +7,8 @@ CREATE FUNCTION fn_conferma_reso(p_reso_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
  RETURNS void
@@ -171,6 +173,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
 IS 'Madre conferma reso: DRAFT->CONFERMATO (numero+guard), proiezione stato ordine (residuo reso-aware -> PARZIALMENTE_EVASO/EVASO), flip DDT origine CONSEGNATO->RESO se reso totale. brief §5. rev 2026-07-13. rev 2026-07-17 (step 2b): il flip conta solo i resi CONFERMATI. rev 2026-07-17 (step 2): il flip legge l helper unico vw_resi_righe_effettive (CONFERMATE+attive, tutti i tipi). ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-b/-c/-f): VERBO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_reso nella WHERE, fuori perimetro E_RESO_NOT_FOUND); permesso conferma_reso su OGNI conferma (script.fn_guard_azione, E_PERMESSO_NEGATO). Su un reso che fa rientrare merce (vendite.fn_reso_muove_merce): lock della bolla d''origine, primo motivo di script.fn_check_reso_merce, rientri automatici, poi lo stato con la porta del registro aperta (GUC zeroerp.reso_cambio_stato) e in coda i carichi (vendite.fn_posta_reso, CARICO_RESO_VEN al costo dell''uscita). UNA transazione. La firma non cambia (RETURNS void). rev 2026-10-01 (brief-db-magazzino-registro-anello-interno, D-2): il posting sta in vendite, non nel registro. ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine e'' il building block vendite.fn_ordine_proietta_stato_evasione; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

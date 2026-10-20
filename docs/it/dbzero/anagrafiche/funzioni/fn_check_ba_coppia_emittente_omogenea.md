@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_ba_coppia_emittente_omogenea(p_figlio_id bigint, p_padr
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_check_ba_coppia_emittente_omogenea(p_figlio_id bigint, p_padre_id bigint)
  RETURNS boolean
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_check_ba_coppia_emittente_omogenea(p_figlio_id bigint, p_padre_id bigint)
 IS 'Pure check (boolean, no raise): la coppia figlio/padre di billing_account appartiene allo STESSO emittente fiscale? L''emittente e'' quello RISOLTO da anagrafiche.fn_get_emittente_fiscale_id (mapping specifico oppure gestore globale) — la stessa funzione usata da vendite.fn_build_fattura_key, cosi'' «albero omogeneo» e «la fattura esce da un solo emittente» sono la stessa affermazione. Padre NULL -> true (nessun albero). Emittente non risolto -> false (fail-closed). Puo'' propagare E_EMITTENTE_DEFAULT_MISSING: e'' un difetto di configurazione, non un verdetto di dominio. Brief P-1 §3.5/§11.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

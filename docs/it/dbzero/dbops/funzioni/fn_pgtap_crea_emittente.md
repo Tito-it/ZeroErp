@@ -6,6 +6,8 @@ CREATE FUNCTION fn_pgtap_crea_emittente(p_sigla character varying)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_emittente(p_sigla character varying DEFAULT NULL::character varying)
  RETURNS TABLE(emittente_fiscale_id bigint, emittente_codice character varying, soggetto_ruolo_id bigint, soggetto_id uuid)
@@ -81,6 +83,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_emittente(p_sigla character varying)
 IS 'Helper di fixture pgTAP: crea un emittente fiscale nuovo — soggetto persona giuridica, ruolo EF, riga in anagrafiche.emittenti_fiscali con una sigla PGTRnnnn libera e la VALUTA valorizzata. ⚠️ La valuta non e'' un di piu'': vendite.fn_get_valuta_id risolve «BA -> emittente -> gestore», e su un database ricostruito dai changelog nessuno dei tre e'' valorizzato — il primo documento morirebbe su E_CONFIG_MANCANTE. Da sola NON basta a far vedere l''emittente a un test: per quello serve dbops.fn_pgtap_crea_emittente_operatore. Rev 20260909-32. Rev 2026-10-17: la riga di emittenti_fiscali la scrive il verbo anagrafiche.fn_crea_emittente_fiscale (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1); firma e ritorno invariati.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

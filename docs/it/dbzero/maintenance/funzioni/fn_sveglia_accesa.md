@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sveglia_accesa(p_processo_codice text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION maintenance.fn_sveglia_accesa(p_processo_codice text)
  RETURNS boolean
@@ -78,6 +80,8 @@ $function$
 COMMENT ON FUNCTION maintenance.fn_sveglia_accesa(p_processo_codice text)
 IS 'La sveglia del processo deve far partire il lavoro? true o false, mai NULL: per chi DECIDE. La chiedono il passo di ogni job pgAgent di un processo (85_pgagent/20261016-30: se false il passo non lancia la procedura e non scrive nel giornale) e le sveglie systemd dei COMMAND (giro BE). NON la chiede la convergenza del rilascio (90_end/ci_apply/20260926-10), che chiama le procedure strutturali sempre: spegnere ferma la sveglia, non l''aggiornamento (P-3). Errori: E_PROCESSO_NON_TROVATO, E_PROCESSO_SENZA_SVEGLIA (CODA o ritirato), E_CONFIG_MANCANTE (ambiente non dichiarato, oppure catalogo senza il default). La regola e'' in dbops.fn_processo_acceso_su_valori, la lettura in dbops.fn_processo_acceso_dichiarato. SECURITY DEFINER: pgAgent gira come zeroerp_job, che non legge dbops; porta stretta, un codice in e un booleano fuori. Brief: brief-db-processi-accensione-per-ambiente (§5.3).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

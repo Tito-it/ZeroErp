@@ -7,6 +7,8 @@ CREATE FUNCTION fn_snapshot_indirizzo_soggetto(p_soggetto_id uuid, p_tipo_indiri
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_snapshot_indirizzo_soggetto(p_soggetto_id uuid, p_tipo_indirizzo_id integer)
  RETURNS TABLE(snapshot jsonb)
@@ -96,6 +98,8 @@ $function$
 COMMENT ON FUNCTION script.fn_snapshot_indirizzo_soggetto(p_soggetto_id uuid, p_tipo_indirizzo_id integer)
 IS 'Gemella di script.fn_snapshot_indirizzo per il layer SOGGETTO: compone lo STESSO shape canonico (intestazione, via, cap, citta, prov, stato, display) a partire da (soggetto_id, tipo_indirizzo_id). Esiste perche'' gli indirizzi di soggetto stanno in anagrafiche.indirizzi_soggetti e non hanno riga in anagrafiche.indirizzi: non c''e'' un p_indirizzo_id da passare alla gemella, e la colonna indirizzo_id della vista soggetto e'' la PK di un''ALTRA tabella — passarla alla gemella restituirebbe in silenzio l''indirizzo di ruolo con lo stesso numero. Prende la coppia (soggetto, tipo) proprio per rendere impossibile quello scambio. Assenza = zero righe e non errore: e'' il fallback della catena e il chiamante deve poter scendere di livello. Determinismo garantito da uq_indirizzi_soggetti_soggetto_tipo. Ogni valore passa da NULLIF(btrim(...)) come nella gemella (fix 2026-07-31: prov da character(10) congelava il riempimento a spazi). STABLE. piano-db-satelliti-fattura D-O, Fase 2.0-a.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

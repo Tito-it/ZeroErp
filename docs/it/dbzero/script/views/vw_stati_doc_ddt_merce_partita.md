@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_stati_doc_ddt_merce_partita
 WITH (security_invoker=true) AS
@@ -16,6 +18,8 @@ SELECT s.id,
    FROM (config.stati_doc_ddt s
      LEFT JOIN config.stati_doc_ddt e ON (((e.codice_interno)::text = 'EMESSO'::text)));
 ```
+
+</div>
 
 
 ---

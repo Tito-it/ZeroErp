@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_articoli_guard_flags_struttura_bom_attiva()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva()
  RETURNS trigger
@@ -123,6 +125,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva()
 IS 'Guard BEFORE UPDATE OF is_composito, is_solo_componente, requires_serial: blocca is_composito/requires_serial se articolo e'' padre di BoM attiva (prodotto_id); blocca is_solo_componente se articolo e'' figlio in BoM attiva (componente_id). Codice: E_BOM_MODIFICA_VIETATA (387). rev 2026-05-22. ⭐ rev 2026-10-13 (20261013-03, brief-db-articoli-ammessi-per-documento D-4): check 3, un articolo che e'' componente di una distinta in vigore o futura (legame attivo, validita && [oggi, inf)) non diventa composito, perche'' la distinta ha un livello solo: E_BOM_COMPONENTE_DIVENTA_COMPOSITO, campo is_composito, col primo padre per codice nel messaggio. E'' il lato articolo di catalogo.trgfn_articoli_componenti_guard_un_livello; il gemello per il form e'' la regola condizionale su is_composito in dbops.lock_columns_conditional.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

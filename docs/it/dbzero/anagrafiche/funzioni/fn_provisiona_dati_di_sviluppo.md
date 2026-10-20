@@ -7,6 +7,8 @@ CREATE FUNCTION fn_provisiona_dati_di_sviluppo(p_password_hash jsonb)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_provisiona_dati_di_sviluppo(p_password_hash jsonb DEFAULT '{}'::jsonb)
  RETURNS TABLE(tipo text, chiave text, radice_id text, esito text, secondo_fattore boolean)
@@ -462,6 +464,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_provisiona_dati_di_sviluppo(p_password_hash jsonb)
 IS 'Verbo dei dati di sviluppo (2026-10-18): crea o riallinea gli utenti e i soggetti di prova dell''elenco del brief BE §7 (emittenti DEVA e DEVB coi magazzini predefiniti; clienti 1, 2 e 3 su A, B su B, con BA legato al loro emittente; fornitore 1; gli operatori dev.smoke SUPER_ADMIN, dev.lettura e dev.bloccato col profilo DEV_LETTURA, dev.bloccato con vendite.contratto BLOCCATO, dev.emittente con DEV_OPERATIVO, dev.multiveste; le vesti dev.portale1, dev.portale2, dev.fornitore e la veste portale di dev.multiveste, sul cliente 3: un ruolo cliente ha una sola veste portale attiva) e ne etichetta le radici in dbops.credenziali_di_prova e dbops.soggetti_di_prova (anche le persone degli operatori, DEV-PERSONA-<NOME>). Per prima cosa l''ambiente: fuori da SVILUPPO E_DATI_DI_SVILUPPO_IN_PRODUZIONE (dbops.fn_dati_di_sviluppo_ammessi_su_valori), non dichiarato E_CONFIG_MANCANTE. Idempotente per chiave: una radice etichettata si riallinea (vesti accese, profili riscritti su tutte le aree, whitelist su A, override, emittente attivo A, password se data); un omonimo senza etichetta (username, sigla di un emittente) e'' E_RADICE_DI_PROVA_SENZA_ETICHETTA. p_password_hash: username -> hash Django; assente alla nascita = password inutilizzabile, assente dopo = invariata. Scrive solo dai BB e dalle madri (vedi il changeSet); sue sono le etichette e la password di una credenziale riallineata. SECURITY DEFINER: e'' l''unico scrittore delle etichette. Le GUC app.current_user_id e app.current_emittente_id le governa lui (vuote per i BA, dev.smoke per i magazzini) e le rimette com''erano. Il secondo fattore lo fa il BE dopo: la colonna secondo_fattore dice chi deve averlo. Ritorna una riga per radice (tipo, chiave, radice_id, esito creata/riallineata, secondo_fattore). Brief: brief-db-processi-accensione-per-ambiente (R-4, 2b-3); brief-be-utenti-di-sviluppo §7. Rev 2026-10-18 (D-4 di Tid): gli indirizzi dei soggetti di prova passano a anagrafiche.fn_crea_indirizzo_soggetto in jsonb (contratto nuovo della madre).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

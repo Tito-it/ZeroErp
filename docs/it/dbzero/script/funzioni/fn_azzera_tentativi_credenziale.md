@@ -7,6 +7,8 @@ CREATE FUNCTION fn_azzera_tentativi_credenziale(p_auth_user_id integer, p_proven
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_azzera_tentativi_credenziale(p_auth_user_id integer, p_provenienza inet DEFAULT NULL::inet)
  RETURNS void
@@ -57,6 +59,8 @@ $function$
 COMMENT ON FUNCTION script.fn_azzera_tentativi_credenziale(p_auth_user_id integer, p_provenienza inet)
 IS 'Azzera i tentativi falliti di una credenziale. Sempre i fallimenti consecutivi (attesa crescente); le righe di provenienza (freno): con p_provenienza la sola coppia da cui si e'' entrati (accesso riuscito, ramo successo di fn_registra_tentativo_login — il freno sulla macchina di chi attacca resta), con NULL tutte (reset password riuscito, D-2: la password e'' cambiata e i tentativi sulla vecchia non contano piu''). Non tocca il blocco dell''admin (D-B3: lo toglie solo fn_sblocca_credenziale) ne'' deve_cambiare_password. Senza riga non c''e'' niente da azzerare. SECURITY DEFINER del PROPRIETARIO, non di un superuser, search_path bloccato; nessun guard di permesso, dichiarato (login e reset girano prima che esista un utente). Brief: brief-db-blocco-login-per-credenziale §3.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

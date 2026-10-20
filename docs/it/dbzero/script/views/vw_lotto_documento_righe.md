@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_lotto_documento_righe
 WITH (security_invoker=true) AS
@@ -18,6 +20,8 @@ SELECT DISTINCT lf.lotto_id,
      JOIN vendite.attivita_fatturabili af ON ((af.fattura_riga_id = fr.id)))
      JOIN vendite.commesse_attivita ca ON ((ca.id = af.commessa_attivita_id)));
 ```
+
+</div>
 
 
 ---

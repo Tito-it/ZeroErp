@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_resi_righe_guard_origine_coerente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_righe_guard_origine_coerente()
  RETURNS trigger
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_righe_guard_origine_coerente()
 IS 'Guard di coerenza dell''origine sul reso (partita merce generalizzata S6a): resi_righe.ordine_riga_id deve combaciare col fulfillment di resi_righe.ddt_riga_id — valorizzato e coincidente con UNA delle origini se la riga di DDT e'' order-backed, VUOTO se non lo e''. Bicondizionale: le due direzioni sono lo stesso errore visto dai due lati. Perche'' serve: `ordine_riga_id` e'' una denormalizzazione ricavabile dal fulfillment, e la legge fn_ordine_riga_qta_riconsegna per riaprire il residuo dell''ordine — sbagliata o vuota, la merce torna e l''ordine non se ne accorge. ⚠️ Il fulfillment ammette piu'' righe d''ordine per una riga di DDT (unicita'' sulla COPPIA): si chiede che il valore sia una delle origini, non «la prima». Il backend deriva gia'' il campo dallo snapshot della riga DDT: questo guard copre le scritture che non passano dal service. Errore E_RESO_ORIGINE_INCOERENTE (DATO_ERRATO).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

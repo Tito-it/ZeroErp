@@ -6,6 +6,8 @@ CREATE FUNCTION fn_grant_storico_shadows(p_dry_run boolean)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_grant_storico_shadows(p_dry_run boolean DEFAULT false)
  RETURNS void
@@ -135,6 +137,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_grant_storico_shadows(p_dry_run boolean)
 IS 'Allinea i privilegi delle shadow storico.* a quelli della loro madre, DERIVANDOLI invece di elencarli: per ogni tabella storico.<t> la cui madre porta un trigger script.trgfn_storico_generic, concede SELECT/INSERT/UPDATE ai ruoli che sulla madre hanno INSERT o UPDATE. ⭐ Nessun nome scritto da nessuna parte: il marcatore e'' il TRIGGER, quindi una tabella che esce dalla storicizzazione esce da qui da sola, e una shadow nuova e'' coperta senza che nessuno se ne ricordi. ⛔ MAI DELETE, ed e'' una regola di dominio: uno snapshot SCD non si cancella — la stessa che asserisce il test 19 di db/pgtap/rls/test-role-batch-fatturazione-postura.sql. Per questo la regola NON e'' «copia i privilegi della madre»: sulla madre il ruolo batch ha anche DELETE. ⚠️ Legge pg_class.relacl e non information_schema.role_table_grants, che mostra solo i grant del ruolo CONNESSO e da un altro ruolo risponde zero righe sempre (e'' il difetto che aveva reso muto il test 8 della postura). ⚠️ Verifica l''ESITO di ogni GRANT invece di supporlo: quando il concedente non e'' proprietario dell''oggetto PostgreSQL emette un WARNING e prosegue, non solleva — un EXCEPTION WHEN insufficient_privilege non scatterebbe mai e la funzione registrerebbe OK senza aver concesso niente. ⚠️ Il trigger di storicizzazione e'' SECURITY INVOKER: scrive nella shadow come il ruolo che aggiorna la madre, quindi senza questi privilegi e'' l''UPDATE sulla madre a fallire, non solo lo storico a perdersi. 🔴 LIMITE: un GRANT lo da'' il proprietario, e le shadow ereditano il proprietario da chi ha eseguito l''automazione — misurate il 2026-09-02, cinque di postgres e quattro di titodb. Dove non e'' proprietaria la funzione REGISTRA e prosegue (audit SKIP) invece di fermare il migrate: a concedere sara'' il provisioning, che gira da superuser. Idempotente e forward-only: non revoca mai, e non scrive dove i privilegi ci sono gia''. Chiamata da migrations_v2/90_end/20260902-10-run-grant-storico-shadows.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

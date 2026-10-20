@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_anno_registro(p_data date)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_anno_registro(p_data date)
  RETURNS smallint
@@ -35,6 +37,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_anno_registro(p_data date)
 IS 'Calcola anno di registro per reset ANNUALE (anno solare).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

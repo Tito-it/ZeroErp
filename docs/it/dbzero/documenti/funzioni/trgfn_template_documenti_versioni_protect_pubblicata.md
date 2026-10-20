@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_template_documenti_versioni_protect_pubblicata()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata()
  RETURNS trigger
@@ -41,6 +43,8 @@ $function$
 COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata()
 IS 'Guard A1: blocca UPDATE su versioni template PUBBLICATA. Una versione pubblicata e'' immutabile.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

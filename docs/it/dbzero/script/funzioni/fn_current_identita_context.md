@@ -7,6 +7,8 @@ CREATE FUNCTION fn_current_identita_context()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_current_identita_context()
  RETURNS TABLE(current_identita_id bigint, ruolo_applicativo config.ruolo_applicativo, soggetto_ruolo_id bigint)
@@ -28,6 +30,8 @@ $function$
 COMMENT ON FUNCTION script.fn_current_identita_context()
 IS 'Restituisce il contesto identita della sessione corrente (app.current_identita_id, app.ruolo_applicativo, app.soggetto_ruolo_id) come record tipato. Fail-soft su GUC mancanti (NULL). §4.7 WIP multi-face-auth.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

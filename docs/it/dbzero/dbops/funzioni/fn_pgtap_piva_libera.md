@@ -11,6 +11,8 @@ CREATE FUNCTION fn_pgtap_piva_libera()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_piva_libera()
  RETURNS text
@@ -67,6 +69,8 @@ COMMENT ON FUNCTION dbops.fn_pgtap_piva_libera()
 IS 'Restituisce una partita IVA VALIDA (checksum verificato da script.fn_valida_partita_iva) e non ancora presente in anagrafiche.soggetti, per le fixture pgTAP. Serve perche'' il vincolo che faceva collidere le corse dei vecchi test e'' uq_soggetto_idstato_id_fiscale_univoco: con un identificativo fisso la seconda corsa sbatte sul residuo della prima, e dal 2026-01-23 quel residuo non si puo'' piu'' cancellare (dbops.automation_delete_block_ruoli). Vede anche le righe non ancora committate, quindi due chiamate nella stessa transazione danno valori diversi. Brief: brief-db-bonifica-baseline-pgtap-vendite.md';
 ```
 
+</div>
+
 ## Firma `(p_skip integer)`
 
 ```sql
@@ -74,6 +78,8 @@ CREATE FUNCTION fn_pgtap_piva_libera(p_skip integer)
 ```
 
 **Definizione completa:**
+
+<div data-search-exclude markdown>
 
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_piva_libera(p_skip integer)
@@ -145,6 +151,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_piva_libera(p_skip integer)
 IS 'Come dbops.fn_pgtap_piva_libera(), ma salta le prime p_skip libere. ⚠️ Serve perche'' la sorella senza argomenti torna lo STESSO valore se la si chiama due volte nella stessa ISTRUZIONE: e'' l''insert della riga a rendere occupato un identificativo, e dentro una sola SELECT non c''e'' nessun insert in mezzo. Una fixture che vuole due partite IVA distinte usa fn(0) e fn(1). Firma separata e senza DEFAULT di proposito: un default renderebbe ambigue le chiamate a zero argomenti gia'' scritte.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

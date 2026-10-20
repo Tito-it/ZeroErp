@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_profili_accesso_bindings_guard_ultimo_super_admin()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_profili_accesso_bindings_guard_ultimo_super_admin()
  RETURNS trigger
@@ -86,6 +88,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_profili_accesso_bindings_guard_ultimo_super_admin()
 IS 'Guard anti-lockout: impedisce operazioni su profili_accesso_bindings che lascerebbero il sistema senza SUPER_ADMIN raggiungibili (profilo identificato per tipo enum). Delega il check a script.fn_check_almeno_un_super_admin_attivo. Codice errore E_PROFILO_ULTIMO_SUPER_ADMIN. rev 2026-06-29: tipo invece di codice (§4a).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

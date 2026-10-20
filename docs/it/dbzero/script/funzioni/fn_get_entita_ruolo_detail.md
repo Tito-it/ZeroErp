@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_entita_ruolo_detail(p_soggetto_ruolo_id bigint, p_utility
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_entita_ruolo_detail(p_soggetto_ruolo_id bigint, p_utility_id integer DEFAULT NULL::integer)
  RETURNS jsonb
@@ -127,6 +129,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_entita_ruolo_detail(p_soggetto_ruolo_id bigint, p_utility_id integer)
 IS 'Dati entita'' per tipo ruolo in JSONB (query dinamica su entita_tabella). Strip colonne sistema, filtro utility_id opzionale. Se entita_tabella IS NULL → meta da soggetti_ruoli.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

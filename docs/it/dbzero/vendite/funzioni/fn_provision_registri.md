@@ -7,6 +7,8 @@ CREATE FUNCTION fn_provision_registri(p_emittente_soggetto_ruolo_id bigint, p_fa
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_provision_registri(p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_famiglia_documento character varying DEFAULT NULL::character varying)
  RETURNS integer
@@ -139,6 +141,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_provision_registri(p_emittente_soggetto_ruolo_id bigint, p_famiglia_documento character varying)
 IS 'PRIMITIVA del provisioning: crea i registri di numerazione MANCANTI per le combinazioni (emittente, famiglia) selezionate dai due filtri — entrambi opzionali, NULL = tutti — e torna quanti REGISTRI ha creato. ⛔ ESISTE PER NON AVERE DUE COPIE della regola di come nasce un registro: il codice (vendite.fn_codice_registro_provisionato), la descrizione, il reset ANNUALE e i default di forma presi dalla famiglia sono un CONTRATTO. Sopra ci stanno due involucri sottili: fn_provision_registri_emittente (trigger su anagrafiche.emittenti_fiscali) e fn_provision_registri_famiglia (la madre che crea una famiglia, e dal 2026-10-18 i trigger su config.tipi_doc_fiscale e config.nature_doc_fiscale per la FATTURA). ⭐ IDEMPOTENTE: sulla COPPIA (emittente, famiglia) per le famiglie a registro unico; sulle coppie (tipo documento, natura) scoperte per la FATTURA. ⭐ I DEFAULT DI FORMA VENGONO DAL CATALOGO DELLE FAMIGLIE. ⭐ Rev 2026-10-18 (20261019-08, R-BE-14, D-14a … D-14d di Tid): la FATTURA non e'' piu'' esclusa. Per ogni emittente con coppie (tipo documento attivo, natura attiva) scoperte — vendite.fn_coppie_fattura_scoperte, che chiama fn_lookup_registro_id — nasce UN registro delle fatture STANDARD (codice FAT-<emittente>, utility NULL) e le coppie scoperte si collegano a lui in vendite.tipi_doc_fiscale_registri. Un emittente configurato a mano lo riceve solo per le coppie che non ha; il CRUD dei registri divide lo standard quando serve. Un registro standard SPENTO non si ricollega ne'' si rifa'': spegnerlo e'' una scelta, e la coppia resta scoperta. I collegamenti non entrano nel numero restituito. Prima di allora nessun emittente nasceva col registro delle fatture e il primo documento fiscale si fermava su fn_get_registro_id. ⚠️ SECURITY DEFINER come l''originale: scrive sui registri leggendo gli emittenti, e la puo'' chiamare un trigger nel contesto di chi crea l''emittente. Piano: brief-be-fe-crud-registri-di-numerazione 11.6 (DB-4); brief-db-processi-accensione-per-ambiente §6.14.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

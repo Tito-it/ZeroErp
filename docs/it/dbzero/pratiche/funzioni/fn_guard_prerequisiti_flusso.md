@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_prerequisiti_flusso(p_pratica_id bigint, p_template_flu
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_guard_prerequisiti_flusso(p_pratica_id bigint, p_template_flusso_id integer)
  RETURNS void
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_guard_prerequisiti_flusso(p_pratica_id bigint, p_template_flusso_id integer)
 IS 'Guard fail-fast: solleva eccezione se prerequisiti non soddisfatti.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

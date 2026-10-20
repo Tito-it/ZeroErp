@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_emittente_fiscale_id(p_modo text, p_valore bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_resolve_emittente_fiscale_id(p_modo text, p_valore bigint)
  RETURNS bigint
@@ -376,6 +378,8 @@ $function$
 COMMENT ON FUNCTION script.fn_resolve_emittente_fiscale_id(p_modo text, p_valore bigint)
 IS '⭐ rev 2026-10-18 (20261018-48, D-3b-2 ondata 2): 9 modi di magazzino, pratiche e documenti generati (asset, evento_asset, inventario, movimento, rettifica, trasferimento, pratica, flusso, documento_generato), per le policy ef_whitelist e gli adattatori via_*. ⭐ rev 2026-10-18 (20261018-31, D-3b-2 giro 1b): 18 modi dei documenti di vendita e delle loro righe (ddt, ddt_riga, ordine, ordine_riga, preventivo, preventivo_riga, offerta, offerta_eccezione, contratto, contratto_riga, reso, reso_riga, commessa, commessa_attivita, attivita_fatturabile, lotto, fattura_sdi, listino_versione): li chiedono le policy ef_whitelist per riga e gli adattatori fn_scope_ef_whitelist_via_*, una strada sola. Dice DI CHI E'' una riga: l''id dell''emittente fiscale raggiunto da p_valore secondo p_modo, o NULL se il riferimento non porta a nessun emittente («nessun padrone»: il guard lascia passare). Modi: fiscale (la colonna E'' emittente_fiscale_id), soggetto_ruolo, fattura, listino (dal listino padre della versione), ente_incasso (dal conto su cui atterra il denaro), contabile (la distinta sa di chi e''), magazzino (rev 2026-09-18, Lotto 2 magazzino: magazzini.emittente_fiscale_id — il perimetro del ledger che la primitiva DEFINER scavalca). Un modo sconosciuto SOLLEVA E_PARAMETRO_INVALIDO, non risponde NULL. SECURITY DEFINER del proprietario, perche'' due catene passano da tabelle sotto row security e un guard INVOKER fuori perimetro non troverebbe l''emittente; search_path bloccato. Risponde solo alla domanda di FATTO: il permesso e'' di script.fn_check_user_emittente_scope. Chiamata da script.trgfn_guard_emittente_scope.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE PROCEDURE proc_automations_tx_id_job()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_automations_tx_id_job()
  LANGUAGE plpgsql
@@ -23,6 +25,8 @@ BEGIN
 END;
 $procedure$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

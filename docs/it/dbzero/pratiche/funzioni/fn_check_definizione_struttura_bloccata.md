@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_definizione_struttura_bloccata(p_definizione_id integer
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_check_definizione_struttura_bloccata(p_definizione_id integer)
  RETURNS boolean
@@ -37,6 +39,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_check_definizione_struttura_bloccata(p_definizione_id integer)
 IS 'TRUE sse la definizione workflow e'' un''edizione forkata (emittente_fiscale_id valorizzato) fuori da BOZZA (PUBBLICATA o RITIRATA): la struttura e'' bloccata (INSERT/UPDATE di template e figli vietati, strategia C). Piu'' ampia di fn_check_definizione_congelata (solo PUBBLICATA, blocco DELETE): una RITIRATA e'' struttura-bloccata ma cancellabile. Preset (emittente NULL) e BOZZA liberi. Funzione pura (no raise); usata dai guard di immutabilita'' strutturale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

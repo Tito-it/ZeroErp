@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_emittente_fiscale_id(p_billing_account_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id bigint)
  RETURNS bigint
@@ -76,6 +78,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id bigint)
 IS 'Risolve «quale emittente fattura questo billing account» PER LO SCRITTORE: restituisce il soggetto_ruolo_id dell''emittente e SOLLEVA E_EMITTENTE_DEFAULT_MISSING se non e'' risolvibile. La regola «mapping specifico, poi is_default» vive in script.fn_get_ba_emittente_sr_id dal 2026-08-19 (P-6/5b); qui resta il punto in cui un NULL diventa un errore di dominio, perche'' e'' questa la funzione che vendite.fn_build_fattura_key usa per scegliere il REGISTRO su cui numerare — e li'' un NULL significherebbe «numera dove capita». ⚠️ CONSERVA UN RIPIEGO PROPRIO sul default per il caso SENZA billing account: la delegata corto-circuita sull''input NULL e non ci arriva, mentre la versione storica ci arrivava — non per disegno, ma perche'' il suo WHERE su NULL non trovava nulla e la SELECT sul default rispondeva lo stesso. E'' un comportamento nato per caso e diventato portante: vendite.fn_get_or_create_lotto chiama senza BA (un lotto non ne ha uno) e senza il ripiego prende E_EMITTENTE_DEFAULT_MISSING su un giro legittimo — regressione introdotta dal 20260819-03 e riparata qui. ⛔ Non si e'' tolto il corto-circuito alla delegata: e'' una scelta esplicita del cantiere perimetro emittente (§11.11) e i suoi lettori si aspettano NULL da un input nullo; cambiarlo e'' una decisione di dominio da prendere a parte. Il ramo non scatta per un BA esistente ma non mappato, dove la delegata ha gia'' fatto COALESCE. SECURITY INVOKER. rev 2026-08-19.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

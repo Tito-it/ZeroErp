@@ -6,6 +6,8 @@ CREATE FUNCTION fn_sorgente_tabella(p_codice_interno character varying)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_sorgente_tabella(p_codice_interno character varying)
  RETURNS TABLE(schema_tabella name, nome_tabella name, relid oid)
@@ -43,6 +45,8 @@ $function$
 COMMENT ON FUNCTION config.fn_sorgente_tabella(p_codice_interno character varying)
 IS 'Dove vive il documento di una sorgente: schema, nome e oid della sua target_table, letti da pg_class/pg_namespace (mai target_table::text, che dipende dal search_path di chi legge). Nessuna riga se la sorgente non c''e'' o non dichiara una tabella. BB della regola del 2 (2026-10-21): la famiglia di numerazione e'' una sorgente (G-5) e non porta piu'' schema_tabella/nome_tabella; la leggono il guard dei riferimenti e la check di spegnimento delle famiglie, la storia dell''emittente del BA e la lista delle famiglie. INVOKER, STABLE. Brief: brief-db-grammatica-unica-documenti §10.4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

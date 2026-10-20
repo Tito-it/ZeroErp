@@ -7,6 +7,8 @@ CREATE FUNCTION fn_search_stradario(p_comune_id integer, p_search text, p_limit 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_search_stradario(p_comune_id integer DEFAULT NULL::integer, p_search text DEFAULT NULL::text, p_limit integer DEFAULT 30)
  RETURNS TABLE(stradario_id integer, toponimo character varying, denominazione character varying, indirizzo_normalizzato text, comune_id integer, comune_descrizione character varying, provincia_sigla text, codice_postale_id integer, cap text)
@@ -117,6 +119,8 @@ $function$
 COMMENT ON FUNCTION script.fn_search_stradario(p_comune_id integer, p_search text, p_limit integer)
 IS 'Ricerca vie (stradario) per autocomplete. provincia_sigla e cap sono text esplicito: con %TYPE la firma si congelava al CREATE e la ALTER TYPE del 2026-04-02 la lasciava indietro (brief-db-bonifica-riferimenti-morti F2).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

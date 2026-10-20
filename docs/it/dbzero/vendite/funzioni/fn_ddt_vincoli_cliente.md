@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ddt_vincoli_cliente(p_ddt_id bigint, p_sorgente_tipo_id bigin
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ddt_vincoli_cliente(p_ddt_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid uuid)
  RETURNS TABLE(vincolo text, sorgente character varying, billing_account_id bigint, etichetta text)
@@ -102,6 +104,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ddt_vincoli_cliente(p_ddt_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid uuid)
 IS 'Building block (2026-10-11, brief-db-testata-dopo-emissione §11, R-DB-1): da dove viene il cliente di una bolla, cioe'' che cosa gli impedisce di cambiare (D-6 di brief-db-esecutivi-ba-coppia). Una riga per vincolo: SORGENTE (sorgente di testata ORDINE_VENDITA o RESO_VENDITA; billing_account_id della sorgente, NULL compreso; etichetta NULL = dichiarata e non trovata o invisibile sotto RLS) e FULFILLMENT (la bolla evade gia'' righe d''ordine; etichetta = il primo ordine). Nessuna riga = cliente libero. Predicato condiviso: il guard vendite.trgfn_ddt_guard_cliente_sorgente solleva da qui, la capability script.fn_available_actions_ddt spegne billing_account_id da qui (prima lo spegneva sempre, anche sulla bolla senza sorgente che D-2 vuole poter ricevere il cliente in bozza). INVOKER e STABLE, come il guard: ordine, reso e fulfillment si leggono sotto la RLS di chi scrive.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

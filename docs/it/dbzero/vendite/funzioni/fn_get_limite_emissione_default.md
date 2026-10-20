@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_limite_emissione_default(p_code character varying)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_limite_emissione_default(p_code character varying)
  RETURNS smallint
@@ -92,6 +94,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_limite_emissione_default(p_code character varying)
 IS 'Il valore di un limite di emissione dal catalogo dei parametri, come numero. Serve i due codici VENDITE_LIMITE_EMISSIONE_IMMEDIATA_GIORNI e VENDITE_LIMITE_EMISSIONE_DIFFERITA_GIORNO_MESE, letti da vendite.fn_get_pavimento_emissione quando il registro non dichiara un override suo. ⛔ LEGGE IL default_value NUDO e NON script.fn_get_parameter_full, che pure e'' il lettore canonico: la sua cascata di override (utente/gruppo/sessione/emittente) darebbe ALLO STESSO documento limiti diversi a seconda di chi lo genera, cioe'' il difetto che il limite di emissione chiude. L''unico asse di override e'' il REGISTRO, che e'' un fatto del sezionale e non di chi ci lavora — stessa scelta, e stessa ragione, di script.fn_data_operativa(). ⛔ FAIL-LOUD su tre condizioni, tutte con E_CONFIG_MANCANTE perche'' a rimediare e'' sempre chi amministra la configurazione: parametro assente, valore vuoto (raggiungibile: default_value e'' NOT NULL ma senza CHECK di non-vuoto, e a catalogo ci sono gia'' stringhe vuote), valore non numerico. ⚠️ La regex ammette 1..4 cifre e non un numero qualunque: limita al dominio di smallint, cosi'' un valore assurdo produce la frase invece di un 22003 grezzo che farebbe saltare il contratto P0001. ⛔ NON e'' un lettore generico di parametri e non va usata come tale: e'' narrow per dominio e per famiglia, apposta. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

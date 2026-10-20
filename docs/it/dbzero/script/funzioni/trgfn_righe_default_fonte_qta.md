@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_righe_default_fonte_qta()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_righe_default_fonte_qta()
  RETURNS trigger
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_righe_default_fonte_qta()
 IS 'Trigger generico (righe di contratto e di offerta): normalizza fonte_quantita_attesa alla fonte di default dell''erogazione, letta da config.erogazioni_fonti (e_default). INSERT: fonte NULL -> default. UPDATE: se cambia l''erogazione e la combinazione con la fonte attuale non è in config.erogazioni_fonti -> default; le combinazioni coerenti non si toccano. Senza erogazione la fonte resta NULL (la riga la rifiuta trgfn_righe_guard_erogazione_obbligatoria). Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.7, giro B1): la matrice era scritta qui in un CASE, copia dei CHECK chk_*_coerenza_fonte_erogazione; ora è il vocabolario, sede unica. Riusata da contratti_righe e offerte_commerciali_eccezioni.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_listino_aggiungi_articoli(p_listino_versione_id bigint,
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_listino_aggiungi_articoli(p_listino_versione_id bigint, p_articoli uuid[], p_prezzo numeric DEFAULT 100)
  RETURNS void
@@ -42,6 +44,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_listino_aggiungi_articoli(p_listino_versione_id bigint, p_articoli uuid[], p_prezzo numeric)
 IS 'Builder pgTAP (Lotto 3b di brief-db-articoli-ammessi-per-documento, 2026-10-13): mette degli articoli in una versione di listino — tipologia dell''articolo allineata a quella del listino se diversa, poi una riga attiva per articolo con la UoM base e il prezzo dato (default 100). Per le fixture che scrivono OVERRIDE o ESCLUSIONE, che dal Lotto 3b pretendono l''articolo nel listino del documento (A-5). Va chiamato prima di usare l''articolo: su un articolo usato la tipologia non cambia (A-10). INVOKER.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

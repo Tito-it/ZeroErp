@@ -6,6 +6,8 @@ CREATE FUNCTION fn_pgtap_crea_emittente_operatore(p_sigla character varying, p_p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_emittente_operatore(p_sigla character varying DEFAULT NULL::character varying, p_processo_codice text DEFAULT 'chiusura_scadenze_daily'::text)
  RETURNS TABLE(emittente_fiscale_id bigint, emittente_codice character varying, soggetto_ruolo_id bigint, auth_user_id integer, identita_id bigint)
@@ -76,6 +78,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_emittente_operatore(p_sigla character varying, p_processo_codice text)
 IS 'Helper di fixture pgTAP: un''azienda su cui lavorare PIU'' l''operatore che la ha nel perimetro. Senza operatore il contesto di sessione resta vuoto e il dominio solleva «Nessun emittente fiscale attivo» — misurato il 2026-09-09 su 102 dei 185 file di vendite che sul database scratch morivano nel fixture. ⚠️ L''operatore e'' un utente TECNICO, perche'' script.fn_crea_utente_tecnico e'' l''unico percorso di produzione che lega un utente a un emittente; per cio'' che i test attraversano e'' un operatore a tutti gli effetti (identita'' OPERATORE attiva, non super admin, un emittente nel perimetro). ⛔ Non usarlo dove il soggetto del test e'' l''operatore UMANO — flag tecnica, profili di accesso: li'' il caso va costruito. Il chiamante deve poi puntarci il contesto: PERFORM script.fn_pgtap_set_contesto_operatore(auth_user_id).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

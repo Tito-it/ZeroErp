@@ -7,6 +7,8 @@ CREATE FUNCTION fn_chiudi_contratto_per_successione(p_contratto_esistente_id big
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_chiudi_contratto_per_successione(p_contratto_esistente_id bigint, p_nuovo_valido_dal date)
  RETURNS date
@@ -99,6 +101,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_chiudi_contratto_per_successione(p_contratto_esistente_id bigint, p_nuovo_valido_dal date)
 IS 'Accorcia un contratto esistente per successione: valido_al = p_nuovo_valido_dal - 1. rev 2026-08-07: il contratto inesistente solleva E_CONTRATTO_NON_TROVATO (896) invece di E_PARAMETRO_INVALIDO, che dava 400 su un 404. Trovato dalla lente del quarto lato; brief terzo lato §19.4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_run_automations_lock_columns(p_exec_mode text, p_schemas text
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_run_automations_lock_columns(p_exec_mode text, p_schemas text[], p_dry_run boolean)
  RETURNS void
@@ -156,6 +158,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_run_automations_lock_columns(p_exec_mode text, p_schemas text[], p_dry_run boolean)
 IS 'Converge i trigger di lock columns (script.trgfn_lock_columns) verso lo stato dichiarato: codice_interno implicito + colonne attive di dbops.automation_lock_columns. Crea, rigenera (anche i lock scritti a mano, qualunque nome abbiano) o toglie, secondo dbops.fn_lock_columns_divergenze. Si ferma con E_LOCK_COLUMNS, prima di qualunque DDL, se una colonna bloccata non e'' nominata dal registro. Rev 20260926-04: assorbe dbops.fn_run_automations_drop_lock_trg (ritirata). Brief: brief-db-lock-di-colonna-fuori-registro §4 D2. ⭐ Rev 2026-10-16: nel gestore WHEN others, un guasto dell''AMBIENTE (script.fn_sqlstate_di_ambiente: 08, 53, 57, 58, 42501, 55P03) si rilancia COM''E'', col suo SQLSTATE, dopo averlo scritto nel registro errori con lo stesso codice e contesto (fn_log_error_only). Prima diventava P0001 col codice dell''involucro, e il presidio dei job (maintenance.vw_job_run_da_guardare) lo mandava allo sviluppo. I difetti di struttura escono come prima. Brief: brief-db-presidio-job-run-a-chi-tocca D8, D11.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

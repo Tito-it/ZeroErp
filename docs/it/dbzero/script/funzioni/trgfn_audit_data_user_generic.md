@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_audit_data_user_generic()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_audit_data_user_generic()
  RETURNS trigger
@@ -46,6 +48,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_audit_data_user_generic()
 IS 'Audit data/user su INSERT e UPDATE. Usa GUC app.jwt_user (JWT reale) con fallback CURRENT_USER.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

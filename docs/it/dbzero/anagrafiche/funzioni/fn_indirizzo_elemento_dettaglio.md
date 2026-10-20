@@ -7,6 +7,8 @@ CREATE FUNCTION fn_indirizzo_elemento_dettaglio(p_el jsonb)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzo_elemento_dettaglio(p_el jsonb)
  RETURNS bigint
@@ -54,6 +56,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_indirizzo_elemento_dettaglio(p_el jsonb)
 IS 'BB (2026-10-18): l''indirizzo normalizzato di un elemento letto da anagrafiche.fn_indirizzo_elemento. Indirizzo libero (indirizzo_libero non vuoto): NULL. indirizzo_dettaglio_id: quello. Altrimenti la via (stradario_id, oppure toponomastica_id + descrizione_via + comune_id + codice_postale_id) e il civico, risolti da anagrafiche.fn_create_indirizzo (idempotente). Non valida i campi di una via nuova (pre-check del backend, come fn_create_indirizzo). Chiamanti: anagrafiche.fn_crea_indirizzi_ruolo e fn_crea_indirizzo_soggetto. D-4 di Tid, richiesta BE in brief-db-processi-accensione-per-ambiente §6.11.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_documenti_sync_canali()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_documenti_sync_canali()
  RETURNS trigger
@@ -201,6 +203,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_documenti_sync_canali()
 IS 'Sincronizza documenti_fatturazione_canali su eventi preventivi/ordini/ddt/ddt_ordini/contratti. Tutte le sorgenti aprono il proprio canale alla creazione per simmetria. Transizioni: PREVENTIVO->ORDINE, ORDINE->DDT. rev 2026-06-28: sorgenti risolte per codice_interno (analisi-hardcoded-codice §3a #13).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

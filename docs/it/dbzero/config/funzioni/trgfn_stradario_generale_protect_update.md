@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_stradario_generale_protect_update()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_stradario_generale_protect_update()
  RETURNS trigger
@@ -63,6 +65,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_stradario_generale_protect_update()
 IS 'Blocca UPDATE di descrizione, descrizione_breve, toponomastica_id se esistono righe in config.stradario, indicando la colonna modificata';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

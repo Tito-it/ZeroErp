@@ -7,6 +7,8 @@ CREATE FUNCTION fn_trigger_argomenti(p_tgargs bytea)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_trigger_argomenti(p_tgargs bytea)
  RETURNS text[]
@@ -35,6 +37,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_trigger_argomenti(p_tgargs bytea)
 IS 'Gli argomenti di un trigger (pg_trigger.tgargs) come text[], nell''ordine del CREATE TRIGGER; vuoto se non ne ha. Taglia sui byte NUL e riconverte con la codifica del server: la forma encode(tgargs,''escape'') + rtrim(…,''\000'') tronca un argomento finale che termina con zero (rtrim toglie l''insieme {\,0}) e storpia i caratteri non ASCII. Building block per chi riconosce un trigger generico dai suoi argomenti. Brief: brief-db-lock-di-colonna-fuori-registro §7.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_segnalazioni_con_documento_ignoto
 WITH (security_invoker=true) AS
@@ -23,6 +25,8 @@ SELECT ll.id AS segnalazione_id,
            FROM vendite.fatturazione_lotti_esiti e
           WHERE ((e.lotto_id = ll.lotto_id) AND (e.gruppo_key = ll.gruppo_key))))));
 ```
+
+</div>
 
 
 ---

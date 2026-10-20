@@ -7,6 +7,8 @@ CREATE FUNCTION fn_preventivo_proietta_stato_smistamento(p_preventivo_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_preventivo_proietta_stato_smistamento(p_preventivo_id bigint)
  RETURNS void
@@ -89,6 +91,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_preventivo_proietta_stato_smistamento(p_preventivo_id bigint)
 IS 'Building block (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-1/D-10 di Tid): porta il preventivo nello stato che il suo smistamento dice. ACCETTATO senza residuo su nessuna strada (vendite.fn_preventivo_ha_residuo_ordine, vendite.fn_preventivo_ha_residuo_commessa) -> EVASO; EVASO con un residuo su almeno una -> ACCETTATO; ogni altro stato, o preventivo assente o invisibile, -> niente. Specchio di vendite.fn_ordine_proietta_stato_evasione. La transizione passa dalla matrice (vendite.trgfn_preventivi_guard_transizione); si scrive solo se lo stato cambia; destinazione assente dal catalogo: E_CONFIG_MANCANTE. Sede unica della regola, che prima aveva tre copie su due livelli: il §8 di vendite.fn_push_preventivo_a_ordine, il §4b di vendite.fn_documento_ritira_legami e il gate EVASO del backend dopo l''invio in commessa. Consumatori: vendite.fn_push_preventivo_a_ordine, vendite.fn_documento_ritira_legami (annullo dell''ordine), vendite.trgfn_commesse_attivita_proietta_stato_preventivo (invio in commessa, ritiro delle righe, annullo della commessa). SECURITY INVOKER: scrive con la RLS di chi chiama. Parametro non valido: E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

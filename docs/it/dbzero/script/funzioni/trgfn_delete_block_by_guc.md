@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_delete_block_by_guc()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_delete_block_by_guc()
  RETURNS trigger
@@ -55,6 +57,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_delete_block_by_guc()
 IS 'Blocca DELETE se GUC non abilitata. Errori: ERRORE_PARAMETRI, E_DELETE_NOT_ALLOWED.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

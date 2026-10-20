@@ -6,6 +6,8 @@ CREATE FUNCTION fn_ddt_merce_da_movimentare(p_ddt vendite.ddt)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ddt_merce_da_movimentare(p_ddt vendite.ddt)
  RETURNS TABLE(ddt_riga_id bigint, ddt_riga_componente_id bigint, riga_nr integer, articolo_id uuid, qta numeric, prelevata numeric, automatico boolean)
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ddt_merce_da_movimentare(p_ddt vendite.ddt)
 IS 'Le voci di una bolla che muovono merce, con la regola del kit (D-L3-f) in una sede sola: la riga attiva se il suo articolo e'' gestito a magazzino, altrimenti i componenti attivi e gestiti del suo kit — mai entrambi. Per voce: la quantita'' da muovere (UoM base), quella gia'' coperta dai prelievi, e automatico = il prelievo e'' unico per costruzione (articolo senza lotto ne'' seriale, magazzini della bolla senza ubicazioni), quindi lo crea il verbo e la check non lo chiede. Ordine: numero di riga, poi il componente. Prende la RIGA della bolla (valori nuovi nel guard BEFORE UPDATE). Consumatori: script.fn_check_ddt_merce, vendite.fn_ddt_muove_merce, vendite.fn_cambia_stato_ddt. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

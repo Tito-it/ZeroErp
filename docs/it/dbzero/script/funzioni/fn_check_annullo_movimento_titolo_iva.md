@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_annullo_movimento_titolo_iva(p_movimento_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_annullo_movimento_titolo_iva(p_movimento_id bigint)
  RETURNS jsonb
@@ -176,6 +178,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_annullo_movimento_titolo_iva(p_movimento_id bigint)
 IS 'Funzione PURA (fn_check_*): i motivi che impediscono di ANNULLARE un movimento del registro plafond IVA. ⭐ rev 2026-08-31: il `reason` del motivo «e'' esso stesso un annullo» passa da E_UN_ANNULLO a RIGA_DI_ANNULLO. ⛔ Il vecchio nome non era un errore di dominio ma una frase italiana abbreviata («e'' un annullo»), e il prefisso E_ lo faceva leggere come un CODICE dal guardrail che cerca i letterali E_* nei corpi delle funzioni: il test apps/core/tests/test_error_codes_db_policy_guardrail.py lo segnalava come codice senza policy. Il codice vero e'' e resta E_TITOLO_IVA_ANNULLO_NON_AMMESSO, che e'' a catalogo — E_UN_ANNULLO non lo e'' mai stato. ⭐ Il nuovo nome NON e'' GIA_UN_ANNULLO, ed e'' una scelta: accanto vive gia'' GIA_ANNULLATO, e i due dicono cose OPPOSTE — questa riga E'' l''annullo di un''altra, contro questa riga E'' STATA annullata. Due motivi che differiscono per una parola, su un pulsante spento, si leggono male esattamente quando conta: RIGA_DI_ANNULLO dice COSA E'' la riga invece di ripetere l''avverbio. ⚠️ Il `reason_key` NON cambia (…annullo_blocco.e_un_annullo): e'' un INDIRIZZO, non un valore, e il frontend rende il testo da li'' — cambiarlo costerebbe due file di locales per comprare zero. ⚠️ La convenzione ora e'' scritta in linee-guida-sql §12.5.1: un `reason` di fn_check_* non porta il prefisso E_, riservato ai codici a catalogo. Gli altri quattro reason di questa funzione la rispettavano gia''. Piano: brief-db-reason-e-un-annullo-collide-col-prefisso. Ritorna [] se ammesso, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. Motivi, in ordine: movimento non trovato · non e'' una FORZATURA (un FATTURA si corregge dal documento, con una nota di credito - I4) · e'' esso stesso un annullo (decisione B-2: un annullo non si annulla, se la forzatura serve ancora se ne scrive una nuova) · e'' gia'' annullato · l''annullo porterebbe l''usato del titolo sotto zero. ⭐ Due lettori della stessa regola: vw_stiva_movimenti_dettaglio spegne il pulsante col motivo, e anagrafiche.fn_annulla_movimento_titolo_iva la CHIAMA invece di riscrivere il predicato — cosi'' non possono divergere. ⚠️ L''ordine dell''array e'' il contratto: la superficie mostra il primo motivo e la madre solleva il primo codice. ⛔ SECURITY DEFINER, e non e'' pigrizia: la tabella ha la RLS attiva e da INVOKER la lettura non distinguerebbe «non esiste» da «non la vedo», mentre la FK la RLS la scavalca sempre — i due divergerebbero in silenzio. La MADRE resta INVOKER, quindi il perimetro sulla scrittura non si perde. `valori` e'' il VARIADIC della madre e sta qui perche'' la frase non si ricomponga in due posti. Piano: brief-db-titoli-iva-movimenti-annullo, B-b.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

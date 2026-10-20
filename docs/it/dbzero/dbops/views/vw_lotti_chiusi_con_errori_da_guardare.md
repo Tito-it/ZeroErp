@@ -6,6 +6,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_lotti_chiusi_con_errori_da_guardare
 WITH (security_invoker=true) AS
@@ -24,6 +26,8 @@ SELECT c.lotto_id,
      LEFT JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = c.lotto_id)))
      LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.soggetto_ruolo_id = c.emittente_soggetto_ruolo_id)));
 ```
+
+</div>
 
 
 ---

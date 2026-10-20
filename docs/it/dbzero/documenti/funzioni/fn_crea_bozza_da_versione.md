@@ -7,6 +7,8 @@ CREATE FUNCTION fn_crea_bozza_da_versione(p_versione_origine_id bigint, p_templa
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.fn_crea_bozza_da_versione(p_versione_origine_id bigint, p_template_documento_id bigint, p_derivata_da_versione_id bigint DEFAULT NULL::bigint, p_titolo text DEFAULT NULL::text, p_valido_dal date DEFAULT NULL::date, p_valido_al date DEFAULT NULL::date, p_attivo boolean DEFAULT true, p_meta jsonb DEFAULT NULL::jsonb)
  RETURNS bigint
@@ -77,6 +79,8 @@ $function$
 COMMENT ON FUNCTION documenti.fn_crea_bozza_da_versione(p_versione_origine_id bigint, p_template_documento_id bigint, p_derivata_da_versione_id bigint, p_titolo text, p_valido_dal date, p_valido_al date, p_attivo boolean, p_meta jsonb)
 IS 'Copia una versione (qualunque stato) in una BOZZA nuova del modello indicato, col numero successivo di quel modello, e ne restituisce l''id (2026-10-21, brief-db-modelli-documento-standard §10.3 K-6). Copia corpo, motore, pagina, versione_contesto, context_schema e meta; non le date (si fissano alla pubblicazione) e non l''origine, che dichiara il chiamante (p_derivata_da_versione_id). Sostituzioni facoltative: titolo, date, attivo, meta. Sede unica dei campi di una copia: la usano fn_personalizza_template_standard e il clone di una versione del BE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

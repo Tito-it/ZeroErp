@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ordine_ha_residuo_evasione(p_ordine_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ordine_ha_residuo_evasione(p_ordine_id bigint)
  RETURNS boolean
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ordine_ha_residuo_evasione(p_ordine_id bigint)
 IS 'TRUE se l''ordine ha residuo di evasione su almeno una riga (quantita - SUM qta_evasa + addendo reso via fn_ordine_riga_qta_riconsegna, unita base). Reso-aware. Gate stato ordine per fn_genera_ddt_da_ordine e fn_conferma_reso. rev 2026-07-13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

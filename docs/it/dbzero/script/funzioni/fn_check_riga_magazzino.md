@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_riga_magazzino(p_magazzino_id bigint, p_articolo_id uui
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_riga_magazzino(p_magazzino_id bigint, p_articolo_id uuid, p_lotto_id bigint DEFAULT NULL::bigint, p_asset_id bigint DEFAULT NULL::bigint, p_ubicazione_id bigint DEFAULT NULL::bigint)
  RETURNS jsonb
@@ -230,6 +232,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_riga_magazzino(p_magazzino_id bigint, p_articolo_id uuid, p_lotto_id bigint, p_asset_id bigint, p_ubicazione_id bigint)
 IS 'La riga e'' scrivibile a registro? I passi 5-8 della primitiva in una sede sola (C8, linee-guida-sql 12.5.2): pura, STABLE, INVOKER — [] se si'', altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio (con campo), valori}: 5) articolo attivo e gestito_a_magazzino (E_MAG_ARTICOLO_NON_GESTITO, e si ferma li''); 6) lotto deciso dall''articolo — requires_lotto => obbligatorio, altrimenti vietato; se c''e'', dell''articolo e attivo (E_MAG_LOTTO_*); 7) seriale deciso dall''articolo — requires_serial => obbligatorio, altrimenti vietato; se c''e'', dell''articolo, attivo e dello stesso emittente del magazzino (E_MAG_SERIALE_*, E_MAG_ASSET_*); 8) ubicazione decisa dal MAGAZZINO — usa_ubicazioni => obbligatoria, altrimenti vietata; se c''e'', del magazzino e attiva (E_MAG_UBICAZIONE_*). Letta da magazzino.fn_scrivi_movimento (solleva il primo motivo) e da magazzino.fn_inventario_piano (esito NON_POSTABILE): il piano mostra cio'' che il posting rifiutera''. Non guarda il magazzino in se'' (passo 4 della primitiva) ne'' la disponibilita'' (fn_check_disponibilita_uscita). Le reason_key magazzino.riga.blocco.* sono chiavi i18n del frontend. Brief: brief-db-magazzino-lotto-2-motore, sezione 6-ter C8.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

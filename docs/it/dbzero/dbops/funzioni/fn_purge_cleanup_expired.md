@@ -7,6 +7,8 @@ CREATE FUNCTION fn_purge_cleanup_expired(p_schema text, p_table text, p_cleanup_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_purge_cleanup_expired(p_schema text, p_table text, p_cleanup_column text DEFAULT 'cleanup_at'::text, p_batch_limit integer DEFAULT 5000, p_dry_run boolean DEFAULT false)
  RETURNS integer
@@ -92,6 +94,8 @@ Parametri:
 - p_dry_run: se true non elimina e ritorna il numero eleggibile.
 ';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

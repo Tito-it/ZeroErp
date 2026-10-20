@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_lotto_task_last_run(p_lotto_id bigint, p_stato_doc_fiscal
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_lotto_task_last_run(p_lotto_id bigint, p_stato_doc_fiscale_id bigint, p_task_code character varying)
  RETURNS TABLE(id bigint, lotto_id bigint, pipeline_id bigint, stato_doc_fiscale_id integer, task_code character varying, fase character varying, tentativo smallint, task_stato character varying, started_at timestamp with time zone, ended_at timestamp with time zone, error_code character varying, error_message text, meta jsonb)
@@ -46,6 +48,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_lotto_task_last_run(p_lotto_id bigint, p_stato_doc_fiscale_id bigint, p_task_code character varying)
 IS 'Ultimo run task per lotto/stato/task.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

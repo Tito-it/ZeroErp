@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_template_asset_protect_file()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.trgfn_template_asset_protect_file()
  RETURNS trigger
@@ -51,6 +53,8 @@ $function$
 COMMENT ON FUNCTION documenti.trgfn_template_asset_protect_file()
 IS 'Guard A4: blocca UPDATE su file asset. Una volta salvato il file, storage_key/hash/nome diventano immutabili.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

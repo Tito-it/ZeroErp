@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_magazzino_movimenti_senza_costo
 WITH (security_invoker=true) AS
@@ -25,6 +27,8 @@ SELECT id,
    FROM magazzino.movimenti m
   WHERE ((qta > (0)::numeric) AND (costo_unitario IS NULL));
 ```
+
+</div>
 
 
 ---

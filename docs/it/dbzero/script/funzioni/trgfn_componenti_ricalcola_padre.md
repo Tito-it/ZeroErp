@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_componenti_ricalcola_padre()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_componenti_ricalcola_padre()
  RETURNS trigger
@@ -41,6 +43,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_componenti_ricalcola_padre()
 IS 'Trigger function AFTER INS/UPD/DLT: ricalcola prezzo_unitario riga padre da SUM figli attivi. TG_ARGV[0]=schema [1]=tab_padre [2]=tab_figli [3]=col_fk_padre. Usata da 5 tabelle *_righe_componenti CASO A.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

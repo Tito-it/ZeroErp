@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_movimenti_guard_verso()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.trgfn_movimenti_guard_verso()
  RETURNS trigger
@@ -58,6 +60,8 @@ $function$
 COMMENT ON FUNCTION magazzino.trgfn_movimenti_guard_verso()
 IS 'Guard del VERSO (M-1): rifiuta un movimento o un atteso la cui quantita'' non ha il segno della causale (sign(qta) <> causali.segno) con E_MAG_MOVIMENTO_VERSO_INCOERENTE, classe TECNICO — il verso lo compone l''operazione dalla causale, un mismatch e'' un chiamante rotto, e il contesto non porta campo. Causale inesistente: RETURN NEW, parla la FK. qta = 0 cade qui (sign = 0) prima del CHECK qta <> 0, che resta come seconda rete. Montata su magazzino.movimenti e magazzino.movimenti_attesi. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.9.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

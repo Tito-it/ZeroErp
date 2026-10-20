@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_tipo_contatto_id(p_cod_int_tipo_contatto character varyin
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_tipo_contatto_id(p_cod_int_tipo_contatto character varying)
  RETURNS integer
@@ -55,6 +57,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_tipo_contatto_id(p_cod_int_tipo_contatto character varying)
 IS 'Recupera l''ID del tipo di contatto dal codice interno';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_doc_guard_delete_solo_bozza()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza()
  RETURNS trigger
@@ -83,6 +85,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza()
 IS 'Un documento (vendite.ddt, vendite.ordini) si cancella SOLO finche'' e'' in bozza. Nasce il 2026-08-26 da una decisione di Tid: la regola viveva solo nel backend, in due frozenset Python (_STATI_MODIFICABILI = {DRAFT} in ddt_service e ordini_service), quindi ogni altro percorso la saltava. ⛔ E senza questo guard il suo gemello di riga (vendite.trgfn_dlt_block_ordrig_ddtrig, rev 20260826-21) sarebbe FAIL-OPEN: le righe sono in ON DELETE CASCADE dalla testata e — provato con tabelle temporanee — in un BEFORE DELETE di riga innescato da un cascade la testata risulta gia'' cancellata, quindi il guard di riga non puo'' leggerne lo stato. Il cascade sarebbe la porta di servizio. ⭐ I due guard sono UNA COPPIA: togliendone uno l''altro non si indebolisce, diventa aggirabile. ⚠️ IS DISTINCT FROM ''DRAFT'' e non <>: se il vocabolario non restituisse lo stato il guard rifiuta — su un verbo distruttivo il default e'' il no. ⚠️ Nessuna lettura sotto RLS: lo stato sta su OLD, e il vocabolario config.stati_doc_* non ha RLS. Fascia _a10_ perche'' i BEFORE ROW girano in ordine alfabetico e il rifiuto deve precedere trg_*_z90_storico_upd_dlt. Non generica di proposito: due testate, due tabelle di stato, due nomi di colonna — una versione parametrizzata costerebbe SQL dinamico su due assi per coprire due casi. ⭐ rev 2026-10-19 (20261019-67, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

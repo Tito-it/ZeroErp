@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_fornitore_attivo(p_fornitore_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_fornitore_attivo(p_fornitore_id bigint)
  RETURNS void
@@ -100,6 +102,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_guard_fornitore_attivo(p_fornitore_id bigint)
 IS 'Guard fail-fast: verifica che il fornitore sia attivo e il suo stato operativo non blocchi ordini/DDT. Raise via fn_log_and_raise_error se non valido.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

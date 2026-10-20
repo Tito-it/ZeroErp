@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_documento_reconcile_proiezione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_documento_reconcile_proiezione()
  RETURNS trigger
@@ -61,6 +63,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_documento_reconcile_proiezione()
 IS 'GUIDA D4/G3b: trigger-function generica AFTER UPDATE OF <colonna_stato> su tabella-documento. Innesca pratiche.fn_reconcile_sorgente(TG_ARGV[0]::tipo, to_jsonb(NEW)->>TG_ARGV[1]::uid) dopo un cambio-stato (standalone incluso). Best-effort: documento sovrano, errore loggato su pratiche.reconcile_errori senza rollback. Agganciata per-dominio (CREATE TRIGGER con args espliciti, D-B9).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

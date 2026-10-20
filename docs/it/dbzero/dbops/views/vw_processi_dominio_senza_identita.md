@@ -5,6 +5,8 @@
 >
 > Processi DOMINIO che non possono dire CHI agisce, guardato nei TRE versi: processo senza utente tecnico, utente tecnico senza identita' OPERATORE col flag, identita' col flag che nessun processo rivendica. DEVE restare VUOTA. ⭐ Rev 2026-09-05 (R-E, strada B): il filtro sul canale include CODA_AUTOMATICA — un lavoro di coda messo in coda da una MACCHINA non ha un'identita' prestata da nessuno, quindi ne vuole una propria. ⚠️ I processi CODA «umani» restano esclusi, ed e' voluto: li' l'identita' la porta l'operatore che accoda, e dargliene una tecnica cancellerebbe il suo nome. Brief: brief-db-processi-automatici-residui-be, sezione 1-quater.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_processi_dominio_senza_identita AS
 SELECT p.codice AS processo_codice,
@@ -35,6 +37,8 @@ UNION ALL
            FROM dbops.processi_identita pi
           WHERE ((pi.auth_user_id = idg.auth_user_id) AND pi.attivo)))));
 ```
+
+</div>
 
 
 ---

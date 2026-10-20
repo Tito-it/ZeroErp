@@ -7,6 +7,8 @@ CREATE FUNCTION fn_normalize_indirizzo(p_comune_id integer, p_indirizzo_libero t
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_normalize_indirizzo(p_comune_id integer, p_indirizzo_libero text)
  RETURNS TABLE(indirizzo_dettaglio_id integer, via_norm text, civico_norm text, codice_postale_id integer, geoloc geometry)
@@ -51,6 +53,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

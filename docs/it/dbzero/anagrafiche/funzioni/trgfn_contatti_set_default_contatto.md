@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_contatti_set_default_contatto()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_set_default_contatto()
  RETURNS trigger
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_contatti_set_default_contatto()
 IS 'Trigger: imposta il primo contatto come default nel contesto corretto (soggetto|ruolo|istanza). Aggiorna default_contatto_id su soggetti. Ripulisce solo quelli dello stesso contesto.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

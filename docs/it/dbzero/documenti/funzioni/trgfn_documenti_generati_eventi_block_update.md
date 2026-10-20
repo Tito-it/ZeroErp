@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_documenti_generati_eventi_block_update()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_eventi_block_update()
  RETURNS trigger
@@ -43,6 +45,8 @@ $function$
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_eventi_block_update()
 IS 'Guard append-only: blocca UPDATE su documenti_generati_eventi. Nessun campo modificabile post INSERT, correzioni come nuovo evento.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

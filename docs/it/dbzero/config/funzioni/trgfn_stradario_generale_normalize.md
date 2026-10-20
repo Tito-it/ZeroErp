@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_stradario_generale_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_stradario_generale_normalize()
  RETURNS trigger
@@ -23,6 +25,8 @@ BEGIN
   RETURN NEW;
 END$function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

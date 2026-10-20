@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_sistemazioni_guard_transizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_sistemazioni_guard_transizione()
  RETURNS trigger
@@ -162,6 +164,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_sistemazioni_guard_transizione()
 IS 'Il percorso dell''atto di sistemazione: nasce in BOZZA, e da li'' va a CONFERMATA (diventa un fatto: genera la contabile o il fondo) oppure ad ANNULLATA. ⭐ rev 2026-08-31 (D-25 di brief-db-fondo-fattura-ricalcolo-e-governo §9.6 e §9.8, decisioni G-4 e G-5 di Tid): si apre UN varco, CONFERMATA -> ANNULLATA sul solo ramo RIPORTO. Perche'' proprio quello: le altre due destinazioni lasciano dietro una DISTINTA e per una distinta sbagliata il rimedio esiste gia'' — la correzione guidata (S6) — mentre il RIPORTO lascia un FONDO in vendite, e per quello non c''era niente. Una sistemazione NUOVA non e'' la contropartita di un riporto sbagliato: la sistemazione pretende un''eccedenza, e quel riporto l''ha gia'' consumata. ⚠️ Il varco e'' chirurgico su TRE assi — la transizione (solo quella), la destinazione (solo RIPORTO: aprire anche agli altri due darebbe DUE strade per disfare lo stesso fatto, ed e'' il modo in cui due meccanismi cominciano a divergere) e le COLONNE, perche'' su un atto terminale si rifiuta ogni modifica e non solo quelle di stato. Passano solo stato, motivo, data_esecuzione, user_esecuzione, fondo_source_id, meta e le tecniche di audit: il confronto elenca le colonne AMMESSE e non le vietate, cosi'' una colonna nuova sulla tabella nasce CHIUSA invece di diventare modificabile in silenzio. ⚠️ fondo_source_id deve uscire azzerato perche'' fk_sistemazioni_fondo_source e'' NO ACTION e finche'' l''atto punta il fondo il fondo non si cancella; con lui cadono data_esecuzione e user_esecuzione, che chk_sistemazioni_eseguita vuole NULL fuori da CONFERMATA — sono un dato composito e si sposta intero. La memoria di quando l''atto era stato eseguito la conserva fn_annulla_sistemazione dentro meta, che nessun CHECK vincola: allargare il CHECK sarebbe stata l''altra strada, ed e'' scartata perche'' ammetterebbe per sempre un atto ANNULLATO che dichiara di essere stato eseguito. ⭐ E il rifiuto dell''annullamento su RIMBORSO/COMPENSAZIONE NOMINA L''ALTERNATIVA con E_SISTEMAZIONE_ANNULLO_NON_AMMESSO invece di dire «immutabile»: e'' l''autocritica che questo COMMENT portava gia'' — «non puo'' passare da CONFERMATA a BOZZA» e'' vero ma non aiuta chi sta provando a correggere un importo gia'' eseguito. ⛔ Nessuna tabella-matrice, di proposito: le azioni del frontend sono i verbi stessi, e chi cerca la regola nei dati non la trova — e'' qui. ⛔ E la sede resta una sola: fn_annulla_sistemazione continua a NON ricontrollare lo stato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

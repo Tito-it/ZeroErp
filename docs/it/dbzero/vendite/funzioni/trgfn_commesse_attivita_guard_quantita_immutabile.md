@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_commesse_attivita_guard_quantita_immutabile()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_guard_quantita_immutabile()
  RETURNS trigger
@@ -53,6 +55,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_guard_quantita_immutabile()
 IS 'Guard immutabilita quantita commesse_attivita: blocca UPDATE della quantita su righe EMESSA (stato_emissione <> NON_EMESSA). Il re-push su NON_EMESSA passa; bypass tecnico via GUC zeroerp.maintenance_reset_lotto_draft. Errore E_COMMESSA_ATTIVITA_QUANTITA_IMMUTABILE. Brief immutabilita-quantita §4a.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

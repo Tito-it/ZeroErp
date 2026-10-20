@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_vendite_contabili_lotti_guard_sistemazione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione()
  RETURNS trigger
@@ -63,6 +65,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_lotti_guard_sistemazione()
 IS 'Una distinta contabile nata da una SISTEMAZIONE non si aggancia a un lotto di fatturazione: il lotto raccoglie le fatture prodotte in un giro di emissione, la distinta registra un rimborso o una compensazione decisi su documenti gia'' emessi. ⭐ Sostituisce trgfn_vendite_contabili_lotti_guard_compensazione (2026-08-22, D15-e): il predicato si allarga a tutte e tre le destinazioni — anche una distinta di rimborso non c''entra con un lotto, e la regola vecchia non la copriva solo perche'' il rimborso non esisteva ancora come atto. ⭐ E da DUE porte diventa UNA: girato il verso del legame la contabile non sa piu'' di essere nata da un atto, quindi il guard gemello su vendite_contabili perde il dato e il momento in cui scattare. Resta quella giusta: il pericolo e'' agganciare al lotto, e si presidia dove si aggancia. 🔴 La lettura passa da script.fn_get_sistemazione_di_contabile, SECURITY DEFINER: sistemazioni ha la RLS e la contabile di una compensazione e'' una distinta INTERNA, visibile a tutti — da SECURITY INVOKER il guard tacerebbe proprio nel caso che deve coprire.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

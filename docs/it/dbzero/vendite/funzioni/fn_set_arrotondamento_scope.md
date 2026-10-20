@@ -7,6 +7,8 @@ CREATE FUNCTION fn_set_arrotondamento_scope(p_billing_account_id bigint, p_utili
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_set_arrotondamento_scope(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_saldo numeric, p_termine_pagamento_id bigint DEFAULT NULL::bigint, p_modalita_pagamento_id integer DEFAULT NULL::integer)
  RETURNS void
@@ -42,6 +44,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_set_arrotondamento_scope(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_saldo numeric, p_termine_pagamento_id bigint, p_modalita_pagamento_id integer)
 IS 'Upsert del saldo arrotondamento dell''ambito. Da D-N l''ambito comprende (termine_pagamento_id, modalita_pagamento_id); l''ON CONFLICT poggia su uq_fatture_arrotondamenti_scope_key, che e'' NULLS NOT DISTINCT.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

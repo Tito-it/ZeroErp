@@ -7,6 +7,8 @@ CREATE FUNCTION fn_lega_profilo_identita(p_profilo_accesso_id integer, p_identit
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_lega_profilo_identita(p_profilo_accesso_id integer, p_identita_digitale_id bigint)
  RETURNS bigint
@@ -57,6 +59,8 @@ $function$
 COMMENT ON FUNCTION config.fn_lega_profilo_identita(p_profilo_accesso_id integer, p_identita_digitale_id bigint)
 IS 'BB (2026-10-18): lega un''identita'' digitale a un profilo di accesso (la riga di config.profili_accesso_bindings con identita_digitale_id). Un''identita'' ha un binding solo (uq_profili_accesso_bindings_identita): lo stesso profilo gia'' legato ritorna quel binding (idempotente), un altro profilo gia'' legato lo rifiuta il vincolo col suo nome (il BB non sostituisce in silenzio). Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Coerenza e notifica dei permessi: i trigger della tabella. Non controlla il permesso (backend). INVOKER. Ritorna l''id del binding. Regola del 2: sede unica dell''INSERT che era in anagrafiche.fn_crea_risorsa_umana_v2 (binding SUPER_ADMIN), script.fn_crea_utente_tecnico (profilo chiesto) e AmmSoftwareRepository._set_super_admin_binding (2b-2). Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 8).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

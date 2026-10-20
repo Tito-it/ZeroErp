@@ -7,6 +7,8 @@ CREATE FUNCTION fn_lista_pratiche_per_contesto(p_emittente_fiscale_id bigint, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_lista_pratiche_per_contesto(p_emittente_fiscale_id bigint, p_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_istanza_utility_id bigint DEFAULT NULL::bigint, p_solo_interne boolean DEFAULT false)
  RETURNS TABLE(pratica_id bigint, codice text, descrizione text, contesto text, tipo_prestazione_codice character varying, stato_codice character varying, priorita_codice character varying, soggetto_id uuid, soggetto_ragione_sociale text, soggetto_ruolo_id bigint, istanza_utility_id bigint, risorsa_umana_id bigint, unita_organizzativa_id integer, data_apertura date, data_scadenza date)
@@ -102,6 +104,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_lista_pratiche_per_contesto(p_emittente_fiscale_id bigint, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_solo_interne boolean)
 IS 'Lente canonica D1: lista pratiche per contesto (ruolo soggetto / istanza utility / interne / tutte), lenti mutuamente alternative. Bucket contesto calcolato: RUOLO/ISTANZA/SOGGETTO/INTERNA. Ogni vista "pratiche di X" passa da qui.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

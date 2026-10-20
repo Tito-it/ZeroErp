@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_registri_fatturazione_set_anno_nel_numero()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_registri_fatturazione_set_anno_nel_numero()
  RETURNS trigger
@@ -74,6 +76,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_registri_fatturazione_set_anno_nel_numero()
 IS 'Risolutore `_a10_` in INSERT su vendite.registri_fatturazione: un sezionale che azzera il progressivo ogni anno (reset_policy = ANNUALE), di una famiglia che dichiara anno_nel_numero_default, nasce con anno_nel_numero = true. ⛔ PERCHE'': il progressivo riparte a gennaio e la stringa consegnata torna identica su un documento diverso; l''unicita'' del documento porta l''anno in colonna, quindi nessuna scrittura fallisce e l''ambiguita'' arriva intera alle liste e a chi cita il numero. ⭐ UN RISOLUTORE E NON UN GUARD: se non esiste un caso legittimo di «ANNUALE senza anno» per quelle famiglie, il valore non e'' una scelta da difendere ma una derivazione - e cosi'' l''invariante vale per costruzione invece che per rifiuto. La misura che ha deciso: sei file pgTAP creano registri DDT/ORDINE/RESO ANNUALE senza nominare la colonna, e il backend li crea con una whitelist che non la contiene. ⭐ Riempie un silenzio, non sovrascrive una risposta: un true in arrivo resta true. ⭐ Non tocca NESSUNA: un progressivo che non riparte non si ripete. ⛔ Solo INSERT: dopo il primo numero la forma non si cambia (20260901-03). Piano: brief-db-registri-numerazione-chiave-del-contatore, sezione 11.8.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

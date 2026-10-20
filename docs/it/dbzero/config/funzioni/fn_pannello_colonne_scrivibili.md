@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pannello_colonne_scrivibili(p_tabella text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_pannello_colonne_scrivibili(p_tabella text)
  RETURNS text[]
@@ -55,6 +57,8 @@ $function$
 COMMENT ON FUNCTION config.fn_pannello_colonne_scrivibili(p_tabella text)
 IS 'Check pura: le colonne che il pannello di configurazione scrive per una tabella di config.tabelle_gestibili con pannello = true (p_tabella = codice_interno, schema.tabella), nell''ordine della tabella. Escluse le colonne che scrive il DB per ogni riga (id, audit, tx_id, storicizza, uid), le generate e le identity ALWAYS. NULL se il pannello non gestisce la tabella (fuori lista, pannello = false, inesistente): a sollevare e'' il verbo. Sede unica della regola: la chiama config.fn_pannello_scrivi (passo 2) e la legge il metadata del backend per i campi del form. STABLE, INVOKER. Brief: brief-db-pannello-config-verbo-generico, sezione 6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

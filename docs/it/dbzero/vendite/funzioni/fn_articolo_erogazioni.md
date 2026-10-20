@@ -6,6 +6,8 @@ CREATE FUNCTION fn_articolo_erogazioni(p_articolo_id uuid)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_articolo_erogazioni(p_articolo_id uuid)
  RETURNS TABLE(tipo_erogazione character varying, fonte_quantita_attesa character varying, e_default boolean, generazione_canone character varying, origine text, ordine integer)
@@ -97,6 +99,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_articolo_erogazioni(p_articolo_id uuid)
 IS 'Building block: come si può erogare un articolo su una riga di contratto o di offerta. Restituisce le combinazioni (tipo_erogazione, fonte_quantita_attesa) ammesse, e_default su quella che la riga eredita quando non la indica, la generazione_canone da proporre sulle CANONE, l''origine (TIPOLOGIA | NATURA | DISTINTA) e l''ordine (1 = la prima: il default, poi per erogazione; dentro un''erogazione DERIVATA_COMPONENTI per ultima, poi per fonte). Regola (decisioni di Tid del 2026-10-07): con una tipologia di listino, le combinazioni della tipologia (config.listini_tipologie_erogazioni); senza, quelle della natura di vendita (config.nature_vendita_erogazioni) — vince la tipologia, le due non si sommano; un articolo composito ammette in più DERIVATA_COMPONENTI accanto a ogni erogazione ammessa, se il vocabolario config.erogazioni_fonti la dichiara coerente, mai di default. Zero righe se l''articolo non c''è. Sede unica del perimetro e del suo ordine: la leggono script.trgfn_righe_default_erogazione_da_articolo (eredità, prende la prima combinazione che le serve), script.fn_check_riga_erogazione (guard) e vendite.fn_documento_riga_erogazioni (form, ordina su ordine): la prima fonte che il form propone per un''erogazione è quella che il DB scriverebbe. STABLE, SECURITY INVOKER. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B3); ordine dal 20261007-66 (§D.4 punto 1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

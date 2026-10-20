@@ -7,6 +7,8 @@ CREATE FUNCTION fn_genera_fondi_fattura_source(p_billing_account_id bigint, p_ut
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_genera_fondi_fattura_source(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_tipo_fondo_fattura_id bigint)
  RETURNS integer
@@ -107,6 +109,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_genera_fondi_fattura_source(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_tipo_fondo_fattura_id bigint)
 IS 'Crea le source dei fondi fattura per le fatture del perimetro indicato. E'' CREATE-ONLY dal 2026-08-15: il ramo UPDATE (che riallineava importo e stato a ogni giro) e'' stato rimosso, perche'' il fondo di una fattura DEFINITIVA e'' un atto e non si ricalcola — «una volta che la fattura e'' effettiva il fondo rimane lo stesso». ⭐ Dal 2026-08-15 (sera) l''INVILUPPO non e'' piu'' scritto qui: DEFINITIVA, di minimo, utility attribuita, atto unico, importo non nullo e CORRISPONDENZA col documento sono tutti dentro vendite.fn_fondo_fattura_proponibile, che questa funzione chiama in LATERAL e di cui inserisce il risultato. La ragione e'' che lo stesso inviluppo serve all''elenco vw_fondi_fattura_da_decidere: due copie della regola darebbero prima o poi due risposte diverse, e il divario si vedrebbe come un elenco che propone cio'' che il giro notturno non crea. Restano qui i CINQUE FILTRI DI SCOPE (billing account, utility, tipo doc fiscale, emittente, valuta), che dicono quali fatture guardare e non se una fattura meriti un fondo. ⚠️ Nessun pre-filtro su minimo: sarebbe un pezzo di regola in un secondo posto, e lo scope riduce gia'' i candidati a una manciata. Firma invariata di proposito: la chiave piena a nove elementi e la madre DB per lotto richiedono il backend, e sono scritte come richiesta nel brief. D-1 + D-4 + coda D-9 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

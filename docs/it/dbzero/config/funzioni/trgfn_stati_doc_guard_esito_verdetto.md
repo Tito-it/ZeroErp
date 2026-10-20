@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_stati_doc_guard_esito_verdetto()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()
  RETURNS trigger
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()
 IS 'Guard generico per le config.stati_doc_*: la proiezione `esito` (D1, brief-db-proiezione-stato-dominio) deve referenziare un esito con is_verdetto=true in config.esiti_flussi_pratiche; NULL ammesso (nessun verdetto). Blocca gli esiti di instradamento di dominio e i codici inesistenti con E_STATO_DOC_ESITO_NON_VERDETTO. Riusabile su ogni dominio del roll-out (legge solo NEW.esito/NEW.codice_interno).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resi_riga_accreditato_partita(p_resi_riga_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_resi_riga_accreditato_partita(p_resi_riga_id bigint)
  RETURNS numeric
@@ -36,6 +38,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_resi_riga_accreditato_partita(p_resi_riga_id bigint)
 IS 'Quanti pezzi, in unita'' di MERCE (unita'' padre della partita), sono gia'' stati accreditati per una riga di reso. Punto UNICO della formula, consumato da vendite.vw_resi_da_accreditare per non ri-offrire una quota gia'' accreditata — senza, dopo il primo accredito la coda ridistribuirebbe il residuo della partita sulla PRIMA riga di reso invece che su quelle non ancora accreditate, e la quota di una riga diventerebbe irraggiungibile: la stessa malattia per cui questo cantiere esiste, in forma nuova. ⚠️ La somma e'' una volta per GRUPPO e non per riga: su un kit N righe portano la stessa quota padre (sommarle la moltiplicherebbe), su un consumo LIFO N righe portano quote diverse (vanno sommate). La colonna `gruppo` distingue i due casi. brief-design-note-credito-resi D-NC-10. rev 2026-08-18.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

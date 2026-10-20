@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_lotto_utility_emittente(p_billing_account_id bigint, 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_resolve_lotto_utility_emittente(p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_scope text DEFAULT 'LOTTO'::text, p_caller text DEFAULT 'fn_resolve_lotto_utility_emittente'::text, p_check_emittente_attivo boolean DEFAULT true)
  RETURNS TABLE(resolved_utility_id integer, resolved_emittente_soggetto_ruolo_id bigint)
@@ -88,6 +90,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_resolve_lotto_utility_emittente(p_billing_account_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint, p_scope text, p_caller text, p_check_emittente_attivo boolean)
 IS 'Helper condiviso: risolve e valida utility/emittente per lotti con fallback default emittente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

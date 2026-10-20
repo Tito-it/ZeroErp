@@ -7,6 +7,8 @@ CREATE FUNCTION fn_trigger_exists_by_function(p_rel regclass, p_fn_schema text, 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_by_function(p_rel regclass, p_fn_schema text, p_fn_name text)
  RETURNS boolean
@@ -53,6 +55,8 @@ IS '
         - Non verifica la **firma** della funzione; controlla solo schema+nome.
 ';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

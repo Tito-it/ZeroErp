@@ -7,6 +7,8 @@ CREATE FUNCTION fn_start_commessa_push_run(p_dry_run boolean, p_source_types tex
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_start_commessa_push_run(p_dry_run boolean DEFAULT false, p_source_types text[] DEFAULT NULL::text[], p_correlation_id uuid DEFAULT NULL::uuid)
  RETURNS bigint
@@ -44,6 +46,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_start_commessa_push_run(p_dry_run boolean, p_source_types text[], p_correlation_id uuid)
 IS 'Apre un giro di push commesse: INSERT della riga in TESTA alla corsa, stato IN_ESECUZIONE, run_at = now(). Restituisce l''id, che va passato a vendite.fn_close_commessa_push_run. ⭐ Il motivo per cui la riga nasce all''inizio e non alla fine: prima l''evento d''avvio citava entity_id = 0, che non era un segnaposto ma un id CHE NON ESISTEVA ANCORA. E un giro interrotto smette di sparire — la riga rimasta IN_ESECUZIONE e'' l''unica prova che qualcosa e'' partito e non e'' tornato. ⚠️ Il guadagno vale sul batch, che gira in autocommit: nel push singolo dal drawer la transaction.atomic() esterna rolla anche questa riga. ⛔ Nessun guard: un diario che si apre non ha niente da rifiutare (D-12). Brief: brief-db-event-log-scope-e-riga-parlante, D-3 e D-7.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

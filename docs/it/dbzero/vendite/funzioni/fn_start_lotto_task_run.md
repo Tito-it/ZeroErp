@@ -7,6 +7,8 @@ CREATE FUNCTION fn_start_lotto_task_run(p_lotto_id bigint, p_pipeline_id bigint,
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_start_lotto_task_run(p_lotto_id bigint, p_pipeline_id bigint, p_stato_doc_fiscale_id bigint, p_task_code character varying, p_fase character varying DEFAULT NULL::character varying, p_meta jsonb DEFAULT '{}'::jsonb, p_correlation_id uuid DEFAULT NULL::uuid)
  RETURNS TABLE(task_run_id bigint, tentativo smallint)
@@ -92,6 +94,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_start_lotto_task_run(p_lotto_id bigint, p_pipeline_id bigint, p_stato_doc_fiscale_id bigint, p_task_code character varying, p_fase character varying, p_meta jsonb, p_correlation_id uuid)
 IS 'Apre un task run del lotto in stato IN_ESECUZIONE e incrementa il tentativo. rev 2026-08-22: ⭐ prende p_correlation_id — l''identita'' del GIRO (D-7 di brief-db-event-log-scope-e-riga-parlante), generata dal runner e condivisa con gli eventi e con la riga di commesse_push_log. Nullable: le righe anteriori a BE-2 non hanno un giro e un uuid inventato sarebbe un filo che non lega niente. ⛔ La firma vecchia a sei parametri e'' stata DROPpata nello stesso changeSet: un settimo parametro con DEFAULT non sostituisce, affianca — e una chiamata a sei argomenti soddisferebbe entrambe («la funzione non e'' unica»). ⚠️ p_stato_doc_fiscale_id resta bigint e non e'' ancorato con %TYPE: in tabella la colonna e'' integer, e bigint -> integer non e'' implicito. I tre guard di chiamata sono passati da E_PARAMETRO_INVALIDO a E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO): li'' il valore lo produce solo un chiamante rotto.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

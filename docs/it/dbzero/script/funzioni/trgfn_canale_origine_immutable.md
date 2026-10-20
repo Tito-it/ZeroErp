@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_canale_origine_immutable()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_canale_origine_immutable()
  RETURNS trigger
@@ -62,6 +64,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_canale_origine_immutable()
 IS 'Trigger function generica: blocca UPDATE che modifica la colonna canale_origine. Applicata via UPDATE OF canale_origine su billing_account, vendite.ordini, vendite.fatture. Codice errore E_CANALE_ORIGINE_IMMUTABILE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

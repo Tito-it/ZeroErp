@@ -7,6 +7,8 @@ CREATE FUNCTION fn_lookup_utilities_per_ba(p_billing_account_id bigint, p_ruolo_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_lookup_utilities_per_ba(p_billing_account_id bigint, p_ruolo_codice_soggetto text)
  RETURNS TABLE(utility_id bigint, codice text, descrizione text, is_personalizzata_per_ef boolean, minimo_soglia_min numeric, minimo_soglia_max numeric, arrotondamento_importi_dec smallint, metodo_arrotondamento_importi text)
@@ -112,6 +114,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_lookup_utilities_per_ba(p_billing_account_id bigint, p_ruolo_codice_soggetto text)
 IS 'Utility ammesse per un billing account, guidate da emittente: intersezione ruolo soggetto (p_ruolo_codice_soggetto, codice_interno: CL/FO/GE) AND ruolo EF (codice_interno EF), con override parametri per emittente (LEFT JOIN). rev 2026-06-29: ruoli risolti per codice_interno (analisi-hardcoded-codice §3a #15) - col vecchio codice ritornava 0 righe. rev 2026-10-21 (brief-db-modelli-documento-standard §10.3 K-7): i parametri d''importo sono quelli effettivi di anagrafiche.fn_parametri_importo_utility, la riga dell''emittente se c''e'' e altrimenti il valore di sistema dell''utility; is_personalizzata_per_ef dice se la riga c''e''.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

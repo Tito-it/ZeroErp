@@ -6,6 +6,8 @@ CREATE FUNCTION fn_raise_primo_motivo_se_presente(p_area text, p_funzione text, 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_raise_primo_motivo_se_presente(p_area text, p_funzione text, p_motivi jsonb, p_campo text DEFAULT NULL::text, p_tx_id uuid DEFAULT NULL::uuid, p_context_extra jsonb DEFAULT '{}'::jsonb)
  RETURNS void
@@ -126,6 +128,8 @@ $function$
 COMMENT ON FUNCTION script.fn_raise_primo_motivo_se_presente(p_area text, p_funzione text, p_motivi jsonb, p_campo text, p_tx_id uuid, p_context_extra jsonb)
 IS 'Solleva il codice del PRIMO motivo di una fn_check_*, in un posto solo. Tace - e non e'' fail-open - se p_motivi e'' NULL, non e'' un array o e'' vuoto: «nessun motivo» e'' la risposta che dice passa, e il suffisso _se_presente lo dichiara dal nome (linee-guida-sql §5). Estratta il 2026-09-08 da ventitre'' punti di chiamata che ripetevano la stessa coda: le righe risparmiate sono un effetto collaterale, il motivo sono le tre convenzioni che sbagliate non fanno fallire niente - quale elemento si solleva (l''ordine dell''array e'' il contratto, §12.5.2), quale tx_id si passa (dipende dalla fase E dal nome del trigger) e come si spacchetta il VARIADIC (arita'' giusta, frase falsa). Contesto composto in ordine DICHIARATO, e in jsonb || vince la destra: p_context_extra || dettaglio || motivi || campo. `motivi` viaggia SEMPRE (il backend puo'' mostrarli tutti anche se la frase ne nomina uno); `campo` solo se passato (su un TECNICO non c''e'' nessun campo da accendere). `valori` normalizzato sul TIPO e non con COALESCE: una chiave con null JSON non e'' SQL NULL e farebbe alzare 22023 a jsonb_array_elements_text DENTRO il percorso d''errore, perdendo il rifiuto e non solo la frase. ⛔ NON difende dall''ordine dei valori dentro la check, che e'' l''incidente del 2026-09-01 su E_REGISTRO_SERIE_NON_AMMESSA: quella difesa e'' un throws_like sulla frase resa. Brief: brief-db-coda-primo-motivo-in-un-posto-solo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

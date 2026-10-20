@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_indirizzi_soggetti_guard_tipo_indirizzo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()
  RETURNS trigger
@@ -93,6 +95,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()
 IS 'Guard sugli indirizzi di SOGGETTO: il tipo di indirizzo deve essere fra quelli che config.tipi_soggetto_dettaglio_tipi_indirizzo ammette per il tipo_soggetto_dettaglio della riga, attivo e valido oggi. Fallback permissivo quando il soggetto non ha un tipo_soggetto_dettaglio o quando per quel tipo non esiste nessuna riga di matrice. ⛔ Da NON confondere con anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo, che e'' il guard del layer RUOLO e legge un''altra matrice: sono due controlli distinti su due tabelle distinte, e dal 2026-08-19 hanno anche due CODICI ERRORE distinti. Prima ne condividevano uno, e il messaggio — scritto per i ruoli — mandava chi sbagliava sul layer soggetto a cercare nella tabella dei ruoli.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

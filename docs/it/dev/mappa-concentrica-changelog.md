@@ -136,6 +136,8 @@ manuale per soggetto e utility (D33). Vedi
 [brief-db-istanza-nasce-col-ba.md](work-done/brief-db-istanza-nasce-col-ba.md),
 [brief-db-istanza-nasce-col-ba-residui.md](work-done/brief-db-istanza-nasce-col-ba-residui.md).
 
+### Fattura e anagrafiche — 13 ottobre
+
 **Anello 2/3 (`documenti`, fattura) — Il patto fra template e forma regge
 quattro versioni in tre giorni.** Il patto di fine settembre (la versione di
 template dichiara la forma che legge) viene messo alla prova subito: la fattura
@@ -172,6 +174,8 @@ ancora in `work-in-progress` con D-4 (`COOPERATIVA`) aperta, archiviato il 14-10
 [brief-db-sesso-senza-default.md](work-done/brief-db-sesso-senza-default.md),
 [brief-db-character-n-spazi-di-riempimento.md](work-done/brief-db-character-n-spazi-di-riempimento.md),
 [brief-db-dati-fiscali-e-societari-del-soggetto.md](work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md).
+
+### Permessi e accessi — 13 ottobre
 
 **Anello 0/1 — Permessi: il livello dell'area è un tetto.** La semantica si
 ribalta (04→06-10): prima vinceva il livello più specifico, ora *un permesso
@@ -223,6 +227,8 @@ i provider esterni. Vedi
 [collaudo-in-app-consenso-riuso-credenziale.md](work-done/collaudo-in-app-consenso-riuso-credenziale.md),
 [piano-be-fe-accessi-credenziale-e-vesti.md](work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md),
 [piano-autenticazione-provider-esterni-oauth.md](work-in-progress/piano-autenticazione-provider-esterni-oauth.md).
+
+### Nucleo, interfaccia e magazzino — 13 ottobre
 
 **Anello 0 — Un solo fuso, valori finiti, una corsa saltata non è una
 corsa.** Il **fuso dell'azienda** è un dato solo con una sede sola (09-10):
@@ -404,6 +410,8 @@ legge non esiste*. Vedi
 [brief-be-fe-capability-annidata.md](work-done/brief-be-fe-capability-annidata.md),
 [brief-db-messaggio-ba-senza-emittente.md](work-done/brief-db-messaggio-ba-senza-emittente.md).
 
+### Accessi e sicurezza — 30 settembre
+
 **Anello 0/1 — La credenziale è una, le porte sono tante.** L'analisi degli
 accessi (D-1…D-10, decise il 24-09, chiusa il 28) separa due oggetti: la
 **credenziale** (password, tentativi, blocco, sessioni) e la **veste**, la
@@ -452,6 +460,8 @@ T-0…T-5, dal 30-09). Vedi
 [brief-db-secondo-fattore-totp.md](work-done/brief-db-secondo-fattore-totp.md),
 [configurazione-django.md](backend/configurazione-django.md).
 
+### Controlli automatici e test — 30 settembre
+
 **Anello 0 — Ciò che la CI non vedeva: trigger generati e giro notturno.**
 Quattro brief, lo stesso difetto di forma — una funzione generica riceve il
 dato **negli argomenti del trigger** e nessuno confronta il vivo con la sede.
@@ -499,6 +509,8 @@ residuo (18 rossi del lotto 2 tornati lì). Vedi
 [brief-be-presidio-ui-action-e-canale-campi.md](work-done/brief-be-presidio-ui-action-e-canale-campi.md),
 [brief-db-fixture-che-costruiscono-giro-2.md](work-done/brief-db-fixture-che-costruiscono-giro-2.md).
 
+### Liste e interfaccia — 30 settembre
+
 **Anello 1 (`ui`) — La lista dice da sé che cosa è.** Cinque fatti della
 lista scritti in più sedi scendono nel catalogo. La **ricerca libera** di
 tutte le liste legge `ricercabile_full` a ogni ricerca (`_DEBITO_RICERCA_A_MANO`
@@ -543,6 +555,8 @@ AGGIUNTA escono con l'UdM dell'articolo, non della riga). Vedi
 [brief-db-liste-righe-documento.md](work-done/brief-db-liste-righe-documento.md),
 [brief-fe-filtri-lista-su-schermo-compatto.md](work-done/brief-fe-filtri-lista-su-schermo-compatto.md),
 [analisi-fe-regole-standard-violate-dal-codice.md](work-done/analisi-fe-regole-standard-violate-dal-codice.md).
+
+### Magazzino, vendite e documenti — 30 settembre
 
 **Anello 3 (`magazzino`) — Dal motore a video alla merce che esce e
 rientra.** Il **Lotto 2** è consegnato intero il 22-09 (CI da zero verde,
@@ -696,6 +710,8 @@ debito che nessuno rilegge. ⭐ Nello stesso periodo, due BB estratti alla
 `pagamenti/composables/useAzioniRigaContabile`. Vedi
 [brief-db-emittente-di-default-un-bb-solo.md](work-done/brief-db-emittente-di-default-un-bb-solo.md).
 
+### Incassi e distinte — 19 settembre
+
 **Anello 3 (`pagamenti`) — Il collaudo in-app scrive venti decisioni di
 dominio.** Tre giri in cinque giorni, e ogni giro ha lasciato il modello
 diverso da com'era. **D16-D18** (14→15-09): la riga manuale **nasce cercando la
@@ -738,6 +754,8 @@ merge di PR #1598, e i 28 changeSet interessati sono una voce aperta in
 `PROJECT_CONTEXT.md`. Vedi
 [brief-db-distinta-numerata-sul-registro.md](work-done/brief-db-distinta-numerata-sul-registro.md),
 [brief-db-distinta-ricerca-rate.md](work-done/brief-db-distinta-ricerca-rate.md).
+
+### Interfaccia, osservabilità e verifiche — 19 settembre
 
 **Anello 1 (`ui`) — Il perimetro emittente arriva ai cataloghi globali, e il
 seed laterale si ritira.** Sei liste in più dichiarate `perimetro_emittente =
@@ -941,6 +959,8 @@ Vedi
 [analisi-riavvio-processi-da-interfaccia.md](work-done/analisi-riavvio-processi-da-interfaccia.md),
 [brief-db-avvio-manuale-di-un-processo.md](work-done/brief-db-avvio-manuale-di-un-processo.md).
 
+### Dati non più usati e postura degli oggetti — 14 settembre
+
 **Anello 0 + 1 — Il software che serviva dati morti.** Nato dalla coda del
 cantiere dello storico, dove si stava per scrivere codice che mostrasse la
 storia di una tabella già dismessa: la domanda diventa *c'è software in
@@ -992,6 +1012,8 @@ Vedi
 [brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
 [migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md) §D4-D7 e §D13,
 [migliorie-generali-BE-FE-da-test-valutazione.md](work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md) §D1, §D15.
+
+### Vendite e articoli — 14 settembre
 
 **Anello 3 (vendite) — Il rilancio rivede le proprie commesse.** Trovato dal
 collaudo in-app dell'esito parziale, prova 5: ripristinate le ROOT, «Riprova
@@ -1272,6 +1294,8 @@ sta l'elenco del suo oggetto invece di una card che ne mostrava un altro. Vedi
 [brief-be-fe-rendi-definitive-sui-lotti.md](work-done/brief-be-fe-rendi-definitive-sui-lotti.md),
 [brief-db-guard-righe-fattura-rettificate.md](work-done/brief-db-guard-righe-fattura-rettificate.md).
 
+### Errori, presidi e liste — agosto 2026
+
 **Anello 0 — L'errore porta un bersaglio, e la riga di log dice per chi.** Due
 cantieri gemelli, stessa idea: un messaggio non serve se non si sa *su cosa*. Il
 **Passo 0 dell'osservabilità** rende parlante la riga di `vendite.event_log` —
@@ -1340,6 +1364,8 @@ e documentati: modello disegnato, tutte le tabelle a zero righe — e in
 `magazzino` un CHECK rendeva inseribili **solo i trasferimenti**. Archiviati per
 verifica contro il codice vivo: il documento di progettazione della pipeline
 (febbraio) e l'indice attività preventivi.
+
+### Dal 27 luglio al 10 agosto
 
 ℹ️ **Da qui le voci del 27 luglio – 10 agosto**, due settimane a cavallo del mese
 dominate da due cantieri trasversali (**la classe dei codici errore** e **i

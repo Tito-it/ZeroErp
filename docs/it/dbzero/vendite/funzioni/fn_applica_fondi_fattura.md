@@ -7,6 +7,8 @@ CREATE FUNCTION fn_applica_fondi_fattura(p_billing_account_id bigint, p_utility_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_applica_fondi_fattura(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_fattura_figlia_id bigint, p_tipo_fondo_fattura_id bigint DEFAULT NULL::bigint)
  RETURNS integer
@@ -154,6 +156,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_applica_fondi_fattura(p_billing_account_id bigint, p_utility_id integer, p_tipo_doc_fiscale_id bigint, p_emittente_soggetto_ruolo_id bigint, p_valuta_id integer, p_fattura_figlia_id bigint, p_tipo_fondo_fattura_id bigint)
 IS 'Applica i fondi DISPONIBILE alla fattura figlia, crea le righe fondi e marca le source come ASSEGNATO. E'' l''unico punto in cui il fondo MUOVE DENARO, e dal 2026-08-15 porta i due presidi che ne discendono. (1) CHIAVE: sorgente e figlia si confrontano sui NOVE elementi di vendite.fn_build_fattura_key (ne confrontava cinque, sulle colonne denormalizzate della source: mancavano reseller, registro, TERMINE e MODALITA'' di pagamento, quindi un fondo nato da una fattura a 30 giorni poteva finire su una figlia a 60 — due documenti che la chiave tiene separati apposta). Forma copiata da fn_get_or_create_fattura_header per non duplicare la definizione della chiave. I cinque parametri di scope restano ma cambiano mestiere: da filtro sulla source a sanity check sulla FIGLIA, perche'' sulla source potevano far saltare in silenzio un fondo con la colonna denormalizzata rimasta indietro. (2) CAPIENZA: prima di assegnare si RILEGGE il residuo della sorgente al netto del contributo del fondo stesso (fn_saldo_sorgente_fondo) e si verifica con vendite.fn_check_fondo_fattura_capiente che regga ancora l''importo — segno e valore assoluto, non `>=`, perche'' su una sorgente a credito il residuo e'' negativo. E'' la contropartita dell''ANNULLATO automatico rimosso da fn_genera_fondi_fattura_source: non un altro automatismo che scrive, ma una lettura nell''istante in cui il denaro si muove. ⭐ Rev 2026-08-15 (sera): la regola di capienza non e'' piu'' scritta qui ma nel predicato condiviso con vw_fondi_fattura_da_decidere, cosi'' l''elenco non puo'' dichiarare inapplicabile un fondo che il giro applica; e la capienza si calcola UNA volta in LATERAL invece di due volte nel WHERE — erano due giri su `pagamenti` per ogni source, con due valutazioni indipendenti di una funzione VOLATILE che in teoria potevano rispondere in modo diverso al segno e al valore assoluto. D-3(b) + D-4 + coda D-10 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

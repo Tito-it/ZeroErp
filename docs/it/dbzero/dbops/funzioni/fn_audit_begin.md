@@ -7,6 +7,8 @@ CREATE FUNCTION fn_audit_begin(p_function_name text, p_params jsonb, p_exec_mode
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_audit_begin(p_function_name text, p_params jsonb DEFAULT '{}'::jsonb, p_exec_mode text DEFAULT NULL::text, p_parts text[] DEFAULT NULL::text[], p_rule_type text DEFAULT NULL::text, p_dry_run boolean DEFAULT NULL::boolean, p_host text DEFAULT NULL::text, p_app_version text DEFAULT NULL::text)
  RETURNS bigint
@@ -65,6 +67,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

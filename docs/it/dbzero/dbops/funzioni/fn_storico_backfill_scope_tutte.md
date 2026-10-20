@@ -6,6 +6,8 @@ CREATE FUNCTION fn_storico_backfill_scope_tutte()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_storico_backfill_scope_tutte()
  RETURNS jsonb
@@ -70,6 +72,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_storico_backfill_scope_tutte()
 IS 'Applica dbops.fn_storico_backfill_scope a ogni madre col trigger di storico e registra un riepilogo nell''audit (madri, versioni aggiornate, residue a NULL, saltate). Idempotente: la chiamano il 90_end one-shot e il provisioning da superuser. Brief: brief-db-rls-storico-scope-congelato §4b.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

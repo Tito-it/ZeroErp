@@ -7,6 +7,8 @@ CREATE FUNCTION fn_totp_registra_uso(p_auth_user_id integer, p_passo bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_totp_registra_uso(p_auth_user_id integer, p_passo bigint)
  RETURNS void
@@ -60,6 +62,8 @@ $function$
 COMMENT ON FUNCTION script.fn_totp_registra_uso(p_auth_user_id integer, p_passo bigint)
 IS 'Anti-replay del secondo fattore (RFC 6238 §5.2): il backend ha verificato il codice e ne passa il PASSO; si accetta solo un passo successivo all''ultimo usato e lo si registra con ultimo_uso_at, in UNA istruzione a riga bloccata (due richieste simultanee con lo stesso codice: una sola passa). Rende monouso anche il token di sfida del login a due passi. Passo non successivo -> E_TOTP_PASSO_GIA_USATO; device assente o non confermato -> E_TOTP_DEVICE_ASSENTE; id o passo rotti -> E_AUTH_CHIAMATA_NON_VALIDA. Nessuno agisce: si chiama prima del login, come fn_registra_tentativo_login, e il backend la chiama solo dopo la password. Un codice sbagliato non arriva qui (E_TOTP_CODICE_NON_VALIDO e il tentativo fallito sono del backend, D-T2). SECURITY DEFINER del PROPRIETARIO, search_path bloccato. Brief: brief-db-secondo-fattore-totp §4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

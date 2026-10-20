@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_commesse_guard_chiave_immutabile()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_guard_chiave_immutabile()
  RETURNS trigger
@@ -82,6 +84,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_commesse_guard_chiave_immutabile()
 IS 'Guard D-R: termine/modalita'' di pagamento sono elemento della chiave di raggruppamento della commessa, quindi non si cambiano una volta che ci sono attivita'' collegate (si apre una commessa nuova). Commessa vuota: ammesso. Riscrittura dello stesso valore: ammessa. Bypass via GUC zeroerp.maintenance_reset_lotto_draft. Errore E_COMMESSA_CHIAVE_IMMUTABILE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

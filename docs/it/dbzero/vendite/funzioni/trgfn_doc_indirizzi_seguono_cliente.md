@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_doc_indirizzi_seguono_cliente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_doc_indirizzi_seguono_cliente()
  RETURNS trigger
@@ -64,6 +66,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_doc_indirizzi_seguono_cliente()
 IS 'Building block AFTER UPDATE FOR EACH ROW sulle testate il cui cliente si cambia in bozza (DDT: billing_account_id, destinatario_soggetto_ruolo_id; preventivo, offerta, contratto: billing_account_id, istanza_utility_id — nel WHEN del montaggio), TG_ARGV[0] = documento. Toglie le righe d''anagrafica che non sono del cliente nuovo (script.fn_indirizzo_documento_fuori_cliente, lo stesso predicato del guard vendite.trgfn_doc_indirizzi_guard_cliente e del motivo d''emissione); gli una-tantum restano. Poi riempie lo slot di default rimasto vuoto (vendite.fn_doc_indirizzo_default). Il cliente lo rilegge script.fn_get_cliente_testata_documento sulla riga finale. ⚠️ Il cliente si cambia solo in bozza (lock di testata), quindi il lock dei satelliti lascia passare. L''ordine non lo monta: il suo cliente non cambia mai (E_ORD_CLIENTE_IMMUTABILE). Brief: brief-db-indirizzi-documento-seguono-il-cliente (§5.3, D-1, D-2).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

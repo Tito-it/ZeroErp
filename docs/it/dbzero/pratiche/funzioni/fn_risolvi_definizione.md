@@ -7,6 +7,8 @@ CREATE FUNCTION fn_risolvi_definizione(p_tipo_prestazione_id integer, p_emittent
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_risolvi_definizione(p_tipo_prestazione_id integer, p_emittente_fiscale_id bigint DEFAULT NULL::bigint)
  RETURNS integer
@@ -80,6 +82,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_risolvi_definizione(p_tipo_prestazione_id integer, p_emittente_fiscale_id bigint)
 IS 'Risolve l''edizione di workflow per (tipo prestazione, emittente): PUBBLICATA dell''emittente > preset PUBBLICATA > errore DEFINIZIONE_NON_TROVATA (507). Punto unico di risoluzione, usato dall''auto-pin delle pratiche e dall''auto-default dei template. VOLATILE perche'' il ramo di errore logga.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

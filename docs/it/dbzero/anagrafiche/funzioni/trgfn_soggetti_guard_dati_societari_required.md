@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_soggetti_guard_dati_societari_required()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_required()
  RETURNS trigger
@@ -103,6 +105,8 @@ Rev 20261009-21 (brief-db-sesso-senza-default): la variabile della policy segue 
 (%TYPE), come codice_interno, non il tipo, che e'' passato al generico config.presenza_policy_enum.
 ';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

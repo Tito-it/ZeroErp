@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_emittenti_fiscali_regime_conferma()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_regime_conferma()
  RETURNS trigger
@@ -39,6 +41,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_regime_conferma()
 IS 'Deriva la conferma del regime fiscale (trigger a20, BEFORE UPDATE OF regime_fiscale_rf): un UPDATE che nomina il regime, anche con lo stesso valore, e'' una dichiarazione, e scrive regime_fiscale_confermato_il = now() e regime_fiscale_confermato_da = app.jwt_user (CURRENT_USER se la GUC manca). Un UPDATE che non nomina il regime non tocca la conferma; la INSERT non conferma mai; riempire un regime vuoto (il backfill del default RF01, D-1) non e'' una dichiarazione. Le due colonne non si scrivono da fuori: lo rifiuta il guard a10 trgfn_emittenti_fiscali_guard_regime_conferma. Non solleva. Brief: brief-db-esigibilita-iva-per-cassa-emittente (sezione 10, revisione di D-11).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

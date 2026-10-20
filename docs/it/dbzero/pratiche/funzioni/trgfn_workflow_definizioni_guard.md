@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_workflow_definizioni_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_workflow_definizioni_guard()
  RETURNS trigger
@@ -68,6 +70,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_workflow_definizioni_guard()
 IS 'BEFORE UPDATE OF stato/header su pratiche.workflow_definizioni: transizioni ammesse BOZZA->PUBBLICATA e PUBBLICATA->RITIRATA (510); header strutturale (tipo/emittente/versione/provenance) immutabile fuori da BOZZA (509). descrizione/meta sempre correggibili (fuori dall''evento UPDATE OF).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

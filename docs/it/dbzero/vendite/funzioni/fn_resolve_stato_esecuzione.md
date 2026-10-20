@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_stato_esecuzione(p_stato_source text, p_has_critical 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_resolve_stato_esecuzione(p_stato_source text DEFAULT NULL::text, p_has_critical boolean DEFAULT false, p_fatturato boolean DEFAULT false, p_default_stato_esecuzione character varying DEFAULT 'PENDING'::character varying)
  RETURNS character varying
@@ -72,6 +74,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_resolve_stato_esecuzione(p_stato_source text, p_has_critical boolean, p_fatturato boolean, p_default_stato_esecuzione character varying)
 IS 'Helper condiviso: risolve stato_esecuzione con priorita critical/fatturato e mapping stato_lotto. rev 2026-08-04 (D-M): firma da sei a quattro parametri. Via p_esclusa — il flag fatturazione_lotti_fatture.esclusa e'' dormiente da sempre (nessuno lo valorizza) e quel ramo non e'' mai stato preso — e via con lui p_current_stato_esecuzione, che era usato SOLO dentro quel ramo. ⚠️ La firma vecchia a sei parametri e'' stata DROPpata per intero e non sostituita: togliere un parametro crea un overload, e con i DEFAULT su tutti le chiamate esistenti sarebbero diventate ambigue.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_famiglie_documento_guard_riferimenti()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
  RETURNS trigger
@@ -214,6 +216,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
 IS 'Guard `_a10_` su vendite.famiglie_documento: una famiglia ATTIVA deve nominare oggetti che esistono — la tabella del documento, la colonna del numero, quella del billing account e, se dichiarata, quella della serie. ⛔ PERCHE'': quei nomi finiscono in SQL dinamico dentro il presidio sul cambio emittente del billing account, e un refuso resterebbe muto fino al primo spostamento, dove uscirebbe come undefined_table in un movimento che con le famiglie non c''entra. ⭐ SULLA SERIE CI SONO DUE CONTROLLI E DUE CODICI: se la colonna non esiste e'' un refuso come gli altri tre (E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE); se esiste ma NON compare in un vincolo di unicita'' insieme alla colonna del numero e'' il caso peggiore — il nome e'' giusto e si legge — e ha il suo codice E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA, perche'' la serie entra nella chiave del contatore e apre un secchio che riparte da 1: senza il vincolo allargato quel numero collide con uno gia'' emesso. ⛔ IL PREDICATO E'' TESTUALE su pg_get_indexdef e non per attnum, ed e'' verificato: uq_fatture_numero porta la serie come COALESCE(serie, '''''''') — un''espressione, che in pg_index.indkey ha attnum 0 — quindi la versione «precisa» rifiuterebbe la FATTURA e farebbe fallire il migrate sul mirror delle famiglie. E'' lo stesso predicato del test 5 di test-chiave-contatore-assi-dichiarati-v1: due predicati sulla stessa invariante, prima o poi, dissentono. ⚠️ Solo sulle famiglie ATTIVE: una famiglia ritirata puo'' nominare una tabella che non c''e'' piu'', ed e'' storia. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1). ⭐ rev 2026-09-14 (P-9, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 3-bis): la colonna del billing account e'' OPZIONALE come la serie — NULL o vuota = «questa famiglia non ha un billing account» (l''ordine di acquisto, la cui controparte e'' un soggetto_ruolo) — e il controllo su pg_attribute si salta PRIMA di comporre, non dentro: un %I con NULL solleverebbe un errore di PostgreSQL senza codice di dominio. Il numero e la tabella restano obbligatori. Rev 2026-10-20 (20261020-35, brief-db-grammatica-unica-documenti 2c, G-5): la tabella dei documenti e'' la target_table della sorgente della famiglia (config.fn_sorgente_tabella); entra la regola di una famiglia ATTIVA per tabella, che era l''indice uq_famiglie_documento_tabella_attiva (E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA). Non e'' a prova di concorrenza come l''indice: dichiarato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

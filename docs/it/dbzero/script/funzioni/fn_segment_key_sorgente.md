@@ -6,6 +6,8 @@ CREATE FUNCTION fn_segment_key_sorgente(p_segment_key character varying)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_segment_key_sorgente(p_segment_key character varying)
  RETURNS character varying
@@ -31,6 +33,8 @@ $function$
 COMMENT ON FUNCTION script.fn_segment_key_sorgente(p_segment_key character varying)
 IS 'Il documento da cui viene una riga di commessa, letto dalla chiave: il codice della sorgente (o MAN). Dalla chiave e non da sorgente_tipo_id perche'' rettifiche e oneri non hanno sorgente per progetto (L2e-2 = (a)). LANGUAGE sql IMMUTABLE senza SET: si espande in linea. Brief: brief-db-grammatica-unica-documenti §13.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

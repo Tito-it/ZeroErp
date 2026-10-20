@@ -14,6 +14,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_commesse_attivita_emittibilita
 WITH (security_invoker=on) AS
@@ -49,6 +51,8 @@ SELECT ca.id AS commessa_attivita_id,
            FROM vendite.vw_documenti_trattenuti_da_lotto t
           WHERE ((t.gruppo_key = vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id)) AND (t.lotto_competenza_mese >= ca.competenza_mese))) trat ON (true));
 ```
+
+</div>
 
 
 ---

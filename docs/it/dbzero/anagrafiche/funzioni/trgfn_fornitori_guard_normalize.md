@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fornitori_guard_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()
  RETURNS trigger
@@ -63,6 +65,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()
 IS 'Guard/normalize su fornitori: canale_fe (uppercase no spazi), pec_email (lowercase trim), coerenza ritenuta acconto/aliquota.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

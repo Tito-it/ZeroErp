@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_emittenti_fiscali_default_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()
  RETURNS trigger
@@ -54,6 +56,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()
 IS 'Vincolo singleton: deve esistere esattamente un emittente fiscale di default. Errore: E_EMITTENTE_DEFAULT_SINGLETON.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

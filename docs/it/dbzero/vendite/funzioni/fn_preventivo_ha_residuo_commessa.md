@@ -7,6 +7,8 @@ CREATE FUNCTION fn_preventivo_ha_residuo_commessa(p_preventivo_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id bigint)
  RETURNS boolean
@@ -50,6 +52,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id bigint)
 IS 'TRUE se il preventivo ha righe natura COMMESSA (servizi; natura NULL = pregresso) non ancora mandate in commessa. Predicato condiviso (vista vw_preventivi_righe_smistabili_commessa, che dal 2026-10-12 lo legge da script.fn_get_stato_push_segment: una riga di commessa ANNULLATA non occupa). Lo leggono la capability can_push_commessa e la proiezione dello stato del preventivo (vendite.fn_preventivo_proietta_stato_smistamento: ACCETTATO <-> EVASO). Gemella di fn_preventivo_ha_residuo_ordine; non considera ORDINE (gestita da fn_push_preventivo_a_ordine). rev 2026-10-10 (20261010-51): via il requisito di testata completa (billing_account_id, utility_id NOT NULL), tautologico dal 2026-10-08. Brief: brief-db-istanza-nasce-col-ba-residui (R-2). rev 2026-10-12 (20261012-09): commento allineato al predicato del classificatore unico, brief-db-annullo-a-valle-riapre-a-monte (D-5).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

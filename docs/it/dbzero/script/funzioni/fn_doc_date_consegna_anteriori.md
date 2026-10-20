@@ -7,6 +7,8 @@ CREATE FUNCTION fn_doc_date_consegna_anteriori(p_documento character varying, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_doc_date_consegna_anteriori(p_documento character varying, p_testata_id bigint, p_data_documento date DEFAULT NULL::date, p_riga jsonb DEFAULT NULL::jsonb, p_riga_prima jsonb DEFAULT NULL::jsonb)
  RETURNS TABLE(colonna text, data_consegna date, data_documento date, posizione integer)
@@ -117,6 +119,8 @@ $function$
 COMMENT ON FUNCTION script.fn_doc_date_consegna_anteriori(p_documento character varying, p_testata_id bigint, p_data_documento date, p_riga jsonb, p_riga_prima jsonb)
 IS 'Lettore SECURITY DEFINER (2026-10-13, collaudo date di consegna): le date di consegna anteriori alla data del documento. Con p_riga (la riga che si scrive, to_jsonb(NEW)): le sue date fuori regola contro la data della testata — con p_riga_prima (to_jsonb(OLD)) solo quelle cambiate, tutte se la riga torna attiva o cambia testata; una riga spenta non si giudica. Senza p_riga: per ogni colonna la prima data fuori regola fra le righe attive della testata, contro p_data_documento (la data che la testata sta per prendere). Righe: (colonna, data_consegna, data_documento, posizione); zero righe = niente da dire, anche con testata assente o id NULL/<= 0 (parla la FK). ⭐ Sede UNICA dell''elenco delle date di consegna: ORDINE data_consegna_richiesta_cliente, data_consegna_confermata; PREVENTIVO data_consegna_richiesta_cliente. Il confronto e'' script.fn_data_consegna_ammessa. Selettore ignoto: E_DOC_TIPO_NON_GESTITO (TECNICO). ⛔ SECURITY DEFINER: testate e righe hanno la RLS, e sotto quella di chi scrive il guard diventerebbe fail-open (come script.fn_get_stato_testata_documento). Consumatori: script.trgfn_doc_righe_guard_data_consegna, script.trgfn_doc_testata_guard_data_consegna_righe. ⭐ rev 2026-10-19 (20261019-44, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

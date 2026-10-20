@@ -7,6 +7,8 @@ CREATE FUNCTION fn_crea_auth_user(p_username text, p_email text, p_password_hash
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_auth_user(p_username text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_password_hash text DEFAULT NULL::text, p_first_name text DEFAULT NULL::text, p_last_name text DEFAULT NULL::text)
  RETURNS integer
@@ -122,6 +124,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_crea_auth_user(p_username text, p_email text, p_password_hash text, p_first_name text, p_last_name text)
 IS 'Building block: crea auth_user (Django) con guard unicita'' username/email. Obbligatori: p_username, p_email, p_password_hash (DEFAULT NULL, guard nel body). Ritorna auth_user.id. ⭐ Rev 20260925-41: l''email duplicata si riconosce SENZA distinguere maiuscole e minuscole (D-9 di brief-db-blocco-login-per-credenziale), chiedendo a script.fn_get_auth_user_id_for_email, la sede unica della regola; il codice resta E_ADMIN_EMAIL_DUPLICATA (senza il guard la collisione arriverebbe dall''indice unico come 23505 anonimo). Chiamata dalla madre fn_crea_operatore_v2 solo quando l''email non ha ancora una credenziale (altrimenti la riusa, D-6).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

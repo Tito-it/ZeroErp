@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fatture_guard_stato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_guard_stato()
  RETURNS trigger
@@ -66,6 +68,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fatture_guard_stato()
 IS 'Guard transizioni stato fatture via config.stati_doc_fiscale_transizioni. Blocco retrocessione GIORNALIERO.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

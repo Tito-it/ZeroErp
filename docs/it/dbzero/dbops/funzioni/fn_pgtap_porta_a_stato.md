@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_porta_a_stato(p_testata regclass, p_id bigint, p_stato 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_porta_a_stato(p_testata regclass, p_id bigint, p_stato text)
  RETURNS text
@@ -117,6 +119,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_porta_a_stato(p_testata regclass, p_id bigint, p_stato text)
 IS 'Fixture pgTAP: porta una testata di vendite.ordini o vendite.preventivi dallo stato corrente allo stato p_stato (codice_interno) per il percorso piu'' corto della matrice delle transizioni attive (config.transizioni_stati_ordini / _preventivi), un UPDATE della colonna di stato per passo: ogni passo passa dai guard di transizione veri, come in produzione. Serve alla forma «bozza, righe, transizioni»: da 20261008-90/-91 le righe si scrivono solo in bozza, e una testata nata fuori bozza non prende piu'' righe. A parita'' di lunghezza vince il percorso con gli id di stato minori. ⛔ Documento non gestito, stato sconosciuto, percorso assente, testata invisibile o UPDATE che non tocca una riga: eccezione, mai un ritorno silenzioso. Ritorna il codice_interno raggiunto; esce con i vincoli IMMEDIATE. Brief: brief-db-righe-e-componenti-debiti-residui (§1, D-1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

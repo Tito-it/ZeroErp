@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_preventivo_annullabile(p_preventivo_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_preventivo_annullabile(p_preventivo_id bigint)
  RETURNS jsonb
@@ -152,6 +154,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_preventivo_annullabile(p_preventivo_id bigint)
 IS 'Pure check: motivi che impediscono l''annullamento di un preventivo. [] = lecito. Sede UNICA della regola, condivisa da vendite.trgfn_preventivi_guard_annullamento, dalla porta vendite.fn_cambia_stato_preventivo e da script.fn_available_actions_preventivo. Motivi in ordine di gravita'' (chi consuma solleva il primo): 1) un ordine generato e non annullato (vendite.ordini.documento_origine_tipo = ''PREVENTIVO'' AND documento_origine_id = preventivo, con config.stati_doc_ordini.is_abortito NOT TRUE); 2) righe gia'' EMESSA in commessa (vendite.commesse_attivita, segment_key PREV:<uid>:R:) — a valle esiste una fattura (da script.fn_check_sorgente_chiudibile, codice E_PREV_ANNULLA_COMMESSA_EMESSA). Le righe di commessa NON_EMESSA non bloccano: si ritirano con la conferma all''annullo (vendite.fn_annulla_preventivo). rev 2026-08-04: assorbito il criterio della porta, che non ha piu'' regola propria (brief-db-vie-uscita-operatore §7.3). rev 2026-08-10: il MOTIVO 1 non era MAI scattato. Cercava l''ordine su vendite.ordini.sorgente_uid, che e'' l''origine IMPORT (commento della colonna) e non il legame al documento a monte: zero righe valorizzate su 90, mentre documento_origine_tipo/id lo e'' su 66. Era scritto per simmetria col gemello script.fn_check_ordine_annullabile, dove ddt.sorgente_uid E'' il legame al padre ed E'' popolata — la trappola §4a di docs/it/guide/sorgente-polimorfa.md: colonne omonime FUORI dal meccanismo polimorfo (vendite.ordini non ha il guard, quindi non ne e'' consumatrice). NESSUN backfill di sorgente_uid: sarebbe una seconda convenzione per lo stesso legame. + gli ordini figli annullati sono esclusi (is_abortito), unico punto in cui questa regola non copia il gemello: senza, un figlio morto bloccherebbe il padre per sempre e senza uscita. Decisione di dominio (Tid, 2026-08-10): qualunque altro stato del figlio blocca, bozza compresa — la via d''uscita e'' abbandonare prima la bozza dell''ordine. Effetto misurato: 13 preventivi ACCETTATO passano da annullabili a bloccati col motivo. rev 2026-10-12 (brief-db-annullo-a-valle-riapre-a-monte, R-12): commento riallineato al corpo. Citava un terzo motivo, «una riga in vendite.commesse_sorgenti (chiave uid::text)», che il corpo non legge piu'' dal 2026-08-26 (20260826-38): i motivi sono due. Corpo invariato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_trigger_exists_by_name(p_rel regclass, p_trigger_name text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_by_name(p_rel regclass, p_trigger_name text)
  RETURNS boolean
@@ -46,6 +48,8 @@ IS '
       (es. template diversi) richiedono l’uso di strategie alternative (es. BY_FUNCTION).
   ';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

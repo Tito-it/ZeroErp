@@ -5,6 +5,8 @@
 >
 > Diagnostica: parametri (default + override) il cui valore non esiste nel target del registry FK-surrogata. Output non vuoto = righe da risolvere manualmente. Sorgente: config.parameters + config.parameter_overrides.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_parameter_fk_surrogate_dangling AS
 SELECT 'parameter'::text AS source,
@@ -30,6 +32,8 @@ UNION ALL
      JOIN config.parameter_fk_surrogate pfs ON ((pfs.enabled AND ((((pfs.match_mode)::text = 'EXACT'::text) AND ((pfs.code_pattern)::text = (p.code)::text)) OR (((pfs.match_mode)::text = 'LIKE'::text) AND ((p.code)::text ~~ (pfs.code_pattern)::text))))))
   WHERE ((po.overridden_value IS NOT NULL) AND (NOT script.fn_check_parameter_fk_surrogate((p.code)::text, po.overridden_value)));
 ```
+
+</div>
 
 
 ---

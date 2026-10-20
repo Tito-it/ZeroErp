@@ -6,6 +6,8 @@ CREATE FUNCTION fn_ddt_riga_correggi_qta_evasa(p_ddt_riga_id bigint, p_qta_opera
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ddt_riga_correggi_qta_evasa(p_ddt_riga_id bigint, p_qta_operativa numeric)
  RETURNS numeric
@@ -113,6 +115,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ddt_riga_correggi_qta_evasa(p_ddt_riga_id bigint, p_qta_operativa numeric)
 IS 'VERBO (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-2, D-7): corregge la quantita'' evasa di una riga di DDT in bozza. Nella stessa operazione la riga prende la quantita'' operativa (componenti per la propagazione esistente) e i suoi legami la quantita'' base ricalcolata: il fulfillment (riga d''ordine) e il ponte di ri-consegna (riga di reso), quello che c''e''; poi, se la riga evade un ordine, il suo stato si riproietta (vendite.fn_ordine_proietta_stato_evasione). Ritorna la nuova qta_evasa. Ordine: guard di parametro (E_VENDITE_CHIAMATA_NON_VALIDA; quantita'' <= 0 o vuota E_QTA_NON_POSITIVA, campo qta_operativa), riga e DDT FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_ddt nella WHERE; fuori perimetro E_DDT_RIGA_NON_TROVATA), primo motivo di script.fn_check_ddt_riga_correggi_qta_evasa (DDT non in bozza, riga a mano, DDT senza origine, piu'' legami), scritture con la porta aperta (GUC transazionale zeroerp.ddt_riga_correggi_qta = id della riga: la onorano vendite.trgfn_ddt_righe_guard_riga_evasa e vendite.trgfn_ddt_riga_legame_guard, insieme al proprietario della tabella). Oltre il residuo dell''ordine: E_QTA_SUPERA_RESIDUO (trgfn_ordini_ful_guard_consistenza, reso-aware); oltre la copertura del reso: E_RESO_RICONSEGNA_SUPERA_RESO (trgfn_resi_riconsegne_guard). Nessuna seconda copia qui. SECURITY DEFINER con search_path bloccato; EXECUTE solo all''app. Nessun guard di permesso a DB: il permesso di modifica del DDT resta al backend.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

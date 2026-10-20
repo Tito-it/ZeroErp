@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ricalcola_fattura(p_fattura_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_fattura(p_fattura_id bigint)
  RETURNS void
@@ -26,6 +28,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ricalcola_fattura(p_fattura_id bigint)
 IS 'Wrapper ricalcolo fattura: riepiloghi IVA + totali testata.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

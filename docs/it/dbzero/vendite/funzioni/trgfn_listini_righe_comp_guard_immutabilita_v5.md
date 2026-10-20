@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_listini_righe_comp_guard_immutabilita_v5()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_listini_righe_comp_guard_immutabilita_v5()
  RETURNS trigger
@@ -86,6 +88,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_listini_righe_comp_guard_immutabilita_v5()
 IS 'Trigger BEFORE INS/UPD/DEL su listini_righe_componenti: immutabilita'' v5. DELETE sempre bloccato (usare attivo=FALSE). INSERT solo in BOZZA. UPDATE prezzo/iva_id/valido_dal/valido_al bloccato in non-BOZZA. Raise E_RIGA_LISTINO_VERSIONE_CHIUSA (362). rev 2026-05-14.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

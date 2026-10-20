@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_event_log_deriva_scope()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_event_log_deriva_scope()
  RETURNS trigger
@@ -142,6 +144,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_event_log_deriva_scope()
 IS 'BEFORE INSERT su vendite.event_log: deriva il perimetro dall''entita'' (script.fn_resolve_emittente_sr_id) e scrive auth_user_id dalla GUC. ⭐ LA REGOLA: il diario rifiuta una riga SOLO quando non riesce a dire di chi e''. Un emittente disattivato o un documento annullato si registrano lo stesso. Due rifiuti, due codici, perche'' il rimedio e'' diverso: E_EVENT_LOG_ENTITY_TYPE_IGNOTO (tipo fuori vocabolario) ed E_EVENT_LOG_SCOPE_NON_RISOLTO (entita'' inesistente). ⚠️ Rev 2026-08-22 (20260822-47): il primo ramo mancava e ci si affidava al CHECK sulla colonna — ma i BEFORE ROW girano PRIMA dei CHECK, e l''errore usciva come E_PARAMETRO_INVALIDO «il modo di risoluzione «» non esiste», che nomina un concetto interno al database invece del dato passato. ⭐ Rev 2026-09-18 (Passo D, analisi-osservabilita-log.md): cleanup_at non si calcola piu'' qui — lo scrive dbops.trgfn_cleanup_at_alla_nascita (trigger _m50_, dopo questo), lo stesso BB dei quattro registri di fatturazione e push; vendite.fn_event_log_ttl_days e'' ritirata.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

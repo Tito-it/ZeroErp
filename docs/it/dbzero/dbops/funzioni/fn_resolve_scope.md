@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_scope(p_schemas text[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_resolve_scope(p_schemas text[])
  RETURNS text[]
@@ -51,6 +53,8 @@ AS $function$
      RETURN v_schemas;
    END; $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

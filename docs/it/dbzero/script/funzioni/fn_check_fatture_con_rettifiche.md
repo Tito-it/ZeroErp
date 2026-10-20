@@ -6,6 +6,8 @@ CREATE FUNCTION fn_check_fatture_con_rettifiche(p_fatture_ids bigint[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_fatture_con_rettifiche(p_fatture_ids bigint[])
  RETURNS jsonb
@@ -77,6 +79,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_fatture_con_rettifiche(p_fatture_ids bigint[])
 IS 'Funzione PURA (fn_check_*): dice se le righe di queste fatture sono gia'' state rettificate, cioe'' se qualcuno ha gia'' registrato un accredito su di esse. Ritorna [] oppure un array con {codice, reason, reason_key, dettaglio}. ⭐ Sede UNICA condivisa dalle tre porte di reset — riporta a draft, annulla lotto, elimina fattura — sullo stampo di script.fn_check_lotto_fatture_pre_fiscali: la correttezza di ognuna dipende dal fatto che facciano la stessa cosa. ⚠️ Guarda TUTTE E QUATTRO le figlie NO ACTION di vendite.fatture_righe (commesse_attivita, attivita_fatturabili, resi_righe_accrediti e l''auto-riferimento fatture_righe.riga_rettificata_id), perche'' sono la stessa cosa vista da quattro lati; l''auto-riferimento conta solo se la riga che rettifica sta FUORI dall''insieme cancellato, altrimenti si bloccherebbe il caso normale della nota di credito nello stesso lotto. ⛔ Rifiuta invece di azzerare il legame: quella colonna e'' il SECONDO TETTO dell''accredito (20260818-27 punto 2, «questa riga ha fatturato 10 pezzi, non se ne possono accreditare 11») e il DatiFattureCollegate della TD04 — toglierlo mentre le quantita'' vengono ri-derivate sarebbe il momento peggiore. La via d''uscita per l''operatore e'' vendite.fn_annulla_accredito_riga_reso, poi il reset. rev 2026-08-22.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

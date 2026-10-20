@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_resi_riconsegne_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_riconsegne_guard()
  RETURNS trigger
@@ -91,6 +93,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_riconsegne_guard()
 IS 'Guard ponte ri-consegna: tipo riapre_residuo obbligatorio (E_RESO_RICONSEGNA_TIPO_NON_VALIDO) + Sigma qta <= qta_resa (E_RESO_RICONSEGNA_SUPERA_RESO), lock FOR UPDATE. Mirror trgfn_ordini_ful_guard_consistenza. rev 2026-07-13. rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo S4.6): il residuo sottrae ANCHE le rinunce (vendite.resi_righe_rinunce) e il lock copre entrambi i ponti - le due uscite (ri-spedire / dichiarare definitiva) condividono la stessa copertura, quindi lo stesso invariante quantita >= Sigma ric + Sigma rin, presidiato dai due lati.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

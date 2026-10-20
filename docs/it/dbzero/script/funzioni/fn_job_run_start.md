@@ -7,6 +7,8 @@ CREATE FUNCTION fn_job_run_start(p_jobname text, p_origine character varying, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_job_run_start(p_jobname text, p_origine character varying DEFAULT 'CRON'::character varying, p_stepname text DEFAULT NULL::text, p_lock_key text DEFAULT NULL::text, p_agent_host text DEFAULT NULL::text, p_processo_codice text DEFAULT NULL::text, p_auth_user_id integer DEFAULT NULL::integer)
  RETURNS TABLE(id bigint, run_uuid uuid, acquired boolean)
@@ -63,6 +65,8 @@ $function$
 COMMENT ON FUNCTION script.fn_job_run_start(p_jobname text, p_origine character varying, p_stepname text, p_lock_key text, p_agent_host text, p_processo_codice text, p_auth_user_id integer)
 IS 'Apre una riga su maintenance.job_run_log per un processo HEADLESS (management command / cron / systemd), con advisory lock anti-overlap opzionale. Rev 2026-09-04: prende p_processo_codice (l''ATTORE, hard FK verso dbops.processi) e p_auth_user_id (utente tecnico dei soli processi DOMINIO), e li scrive su ENTRAMBI i rami — anche sulla riga di «skip», altrimenti ogni sovrapposizione lascerebbe un run senza attore. Brief: brief-db-processi-automatici-identita-e-perimetro §3.2. ⭐ Rev 2026-10-10: col lock occupato la riga nasce SALTATA (saltata = TRUE), chiusa e con ok NULL, e la funzione torna acquired = false. Prima nasceva con ok = TRUE, e ogni lettore la contava come una corsa riuscita: una sveglia calendariale saltava il periodo, una corsa appesa spariva dal presidio. Il chiamante che riceve acquired = false salta il lavoro e NON chiude la corsa (script.fn_job_run_end la rifiuta). Brief: brief-db-corsa-saltata-non-e-una-corsa §8. ⭐ Rev 2026-10-15: entrambe le righe scrivono ruolo_sessione = session_user (chi si e'' collegato; session_user perche'' la funzione e'' DEFINER). Brief: brief-db-ruoli-di-sistema D-5.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

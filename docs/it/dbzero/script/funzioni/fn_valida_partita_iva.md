@@ -7,6 +7,8 @@ CREATE FUNCTION fn_valida_partita_iva(piva text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_valida_partita_iva(piva text)
  RETURNS boolean
@@ -59,6 +61,8 @@ IS 'Validazione formale partita IVA italiana.
   Restituisce TRUE se la partita IVA supera il controllo del carattere finale (check digit),
    altrimenti FALSE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

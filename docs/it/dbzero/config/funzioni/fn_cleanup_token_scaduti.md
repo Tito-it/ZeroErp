@@ -7,6 +7,8 @@ CREATE FUNCTION fn_cleanup_token_scaduti(p_giorni_retention integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_cleanup_token_scaduti(p_giorni_retention integer DEFAULT 30)
  RETURNS integer
@@ -51,6 +53,8 @@ $function$
 COMMENT ON FUNCTION config.fn_cleanup_token_scaduti(p_giorni_retention integer)
 IS 'Pulizia periodica token monouso scaduti/utilizzati. Default retention 30 giorni. Ritorna numero record eliminati.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ricalcola_riepilogo_iva_preventivo(p_preventivo_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepilogo_iva_preventivo(p_preventivo_id bigint)
  RETURNS TABLE(deleted_rows integer, inserted_rows integer)
@@ -143,6 +145,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ricalcola_riepilogo_iva_preventivo(p_preventivo_id bigint)
 IS 'Ricalcola riepilogo IVA preventivo (pattern fiscalmente corretto, speculare a fn_ricalcola_riepilogo_iva_fattura). Override aliquota da stato emittente via config.fn_get_aliquota_iva. Firma usa %TYPE su vendite.preventivi.id (tipo concreto risolto: bigint). ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): aggiunta la guardia r.iva_id IS NOT NULL, che le viste gemelle (vw_ordini_righe_iva_base, vw_ddt_righe_iva_base) avevano gia'' e questa funzione no. Il COALESCE non proteggeva nulla, perche'' config.fn_get_aliquota_iva SOLLEVA su p_iva_id NULL invece di ritornare NULL: l''effetto era che una riga di preventivo senza aliquota non si poteva nemmeno SALVARE — il trigger AFTER di ricalcolo faceva fallire l''INSERT — con un messaggio che nominava un parametro PL/pgSQL. Non era una decisione di dominio ma una svista, e divergeva da DDT e ordini, dove la bozza resta libera e il vincolo sta al momento in cui il documento diventa autorevole. ⛔ Questa modifica NON si applica da sola: apre la strada a una riga senza aliquota, che senza rete finirebbe nel riepilogo con imponibile pieno e imposta zero. La rete e'' il cancello all''EMISSIONE (Regola 2 di vendite.trgfn_preventivi_guard_transizione, changeSet 20260829-10, via script.fn_check_preventivo_emettibile). Le due cose sono una slice sola. ⚠️ La gemella sulle FATTURE (fn_ricalcola_riepilogo_iva_fattura) ha lo stesso COALESCE senza guardia e NON e'' stata toccata: li'' non esiste ancora un cancello IVA, quindi togliere il raise scambierebbe un errore rumoroso con un numero sbagliato silenzioso. Va fatto insieme a I4. ⭐ rev 2026-10-01 (D-4 di brief-db-esigibilita-iva-per-cassa-emittente): esigibilita e split_payment non sono piu'' NULL fissi: per ogni codice IVA escono da script.fn_esigibilita_iva_documento (emittente e cliente del preventivo), la stessa regola delle righe di fattura. Senza cliente la coppia esce NULL/NULL. natura_id resta NULL.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_unita_misura_guard_tipo_update()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_unita_misura_guard_tipo_update()
  RETURNS trigger
@@ -50,6 +52,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_unita_misura_guard_tipo_update()
 IS 'Blocca il cambio di tipo_uom_id su UoM gia'' coinvolte in conversioni globali.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

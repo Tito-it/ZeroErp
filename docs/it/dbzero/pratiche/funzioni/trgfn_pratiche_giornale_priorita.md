@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pratiche_giornale_priorita()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_giornale_priorita()
  RETURNS trigger
@@ -33,6 +35,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_giornale_priorita()
 IS 'AFTER UPDATE su pratiche: logga PRIORITA_CAMBIATA quando priorita_id cambia.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

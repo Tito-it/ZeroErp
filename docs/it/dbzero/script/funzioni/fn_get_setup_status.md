@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_setup_status()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_setup_status()
  RETURNS jsonb
@@ -70,6 +72,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_setup_status()
 IS 'Stato di setup operatore-emittente in un singolo jsonb. Refactor §4.6.B.10: source of truth operatori = identita_digitali (OPERATORE attiva); admin = fn_is_super_admin. Rev 2026-10-07 (brief-db-veste-utilizzabile): un operatore conta se la sua veste e'' utilizzabile oggi (script.fn_veste_utilizzabile), non piu'' attivo + finestra ricopiati.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

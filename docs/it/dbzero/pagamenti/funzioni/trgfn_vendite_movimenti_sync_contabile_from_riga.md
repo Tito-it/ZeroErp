@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_vendite_movimenti_sync_contabile_from_riga()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga()
  RETURNS trigger
@@ -161,6 +163,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_movimenti_sync_contabile_from_riga()
 IS 'Deriva dalla riga contabile i riferimenti del movimento e rifiuta chi ne passa uno diverso. ⭐ rev 2026-08-22 (S2-2): i riferimenti copiati passano da TRE a QUATTRO — si aggiunge scadenza_id, la rata. E'' cio'' che impedisce alla colonna nuova sul movimento di diventare una SECONDA SORGENTE DI VERITA'': non la scrive il chiamante, la deriva il mirror, ed e'' una copia buona per leggere senza passare dalla riga (che puo'' essere disattivata o vivere sotto una distinta annullata). ⚠️ Il guard vale SOLO quando il movimento porta contabile_riga_id: un movimento inserito senza riga non lo incontra e sbatte sulla NOT NULL — non e'' il percorso del posting, e'' il percorso di chi scrive a mano. Era vero prima e resta vero. rev 2026-08-21 (P-7): i cinque E_GENERICO sono passati ai codici registrati, nessun predicato cambiato.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

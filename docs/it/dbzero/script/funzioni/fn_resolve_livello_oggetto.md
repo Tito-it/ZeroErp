@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_livello_oggetto(p_auth_user_id integer, p_app_label c
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_resolve_livello_oggetto(p_auth_user_id integer, p_app_label character varying, p_model_name character varying, p_area_schema_db character varying)
  RETURNS config.livello_accesso
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION script.fn_resolve_livello_oggetto(p_auth_user_id integer, p_app_label character varying, p_model_name character varying, p_area_schema_db character varying)
 IS 'Risolve il livello di accesso per un model (app_label + model_name) col TETTO D''AREA: il piu'' restrittivo fra l''override utente sull''oggetto e il livello della sua area (l''override puo'' solo restringere, mai allargare). Legge la catena da script.fn_get_permessi_effettivi_oggetti (sede unica, con fn_get_user_object_permissions_map e il pannello permessi): gate di contesto (app.ruolo_applicativo diversa da OPERATORE -> BLOCCATO), identita'' OPERATORE attiva, super admin -> TUTTO (prima del tetto), area dell''oggetto da script.fn_area_di_oggetto, script.fn_livello_con_tetto_area. ⚠️ p_area_schema_db e'' superato: l''area la ricava la funzione e il parametro non si legge piu'' (resta in firma, il ritiro lo decide Tid). Oggetto NULL -> BLOCCATO. La chiamano il backend (PermissionResolver.get_livello_oggetto) e script.fn_guard_livello. Rev 20261004-57 (brief-db-permessi-tetto-area R4).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_righe_guard_articolo_ammesso()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_righe_guard_articolo_ammesso()
  RETURNS trigger
@@ -60,6 +62,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_righe_guard_articolo_ammesso()
 IS 'BB guard BEFORE INSERT OR UPDATE OF articolo_id sulle righe che scelgono un articolo: vendite.preventivi_righe, vendite.ordini_righe, vendite.ddt_righe; dal 20261013-57 vendite.offerte_commerciali_eccezioni e vendite.contratti_righe; dal 20261013-61 vendite.listini_righe (LISTINO_VERSIONE, anche UPDATE OF listino_versione_id); dal 20261014-05 vendite.promo_articoli (PROMO_ARTICOLO, TG_ARGV[1] = id: la promo non ha un padre). Solleva il primo motivo di script.fn_check_articolo_riga (il predicato sta nella check: linee-guida-sql §12.5.2), passando la natura della riga e il suo tipo d''eccezione, letti da to_jsonb(NEW) (ognuno c''e'' solo sulle sue tabelle). Campo: quello del primo motivo, o articolo_id. TG_ARGV[0]: documento (codice di config.tipi_entita); TG_ARGV[1]: colonna del padre. Su preventivo, ordine e bolla e'' montato DOPO script.trgfn_righe_natura_vendita (_a10_natura_vendita < _a10_regole_articolo); su offerta e contratto PRIMA dei guard di riga (_a10_guard_articolo_ammesso < _a10_guard_erogazione_*): prima i motivi dell''articolo, poi quelli della riga; sulla promo prima del guard delle date (_a10_guard_articolo_ammesso < _a10_guard_data_driven). La riconsegna e'' esente (A-6): con la porta zeroerp.ddt_riconsegna = id del reso, accesa da vendite.fn_genera_ddt_riconsegna, una riga di bolla passa se il suo articolo e'' fra le righe di quel reso; la porta e'' stretta sugli articoli del reso perche'' il verbo e'' SECURITY INVOKER. La distinta ha il suo guard (catalogo.trgfn_articoli_componenti_guard_componente: padre uuid). Il picker catalogo.fn_articoli_ammessi da'' lo stesso motivo prima della scelta. Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-2, A-6, D-6; §9.3.3, §9.4).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_commessa_annullabile(p_commessa_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_commessa_annullabile(p_commessa_id bigint)
  RETURNS jsonb
@@ -81,6 +83,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_commessa_annullabile(p_commessa_id bigint)
 IS 'Funzione PURA (fn_check_*): motivi ostativi all''annullamento di una commessa. Ritorna [] se annullabile, altrimenti array di {codice, reason, reason_key, dettaglio}. Motivo unico: esistono righe con stato_emissione=EMESSA (codice 558). Criterio deliberatamente restrittivo (brief §2.1-bis, D7): EMESSA e non "fattura viva", perche'' il reset lotto azzera fattura_riga_id ma non stato_emissione, e ANNULLATA e'' terminale/irreversibile. Sorgente UNICA condivisa da vendite.trgfn_commesse_guard_transizione (solleva) e script.fn_available_actions_commessa (espone enabled/reasons). rev 2026-07-24.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

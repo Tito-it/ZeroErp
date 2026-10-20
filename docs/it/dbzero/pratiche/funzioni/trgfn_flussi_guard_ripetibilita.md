@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_guard_ripetibilita()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_ripetibilita()
  RETURNS trigger
@@ -35,6 +37,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_ripetibilita()
 IS 'BEFORE INSERT su flussi: verifica la regola di ripetibilita'' del template per flussi template-based.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

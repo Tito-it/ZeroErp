@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_listino(p_auth_user_id integer, p_list
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_listino(p_auth_user_id integer, p_listino_id bigint)
  RETURNS boolean
@@ -33,6 +35,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_listino(p_auth_user_id integer, p_listino_id bigint)
 IS '⭐ rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l''emittente lo chiede a script.fn_resolve_emittente_fiscale_id (DEFINER), non lo legge sotto la RLS del padre: una strada sola, e nessuna policy del padre rieseguita a ogni chiamata. Stesse risposte. Adapter via-listino dello scope EF_WHITELIST: risolve l''emittente attraverso vendite.listini e delega a fn_scope_ef_whitelist_via_sr (-> canonica). Per le tabelle figlie del listino senza colonna emittente propria (vendite.listini_versioni). Gemello di fn_scope_ef_whitelist_via_fattura. STABLE, inlineable. Brief: brief-db-processi-automatici-residui-be §DB-4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

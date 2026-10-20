@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_dlt_block_ordrig_ddtrig()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_dlt_block_ordrig_ddtrig()
  RETURNS trigger
@@ -146,6 +148,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_dlt_block_ordrig_ddtrig()
 IS 'Sul DELETE di una riga di DDT o ordine con legami a valle. Riga d''ordine: fulfillment -> E_DELETE_BLOCKED_FUL, resi -> E_DELETE_RIGA_DOC_REFERENZIATA (il 23503 della FK diventa una frase). Riga di DDT: origine di un reso (vendite.resi_righe.ddt_riga_id) -> E_DELETE_RIGA_DOC_REFERENZIATA, PRIMA di tutto; poi, ⭐ dal 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-3, D-7), i legami con l''origine — fulfillment e ponte di ri-consegna — si RITIRANO con la riga: il ritiro e'' il building block vendite.fn_ddt_riga_ritira_legami (porta del guard del legame, DELETE dei legami, riproiezione degli ordini con vendite.fn_ordine_proietta_stato_evasione), condiviso con l''annullo della bolla (D-8). La riga arriva qui solo in bozza: il ramo «documento non piu'' in bozza» sta nel building block vendite.trgfn_doc_righe_lock_fuori_bozza, fascia _a05_, che parla prima (rev 2026-09-22); oppure per il cascade dalla testata, che si elimina solo in bozza (trgfn_doc_guard_delete_solo_bozza). ⛔ La FK fk_ordini_r_ful_v_ddt_riga resta ON DELETE RESTRICT di proposito: il ritiro e'' di questa madre, non di una cascata. Testata assente = cascade dalla testata: i legami a valle si controllano comunque, con l''etichetta che ripiega sul tipo di documento (script.fn_get_stato_testata_documento, SECURITY DEFINER). E_DELETE_NOT_ALLOWED resta solo sul ramo «tabella non prevista» (errore di montaggio). ⭐ rev 2026-10-19 (20261019-66, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

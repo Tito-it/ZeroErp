@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW pagamenti.vw_saldi_rate
 WITH (security_invoker=on) AS
@@ -18,6 +20,8 @@ SELECT scadenza_id,
    FROM pagamenti.fn_get_saldi_rate(ARRAY( SELECT s.id
            FROM vendite.fatture_scadenze s), NULL::bigint) r(scadenza_id, saldo, in_lavorazione, incassato, has_movimenti);
 ```
+
+</div>
 
 
 ---

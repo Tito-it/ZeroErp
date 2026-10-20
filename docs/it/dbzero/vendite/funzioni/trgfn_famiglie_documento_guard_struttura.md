@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_famiglie_documento_guard_struttura()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_struttura()
  RETURNS trigger
@@ -94,6 +96,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_guard_struttura()
 IS 'Guard `_a10_` su vendite.famiglie_documento: rifiuta il cambio delle cinque colonne che dicono DOVE VIVE IL DOCUMENTO (schema_tabella, nome_tabella, colonna_numero, colonna_billing_account, colonna_serie) su una famiglia che ha gia'' dei registri. ⛔ PERCHE'': quelle colonne non descrivono la famiglia, la fanno funzionare — il caso peggiore e'' colonna_serie portata a NULL, che lascia i registri con una serie dentro un secchio del contatore che il documento non sa piu'' distinguere, senza che nessun vincolo se ne accorga. ⭐ §12.5.2 — QUI NON C''E'' IL PREDICATO: si chiama script.fn_check_famiglia_documento_struttura_modificabile e si solleva il codice del primo motivo, cosi'' il rifiuto e i campi in sola lettura della maschera non possono divergere. ⚠️ Il `campo` del contesto e'' la PRIMA colonna cambiata DAVVERO e non una fissa: l''operatore ne ha toccato una, e mandarlo a correggerne un''altra e'' peggio che non dirglielo. ⭐ L''USCITA SUL NO-OP E'' OBBLIGATORIA: i mirror 20260830-14 e 20260901-12 riscrivono queste colonne a ogni migrate e `UPDATE OF` scatta comunque, quindi senza il confronto sui VALORI ogni migrate fallirebbe. ⛔ codice_interno NON e'' fra le colonne: lo presidia il lock automatico con E_CODICE_NON_MODIFICABILE, e metterlo anche qui darebbe due rifiuti diversi per la stessa colonna a seconda di quale trigger scatta prima — cioe'' dell''ordine alfabetico, che nessuno ha scelto. ⚠️ tx_id NULL e non NEW.tx_id: `_a10_` scatta prima del trigger che lo genera. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.5 (DB-3). Rev 2026-10-20 (20261020-36, brief-db-grammatica-unica-documenti 2c, G-5): schema_tabella e nome_tabella ritirate; la tabella e'' quella della sorgente, cioe'' l''identita'' della famiglia.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

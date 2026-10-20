@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_billing_account_link_ef()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_link_ef()
  RETURNS trigger
@@ -86,6 +88,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_link_ef()
 IS 'Auto-link AFTER INSERT su billing_account: crea il mapping in emittenti_fiscali_billing_account collegando il BA all''emittente dell''operatore corrente (via GUC app.current_user_id e script.fn_resolve_emittente_for_user). is_default=false (mapping specifico). Skip in caso di seed/bootstrap o "0 emittenti". ⚠️ rev 2026-08-26 — QUESTA E'' LA SCELTA, e conviene saperlo qui: un billing account non passa MAI da uno stato «senza emittente», nasce gia'' agganciato, e se l''operatore stava lavorando sull''emittente sbagliato nasce AGGANCIATO MALE. Dal 20260826-49 quel legame si corregge solo finche'' sul cliente non e'' passato del lavoro — nessuna fattura, nessuna commessa (anagrafiche.trgfn_efba_guard_storia_emittente): dopo, i documenti gia'' emessi congelano chi li ha emessi e spostare il cliente li lascerebbe orfani. ⇒ La finestra di correzione si apre qui e si chiude al primo push. Brief: brief-db-billing-account-cambio-emittente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_storico_generic()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_storico_generic()
  RETURNS trigger
@@ -227,6 +229,8 @@ IS 'Funzione generica per la gestione dello storico delle modifiche.
          ricalcolato. Le versioni scritte prima ricevono i valori dal backfill.
       6. rev 2026-08-05: il registro config.storico_set_storicizza si consulta col nome QUALIFICATO (schema.tabella). Prima si usava TG_TABLE_NAME, cioe'' il nome nudo, contro un registro che contiene solo nomi qualificati: nessuna riga matchava e l''esenzione dal reset del flag non ha mai funzionato per nessuna tabella — ognuna registrava una sola modifica nella vita (misurato: esattamente 2,00 righe di storico per documento su ordini e ddt). Il nome nudo non sarebbe comunque una chiave valida, perche'' acquisti.ddt e vendite.ddt sono entrambi registrati.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

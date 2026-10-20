@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_pavimento_emissione(p_registro_id bigint, p_competenza_me
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_pavimento_emissione(p_registro_id bigint, p_competenza_mese date)
  RETURNS date
@@ -172,6 +174,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_pavimento_emissione(p_registro_id bigint, p_competenza_mese date)
 IS 'Da quale data in poi un documento di questo sezionale e'' ancora EMETTIBILE. ⛔ Non dice niente sulla sequenza dei numeri: quello e'' l''altro pavimento (vendite.fn_get_pavimento_sequenza), e a comporli e'' vendite.fn_get_pavimento_data_documento. ⭐ UNA REGOLA GENERALE CON LA SUA ESENZIONE, non due forme: pavimento = LEAST(data_operativa - giorni, fine_mese(competenza) se il permesso della differita e'' ancora aperto). I giorni valgono su ENTRAMBE le politiche — sulla differita sono il pavimento a cui si ricade appena il permesso scade (decisione D-2, ramo B): quando un permesso IN PIU'' scade non ne compare uno piu'' SEVERO di quello di tutti. ⛔ La forma alternativa — la scadenza «15 del mese successivo» dentro un GREATEST con la data della politica — e'' SBAGLIATA e va nominata perche'' sembra giusta: una scadenza vive nello spazio «quando stai lavorando», un pavimento nello spazio «data del documento», e messe insieme farebbero nascere OGNI documento differito datato il 15 del mese dopo (brief §10 V-1). ⚠️ LEAST e non GREATEST nel ramo del permesso: la regola generale e il permesso sono due ragioni INDIPENDENTI per cui una data e'' ammessa, e basta che ne valga una. ⭐ IL GIORNO DEL MESE SI CALCOLA SUL MESE (decisione D-6): LEAST(primo_del_mese_successivo + giorno - 1, ultimo_del_mese_successivo), quindi 31 su un febbraio da'' il 28 (o il 29). Il CHECK di colonna ammette 1..31 apposta — un vincolo non conosce il mese su cui il valore cadra''. ⛔ IL PARAMETRO SI LEGGE NUDO, mai con script.fn_get_parameter_full: la cascata di override darebbe ALLO STESSO documento limiti diversi secondo chi lo genera, e l''unico asse di override e'' il registro. ⛔ NESSUN ELSE CHE INGOIA: una politica non riconosciuta solleva invece di comportarsi come OGGI. ℹ️ Torna SEMPRE una data, mai NULL: il pavimento generale esiste sempre, e chi vuole un sezionale senza limite pratico configura un numero grande (e'' cio'' che fanno le fixture pgTAP che numerano con date d''archivio). ℹ️ STABLE: legge configurazione e si appoggia a script.fn_data_operativa(), che e'' STABLE perche'' now() e'' l''istante di inizio transazione. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

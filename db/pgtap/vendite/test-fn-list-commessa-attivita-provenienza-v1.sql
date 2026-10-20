@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): test 11 su config.sorgenti.apribile (area ritirata).
+-- rev 2026-10-21 (brief-db-grammatica-unica-documenti, G-1, 20261021-20): test 18 ordina per sorgente_etichetta; sorgente_codice e' ritirata.
 -- pgTAP test per Zero ERP
 --
 -- Test: la PROVENIENZA della riga di commessa arriva a valle
@@ -336,7 +337,7 @@ SELECT lives_ok($$
   BEGIN
     SELECT commessa_id INTO v_commessa FROM tmp_commessa_lcp;
     FOREACH c IN ARRAY ARRAY['tipo_movimento','articolo_codice','articolo_descrizione',
-                             'sorgente_codice','sorgente_documento_numero','gruppo_key'] LOOP
+                             'sorgente_etichetta','sorgente_documento_numero','gruppo_key'] LOOP
       -- ⭐ POSIZIONALE, e di proposito: sono gli OTTO argomenti della firma
       --   precedente al filtro `p_tipo_movimento`. Il nono e' stato appeso IN
       --   CODA con un DEFAULT apposta perche' chiamate come questa continuino a

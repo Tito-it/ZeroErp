@@ -7,6 +7,8 @@ CREATE FUNCTION fn_set_documento_canale_stato(p_sorgente_tipo_id bigint, p_sorge
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_set_documento_canale_stato(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_canale_codice character varying, p_stato_canale character varying, p_target_sorgente_tipo_id bigint DEFAULT NULL::bigint, p_target_sorgente_uid text DEFAULT NULL::text, p_motivo_blocco text DEFAULT NULL::text, p_meta jsonb DEFAULT '{}'::jsonb)
  RETURNS bigint
@@ -178,6 +180,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_set_documento_canale_stato(p_sorgente_tipo_id bigint, p_sorgente_uid text, p_canale_codice character varying, p_stato_canale character varying, p_target_sorgente_tipo_id bigint, p_target_sorgente_uid text, p_motivo_blocco text, p_meta jsonb)
 IS 'Imposta stato canale (APERTO/CONSUMATO/BLOCCATO) per sorgente documento con upsert idempotente; APERTO blocca altri canali aperti. rev 2026-06-28: canale risolto per codice_interno (analisi-hardcoded-codice §3a #14).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

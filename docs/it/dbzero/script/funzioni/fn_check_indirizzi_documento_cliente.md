@@ -6,6 +6,8 @@ CREATE FUNCTION fn_check_indirizzi_documento_cliente(p_documento character varyi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_indirizzi_documento_cliente(p_documento character varying, p_testata_id bigint)
  RETURNS jsonb
@@ -87,6 +89,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_indirizzi_documento_cliente(p_documento character varying, p_testata_id bigint)
 IS 'Motivo d''emissione (D-3 di brief-db-indirizzi-documento-seguono-il-cliente): il documento porta un indirizzo d''anagrafica che non e'' del suo cliente. PURA: non solleva, non scrive. Ritorna [] o un motivo {codice E_INDIRIZZO_DOC_NON_DEL_CLIENTE, reason INDIRIZZO_NON_DEL_CLIENTE, reason_key common.azione_reason.indirizzo_non_del_cliente, dettaglio {campo tipo_indirizzo_id, tipi [codici]}, valori [il primo tipo leggibile]}. Predicato script.fn_indirizzo_documento_fuori_cliente, lo stesso del guard di scrittura e del cambio di cliente; cliente da script.fn_get_cliente_testata_documento. Documento: DDT | ORDINE | PREVENTIVO | OFFERTA | CONTRATTO | FATTURA (script.fn_doc_indirizzi_sede). Lettori: script.fn_check_ddt_emittibile (punto 4-bis), script.fn_check_preventivo_emettibile (motivo 3), script.fn_available_actions_offerta e vendite.trgfn_offerte_commerciali_guard_transizione (verso EMESSA), script.fn_available_actions_contratto e vendite.trgfn_contratti_guard_transizione_stato (verso ATTIVO). ⚠️ La reason_key e'' un debito verso il frontend (locales). ⭐ rev 2026-10-19 (20261019-46, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

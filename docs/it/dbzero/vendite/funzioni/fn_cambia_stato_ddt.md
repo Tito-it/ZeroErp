@@ -6,6 +6,8 @@ CREATE FUNCTION fn_cambia_stato_ddt(p_ddt_id bigint, p_stato character varying)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_ddt(p_ddt_id bigint, p_stato character varying)
  RETURNS TABLE(movimento_id bigint, prelievo_id bigint, qta numeric)
@@ -133,6 +135,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_cambia_stato_ddt(p_ddt_id bigint, p_stato character varying)
 IS 'VERBO di ogni cambio di stato di una bolla (D-L3-e; modello «una scrittura = un verbo»). Permesso: emetti_ddt per -> EMESSO e per EMESSO -> ANNULLATO, registra_magazzino per la consegna di una bolla di trasferimento che muove merce (script.fn_guard_azione, E_PERMESSO_NEGATO); gli altri passaggi restano al permesso del backend. SECURITY DEFINER con search_path bloccato: la testata si prende FOR UPDATE con il predicato della policy nella WHERE (fuori perimetro E_DDT_NOT_FOUND, no-leak). Fa l''UPDATE dello stato — la matrice e tutti i guard di sempre — aprendo la porta del registro con la GUC transazionale zeroerp.ddt_cambio_stato. Su una bolla che muove merce: all''emissione solleva il primo motivo di script.fn_check_ddt_merce, crea i prelievi automatici e scrive le uscite (vendite.fn_posta_ddt USCITA); alla consegna di un trasferimento scrive le entrate (ARRIVO); all''annullo di una bolla emessa storna i movimenti dei suoi prelievi (magazzino.fn_storna_movimenti_sorgente). UNA transazione. Ritorna (movimento_id, prelievo_id, qta). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt; il posting in vendite dal 2026-10-01 (brief-db-magazzino-registro-anello-interno).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

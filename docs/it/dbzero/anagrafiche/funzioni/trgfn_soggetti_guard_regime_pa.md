@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_soggetti_guard_regime_pa()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_regime_pa()
  RETURNS trigger
@@ -93,6 +95,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_regime_pa()
 IS 'Guard BEFORE INSERT OR UPDATE OF cliente_pa, split_payment, tipo_soggetto_dettaglio_id su anagrafiche.soggetti: un flag a S deve essere ammesso dalla natura (config.tipi_soggetto_dettaglio.cliente_pa_ammesso / split_payment_ammesso), altrimenti E_CLIENTE_PA_NON_AMMESSO o E_SPLIT_PAYMENT_NON_AMMESSO col flag nel campo. Senza natura un flag a S e'' rifiutato con E_DATO_FISCALE_SENZA_TIPO_SOGGETTO (A-5): diverge apposta dai guard del sesso e di CF/P.IVA, che li'' tacciono. Due flag a N passano sempre. Il cambio di natura e'' coperto: chi cambia natura porta il flag a N nella stessa scrittura, il DB non lo azzera. Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

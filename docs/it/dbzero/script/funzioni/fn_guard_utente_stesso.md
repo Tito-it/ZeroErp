@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_utente_stesso(p_utente integer, p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_guard_utente_stesso(p_utente integer, p_auth_user_id integer)
  RETURNS void
@@ -36,6 +38,8 @@ $function$
 COMMENT ON FUNCTION script.fn_guard_utente_stesso(p_utente integer, p_auth_user_id integer)
 IS 'Guard dei verbi che toccano le cose PROPRIE di una credenziale (il device del secondo fattore: registrare, confermare, rigenerare i codici, disabilitare): chi agisce (p_utente, che il chiamante legge da app.current_user_id, linee-guida-sql §10.4) dev''essere la credenziale su cui agisce (p_auth_user_id). No -> E_PERMESSO_NEGATO (NON_PERMESSO, lo stesso codice del backend e di fn_guard_super_admin, di cui e'' il gemello), anche a utente NULL: fail-closed, con senza_utente nel contesto. Protegge da un backend che sbaglia la GUC, non da uno manomesso. INVOKER. Brief: brief-db-secondo-fattore-totp §3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

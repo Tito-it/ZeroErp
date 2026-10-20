@@ -7,6 +7,8 @@ CREATE FUNCTION fn_foreign_keys_info(tabella text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_foreign_keys_info(tabella text)
  RETURNS TABLE(relazione text, constraint_name text, source_table text, source_column text, target_table text, target_column text)
@@ -57,6 +59,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

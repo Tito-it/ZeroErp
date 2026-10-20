@@ -11,6 +11,8 @@ CREATE FUNCTION fn_log(p_area text, p_function_name text, p_error_code text, p_c
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_log(p_area text, p_function_name text, p_error_code text, p_context jsonb)
  RETURNS void
@@ -24,6 +26,8 @@ COMMENT ON FUNCTION script.fn_log(p_area text, p_function_name text, p_error_cod
 IS 'Façade esplicito: area, funzione, codice, contesto. Delega a fn_log_error_only (tx_id = NULL).';
 ```
 
+</div>
+
 ## Firma `(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid)`
 
 ```sql
@@ -31,6 +35,8 @@ CREATE FUNCTION fn_log(p_area text, p_function_name text, p_error_code text, p_c
 ```
 
 **Definizione completa:**
+
+<div data-search-exclude markdown>
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_log(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid)
@@ -44,6 +50,8 @@ $function$
 COMMENT ON FUNCTION script.fn_log(p_area text, p_function_name text, p_error_code text, p_context jsonb, p_tx_id uuid)
 IS 'Façade con tx_id esplicito. Delega a fn_log_error_only.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_template_flussi_figli_guard_immutabile()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile()
  RETURNS trigger
@@ -72,6 +74,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_template_flussi_figli_guard_immutabile()
 IS 'Guard generico BEFORE INS/UPD/DEL sui figli di template_flussi (canali, handler_eventi, competenze, prerequisiti, formule_tempo, regole_generazione), strategia C: INSERT/UPDATE vietati su edizione forkata emessa (pubblicata o ritirata, fn_check_definizione_struttura_bloccata); DELETE vietato solo su pubblicata (fn_check_definizione_congelata) -> figli di RITIRATA cancellabili. FK verso template in TG_ARGV[0]. Errore TEMPLATE_DEFINIZIONE_CONGELATA (514).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

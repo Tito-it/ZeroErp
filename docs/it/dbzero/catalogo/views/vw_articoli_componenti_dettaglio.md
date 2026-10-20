@@ -5,6 +5,8 @@
 >
 > Righe della distinta base (componenti di un articolo) con codici e descrizioni di prodotto e componente, piu' la capability di riga (puo_chiudersi, data_min_chiusura, data_default_chiusura, motivo_non_chiudibile) per «Chiudi riga». Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.5) e' la SORGENTE UNICA delle righe: per la lista configurabile catalogo.articolo_componenti e per il repository, che prima ne rifaceva la proiezione e la capability in Python. Dal 2026-10-01 (brief-db-esposizione-componenti-kit-in-fattura) esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) al posto del booleano esposto_in_fattura, e in coda codice ed etichetta_key del modo da config.esposizioni_componente: la logica confronta esposizione_in_fattura, il codice e' solo a video. Dal 2026-10-02 (brief-db-bom-flag-quantita-e-kit-in-fattura, D-1) senza partecipa_qta e determina_qta_padre, ritirate dalla tabella: nessuna logica le leggeva. Tutte le righe, anche le non attive e le chiuse: filtro e ordine li mette chi legge.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW catalogo.vw_articoli_componenti_dettaglio AS
 SELECT ac.id,
@@ -49,6 +51,8 @@ SELECT ac.id,
      LEFT JOIN catalogo.articoli acmp ON ((acmp.id = ac.componente_id)))
      LEFT JOIN config.esposizioni_componente ec ON (((ec.codice_interno)::text = (ac.esposizione_in_fattura)::text)));
 ```
+
+</div>
 
 
 ---

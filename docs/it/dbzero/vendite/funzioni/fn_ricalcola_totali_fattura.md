@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ricalcola_totali_fattura(p_fattura_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_totali_fattura(p_fattura_id bigint)
  RETURNS void
@@ -135,6 +137,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ricalcola_totali_fattura(p_fattura_id bigint)
 IS 'Ricalcola totali e arrotondamento della fattura. D-N pezzo 1: l''ambito di compensazione comprende (termine_pagamento_id, modalita_pagamento_id). D-N pezzo 2: il saldo d''ambito si legge al netto del contributo gia'' dato da questa fattura, cosi'' la riesecuzione ripete il primo calcolo invece di inseguirlo e la scomposizione precedente/attuale in testata resta vera. Da 3b.3 l''utility si legge da vendite.fatture.utility_id: la deduzione COALESCE(lotto, BA) partiva dal BA della fattura (il padre) mentre la chiave usa quello dell''attivita'' (il figlio), quindi con la gerarchia attiva avrebbe scelto la configurazione di arrotondamento di un''altra utility. Da K-7 (2026-10-21, brief-db-modelli-documento-standard §10.3, D-7): decimali, metodo e soglie dal BB anagrafiche.fn_parametri_importo_utility, cioe'' la riga dell''emittente se c''e'' e altrimenti il valore di sistema dell''utility; E_CONFIG_MANCANTE resta solo per una fattura senza utility. Da R-2 (2026-10-21, §10.7): l''arrotondamento del totale e'' script.fn_arrotonda_importo, la sede unica delle quattro regole, al posto di una copia delle formule.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

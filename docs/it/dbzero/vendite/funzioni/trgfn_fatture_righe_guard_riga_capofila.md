@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_fatture_righe_guard_riga_capofila()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_righe_guard_riga_capofila()
  RETURNS trigger
@@ -102,6 +104,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fatture_righe_guard_riga_capofila()
 IS 'Guard (BEFORE INSERT OR UPDATE su vendite.fatture_righe): la relazione capofila/parti resta a UN SOLO SALTO. ⭐ Presidia DUE rami, e il secondo e'' quello che si dimentica: (1) IN AVANTI, la riga si aggancia a una riga che e'' gia'' una parte; (2) ALL''INDIETRO, una riga che HA GIA'' delle parti viene agganciata a una terza — li'' il primo controllo tace, perche'' la riga puntata e'' una capofila legittima e la catena nasce dall''altro capo. ⛔ Serve perche'' il difetto e'' MUTO: se «capofila -> parti» smette di essere una lettura a un salto, chi somma gli importi di un''attivita'' attraversando attivita_fatturabili.fattura_riga_id prende meta'' valore e non fallisce. E'' un trigger e non un vincolo perche'' bisogna guardare la riga PUNTATA, e nessun CHECK sa farlo — l''altra invariante della stessa colonna, «stessa fattura», e'' invece la FK composita fk_fatture_righe_riga_capofila e non ha bisogno di codice. ⚠️ SECURITY INVOKER E'' UNA DECISIONE, non una dimenticanza: vendite.fatture_righe ha la RLS, ma la FK composita garantisce che capofila e parte stiano sulla STESSA fattura, quindi hanno lo stesso perimetro e chi scrive la parte vede per forza la capofila. Se la riga indicata non si trova questa funzione ESCE IN SILENZIO di proposito: significa che sta su un altro documento, e a parlare dev''essere la FK con un 23503 — l''errore giusto per quel problema. ⚠️ Nessun UPDATE OF riga_capofila_id: la catena si crea anche modificando la riga puntata. Errore: E_FATTURA_RIGA_CAPOFILA_INCOERENTE (TECNICO, un codice solo per i due rami col motivo come valore). brief-db-richieste-aperte-dal-backend voce 5 (N3, decisione D).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_doc_guard_chiusura_sorgente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_doc_guard_chiusura_sorgente()
  RETURNS trigger
@@ -111,6 +113,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_doc_guard_chiusura_sorgente()
 IS 'FRENO generico: rifiuta la CHIUSURA di un documento che ha spinto in commessa righe gia'' EMESSA. ⭐ E'' meta'' della regola decisa con la strada A: quando un documento si chiude, le righe NON_EMESSA il documento le RITIRA (dal 2026-10-11 dopo la conferma, nel verbo di annullo: BB vendite.fn_documento_ritira_legami) e le EMESSA lo BLOCCANO — sono in volo verso una fattura, e ritirarle lascerebbe un''attivita'' fatturabile orfana in viaggio, cioe'' il residuo che questo cantiere esiste per chiudere. ⭐ E dal lotto L5 il rifiuto ha una VIA D''USCITA che il messaggio nomina: «Riporta da emettere» riporta la riga a NON_EMESSA e da li'' il ritiro la prende; prima di L5 sarebbe stato un vicolo cieco, ed e'' esattamente cio'' che E_PREV_ANNULLA_COMMESSA_EMESSA era. ⭐ SI AGGANCIA AL DATO e non a un codice cablato: legge is_abortito dal vocabolario degli stati del documento invece di confrontare codice_interno = ANNULLATO. Tutti e quattro i vocabolari (config.stati_doc_preventivi, _ordini, _ddt, _contratti) hanno quel flag, ed e'' la stessa scelta gia'' fatta per la matrice delle transizioni: cosa significhi «chiuso» e'' una proprieta'' del dato. ⚠️ Il giorno che nasce un secondo stato abortito, questo guard lo copre da solo — con un codice cablato non l''avrebbe coperto, e in silenzio. ⭐ UNA funzione parametrizzata su (TG_ARGV[0] = codice_interno della sorgente, TG_ARGV[1] = colonna di stato, TG_ARGV[2] = tabella del vocabolario), non quattro copie: e'' l''idioma di dbops.trgfn_child_requires_active_parent. ⛔ La CHIAVE passata alla check e'' NEW.uid::text, cioe'' quella di vendite.commesse_attivita — verificata sul corpo delle cinque fn_list_*_da_pushare, che compongono tutte x.uid::text. NON e'' la chiave di vendite.commesse_sorgenti, che varia per sorgente: confonderle non darebbe un errore, darebbe ZERO motivi, cioe'' un freno che lascia passare tutto. ⛔ Fail-closed su un trigger montato con un codice sorgente inesistente: solleva invece di restare inerte. ⚠️ IL LIMITE: il conteggio gira sotto ROW SECURITY (commesse_attivita ha la RLS per emittente), quindi chi chiude un documento senza vedere le righe che ne sono nate NON viene fermato da questo freno. (Rev 2026-10-11: le righe NON_EMESSA le conta invece l''avviso dell''annullo con un lettore DEFINER, vendite.fn_documento_legami, che non subisce la RLS.) E'' il comportamento di oggi e non un peggioramento, ma qui NON c''e'' nessuna chiave esterna a fare da rete, quindi va scritto invece che dedotto; il caso resta stretto perche'' la commessa eredita l''emittente dal documento. Piano: brief-db-lavoro-che-non-torna-indietro, L7 / Q-5'' strada A. rev 2026-10-11 (20261011-89, brief-db-annullo-documento-con-legami D-5): il motore del ritiro automatico (_z90_) si ritira; le righe NON_EMESSA sono legami di consumo, l''annullo che le ha davanti chiede conferma (guard _m10_ vendite.trgfn_doc_guard_annullo_con_legami) e le ritira il verbo. Questo freno sulle EMESSA resta com''era, e parla prima dell''avviso (fascia _a10_).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

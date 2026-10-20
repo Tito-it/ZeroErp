@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_preventivi_guard_utility_istanza_coerenza()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_utility_istanza_coerenza()
  RETURNS trigger
@@ -50,6 +52,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_utility_istanza_coerenza()
 IS 'Guard BEFORE INSERT/UPDATE su vendite.preventivi: verifica coerenza (istanza_utility_id, utility_id) via script.fn_check_utility_istanza_coerenza. Solleva E_PREV_UTILITY_ISTANZA_INCOERENTE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

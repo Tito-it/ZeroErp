@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_soggetto_pf_pura(p_soggetto_id uuid)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_guard_soggetto_pf_pura(p_soggetto_id uuid)
  RETURNS uuid
@@ -116,6 +118,8 @@ $function$
 COMMENT ON FUNCTION script.fn_guard_soggetto_pf_pura(p_soggetto_id uuid)
 IS 'Guard fail-fast: verifica che il soggetto sia persona fisica pura (CF valorizzato, P.IVA NULL). Usato dal trigger sul ponte utente identita_digitali (ruolo_applicativo=OPERATORE). Solleva errore via fn_log_and_raise_error.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

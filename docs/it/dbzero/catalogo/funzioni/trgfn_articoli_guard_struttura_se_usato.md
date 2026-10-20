@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_articoli_guard_struttura_se_usato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_struttura_se_usato()
  RETURNS trigger
@@ -72,6 +74,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_struttura_se_usato()
 IS 'Guard BEFORE UPDATE OF is_composito, is_solo_componente, natura_vendita_id, causale_onere_id, listino_tipologia_id, gestito_a_magazzino, requires_lotto, requires_serial su catalogo.articoli (A-10 di brief-db-articoli-ammessi-per-documento, 2026-10-13): un articolo USATO (catalogo.fn_articolo_usato: documenti, listini, commesse, magazzino, in qualunque stato e di qualunque azienda) non cambia queste colonne -> E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE (campo: la prima cambiata nell''ordine dell''elenco; valori: codice dell''articolo, nome del campo). Il messaggio non dice dove l''articolo e'' usato: puo'' essere un documento di un''altra azienda. Liberi iva_id e le colonne descrittive; codice e uom_id li tiene il lock di colonna. Porta amministratore: GUC transazionale zeroerp.articolo_correggi_struttura = id dell''articolo E proprietario della tabella (script.fn_is_proprietario_tabella), aperta solo dal verbo catalogo.fn_articolo_correggi_struttura (SUPER_ADMIN). Gemello per il form: le regole su queste colonne in dbops.lock_columns_conditional.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,6 +1,8 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/vw_indirizzi_resolved_soggetto.md" %}
 # 🔍 View `vw_indirizzi_resolved_soggetto`
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_indirizzi_resolved_soggetto AS
 SELECT scope,
@@ -53,6 +55,8 @@ SELECT scope,
    FROM anagrafiche.vw_indirizzi_resolved_base
   WHERE (scope = 'SOGGETTO'::text);
 ```
+
+</div>
 
 
 ---

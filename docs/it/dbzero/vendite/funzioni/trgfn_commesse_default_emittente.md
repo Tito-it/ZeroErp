@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_commesse_default_emittente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_default_emittente()
  RETURNS trigger
@@ -53,6 +55,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_commesse_default_emittente()
 IS 'BEFORE INSERT su vendite.commesse: riempie emittente_soggetto_ruolo_id derivandolo dal billing account (anagrafiche.fn_get_emittente_fiscale_id) quando il payload lo lascia NULL. ⭐ Estende di un anello la famiglia gia'' in servizio su ordini, preventivi, contratti, ddt, offerte_commerciali e resi (trgfn_*_default_emittente + trgfn_*_guard_emittente_ba): vendite.commesse era l''unica tabella del ciclo che porta un emittente e non aveva ne'' il riempitore ne'' il guard. ⭐ Con una differenza VOLUTA: nei sei fratelli il default si prende dall''OPERATORE (script.fn_resolve_emittente_for_user sulla GUC app.current_user_id) perche'' sono documenti che una persona crea in un form; la commessa non la crea nessuno a mano — nasce dal push — quindi il suo emittente si prende dal BILLING ACCOUNT. E'' la decisione D-1: sempre derivato, mai passato da fuori. ⛔ Non sovrascrive MAI un valore gia'' presente nel payload: a giudicarlo ci pensa vendite.trgfn_commesse_guard_emittente_ba, e una normalizzazione muta sarebbe la forma in cui un test diventa verde smettendo di verificare. ⭐ Nessun guard sul NULL residuo, e non e'' un''omissione: fn_get_emittente_fiscale_id solleva E_EMITTENTE_DEFAULT_MISSING invece di tornare NULL. ⚠️ Solo BEFORE INSERT: un UPDATE che azzera la colonna lo respinge il NOT NULL, e far seguire il valore a un cambio di billing_account_id sarebbe una propagazione silenziosa su una colonna di perimetro — chi sposta la commessa di cliente deve dichiarare anche l''emittente. ⭐ Effetto collaterale portante: PostgreSQL valuta il WITH CHECK della RLS sulla riga FINALE, cioe'' dopo i trigger BEFORE, quindi da qui in poi rls_commesse_ef_whitelist giudica l''emittente vero invece di un NULL fail-closed. ⚠️ I BEFORE ROW scattano in ordine alfabetico: default_ precede guard_, ed e'' l''unico ordine che funziona. Piano: brief-db-emittente-commessa-invariante, L1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

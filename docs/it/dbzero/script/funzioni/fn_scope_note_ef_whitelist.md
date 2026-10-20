@@ -6,6 +6,8 @@ CREATE FUNCTION fn_scope_note_ef_whitelist(p_auth_user_id integer, p_target_tipo
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_note_ef_whitelist(p_auth_user_id integer, p_target_tipo character varying, p_target_id bigint)
  RETURNS boolean
@@ -33,6 +35,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_note_ef_whitelist(p_auth_user_id integer, p_target_tipo character varying, p_target_id bigint)
 IS 'Smistatore di scope per il PADRE partizionato vendite.note, veste OPERATORE: instrada su target_tipo verso l''adattatore della famiglia. Esiste perche'' le policy delle PARTIZIONI non risalgono al padre — provato il 2026-09-09: col padre armato e senza policy propria, risponde zero. ⛔ ELSE false: un target_tipo non gestito rende quelle note invisibili dal padre, non visibili a tutti; presidiato dal pgTAP della slice, che confronta i rami col CHECK. Brief §6.4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

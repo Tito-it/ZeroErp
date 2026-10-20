@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_disponibilita_uscita(p_magazzino_id bigint, p_articolo_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_disponibilita_uscita(p_magazzino_id bigint, p_articolo_id uuid, p_qta_uscita numeric, p_sorgente_tipo_id bigint DEFAULT NULL::bigint, p_sorgente_riga bigint DEFAULT NULL::bigint, p_sorgente_uid uuid DEFAULT NULL::uuid, p_lotto_id bigint DEFAULT NULL::bigint, p_asset_id bigint DEFAULT NULL::bigint, p_ignora_blocchi boolean DEFAULT false)
  RETURNS jsonb
@@ -207,6 +209,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_disponibilita_uscita(p_magazzino_id bigint, p_articolo_id uuid, p_qta_uscita numeric, p_sorgente_tipo_id bigint, p_sorgente_riga bigint, p_sorgente_uid uuid, p_lotto_id bigint, p_asset_id bigint, p_ignora_blocchi boolean)
 IS 'Il controllo di disponibilita'' che UI e primitiva CONDIVIDONO (M-3, D-L2-d; linee-guida-sql 12.5.2): pura, STABLE, INVOKER — [] se l''uscita di p_qta_uscita (positiva, UoM base) e'' ammessa, altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. 1) E_MAG_GIACENZA_INSUFFICIENTE: il fisico alla grana piu'' fine dichiarata (asset -> posizione dell''asset in questo magazzino; lotto -> somma del lotto; altrimenti vw_giacenza) e'' minore della richiesta. 2) E_MAG_MERCE_BLOCCATA: giacenza(articolo, magazzino) + somma FIRMATA degli attesi APERTA in USCITA (qta < 0) di sorgente ALTRUI (tipo + chiave diversi da quelli di chi chiede; senza sorgente = sempre altrui; un atteso in entrata non e'' un blocco) e'' minore della richiesta — salvo p_ignora_blocchi, che la primitiva passa da causali.is_rettifica (il fatto vince sulla promessa; il fisico resta). consente_stock_negativo esonera da tutto: la primitiva non la chiama. Non legge la causale: la UI puo'' chiederla senza averne una. Chiamata da un INVOKER sotto RLS legge il magazzino se lo vede (altrimenti zero); dalla DEFINER legge tutto il magazzino, che e'' di un emittente. Guard di parametro E_MAG_CHIAMATA_NON_VALIDA (TECNICO). Le due reason_key sono chiavi i18n del frontend. Brief: brief-db-magazzino-lotto-2-motore, sezione 4.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

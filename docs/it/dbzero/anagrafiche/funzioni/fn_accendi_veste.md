@@ -7,6 +7,8 @@ CREATE FUNCTION fn_accendi_veste(p_identita_id bigint, p_auth_user_id integer, p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_accendi_veste(p_identita_id bigint, p_auth_user_id integer, p_vesti config.ruolo_applicativo[] DEFAULT NULL::config.ruolo_applicativo[])
  RETURNS boolean
@@ -61,6 +63,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_accendi_veste(p_identita_id bigint, p_auth_user_id integer, p_vesti config.ruolo_applicativo[])
 IS 'BB (2026-10-18): accende la veste p_identita_id (anagrafiche.identita_digitali.attivo = true) della credenziale p_auth_user_id, se e'' fra le vesti p_vesti (NULL = qualunque). Ritorna true se la veste c''e'' (accesa adesso o gia'' accesa: in quel caso nessuna scrittura), false se non c''e'', non e'' di quella credenziale o non e'' fra le vesti ammesse. Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Coerenza, natura della credenziale, unicita'' della veste attiva e sincronizzazione di auth_user.is_active: i trigger della tabella. Non controlla il token dell''invito ne'' il permesso (backend). INVOKER. Regola del 2: sede unica dell''UPDATE che era in AuthRepository.attiva_identita (2b-2) e in dbops.fn_pgtap_crea_operatore_umano; la usa il verbo dei dati di sviluppo (le vesti nascono accese). Brief: brief-db-processi-accensione-per-ambiente (2b-3).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

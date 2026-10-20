@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_ddt_riga_legame_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_riga_legame_guard()
  RETURNS trigger
@@ -127,6 +129,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ddt_riga_legame_guard()
 IS 'Building block (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-2, D-3, D-4, D-7): il LEGAME di una riga di DDT con la sua origine non si scrive a mano. Montato su vendite.ordini_righe_fulfillment (qta_evasa, ordine_riga_id) e vendite.resi_righe_riconsegne (qta, resi_riga_id): TG_ARGV [0] colonna della quantita'', [1] colonna del capo a monte; il capo a valle e'' ddt_riga_id. UPDATE della quantita'' solo dal verbo vendite.fn_ddt_riga_correggi_qta_evasa (GUC transazionale zeroerp.ddt_riga_correggi_qta = ddt_riga_id E proprietario della tabella, script.fn_is_proprietario_tabella); UPDATE di un capo mai; DELETE solo dal ritiro (BB vendite.fn_ddt_riga_ritira_legami, GUC zeroerp.ddt_riga_ritira_legame = ddt_riga_id) e solo con la bolla in bozza o appena cancellata (D-3: la riga si toglie; porta della sola GUC, il ritiro parte da un trigger che gira come chi cancella, famiglia Q-2 di D17), oppure fuori bozza dentro l''annullo (D-8: GUC zeroerp.ddt_annullo = id della bolla E proprietario, cioe'' il verbo DEFINER vendite.fn_annulla_ddt). Stato e testata dai lettori DEFINER. GUC mai impostata = porta chiusa (COALESCE). Note e meta libere. Rifiuto E_DDT_LEGAME_EVASIONE_SOLO_DA_VERBO (TECNICO; valori: id della riga di DDT, origine come «riga d''ordine N» / «riga di reso N»). Montaggio sbagliato: E_VENDITE_CHIAMATA_NON_VALIDA. Su INSERT e UPDATE fuori bozza parla prima il lock delle righe montato sui due legami (D-4, D-6); il DELETE lo governa solo questo guard. Scrive l''invariante «il legame fotografa cio'' che e'' spedito», che fino a qui nessun lock presidiava. rev 2026-10-11 (20261011-80, brief-db-annullo-documento-con-legami D-4): fuori bozza il DELETE passa dalla porta comune del ritiro dei legami (vendite.fn_doc_porta_ritiro_ammette, GUC zeroerp.doc_ritira_legami = ''DDT:<id>'', dal proprietario), aperta dal BB vendite.fn_documento_ritira_legami dopo la conferma; la GUC zeroerp.ddt_annullo si ritira. ⭐ rev 2026-10-19 (20261019-64, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

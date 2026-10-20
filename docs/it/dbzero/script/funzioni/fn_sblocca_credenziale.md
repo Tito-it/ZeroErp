@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sblocca_credenziale(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_sblocca_credenziale(p_auth_user_id integer)
  RETURNS void
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION script.fn_sblocca_credenziale(p_auth_user_id integer)
 IS 'Toglie il blocco dell''amministratore da una credenziale: e'' l''unica strada, perche'' il blocco non scade e il reset password non lo toglie (D-B3). Prima riga script.fn_guard_super_admin(app.current_user_id) (D-B1). Non tocca i tentativi (fallimenti consecutivi e righe di provenienza: li azzerano un accesso riuscito o un reset). Idempotente: senza blocco, o senza riga, non fa niente. Credenziale inesistente -> E_CREDENZIALE_NON_TROVATA. SECURITY DEFINER del PROPRIETARIO, non di un superuser, search_path bloccato. Brief: brief-db-blocco-login-per-credenziale §3.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

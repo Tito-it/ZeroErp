@@ -7,6 +7,8 @@ CREATE FUNCTION fn_crea_cliente(p_soggetto_id uuid, p_utility_id integer, p_camp
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_cliente(p_soggetto_id uuid, p_utility_id integer DEFAULT NULL::integer, p_campi jsonb DEFAULT '{}'::jsonb, p_billing_account jsonb DEFAULT '{}'::jsonb, p_contatto jsonb DEFAULT NULL::jsonb, p_indirizzi jsonb DEFAULT '[]'::jsonb, p_billing_account_id bigint DEFAULT NULL::bigint, p_istanza_utility_id bigint DEFAULT NULL::bigint, p_istanza jsonb DEFAULT '{}'::jsonb, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(cliente_id bigint, billing_account_id bigint, istanza_utility_id bigint, soggetto_ruolo_id bigint)
@@ -126,6 +128,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_crea_cliente(p_soggetto_id uuid, p_utility_id integer, p_campi jsonb, p_billing_account jsonb, p_contatto jsonb, p_indirizzi jsonb, p_billing_account_id bigint, p_istanza_utility_id bigint, p_istanza jsonb, p_emittente_soggetto_ruolo_id bigint)
 IS 'Madre (2026-10-18): fa di un soggetto un cliente in una sola istruzione: il ruolo CL (script.fn_get_or_create_soggetto_ruolo), il billing account (nuovo per p_utility_id da anagrafiche.fn_crea_billing_account, coi campi p_billing_account, l''istanza p_istanza_utility_id o una fittizia coi campi p_istanza, il legame a p_emittente_soggetto_ruolo_id; oppure quello esistente p_billing_account_id, con l''istanza letta dal BA se non indicata), la riga di anagrafiche.clienti, il contatto del ruolo (anagrafiche.fn_crea_contatto, se p_contatto non e'' NULL) e gli indirizzi del ruolo (anagrafiche.fn_crea_indirizzi_ruolo). p_campi: termine_pagamento_id, modalita_pagamento_id, servizio_da_fatturare, garanzia_tipo, garanzia_importo, stato_cliente_id, data_attivazione, data_sospensione, data_chiusura; le assenti e le null al DEFAULT; chiave estranea: E_CAMPO_NON_AMMESSO. Senza stato il cliente nasce AT con la data operativa come attivazione (la regola del backend); con uno stato indicato le date sono di chi chiama e le pretende trgfn_clienti_guard_stato_date (il modello non dice ancora in quali stati un cliente puo'' nascere: D32). La riga si rilegge a istruzione finita per billing_account_id (sotto la RLS). BA esistente insieme ai campi di un BA o di un''istanza nuovi o a un emittente, o ne'' BA ne'' utility: E_SCRIPT_CHIAMATA_NON_VALIDA. Il resto lo dicono guard e vincoli (FK composte della fornitura, uq_clienti_billing_account, amministratore globale sul BA). Non controlla il permesso (backend); una utility che richiede il PDP, senza PDP, la rifiuta trgfn_clienti_sync_pdp. INVOKER. Ritorna (cliente_id, billing_account_id, istanza_utility_id, soggetto_ruolo_id). Prende il posto di ClientiService._execute_creazione (2b-2) e dell''INSERT di dbops.fn_pgtap_crea_cliente. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 5).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ritira_attivo_eccezioni()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_ritira_attivo_eccezioni()
  RETURNS integer
@@ -57,6 +59,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_ritira_attivo_eccezioni()
 IS 'Toglie i trigger ATTIVO gia'' generati per le FK dichiarate eccezione in dbops.automazione_attivo_eccezioni: il require sul figlio (dbops.trgfn_child_requires_active_parent, colonna FK = argomento 4) e il block sul padre (dbops.trgfn_prevent_deactivate_if_children, argomenti 1-3 = schema, tabella e colonna FK della figlia). Li riconosce per FUNZIONE e ARGOMENTI, non per nome (i nomi generati oltre 63 caratteri sono hashati); gli argomenti li legge dbops.fn_trigger_argomenti (rev 20260926-02). Torna quanti ne ha tolti. Chiamata in testa da dbops.fn_run_automations_attivo (chi genera ritira) e una volta da 90_end/20260925-50. Brief: brief-db-blocco-login-per-credenziale §12.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

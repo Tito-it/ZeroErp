@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_totp_device(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_totp_device(p_auth_user_id integer)
  RETURNS TABLE(stato text, secret_encrypted character varying, ultimo_passo_usato bigint, recovery_rimasti integer)
@@ -41,6 +43,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_totp_device(p_auth_user_id integer)
 IS 'Lo stato del device del secondo fattore (TOTP) di una credenziale, in UNA riga anche quando il device non c''e'': stato ASSENTE (mai registrato o disabilitato), DA_CONFERMARE (registrato, setup in corso: il segreto c''e'' perche'' il backend ci verifica il primo codice), ATTIVO (confermato, in uso); secret_encrypted (cifrato: lo decifra il backend), ultimo_passo_usato (anti-replay), recovery_rimasti (codici di recupero non ancora usati). E'' la sola sede del significato della riga assente. id NULL o <= 0 -> E_AUTH_CHIAMATA_NON_VALIDA. INVOKER, STABLE: si legge anche prima del login. Brief: brief-db-secondo-fattore-totp §3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

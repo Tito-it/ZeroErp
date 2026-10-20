@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_soggetto_dati_by_ruolo(p_soggetto_ruolo_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_soggetto_dati_by_ruolo(p_soggetto_ruolo_id bigint)
  RETURNS TABLE(soggetto_ruolo_id bigint, soggetto_id uuid, tipo_ruolo_id integer, tipo_ruolo_codice character varying, tipo_ruolo_codice_interno character varying, tipo_ruolo_descrizione character varying, soggetto_codice text, ragione_sociale text, ragione_sociale_completa text, cognome text, nome text, codice_fiscale text, partita_iva text, id_fiscale_univoco_cf_piva text, sesso character, data_nascita date, soggetto_attivo boolean, stato_id integer, comune_id integer, titolo_cortesia_id integer, tipo_soggetto_dettaglio_id bigint, default_contatto_id bigint, tipo_soggetto_id character varying, tipo_soggetto_descrizione character varying, tipo_soggetto_codice_interno character varying, titolo_cortesia_descrizione text, titolo_cortesia_descrizione_breve text, has_dati_societari boolean, dati_societari_id bigint, forma_giuridica_id bigint, forma_giuridica_codice character varying, forma_giuridica_descrizione character varying, id_prov_iscri_rea integer, provincia_iscri_rea_sigla character varying, iscrizione_rea character varying, capitale_sociale numeric, socio_unico text, liquidazione text, destinatario_fe character varying, pec_fatturazione character varying, codice_sdi character varying, data_costituzione date)
@@ -106,6 +108,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_soggetto_dati_by_ruolo(p_soggetto_ruolo_id bigint)
 IS 'Dato un soggetto_ruolo_id, restituisce dati anagrafici soggetto + tipo ruolo + tipo soggetto + titolo cortesia + dati societari (se presenti). Tutti gli ID delle FK collegate sono inclusi.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

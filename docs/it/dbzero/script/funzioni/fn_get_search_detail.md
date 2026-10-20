@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer DEFAULT NULL::integer)
  RETURNS jsonb
@@ -181,6 +183,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer)
 IS 'Dettaglio della ricerca universale per tipo_ruolo (CASE su codice_interno: la forma delle righe di ciascun ruolo). ⭐ NULL = «non c''e''» (R-4): il soggetto non esiste, non ha quel ruolo, o non risulta a chi guarda secondo la regola unica script.fn_predicato_soggetto_ruolo_visibile (rev 2026-10-10, R-6) — la stessa della lista, senza il filtro utility: almeno una riga visibile della entita_esistenza del ruolo (CL clienti, sotto la RLS; FO fornitori; VT vettori; BANK_B bank_branches), o il solo soggetto-ruolo per i ruoli che non ne hanno. Lo stato dell''entita'' non conta: cliente chiuso e fornitore disattivato si aprono. Il backend risponde 404 E_SEARCH_NOT_FOUND; inesistente e fuori perimetro escono uguali, di proposito. NULL e non un raise: una lettura non scrive nel diario errori a ogni id sbagliato. La struttura {tipo_ruolo, righe} (righe anche vuota) solo quando il soggetto c''e'': righe = [] vuol dire che il filtro p_utility_id non ne trova. Tipo ruolo validato dal BB: NULL o <= 0 E_PARAMETRO_INVALIDO, inesistente E_TIPO_RUOLO_NON_TROVATO, non ricercabile (ricerca_visibile = false) E_TIPO_RUOLO_NON_RICERCABILE (Q-2). p_emittente_ids ritirato il 2026-10-10 (R-5): superato dal 2026-10-08, il perimetro lo fa la RLS. Ramo CL: utility_codice_interno (logica) + utility_codice (display), stato_codice_interno; stato_macro = stati_cliente.codice. SECURITY INVOKER: la RLS vale con l''identita'' di chi chiama.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

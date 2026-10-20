@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_resellers_guard_attivo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_resellers_guard_attivo()
  RETURNS trigger
@@ -49,6 +51,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_resellers_guard_attivo()
 IS 'Blocca disattivazione reseller se esistono mapping billing_account. Errore: E_RESELLER_DISATTIVAZIONE_BLOCCATA.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_pratica_chiudibile(p_pratica_id bigint, p_escludi_templ
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_check_pratica_chiudibile(p_pratica_id bigint, p_escludi_template_id integer DEFAULT NULL::integer, p_escludi_flusso_id bigint DEFAULT NULL::bigint)
  RETURNS boolean
@@ -36,6 +38,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_check_pratica_chiudibile(p_pratica_id bigint, p_escludi_template_id integer, p_escludi_flusso_id bigint)
 IS 'Pure check: la pratica e'' chiudibile se (a) nessun obbligatorio bloccante (fn_check_chiusura_pratica) E (b) nessun flusso istanziato non terminale (fn_pratica_flussi_aperti, D1). p_escludi_template_id ignora un template dai bloccanti (flusso di chiusura pre-completamento); p_escludi_flusso_id ignora un''istanza dai flussi aperti (il flusso che sta completando). Consumata da auto-chiusura e guard pre-completamento.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

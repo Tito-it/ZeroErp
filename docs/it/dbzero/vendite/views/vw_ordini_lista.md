@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_ordini_lista
 WITH (security_invoker=on) AS
@@ -89,6 +91,8 @@ SELECT o.id,
           WHERE ((orr.ordine_id = o.id) AND (orr.attivo IS TRUE))) dcr ON (true))
      LEFT JOIN vendite.registri_fatturazione reg ON ((reg.id = o.registro_id)));
 ```
+
+</div>
 
 
 ---

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ricalcola_riepiloghi_iva_lotto(p_lotto_id bigint, p_batch_siz
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ricalcola_riepiloghi_iva_lotto(p_lotto_id bigint, p_batch_size integer DEFAULT 1000)
  RETURNS TABLE(fatture_count integer, deleted_rows integer, inserted_rows integer)
@@ -75,6 +77,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ricalcola_riepiloghi_iva_lotto(p_lotto_id bigint, p_batch_size integer)
 IS 'Ricalcolo riepiloghi IVA + totali per lotto con batch.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

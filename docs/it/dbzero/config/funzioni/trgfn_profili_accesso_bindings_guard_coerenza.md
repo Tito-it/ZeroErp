@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_profili_accesso_bindings_guard_coerenza()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza()
  RETURNS trigger
@@ -184,6 +186,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_profili_accesso_bindings_guard_coerenza()
 IS 'Guard a10 BEFORE INSERT/UPDATE su config.profili_accesso_bindings: verifica coerenza tra tipo del profilo e tipo del binding (REPARTO/PORTALE/AD_HOC/SUPER_ADMIN). Si somma al CHECK chk_profili_accesso_bindings_xor che impone una sola colonna NOT NULL. Passa a fn_log_and_raise_error entrambi i valori che il messaggio di E_PROFILO_ACCESSO_BINDING_INCOERENTE richiede (id profilo e tipo): con uno solo il guard falliva in format() senza mai dire la ragione. rev 2026-08-06: il fail-fast sul profilo inesistente solleva E_PROFILO_ACCESSO_NON_TROVATO (895) invece di E_PARAMETRO_INVALIDO — quel codice e'' nominato da 113 funzioni e la sua policy 400 e'' giusta in 111, quindi la correzione e'' qui e non nella policy (brief terzo lato §18.2).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

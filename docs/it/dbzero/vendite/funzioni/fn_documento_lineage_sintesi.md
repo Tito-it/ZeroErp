@@ -7,6 +7,8 @@ CREATE FUNCTION fn_documento_lineage_sintesi(p_tipo_ids bigint[], p_uids text[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage_sintesi(p_tipo_ids bigint[], p_uids text[])
  RETURNS TABLE(tipo_id bigint, uid text, codice character varying, stato_codice_interno character varying, stato_codice character varying, stato_descrizione character varying, fase character varying, is_abortito boolean, pratica_id bigint, pratica_numero text, n_pratiche bigint, frontiera_tipo_id bigint, frontiera_uid text, frontiera_codice character varying, frontiera_stato_codice_interno character varying, frontiera_fase character varying, n_discendenti_diretti bigint, n_discendenti_attivi bigint, is_transitato boolean, n_sorgenti bigint, root_tipo_id bigint, root_uid text, root_codice character varying, natura_doc_codice_interno character varying, natura_doc_descrizione character varying, frontiera_natura_doc_codice_interno character varying, tipo_codice_interno character varying, frontiera_tipo_codice_interno character varying)
@@ -228,6 +230,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_documento_lineage_sintesi(p_tipo_ids bigint[], p_uids text[])
 IS '⭐ rev 2026-10-13 (20261013-71, D-15 di Tid): un arco col LEGAME RITIRATO (vendite.fn_documento_lineage_legami) non e'' una destinazione ne'' una sorgente: si scarta alla lettura degli archi di ogni livello, quindi non conta per cammino, frontiera, discendenti, transitato, sorgenti e radice. Un arco non censito (NULL) resta. Il pannello «Passaggi» lo mostra ancora, come storia. La SINTESI della lineage — pratica, frontiera, discendenti diretti e attivi, sorgenti e radice, natura — per i soli documenti del seme (la pagina di una lista, il drawer di un documento), con le colonne e l''ordine che erano di vw_documento_lineage. Seme = chiave del nodo (tipo_id, uid::text) in due array paralleli, OBBLIGATORIO (NULL solleva E_ERRORE_PARAMETRI). Costruita un livello alla volta da vendite.fn_documento_lineage_archi e decorata una volta da vendite.fn_documento_lineage_nodi: il costo segue il seme, non il grafo. Cammino in avanti senza rami di ritorno, per percorsi, 10 livelli; frontiera = attivo, poi livello, poi pipeline_rank; sorgenti dagli archi entranti, radice per ROOT, rango, uid; pratica da pratiche.fn_pratica_del_documento. Sede UNICA della regola: la vista vw_documento_lineage e'' ritirata (20261011-98). STABLE, INVOKER: la RLS resta di chi legge.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

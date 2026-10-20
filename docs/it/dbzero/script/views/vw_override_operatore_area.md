@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_override_operatore_area
 WITH (security_invoker=true) AS
@@ -30,6 +32,8 @@ UNION ALL
    FROM (config.user_override_oggetti uoo
      JOIN config.area_model_overrides amo ON ((((amo.app_label)::text = (uoo.app_label)::text) AND ((amo.model_name)::text = (uoo.model_name)::text))));
 ```
+
+</div>
 
 
 ---

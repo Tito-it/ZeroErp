@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_vendite_contabili_emittente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_emittente()
  RETURNS trigger
@@ -55,6 +57,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_emittente()
 IS 'Applica a ogni scrittura su pagamenti.vendite_contabili la sede unica che dice di chi e'' la distinta (pagamenti.fn_get_emittente_distinta, D4 del brief distinta-numerata-sul-registro). In INSERT scrive NEW.emittente_soggetto_ruolo_id con i quattro livelli (dato e coerente col canale / dal canale / dall''operatore in sessione / rifiuto parlante); in UPDATE con l''emittente a NULL NON risolve — parla il NOT NULL, perche'' ri-riempirlo dalla sessione sarebbe un cambio di emittente che nessuno ha chiesto (scelta di Tid, 2026-09-15); in UPDATE con entrambi verifica solo la coerenza fra il canale nuovo e l''emittente della riga. ⚠️ Qui non c''e'' il predicato: c''e'' la sua applicazione. Il predicato sta nella funzione, che la madre fn_get_or_create_vendite_contabile chiama anche per la chiave di riuso. ⚠️ L''ORDINE DEI BEFORE ROW REGGE SUL NOME: trg_…_a10_emittente_ins_upd precede a10_gen_codice_ins (che numera sul registro dell''emittente) e a10_guard_emittente_scope_ins_upd (che giudica lo scope su questa colonna). Rinominare uno dei tre sposta la risoluzione dopo chi la usa. Rev 2026-09-15.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_blocca_credenziale(p_auth_user_id integer, p_motivo text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_blocca_credenziale(p_auth_user_id integer, p_motivo text)
  RETURNS void
@@ -83,6 +85,8 @@ $function$
 COMMENT ON FUNCTION script.fn_blocca_credenziale(p_auth_user_id integer, p_motivo text)
 IS 'Blocco VERO di una credenziale, atto autorizzato (D-1 riletta: le password sbagliate frenano chi le prova, chiudere e'' una decisione con un autore). Prima riga script.fn_guard_super_admin(app.current_user_id) (D-B1), anche dalla sessione del migratore: il blocco ha sempre un autore (chk_credenziali_blocco). Motivo obbligatorio (E_CREDENZIALE_MOTIVO_OBBLIGATORIO); credenziale inesistente -> E_CREDENZIALE_NON_TROVATA. Poi solleva il primo motivo di script.fn_check_credenziale_bloccabile, la stessa regola che spegne il pulsante (§12.5.2): CREDENZIALE_DI_SISTEMA (E_CREDENZIALE_DI_SISTEMA; non vale dalla sessione del migratore, dbops.fn_sessione_del_migratore: l''uscita d''emergenza per una credenziale di sistema compromessa, D-1 del 2026-10-03) e ULTIMO_SUPER_ADMIN (E_PROFILO_ULTIMO_SUPER_ADMIN, da ogni strada). Scrive bloccata_at/bloccata_da/motivo_blocco in upsert: vale su tutte le porte, non scade, il reset password non lo toglie (D-B3); un secondo blocco riscrive l''ultimo stato. La rete per le corse resta il guard su config.credenziali (fn_check_almeno_un_super_admin_attivo, stato dopo). SECURITY DEFINER del PROPRIETARIO, non di un superuser, search_path bloccato. La blacklist delle sessioni e'' del backend. Brief: brief-db-blocco-login-per-credenziale §3.3, brief-db-credenziale-verbi-amministratore (R-DB-A5, R-DB-A6).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

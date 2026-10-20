@@ -6,6 +6,8 @@ CREATE FUNCTION fn_doc_fornitura_da_anagrafica(p_documento character varying, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_doc_fornitura_da_anagrafica(p_documento character varying, p_testata_id bigint)
  RETURNS boolean
@@ -89,6 +91,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_doc_fornitura_da_anagrafica(p_documento character varying, p_testata_id bigint)
 IS 'Rifa'' la scheda di fornitura (1:1) di un documento (CONTRATTO | OFFERTA, vendite.fn_doc_fornitura_sede) dai dati precontrattuali della coppia (istanza, utility) della sua testata: toglie la scheda che c''e'' e scrive quella di vendite.fn_get_fornitura_da_anagrafica. Torna true se ha scritto; false se la testata non c''e'' (o non e'' visibile) o se la coppia non ha dati precontrattuali, e allora il documento resta senza scheda. La regola (D-5 e D-5-bis di Tid, 2026-10-12): la scheda descrive la fornitura, non una scelta commerciale; se la fornitura cambia si rifa'' da capo, e le correzioni fatte a mano sulla fornitura di prima non si portano. Regola unica per contratto e offerta, che la scheda ci fosse o no. Chi la chiama: la nascita del contratto (vendite.trgfn_contratti_snapshot_precontrattuali) e il cambio di cliente in bozza (vendite.trgfn_doc_fornitura_segue_cliente). Alla nascita le chiavi dell''operatore correggono poi la scheda (vendite.fn_create_contratto, D-7). Errori: id mancante E_DOC_FORNITURA_PARAMETRO_MANCANTE, selettore ignoto E_DOC_TIPO_NON_GESTITO (TECNICO entrambi). INVOKER: scrive sotto la RLS di chi chiama; la riga nuova passa dal guard della coppia e, sul contratto, dal guard tipo/classe. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4). ⭐ rev 2026-10-19 (20261019-49, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

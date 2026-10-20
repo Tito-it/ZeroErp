@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_resi_guard_transizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_transizione()
  RETURNS trigger
@@ -106,6 +108,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_guard_transizione()
 IS 'Trigger function: enforcement grafo transizioni stato reso letto da config.transizioni_stati_reso (E_STATO_RESO_TRANSIZIONE_NON_VALIDA). Mirror di trgfn_ddt_guard_transizione. rev 2026-07-13. rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f): Regola 2, la PORTA DEL REGISTRO. DRAFT->CONFERMATO e CONFERMATO->ANNULLATO di un reso che fa rientrare merce (vendite.fn_reso_muove_merce sulla riga NUOVA) passano solo dai verbi vendite.fn_conferma_reso / vendite.fn_annulla_reso: GUC transazionale zeroerp.reso_cambio_stato = NEW.id E chi esegue e'' il proprietario della tabella (script.fn_is_proprietario_tabella), altrimenti E_RESO_STATO_SOLO_DA_VERBO. I resi che non muovono merce, e DRAFT->ANNULLATO, restano all''UPDATE diretto.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

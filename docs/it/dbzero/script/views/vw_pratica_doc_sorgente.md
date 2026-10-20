@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_pratica_doc_sorgente
 WITH (security_invoker=on) AS
@@ -45,6 +47,8 @@ SELECT DISTINCT ON (ps.pratica_id) ps.pratica_id,
           WHERE ((v.sorgente_tipo_id = ps.sorgente_tipo_id) AND (v.sorgente_chiave_id = script.fn_sorgente_chiave_id(ps.sorgente_uid)))) ss ON (true))
   ORDER BY ps.pratica_id, COALESCE(ss.risolto, false) DESC, (NOT COALESCE(ss.terminale, false)) DESC, ((ps.ruolo_link)::text = 'ROOT'::text) DESC, ps.id DESC;
 ```
+
+</div>
 
 
 ---

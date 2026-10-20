@@ -6,6 +6,8 @@ CREATE PROCEDURE proc_accoda_chiusura_scadenze_job()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job()
  LANGUAGE plpgsql
@@ -27,6 +29,8 @@ $procedure$
 COMMENT ON PROCEDURE maintenance.proc_accoda_chiusura_scadenze_job()
 IS 'Wrapper del job chiusura_scadenze_daily: sveglia la chiusura scadenze PASSANDO dal giornale. ⛔ Esiste perche'' il changeSet 20260905-25, trasformando quel job da esecutore a sveglia, ha sostituito lo step con una SELECT diretta e ha perso il wrapper — e con lui la registrazione della corsa. Il lavoro veniva accodato correttamente, ma della sveglia non restava traccia: nessun test poteva prenderlo, perche'' tutti guardavano che il lavoro fosse accodato. L''ha trovato dbops.vw_processi_programmazione confrontando pgAgent col giornale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

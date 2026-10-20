@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_contratti_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_contratti_normalize()
  RETURNS trigger
@@ -28,6 +30,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_contratti_normalize()
 IS 'Normalize: imposta data se numero presente e valore mancante.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

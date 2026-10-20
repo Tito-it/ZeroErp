@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_resellers_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_resellers_normalize()
  RETURNS trigger
@@ -20,6 +22,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_resellers_normalize()
 IS 'Normalize: no-op; generazione codice demandata al sistema_codici.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

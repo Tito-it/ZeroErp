@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_riferimenti_morti_rientrati
 WITH (security_invoker=on) AS
@@ -21,6 +23,8 @@ SELECT id,
            FROM dbops.fn_check_funzioni_riferimenti_morti() m(classe, schema_nome, funzione, argomenti, esito)
           WHERE ((m.classe = ANY (ARRAY['REALE'::text, 'ORFANA'::text])) AND (m.schema_nome = e.schema_nome) AND (m.funzione = e.funzione) AND (m.esito ~~ e.esito_like)))));
 ```
+
+</div>
 
 
 ---

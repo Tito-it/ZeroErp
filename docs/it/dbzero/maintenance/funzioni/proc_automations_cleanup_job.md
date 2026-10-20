@@ -7,6 +7,8 @@ CREATE PROCEDURE proc_automations_cleanup_job()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_automations_cleanup_job()
  LANGUAGE plpgsql
@@ -26,6 +28,8 @@ $procedure$
 COMMENT ON PROCEDURE maintenance.proc_automations_cleanup_job()
 IS 'Job wrapper per chiamare fn_run_automations_cleanup con logging e lock.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

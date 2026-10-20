@@ -6,6 +6,8 @@ CREATE FUNCTION fn_indirizzo_documento_fuori_cliente(p_origine_indirizzo_id bigi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_indirizzo_documento_fuori_cliente(p_origine_indirizzo_id bigint, p_origine_soggetto_ruolo_id bigint, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint)
  RETURNS text
@@ -60,6 +62,8 @@ $function$
 COMMENT ON FUNCTION script.fn_indirizzo_documento_fuori_cliente(p_origine_indirizzo_id bigint, p_origine_soggetto_ruolo_id bigint, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint)
 IS 'Il predicato «l''indirizzo del documento e'' del suo cliente?», sui valori: origine della riga (origine_indirizzo_id, origine_soggetto_ruolo_id) e cliente del documento (ruolo, istanza: script.fn_get_cliente_testata_documento). NULL = del cliente; altrimenti il motivo: ALTRO_CLIENTE (il ruolo della riga, o quello dell''indirizzo d''anagrafica, non e'' il ruolo del documento) o ALTRA_FORNITURA (l''indirizzo d''anagrafica e'' legato a un''istanza diversa da quella del documento, anche quando il documento non ne ha una: e'' la scelta di script.fn_resolve_indirizzo_documento, che con l''istanza NULL prende solo i generici). Una-tantum (le due origini NULL) e documento senza ruolo: sempre NULL. ⚠️ L''istanza dell''indirizzo d''anagrafica si legge viva. La usano vendite.trgfn_doc_indirizzi_guard_cliente, vendite.trgfn_doc_indirizzi_seguono_cliente e script.fn_check_indirizzi_documento_cliente: guard, cambio di cliente e motivo d''emissione non possono rispondere in due modi. Brief: brief-db-indirizzi-documento-seguono-il-cliente (D-1, §7.2 c).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}
