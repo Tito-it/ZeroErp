@@ -78,13 +78,14 @@ operatore disattivato resta in elenco col tipo `OPERATORE` e `veste_attiva = fal
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `search` | string | no | Ricerca libera sulle colonne che il catalogo della lista `anagrafiche.operatori` accende per l'operatore (le decide il catalogo, non il codice: `ricerca_full` nella configurazione della lista). Sotto 3 caratteri non filtra (nessun 400). Ogni riga porta anche `soggetto_ragione_sociale` (ragione sociale completa del soggetto, `null` senza soggetto) |
-| `is_super_admin` | bool | no | Filtra sul binding SUPER_ADMIN |
+| `is_super_admin` | bool | no | Filtra sul binding SUPER_ADMIN (`1`/`true`/`yes`/`on` = vero, ogni altro valore = falso) |
 | `unita_organizzativa_id` | int | no | Filtra per unita' organizzativa |
-| `is_active` | bool | no | Filtra per stato attivo (`true`/`false`/`1`/`0`) |
-| `limit` | int | no | Numero massimo risultati (default 50, max 200) |
+| `is_active` | bool | no | Filtra per stato attivo della credenziale (stessa lettura di `is_super_admin`) |
+| `includi_di_prova` | bool | no | `true` mostra anche gli utenti di prova (etichetta del provisioning di sviluppo); assente o `false` li nasconde. Booleano rigoroso: un valore non booleano e' un 400 sul campo |
+| `limit` | int | no | Numero massimo risultati (default 25, max 200) |
 | `offset` | int | no | Offset per paginazione (default 0) |
-| `order_by` | string | no | Colonna di ordinamento: `last_name`, `username`, `ruolo_sistema`, `is_active`, `unita_organizzativa_nome`, `data_insert` |
-| `order_dir` | string | no | Direzione ordinamento: `ASC` o `DESC` |
+| `order_by` | string | no | Colonna di ordinamento: `last_name`, `soggetto_cognome`, `username`, `is_super_admin`, `ruolo_applicativo`, `is_active`, `unita_organizzativa_nome`, `override_count`, `valido_dal`, `valido_al` (NULL = senza scadenza, ordinata come infinito). Fuori whitelist ripiega sull'ordine di default (`soggetto_cognome`, poi `username`, ASC) |
+| `order_dir` | string | no | `ASC` o `DESC` (altro valore: 400). Senza `order_dir` le colonne data (`valido_dal`, `valido_al`) partono DESC, le altre ASC |
 
 **Risposta:**
 
@@ -99,14 +100,23 @@ operatore disattivato resta in elenco col tipo `OPERATORE` e `veste_attiva = fal
         "email": "m.titini@example.com",
         "first_name": "Michele",
         "last_name": "Titini",
-        "ruolo_sistema": "ADMIN",
+        "soggetto_cognome": "Titini",
+        "soggetto_nome": "Michele",
+        "soggetto_ragione_sociale": "Titini Michele",
+        "is_super_admin": true,
+        "ruolo_applicativo": "OPERATORE",
+        "veste_attiva": true,
         "is_active": true,
         "unita_organizzativa_id": 2,
         "unita_organizzativa_nome": "Sviluppo",
         "risorsa_umana_id": 5,
         "attivo": true,
+        "valido_dal": "2026-01-15",
         "valido_al": null,
-        "data_insert": "2026-01-15 10:30:00+00"
+        "altre_vesti": ["SHOP_CUSTOMER"],
+        "emittenti_descrizione": "Azienda SRL",
+        "override_count": 3,
+        "di_prova": false
       }
     ]
   },
@@ -114,11 +124,16 @@ operatore disattivato resta in elenco col tipo `OPERATORE` e `veste_attiva = fal
 }
 ```
 
+- `veste_attiva`: stato della veste OPERATORE di riferimento; `is_active` e' della credenziale (tutte le vesti); `attivo` della risorsa umana.
+- `altre_vesti`: i tipi delle altre vesti **accese** della credenziale.
+- `override_count`: override dei permessi scritti (`script.vw_override_operatore_area`).
+- `di_prova`: la credenziale porta l'etichetta di prova (`dbops.credenziali_di_prova`); compare solo con `includi_di_prova=true`.
+
 **Esempio curl:**
 
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  "https://host/api/v1/amm-software/operatori/?search=titini&ruolo_sistema=ADMIN&limit=10"
+  "https://host/api/v1/amm-software/operatori/?search=titini&is_super_admin=true&limit=10"
 ```
 
 ---
@@ -230,8 +245,8 @@ lista vuota se la credenziale non ha vesti. Due credenziali con la stessa email
 ### 1.3 GET /api/v1/amm-software/operatori/{id}/ -- Dettaglio utente
 
 Restituisce il dettaglio completo di un utente, inclusi conteggi override
-permessi, emittenti associati, **stato multi-face** (Fase 1) e **6 campi
-capability** data-driven per le azioni del drawer.
+permessi, emittenti associati, **stato multi-face** (Fase 1) e le **capability**
+data-driven per le azioni del drawer (quattro terne `can_*`/`*_reason`/`*_reason_key`).
 
 Il dettaglio e' generato da `script.fn_get_operatore_detail(p_auth_user_id)`
 (single source of truth lato DB, idioma lookup-by-id: 0 righe per id non valido).
@@ -253,7 +268,6 @@ Il dettaglio e' generato da `script.fn_get_operatore_detail(p_auth_user_id)`
     "soggetto_id": "8a1f...uuid",
     "ragione_sociale_completa": "Titini Michele",
     "codice_fiscale": "TTNMHL75A01H501Z",
-    "ruolo_sistema": "ADMIN",
     "is_super_admin": true,
     "ruolo_applicativo": "OPERATORE",
     "is_active": true,
@@ -270,12 +284,19 @@ Il dettaglio e' generato da `script.fn_get_operatore_detail(p_auth_user_id)`
     "override_azioni_count": 1,
     "emittenti_count": 2,
     "emittenti_descrizione": "Azienda SRL, Sede Roma",
+    "veste_attiva": true,
     "can_invite": false,
-    "invite_reason": "Operatore gia' attivato (last_login valorizzato).",
+    "invite_reason": "VESTE_GIA_ATTIVA",
+    "invite_reason_key": "amministrazione.operatori.invito_reason.veste_gia_attiva",
     "can_disable": false,
-    "disable_reason": "E' l'unico super admin attivo del sistema.",
+    "disable_reason": "ULTIMO_SUPER_ADMIN",
+    "disable_reason_key": "amministrazione.operatori.disabilita_reason.ultimo_super_admin",
     "can_demote_super_admin": false,
-    "demote_reason": "E' l'unico super admin attivo del sistema."
+    "demote_reason": "ULTIMO_SUPER_ADMIN",
+    "demote_reason_key": "amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin",
+    "can_set_valido_al": false,
+    "valido_al_reason": "ULTIMO_SUPER_ADMIN",
+    "valido_al_reason_key": "amministrazione.operatori.valido_al_reason.ultimo_super_admin"
   },
   "meta": { "request_id": "..." }
 }
@@ -297,18 +318,17 @@ Il dettaglio e' generato da `script.fn_get_operatore_detail(p_auth_user_id)`
 
 | Campo | Tipo | Descrizione |
 |---|---|---|
-| `can_invite` | bool | True se l'operatore e' invitabile (mai loggato, attivo, email valida). Delega a `script.fn_check_operatore_invitabile` |
-| `invite_reason` | string \| null | Motivo it-IT free-form quando `can_invite=false`; NULL altrimenti |
+| `can_invite` | bool | True se l'operatore e' invitabile (nessuna veste OPERATORE gia' accesa, una sola veste OPERATORE, veste nella sua finestra, email presente). Delega a `script.fn_check_operatore_invitabile` |
+| `invite_reason` / `invite_reason_key` | string \| null | Codice macchina del primo motivo (`UTENTE_NON_TROVATO`, `SENZA_VESTE_OPERATORE`, `VESTE_GIA_ATTIVA`, `PIU_VESTI_SPENTE`, `VESTE_FUORI_FINESTRA`, `SENZA_EMAIL`) e chiave i18n della frase; NULL quando `can_invite=true` |
 | `can_disable` | bool | False se e' l'unico super admin attivo. Preview di `script.fn_check_ultimo_super_admin_attivo`; **non e' una garanzia** (race tra sessioni: il trigger DB resta l'autorita') |
-| `disable_reason` | string \| null | Motivo quando `can_disable=false` |
+| `disable_reason` / `disable_reason_key` | string \| null | `ULTIMO_SUPER_ADMIN` e la sua chiave i18n quando `can_disable=false` |
 | `can_demote_super_admin` | bool \| null | Stesso check di `can_disable` ma per la rimozione del binding SUPER_ADMIN. **NULL** se l'operatore non e' SUPER_ADMIN (azione non applicabile -> il FE nasconde l'azione) |
-| `demote_reason` | string \| null | Motivo quando `can_demote_super_admin=false` |
+| `demote_reason` / `demote_reason_key` | string \| null | Motivo quando `can_demote_super_admin=false` |
+| `can_set_valido_al` | bool | Si puo' mettere una data di fine al rapporto (`valido_al`). Stessa condizione di `can_disable` (l'ultimo SUPER_ADMIN senza scadenza); chi ha gia' una data di fine risponde `true` |
+| `valido_al_reason` / `valido_al_reason_key` | string \| null | Motivo quando `can_set_valido_al=false` |
 
-> **Nota sui reason it-IT free-form**: i campi `*_reason` sono stringhe
-> visualizzabili direttamente come tooltip dal FE. Coerente col pattern
-> esistente di `fn_check_operatore_invitabile`. Eventuale futura migrazione
-> a codici stabili (es. `E_LAST_SUPER_ADMIN_DISABLE`) richiederebbe un
-> passaggio coordinato BE+DB+FE.
+> I `*_reason` sono **codici macchina**, non frasi: il testo lo compone il FE
+> dalla `*_reason_key` (api.md §«Capability di riga»).
 
 **Esempio curl:**
 
@@ -337,6 +357,7 @@ flag sono ortogonali, e nessuno dei due si traduce in `ruolo_sistema`:
   `DISABILITATO`, e la tabella oggi lo rifiuta con `E_RUOLO_APPLICATIVO_RITIRATO`).
   ⛔ **Non la riaccende** (D-3, 2026-10-04): una veste spenta si riattiva col
   reinvio dell'invito (§«Invito operatore»), e la accende la persona attivando
+  il link.
 - `is_super_admin` lega o slega il profilo SUPER_ADMIN sulla stessa veste
 - payload senza `is_super_admin` ne' `attivo` → nessuno dei due tocchi
 
@@ -349,14 +370,21 @@ flag sono ortogonali, e nessuno dei due si traduce in `ruolo_sistema`:
 | `email` | string | Nuovo indirizzo email |
 | `first_name` | string | Nuovo nome (auth_user) |
 | `last_name` | string | Nuovo cognome (auth_user) |
-| `is_super_admin` | bool | `true` per binding profilo SUPER_ADMIN, `false` per rimuoverlo |
-| `attivo` | bool | Stato della veste OPERATORE (`veste_attiva` del dettaglio). Conta solo come transizione: `false` su una veste accesa la spegne come «Disabilita» (risorsa umana chiusa a oggi); `false` su una veste già spenta e `true` su una accesa non cambiano niente; `true` su una veste spenta → 400 `E_AMM_VALIDAZIONE` (`field: attivo`) |
+| `is_super_admin` | bool | `true` per binding profilo SUPER_ADMIN, `false` per rimuoverlo. Solo booleano JSON |
+| `attivo` | bool | Solo booleano JSON. Stato della veste OPERATORE (`veste_attiva` del dettaglio). Conta solo come transizione: `false` su una veste accesa la spegne come «Disabilita» (risorsa umana chiusa a oggi); `false` su una veste già spenta e `true` su una accesa non cambiano niente; `true` su una veste spenta → 400 `E_AMM_VALIDAZIONE` (`field: attivo`) |
 | `unita_organizzativa_id` | int | Nuova unita' organizzativa |
-| `valido_al` | string | Data fine validita' (formato `YYYY-MM-DD`) |
+| `valido_al` | string \| null | Data fine del rapporto (formato `YYYY-MM-DD`): `null` la toglie, chiave assente non la tocca |
 
 **Regole:**
 
 - Il payload con `ruolo_sistema` viene rifiutato con `E_AMM_VALIDAZIONE` (HTTP 400).
+- `attivo` e `is_super_admin` vogliono un booleano JSON: `"true"`, `"false"`,
+  `1`, `0` sono un 400 `E_AMM_VALIDAZIONE` col campo (2026-10-20: prima un
+  valore non booleano passava in silenzio e il PATCH rispondeva 200 senza
+  toccare niente).
+- `is_super_admin: true` su un accesso che ha gia' un altro profilo legato
+  (un'identita' ne lega uno solo) → 400 `E_AMM_VALIDAZIONE`, `field:
+  is_super_admin`: va tolto prima quel profilo.
 - ⛔ `attivo: true` su una veste spenta (disabilitata, o mai attivata) viene
   rifiutato con `E_AMM_VALIDAZIONE` (HTTP 400, `field: attivo`), senza
   scrivere niente (D-3, 2026-10-04): l'accesso si riattiva col reinvio
@@ -421,12 +449,13 @@ l'envelope errore (HTTP 409).
   (`risorse_umane`) per rispettare il framework ATTIVO del DB.
 - Chiama `anagrafiche.fn_sync_auth_user_is_active` per sincronizzare
   `auth_user.is_active`.
-- Invalida la cache permessi dell'utente.
-- Blacklist di tutti i token JWT outstanding (best-effort).
+- Invalida la cache permessi dell'utente (a commit avvenuto).
+- Blacklist dei refresh JWT della **sola veste operatore**; una chiusura
+  fallita annulla anche la disabilitazione.
 
-> ✅ Chiuso M-5 (2026-10-02): si spegne la sola veste operatore, le vesti
-> portale e shop della stessa credenziale restano come sono. ⚠️ Le sessioni
-> chiuse sono ancora TUTTE quelle della credenziale (D-5, piano accessi L-5).
+> ✅ Chiuso M-5 (2026-10-02): si spegne la sola veste operatore e si chiudono
+> le sole sue sessioni; le vesti portale e shop della stessa credenziale
+> restano come sono, connesse.
 
 **Risposta:** dettaglio utente aggiornato (con `attivo=false`,
 `veste_attiva=false`, `ruolo_applicativo="OPERATORE"`; `is_active` resta `true`
@@ -466,6 +495,10 @@ del rapporto. Il binding SUPER_ADMIN, come prima, non si ripristina da sé.
 > inesistente. Senza, i comandi spegnerebbero la veste OPERATORE di una
 > macchina — la sua veste e' `OPERATORE` con `tecnica`, e fermarla e' affare
 > del pannello dei processi (A-6).
+>
+> La regola vale anche per `override-aree/`, `override-azioni/` e
+> `override-oggetti/`, in GET e PUT (2026-10-20: prima un id non operatore
+> riceveva una lista vuota, o gli override in scrittura).
 
 ---
 
@@ -648,7 +681,7 @@ profilo del reparto di appartenenza.
         "area_id": 3,
         "area_codice": "VENDITE",
         "area_descrizione": "Gestione vendite",
-        "livello": "COMPLETO",
+        "livello": "TUTTO",
         "motivo": "Responsabile vendite",
         "valido_dal": "2026-01-01",
         "valido_al": null
@@ -682,7 +715,7 @@ tutti gli esistenti e inserisce i nuovi). Invalida la cache permessi.
   "items": [
     {
       "area_id": 3,
-      "livello": "COMPLETO",
+      "livello": "TUTTO",
       "motivo": "Responsabile vendite",
       "valido_dal": "2026-01-01",
       "valido_al": null
@@ -694,10 +727,14 @@ tutti gli esistenti e inserisce i nuovi). Invalida la cache permessi.
 | Campo item | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `area_id` | int | si | ID area funzionale |
-| `livello` | string | si | Livello accesso (tipo enum `config.livello_accesso`) |
+| `livello` | string | si | Livello accesso (enum `config.livello_accesso`: `TUTTO`, `LETTURA`, `BLOCCATO`) |
 | `motivo` | string | no | Motivazione dell'override |
 | `valido_dal` | string | no | Data inizio validita' |
 | `valido_al` | string | no | Data fine validita' |
+
+`items` dev'essere una lista di oggetti; `area_id` (intero positivo) e
+`livello` sono obbligatori. Altrimenti 400 `E_AMM_VALIDAZIONE` col campo
+(2026-10-20: prima una voce malformata era un 500).
 
 **Risposta:** lista aggiornata degli override aree (stesso formato del GET).
 
@@ -706,7 +743,7 @@ tutti gli esistenti e inserisce i nuovi). Invalida la cache permessi.
 ```bash
 curl -X PUT -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"items": [{"area_id": 3, "livello": "COMPLETO", "motivo": "Promozione"}]}' \
+  -d '{"items": [{"area_id": 3, "livello": "TUTTO", "motivo": "Promozione"}]}' \
   "https://host/api/v1/amm-software/operatori/1/override-aree/"
 ```
 
@@ -778,10 +815,14 @@ Invalida la cache permessi.
 | Campo item | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `azione_id` | int | si | ID azione processo |
-| `abilitata` | bool | si | `true` per abilitare, `false` per disabilitare |
+| `abilitata` | bool | si | `true` per abilitare, `false` per disabilitare (solo booleano JSON) |
 | `motivo` | string | no | Motivazione dell'override |
 | `valido_dal` | string | no | Data inizio validita' |
 | `valido_al` | string | no | Data fine validita' |
+
+`items` dev'essere una lista di oggetti; `azione_id` (intero positivo) e
+`abilitata` (booleano) sono obbligatori. Altrimenti 400 `E_AMM_VALIDAZIONE`
+col campo (2026-10-20: prima una voce malformata era un 500).
 
 **Risposta:** lista aggiornata degli override azioni (stesso formato del GET).
 
@@ -793,6 +834,42 @@ curl -X PUT -H "Authorization: Bearer <token>" \
   -d '{"items": [{"azione_id": 12, "abilitata": true, "motivo": "Delega"}]}' \
   "https://host/api/v1/amm-software/operatori/1/override-azioni/"
 ```
+
+---
+
+### 2.4-bis GET / PUT /api/v1/amm-software/operatori/{id}/override-oggetti/ -- Override oggetti
+
+Gli override del livello di accesso su un singolo **oggetto** (model) del
+catalogo `config.area_model_overrides`. Stessa regola delle altre rotte
+`operatori/{id}/…` (404 `E_AMM_OPERATORE_NOT_FOUND` se l'id non e' un
+operatore).
+
+**GET** → `data.results`, una riga per override: `id`, `app_label`,
+`model_name`, `livello`, `motivo`, `valido_dal`, `valido_al`, `area_id`,
+`area_descrizione` (ordine: area, `app_label`, `model_name`).
+
+**PUT** → sostituisce tutti gli override oggetto dell'operatore (semantica
+replace, `config.fn_imposta_override_oggetti`) e invalida la cache permessi.
+Risposta: la lista aggiornata (forma del GET).
+
+```json
+{ "items": [ { "app_label": "anagrafiche", "model_name": "conto_bancario",
+               "livello": "LETTURA", "motivo": "Sola consultazione",
+               "valido_dal": null, "valido_al": null } ] }
+```
+
+| Campo item | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `app_label` / `model_name` | string | si | Oggetto registrato nel catalogo (lookup §4.8) |
+| `livello` | string | si | `TUTTO`, `LETTURA`, `BLOCCATO` |
+| `motivo` | string | no | |
+| `valido_dal` / `valido_al` | string \| null | no | `null` = senza inizio / senza fine |
+
+**Errori** (tutti 400 `E_AMM_VALIDAZIONE`): `items` non lista o voce non
+oggetto; `livello` mancante; oggetto non registrato nel catalogo; oggetto
+riservato al kernel dei permessi (`can_override = false`). Lo stesso codice
+traduce la FK `fk_user_override_oggetti_catalogo` se il catalogo cambia fra
+lettura e scrittura.
 
 ---
 
@@ -917,13 +994,14 @@ bindings sono **tre** e i resolver prendono il primo per priorita':
 | Priorita' | Tipo | Legato a |
 | --- | --- | --- |
 | **1** | `AD_HOC` | l'identita' digitale dell'utente |
-| 2 | `PORTALE` | il ruolo applicativo dell'identita' |
 | 2 | `REPARTO` | l'unita' organizzativa |
+| 3 | `PORTALE` | il ruolo applicativo dell'identita' |
 
 Per un utente con un binding `AD_HOC` la lettura per reparto darebbe un valore
 **plausibile e sbagliato**, su una schermata di sicurezza. Questo endpoint legge
-invece da `script.fn_get_profili_accesso_applicabili`, **la stessa funzione** che
-usano `fn_resolve_livello_area` e `fn_check_azione_processo`.
+invece da `script.fn_get_permessi_ereditati_aree` / `fn_get_permessi_ereditati_azioni`,
+che leggono `script.fn_get_profili_accesso_applicabili` per la veste `OPERATORE`:
+**la stessa catena** che usano `fn_resolve_livello_area` e `fn_check_azione_processo`.
 
 **Parametri path:** `id` (int) -- auth_user_id dell'utente.
 
@@ -1054,6 +1132,26 @@ curl -H "Authorization: Bearer <token>" \
 
 ---
 
+### 2.9 GET /api/v1/amm-software/permessi-riepilogo/ -- Riepilogo permessi per area
+
+Le chip della lista operatori: per gli operatori **della pagina** una riga per
+(operatore, area attiva) con il livello effettivo, gli override scritti e le
+voci fermate dal tetto d'area (`script.fn_get_permessi_riepilogo_aree`).
+
+| Parametro | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `auth_user_ids` | string | si | Id separati da virgola (interi positivi, duplicati ignorati), al massimo 200 |
+
+**Risposta:** `data.results`, ogni riga `{auth_user_id, area_id, area_codice,
+area_descrizione, livello, override_count, voci_limitate}`, ordinate per
+operatore e ordinamento dell'area. Gli id che non sono di categoria
+`OPERATORE` non producono righe.
+
+**Errori:** 400 `E_AMM_VALIDAZIONE` (`field: auth_user_ids`) se il parametro
+manca o e' vuoto, se un pezzo non e' un intero positivo, o oltre 200 id.
+
+---
+
 ## 3. Reparti
 
 ### 3.1 GET /api/v1/amm-software/reparti/ -- Lista reparti
@@ -1124,7 +1222,7 @@ di accesso e azioni processo con stato abilitazione.
         "area_id": 3,
         "area_codice": "VENDITE",
         "area_descrizione": "Gestione vendite",
-        "livello": "COMPLETO"
+        "livello": "TUTTO"
       }
     ],
     "azioni": [
@@ -1136,11 +1234,15 @@ di accesso e azioni processo con stato abilitazione.
         "area_codice": "VENDITE",
         "abilitata": true
       }
-    ]
+    ],
+    "richiede_secondo_fattore": false
   },
   "meta": { "request_id": "..." }
 }
 ```
+
+`richiede_secondo_fattore`: chi riceve il profilo del reparto deve usare il
+secondo fattore; `false` se il reparto non ha ancora un profilo.
 
 **Esempio curl:**
 
@@ -1163,13 +1265,14 @@ replace). Invalida la cache permessi di **tutti gli operatori** del reparto.
 ```json
 {
   "aree": [
-    { "area_id": 3, "livello": "COMPLETO" },
+    { "area_id": 3, "livello": "TUTTO" },
     { "area_id": 5, "livello": "LETTURA" }
   ],
   "azioni": [
     { "azione_id": 12, "abilitata": true },
     { "azione_id": 15, "abilitata": false }
-  ]
+  ],
+  "richiede_secondo_fattore": true
 }
 ```
 
@@ -1183,8 +1286,16 @@ replace). Invalida la cache permessi di **tutti gli operatori** del reparto.
 | `azione_id` | int | si | ID azione processo |
 | `abilitata` | bool | si | `true` per abilitare, `false` per disabilitare |
 
+| Campo radice | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `richiede_secondo_fattore` | bool | no | Obbligo del secondo fattore per chi riceve il profilo. Assente = invariato (profilo nuovo: `false`); se presente dev'essere un booleano JSON, altrimenti 400 `E_AMM_VALIDAZIONE` |
+
 **Regole:**
 
+- `uo_id` inesistente → 400 `E_AMM_VALIDAZIONE` («Reparto inesistente»).
+- Il profilo (tipo `REPARTO`, codice `REPARTO_<codice_interno>`) si scrive con
+  `config.fn_scrivi_profilo_accesso` e si lega al reparto con
+  `config.fn_lega_profilo_reparto`; `attivo` del profilo segue il reparto.
 - La modifica impatta tutti gli operatori che appartengono al reparto
 - La cache permessi viene invalidata per l'intero reparto (`invalidate_department`)
 
@@ -1196,7 +1307,7 @@ replace). Invalida la cache permessi di **tutti gli operatori** del reparto.
 curl -X PUT -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "aree": [{"area_id": 3, "livello": "COMPLETO"}],
+    "aree": [{"area_id": 3, "livello": "TUTTO"}],
     "azioni": [{"azione_id": 12, "abilitata": true}]
   }' \
   "https://host/api/v1/amm-software/reparti/2/profilo/"
@@ -1506,12 +1617,13 @@ curl -H "Authorization: Bearer <token>" \
 
 ## 6. Processi automatici — i presidi e «Esegui ora»
 
-⚠️ **Di questa famiglia qui ci sono due endpoint su sette**: i presidi (§6.1) e
-«Esegui ora» (§6.2), con la parte del dettaglio che lo alimenta (§6.3). Le altre
-rotte (`GET processi/`, `GET processi/{codice}/`, `GET processi/{codice}/run/`,
-`POST processi/{codice}/identita/`, `POST .../identita/riattiva/`) esistono e
-**non sono documentate**: e' un debito dichiarato, non un'omissione da leggere
-come «non ci sono». Contratto vivo: `/api/docs/`.
+⚠️ **Di questa famiglia qui ci sono i presidi (§6.1), «Esegui ora» (§6.2) con la
+parte del dettaglio che lo alimenta (§6.3), l'accensione (§6.4) e la
+riattivazione dell'utente tecnico (§6.5).** Le altre rotte (`GET processi/`,
+`GET processi/{codice}/`, `GET processi/{codice}/run/`,
+`POST processi/{codice}/identita/`) esistono e **non sono documentate**: e' un
+debito dichiarato, non un'omissione da leggere come «non ci sono». Contratto
+vivo: `/api/docs/`.
 
 ### 6.1 GET /api/v1/amm-software/processi/presidi/
 
@@ -1691,14 +1803,16 @@ deploy (`backend/deploy/sveglie.json`), che e' la whitelist.
 | Status | Codice | Quando |
 | --- | --- | --- |
 | 400 | `E_CODA_SCOPE_OPERATORE_INVALIDO` | il JWT non porta l'`identita_id`: lo stesso codice che il drenatore solleverebbe un minuto dopo, detto adesso a chi puo' fare qualcosa |
-| 400 | `E_VALIDATION_INPUT` (`fields: ["unit"]`) | `unit` assente / non stringa, oppure non fra le sveglie **di quel** processo |
-| 404 | `E_PROCESSO_NON_TROVATO` | il codice non e' nel registro |
+| 400 | `E_VALIDATION_INPUT` (`field: unit`) | `unit` assente, vuota o non stringa |
+| 404 | `E_PROCESSO_NON_TROVATO` | il codice non e' nel registro (valutato **prima** del controllo della unit) |
+| 400 | `E_VALIDATION_INPUT` (`field: unit`) | `unit` non fra le sveglie **di quel** processo |
 | 422 | `E_PROCESSO_SVEGLIA_NON_AVVIABILE_A_MANO` | `forma = servizio`, o `avvio_manuale = false` nel dichiarato: non e' un candidato (natura, non stato) |
-| 501 | `E_PROCESSO_SVEGLIA_NON_ABILITATA` | `abilita = false` su questa installazione: si accende dal deploy, non da qui |
+| 501 | `E_PROCESSO_SVEGLIA_NON_ABILITATA` | il processo e' **spento** su questa installazione (`dbops.fn_processo_acceso_dichiarato`): si riaccende con `POST processi/{codice}/accensione/` (§6.4), col motivo |
+| 500 | `E_CONFIG_MANCANTE` | non si sa se il processo sia acceso: l'ambiente dell'installazione non e' dichiarato |
 | 409 | `E_PROCESSO_AVVIO_GIA_IN_CODA` | esiste un lavoro `ESEGUI_PROCESSO` vivo (`PENDING`/`IN_CORSO`) con la stessa chiave; il `context` porta `job_id` |
 | 501 | `E_JOB_TYPE_NON_ATTIVO` | il tipo di coda e' ancora `attivo = false` (regola del binding): e' il cancello voluto finche' l'handler non e' in release |
 
-⚠️ I tre motivi 422/501/409 sono gli stessi — nello stesso ordine — della
+⚠️ I motivi 422/501/500/409 sono gli stessi — nello stesso ordine — della
 capability `can_esegui_ora` del dettaglio (§6.3): li produce **lo stesso
 predicato** (`avvio_manuale.motivi_esegui_ora`), quindi il tooltip del pulsante
 spento e il rifiuto non possono dire due cose diverse.
@@ -1730,7 +1844,7 @@ Il dettaglio porta `sveglie`, una riga per unit dichiarata per quel processo
   "unit": "zeroerp-digest-presidi-settimanale", "forma": "timer",
   "comando": ["digest_presidi", "--cadenza", "settimanale"],
   "oncalendar": "*:00", "dovuto": {"ogni": "settimana", "giorno": 0, "dalle": "07:30"},
-  "abilita": true, "avvio_manuale": true,
+  "avvio_manuale": true,
   "nota": "…",
   "can_esegui_ora": false,
   "can_esegui_ora_reason": "E_PROCESSO_AVVIO_GIA_IN_CODA",
@@ -1741,6 +1855,7 @@ Il dettaglio porta `sveglie`, una riga per unit dichiarata per quel processo
 
 | Campo | Significato |
 | --- | --- |
+| `avvio_manuale` | la sveglia e' candidata a «Esegui ora» (dichiarato di deploy). ⛔ Il campo `abilita` e' ritirato (2026-10-16): se il processo sia acceso lo dice `accensione` del dettaglio (§6.4), non la sveglia |
 | `oncalendar` | la **sveglia** del timer (`null` per un servizio). ⚠️ Su una sveglia calendariale e' `*:00`, ogni ora: la cadenza del lavoro e' `dovuto` |
 | `dovuto` | dal 2026-10-09, solo sulle sveglie calendariali: `{ogni: giorno\|settimana\|mese, giorno, dalle}` — una volta per giorno/settimana/mese **aziendale**, dal `giorno` (0 = lunedi'; o del mese) alle `dalle` (`HH:MM`, fuso dell'azienda). La decide l'`ExecCondition` `e_dovuto` (brief un-solo-fuso-aziendale T-9). `null` = il timer lavora a ogni sveglia |
 | `can_esegui_ora` | **derivato** dal motivo (`reason is None`), mai calcolato a parte |
@@ -1754,14 +1869,86 @@ Il dettaglio porta `sveglie`, una riga per unit dichiarata per quel processo
 siano quelli letti e che le tre chiavi esistano in `it.json` e `en.json`. I
 lavori vivi si leggono con **una** query per tutte le unit del processo.
 
+### 6.4 POST /api/v1/amm-software/processi/{codice}/accensione/ — Accendi, spegni, torna al default
+
+La scelta a mano sull'**accensione** del processo su questa installazione
+(`dbops.fn_imposta_accensione_processo`, guard di `dbops.processi_accensione`).
+Porta `AdminAPIView`, come «Esegui ora».
+
+**Header obbligatorio**: `Idempotency-Key` (400 senza).
+
+**Request body**:
+
+```json
+{ "acceso": false, "motivo": "Manutenzione del server di posta" }
+```
+
+| Campo | Tipo | Obbligatorio | Descrizione |
+| --- | --- | --- | --- |
+| `acceso` | bool \| null | si | `true` accende, `false` spegne, `null` toglie la scelta e torna al default per ambiente del catalogo. Va **detto**: assente non vale «default» |
+| `motivo` | string | si | Obbligatorio per tutti e tre i gesti |
+
+**Response** (200): l'accensione rinfrescata, nella forma di `accensione` del
+dettaglio: `acceso` (stato effettivo), `spegnibile`, `acceso_in_sviluppo`,
+`acceso_in_produzione`, `ambiente`, `scelta_a_mano` (`{acceso, motivo, utente,
+data, ammessa}` o `null`), `ha_sveglia`, `can_imposta_accensione` /
+`_reason`, `can_accendere` / `_reason` / `_reason_key`.
+
+**Rifiuti, nell'ordine — tutti prima di scrivere:**
+
+| Status | Codice | Quando |
+| --- | --- | --- |
+| 400 | `E_VALIDATION_INPUT` (`field: acceso`) | `acceso` assente, o non booleano/null |
+| 400 | `E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO` (`field: motivo`) | motivo assente o vuoto |
+| 404 | `E_PROCESSO_NON_TROVATO` | il codice non e' nel registro |
+| 422 | `E_PROCESSO_NON_SPEGNIBILE` | il catalogo dichiara il processo non spegnibile |
+| 422 | `E_PROCESSO_SENZA_SVEGLIA` | processo senza sveglia (canale `CODA` o ritirato) |
+| 422 | `E_PROCESSO_NON_ACCENDIBILE_IN_PRODUZIONE` | accensione a mano, in produzione, di un processo non accendibile in produzione |
+
+I tre 422 li solleva il guard del DB; il drawer li anticipa con
+`can_imposta_accensione` / `can_accendere`.
+
+### 6.5 POST /api/v1/amm-software/processi/{codice}/identita/riattiva/ — Riattiva l'utente tecnico
+
+Riaccende l'utente tecnico **spento** del processo per un emittente — tutta la
+terna: utente Django, identita' digitale, legame nel registro
+(`script.fn_riattiva_utente_tecnico`). Endpoint separato dalla creazione
+(`POST processi/{codice}/identita/`): ci si arriva dal rifiuto
+`E_UTENTE_TECNICO_DA_RIATTIVARE` di quella.
+
+- **Header obbligatorio**: `Idempotency-Key`.
+- **Corpo**: `{ "emittente_codice": "..." }` (obbligatorio, con il codice
+  processo del path; mancante → 400 `E_CORE_VALIDATION`).
+- **Risposta** (200): `{ "data": { "auth_user_id": 123 } }`.
+- **Errori**: i guard della funzione DB, coi loro codici a catalogo; un errore
+  DB non riconosciuto → 400 `E_CORE_VALIDATION`.
+- **Permesso**: `AdminAPIView`.
+
+---
+
+## 7. Stato del setup
+
+### 7.1 GET /api/v1/amm-software/setup-status/
+
+I contatori del banner «operatori non assegnati», in un jsonb solo da
+`script.fn_get_setup_status()`. Nessun parametro. Porta `AdminAPIView`.
+
+```json
+{ "data": { "emittenti_attivi": 2, "operatori_totali": 14, "operatori_assegnati": 11,
+            "operatori_admin_globali": 2, "operatori_non_assegnati": 1 } }
+```
+
+Un operatore conta se la sua veste e' utilizzabile oggi
+(`script.fn_veste_utilizzabile`); admin = `script.fn_is_super_admin`.
+
 ---
 
 ## Regole trasversali
 
-- **Autenticazione**: tutti gli endpoint richiedono JWT Bearer token con ruolo `ADMIN`
-- **Cache permessi**: ogni PUT su permessi (override aree, override azioni, emittenti scope, profilo reparto) invalida la cache permessi dell'utente o del reparto interessato
+- **Autenticazione**: tutti gli endpoint richiedono JWT Bearer token con binding `SUPER_ADMIN` (`AdminAPIView`)
+- **Cache permessi**: ogni PUT su permessi (override aree, azioni, oggetti, emittenti scope, profilo reparto) invalida la cache permessi dell'utente o del reparto interessato
 - **Semantica replace**: le PUT su permessi cancellano tutti i record esistenti e inseriscono i nuovi (non e' un merge/patch)
-- **Ordinamento lista utenti**: whitelist di colonne ammesse (`last_name`, `username`, `ruolo_sistema`, `is_active`, `unita_organizzativa_nome`, `data_insert`); colonne non valide vengono ignorate
+- **Ordinamento lista utenti**: whitelist di §1.1 (`last_name`, `soggetto_cognome`, `username`, `is_super_admin`, `ruolo_applicativo`, `is_active`, `unita_organizzativa_nome`, `override_count`, `valido_dal`, `valido_al`); una colonna fuori whitelist ripiega sull'ordine di default, un `order_dir` estraneo e' un 400
 - **Throttling**: l'endpoint lista utenti ha throttling search attivo
 
 ## Errori
@@ -1769,7 +1956,7 @@ lavori vivi si leggono con **una** query per tutte le unit del processo.
 | Codice | HTTP | Quando |
 |---|---|---|
 | `E_AMM_VALIDAZIONE` | 400 | Campi obbligatori mancanti, `ruolo_sistema` legacy nel payload (Fase 1), validazioni domain |
-| `E_AMM_OPERATORE_NOT_FOUND` | 404 | Operatore non trovato (dettaglio, aggiorna, disabilita, scope) |
+| `E_AMM_OPERATORE_NOT_FOUND` | 404 | Operatore non trovato, o credenziale non di categoria `OPERATORE`, su tutte le rotte `operatori/{id}/…` (dettaglio, aggiorna, disabilita, override, scope, permessi ereditati/effettivi) |
 | `E_AMM_SCOPE_NON_AMMESSO` | 400 | (Fase 2) `scope_mode` non in `['GLOBAL','SINGLE']`, oppure `SINGLE` con array vuoto/multi-elemento |
 | `E_CREDENZIALE_DI_SISTEMA` | 409 | Blocco o accensione dell'obbligo del secondo fattore su una credenziale di categoria `SISTEMA` (§1-bis). Verbi `script.fn_blocca_credenziale` e `script.fn_imposta_totp_obbligatorio` |
 | `E_CREDENZIALE_CON_VESTI` | 409 | Eliminazione di una credenziale che ha almeno una veste, anche spenta (§1-bis.5-bis). Verbo `script.fn_elimina_credenziale` |
@@ -1777,9 +1964,7 @@ lavori vivi si leggono con **una** query per tutte le unit del processo.
 | `E_CREDENZIALE_STORIA_NON_VERIFICABILE` | 500 | Eliminazione dove mancano le FK verso `django.auth_user` (installazione nuova, CI): fail-closed (§1-bis.5-bis) |
 | `E_PROFILO_ULTIMO_SUPER_ADMIN` | 409 | (Fase 1) L'operazione (disabilita, demote, cambio scope) lascerebbe il sistema senza super admin attivi. Trigger DB `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` |
 | `E_OPERATORE_SCOPE_PARAM_NON_VALIDO` | 400 | (Fase 5) `fn_change_user_emittenti_scope` rifiuta il payload (scope_mode invalido, array vuoto/multi-elemento). Codice stabile dal DB, sostituisce il `RAISE 22023` generico pre-Fase 5 |
-| `E_AUDIT_SUMMARY_PARAM_NON_VALIDO` | 400 | (Fase 5) `code` o `storico_id` assenti/malformati nella richiesta audit-summary |
-| `E_AUDIT_SOURCE_NON_TROVATO` | 400 | (Fase 5) `code` non presente in `script.vw_audit_sources` (whitelist DB) |
-| `E_AUDIT_SNAPSHOT_NON_TROVATO` | 404 | (Fase 5) `storico_id` non trovato in `storico.<code>` per il code richiesto. Sollevato dal `fn_audit_summary` con marker stabile, tradotto a 404 dal service |
+| `E_AUDIT_SUMMARY_PARAM_NON_VALIDO` / `E_AUDIT_SOURCE_NON_TROVATO` / `E_AUDIT_SNAPSHOT_NON_TROVATO` | — | **Non esposti**: li solleva `AmmSoftwareService.get_audit_summary`, che nessuna rotta serve (non c'e' un endpoint audit-summary in `urls_v1.py`) |
 
 ## Dipendenze DB
 
@@ -1796,7 +1981,7 @@ lavori vivi si leggono con **una** query per tutte le unit del processo.
 | `chk_emittenti_fiscali_rounding_policy` | `anagrafiche` | **Fase 3**. CHECK constraint sulla colonna `emittenti_fiscali.rounding_policy`: ammette **4 valori** (`UP`, `DOWN`, `HALF_UP`, `HALF_DOWN`). Niente `HALF_EVEN` (a differenza di catalogo UoM operativa). E' il riferimento per `_ROUNDING_MODE_VALIDI_EMITTENTE` lato Python |
 | `vw_audit_sources` | `script` | **Fase 5**. Vista `(code, label_key, area_funzionale)` filtrata `attivo=true` ordinata per `code`. 8 sorgenti audit (incluse `user_override_oggetti` permessi v2 + `identita_digitali` multi-face). Letta da `list_audit_sources` per il lookup e da `list_audit_log` per build dinamico delle UNION ALL |
 | `fn_audit_summary(text, bigint)` | `script` | **Fase 5**. Calcola `{summary, diff}` per uno snapshot audit. Param: `(audit_source_code, storico_id)` dove `storico_id` e' la PK riga in `storico.<code>`. Esclude le 5 colonne audit standard (`data_*`, `user_*`, `tx_id`). Solleva `E_AUDIT_SNAPSHOT_NON_TROVATO` con marker stabile |
-| `fn_crea_operatore(...)` | `anagrafiche` | Orchestratore creazione operatore (auth_user + soggetto PF + risorsa umana) |
+| `fn_crea_operatore_v2(...)` | `anagrafiche` | Orchestratore creazione operatore (credenziale + soggetto PF + risorsa umana + veste OPERATORE spenta) |
 | `fn_sync_auth_user_is_active(INTEGER)` | `anagrafiche` | Sincronizza `auth_user.is_active` con stato identita digitale + risorsa umana |
 | `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` | `config` | Trigger DB autorita' finale per anti-lockout: blocca DELETE/UPDATE binding SUPER_ADMIN se ultimo attivo. Solleva con marker `E_PROFILO_ULTIMO_SUPER_ADMIN` |
 | `auth_user` | Django | Tabella autenticazione utenti |
@@ -1811,16 +1996,20 @@ lavori vivi si leggono con **una** query per tutte le unit del processo.
 | `aree_funzionali` | `config` | Catalogo aree funzionali |
 | `azioni_processo` | `config` | Catalogo azioni processo |
 | `area_model_overrides` | `config` | Catalogo (app_label, model_name) ammessi per override v2 |
-| `profili_reparto_aree` | `config` | Profilo aree per reparto |
-| `profili_reparto_azioni` | `config` | Profilo azioni per reparto |
+| `profili_accesso` / `profili_accesso_aree` / `profili_accesso_azioni` | `config` | Profili di accesso (anche quello di reparto, tipo `REPARTO`) con livelli per area e azioni; scritti da `config.fn_scrivi_profilo_accesso`, legati al reparto da `config.fn_lega_profilo_reparto` |
+| `fn_get_permessi_ereditati_aree` / `_azioni` | `script` | Livelli ereditati dal profilo (§2.7) |
+| `fn_get_permessi_riepilogo_aree` | `script` | Riepilogo per area (§2.9) |
+| `fn_imposta_override_oggetti` | `config` | Scrittura replace degli override oggetto (§2.4-bis) |
+| `fn_get_setup_status()` | `script` | Contatori di setup (§7.1) |
 | `emittenti_fiscali` | `anagrafiche` | Catalogo emittenti fiscali |
 
 ## File backend
 
 | File | Ruolo |
 |---|---|
-| `apps/amm_software/api/views.py` | View API (AdminAPIView) -- 12 classi view (Fase 3: +`EmittentiFormDefaultsView`, +`EmittenteRoundingModesLookupView`) |
-| `apps/amm_software/api/urls_v1.py` | Routing: 14 rotte sotto `/api/v1/amm-software/` |
+| `apps/amm_software/api/views.py` | View API (AdminAPIView): operatori, override, permessi, reparti, processi, audit/error log, lookup, setup status |
+| `apps/amm_software/api/accessi_views.py` / `invito_views.py` / `email_views.py` | Area «Accessi» e credenziali, invito operatore, email |
+| `apps/amm_software/api/urls_v1.py` | Routing sotto `/api/v1/amm-software/` |
 | `apps/amm_software/services/amm_software_service.py` | Service layer -- validazione, orchestrazione, invalidazione cache. **Fase 3**: `_ROUNDING_MODE_VALIDI_EMITTENTE` + `_cast_param_bool` + `_cast_param_decimal` + `get_emittente_form_defaults` + `list_emittente_rounding_modes` |
 | `apps/amm_software/db/amm_software_repository.py` | Repository -- accesso DB diretto (SQL raw) |
 | `apps/amm_software/types.py` | TypedDict per righe utente |

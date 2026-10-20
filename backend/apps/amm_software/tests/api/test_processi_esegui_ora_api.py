@@ -26,7 +26,7 @@
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client, override_settings
+from django.test import Client
 from django.urls import resolve
 
 from apps.amm_software.api.views import ProcessiEseguiOraView
@@ -56,7 +56,6 @@ def _mock_user(user_id: int = 9, username: str = "op9") -> Mock:
     return Mock(id=user_id, username=username, is_superuser=True, is_authenticated=True)
 
 
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class ProcessiEseguiOraApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()

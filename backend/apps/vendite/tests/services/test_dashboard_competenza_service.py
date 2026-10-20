@@ -853,9 +853,9 @@ class DashCompetenzaGruppiServiceTests(TestCase):
                 "n_gruppi_oneri": 0,
             },
             "tipi": [
-                {"tipo_gruppo": "PREVENTIVO", "area_documento": "PREVENTIVI",
+                {"tipo_gruppo": "PREVENTIVO", "documento_apribile": True,
                  "n_gruppi": 1, "n_attivita": 3},
-                {"tipo_gruppo": "ONERI_COMMESSA", "area_documento": None,
+                {"tipo_gruppo": "ONERI_COMMESSA", "documento_apribile": None,
                  "n_gruppi": 2, "n_attivita": 2},
             ],
             "clienti": [],
@@ -1032,7 +1032,7 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
               ultimo_lotto_id=None, ultimo_lotto_stato=None,
               ultimo_lotto_pre_fiscale=None):
         return [(
-            "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", "ORDINI", "ORD0005174",
+            "ORDINE_VENDITA:uid-1", "ORDINE_VENDITA", True, "ORD0005174",
             4277, "CMM-2026…", "Rossi SRL", "DA_EMETTERE", 3, Decimal("731.00"),
             False, date(2026, 8, 3), date(2026, 8, 3), documento_id,
             emittibile, stato, stato_descr, ba_codice, id_fiscale, emittente,

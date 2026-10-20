@@ -75,6 +75,14 @@ service `get_fattura_dettaglio` (`apps.vendite.services.vendite_service`).
     "scadenze": [
       { "numero_rata": 1, "data_scadenza": "2026-08-31", "importo": "1220.00" }
     ],
+    "rettifiche": {
+      "rettifica": [],
+      "rettificata_da": [
+        { "verso": "rettificata_da", "id": 9, "numero": 15, "serie": "A", "anno": 2026,
+          "data": "2026-07-20", "numero_documento": "15 - A",
+          "natura_doc_codice_interno": "NOTA_CREDITO" }
+      ]
+    },
     "errore_vivo": null,
     "contatori": { "note": 3 }
   },
@@ -189,6 +197,17 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
   riceve il codice errore come secondo argomento del trigger: stesso rifiuto,
   stesso messaggio, stesso bypass.
 
+### `rettifiche` — il legame documentale, nei due versi
+
+`{ "rettifica": [...], "rettificata_da": [...] }`: le chiavi sono **sempre** tutte
+e due (liste vuote se non c'è legame). `rettifica` = i documenti che **questo**
+rettifica (su una nota di credito); `rettificata_da` = i documenti che rettificano
+questo. Ogni elemento: `verso`, `id`, `numero`, `serie`, `anno`, `data`,
+`numero_documento` (`vendite.fn_numero_documento_fattura`),
+`natura_doc_codice_interno`; ordine `anno, numero`. Sorgente
+`vendite.fatture_rettifiche`, popolata **dopo** la numerazione (vedi sotto). ⚠️
+Letto dopo il cancello della testata: `fatture_rettifiche` non ha RLS.
+
 ### `errore_vivo` — il banner d'errore, con una fonte sua *(dal 2026-09-27)*
 
 La riga ERROR **più recente e non ritirata** del giornale del documento (la
@@ -277,7 +296,8 @@ Due punti di merito:
   `stati_doc_fiscale`, `valute`, `modalita_pagamento`, `termini_pagamento`,
   `utilities`)
 - `vendite.fatture_indirizzi` (riga `FATT` → `cliente_indirizzo`)
-- `vendite.vw_fattura_righe_esposte`
+- `vendite.vw_fattura_righe_lista` (via `FattureRepository.list_righe`)
+- `vendite.fatture_rettifiche`
 - `vendite.fatture_riepiloghi_iva`
 - `vendite.fatture_scadenze`
 

@@ -1054,6 +1054,12 @@ class ContrattiService:
         self, contratto_id: int,
     ) -> dict[str, Any] | None:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
+        # ⛔ Prima la testata: un contratto inesistente o fuori perimetro e' il
+        #    404 del dominio, non `200 {}` (2026-10-20, l'ordine di lettura dei
+        #    satelliti di api.md §«Scope emittente»).
+        self._get_contratto_or_raise(
+            contratto_id, op="get_contesto_pricing", getter=self._repo.get_stato_codice,
+        )
         return self._repo.resolve_contesto_pricing_contratto(contratto_id)
 
     # =================================================================
@@ -1112,18 +1118,22 @@ class ContrattiService:
             function_name=f"contratti_service.{function_name}",
         )
 
-    # Scopo: Risale al contratto dalla riga e applica il guard delle righe in
-    #        bozza (riga inesistente -> E_VENDITE_NOT_FOUND).
-    def _richiedi_righe_in_bozza_da_riga(
-        self, riga_id: int, *, verbo: Verbo, function_name: str,
-    ) -> None:
-        riga = testata_o_not_found(
-            self._repo.get_riga, riga_id,
+    # Scopo: Guard delle righe in bozza sul contratto dell'URL, poi la riga:
+    #        esiste ED e' di quel contratto (altrimenti E_VENDITE_NOT_FOUND).
+    #        Stesso ordine dei gemelli (ordini, DDT, resi, preventivi):
+    #        testata -> bozza -> riga. Restituisce la riga, che `update_riga`
+    #        riusa.
+    # ⛔ L'UPDATE e il DELETE vanno per il solo `riga_id`: prima la bozza si
+    #    verificava sul contratto DELLA RIGA, e una riga di un altro contratto
+    #    in bozza passava con l'URL di questo.
+    def _riga_del_contratto_in_bozza(
+        self, contratto_id: int, riga_id: int, *, verbo: Verbo, function_name: str,
+    ) -> dict[str, Any]:
+        self._richiedi_righe_in_bozza(contratto_id, verbo=verbo, function_name=function_name)
+        return riga_del_padre_o_not_found(
+            self._repo.get_riga, riga_id, padre_id=contratto_id, chiave_padre="contratto_id",
             code=E_VENDITE_NOT_FOUND, message="Riga contratto non trovata.",
-            id_name="riga_id", function_name=f"contratti_service.{function_name}",
-        )
-        self._richiedi_righe_in_bozza(
-            int(riga["contratto_id"]), verbo=verbo, function_name=function_name,
+            function_name=f"contratti_service.{function_name}",
         )
 
     # =================================================================
@@ -1168,7 +1178,8 @@ class ContrattiService:
         )
         # Flag opt-in workflow L3 (richiesta approvazione). Estratto qui per
         # non finire nel data_riga.
-        richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
+        richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True
+        payload.pop("richiesta_approvazione", None)
 
         data = self._build_data_riga(payload, for_create=True)
 
@@ -1394,11 +1405,14 @@ class ContrattiService:
     #        `prezzo_unitario` su una riga OVERRIDE/AGGIUNTA (refactor
     #        2026-05-19 BE porting gate riga contratti).
     def update_riga(
-        self, riga_id: int, payload: dict[str, Any],
+        self, contratto_id: int, riga_id: int, payload: dict[str, Any],
         *, auth_user_id: int | None = None,
     ) -> dict[str, Any]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
         self._v.guard_positive_int(riga_id, field="riga_id")
-        self._richiedi_righe_in_bozza_da_riga(riga_id, verbo="modificare", function_name="update_riga")
+        existing_riga = self._riga_del_contratto_in_bozza(
+            contratto_id, riga_id, verbo="modificare", function_name="update_riga",
+        )
         self._v.reject_keys(
             payload,
             forbidden=_FORBIDDEN_RIGA_UPDATE,
@@ -1407,7 +1421,8 @@ class ContrattiService:
         )
         self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_RIGA, message=_MESSAGE_RIGA)
         # Flag opt-in L3 estratto pre-build_data (non e' una colonna riga).
-        richiesta_approvazione = bool(payload.pop("richiesta_approvazione", False))
+        richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True
+        payload.pop("richiesta_approvazione", None)
         data = self._build_data_riga(payload, for_create=False)
 
         self._v.require_campi_da_aggiornare(
@@ -1424,16 +1439,10 @@ class ContrattiService:
         # Un'ESCLUSIONE non entra qui: non si modifica affatto, e lo dice il
         # guard DB `_a05_` (E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE), che parla
         # prima del CHECK sul prezzo — brief-db-contratto-esclusione-non-modificabile.
-        # Refactor 2026-05-19: il caricamento di `existing_riga` serve anche
-        # al gate L1+L2+L3 sotto — fatto qui per evitare double-fetch.
-        existing_riga: dict[str, Any] | None = None
+        # `existing_riga` (letta dal guard di appartenenza in testa) serve
+        # anche al gate L1+L2+L3 sotto.
         tipo_existing: str | None = None
         if "prezzo_unitario" in data:
-            existing_riga = testata_o_not_found(
-                self._repo.get_riga, riga_id,
-                code=E_VENDITE_NOT_FOUND, message="Riga contratto non trovata.",
-                id_name="riga_id", function_name="contratti_service.update_riga",
-            )
             tipo_existing = existing_riga.get("tipo_eccezione")
             nuovo_prezzo = data["prezzo_unitario"]
             if tipo_existing in ("OVERRIDE", "AGGIUNTA"):
@@ -1471,7 +1480,6 @@ class ContrattiService:
                 "prezzo_unitario" in data
                 and tipo_existing in _TIPI_ECCEZIONE_CON_GATE
             ):
-                assert existing_riga is not None
                 self._apply_pricing_gate_riga(
                     contratto_id=int(existing_riga["contratto_id"]),
                     articolo_id=existing_riga.get("articolo_id"),
@@ -1501,9 +1509,12 @@ class ContrattiService:
 
     # Scopo: Elimina una riga contratto (hard delete). Eventuali note
     #        collegate bloccano la cancellazione via trigger DB.
-    def delete_riga(self, riga_id: int) -> None:
+    def delete_riga(self, contratto_id: int, riga_id: int) -> None:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
         self._v.guard_positive_int(riga_id, field="riga_id")
-        self._richiedi_righe_in_bozza_da_riga(riga_id, verbo="togliere", function_name="delete_riga")
+        self._riga_del_contratto_in_bozza(
+            contratto_id, riga_id, verbo="togliere", function_name="delete_riga",
+        )
         with self._map_db_errors(
             {"riga_id": riga_id},
             fallback_message="Impossibile eliminare la riga (dipendenze).",
@@ -1666,6 +1677,7 @@ class ContrattiService:
         self,
         contratto_id: int, riga_id: int, componente_id: int,
         payload: dict[str, Any],
+        *, auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         self._v.guard_positive_int(riga_id, field="riga_id")
@@ -1681,7 +1693,8 @@ class ContrattiService:
         #    `stato_approvazione_prezzo` — un operatore poteva approvarsi da
         #    solo un prezzo L3 PENDING. `origine_prezzo` la deriva il server.
         payload = dati_patch_componente(
-            payload, function_name="contratti_service.update_componente_riga",
+            payload, auth_user_id=auth_user_id,
+            function_name="contratti_service.update_componente_riga",
         )
         with self._map_db_errors(
             {"componente_id": componente_id, "riga_id": riga_id},

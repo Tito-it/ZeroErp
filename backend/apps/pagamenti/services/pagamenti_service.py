@@ -31,7 +31,9 @@ from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.fan_out import run_fan_out
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.list_helpers import (
+    validate_enum_param,
     validate_order_params,
     validate_pagination,
 )
@@ -126,6 +128,10 @@ STATI_RIGA_RICHIEDIBILI: tuple[str, ...] = (
 # Le origini che il backend puo' creare. ⭐ Solo `MANUALE`: `GENERATA` la scrive
 # il giro dei fondi fattura, `AUTOMATICA` l'import.
 ORIGINE_MANUALE = "MANUALE"
+# Il vocabolario INTERO dell'origine, per il filtro della lista: specchio del
+# CHECK `chk_vendite_contabili_origine`, che il guardrail
+# `test_specchi_dei_check_db` confronta col database.
+ORIGINI_VENDITA_CONTABILE: tuple[str, ...] = (ORIGINE_MANUALE, "AUTOMATICA", "GENERATA")
 
 # Gli stati in cui i due oggetti NASCONO. Sono codici di catalogo, non id: gli
 # id sono seminati e non si scrivono a mano da nessuna parte.
@@ -397,6 +403,18 @@ def list_distinte(
     )
     offset = validate_pagination(
         page, page_size, error_code=E_VALIDAZIONE, function_name=f"{_FN}.list_distinte"
+    )
+    # ⛔ I due filtri nel loro vocabolario, o un 400 sul campo — come la doc
+    #    promette («un 400, mai una lista vuota»): fino al 2026-10-20 andavano
+    #    nel WHERE senza controllo. Lo stato e' una tabella (codici dismessi
+    #    ammessi), l'origine un CHECK (lo specchio qui sopra).
+    richiedi_codice_a_vocabolario(
+        "pagamenti.vendite_contabili_stati", "codice_interno", stato,
+        codice_errore=E_VALIDAZIONE, parametro="stato",
+    )
+    validate_enum_param(
+        origine, allowed=ORIGINI_VENDITA_CONTABILE, param_name="origine",
+        error_code=E_VALIDAZIONE, function_name=f"{_FN}.list_distinte",
     )
 
     repository = PagamentiRepository()
@@ -1202,7 +1220,7 @@ def list_coda_righe(
         code=E_VALIDAZIONE,
         message="Coda non riconosciuta.",
         detail=f"Ammesse: {', '.join(CODE_RIGHE)}.",
-        context={"field": "coda", "coda": chiave},
+        context={"parametro": "coda", "coda": chiave},
         function_name=f"{_FN}.list_coda_righe",
     )
     order_by, order_dir = validate_order_params(
@@ -1266,7 +1284,7 @@ def list_rate_fuori_capienza(
         code=E_VALIDAZIONE,
         message="Motivo non riconosciuto.",
         detail=f"Ammessi: {', '.join(MOTIVI_FUORI_CAPIENZA)}.",
-        context={"field": "motivo", "motivo": motivo},
+        context={"parametro": "motivo", "motivo": motivo},
         function_name=f"{_FN}.list_rate_fuori_capienza",
     )
     order_by, order_dir = validate_order_params(

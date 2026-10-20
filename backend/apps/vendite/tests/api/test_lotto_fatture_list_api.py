@@ -176,7 +176,9 @@ class VenditeLottoFattureListApiTests(JwtMockedApiTest):
         self.assertNotIn("esclusa", kwargs)
         self.assertEqual(kwargs["lotto_id"], _LOTTO_ID)
         self.assertEqual(kwargs["sort_by"], "fattura_id")
-        self.assertEqual(kwargs["sort_dir"], "asc")
+        # La direzione assente resta assente: il verso lo decide il BB della
+        # lista (date DESC), non un `"asc"` scritto nella view (2026-10-20, §6.1).
+        self.assertIsNone(kwargs["sort_dir"])
 
     # Scopo: Utente non superuser passa auth_user_id al service.
     @patch("apps.core.api.permissions.ZeroERPPermission.has_permission", return_value=True)

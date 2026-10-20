@@ -11,9 +11,9 @@ mutazioni sulla testata template (create + update).
 Endpoint v1 del refactor `sviluppo-documenti.md` (Decisioni 25/30/72-76).
 Gli endpoint di lettura interrogano direttamente le tabelle
 `documenti.template_documenti` e `documenti.template_documenti_versioni`
-con LEFT/INNER JOIN sui lookup (`documenti.tipi_documento_output`,
-`config.sorgenti`, `anagrafiche.emittenti_fiscali`,
-`documenti.render_engine_documento`). I comandi admin di scrittura passano
+con JOIN sui lookup (`documenti.tipi_documento_output`, `config.sorgenti`,
+`documenti.render_engine_documento`) e **LEFT JOIN** sull'emittente
+(`anagrafiche.emittenti_fiscali`): un modello standard non ne ha. I comandi admin di scrittura passano
 dal service applicativo; la pubblicazione di una versione delega al DB la
 chiusura atomica della versione pubblicata precedente tramite
 `documenti.fn_pubblica_template_documento_versione(...)`.
@@ -22,9 +22,26 @@ Gli endpoint template/versioni hanno `area_funzionale = "documenti"`
 (id area=11, schema_db=`documenti`). Il livello area si applica con la
 catena standard TUTTO/LETTURA/BLOCCATO; lo scope dati e' applicato in
 repository tramite `PermissionResolver.get_emittenti_pk_ids` (whitelist
-`emittenti_fiscali.id`): admin globale e superuser vedono tutto,
-operatori vedono solo i template dei propri emittenti. Le mutazioni admin
-usano `post_permission = "documenti_template_manage"` (Decisione 75).
+`emittenti_fiscali.id`): admin globale e superuser vedono tutto, gli
+operatori vedono i template dei propri emittenti **più i modelli standard**
+(condizione `t.standard OR t.emittente_fiscale_id = ANY(whitelist)`); con
+whitelist vuota si vedono i soli standard. Le mutazioni admin usano
+`post_permission = "documenti_template_manage"` (Decisione 75).
+
+### I modelli standard (dal 2026-10-20)
+
+La testata ha la colonna `standard` (bool): un modello standard non ha
+emittente (`emittente_fiscale_id` NULL, CHECK
+`chk_template_documenti_standard_senza_emittente`) e serve a tutti. Lo
+standard e le sue versioni si scrivono **solo** da seed/changeSet: ogni
+scrittura dall'applicazione (PATCH della testata, crea/aggiorna/elimina/clona/
+pubblica versione) la rifiuta il trigger
+`documenti.trgfn_template_standard_guard_sola_lettura` con `403`
+`E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA`. Chi lo vuole diverso lo
+**personalizza** (§5-bis): la copia è un modello dell'emittente, la cui prima
+versione porta `derivata_da_versione_id` (la versione standard d'origine). Nella
+generazione lo standard subentra quando l'emittente non ha modelli suoi che
+possono stampare (vedi [api_documenti_per_sorgente](api_documenti_per_sorgente.md) §3.2).
 
 Gli endpoint di generazione/anteprima/download dei documenti generati sono
 documentati nelle API delle sorgenti funzionali che li espongono
@@ -68,10 +85,19 @@ stata verificata alla stampa. Brief:
   - `tipo_documento_output_id` (int)
   - `sorgente_tipo_id` (int)
   - `emittente_fiscale_id` (int) — ulteriore filtro dentro lo scope operatore
-  - `page` (int) — default `1`
-  - `page_size` (int) — default `50`, max `200`
-  - `order_by` (string) — whitelist: `codice`, `codice_interno`, `descrizione`, `data_insert`, `data_update` (default `codice`)
-  - `order_dir` (string) — `asc` o `desc` (default `asc`)
+  - `limit` (int) — default `25`, max `200`
+  - `offset` (int) — default `0`
+  - `order_by` (string) — whitelist di 10 colonne: `codice` (default),
+    `codice_interno`, `descrizione`, `attivo`, `is_default`,
+    `tipo_documento_output_descrizione`, `sorgente_tipo_descrizione`,
+    `emittente_ragione_sociale`, `data_insert`, `data_update`. Fuori whitelist:
+    `400` `E_DOCUMENTI_VALIDATION`
+  - `order_dir` (string) — `asc` o `desc`. Assente: `asc`, salvo
+    `data_insert`/`data_update` che partono `desc` (dal 2026-10-20)
+
+  ⚠️ Dal 2026-09-27 la paginazione è `limit`/`offset` con default 25: `page` e
+  `page_size` in query non sono letti (prima `page_size` valeva 50). Lo schema
+  OpenAPI della view dichiara ancora `page`/`page_size`.
 
 #### Output
 
@@ -82,7 +108,7 @@ stata verificata alla stampa. Brief:
   "data": {
     "count": 1,
     "page": 1,
-    "page_size": 50,
+    "page_size": 25,
     "total_pages": 1,
     "results": [
       {
@@ -100,6 +126,7 @@ stata verificata alla stampa. Brief:
         "sorgente_tipo_descrizione": "Preventivo vendita",
         "context_builder_code": "PREVENTIVO",
         "file_name_pattern": "preventivo-{numero}.pdf",
+        "standard": false,
         "emittente_fiscale_id": 5,
         "emittente_fiscale_codice": "EF-001",
         "emittente_ragione_sociale": "Acme SRL",
@@ -112,7 +139,10 @@ stata verificata alla stampa. Brief:
 }
 ```
 
-- `400`: parametri non validi (query param int malformato)
+Su un modello standard `emittente_fiscale_id`, `emittente_fiscale_codice` ed
+`emittente_ragione_sociale` sono `null`.
+
+- `400`: parametri non validi (query param int malformato, `order_by` fuori whitelist)
 - `401`: JWT mancante o non valido
 - `403`: livello area `documenti` = BLOCCATO
 
@@ -185,6 +215,7 @@ stata verificata alla stampa. Brief:
         "valido_dal": "2026-05-01",
         "valido_al": null,
         "versione_contesto": 2,
+        "derivata_da_versione_id": null,
         "attivo": true,
         "data_insert": "2026-04-29T00:00:00+02:00",
         "data_update": "2026-04-29T00:00:00+02:00"
@@ -194,6 +225,9 @@ stata verificata alla stampa. Brief:
   "meta": { "request_id": "..." }
 }
 ```
+
+`derivata_da_versione_id` (int|null): sulla prima versione di una copia
+personalizzata, l'id della versione standard da cui è partita; `null` altrove.
 
 - `400`: `stato` non in whitelist — codice `E_DOCUMENTI_VALIDATION`; `order_dir` non valido
 - `404`: template inesistente o fuori scope — codice `E_DOCUMENTI_NOT_FOUND`
@@ -244,7 +278,7 @@ stata verificata alla stampa. Brief:
   - `codice`* (string non vuota, max 120 char)
   - `codice_interno`* (string non vuota, max 120 char)
   - `descrizione`* (string non vuota, max 500 char)
-  - `context_builder_code`* (string non vuota, max 160 char — formato libero in v1, check whitelist registry rinviato a Tranche H)
+  - `context_builder_code`* (string non vuota, max 160 char — la create non lo confronta col registry: vedi Regole)
   - `file_name_pattern` (string nullable, max 200 char)
   - `is_default` (bool, default `false`)
   - `attivo` (bool, default `true`)
@@ -304,8 +338,41 @@ nuovo template e disabilitare il precedente.
   - payload privo di campi aggiornabili dopo validation -> "Nessun campo aggiornabile presente nel payload.";
   - violazione unique/partial-unique come per la create.
 - `401`/`403`: come la create.
+- `403` `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA`: il template è uno standard
+  (lo rifiuta il DB).
 - `404` `E_DOCUMENTI_NOT_FOUND`: template inesistente o fuori scope
   emittente. La risposta non distingue i due casi (no leak di esistenza).
+
+### 5-bis. Personalizza un modello standard (dal 2026-10-20)
+
+#### Input
+
+- Metodo: `POST`
+- Path: `/api/v1/documenti/templates/<int:template_id>/personalizza/`
+- Permesso azione: `documenti_template_manage` (`post_permission`)
+- Body JSON:
+  - `emittente_fiscale_id`* (int positivo, **nello scope dell'utente**)
+  - `is_default` (bool, default `true`: chi personalizza vuole stampare con la copia)
+  - `codice`, `codice_interno`, `descrizione` (string; default: quelli dello
+    standard — servono quando l'emittente ha già un modello con quel codice)
+  - Un valore `null` vale come assente. Altre chiavi: `400`.
+
+#### Output
+
+In una transazione crea la **testata** (copia di tipo output, sorgente,
+`context_builder_code`, `file_name_pattern` dello standard; `attivo=true`,
+`standard=false`) e la **versione 1 in BOZZA**, copiata dall'ultima versione
+`PUBBLICATA` dello standard, con `derivata_da_versione_id` = quella versione.
+Finché la bozza non è pubblicata la copia non stampa e l'emittente resta sullo
+standard.
+
+- `200`: dettaglio del modello nuovo (shape di "Dettaglio template").
+- `400` `E_DOCUMENTI_VALIDATION`: il template non è uno standard; lo standard
+  non ha una versione pubblicata; chiave fuori contratto; `emittente_fiscale_id`
+  mancante o fuori scope; unique violate come nella create (un predefinito
+  attivo già presente → rifare con `is_default=false`; codice già usato → un
+  `codice` proprio).
+- `404` `E_DOCUMENTI_NOT_FOUND`: template inesistente o fuori scope.
 
 ### 7. Crea versione BOZZA (Tranche F)
 
@@ -373,6 +440,8 @@ nuovo template e disabilitare il precedente.
   `attivo`/`is_default` esplicito a `null`. I margini provenienti dal DB come
   stringhe decimali (`"15.00"`) sono validi e vengono convertiti prima del write.
 - `404` `E_DOCUMENTI_NOT_FOUND`: template/versione inesistente o fuori scope.
+- `403` `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA`: versione di un modello
+  standard (vale anche per create, delete, clona e pubblica).
 - `409` `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE`: la versione e' in
   stato `PUBBLICATA` (o `OBSOLETA`). Per modificare crea o clona una nuova
   BOZZA. Defense-in-depth: il service applica il check prima del DB; il
@@ -511,8 +580,9 @@ scritta a mano, con un flag «registrato» anch'esso a mano. Il registro e' di p
 - **Scope operatore**: tutti gli endpoint applicano lo scope emittente
   via `PermissionResolver.get_emittenti_pk_ids(user)`. Operatore con
   emittenti assegnati vede solo i template dei propri emittenti; admin
-  globale/superuser vedono tutto. Utente non autenticato (corner case:
-  bypass auth) riceve lista vuota: `is_authenticated=False` -> scope = `[]`.
+  globale/superuser vedono tutto. I modelli standard sono visibili a
+  tutti, anche con whitelist vuota (che mostra i soli standard). Utente non
+  autenticato (corner case: bypass auth): scope = `[]`, cioè i soli standard.
 - **Lookup vs scope**: il filtro query `emittente_fiscale_id` si applica
   *dentro* lo scope. Un operatore che chiede `?emittente_fiscale_id=999`
   fuori dal proprio scope ottiene comunque lista vuota (no
@@ -520,12 +590,11 @@ scritta a mano, con un flag «registrato» anch'esso a mano. Il registro e' di p
 - **Search ricerca testuale**: le colonne le decide il catalogo della lista
   (BB `add_ricerca_full_condition`, dal 2026-09-24). Da un carattere, senza
   400 (tabella di configurazione, Tid 2026-09-24); search vuota = nessun filtro.
-- **Paginazione**: `page>=1`, `page_size` in `[1, 200]`. Ordinamento
-  `id ASC` come tiebreaker garantisce paginazione deterministica anche
-  con duplicati sulla colonna di sort.
-- **Whitelist ORDER BY**: solo le 5 colonne mappate nel repository
-  (`codice`, `codice_interno`, `descrizione`, `data_insert`, `data_update`)
-  sono ammesse. Valori fuori whitelist -> `400 E_DOCUMENTI_VALIDATION`
+- **Paginazione**: `limit` in `[1, 200]` (default 25), `offset >= 0`.
+  Tiebreaker `t.id` per una paginazione deterministica anche con duplicati
+  sulla colonna di sort.
+- **Whitelist ORDER BY**: solo le 10 colonne di `TEMPLATES_ORDER_COLUMNS`
+  (vedi §1) sono ammesse. Valori fuori whitelist -> `400 E_DOCUMENTI_VALIDATION`
   con elenco delle colonne ammesse (defense-in-depth lato repository,
   fail prima del round-trip DB).
 - **Validazione `stato` versione**: il caller passa lowercase o uppercase;
@@ -535,10 +604,7 @@ scritta a mano, con un flag «registrato» anch'esso a mano. Il registro e' di p
   `template_documento_id`; la view passa il template_id dal path. Un id
   versione di un template diverso non e' mai esposto via path di un
   altro template.
-- **Endpoint read-only** (1-4): nessun `Idempotency-Key` richiesto.
-- **Endpoint write** (5-11): nessun `Idempotency-Key` richiesto in v1
-  (allineato al pattern `categorie_clienti`); valutabile in PR successive
-  se il pattern di replay diventa critico per UX.
+- **Idempotency-Key**: nessun endpoint lo richiede.
 - **Versione: ciclo vita di stato e immutabilita'**:
   - `BOZZA` -> editable (PATCH) ed eliminabile (DELETE) finche' non viene
     referenziata da documenti generati;
@@ -561,18 +627,19 @@ scritta a mano, con un flag «registrato» anch'esso a mano. Il registro e' di p
   `ex_template_documenti_versioni_no_overlap_pubblicata` resta guardrail finale
   contro sovrapposizioni residue o race concorrenti.
 - **`is_default` partial-unique senza demote automatico**: setting
-  `is_default=true` su create/update mentre esiste gia' un altro template
-  default attivo per `(tipo_documento_output_id, sorgente_tipo_id,
+  `is_default=true` su create/update/personalizza mentre esiste gia' un altro
+  template default attivo per `(tipo_documento_output_id, sorgente_tipo_id,
   emittente_fiscale_id)` ritorna `400 E_DOCUMENTI_VALIDATION`. Il FE
   deve disabilitare il vecchio default (`PATCH is_default=false`) prima
   di settare il nuovo. Decisione di design: nessuna magia in transazione
   2-step lato BE.
-- **`context_builder_code` validation v1**: solo formato (string non
-  vuota). Il check whitelist contro
-  `apps.documenti.services.context_builders.registry` arriva con il
-  render service (Tranche H). In v1 e' lecito creare un template che
-  punta a un builder ancora non registrato; la validazione esplode al
-  momento della generazione.
+- **`context_builder_code` e registry**: create e update controllano solo il
+  formato (string non vuota), quindi si può creare un template che punta a un
+  builder non registrato. Il registry
+  (`apps.documenti.services.context_builders.registry`) lo consultano: il
+  dettaglio template (`versione_contesto_builder`, `null` se non registrato),
+  la pubblicazione (`400` se non registrato), generazione e anteprima, e
+  `GET context-builders/` (§12).
 - **Campi immutabili in update** (`tipo_documento_output_id`,
   `sorgente_tipo_id`, `emittente_fiscale_id`): rifiutati prima della
   validazione `validate_allowed_keys` per messaggio parlante. La chiave
@@ -583,7 +650,8 @@ scritta a mano, con un flag «registrato» anch'esso a mano. Il registro e' di p
   dell'utente. Admin globale + superuser bypassano (la FK DB blocca id
   inesistenti). Operatore fuori scope -> `400 E_DOCUMENTI_VALIDATION`
   (no `403`/`404`: l'utente conosce gia' il proprio scope dal `/me/`).
-- **JWT obbligatorio** su tutti i 6 endpoint.
+- **JWT obbligatorio** su tutte le 12 rotte di `/api/v1/documenti/` (template,
+  versioni e comandi, personalizza, context-builders, asset).
 
 ---
 
@@ -594,7 +662,7 @@ scritta a mano, con un flag «registrato» anch'esso a mano. Il registro e' di p
 - `documenti.tipi_documento_output` (INNER JOIN decodifica)
 - `documenti.render_engine_documento` (INNER JOIN decodifica)
 - `config.sorgenti` (INNER JOIN decodifica)
-- `anagrafiche.emittenti_fiscali` (INNER JOIN decodifica + scope)
+- `anagrafiche.emittenti_fiscali` (LEFT JOIN decodifica + scope: lo standard non ha emittente)
 - `script.fn_get_emittenti_scope_pk_ids` (via `PermissionResolver.get_emittenti_pk_ids`; fino al 2026-09-12 questa riga nominava una `fn_get_emittenti_for_user` che non esiste)
 
 Nessuna funzione DB applicativa intermedia: query raw SQL parametriche
@@ -615,9 +683,12 @@ nel repository.
   - `ApiTemplateVersioneDetail.patch_permission` + `delete_permission`
   - `ApiTemplateVersioneClona.post_permission`
   - `ApiTemplateVersionePubblica.post_permission`
-- **Asset upload** (Tranche G, in arrivo): `post_permission = "documenti_asset_manage"`.
-- **Generazione/lista/download PDF** (Tranche J, in arrivo): permessi del
-  dominio sorgente (es. `vendite` per preventivi).
+- **Personalizza** (§5-bis): `ApiTemplatePersonalizza.post_permission = "documenti_template_manage"`.
+- **Asset**: upload (`POST asset/`) e PATCH metadati con
+  `documenti_asset_manage`; lettura, download e miniatura col livello d'area.
+- **Generazione/lista/download PDF**: permessi del dominio sorgente (area
+  `vendite` + oggetto della sorgente), vedi
+  [api_documenti_per_sorgente](api_documenti_per_sorgente.md).
 
 Vedi Decisione 75 in `sviluppo-documenti.md` §10.
 
@@ -631,6 +702,7 @@ Vedi Decisione 75 in `sviluppo-documenti.md` §10.
 | `E_DATA_AL_MINORE_DAL` | 400 | `valido_al < valido_dal` in create/clone/update/pubblicazione di una versione e in upload/PATCH di un asset: guard comune `script.trgfn_guard_date_validita`, campo `valido_al`. Il service non lo anticipa (dal 2026-09-23) |
 | `E_DOCUMENTI_VERSIONE_OVERLAP` | 409 | pubblicazione con overlap residuo verso un'altra versione `PUBBLICATA` attiva che l'auto-close non risolve (EXCLUDE `ex_template_documenti_versioni_no_overlap_pubblicata`) |
 | `E_DOCUMENTI_NOT_FOUND` | 404 | template/versione inesistente o fuori scope emittente (no leak) |
+| `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA` | 403 | scrittura su un modello standard o su una sua versione (trigger `trgfn_template_standard_guard_sola_lettura`) |
 | `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` | 409 | tentativo di modificare versione `PUBBLICATA` (Tranche F). Trigger DB A1 + service guard |
 | `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` | 409 | tentativo di eliminare versione non-BOZZA o gia' usata da documenti generati (Tranche F). Trigger DB A2 + service guard |
 
@@ -697,10 +769,24 @@ cambia, e le ristampe di ieri devono continuare a mostrare quello di ieri.
 
 | | |
 |---|---|
-| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `utilizzabili`, `page`, `page_size`, `order_by`, `order_dir` |
+| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `utilizzabili`, `limit` (default 25, max 200), `offset`, `order_by` (whitelist `ASSET_ORDER_COLUMNS`, default `codice`; fuori whitelist `400`), `order_dir` (assente: `asc`, le date `desc`). ⚠️ dal 2026-09-27 `page`/`page_size` non sono letti; lo schema OpenAPI li dichiara ancora |
 | **Upload** | `POST /api/v1/documenti/asset/` — **multipart**: campo `file` piu' l'anagrafica (`codice`, `codice_interno`, `descrizione`, `asset_tipo_id`, `emittente_fiscale_id`, `valido_dal`…). I metadati si possono passare come campi form singoli **oppure** come JSON nel campo `metadati`: la view accetta entrambe le forme |
 | **Dettaglio / aggiorna** | `GET` `PATCH /api/v1/documenti/asset/{asset_id}/` — la `PATCH` tocca i **metadati**, non il binario |
 | **Download** | `GET /api/v1/documenti/asset/{asset_id}/file/` — il file originale, come `attachment` |
+| **Miniatura** | `GET /api/v1/documenti/asset/{asset_id}/miniatura/` — vedi sotto |
+
+Upload e PATCH chiedono l'azione `documenti_asset_manage`.
+
+### Miniatura di un asset
+
+`GET /api/v1/documenti/asset/{asset_id}/miniatura/`, nessun parametro; livello
+d'area `documenti`. Risposta binaria inline: PNG di lato massimo 128 px per le
+immagini raster, il file così com'è per un SVG. Header `ETag`
+(`"<sha256>-128"`) e `Cache-Control: private, no-cache`: con `If-None-Match`
+uguale risponde `304` senza corpo (lo scope si controlla prima dell'ETag).
+Errori: `404` `E_DOCUMENTI_NOT_FOUND` (inesistente o fuori scope), `400`
+`E_DOCUMENTI_VALIDATION` (l'asset non è un'immagine), `E_DOCUMENTI_RENDER_FAILED`
+(immagine illeggibile).
 
 ⛔ **Non esiste la DELETE, ed e' un divieto del database**: il trigger A3 blocca
 la cancellazione fisica. Per «togliere» un asset si usa `PATCH attivo=false`

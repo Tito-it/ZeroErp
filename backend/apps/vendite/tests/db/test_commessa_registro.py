@@ -44,7 +44,7 @@ _RIGA = (
     7, 148, "RIGA_RITIRATA_DA_SORGENTE",
     {"motivo": "Ritiro automatico", "stato_precedente": "NON_EMESSA"},
     "Ritiro automatico", None, "tid",
-    "PREV:abc:R:285", "ANNULLATA", "NORMALE", "ART-1", "Articolo uno",
+    "PREVENTIVO:abc:R:285", "ANNULLATA", "NORMALE", "ART-1", "Articolo uno",
 )
 
 

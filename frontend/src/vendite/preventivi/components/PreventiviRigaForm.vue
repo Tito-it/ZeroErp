@@ -410,9 +410,13 @@ function buildRigaPayload(extras = {}) {
   // quindi svuotare il DatePicker toglie la data.
   const dataConsegna = toDateString(f.data_consegna_richiesta_cliente)
   if (isEdit.value) {
+    // ⛔ La descrizione si modifica a video, quindi viaggia: fino al 2026-10-20
+    //    l'edit non la spediva, e la modifica si perdeva senza avviso (i gemelli
+    //    ordini e DDT la mandavano gia').
     const base = {
       qta_operativa: f.qta_operativa,
       sconto_percentuale: f.sconto_percentuale,
+      descrizione: f.descrizione || null,
       data_consegna_richiesta_cliente: dataConsegna,
     }
     // Refactor componenti 2026-05-11: per riga CASO A il prezzo padre e'

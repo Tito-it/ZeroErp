@@ -30,13 +30,20 @@
 11. test_rigido_ammette_i_valori_validi_e_il_non_indicato
 12. test_una_direzione_estranea_e_rifiutata_anche_nel_modo_storico (2026-09-26)
 13. test_la_direzione_assente_prende_il_default_su_ogni_ramo
+14. test_la_colonna_di_default_indicata_prende_il_verso_del_default (2026-10-20)
+15. test_una_colonna_data_per_nome_parte_desc (2026-10-20, inferenza dal nome)
+16. test_la_coda_resta_crescente_sul_suo_default
+17. test_e_chiave_data_riconosce_la_convenzione_e_non_i_falsi_amici
+18. test_direzione_lista_inferisce_solo_dentro_la_whitelist (BB `sql_order_direction_lista`)
+19. test_direzione_lista_default_per_chiave_o_espressione
+20. test_direzione_lista_e_la_stessa_regola_di_sql_order_clause
 """
 
 from __future__ import annotations
 
 import unittest
 
-from apps.core.db._helpers import sql_order_clause
+from apps.core.db._helpers import e_chiave_data, sql_order_clause, sql_order_direction_lista
 
 _COLONNE = {
     "codice": "t.codice",
@@ -228,3 +235,120 @@ class SqlOrderClauseTests(unittest.TestCase):
                     ),
                     "t.a DESC, t.b ASC, t.id ASC",
                 )
+
+    # 14. ⛔ `parse_list_params(default_order=...)` RIEMPIE `order_by` quando il
+    #     client non chiede niente: la colonna indicata e' allora proprio quella
+    #     di default, e deve prenderne il verso. Fino al 2026-10-20 questo ramo
+    #     ignorava `default_desc`, e le liste «dal piu' recente» partivano dal
+    #     piu' vecchio. Una colonna DIVERSA dal default non lo eredita, e una
+    #     direzione esplicita vince sempre.
+    def test_la_colonna_di_default_indicata_prende_il_verso_del_default(self) -> None:
+        self.assertEqual(
+            sql_order_clause(
+                "data_evento", None, colonne=_COLONNE, default="t.data_evento",
+                tiebreak="t.id", default_desc=True,
+            ),
+            "t.data_evento DESC NULLS LAST, t.id DESC",
+        )
+        self.assertEqual(
+            sql_order_clause(
+                "codice", None, colonne=_COLONNE, default="t.data_evento",
+                tiebreak="t.id", default_desc=True,
+            ),
+            "t.codice ASC NULLS FIRST, t.id ASC",
+        )
+        self.assertEqual(
+            sql_order_clause(
+                "data_evento", "asc", colonne=_COLONNE, default="t.data_evento",
+                tiebreak="t.id", default_desc=True,
+            ),
+            "t.data_evento ASC NULLS FIRST, t.id ASC",
+        )
+
+    # 15. ⭐ La data si riconosce dal NOME: senza `colonne_desc` una chiave
+    #     `data_*`, `*_at`, `valido_*`... parte DESC; una non-data resta ASC.
+    def test_una_colonna_data_per_nome_parte_desc(self) -> None:
+        colonne = {"codice": "t.codice", "data_insert": "t.data_insert",
+                   "inviato_at": "t.inviato_at", "valido_al": "t.valido_al"}
+        for chiave in ("data_insert", "inviato_at", "valido_al"):
+            with self.subTest(chiave=chiave):
+                self.assertEqual(
+                    sql_order_clause(chiave, None, colonne=colonne, default="t.codice", tiebreak="t.id"),
+                    f"{colonne[chiave]} DESC NULLS LAST, t.id DESC",
+                )
+        self.assertEqual(
+            sql_order_clause("codice", None, colonne=colonne, default="t.data_insert", tiebreak="t.id"),
+            "t.codice ASC NULLS FIRST, t.id ASC",
+        )
+
+    # 16. Una CODA si apre crescente sulla sua data di default (`default_desc`
+    #     False), anche quando `order_by` la nomina; un'altra data parte DESC.
+    def test_la_coda_resta_crescente_sul_suo_default(self) -> None:
+        colonne = {"data_scadenza": "v.data_scadenza", "data": "v.data"}
+        self.assertEqual(
+            sql_order_clause("data_scadenza", None, colonne=colonne, default="v.data_scadenza",
+                             tiebreak="v.id", colonne_desc=("data", "data_scadenza")),
+            "v.data_scadenza ASC NULLS FIRST, v.id ASC",
+        )
+        self.assertEqual(
+            sql_order_clause("data", None, colonne=colonne, default="v.data_scadenza", tiebreak="v.id"),
+            "v.data DESC NULLS LAST, v.id DESC",
+        )
+
+    # 17. La convenzione dei nomi data, e i nomi che le somigliano senza esserlo
+    #     (trovati nell'inventario del 2026-10-20).
+    def test_e_chiave_data_riconosce_la_convenzione_e_non_i_falsi_amici(self) -> None:
+        for chiave in ("data", "data_insert", "data_scadenza", "generato_at", "valido_dal",
+                       "valido_al", "validita_al", "competenza_mese"):
+            with self.subTest(data=chiave):
+                self.assertTrue(e_chiave_data(chiave))
+        for chiave in ("codice", "user_insert", "presidia_data_documento",
+                       "scadenza_numero_rata", "originale", "totale", ""):
+            with self.subTest(non_data=chiave):
+                self.assertFalse(e_chiave_data(chiave))
+
+    # 18. ⛔ Una chiave FUORI whitelist ripiega sul default: la direzione e'
+    #     quella del default, non quella del nome chiesto (le copie a mano
+    #     facevano partire DESC `?order_by=data_x` su una lista ordinata per codice).
+    def test_direzione_lista_inferisce_solo_dentro_la_whitelist(self) -> None:
+        colonne = {"codice": "t.codice", "data": "t.data"}
+        self.assertEqual(sql_order_direction_lista("data_x", None, colonne=colonne), "ASC NULLS FIRST")
+        self.assertEqual(sql_order_direction_lista(None, None, colonne=colonne), "ASC NULLS FIRST")
+        self.assertEqual(
+            sql_order_direction_lista(None, None, colonne=colonne, default_desc=True), "DESC NULLS LAST",
+        )
+        self.assertEqual(sql_order_direction_lista("data", None, colonne=colonne), "DESC NULLS LAST")
+        self.assertEqual(sql_order_direction_lista("codice", None, colonne=colonne), "ASC NULLS FIRST")
+        # La direzione esplicita vince, e una estranea e' rifiutata su ogni ramo.
+        self.assertEqual(sql_order_direction_lista("data", "asc", colonne=colonne), "ASC NULLS FIRST")
+        for chiave in (None, "data_x", "data"):
+            with self.subTest(chiave=chiave), self.assertRaises(ValueError):
+                sql_order_direction_lista(chiave, "giu", colonne=colonne)
+
+    # 19. La colonna di default segue `default_desc`, riconosciuta sia
+    #     dall'espressione sia dalla chiave.
+    def test_direzione_lista_default_per_chiave_o_espressione(self) -> None:
+        colonne = {"data_scadenza": "v.data_scadenza"}
+        for default in ("v.data_scadenza", "data_scadenza"):
+            with self.subTest(default=default):
+                self.assertEqual(
+                    sql_order_direction_lista("data_scadenza", None, colonne=colonne, default=default),
+                    "ASC NULLS FIRST",
+                )
+
+    # 20. `sql_order_clause` passa dal BB: stessa direzione su ogni ramo.
+    def test_direzione_lista_e_la_stessa_regola_di_sql_order_clause(self) -> None:
+        colonne = {"codice": "t.codice", "data": "t.data", "valido_dal": "t.valido_dal"}
+        for order_by in (None, "codice", "data", "valido_dal", "fuori"):
+            for order_dir in (None, "asc", "desc"):
+                for default_desc in (False, True):
+                    with self.subTest(order_by=order_by, order_dir=order_dir, default_desc=default_desc):
+                        attesa = sql_order_direction_lista(
+                            order_by, order_dir, colonne=colonne, default="t.valido_dal",
+                            default_desc=default_desc,
+                        )
+                        clausola = sql_order_clause(
+                            order_by, order_dir, colonne=colonne, default="t.valido_dal",
+                            default_desc=default_desc, tiebreak="t.id",
+                        )
+                        self.assertIn(f" {attesa}, t.id ", clausola + " ")

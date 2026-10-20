@@ -172,7 +172,7 @@ with transaction.atomic():
         # morire lo smoke nella fixture invece che in un'asserzione — successo
         # davvero il 2026-07-31, appena un DDT ha congelato quell'indirizzo.
         # Si ri-puntano a un tipo «di parcheggio»: ammesso al ruolo, ma fuori
-        # dall'ambito FATTURE. La riga sopravvive (FK salva) e la catena non
+        # dall'ambito FATTURA. La riga sopravvive (FK salva) e la catena non
         # trova piu' FATT. Effimero come tutto il resto: rollback finale.
         # I filtri attivo/valido_dal/valido_al DEVONO rispecchiare il guard
         # trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo per intero: una riga
@@ -189,7 +189,7 @@ with transaction.atomic():
                AND (m.valido_al  IS NULL OR m.valido_al  >= CURRENT_DATE)
                AND m.tipo_indirizzo_id NOT IN (
                      SELECT a.tipo_indirizzo_id FROM config.tipi_indirizzi_allowed a
-                      WHERE a.ambito = 'FATTURE' AND a.attivo IS TRUE)
+                      WHERE a.ambito = 'FATTURA' AND a.attivo IS TRUE)
                AND m.tipo_indirizzo_id NOT IN (
                      SELECT i.tipo_indirizzo_id FROM anagrafiche.indirizzi i
                       WHERE i.soggetto_ruolo_id = %s)

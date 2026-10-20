@@ -54,7 +54,12 @@ class OverrideOggettiCatalogoDbTests(TestCase):
     def setUp(self) -> None:
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_emittente_operatore()")
+            # ⛔ Un OPERATORE UMANO, non l'utente di `fn_pgtap_crea_emittente_operatore`:
+            #    quello e' di categoria SISTEMA, e dal 2026-10-20 le rotte
+            #    `operatori/{id}/override-*` lo rifiutano (404), come tutte le
+            #    `operatori/{id}/`. Il test scriveva override su una credenziale
+            #    che un operatore non era — il difetto che la guardia chiude.
+            cur.execute("SELECT auth_user_id FROM dbops.fn_pgtap_crea_operatore_umano('override oggetti')")
             self.uid = int(cur.fetchone()[0])
         self.svc = AmmSoftwareService()
         # La cache dei permessi non e' materia di questi test.

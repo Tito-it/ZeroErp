@@ -26,15 +26,17 @@ Strato amministrativo del refactor `sviluppo-personalizzazioni-liste.md`
   - `ListaPresetAdminService` (CRUD testata + replace atomico
     composizione);
   - `ListaColonnaPermessoAdminService` (UPSERT/DELETE permessi);
-- 9 view in `apps.ui.api.views_admin` su base class `DomainAPIView`
+- 12 view in `apps.ui.api.views_admin`: le 8 di Fase 1 su `DomainAPIView`
   con `skip_area_check = True` (lo schema `ui` non e' un'area
-  funzionale di business — meta-API trasversale).
+  funzionale di business — meta-API trasversale), le 4 di Fase 2
+  (definizioni e colonne, §12-§21) su `AdminAPIView` (solo SUPER_ADMIN).
 
 Permessi (defense-in-depth):
 
 | Endpoint | Auth richiesta |
 | --- | --- |
-| Select header (lista definizioni, catalogo colonne) | SUPER_ADMIN OR azione `ui_preset_manage` OR azione `ui_permesso_manage` |
+| Select header (lista definizioni, `/admin/liste/`) | SUPER_ADMIN OR azione `ui_preset_manage` OR azione `ui_permesso_manage` |
+| Catalogo colonne grezzo (`/admin/liste/{id}/colonne/`) | azione `ui_preset_manage` |
 | CRUD preset (`/admin/liste/{id}/preset/`, `/admin/preset/{id}/`, `/admin/preset/{id}/colonne/`) | azione `ui_preset_manage` |
 | CRUD permessi colonna (`/admin/liste/{id}/permessi/`, `/admin/permessi/`, `/admin/permessi/{id}/`) | azione `ui_permesso_manage` |
 
@@ -163,7 +165,8 @@ Errori:
 
 ```json
 {
-  "data": [
+  "data": {
+    "results": [
     {
       "id": 12,
       "lista_id": 1,
@@ -187,10 +190,15 @@ Errori:
       "data_update": null,
       "user_update": null
     }
-  ],
+    ],
+    "count": 1
+  },
   "meta": {"request_id": "..."}
 }
 ```
+
+`count` viene da una query sua (non da `len(results)`): non impagina, dichiara
+quante righe esistono.
 
 Ordine: `ambito ASC, codice ASC, id ASC` (lex sull'enum `ui.ambito_preset`
 → `emittente_fiscale` < `ruolo` < `sistema`).
@@ -440,7 +448,8 @@ Errori:
 
 ```json
 {
-  "data": [
+  "data": {
+    "results": [
     {
       "id": 42,
       "colonna_id": 7,
@@ -456,7 +465,9 @@ Errori:
       "data_update": null,
       "user_update": null
     }
-  ],
+    ],
+    "count": 1
+  },
   "meta": {"request_id": "..."}
 }
 ```
@@ -552,11 +563,37 @@ Errori:
 - `404` `E_UI_PERMESSO_NON_TROVATO` (404 esplicito anche se la riga non
   esisteva: il FE che chiama DELETE su id immaginario merita feedback netto)
 
+
+### 12-21. Definizioni e colonne (Fase 2, SUPER_ADMIN)
+
+Tutte su `AdminAPIView` (solo SUPER_ADMIN, nessuna azione di processo).
+Service: `ListaDefinizioneAdminService`, `ListaColonnaAdminService`.
+
+**Regole comuni.** Il payload passa dalla whitelist del service: una chiave
+fuori da `CREATE_KEYS` / `UPDATE_KEYS` è un `400` (`…_VALIDAZIONE`), mai
+ignorata. I booleani devono essere booleani JSON. Il `PATCH` vuole almeno un
+campo (`require_campi_da_aggiornare`) e lavora per delta. `POST` con
+`Idempotency-Key` obbligatoria. Create e `PATCH` rispondono il dettaglio;
+`DELETE` risponde `{"deleted": true, "id": <id>}`.
+
+| # | Rotta | Corpo / risposta | Errori |
+| --- | --- | --- | --- |
+| 12 | `GET /admin/definizioni/` | `{"results": [...], "count": n}`: tutte, disattivate comprese, `attivo DESC, codice, id` | — |
+| 13 | `POST /admin/definizioni/` | `CREATE_KEYS`: `codice`, `descrizione`, `schema_dati` (obbligatori), `vista_sql`, `note`, `attivo` (default `true`) | `E_UI_DEFINIZIONE_VALIDAZIONE` (anche codice duplicato, campo `codice`), `E_UI_VISTA_SQL_NON_TROVATA` |
+| 14 | `GET /admin/definizioni/{id}/` | la definizione completa | 404 `E_UI_DEFINIZIONE_NON_TROVATA` |
+| 15 | `PATCH /admin/definizioni/{id}/` | `UPDATE_KEYS` = `CREATE_KEYS` (⛔ `multi_emittente` non è scrivibile) | come 13, più 404 |
+| 16 | `DELETE /admin/definizioni/{id}/` | — | 404; 409 `E_UI_DEFINIZIONE_IN_USO` se ha colonne, preset o preferenze (FK RESTRICT): l'alternativa è `PATCH attivo=false` |
+| 17 | `GET /admin/definizioni/{id}/colonne/` | `{"results": [...], "count": n}`: tutte le colonne, disattivate comprese | 404 `E_UI_DEFINIZIONE_NON_TROVATA` |
+| 18 | `POST /admin/definizioni/{id}/colonne/` | `CREATE_KEYS`: `codice`, `etichetta`, `etichetta_estesa`, `etichetta_i18n_key`, `campo_sorgente`, `tipo_colonna`, `tipo_dato`, `formato`, `larghezza_default`, `ordine_default`, `allineamento` (`left`/`right`/`center`), `gruppo`, `gruppo_ordine`, `filtrabile`, `ordinabile`, `esportabile`, `ricercabile_full`, `sensibile`, `attivo`; `lista_id` dal path | `E_UI_COLONNA_VALIDAZIONE` (codice duplicato nella lista, colonna `azione` esportabile, …), `E_UI_CAMPO_SORGENTE_NON_TROVATO`, 404 definizione |
+| 19 | `GET /admin/colonne/{id}/` | la colonna completa | 404 `E_UI_COLONNA_NON_TROVATA` |
+| 20 | `PATCH /admin/colonne/{id}/` | `UPDATE_KEYS` = `CREATE_KEYS` (`lista_id` immutabile) | come 18, più 404 |
+| 21 | `DELETE /admin/colonne/{id}/` | — | 404; 409 `E_UI_COLONNA_IN_USO` se una preferenza utente la nomina (soft-block applicativo); preset e permessi della colonna vanno via in CASCADE |
+
 ---
 
 ## Codici errore
 
-Tutti registrati in `apps.core.services.error_policies`:
+Lo status segue la classe a catalogo (`error_policies_generated.py`):
 
 | Codice | HTTP | UI action |
 | --- | --- | --- |
@@ -565,6 +602,14 @@ Tutti registrati in `apps.core.services.error_policies`:
 | `E_UI_PRESET_NON_TROVATO` | 404 | show_empty_state |
 | `E_UI_PERMESSO_VALIDAZIONE` | 400 | highlight_form_fields |
 | `E_UI_PERMESSO_NON_TROVATO` | 404 | show_empty_state |
+| `E_UI_DEFINIZIONE_VALIDAZIONE` | 400 | highlight_form_fields |
+| `E_UI_DEFINIZIONE_NON_TROVATA` | 404 | show_empty_state |
+| `E_UI_DEFINIZIONE_IN_USO` | 409 | show_error_banner |
+| `E_UI_COLONNA_VALIDAZIONE` | 400 | highlight_form_fields |
+| `E_UI_COLONNA_NON_TROVATA` | 404 | show_empty_state |
+| `E_UI_COLONNA_IN_USO` | 409 | show_error_banner |
+| `E_UI_VISTA_SQL_NON_TROVATA` · `E_UI_CAMPO_SORGENTE_NON_TROVATO` | 400 | guard DB su `vista_sql` / `campo_sorgente` |
+| `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` | 403 | guard DB: `multi_emittente` non si scrive da qui |
 | `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | show_error_banner |
 
 ## Regole
@@ -573,10 +618,11 @@ Tutti registrati in `apps.core.services.error_policies`:
   non ha alcuna delle 2 azioni; il backend rifiuta comunque (403)
   qualunque chiamata diretta senza permesso adeguato. Niente trust al
   FE.
-- **Idempotency-Key obbligatoria** su POST con effetti di stato (POST §4
-  e §10). Pattern allineato a `api.md`. Genera la chiave lato FE con
+- **Idempotency-Key obbligatoria** su ogni POST: §4 (preset), §10
+  (permesso), §13 (definizione), §18 (colonna). Pattern allineato a `api.md`. Genera la chiave lato FE con
   `crypto.randomUUID()`.
-- **Skip area check**: tutte le 9 view hanno `skip_area_check = True`
+- **Skip area check**: tutte le 12 view lo saltano (`skip_area_check = True`
+  sulle 8 di Fase 1, implicito in `AdminAPIView` sulle 4 di Fase 2)
   perche' lo schema `ui` non e' un'area funzionale di business. Il check
   e' invece sull'azione di processo (`<method>_permission`) o sulla
   combinazione OR-azioni (`_require_any_action`, vedi §1).

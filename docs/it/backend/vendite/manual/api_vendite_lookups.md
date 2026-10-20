@@ -3,9 +3,9 @@
 ## Scopo
 
 Endpoint **lookup statici** per gli enum di dominio vendite (Fase 2 refactor
-frontend vendite): tipi variazione (contratto/promo), ambiti contratto,
-modalità pricing contratto. Eliminano i magic string cablati nei drawer
-Vue (`'PERCENTUALE'`, `'COMMODITY'`, `'A'`, ecc.) e li espongono come
+frontend vendite): tipi variazione (contratto/promo), ambiti contratto, più
+il lookup dinamico dei listini selezionabili. Eliminano i magic string cablati
+nei drawer Vue (`'PERCENTUALE'`, `'COMMODITY'`, ecc.) e li espongono come
 risorse REST con cache modulo-level lato FE (`useGlobalLookup`).
 
 Riferimento concettuale:
@@ -16,10 +16,11 @@ Riferimento concettuale:
 I valori sono **enum tecnici Python**, non tabelle DB di config. La single
 source of truth è `apps/vendite/services/vendite_lookups_service.py`:
 
-- `_TIPI_VARIAZIONE_CONTRATTO` — `PERCENTUALE`, `VALORE_FISSO`
+- `_TIPI_VARIAZIONE_CONTRATTO` — `PERCENTUALE` (solo: la variazione **globale**
+  della testata contratto è solo percentuale, decisione 2026-05-18;
+  `VALORE_FISSO` resta ammesso unicamente come override di singola riga)
 - `_TIPI_VARIAZIONE_PROMO` — `PERCENTUALE`, `VALORE_FISSO`, `PREZZO_FISSO`
 - `_AMBITI_CONTRATTO` — `COMMODITY`, `COMMERCIO`
-- `_MODALITA_PRICING_CONTRATTO` — `A`, `B`, `C`
 
 I valori sono allineati ai CHECK constraint DB di `vendite.contratti`,
 `vendite.promo_articoli`. Aggiungere/cambiare un codice senza propagarlo
@@ -30,7 +31,7 @@ Pattern modello: `catalogo.api.views.ApiUomRoundingModesLookup` /
 
 ## Endpoints
 
-Tutti i 4 endpoint condividono la stessa shape:
+I tre enum statici condividono la stessa shape:
 
 - Metodo: `GET`
 - Auth: `vendite` LETTURA (JWT obbligatorio)
@@ -40,8 +41,7 @@ Tutti i 4 endpoint condividono la stessa shape:
 ```json
 {
   "data": [
-    {"codice": "PERCENTUALE", "descrizione": "Percentuale (es. -10%)", "ordering": 1},
-    {"codice": "VALORE_FISSO", "descrizione": "Valore fisso (es. -2,50 €)", "ordering": 2}
+    {"codice": "PERCENTUALE", "descrizione": "Percentuale (es. -10%)", "ordering": 1}
   ],
   "meta": { "request_id": "uuid-..." }
 }
@@ -68,7 +68,7 @@ Tutti i 4 endpoint condividono la stessa shape:
 
 | Path | Codici esposti | Consumer FE |
 | --- | --- | --- |
-| `/api/v1/vendite/lookup/tipi-variazione-contratto/` | `PERCENTUALE`, `VALORE_FISSO` | `TipoVariazioneSelect scope="contratto"` (in `ContrattoDrawer.vue`) |
+| `/api/v1/vendite/lookup/tipi-variazione-contratto/` | `PERCENTUALE` | `TipoVariazioneSelect scope="contratto"` (in `ContrattoDrawer.vue`) |
 | `/api/v1/vendite/lookup/tipi-variazione-promo/` | `PERCENTUALE`, `VALORE_FISSO`, `PREZZO_FISSO` | `TipoVariazioneSelect scope="promo"` (in `PromoArticoloDrawer.vue`) |
 | `/api/v1/vendite/lookup/ambiti-contratto/` | `COMMODITY`, `COMMERCIO` | `AmbitoContrattoSelect` (in `ContrattoDrawer.vue`) |
 
@@ -90,6 +90,9 @@ Prende il posto di `lookup/listini-selezionabili-contratto/`, che proponeva ogni
 listino con «almeno una versione ATTIVA», di qualunque utility (filtro ritirato
 col D.4.3: in bozza un listino senza versione in vigore si sceglie, lo rifiutano
 attivazione ed emissione).
+
+Auth: area `vendite` LETTURA **e** permesso modello `("vendite", "listino")`
+(`model_permission`): senza, `403`.
 
 | Query param | Tipo | Note |
 | --- | --- | --- |
@@ -124,20 +127,6 @@ DB lo rifiutano in quei contesti. Aggiungerlo a `_TIPI_VARIAZIONE_CONTRATTO`
 romperebbe la coerenza: il test `test_tipi_variazione_promo_coverage` blocca
 il drift in CI.
 
-### Nota Modalita Pricing A/B/C
-
-La modalità pricing **non è una colonna DB** ma un'astrazione UI derivata da
-`listino_id` + `tipo_variazione_globale`:
-
-- `A` — listino vincolante + variazione globale (PERCENTUALE/VALORE_FISSO)
-- `B` — listino + override righe (no variazione globale)
-- `C` — interamente negoziato (no listino)
-
-Il lookup espone i tre codici come single source of truth lato API, ma la
-**derivazione** dal contratto resta in `ContrattoDrawer.deriveModalita`
-(FE-only). Sviluppo futuro: BE espone `pricing_modalita` direttamente nel
-detail (vedi WIP §A3).
-
 ## Errori
 
 Gli endpoint non sollevano errori di dominio (gli enum sono read-only su
@@ -147,7 +136,7 @@ strutture in memoria; i listini sono una lettura). Errori possibili:
 | --- | --- | --- |
 | 400 | `E_VALIDATION_INPUT` | `utility_id` o `emittente_fiscale_id` non numerico (solo listini sceglibili) |
 | 401 | — | JWT mancante o invalido |
-| 403 | `E_PERMESSO_NEGATO` | Utente con `vendite = BLOCCATO` |
+| 403 | `E_PERMESSO_NEGATO` | Utente con `vendite = BLOCCATO`; sui listini selezionabili anche senza il permesso modello `("vendite", "listino")` |
 | 429 | — | Rate limit (improbabile su endpoint stabili) |
 
 ## Test

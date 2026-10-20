@@ -22,7 +22,7 @@ from datetime import date
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from django.test import Client, RequestFactory, override_settings
+from django.test import Client, RequestFactory
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -147,9 +147,9 @@ _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
 # PERICOLOSO — senza il guard DatabaseOperationForbidden, con
 # DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1 il claim idempotenza scriverebbe sul
 # DB DEV reale (successo, 2026-07-22: chiavi a-1/r-1 finite in
-# dbops.idempotency_keys). Flag OFF deterministico: qui si testa la delega al
-# service, lo store ha i suoi test dedicati.
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
+# dbops.idempotency_keys). Il flag lo spegne il runner per tutta la suite
+# (`zeroerp_backend/test_runner.py`): qui si testa la delega al service, lo
+# store ha i suoi test dedicati.
 class TestAzioniHttp(JwtMockedApiTest):
     """Azioni annulla/requeue a livello HTTP (idempotency + delega)."""
 

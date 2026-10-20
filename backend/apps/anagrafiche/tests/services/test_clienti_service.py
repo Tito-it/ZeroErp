@@ -251,7 +251,7 @@ class TestCreaClienteManuale(TestCase):
 
     @patch(CLI_REPO)
     def test_crea_cliente_scarta_le_sei_chiavi_migrate(self, mock_repo):
-        """Le sei chiavi di I0/I8 nel payload non arrivano ai campi della madre.
+        """Le sei chiavi di I0/I8 nel payload sono rifiutate (400), non arrivano alla madre.
 
         ⚠️ Non sono chiavi ignote: sono quelle che il FE ha spedito per mesi.
         Se rientrassero, l'INSERT nominerebbe colonne che non esistono piu' —
@@ -260,14 +260,14 @@ class TestCreaClienteManuale(TestCase):
         """
         repo = self._setup_repo(mock_repo)
         from apps.anagrafiche.services.clienti_service import ClientiService
-        ClientiService().crea_cliente(_base_payload(
-            iva_id=5, cliente_pa="S", split_payment="S",
-            codice_cig="A1", codice_cup="B2", codice_commessa="C3",
-        ))
-        kwargs = repo.crea_cliente.call_args.kwargs["campi"]
-        for chiave in ("iva_id", "cliente_pa", "split_payment",
-                       "codice_cig", "codice_cup", "codice_commessa"):
-            self.assertNotIn(chiave, kwargs)
+        # ⛔ Dal 2026-10-20 non sono piu' scartate: sono un 400, come in
+        #    modifica. La madre non viene chiamata.
+        for chiave, valore in (("iva_id", 5), ("cliente_pa", "S"), ("split_payment", "S"),
+                               ("codice_cig", "A1"), ("codice_cup", "B2"), ("codice_commessa", "C3")):
+            with self.subTest(chiave=chiave), self.assertRaises(ServiceError) as ctx:
+                ClientiService().crea_cliente(_base_payload(**{chiave: valore}))
+            self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        repo.crea_cliente.assert_not_called()
 
     @patch(CLI_REPO)
     def test_crea_cliente_manuale_utility_pdp_bloccata(self, mock_repo):

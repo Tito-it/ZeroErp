@@ -30,7 +30,7 @@ _GRUPPO_ROW = {
     "errore_quando": "2026-09-06T17:12:00+00:00",
     "riferimento": "ORD0036005",
     "tipo_gruppo": "ORDINE_VENDITA",
-    "area_documento": "ORDINI",
+    "documento_apribile": True,
     "documento_id": 43927,
     "commessa_id": 34137,
     "commessa_codice": "CMM-PGTAPEF202-2026-000000004",

@@ -50,14 +50,13 @@ import json
 
 from unittest.mock import ANY, Mock, patch
 
-from django.test import Client, override_settings
+from django.test import Client
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.api.constants import DEFAULT_LIMIT
 
 
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class VenditeCommesseApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
@@ -561,7 +560,6 @@ class VenditeCommesseApiTests(JwtMockedApiTest):
         self.assertEqual(mock_azione.call_args.args[1], "approva_attivita_commessa")
 
 
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class VenditeCommessaOneriApiTests(JwtMockedApiTest):
     """POST /api/v1/vendite/commesse/<id>/oneri/ — porta oneri (§A1) e gate
     `prezzo_override_manuale` sugli endpoint prezzo N5/N7 (§C1)."""
@@ -735,7 +733,6 @@ class VenditeCommessaOneriApiTests(JwtMockedApiTest):
 #        responsabile). Contratto HTTP: il payload arriva al service per
 #        posizione (id, payload), la risposta e' il dettaglio, gli errori del
 #        service diventano envelope con `fields` (il campo si accende).
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class VenditeCommessaTestataApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()

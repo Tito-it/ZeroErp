@@ -14,7 +14,7 @@ L'offerta commerciale e' lo specchio strutturale del contratto: stessa
 forma di testata (mono-utility, listino + versione, variazione globale),
 stesso enum `tipo_eccezione`, stessa cardinalita' utility (1:1). La
 fedelta' garantisce che il push offerta -> contratto in DRAFT sia copia
-1:1 senza conversioni (step 8 brief DB, non ancora cablato).
+1:1 senza conversioni (`push_a_contratto`, step 8 brief DB).
 
 La logica di business autoritativa vive in DB:
 
@@ -50,10 +50,17 @@ del building block note partizionate sul nuovo target `OFFERTA`.
 ### Lookup e dettaglio
 
 - `list_offerte(*, search, billing_account_id, stato_codice_interno,
-  utility_id, listino_id, validita_dal_min, validita_dal_max, limit,
-  offset, order_by, order_dir) -> (list[OffertaRow], int)`
-  - `search` opzionale; vuoto/whitespace-only -> nessun filtro; non vuoto -> min 3 char
-  - `order_by` whitelist: vedi `_ORDER_BY_OFFERTE`
+  utility_id, listino_id, validita_dal_min, validita_dal_max,
+  solo_ultima_revisione=True, limit, offset, order_by, order_dir,
+  auth_user_id) -> (list[OffertaRow], int)`
+  - `search` opzionale; vuoto, whitespace-only o sotto 3 caratteri -> nessun
+    filtro (soglia del BB `add_ricerca_full_condition`)
+  - `stato_codice_interno` fuori vocabolario `config.stati_doc_offerte` ->
+    `E_VENDITE_VALIDATION` col campo (2026-10-20)
+  - `order_by` whitelist: `_ORDER_BY_OFFERTE`, derivata da `_ORDER_COLS_OFFERTE`
+    del repository; senza `order_dir` le colonne data e il default `data_insert`
+    vanno DESC
+  - `auth_user_id`: scope emittente (`None` = nessuna restrizione)
 - `get_offerta(offerta_id) -> OffertaRow` — arricchito con `eccezioni[]`,
   `utility` (1:1, None se non ancora creato) e **capability blob**
   (`available_actions[]`, `can_edit_*`, `can_push_contratto*`,
@@ -79,11 +86,17 @@ del building block note partizionate sul nuovo target `OFFERTA`.
   `istanza_utility_id`/`utility_id` dalla testata se non specificati nel
   sub-payload. Niente piu' rischio di "offerta orfana di utility" del
   flusso a 2 round-trip.
-- `aggiorna_offerta(offerta_id, payload) -> OffertaRow` — solo in BOZZA.
+- `aggiorna_offerta(offerta_id, payload) -> OffertaRow` — nessun guard di
+  stato: quali colonne si cambiano in quale stato lo decide il lock di testata
+  del DB (`trgfn_doc_testata_lock_fuori_bozza`, 409 `E_DOC_*` propagato); la
+  scheda utility la ferma fuori bozza il lock dei satelliti
+  (`E_DOC_DATI_COLLEGATI_NON_BOZZA`). Chiavi fuori `UPDATE_KEYS_OFFERTA` -> 400.
   **Sub-oggetto opzionale `utility`** (D7, simmetria col create):
   `_upsert_utility_inline` distingue create vs update via
-  `repo.get_utility(offerta_id)`. Ramo update: filtra il payload sulla
-  whitelist `_UPDATE_KEYS_UTILITY` (immutabili `istanza_utility_id`/`utility_id`).
+  `repo.get_utility(offerta_id)`. Ramo update: chiave fuori
+  `CREATE_KEYS_UTILITY` -> 400; poi tiene le sole `UPDATE_KEYS_UTILITY`
+  (immutabili `istanza_utility_id`/`utility_id`). Con un cambio di coppia
+  cliente la scheda del payload non si applica (la rifà il DB).
   Ramo create: stesso `_add_utility_inline` di sopra. Payload `{}`
   rifiutato; payload con SOLO `utility` (zero campi testata) ammesso ed
   esegue solo l'upsert utility.
@@ -104,10 +117,17 @@ del building block note partizionate sul nuovo target `OFFERTA`.
 
 ### Push a contratto (step 8, 2026-05-25 PM)
 
-- `push_a_contratto(offerta_id, *, pratica_id=None) -> OffertaPushResult` —
-  invoca `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id)`.
-  Guard applicativo `ACCETTATA` (defense-in-depth, il DB e' guard
-  finale con `E_OFFERTA_PUSH_STATO_NON_AMMESSO`). Pattern A idempotenza:
+- `push_a_contratto(offerta_id, *, pratica_id=None, chiudi_esistente=False)
+  -> OffertaPushResult` — invoca
+  `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id,
+  p_chiudi_contratto_esistente)`. Guard applicativo `ACCETTATA` (400
+  `E_VENDITE_VALIDATION`; il DB e' la rete con
+  `E_OFFERTA_PUSH_STATO_NON_AMMESSO`, 409). Con contratto attivo sovrapposto:
+  `chiudi_esistente=False` -> `E_CONTRATTO_OVERLAP_ESISTENTE`, `True` -> chiude
+  il vecchio per successione. Dopo il push riempie lo slot indirizzo di default
+  del contratto se rimasto vuoto.
+- `get_contratto_sovrapposto(offerta_id) -> dict | None` — contratto attivo
+  sovrapposto (`fn_contratto_sovrapposto`), sola lettura. Pattern A idempotenza:
   doppia chiamata su stessa offerta → `E_OFFERTA_CONTRATTO_GIA_GENERATO`
   propagato come `code` originale. Ritorna `{contratto_id,
   contratto_codice, sorgente_uid}` letto via
@@ -117,19 +137,27 @@ del building block note partizionate sul nuovo target `OFFERTA`.
 
 - `crea_revisione(offerta_id, *, user=None) -> OffertaRow` — invoca
   `vendite.fn_crea_revisione_offerta(p_offerta_id, p_user)`. Guard
-  applicativo `EMESSA`; il DB rifiuta con
-  `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO` propagato come `code` originale.
+  applicativo `EMESSA` (400 `E_VENDITE_VALIDATION`); il DB e' la rete con
+  `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO` (409).
   Ritorna la nuova rev.N+1 (dettaglio completo via `get_offerta`).
-- `list_revisioni(offerta_id) -> list[OffertaRow]` — catena di revisioni
-  che condividono il root con l'offerta passata. CTE ricorsiva
-  ancestors → root → descendants. Lettura libera in ogni stato.
+- `list_revisioni(offerta_id, *, limit, offset, order_by, order_dir)
+  -> (list[OffertaRow], int)` — una **pagina** della catena di revisioni con la
+  stessa radice (`revisione_radice_id`), col totale per `paginated_envelope`.
+  Ordine di default `revisione_numero` ASC (whitelist
+  `OFFERTA_REVISIONI_ORDER_COLUMNS`). Offerta inesistente -> 404. Lettura libera
+  in ogni stato.
 
 ### Mutazione sub-resource
 
 - Eccezioni: `list_eccezioni` (libera), `crea_eccezione` / `aggiorna_eccezione`
-  / `elimina_eccezione` (solo BOZZA + ownership URL)
+  / `elimina_eccezione` (ownership URL; «solo in bozza» lo dice il lock righe
+  del DB, `E_RIGA_DOC_NON_BOZZA`)
+- Componenti BoM: `preview_componenti_eccezione`, `list_componenti_eccezione`,
+  `update_componente_eccezione` (whitelist operatore `prezzo_unitario`,
+  `attivo`, `meta`; prezzo manuale -> gate `prezzo_override_manuale`),
+  `delete_componente_eccezione` (soft delete)
 - Utility 1:1: `get_utility` (libera), `crea_utility` / `aggiorna_utility`
-  (solo BOZZA + UNIQUE su offerta_id)
+  (UNIQUE su offerta_id; fuori bozza il lock satelliti del DB)
 
 ## Output
 
@@ -140,8 +168,9 @@ fields da JOIN backend).
 
 Errori sono `ServiceError` con `code` semantico:
 
-- `E_VENDITE_VALIDATION` — struttura payload, payload vuoto, esito non
-  valido, motivazione mancante, search < 3 char, order_by fuori whitelist
+- `E_VENDITE_VALIDATION` (400) — struttura payload, payload vuoto, esito non
+  valido, motivazione mancante, stato errato nei pre-check, filtro di stato
+  fuori vocabolario, order_by fuori whitelist
 - `E_VENDITE_NOT_FOUND` — offerta/eccezione/utility non trovata; mismatch
   ownership URL
 - `E_VENDITE_DUPLICATO` — UNIQUE violations
@@ -151,9 +180,11 @@ Errori sono `ServiceError` con `code` semantico:
 
 ## Regole
 
-1. **Stato BOZZA = unico stato editabile** per testata, eccezioni, utility.
-   Defense-in-depth applicativa via `_assert_stato_corrente(expected=_STATI_EDITABILI)`;
-   il trigger DB e' guard finale.
+1. **Chi è editabile in quale stato lo dicono i lock del DB**: testata
+   (`trgfn_doc_testata_lock_fuori_bozza`), eccezioni e componenti
+   (`trgfn_doc_righe_lock_fuori_bozza`), utility (lock satelliti).
+   `_assert_stato_corrente(expected=_STATI_EDITABILI)` resta solo su
+   `elimina_offerta` e sulle transizioni che partono da BOZZA.
 2. **Annullamento solo da BOZZA, rifiuto solo da EMESSA**. State machine
    asimmetrica: niente `BOZZA -> RIFIUTATA` (non esiste un "no del cliente"
    prima dell'emissione) ne' `EMESSA -> ANNULLATA` (correzioni
@@ -170,8 +201,8 @@ Errori sono `ServiceError` con `code` semantico:
    discriminare per codice (es. mostrare dialog "versione listino non
    ATTIVA" diverso da "transizione non ammessa"). Estrazione via regex
    `\b(E_[A-Z][A-Z0-9_]+)\b` sul MESSAGE del trigger.
-7. **Codice offerta dal payload finche' step 5 DB non chiude**. Dopo
-   diventera' generato e immutabile (lock_columns).
+7. **Codice offerta generato dal DB** (trigger `gen_codice`, `OFC-NNNNNNN`):
+   nel payload e' rifiutato come chiave sconosciuta.
 8. **Costanti di stato** in `StatoOfferta` (BOZZA/EMESSA/ACCETTATA/
    RIFIUTATA/ANNULLATA/SUPERATA); niente stringhe magiche sparse.
 
@@ -196,7 +227,7 @@ Errori sono `ServiceError` con `code` semantico:
   (invocata dal trigger BEFORE INSERT, non chiamata direttamente dal service)
 - `vendite.fn_crea_revisione_offerta(p_offerta_id, p_user)` — step 7 DB,
   invocata da `repo.crea_revisione`
-- `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id)` —
+- `vendite.fn_push_offerta_a_contratto(p_offerta_id, p_pratica_id, p_chiudi_contratto_esistente)` —
   step 8 DB, invocata da `repo.push_a_contratto`
 
 **Helper applicativi** (`apps.core`):

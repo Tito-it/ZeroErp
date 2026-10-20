@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from django.test import Client, override_settings
+from django.test import Client
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -44,9 +44,6 @@ class _UserStub:
         self.is_superuser = False
 
 
-# Idempotenza forte OFF deterministica: con DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1
-# nell'ambiente il claim colpirebbe il DB (vietato in SimpleTestCase) → 500 finti.
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class UiListaApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()

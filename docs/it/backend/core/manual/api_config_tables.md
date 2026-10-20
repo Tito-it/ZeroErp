@@ -86,7 +86,7 @@ Lista paginata dei record.
 | `order_dir` | `asc` | `asc` / `desc` |
 | `attivo_only` | `false` | `true` filtra `attivo IS TRUE` (solo se la colonna esiste) |
 | `page` | 1 | |
-| `page_size` | 50 | |
+| `page_size` | 25 | max 200 |
 
 ⚠️ Endpoint dichiarato `is_search_endpoint = True`: vale il throttling di
 ricerca. Un client che cicla su piu' tabelle prende 429 se non respira.

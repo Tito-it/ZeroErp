@@ -61,9 +61,9 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
     CONTEXT_VERSION = 2
 
-    # Tipi indirizzo ammessi nell'ambito PREVENTIVI
+    # Tipi indirizzo ammessi nell'ambito PREVENTIVO
     # (`config.tipi_indirizzi_allowed`: FATT, CON, FORNITURA, RES — stesso
-    # insieme di OFFERTE). Dichiarati qui e non letti a runtime: il context
+    # insieme di OFFERTA_COMMERCIALE). Dichiarati qui e non letti a runtime: il context
     # deve essere deterministico a parita' di documento (il `context_hash`
     # governa il dedup), e una modifica di configurazione non puo' cambiare la
     # forma di un contesto gia' generato.

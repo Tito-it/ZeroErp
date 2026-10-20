@@ -3,6 +3,7 @@ from django.http import HttpRequest, JsonResponse
 from django.views.decorators.http import require_POST
 
 from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.payload_validators import optional_bool
 from apps.core.api.request_parsers import parse_iso_date
 
 # Template riusabile per future API dominio (POST JSON + error envelope standard).
@@ -15,7 +16,8 @@ def example_domain_endpoint(request: HttpRequest) -> JsonResponse:
     def _handler(payload: dict[str, Any]) -> dict[str, Any]:
         # Esempio campi tipici da payload.
         competenza_mese = parse_iso_date(payload.get("competenza_mese"))
-        dry_run = bool(payload.get("dry_run", False))
+        # ⛔ Mai `bool(payload.get(...))`: `bool("false")` e' True.
+        dry_run = optional_bool(payload, "dry_run", default=False)
 
         # Qui invocare un service dominio reale, es:
         # result_id = domain_service.run_operation(...)

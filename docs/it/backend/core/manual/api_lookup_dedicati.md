@@ -53,8 +53,11 @@ quali sono obbligatori per il tipo scelto.
 |---|---|---|
 | `id` | `config.tipi_soggetto_dettaglio.id` | |
 | `codice_interno`, `descrizione` | idem | |
-| `natura_soggetto` | `config.tipi_soggetto.id` | la natura (codice testo), è il valore da passare al §2 |
+| `tipo_soggetto_id` | `config.tipi_soggetto.id` | codice della macro-tipologia (`PF`, `PG`, `ENC`) |
+| `natura_soggetto` | `config.tipi_soggetto.natura_soggetto` | enum `config.natura_soggetto_enum` (`PF`/`PG`/`ENTE`), è il valore da passare al §2. Fino al 2026-10-11 qui usciva `tipi_soggetto.id` (per l'ente `ENC`, non `ENTE`) |
 | `cf_obbligatorio`, `piva_obbligatoria` | `tipi_soggetto_dettaglio` | bool |
+| `formato_cf`, `formato_piva` | `tipi_soggetto_dettaglio` | formato atteso di CF e P.IVA per il tipo |
+| `cliente_pa_ammesso`, `split_payment_ammesso` | `tipi_soggetto_dettaglio` | bool: il form mostra i due flag di regime fiscale solo dove ammessi (la regola la presidia il DB) |
 | `dati_societari_policy` | `tipi_soggetto_dettaglio` | enum `config.presenza_policy_enum` (`NONE`/`OPTIONAL`/`REQUIRED`) |
 | `sesso_policy` | `tipi_soggetto_dettaglio` | idem: `REQUIRED` asterisco, `OPTIONAL` vuoto ammesso, `NONE` campo nascosto (dal 2026-10-09) |
 
@@ -69,7 +72,7 @@ non ha una colonna `attivo`, quindi non c'è un'attività da filtrare.
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `natura_soggetto` | string | No | Codice della natura (`natura_soggetto` del §1) |
+| `natura_soggetto` | string | No | La natura, enum (`natura_soggetto` del §1, es. `ENTE`) |
 
 Senza parametro: tutti i tipi ruolo. Con la natura: i tipi ruolo che la
 matrice `config.tipi_ruoli_nature_ammesse` ammette per quella natura (riga
@@ -87,9 +90,9 @@ ordine per descrizione.
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `tipo_soggetto_dettaglio_id` | int | No | Solo le forme ammesse per quel tipo (matrice `config.forme_giuridiche_tipi_soggetto_dettaglio`, righe attive). Non numerico → 400 |
+| `tipo_soggetto_dettaglio_id` | int | No | Solo le forme ammesse per quel tipo (matrice `config.forme_giuridiche_tipi_soggetto_dettaglio`, righe attive e valide oggi: predicato del guard `anagrafiche.fn_forma_giuridica_ammessa`). Non numerico → 400 |
 
-Solo forme **attive**. Righe: `id`, `codice` (`codice_interno` o `codice`),
+Solo forme **attive**. Righe: `id`, `codice` (`fg.codice`: la tabella non ha `codice_interno`),
 `descrizione`, `rea_policy`, `capitale_sociale_policy` (i due valori ammessi
 li fissano i `CHECK` della tabella), `attivo`. Ordine per descrizione.
 
@@ -173,8 +176,8 @@ throttle di ricerca).
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `search` | string | No | Contiene, maiuscole indifferenti, sulla denominazione |
-| `limit` | int | No | Default 20, massimo 100 |
-| `offset` | int | No | Default 0 |
+| `limit` | int | No | Default 20, fra 1 e 100. Non numerico → default |
+| `offset` | int | No | Default 0. Non numerico o negativo → 0 |
 
 Risposta:
 
@@ -191,7 +194,7 @@ Risposta:
 
 | Codice | HTTP | Quando |
 |---|---|---|
-| `E_VALIDATION_INPUT` | 400 | `tipo` dei conti contabili fuori da `A`/`V`; `tipo_soggetto_dettaglio_id` o `limit`/`offset` non numerici |
+| `E_VALIDATION_INPUT` | 400 | `tipo` dei conti contabili fuori da `A`/`V`; `tipo_soggetto_dettaglio_id` non numerico (per i comuni `limit`/`offset` non numerici ripiegano sul default) |
 | `E_AUTHENTICATION_FAILED` | 401 | token assente o scaduto |
 
 ## Dipendenze DB

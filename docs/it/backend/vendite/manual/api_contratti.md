@@ -149,16 +149,18 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 | `utility_id` | int | Filtro utility |
 | `ambito` | string | `COMMODITY` o `COMMERCIO` |
 | `listino_id` | int | Filtro listino di pricing (debug forma con_listino vs senza_listino) |
-| `data_da` | ISO date | Filtro periodo validità (overlap `valido_dal`/`valido_al`). **Default: 1 gennaio anno-1** (regola standard liste con date) |
+| `data_da` | ISO date | Filtro periodo validità (overlap `valido_dal`/`valido_al`). **Nessun default backend**: il default anno-1 lo mette la UI |
 | `data_a` | ISO date | Filtro periodo validità |
 | `scadenza_mese` | string | `YYYY-MM`: contratti con `valido_al` (ultimo giorno di validità) nel mese indicato |
 | `limit` | int | Default 25, max 200 |
 | `offset` | int | Default 0 |
-| `order_by` | string | `numero` `data` `valido_dal` `valido_al` `ba_codice` `ragione_sociale_completa` `id_fiscale_univoco_cf_piva` `utility_codice` `ambito` `listino_codice` `stato_descrizione` `stato_codice` `categoria_cliente_snapshot_codice` `data_insert` `data_update` |
-| `order_dir` | string | `asc` (default) o `desc` |
+| `order_by` | string | Default `data`. Whitelist `_ORDER_COLS_CONTRATTI`: `numero` `data` `valido_dal` `valido_al` `ba_codice` `ragione_sociale_completa` `id_fiscale_univoco_cf_piva` `utility_codice` `utility_descrizione` `ambito` `listino_codice` `listino_versione_codice` `tipo_variazione_globale` `valore_variazione_globale` `valuta_codice` `stato_descrizione` `categoria_cliente_snapshot_codice` `data_insert` `data_update` `pratica_numero` `fase`. Fuori whitelist → `400 E_VENDITE_VALIDATION` (`stato_codice` non è ordinabile: si ordina per `stato_descrizione`) |
+| `order_dir` | string | `asc` o `desc`. Assente: `desc` sulla colonna di default (`data`, «dal più recente») e sulle colonne data (`valido_dal`, `valido_al`, `data_insert`, `data_update`), `asc` sulle altre. `valido_al` vuoto ordina come `infinity` |
 
 Scope emittente applicato a livello DB (RLS `security_invoker` sulla vista) +
-filtro applicativo `fn_get_emittenti_scope_pk_ids` (defense-in-depth).
+filtro applicativo `fn_get_emittenti_scope_pk_ids` (defense-in-depth). Lista ed
+export dichiarano `lista_codice = "vendite.contratti"`: il cancello di perimetro
+emittente può rispondere `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`.
 
 ### Export lista `GET /api/v1/vendite/contratti/export/`
 
@@ -190,8 +192,13 @@ permessi — colonne nascoste escluse, ordine utente rispettato).
   "data": "2026-01-01",
   "listino_id": 100,
   "valuta_id": 1,
+  "emittente_fiscale_id": 2,
   "tipo_variazione_globale": "PERCENTUALE",
   "valore_variazione_globale": "10",
+  "fatturazione_immediata": false,
+  "codice_cig": "Z1234567890",
+  "codice_cup": null,
+  "codice_commessa": null,
   "meta": {"note": "Cliente Gold"},
   "utility": {
     "tipo_utenza_id": 2,
@@ -203,8 +210,19 @@ permessi — colonne nascoste escluse, ordine utente rispettato).
 
 Note (refactor 2026-05-15):
 
+- Chiavi ammesse (`CREATE_KEYS_TESTATA`): `emittente_fiscale_id`,
+  `billing_account_id`, `istanza_utility_id`, `utility_id`, `ambito`,
+  `valido_dal`, `valido_al`, `parent_contratto_id`, `data`, `listino_id`,
+  `tipo_variazione_globale`, `valore_variazione_globale`,
+  `categoria_cliente_id_snapshot`, `fatturazione_immediata` (booleano JSON),
+  `valuta_id`, i riferimenti dell'atto `codice_cig` / `codice_cup` (max 15) e
+  `codice_commessa` (max 100), `meta`, `utility`. Ogni altra chiave → `400
+  E_VENDITE_VALIDATION`. La risposta è il dettaglio completo.
+- `tipo_variazione_globale` ammette solo `PERCENTUALE`: `VALORE_FISSO` → `400
+  E_VENDITE_VALIDATION` (per un prezzo fisso su un articolo si usa una riga
+  OVERRIDE).
 - `valuta_id` opzionale (2026-05-29). Snapshot fissato al CREATE,
-  immutabile in PATCH (non in `_UPDATE_KEYS_TESTATA`). Se omesso, il
+  immutabile in PATCH (non in `UPDATE_KEYS_TESTATA`). Se omesso, il
   trigger DB `_a*_set_valuta_default_ins` lo risolve via
   `vendite.fn_get_valuta_id` (catena BA → emittente → gestore). Il FE può
   pre-popolare via `GET /api/v1/vendite/contratti/form-defaults/?billing_account_id=...`.
@@ -243,19 +261,36 @@ non fuse nella testata dal 2026-09-23, [api.md §«Il blob sta SOTTO `capabiliti
 | --- | --- | --- |
 | `available_actions[]` | array | Azioni cambio stato disponibili. L'azione `cessa` e' arricchita runtime con `requires_date=true`, `default_date=today`, `min_date=valido_dal` |
 | `can_change_state` | bool | `true` se almeno un'azione manuale disponibile |
-| `can_edit_testata` | bool | `true` in DRAFT (full whitelist) e in ATTIVO (solo `valido_al`+`meta`); `false` in CESSATO |
+| `can_edit_testata` | bool | `true` in DRAFT e in ATTIVO (`valido_al`, riferimenti dell'atto, `meta`); `false` in CESSATO e ANNULLATO |
 | `can_edit_righe` | bool | `true` solo in DRAFT |
-| `non_editable_fields[]` | string[] | Whitelist BE coerente con `_CONTRATTO_PATCH_ALLOWED_BY_STATE`. In ATTIVO include tutto eccetto `valido_al`+`meta`; in CESSATO include tutto |
+| `non_editable_fields[]` | string[] | Le colonne che il lock di testata DB (`trgfn_doc_testata_lock_fuori_bozza`) blocca nello stato corrente, calcolate da `script.fn_available_actions_contratto`. Il service non ne ha più una tabella sua (`_CONTRATTO_PATCH_ALLOWED_BY_STATE` ritirata il 2026-10-10) |
 
 Il frontend (`ContrattoDrawer.vue`) usa `default_date`/`min_date` dell'azione
 `cessa` per pre-popolare il dialog di cessazione: niente `new Date()` cablato.
 
 ### Update testata `PATCH /api/v1/vendite/contratti/<id>/`
 
-Solo campi mutabili: `ambito`, `valido_dal`, `valido_al`,
+Chiavi ammesse (`UPDATE_KEYS_CONTRATTO`): `billing_account_id`,
+`istanza_utility_id`, `ambito`, `valido_dal`, `valido_al`,
 `parent_contratto_id`, `data`, `listino_id`, `tipo_variazione_globale`,
-`valore_variazione_globale`, `categoria_cliente_id_snapshot`, `meta`.
-Identificativi (numero, BA, istanza, utility, stato) sono immutabili.
+`valore_variazione_globale`, `categoria_cliente_id_snapshot`,
+`fatturazione_immediata` (booleano JSON), `codice_cig`, `codice_cup`,
+`codice_commessa`, `meta` e la scheda `utility` inline. Ogni altra chiave →
+`400 E_VENDITE_VALIDATION`; `numero`, `stato_doc_contratto_id`, `utility_id`,
+`valuta_id`, `emittente_fiscale_id` non si cambiano. Corpo senza campi → 400.
+Risposta: il dettaglio completo.
+
+- **Cliente in bozza**: `billing_account_id` e `istanza_utility_id` si cambiano
+  in DRAFT (coppia risolta e verificata contro la utility del contratto, BB
+  `risolvi_cliente_coppia`; incoerente → 400). Fuori bozza li ferma il DB
+  (`E_DOC_CLIENTE_FUORI_BOZZA`, 409).
+- **Scheda utility inline** (`utility`: `tipo_utenza_id`, `classe_utenza_id`,
+  `istanza_dati_precontrattuali_id`, `param_1_num`, `param_2_txt`, `meta`):
+  la crea se manca, altrimenti la aggiorna, nella stessa transazione della
+  testata. `istanza_utility_id`/`utility_id`/`contratto_id` dentro la scheda →
+  400. ⚠️ Con un **cambio di cliente** la scheda del payload non si applica: la
+  rifà il DB dal contatore nuovo (`trg_contratti_m50_fornitura_segue_cliente_upd`)
+  e il dettaglio restituito porta quella.
 **Fuori bozza decide il DB** (dal 2026-10-10,
 [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)):
 il service non ha piu' una tabella dei campi ammessi per stato. In ATTIVO
@@ -279,17 +314,29 @@ Il service non ha piu' controlli suoi: `E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE` ed
 `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` sono ritirati.
 
 **Gate L2 sulla variazione globale** (refactor §3-bis-E): se il PATCH tocca
-`valore_variazione_globale` con `tipo_variazione_globale = PERCENTUALE`,
-si applica il gate L2 (cascata user → categoria_cliente → group → emittente).
-Sconto/maggiorazione oltre soglia → 403 retryable con
-`E_PRICING_SCONTO_ECCESSIVO`/`E_PRICING_MAGGIORAZIONE_ECCESSIVA`. VALORE_FISSO
-skip (non e' percentuale, gate non applicabile). Superuser bypass.
+`valore_variazione_globale`, si applica il gate L2 (cascata user →
+categoria_cliente → group → emittente). Sconto/maggiorazione oltre soglia →
+403 retryable con `E_PRICING_SCONTO_ECCESSIVO`/`E_PRICING_MAGGIORAZIONE_ECCESSIVA`.
+Il tipo ammesso è solo `PERCENTUALE`: `VALORE_FISSO` è rifiutato prima (400
+`E_VENDITE_VALIDATION`), non «saltato». Superuser bypass.
 
 ### Cambio stato `POST /api/v1/vendite/contratti/<id>/cambia-stato/`
 
 ```json
-{"codice_interno": "SOSPESO"}
+{"codice_interno": "CESSATO", "valido_al": "2026-12-31"}
 ```
+
+- `codice_interno` (obbligatorio): stato di destinazione.
+- `valido_al` (ISO date, facoltativo): data di fine validità, scritta nella
+  stessa transazione. **Obbligatorio verso `CESSATO`** (`400
+  E_VENDITE_VALIDATION`). Con `valido_al` **futuro** la cessazione è
+  **programmata**: si scrive solo la data, lo stato resta e lo porta a
+  `CESSATO` il job notturno alla scadenza. Data passata →
+  `E_CONTRATTO_VALIDO_AL_RETROATTIVO` (409).
+- `legami_confermati` (int): solo verso `ANNULLATO`, vedi sotto.
+
+Risposta `200`: il **dettaglio completo** del contratto (stessa forma del
+`GET /<id>/`, `capabilities` comprese), anche sull'annullo.
 
 Verso `ANNULLATO` passa sempre dal verbo `vendite.fn_annulla_contratto`: su un
 contratto con legami (offerta d'origine, righe di commessa da emettere) risponde
@@ -467,6 +514,10 @@ regola e' una sola, a DB.
 `DELETE /api/v1/vendite/contratti/<id>/righe/<riga_id>/` hard-delete
 (bloccato dal trigger se note collegate o contratto ATTIVO).
 
+Su PATCH e DELETE la riga deve essere **del contratto dell'URL**: una riga di
+un altro contratto (o inesistente) → `404 E_VENDITE_NOT_FOUND`, prima di ogni
+altro controllo (2026-10-20). Fuori bozza → `409 E_RIGA_DOC_NON_BOZZA`.
+
 #### Campo `fonte_quantita_attesa` (refactor 2026-05-19)
 
 `fonte_quantita_attesa` (obbligatoria su OVERRIDE/AGGIUNTA, NULL sull'ESCLUSIONE:
@@ -577,7 +628,8 @@ resolver ha `contratto_id` / `tipo_eccezione` = NULL e
 `tipo_variazione_applicata = 'NESSUNA'` (nessun lookup contratto).
 
 **L3 — workflow approvazione**. Quando il payload include
-`richiesta_approvazione=true`, una violazione L2 non solleva ma apre una
+`richiesta_approvazione=true` (booleano JSON: una stringa come `"true"` →
+`400 E_VENDITE_VALIDATION`), una violazione L2 non solleva ma apre una
 pratica `APPROVAZIONE_PREZZO` e salva la riga con
 `stato_approvazione_prezzo='PENDING'` + `pratica_approvazione_prezzo_id`
 valorizzato. Il trigger DB `trg_contratti_righe_a10_guard_pending_upd`
@@ -645,6 +697,15 @@ Ritorna la "forma" derivata e i riferimenti pricing per il banner FE:
 `listino_versione_fissata` = `true` se `c.listino_versione_id IS NOT NULL`
 (contratto ATTIVO con snapshot). Versione FE: badge "Versione fissata"
 nell'header del drawer righe.
+
+Campi di drift (sempre presenti):
+`listino_versione_corrente_id` / `listino_versione_corrente_codice` — la
+versione `ATTIVA` del listino in vigore oggi (`null` se non ce n'è);
+`drift_versione_listino` — `true` quando il contratto ha una versione fissata
+e quella in vigore oggi è un'altra (in DRAFT mai).
+
+Contratto inesistente o fuori perimetro → `404 E_VENDITE_NOT_FOUND` (fino al
+2026-10-20 rispondeva `200` con `{}`).
 
 ### Componenti BoM riga contratto (modello unificato 2026-05-13)
 
@@ -718,18 +779,16 @@ runtime su `articoli_componenti`).
 ```json
 {
   "prezzo_unitario": "12.50",
-  "iva_id": 1,
   "attivo": true,
   "meta": {}
 }
 ```
 
-Whitelist campi modificabili: `prezzo_unitario`, `iva_id`,
-`uom_operativa_id`, `factor_to_base`, `qta_operativa`, `origine_prezzo`,
-`prezzo_resolver_context`, `stato_approvazione_prezzo`,
-`pratica_approvazione_prezzo_id`, `meta`, `ordine`, `attivo`. Campi
-struttura immutabili (`componente_id`, `articolo_componente_id`,
-`coeff_qta_snapshot`, `riga_contratto_id`) silenziosamente ignorati.
+Whitelist dell'operatore (`COMPONENTE_PATCH_OPERATORE`): `prezzo_unitario`,
+`attivo`, `meta`. Ogni altra chiave → `400 E_VENDITE_VALIDATION`. Un
+`prezzo_unitario` **non nullo** richiede l'azione `prezzo_override_manuale`
+(`403 E_PRICING_OVERRIDE_NON_AUTORIZZATO`) e scrive `origine_prezzo =
+MANUALE`; `null` non chiede il permesso e azzera l'origine.
 
 Anti-tampering URL: `riga_id` URL deve matchare riga reale del
 componente; mismatch → `E_VENDITE_NOT_FOUND`. Solo contratto in stato
@@ -900,12 +959,13 @@ alle righe di contratto via `target_riga_id`.
 
 ## Regole
 
-1. Numero contratto generato dal service (mai in payload).
+1. Numero contratto generato dalla funzione madre DB `vendite.fn_create_contratto` (mai in payload).
 2. Stato iniziale DRAFT; transizioni via endpoint dedicato.
    La transizione `DRAFT -> ATTIVO` genera e salva il documento contratto +
    fissa `listino_versione_id` alla versione corrente del listino.
-3. Identificativi (BA, istanza, utility) immutabili in update — per
-   cambiarli si crea un nuovo contratto.
+3. Cliente (`billing_account_id`, `istanza_utility_id`) modificabile solo in
+   DRAFT; utility, numero e stato mai — fuori bozza per cambiare cliente si
+   crea un nuovo contratto.
 4. **Forma "senza_listino"** valida a livello DB solo se esistono righe
    AGGIUNTA con `prezzo_unitario` valorizzato. Il guard di attivazione
    solleva `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` (422). Sostituisce i
@@ -971,7 +1031,8 @@ alle righe di contratto via `target_riga_id`.
 | Codice | HTTP | Origine | Trigger DB |
 |---|---|---|---|
 | `E_VENDITE_VALIDATION` | 400 | Service (struttura/coerenza coppia variazione globale, tipo_eccezione obbligatorio + coerenza prezzo, componenti_overrides non finito o non numerico, preview senza emittente/utility/valido_dal) | — |
-| `E_VENDITE_NOT_FOUND` | 404 | Service (contratto/riga/componente; anti-tampering URL componenti) | — |
+| `E_VENDITE_NOT_FOUND` | 404 | Service (contratto/riga/componente; riga o componente non del contratto/riga dell'URL; contesto-pricing di contratto inesistente o fuori perimetro) | — |
+| `E_PRICING_OVERRIDE_NON_AUTORIZZATO` | 403 | Service — prezzo manuale (riga o componente) senza l'azione `prezzo_override_manuale` | — |
 | `E_VENDITE_DUPLICATO` | 400 | UNIQUE `uq_contratti_numero` o `uq_contratti_utilities_contratto_id` o `uq_contrighe_one_eccezione_per_articolo` o `uq_contrighe_one_aggiunta_per_articolo` | — |
 | `E_VENDITE_FK` | 400 | FK su BA/istanza/utility/listino/listino_versione/parent/stato/articolo/UoM/tipo/classe utenza/categoria cliente snapshot | — |
 | `E_CONTRATTO_OVERLAP_ESISTENTE` | 409 | Il guard della transizione verso ATTIVO (messaggio che nomina il contratto in conflitto) **oppure**, sulla corsa, l'EXCLUDE gist `ex_contratti_no_overlap` (testo del ripiego, senza il numero). Scatta all'**attivazione** (DRAFT esclusi dal vincolo, vedi Regole §9). Fino al 2026-10-19 era `E_VENDITE_CONTRATTO_OVERLAP` | `script.fn_check_contratto_sovrapposto` |
@@ -998,7 +1059,7 @@ alle righe di contratto via `target_riga_id`.
 | `E_DOC_IDENTITA_FUORI_BOZZA` · `E_DOC_CONDIZIONI_FUORI_BOZZA` · `E_DOC_CLIENTE_FUORI_BOZZA` · `E_DOC_SORGENTE_FUORI_BOZZA` · `E_DOC_CHIUSO` | 409 | DB P0001 (2026-10-10, brief-db-testata-dopo-emissione) — PATCH testata su una colonna che lo stato non ammette, una famiglia per codice; `E_DOC_CHIUSO` a contratto cessato o annullato. Al posto di `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (ritirato) e della tabella per stato del service | `trgfn_doc_testata_lock_fuori_bozza` |
 | `E_RIGA_DOC_NON_BOZZA` | 409 | DB P0001 (building block, 2026-09-22 — D7 di brief-db-partita-merce-per-documento) — INSERT/UPDATE/DELETE di un'eccezione su contratto non più in bozza; stesso codice sulle righe di DDT e (DELETE) di ordine. Lo solleva **anche il pre-check BE** (BB `richiedi_righe_in_bozza`) su righe e componenti, con la frase a catalogo (etichetta «Contratto <numero>», stato, verbo) | `trgfn_doc_righe_lock_fuori_bozza` + service |
 | `E_DOC_LISTINO_CAMBIO_CON_RIGHE` · `E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI` | 422 | DB P0001 (2026-10-11) — PATCH testata che mette o sostituisce `listino_id` con righe attive, o lo toglie con eccezioni OVERRIDE/ESCLUSIONE attive. Campo `listino_id`. Stessi codici sull'offerta. Al posto di `E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE` ed `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` (ritirati, erano controlli del service) | `script.trgfn_doc_guard_listino_con_righe` |
-| `E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 403 (retryable=True) | Service (refactor §3-bis-E) — gate L2 sulla variazione globale del contratto al PATCH testata. Cascata user → categoria → group → emittente. VALORE_FISSO non applicabile (skip) | — |
+| `E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 403 (retryable=True) | Service (refactor §3-bis-E) — gate L2 sulla variazione globale del contratto al PATCH testata, e sul prezzo manuale di riga. Cascata user → categoria → group → emittente. `VALORE_FISSO` non è un tipo ammesso in testata (400) | — |
 | `E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |
 | `E_CONTRATTO_CLASSE_TIPO_INCOERENTE` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |
 | `E_CONTRATTO_UTILITY_SENZA_DIMENSIONE_TIPO_CLASSE_VIETATI` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |

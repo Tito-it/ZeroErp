@@ -1468,8 +1468,6 @@ def fn_list_righe(
     versione_id: int,
     *,
     search: str | None = None,
-    billing_account_id: int | None = None,
-    utility_id: int | None = None,
     attivo: bool | None = True,
     order_by: str = "articolo_descrizione",
     order_dir: str | None = "asc",
@@ -1484,8 +1482,6 @@ def fn_list_righe(
         listino_id,
         versione_id,
         search=search,
-        billing_account_id=billing_account_id,
-        utility_id=utility_id,
         attivo=attivo,
         order_by=order_by,
         order_dir=order_dir,
@@ -1859,7 +1855,8 @@ def fn_applica_variazione_percentuale(
                 log_to_db=True,
             )
 
-    dry_run = bool(payload.get("dry_run", False))
+    # Dal BB: con `bool(...)` la stringa "false" valeva True.
+    dry_run = _V.optional_bool(payload, "dry_run") is True
 
     # --- Esecuzione ---
     repository = ListiniRepository()

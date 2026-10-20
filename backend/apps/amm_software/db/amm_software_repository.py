@@ -17,6 +17,7 @@ from typing import Any, ClassVar, cast
 from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import (
+    sql_order_direction_lista,
     predicato_giorno_operativo,
     limiti_pagina,
     add_ricerca_full_condition,
@@ -239,7 +240,7 @@ class AmmSoftwareRepository:
         # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): senza colonna il
         #    ramo di default la ignora, e un `order_dir` estraneo passava muto.
         #    Il BB la rifiuta anche quando poi non la si usa.
-        direction = sql_order_direction(order_dir)
+        direction = sql_order_direction_lista(order_by, order_dir, colonne=ALLOWED_ORDER_COLUMNS)
         if order_column:
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = f"ORDER BY {order_column} {direction}, au.id {tiebreak_dir}"

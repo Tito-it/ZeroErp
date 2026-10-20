@@ -33,7 +33,7 @@ _RIEPILOGO_RESPONSE = {
             "valore_fermo_tot": "2000.50",
             "unita_ferme_tot": 7,
             "anzianita_max_giorni": 90,
-            "aree": [{"area": "PREVENTIVI", "n_documenti": 3}],
+            "aree": [{"area": "PREVENTIVO", "n_documenti": 3}],
         }
     ]
 }
@@ -45,7 +45,7 @@ _DOCUMENTI_RESPONSE = {
     "total_pages": 1,
     "results": [
         {
-            "area": "PREVENTIVI",
+            "area": "PREVENTIVO",
             "documento_id": 42,
             "codice": "PRV0000123",
             "cliente_display": "Rossi Impianti SRL",
@@ -106,7 +106,7 @@ class DashboardBacklogDocumentiApiTests(JwtMockedApiTest):
     @patch("apps.vendite.api.views_dashboard_backlog.fn_dash_backlog_documenti")
     def test_documenti_ok(self, mocked_fn, _mock_auth):
         mocked_fn.return_value = _DOCUMENTI_RESPONSE
-        response = self.client.get(f"{self._URL}?classe=RECUPERABILE&area=PREVENTIVI")
+        response = self.client.get(f"{self._URL}?classe=RECUPERABILE&area=PREVENTIVO")
         self.assertEqual(response.status_code, 200)
         data = response.json()["data"]
         self.assertEqual(data["count"], 1)
@@ -119,7 +119,7 @@ class DashboardBacklogDocumentiApiTests(JwtMockedApiTest):
         self.assertEqual(row["anzianita_giorni"], 55)
         kwargs = mocked_fn.call_args.kwargs
         self.assertEqual(kwargs["classe"], "RECUPERABILE")
-        self.assertEqual(kwargs["area"], "PREVENTIVI")
+        self.assertEqual(kwargs["area"], "PREVENTIVO")
 
     # Scopo: Verifica il caso `test_documenti_requires_jwt`.
     def test_documenti_requires_jwt(self):
@@ -131,10 +131,10 @@ class DashboardBacklogDocumentiApiTests(JwtMockedApiTest):
     @patch("apps.vendite.api.views_dashboard_backlog.fn_dash_backlog_documenti")
     def test_documenti_filtri_lowercase_normalizzati(self, mocked_fn, _mock_auth):
         mocked_fn.return_value = _DOCUMENTI_RESPONSE
-        self.client.get(f"{self._URL}?classe=anomalia&area=offerte")
+        self.client.get(f"{self._URL}?classe=anomalia&area=offerta_commerciale")
         kwargs = mocked_fn.call_args.kwargs
         self.assertEqual(kwargs["classe"], "ANOMALIA")
-        self.assertEqual(kwargs["area"], "OFFERTE")
+        self.assertEqual(kwargs["area"], "OFFERTA_COMMERCIALE")
 
     # Scopo: Filtri assenti -> None al service (tutte le classi/aree).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

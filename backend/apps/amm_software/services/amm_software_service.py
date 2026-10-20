@@ -95,6 +95,43 @@ _EMITTENTE_FORM_DEFAULTS_CODES: tuple[str, ...] = (
 # quando la fonte diventera' DB-driven.
 _EMITTENTE_NON_EDITABLE_FIELDS: tuple[str, ...] = ("codice", "soggetto_id")
 
+# Scopo: Le voci di un PUT di override, validate PRIMA del repository: una
+#        lista di oggetti, e in ciascuno i campi che il repository legge con
+#        `item["x"]` (`leggi` li estrae col BB, 400 col campo), piu' i campi
+#        comuni a ogni override (`motivo`, `valido_dal`, `valido_al`).
+# ⛔ `items` ASSENTE e' un 400, non una lista vuota: il repository sostituisce
+#    in blocco (DELETE + INSERT), e un corpo `{}` o una chiave sbagliata
+#    cancellavano tutti gli override con un 200. La lista vuota ESPLICITA resta
+#    il modo di toglierli tutti.
+# ⛔ Fino al 2026-10-20 la voce arrivava cruda al repository: una chiave
+#    mancante era un KeyError, una voce che non e' un oggetto un AttributeError
+#    — cioe' un 500 `E_GENERICO` per un errore di chi chiama.
+def _voci_override(
+    items: Any, leggi: Callable[[dict[str, Any]], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    ErrorManager.require(
+        isinstance(items, list), code=E_AMM_VALIDAZIONE,
+        message="'items' deve essere una lista.", context={"field": "items"},
+    )
+    voci: list[dict[str, Any]] = []
+    for item in items:
+        ErrorManager.require(
+            isinstance(item, dict), code=E_AMM_VALIDAZIONE,
+            message="Ogni voce di 'items' deve essere un oggetto.", context={"field": "items"},
+        )
+        voci.append({
+            **item,
+            "motivo": _V_AMM.optional_string(item, "motivo"),
+            "valido_dal": _V_AMM.optional_date(item, "valido_dal"),
+            "valido_al": _V_AMM.optional_date(item, "valido_al"),
+            **leggi(item),
+        })
+    return voci
+
+
+_V_AMM = PayloadValidator(validation_code=E_AMM_VALIDAZIONE)
+
+
 # Scopo: Cast best-effort di un valore parameter (sempre str per BE) a bool.
 # `'true'`/`'false'` case-insensitive -> bool. Altro (None, '', stringhe non
 # parsabili) -> False (default-safe per `bollo_auto`: il form parte con flag
@@ -207,7 +244,7 @@ class AmmSoftwareService:
         )
         # ⚠️ Letti dal BB: un non-stringa e' un 400 sul campo; con
         #    `(payload.get(k) or "").strip()` era un AttributeError, cioe' un 500.
-        _v = PayloadValidator(validation_code=E_AMM_VALIDAZIONE)
+        _v = _V_AMM
         soggetto_id = _v.optional_string(payload, "soggetto_id")
         username = _v.optional_string(payload, "username") or ""
         email = _v.optional_string(payload, "email") or ""
@@ -253,7 +290,9 @@ class AmmSoftwareService:
         # Il caller non puo' creare DISABILITATI via questo endpoint: la
         # disabilitazione e' un comando dedicato. La traduzione verso
         # l'enum legacy della fn DB e' incapsulata nel repository.
-        is_super_admin = bool(payload.get("is_super_admin"))
+        # ⛔ Dal BB, non `bool(...)`: `bool("false")` e' True, e una stringa
+        #    nel corpo creava un SUPER_ADMIN. Un non-booleano e' un 400 sul campo.
+        is_super_admin = _v.optional_bool(payload, "is_super_admin") is True
 
         creato = self._repo.crea_operatore(
             soggetto_id=soggetto_id,
@@ -313,6 +352,12 @@ class AmmSoftwareService:
         )
         operatore = self.get_operatore(auth_user_id)  # verifica esistenza
         veste_attiva = operatore.get("veste_attiva") is True
+        # I due flag dal BB: un non-booleano e' un 400 sul campo. Prima i
+        # confronti `is True`/`is False` lasciavano cadere una stringa in
+        # silenzio, e il PATCH rispondeva 200 senza aver fatto niente.
+        _v = _V_AMM
+        attivo = _v.optional_bool(payload, "attivo")
+        is_super_admin = _v.optional_bool(payload, "is_super_admin")
         # ⛔ D-3 (Tid, 2026-09-24/2026-10-04): l'accesso NON si riaccende da
         #    qui. Un operatore spento si riattiva col reinvio dell'invito, che
         #    riapre il rapporto, e la veste la accende la persona attivando:
@@ -320,7 +365,7 @@ class AmmSoftwareService:
         #    Fino al 2026-10-04 `attivo: true` la riaccendeva subito, e cosi'
         #    l'endpoint `…/riattiva/`, ritirato lo stesso giorno.
         ErrorManager.require(
-            not (payload.get("attivo") is True and not veste_attiva),
+            not (attivo is True and not veste_attiva),
             code=E_AMM_VALIDAZIONE,
             message="L'accesso si riattiva col reinvio dell'invito, non dall'interruttore.",
             context={"field": "attivo", "auth_user_id": auth_user_id},
@@ -330,14 +375,14 @@ class AmmSoftwareService:
         # veste accesa non cambia niente; `false` su una veste gia' spenta
         # (spenta da poco, o mai attivata e in attesa dell'invito) non deve
         # chiudere il rapporto che l'invito ha appena riaperto.
-        spegni = payload.get("attivo") is False and veste_attiva
+        spegni = attivo is False and veste_attiva
         # La data di fine del RAPPORTO: assente non si tocca, `null` la toglie
         # (§10 del brief-db-veste-utilizzabile). Il formato lo controlla il
         # validator; l'ordine con `valido_dal` e l'ultimo SUPER_ADMIN senza
         # scadenza li giudica il DB (`trgfn_guard_date_validita`,
         # `trgfn_risorse_umane_guard_ultimo_super_admin`).
         valido_al = (
-            PayloadValidator(validation_code=E_AMM_VALIDAZIONE).optional_date(payload, "valido_al")
+            _V_AMM.optional_date(payload, "valido_al")
             if "valido_al" in payload else MISSING
         )
 
@@ -347,7 +392,7 @@ class AmmSoftwareService:
                 email=payload.get("email"),
                 first_name=payload.get("first_name"),
                 last_name=payload.get("last_name"),
-                is_super_admin=payload.get("is_super_admin"),
+                is_super_admin=is_super_admin,
                 unita_organizzativa_id=payload.get("unita_organizzativa_id"),
                 valido_al=valido_al,
             )
@@ -448,13 +493,52 @@ class AmmSoftwareService:
 
     # Scopo: Salva override aree e invalida cache.
     def put_override_aree(self, auth_user_id: int, items: list) -> list:
-        self._repo.put_override_aree(auth_user_id, items)
+        # ⛔ Prima la guardia di `get_operatore`: l'id dev'essere un OPERATORE.
+        #    Senza, un id di macchina o di cliente del portale riceveva override
+        #    (PUT) o una lista vuota (GET) invece del 404 delle altre rotte
+        #    `operatori/{id}/`.
+        self.get_operatore(auth_user_id)
+        items = _voci_override(items, lambda it: {
+            "area_id": _V_AMM.require_positive_int(it, "area_id"),
+            "livello": _V_AMM.require_string(it, "livello"),
+        })
+        # Cio' che solo il DB sa giudicare — un `livello` fuori dall'enum, un
+        # `area_id` inesistente, la stessa area due volte — e' un 400, non il
+        # 500 di un errore DB nudo (come `put_override_oggetti`).
+        with translate_db_errors(
+            context={"op": "amm_software.put_override_aree"},
+            fallback_code=E_AMM_VALIDAZIONE,
+            fallback_message="Override aree non salvati.",
+            unique_constraints={
+                "uq_user_override_aree_user_area": (E_AMM_VALIDAZIONE, "La stessa area compare due volte."),
+            },
+            fk_constraints={
+                "fk_user_override_aree_area": (E_AMM_VALIDAZIONE, "Area inesistente."),
+            },
+        ):
+            self._repo.put_override_aree(auth_user_id, items)
         invalidate_user(auth_user_id)
         return self._repo.get_override_aree(auth_user_id)
 
     # Scopo: Salva override azioni e invalida cache.
     def put_override_azioni(self, auth_user_id: int, items: list) -> list:
-        self._repo.put_override_azioni(auth_user_id, items)
+        self.get_operatore(auth_user_id)  # vedi `put_override_aree`
+        items = _voci_override(items, lambda it: {
+            "azione_id": _V_AMM.require_positive_int(it, "azione_id"),
+            "abilitata": _V_AMM.require_bool(it, "abilitata"),
+        })
+        with translate_db_errors(  # vedi `put_override_aree`
+            context={"op": "amm_software.put_override_azioni"},
+            fallback_code=E_AMM_VALIDAZIONE,
+            fallback_message="Override azioni non salvati.",
+            unique_constraints={
+                "uq_user_override_azioni_user_azione": (E_AMM_VALIDAZIONE, "La stessa azione compare due volte."),
+            },
+            fk_constraints={
+                "fk_user_override_azioni_azione": (E_AMM_VALIDAZIONE, "Azione inesistente."),
+            },
+        ):
+            self._repo.put_override_azioni(auth_user_id, items)
         invalidate_user(auth_user_id)
         return self._repo.get_override_azioni(auth_user_id)
 
@@ -526,10 +610,12 @@ class AmmSoftwareService:
 
     # Scopo: Lista override aree.
     def get_override_aree(self, auth_user_id: int) -> list:
+        self.get_operatore(auth_user_id)  # vedi `put_override_aree`
         return self._repo.get_override_aree(auth_user_id)
 
     # Scopo: Lista override azioni.
     def get_override_azioni(self, auth_user_id: int) -> list:
+        self.get_operatore(auth_user_id)  # vedi `put_override_aree`
         return self._repo.get_override_azioni(auth_user_id)
 
     # Scopo: Salva override oggetti e invalida cache.
@@ -544,6 +630,11 @@ class AmmSoftwareService:
     #    la lettura e la scrittura, la FK risponde col suo 23503: tradotto nello
     #    stesso `E_AMM_VALIDAZIONE`, non un 500.
     def put_override_oggetti(self, auth_user_id: int, items: list) -> list:
+        self.get_operatore(auth_user_id)  # vedi `put_override_aree`
+        # `app_label`/`model_name` li giudica il catalogo qui sotto.
+        items = _voci_override(items, lambda it: {
+            "livello": _V_AMM.require_string(it, "livello"),
+        })
         if items:
             catalog = self._repo.list_model_overrides()
             registered = {(m["app_label"], m["model_name"]) for m in catalog}
@@ -581,6 +672,7 @@ class AmmSoftwareService:
 
     # Scopo: Lista override oggetti.
     def get_override_oggetti(self, auth_user_id: int) -> list:
+        self.get_operatore(auth_user_id)  # vedi `put_override_aree`
         return self._repo.get_override_oggetti(auth_user_id)
 
     # Scopo: Lista model registrati per lookup admin.
@@ -731,7 +823,7 @@ class AmmSoftwareService:
     def put_profilo_reparto(
         self, uo_id: int, aree: list, azioni: list, *, payload: dict[str, Any] | None = None,
     ) -> dict:
-        richiede_secondo_fattore = PayloadValidator(validation_code=E_AMM_VALIDAZIONE).optional_bool(
+        richiede_secondo_fattore = _V_AMM.optional_bool(
             payload or {}, "richiede_secondo_fattore",
         )
         self._repo.put_profilo_reparto(
@@ -753,7 +845,7 @@ class AmmSoftwareService:
             len(auth_user_ids) <= MAX_LIMIT,
             code=E_AMM_VALIDAZIONE,
             message=f"Al massimo {MAX_LIMIT} operatori per richiesta.",
-            context={"field": "auth_user_ids"},
+            context={"parametro": "auth_user_ids"},
         )
         return self._repo.get_permessi_riepilogo(auth_user_ids)
 

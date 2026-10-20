@@ -48,6 +48,10 @@ from typing import Any
 
 from apps.vendite.db.commesse_repository import COLONNE_PROVENIENZA_PREZZO
 from apps.vendite.services import _kit_meta as kit_meta
+# ⛔ L'origine «prezzo scritto a mano» ha una sede sola, il gate prezzi
+#    (2026-10-20, regola del 2): qui era la terza copia della stessa stringa,
+#    accanto a quelle della PATCH dei componenti e del gate di riga.
+from apps.vendite.services._pricing_gate_helpers import ORIGINE_PREZZO_MANUALE
 
 __all__ = [
     "CAMPI_PROVENIENZA",
@@ -58,8 +62,6 @@ __all__ = [
     "provenienza_da_resolver",
     "provenienza_manuale",
 ]
-
-ORIGINE_PREZZO_MANUALE = "MANUALE"
 
 # Valori ammessi per `commesse_attivita.origine_prezzo` (CHECK
 # `chk_commesse_attivita_origine_prezzo`, speculare ad `attivita_fatturabili`).

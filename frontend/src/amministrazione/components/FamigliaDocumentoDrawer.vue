@@ -7,8 +7,14 @@
 //        Brief: brief-be-fe-crud-registri-di-numerazione §11.10 (FE-F6).
 //
 // ⭐ COSA SI STA DAVVERO CONFIGURANDO: una famiglia dice DOVE vive un documento
-//    (tabella, colonna del numero, colonna del cliente, colonna della serie) e
-//    con quale FORMA nascono i suoi registri. Non è una tabella di decodifica:
+//    (colonna del numero, colonna del cliente, colonna della serie) e con quale
+//    FORMA nascono i suoi registri.
+//
+// ⭐ LA FAMIGLIA E' QUELLA DI UNA SORGENTE (dal 2026-10-20,
+//    brief-db-grammatica-unica-documenti 2c, G-5): in creazione si SCEGLIE la
+//    sorgente (`config.sorgenti`), il suo `codice_interno` diventa quello della
+//    famiglia e la tabella dei documenti e' la sua `target_table`. Schema e
+//    tabella non si scrivono piu': si leggono. Non è una tabella di decodifica:
 //    è la regola che il registro applica, e i registri di quella famiglia se la
 //    portano dentro dal giorno in cui nascono.
 //
@@ -40,10 +46,12 @@ import { DRAWER_WIDTH, FIELD_LENGTH, MANAGE_ICONS } from '../../core/constants'
 //    poi rifiuta — un limite inventato al posto di quello vero.
 import { REGISTRO_CIFRE_MAX, REGISTRO_CIFRE_MIN } from '../constants'
 import { useFamiglieDocumentoStore } from '../stores/famiglieDocumento'
-import { getFamiglia } from '../api/famiglieDocumento'
+import { getFamiglia, listSorgentiFamiglie } from '../api/famiglieDocumento'
+import { useLookup } from '../../core/composables/useLookup'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
+import Select from 'primevue/select'
 import Message from 'primevue/message'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 
@@ -72,8 +80,6 @@ function defaultForm() {
     codice_interno: '',
     codice: '',
     descrizione: '',
-    schema_tabella: '',
-    nome_tabella: '',
     colonna_numero: '',
     colonna_billing_account: '',
     colonna_serie: '',
@@ -93,18 +99,54 @@ const motivoStruttura = computed(() =>
   dettaglio.value ? motivoBloccoRiga(t, te, dettaglio.value, 'struttura_blocco') : '',
 )
 
-// La tabella, composta: è ciò che l'operatore riconosce, e in lista arriva già
-// concatenata dalla vista.
+// Le sorgenti fra cui si sceglie in creazione. Si caricano solo lì: in modifica
+// la sorgente è il `codice_interno`, che non si cambia.
+// ⚠️ `reload` e non `load`: il drawer resta montato fra un'apertura e l'altra,
+//    e i motivi che spengono una voce cambiano a ogni creazione, spegnimento o
+//    riaccensione. Con la cache, la sorgente appena usata resterebbe sceglibile.
+const { items: sorgentiRaw, reload: caricaSorgenti } = useLookup(listSorgentiFamiglie)
+
+// Scopo: il motivo per cui una sorgente non si può scegliere, o `null`.
+// ⛔ È un'INFORMAZIONE, non il rifiuto: a rifiutare restano l'indice unico su
+//    `codice_interno` e il guard dei riferimenti. Spegnere la voce col motivo
+//    accanto evita il giro «scegli, salva, leggi l'errore».
+// ⚠️ Prima la tabella presa da un'ALTRA famiglia: in quel caso anche la propria
+//    famiglia spenta non si può riaccendere, e il motivo giusto è quello.
+function motivoSorgenteNonSceglibile(s) {
+  if (s.tabella_numerata_da) {
+    return t('amministrazione.famiglie_documento.sorgente_tabella_numerata', {
+      famiglia: s.tabella_numerata_da,
+    })
+  }
+  if (s.famiglia_esistente) {
+    return t('amministrazione.famiglie_documento.sorgente_ha_famiglia')
+  }
+  return null
+}
+
+const sorgenti = computed(() => sorgentiRaw.value.map((s) => {
+  const motivo = motivoSorgenteNonSceglibile(s)
+  return {
+    value: s.codice_interno,
+    label: `${s.etichetta} (${s.codice_interno})`,
+    motivo,
+    disabled: motivo != null,
+    tabella: s.tabella_documento,
+  }
+}))
+
+// La tabella dei documenti: in modifica la dà la vista, in creazione la
+// sorgente scelta. Si legge e non si scrive (G-5).
 const tabellaCompleta = computed(() => {
-  const s = (form.value.schema_tabella || '').trim()
-  const n = (form.value.nome_tabella || '').trim()
-  return s && n ? `${s}.${n}` : '—'
+  if (isEdit.value) return dettaglio.value?.tabella_documento || '—'
+  return sorgenti.value.find((s) => s.value === form.value.codice_interno)?.tabella || '—'
 })
 
 async function carica() {
   if (!isEdit.value) {
     form.value = defaultForm()
     dettaglio.value = null
+    await caricaSorgenti()
     return
   }
   const res = await getFamiglia(props.famigliaId)
@@ -114,8 +156,6 @@ async function carica() {
     codice_interno: dati.codice_interno ?? '',
     codice: dati.codice ?? '',
     descrizione: dati.descrizione ?? '',
-    schema_tabella: dati.schema_tabella ?? '',
-    nome_tabella: dati.nome_tabella ?? '',
     colonna_numero: dati.colonna_numero ?? '',
     colonna_billing_account: dati.colonna_billing_account ?? '',
     colonna_serie: dati.colonna_serie ?? '',
@@ -147,12 +187,10 @@ function payload() {
   //    nascita lo copia il database dal `codice_interno`, e la madre di
   //    creazione non ha il parametro.
   if (isEdit.value) p.codice = form.value.codice
-  // Le quattro colonne strutturali si spediscono solo quando sono davvero
+  // Le tre colonne strutturali si spediscono solo quando sono davvero
   // modificabili: in creazione sempre, in modifica solo se la check non le ha
-  // bloccate.
+  // bloccate. La tabella non c'è: la dice la sorgente.
   if (!isEdit.value || !strutturaBloccata.value) {
-    p.schema_tabella = form.value.schema_tabella
-    p.nome_tabella = form.value.nome_tabella
     p.colonna_numero = form.value.colonna_numero
     p.colonna_billing_account = form.value.colonna_billing_account
     // ⚠️ Vuota = NULL = «questa famiglia non gestisce le serie»: è il backend a
@@ -182,8 +220,9 @@ async function salva() {
     emit('saved', dati)
     chiudi()
   } catch {
-    // Errore gestito dall'interceptor axios globale: il duplicato di tabella
-    // arriva già parlante dal backend e nomina la famiglia che la occupa.
+    // Errore gestito dall'interceptor axios globale: la tabella già numerata
+    // arriva parlante dal guard del database (E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_
+    // NUMERATA) e nomina la famiglia che la numera.
   } finally {
     salvando.value = false
   }
@@ -225,18 +264,34 @@ const titolo = computed(() => (isEdit.value
     <div class="form-grid">
       <div class="form-field">
         <label>{{ t('vendite.famiglie_documento.col_codice_interno') }} *</label>
-        <!-- ⛔ Immutabile dopo la nascita: è il bersaglio della FK dei
+        <!-- ⭐ In creazione si SCEGLIE la sorgente (G-5): il suo codice è
+             quello della famiglia. Le voci che non si possono scegliere
+             restano visibili, spente, col motivo accanto.
+             ⛔ Immutabile dopo la nascita: è il bersaglio della FK dei
              registri, e a tenerlo fermo è il lock automatico del database. -->
-        <InputText
+        <Select
+          v-if="!isEdit"
           v-model="form.codice_interno"
-          :maxlength="FIELD_LENGTH.FAMIGLIA_CODICE_MAX"
-          :disabled="isReadonly || isEdit"
-        />
+          :options="sorgenti"
+          option-label="label"
+          option-value="value"
+          option-disabled="disabled"
+          :placeholder="t('amministrazione.famiglie_documento.sorgente_placeholder')"
+          :disabled="isReadonly"
+        >
+          <template #option="{ option }">
+            <div>
+              <div>{{ option.label }}</div>
+              <small v-if="option.motivo" class="app-field-hint">{{ option.motivo }}</small>
+            </div>
+          </template>
+        </Select>
+        <InputText v-else v-model="form.codice_interno" disabled />
         <small v-if="isEdit" class="app-field-hint">
           {{ t('amministrazione.famiglie_documento.codice_immutabile') }}
         </small>
         <small v-else class="app-field-hint">
-          {{ t('amministrazione.famiglie_documento.codice_nasce_dal_interno') }}
+          {{ t('amministrazione.famiglie_documento.sorgente_hint') }}
         </small>
       </div>
       <div v-if="isEdit" class="form-field">
@@ -264,20 +319,13 @@ const titolo = computed(() => (isEdit.value
       {{ motivoStruttura }}
     </Message>
     <div class="form-grid">
+      <!-- ⭐ La tabella si LEGGE: è la `target_table` della sorgente (G-5). -->
       <div class="form-field">
-        <label>{{ t('amministrazione.famiglie_documento.schema_tabella') }} *</label>
-        <InputText
-          v-model="form.schema_tabella"
-          :disabled="isReadonly || strutturaBloccata"
-        />
-      </div>
-      <div class="form-field">
-        <label>{{ t('amministrazione.famiglie_documento.nome_tabella') }} *</label>
-        <InputText
-          v-model="form.nome_tabella"
-          :disabled="isReadonly || strutturaBloccata"
-        />
-        <small class="app-field-hint">{{ tabellaCompleta }}</small>
+        <label>{{ t('vendite.famiglie_documento.col_tabella_documento') }}</label>
+        <span>{{ tabellaCompleta }}</span>
+        <small class="app-field-hint">
+          {{ t('amministrazione.famiglie_documento.tabella_dalla_sorgente') }}
+        </small>
       </div>
       <div class="form-field">
         <label>{{ t('vendite.famiglie_documento.col_colonna_numero') }} *</label>

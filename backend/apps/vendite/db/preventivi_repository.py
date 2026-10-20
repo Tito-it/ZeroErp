@@ -199,7 +199,6 @@ class PreventiviRepository(
     # Configurazione mixin indirizzi documento.
     _indirizzi_table = "vendite.preventivi_indirizzi"
     _indirizzi_fk_documento = "preventivo_id"
-    _indirizzi_ambito = "PREVENTIVI"
     _indirizzi_documento = SORGENTE_PREVENTIVO
 
     # ══════════════════════════════════════════════════════════

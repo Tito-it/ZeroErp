@@ -110,13 +110,14 @@ quindi `vendite` non può chiedere un saldo a `pagamenti`.
 | Regola | Dettaglio |
 | --- | --- |
 | Envelope | `{"data": …, "meta": {"request_id"}}`; errori nell'envelope standard di [api.md](../../../dev/api.md) |
-| Paginazione | **page-based**: `page` (default 1), `page_size` (default 50, max 200). Risposta `{count, page, page_size, total_pages, results}`. ⛔ `count` viene da `COUNT(*) OVER ()` nella stessa valutazione, mai da `len(results)`. ⚠️ Le tre liste nate su `<ListaConfigurabile>` con `createListaStore` — `fatture/{id}/sistemazioni/` (02/09), `rate/` (17/09) e `distinte/{id}/righe/` (18/09) — sono **offset-based** (`limit`/`offset`, la lingua di `useSearchTable`) e rispondono `{count, results}`: la conversione per le altre la fa lo store, in un posto solo (`paramsPagina`) |
+| Paginazione | **page-based**: `page` (default 1), `page_size` (default 25, max 200). Risposta `{count, page, page_size, total_pages, results}`. ⛔ `count` viene da `COUNT(*) OVER ()` nella stessa valutazione, mai da `len(results)`. ⚠️ Le tre liste nate su `<ListaConfigurabile>` con `createListaStore` — `fatture/{id}/sistemazioni/` (02/09), `rate/` (17/09) e `distinte/{id}/righe/` (18/09) — sono **offset-based** (`limit`/`offset`, la lingua di `useSearchTable`) e rispondono `{count, results}`: la conversione per le altre la fa lo store, in un posto solo (`paramsPagina`) |
 | Ordinamento | `order_by` su una **whitelist per lista** (tabella sotto) — il nome è quello **fisico** della colonna, come la lista lo espone; `order_dir` `asc\|desc`. Fuori whitelist → `400 E_PAGAMENTI_VALIDATION` |
 | Query param opzionali | contratto degli helper `qp_*_optional`: vuoto = assente, malformato = `400` |
 | Vocabolari a `CHECK` | `stato`, `origine`, `coda`, `motivo`, `chi_e_in_credito`, `tipo`, `destinazione`: un valore fuori vocabolario è un **400**, mai una lista vuota — su due valori possibili una lista vuota è indistinguibile da «non c'è niente», cioè dalla risposta più rassicurante |
 | `Idempotency-Key` | obbligatoria su **ogni** `POST` (creazioni, verbi, cambi di stato). ⚠️ Sui `PATCH` no: passano da `request.data`, non da `handle_post_json` |
 | 404 | «non esiste» e «non lo vedi» (RLS) danno la **stessa** risposta, di proposito: dire «esiste ma non è tuo» racconterebbe a chi è fuori perimetro che quel documento c'è |
 | Cancello di perimetro emittente | le liste con `lista_codice` (`pagamenti.distinte`, `.righe`, `.distinta_righe` — lista **ed** export —, `.rate`, `.rate_fuori_capienza`, `.eccedenze`, `.sistemazioni_fattura`, `.canali_incasso`) passano dal cancello di [`perimetro_emittente`](../../ui/manual/api_export_liste.md): un operatore **multi-emittente** senza emittente scelto riceve `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`. Non è un permesso: è «scegli prima da dove guardi» |
+| `search` | ricerca libera sulle colonne che il catalogo della lista accende (`ricerca_full`), su `distinte/`, `righe/`, `distinte/{id}/righe/` (+ `export/`), `rate/`, `rate/fuori-capienza/`, `eccedenze/`. Sotto la soglia della lista (`ricerca_min_caratteri`) il termine non filtra: mai un 400 |
 | `?format=` | ⛔ mai: è un parametro magico di DRF e la richiesta muore con **404** prima di arrivare alla view. Il parametro dell'export si chiama **`formato`** |
 
 **Le whitelist di ordinamento**, con il default e il suo verso:
@@ -142,7 +143,9 @@ Elenco paginato. Filtri: `stato` (codice interno: `BOZZA` · `IMPORTATA` ·
 `VALIDATA` · `CHIUSA` · `ANNULLATA`), `origine` (`MANUALE` · `GENERATA` ·
 `AUTOMATICA`), `centro_riscossione_id`, `ente_incasso_id`, `data_da`/`data_a`
 sulla **data contabile** (ISO; nessun floor lato backend — il default delle
-liste lo applica il frontend).
+liste lo applica il frontend), `search`. `stato` o `origine` fuori vocabolario:
+`400 E_PAGAMENTI_VALIDATION` col campo (fino al 2026-10-20 davano una lista
+vuota).
 
 ⭐ **`origine` non è un dettaglio tecnico**: dice a chi guarda se sta vedendo
 il lavoro di una persona (`MANUALE`), la contabilità interna scritta dal giro
@@ -237,11 +240,12 @@ ridà la sua. La distinta manuale è **proprietà** di chi la lavora (D12-a), ed
 ciò che rende inutile qualunque lock. Da cui la risposta:
 
 ```json
-{ "data": { "distinta": {…}, "righe": […], "stati_distinta": […], "stati_riga": […],
+{ "data": { "distinta": {…}, "stati_distinta": […], "stati_riga": […],
             "transizioni": {…}, "gia_popolata": true } }
 ```
 
-È il dettaglio (sotto) più **`gia_popolata`**: `true` se la distinta
+È il dettaglio (sotto, quindi **senza righe**: si leggono da
+`distinte/{id}/righe/`) più **`gia_popolata`**: `true` se la distinta
 restituita ha già delle righe. La schermata **deve dirlo** — entrarci in
 silenzio è il modo in cui si registra due volte credendo di cominciare.
 ⛔ `gia_popolata` NON significa «riaperta»: una distinta esistente e vuota è
@@ -864,7 +868,7 @@ incassato · has_movimenti` dalla base unica. La chiave della riga è
 | --- | --- | --- |
 | `billing_account_id` | int | il cliente — uno dei due criteri del picker |
 | `fattura_numero` | int | il numero del documento, confronto **ESATTO**: 101 non porta 1010 (nel lookup sì, ed è giusto lì). `serie` e `anno` per disambiguare |
-| `search` | str | ricerca libera sulle colonne che il **catalogo** della lista accende per l'operatore (`ricerca_full` nella configurazione; dichiarazione `_RICERCA_RATE`, BB `add_ricerca_full_condition`): le colonne non si elencano qui. Dal 24/09 cerca **anche il numero documento** (Tid), oltre al cliente. È un `ILIKE`: «101» porta anche la 1010 — il confronto esatto è `fattura_numero`, un filtro diverso. Sotto i 3 caratteri: **400** `E_SEARCH_VALIDATION` col campo (lo stesso codice delle altre liste, dal 24/09) (la soglia è `RICERCA_MIN_CARATTERI` del BB; 400 o ignorato è la decisione aperta del brief ricerca-full §6). Vale anche sul perimetro di `solo_aperte`: il BB sta nella funzione dell'alias |
+| `search` | str | ricerca libera sulle colonne che il **catalogo** della lista accende per l'operatore (`ricerca_full` nella configurazione; dichiarazione `_RICERCA_RATE`, BB `add_ricerca_full_condition`): le colonne non si elencano qui. Dal 24/09 cerca **anche il numero documento** (Tid), oltre al cliente. È un `ILIKE`: «101» porta anche la 1010 — il confronto esatto è `fattura_numero`, un filtro diverso. Sotto la soglia della lista il termine non filtra (nessun 400). Vale anche sul perimetro di `solo_aperte`: il BB sta nella funzione dell'alias |
 | `solo_aperte` | bool | solo le rate con `residuo <> 0` (Q-B). ⚠️ Il filtro sta nel `WHERE`, quindi chiede il saldo di **tutto il perimetro** — è il costo onesto di quel filtro, non della lista |
 | `solo_numerate` | bool | solo le rate di documenti **numerati** (`numero IS NOT NULL`; dal 18/09, rilievo in-app di Tid): una bozza non è un documento fiscale e la sua rata non è un credito su cui registrare un incasso. Il picker lo passa **sempre** (default dello store); vale anche sul perimetro di `solo_aperte`, perché sta nella stessa funzione dell'alias. ⏳ La regola di Tid è più stretta — «solo le definitive, inviate a SDI» — ed è un predicato di dominio che arriverà in **una** sede a DB, non come un secondo booleano (piano D19 §8) |
 | `data_scadenza_da` / `_a` | date ISO | |
@@ -1274,7 +1278,8 @@ che come violazione di `CHECK`. Su `PSP` il database pretende il soggetto
 
 ### `GET` / `PATCH /api/v1/pagamenti/enti-incasso/{ente_incasso_id}/`
 
-Dettaglio (stessa forma della riga di lista) e aggiornamento dei campi
+Dettaglio e aggiornamento: entrambi rispondono `{ "ente_incasso": {…} }`
+(il canale nella forma della riga di lista). Campi
 compilabili: `codice`, `descrizione`, `tipo`, `attivo`,
 `centro_riscossione_id`, `soggetto_ruolo_id`, `bank_branch_id`,
 `soggetto_ruolo_conto_bancario_id`, `formato_flusso`, `regole_match`, `meta`.
@@ -1325,7 +1330,7 @@ arrivano dai guard e dalle madri, e il backend li fa passare intatti.
 
 | Codice | HTTP | Chi lo solleva | Quando |
 | --- | --- | --- | --- |
-| `E_PAGAMENTI_VALIDATION` | 400 | backend | payload malformato, chiave fuori whitelist, vocabolario, importo non valido, dichiarazione a metà, motivo senza forzatura, rata/cliente/forzatura senza fattura alla nascita della riga, FK violata (tradotta con la frase del campo); su `da-rate/`: elenco vuoto, oltre 200, `scadenza_id` duplicato, **fatto comune** malformato — tutti **prima** del giro; su `rate/`: `order_by` fuori whitelist (`search` sotto i 3 caratteri: `E_SEARCH_VALIDATION`, dal 24/09) |
+| `E_PAGAMENTI_VALIDATION` | 400 | backend | payload malformato, chiave fuori whitelist, vocabolario, importo non valido, dichiarazione a metà, motivo senza forzatura, rata/cliente/forzatura senza fattura alla nascita della riga, FK violata (tradotta con la frase del campo); su `da-rate/`: elenco vuoto, oltre 200, `scadenza_id` duplicato, **fatto comune** malformato — tutti **prima** del giro; su `distinte/`: `stato`/`origine` fuori vocabolario; su `rate/`: `order_by` fuori whitelist |
 | `E_CONTABILE_NON_TROVATA` · `E_RIGA_CONTABILE_NON_TROVATA` · `E_SISTEMAZIONE_NON_TROVATA` · `E_ENTE_INCASSO_NON_TROVATO` · `E_RATA_NON_TROVATA` · `E_FATTURA_NON_TROVATA` | 404 | backend (fattura: anche il DB) | l'oggetto non c'è, **o il perimetro non lo lascia vedere**. ⚠️ Su `da-rate/` la rata assente non è un 404 della richiesta: è l'errore di **quella riga** dentro `falliti[]`, con status 200 |
 | `E_CONTABILE_STATO_NON_CONFIGURATO` | 500 | backend | il codice di stato chiesto non risolve a catalogo: `UPDATE` a zero righe su un oggetto che esiste |
 | `E_PAGAMENTI_CHIAMATA_NON_VALIDA` | 500 | backend | la madre della conferma non ha risposto nessuna riga |

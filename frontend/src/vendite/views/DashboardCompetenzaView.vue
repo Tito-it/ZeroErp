@@ -1736,8 +1736,12 @@ function fatturaGruppi(righe) {
 // La commessa resta raggiungibile: e' il contenitore in cui il gruppo verra'
 // fatturato, e vederlo prima di premere «Fattura» ha senso.
 //
+// L'area del BB e' il codice della sorgente, cioe' `tipo_gruppo`, e vale solo
+// se il documento ha una pagina (`documento_apribile`, da `config.sorgenti`):
+// dal 2026-10-20 il BE non manda piu' il plurale `area_documento`
+// (brief-db-grammatica-unica-documenti, 2d / L2d-1).
 // I gruppi SOURCELESS (oneri di commessa) non hanno documento: `documento_id`
-// e `area_documento` sono NULL e il BB nasconde da se' la voce — lasciando la
+// e `documento_apribile` sono NULL e il BB nasconde da se' la voce — lasciando la
 // sola commessa, che per loro E' il riferimento (il `riferimento` di quelle
 // righe e' infatti il codice commessa).
 // Scopo: il motivo del blocco, con la via d'uscita SOLO a chi puo' percorrerla.
@@ -1855,7 +1859,7 @@ function buildGruppoRowActions(row) {
       command: () => apriCommessa(row),
     },
     buildApriDocumentoAction({
-      area: row.area_documento,
+      area: row.documento_apribile ? row.tipo_gruppo : null,
       documentoId: row.documento_id,
       // `riferimento` senza ripiego: e' NOT NULL per contratto (vedi
       // `DashCompetenzaGruppoRow`), e questa voce si rende solo quando

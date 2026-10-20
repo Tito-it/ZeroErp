@@ -146,8 +146,9 @@ Differiscono dalla base SOLO per `expected_ruoli_applicativi`:
 
 ## Input
 
-Vedi [api_multi_veste_token.md](api_multi_veste_token.md) §Input. I 3 login
-accettano il JSON body standard SimpleJWT (`username+password`); i 3 refresh
+Vedi [api_multi_veste_token.md](api_multi_veste_token.md) §Input. Il login
+admin vuole `{username, password}`; i login portale e shop si fanno con
+l'**email**: `{email, password}`. I 3 refresh
 hanno corpo vuoto, leggono il refresh dal cookie `zeroerp_refresh` e
 pretendono l'header `X-Requested-With: XMLHttpRequest`.
 
@@ -163,6 +164,17 @@ claim dal refresh nel corpo. Il JWT contiene i claim custom
 l'utente ha un emittente attivo) documentati in
 [api_multi_veste_token.md](api_multi_veste_token.md) §Claim JWT custom.
 
+**Secondo fattore attivo**: se la credenziale ha un device TOTP attivo, la
+password giusta non basta e il login risponde **200 senza token ne' cookie**:
+
+```json
+{ "two_factor_required": true, "sfida": "<sfida firmata>", "scade_in_secondi": 300 }
+```
+
+L'accesso si chiude con `POST /api/v1/{admin|portale|shop}/token/secondo-fattore/`
+(sfida + codice), che emette `access` e cookie come il login a un passo.
+Nessuna sessione e nessun successo sul freno al primo passo.
+
 **Effetto aggiuntivo**: INSERT in `dbops.sessioni_utente` (audit login/refresh).
 
 ## Regole
@@ -176,7 +188,8 @@ l'utente ha un emittente attivo) documentati in
   non e' attiva o se la query fallisce (`DatabaseError`): in quel caso viene loggato `security.{login,refresh}_guc_mancate`
   e l'audit procede con GUC vuote (user_insert='zeroerp_app').
 - Le 6 view concrete sono registrate in `zeroerp_backend/urls.py` con
-  `permission_classes=[AllowAny]` (endpoint pubblici di autenticazione).
+  `permission_classes=[AllowAny]` (endpoint pubblici di autenticazione),
+  accanto alle 3 del secondo passo (`…/token/secondo-fattore/`).
 - **Breaking change §8.3.1**: il path legacy `/api/v1/auth/token/` e'
   stato rimosso senza alias. Client pre-refactor devono essere aggiornati.
 

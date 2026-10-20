@@ -27,6 +27,7 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.api.indirizzi_documento_views import (
@@ -530,12 +531,13 @@ class ApiPreventivoCollegaPratica(DomainAPIView):
         )},
     )
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        # Dal BB: `payload["pratica_id"]` assente era un KeyError, cioe' un 500.
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            flusso_raw = payload.get("flusso_id")
+            v = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
             return preventivi_service.collega_pratica(
                 preventivo_id,
-                pratica_id=int(payload["pratica_id"]),
-                flusso_id=int(flusso_raw) if flusso_raw is not None else None,
+                pratica_id=v.require_positive_int(payload, "pratica_id"),
+                flusso_id=v.optional_positive_int(payload, "flusso_id"),
             )
         return handle_post_json(request, handler=_handler)
 
@@ -1192,11 +1194,13 @@ class ApiPreventivoGeneraPratica(DomainAPIView):
     )
     # Scopo: Genera pratica esecutiva da preventivo via POST.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        # Dal BB: un campo assente era un KeyError, cioe' un 500.
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
+            v = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
             return preventivi_service.genera_pratica(
                 preventivo_id,
-                tipo_prestazione_id=int(payload["tipo_prestazione_id"]),
-                priorita_id=int(payload["priorita_id"]),
+                tipo_prestazione_id=v.require_positive_int(payload, "tipo_prestazione_id"),
+                priorita_id=v.require_positive_int(payload, "priorita_id"),
                 descrizione=payload.get("descrizione"),
             )
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)

@@ -21,6 +21,7 @@ Indice test eseguiti:
 11) test_crea_operatore_flow_b_cognome_non_richiesto — flusso B: cognome assente OK
 12) test_crea_operatore_flow_b_uuid_invalido — soggetto_id malformato -> errore 400
 13) test_crea_operatore_qualifica_non_numerica — qualifica_id non numerico -> errore 400
+14) test_crea_operatore_is_super_admin_stringa_rifiutato — "false" come stringa: 400 sul campo, nessun operatore creato
 """
 
 import json
@@ -345,6 +346,27 @@ class TestCreaOperatoreFlowB(TestCase):
 
         data = json.loads(response.content)
         self.assertIn("error", data)
+
+
+    # Scopo: ⛔ `is_super_admin` dal BB, non da `bool(...)`. Con `bool("false")`
+    #        (che e' True) una stringa nel corpo creava un SUPER_ADMIN: ora e'
+    #        un 400 `E_AMM_VALIDAZIONE` sul campo, e il repository non e' toccato.
+    @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
+    @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.get_idempotency_key", return_value=None)
+    @patch("apps.core.api.endpoint_helpers.parse_json_body")
+    def test_crea_operatore_is_super_admin_stringa_rifiutato(
+        self, mock_parse, mock_idemp, mock_reqid, repo_cls,
+    ):
+        payload = {**VALID_PAYLOAD, "is_super_admin": "false"}
+        mock_parse.return_value = payload
+
+        response = OperatoriListView().post(_make_admin_request(payload))
+
+        self.assertEqual(response.status_code, 400)
+        errore = json.loads(response.content)["error"]
+        self.assertEqual(errore["code"], "E_AMM_VALIDAZIONE")
+        repo_cls.return_value.crea_operatore.assert_not_called()
 
 
 class TestCreaOperatorePermission(TestCase):

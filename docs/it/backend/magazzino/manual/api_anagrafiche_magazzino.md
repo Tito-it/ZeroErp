@@ -50,10 +50,10 @@ Codice: `apps/magazzino/api/views_anagrafiche.py`,
 
 #### 1. `GET /api/v1/magazzino/magazzini/`
 
-Lista `magazzino.magazzini` (catalogo 80). Filtri: `search` (min 3, su codice e
-descrizione), `attivo` (assente = tutti, spenti compresi). Ordinamento
+Lista `magazzino.magazzini` (catalogo 80). Filtri: `search` (su codice e
+descrizione; sotto la soglia del catalogo è ignorata, mai 400), `attivo` (assente = tutti, spenti compresi). Ordinamento
 `order_by` in `MAGAZZINI_SORT_COLUMNS` (`codice`, `descrizione`,
-`emittente_codice`, `indirizzo_normalizzato`, `usa_ubicazioni`, `predefinito`,
+`emittente_codice`, `emittente_ragione_sociale`, `indirizzo_normalizzato`, `usa_ubicazioni`, `predefinito`,
 `attivo`, `ubicazioni_count`, `data_insert`, `id`); senza: `codice`.
 
 Riga: `id`, `uid`, `codice`, `descrizione`, `emittente_fiscale_id`,
@@ -118,11 +118,11 @@ Crea nel magazzino del path. Payload: `codice`, `tipo_id` (obbligatori);
 `meta`. Il padre dello stesso magazzino e senza cicli lo decide
 `trgfn_ubicazioni_guard_parent` (campo `parent_id` nel rifiuto).
 
-#### 9. `GET /api/v1/magazzino/magazzini/{id}/ubicazioni/{uid}/`
+#### 9. `GET /api/v1/magazzino/magazzini/{id}/ubicazioni/{ubicazione_id}/`
 
-Il dettaglio; 404 sulla coppia.
+Il dettaglio (`ubicazione_id` è l'id intero dell'ubicazione); 404 sulla coppia.
 
-#### 10. `PATCH /api/v1/magazzino/magazzini/{id}/ubicazioni/{uid}/`
+#### 10. `PATCH /api/v1/magazzino/magazzini/{id}/ubicazioni/{ubicazione_id}/`
 
 Per delta (`codice`, `descrizione`, `tipo_id`, `parent_id` — `null` la rende
 radice —, la posizione, `attivo`, `meta`). ⛔ `magazzino_id` non e' fra le

@@ -29,7 +29,7 @@ Endpoint di scrittura che delega a `pratiche_service.riattiva_pratica`. Il servi
 - `401`: JWT mancante o non valido
 - `400`: `data_fine` senza offset o illeggibile (`E_VALIDATION_INPUT`)
 - `404`: sospensione non trovata o gia' chiusa (`E_SOSPENSIONE_NOT_FOUND`)
-- `409`: transizione di stato non ammessa (`PRATICHE_TRANSIZIONE_NON_AMMESSA`)
+- `409`: transizione di stato non ammessa (`E_PRATICHE_TRANSIZIONE_NON_AMMESSA`)
 - `422`: `data_fine` nel futuro (`E_SOSPENSIONE_DATA_FUTURA`); `data_fine` anteriore o uguale all'inizio della sospensione (`E_SOSPENSIONE_DATA_FINE`)
 
 ## Regole

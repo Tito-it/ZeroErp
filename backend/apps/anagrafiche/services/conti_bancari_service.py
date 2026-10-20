@@ -170,11 +170,24 @@ def _normalizza_uso(payload: dict[str, Any]) -> str | None:
     return uso_upper
 
 
-# Scopo: il payload di una PATCH di legame con l'`uso` normalizzato (copia:
-#        `payload` e' spesso `request.data`, non si muta l'input).
+# Scopo: il payload di una PATCH di legame con l'`uso` normalizzato e i flag
+#        presenti letti come booleani JSON (copia: `payload` e' spesso
+#        `request.data`, non si muta l'input).
+# ⛔ I flag passavano crudi al guard e al repository: `"false"` valeva vero per
+#    `_guard_predefinito_bloccato` (400 falso «conto predefinito bloccato»), e
+#    `"abc"` era un errore di cast del DB. Un flag presente vuole un booleano.
+_FLAG_LEGAME: tuple[str, ...] = ("predefinito", "verificato", "bloccato")
+
+
 def _payload_patch(payload: dict[str, Any]) -> dict[str, Any]:
+    normalizzato = {**payload}
     uso = _normalizza_uso(payload)
-    return {**payload, "uso": uso} if uso is not None else payload
+    if uso is not None:
+        normalizzato["uso"] = uso
+    for flag in _FLAG_LEGAME:
+        if flag in payload:
+            normalizzato[flag] = _V.require_bool(payload, flag)
+    return normalizzato
 
 
 class ContiBancariService:
@@ -456,7 +469,7 @@ class ContiBancariService:
             result["uso"] = uso
 
         # Booleani: includi solo se la chiave e' presente nel payload
-        for bool_key in ("predefinito", "verificato", "bloccato"):
+        for bool_key in _FLAG_LEGAME:
             if bool_key in payload:
                 result[bool_key] = optional_bool(payload, bool_key)
 

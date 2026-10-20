@@ -38,9 +38,9 @@ Tre layer:
 | `codice` | text | esatto, normalizzato MAIUSCOLO; risolto **prima** a `messaggio_errore_id` (tutte le lingue del codice) |
 | `tx_id` | uuid | esatto — il **ponte** dal giornale di dominio (`script.vw_giornale_entita.tx_id`) agli appunti tecnici della stessa transazione. Non uuid → `400 E_VALIDATION_INPUT` |
 | `data_da` / `data_a` | date ISO | su `occurred_at`, giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09), `data_a` incluso. Malformate → `400`. Il floor standard (oggi−60gg al 1° del mese) lo mette il **frontend**: è consultazione, non coda di lavoro |
-| `order_by` | text | whitelist `ERROR_LOG_SORT_COLUMNS` (campi fisici del catalogo): `occurred_at` · `area` · `function_name` · `codice` · `classe` · `tx_id`. Fuori whitelist → ripiego `occurred_at`. ⛔ `messaggio`, `causa`, `soluzione`, `context` **non ordinano** (frasi) e a catalogo sono `ordinabile = f` |
+| `order_by` | text | whitelist `ERROR_LOG_SORT_COLUMNS` (campi fisici del catalogo): `occurred_at` · `area` · `function_name` · `codice` · `classe` · `tx_id`. Fuori whitelist → `400 E_CORE_VALIDATION` (lista ed export; `validate_order_params` nel service). Assente → `occurred_at`. ⛔ `messaggio`, `causa`, `soluzione`, `context` **non ordinano** (frasi) e a catalogo sono `ordinabile = f` |
 | `order_dir` | `asc` \| `desc` | assente ⇒ `occurred_at` ripiega **DESC** (regola del 02-09), le altre `ASC` |
-| `limit` / `offset` | int | paginazione offset-based (default 50, max 200) |
+| `limit` / `offset` | int | paginazione offset-based (default 25, max 200) |
 
 ### `GET /api/v1/amm-software/error-log/export/?formato=csv|xlsx`
 

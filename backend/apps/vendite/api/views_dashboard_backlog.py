@@ -91,8 +91,9 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description=(
-                    "Filtro area funnel: PREVENTIVI | ORDINI | DDT | OFFERTE | "
-                    "CONTRATTI | COMMESSE | RESI (default: tutte)."
+                    "Filtro area funnel, col codice della sorgente: PREVENTIVO | "
+                    "ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO | "
+                    "COMMESSA | RESO_VENDITA (default: tutte)."
                 ),
             ),
             OpenApiParameter(

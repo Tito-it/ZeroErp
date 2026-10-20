@@ -29,6 +29,7 @@ from apps.config.sorgenti import (
     SORGENTE_ORDINE_VENDITA,
     SORGENTE_PREVENTIVO,
 )
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
@@ -137,7 +138,8 @@ _STATI_PUSHABILI: frozenset[str] = frozenset(
 # ⛔ `soggetto_ruolo_id` e `utility_id` NON ci sono (2026-10-10): sono copie
 # del BA, le scrive `trgfn_ordini_normalize` col BB
 # `script.fn_cliente_dal_billing_account` (brief-db-esecutivi-ba-coppia D-1,
-# D-5, §10.2 domanda 2). Un client che le manda le vede scartate.
+# D-5, §10.2 domanda 2). Un client che le manda riceve un 400 (chiave fuori
+# contratto, dal 2026-10-20; prima le vedeva scartate).
 CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
     "billing_account_id",
     "emittente_fiscale_id", "valuta_id", "modalita_pagamento_id",
@@ -156,15 +158,19 @@ UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
     # decide il risolutore, e la casella a video e' spenta. Rimetterla qui
     # riaprirebbe la seconda risposta alla stessa domanda che tutto questo
     # cantiere e' servito a togliere.
-    # ⚠️ Una chiave fuori whitelist viene SCARTATA, non respinta: un client
-    # vecchio che la manda ancora non riceve un errore — il valore semplicemente
-    # non arriva. E' voluto, ed e' il motivo per cui BE e FE vanno insieme.
+    # ⛔ Una chiave fuori whitelist e' un 400 (dal 2026-10-20): prima veniva
+    # scartata in silenzio, e un client vecchio non sapeva che il valore non
+    # arrivava.
 CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "quantita", "qta_operativa",
     "uom_operativa_id", "factor_to_base", "prezzo_unitario", "sconto_percentuale",
     "meta",
     "data_consegna_richiesta_cliente", "data_consegna_confermata",
 })
+# Le chiavi AMMESSE nella creazione di una riga: le colonne qui sopra piu' la
+# mappa degli override dei prezzi dei componenti, che non e' una colonna e si
+# legge a parte (`normalize_componenti_overrides`). Come il gemello DDT.
+CREATE_PAYLOAD_RIGA: frozenset[str] = CREATE_KEYS_RIGA | {"componenti_overrides"}
 UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
@@ -217,6 +223,13 @@ def list_ordini_rows(
     order_dir: str = "desc",
     max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
+    # ⛔ Il filtro di stato esiste nel vocabolario, o e' un 400 sul campo: un
+    #    valore sbagliato finiva nel WHERE e la lista rispondeva vuota con un
+    #    200 (2026-10-20). Codici dismessi ammessi: i documenti vecchi li portano.
+    richiedi_codice_a_vocabolario(
+        "config.stati_doc_ordini", "codice_interno", stato_codice,
+        codice_errore="E_ORD_VALIDAZIONE", parametro="stato_codice_interno",
+    )
     repo = OrdiniRepository()
     return repo.list_ordini(
         stato_codice=stato_codice,
@@ -432,7 +445,8 @@ def delete_indirizzo(ordine_id: int, indirizzo_id: int) -> dict[str, Any]:
 #        li scrive il DB dal BA.
 def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
     repo = OrdiniRepository()
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_ORDINE}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _V.solo_chiavi_ammesse(payload, ammesse=CREATE_KEYS_ORDINE, function_name=f"{_FN}.crea_ordine")
 
     billing_account_id = _V.require_positive_int(
         data, "billing_account_id",
@@ -489,7 +503,8 @@ def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     # che esiste: il lettore leggero, non la testata intera.
     _get_testata_or_raise(repo, ordine_id, op="aggiorna_ordine", getter=repo.get_stato_codice)
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_ORDINE}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _V.solo_chiavi_ammesse(payload, ammesse=UPDATE_KEYS_ORDINE, function_name=f"{_FN}.aggiorna_ordine")
     if "billing_account_id" in data:
         # Un id non numerico e' un 400 col campo, non un 500 dal driver.
         data["billing_account_id"] = _V.optional_positive_int(
@@ -889,6 +904,13 @@ def get_legami(ordine_id: int) -> dict[str, Any]:
 def gestisci_riga(
     ordine_id: int, payload: dict[str, Any], *, auth_user_id: int | None = None,
 ) -> dict[str, Any]:
+    # ⛔ Una chiave fuori whitelist e' un 400, prima di qualunque lettura
+    #    (2026-10-20; prima veniva scartata in silenzio). Come il gemello DDT:
+    #    il dict tiene le sole colonne, la mappa dei componenti si legge a parte.
+    data = _V.solo_chiavi_ammesse(
+        payload, ammesse=CREATE_PAYLOAD_RIGA, colonne=CREATE_KEYS_RIGA,
+        function_name=f"{_FN}.gestisci_riga",
+    )
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="gestisci_riga")
     richiedi_righe_in_bozza(
@@ -909,7 +931,6 @@ def gestisci_riga(
         error_code="E_ORD_VALIDAZIONE",
     )
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RIGA}
     _parse_date_riga(data, function_name=f"{_FN}.gestisci_riga")
     articolo_id = data.get("articolo_id")
     ErrorManager.require(
@@ -998,7 +1019,8 @@ def aggiorna_riga(
         function_name=f"{_FN}.aggiorna_riga",
     )
     _get_riga_or_raise(repo, ordine_id, riga_id, op="aggiorna_riga")
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RIGA}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _V.solo_chiavi_ammesse(payload, ammesse=UPDATE_KEYS_RIGA, function_name=f"{_FN}.aggiorna_riga")
     _V.require_campi_da_aggiornare(
         data,
         message="Nessun campo aggiornabile nel payload riga.",
@@ -1130,6 +1152,7 @@ def list_componenti_riga(
 # Scopo: Aggiorna un componente BoM (solo DRAFT, scope componente→riga→ordine).
 def update_componente(
     ordine_id: int, riga_id: int, componente_id: int, payload: dict[str, Any],
+    *, auth_user_id: int | None = None,
 ) -> dict[str, Any]:
     repo = OrdiniRepository()
     scope = repo.load_componente_with_scope(componente_id)
@@ -1151,7 +1174,7 @@ def update_componente(
     # estranee, compresa l'`origine_prezzo` mandata dal pannello: l'origine
     # manuale non veniva mai scritta.
     data = dati_patch_componente(
-        payload, function_name=f"{_FN}.update_componente",
+        payload, auth_user_id=auth_user_id, function_name=f"{_FN}.update_componente",
         error_code="E_ORD_VALIDAZIONE",
     )
     with _db_errors("update_componente"):

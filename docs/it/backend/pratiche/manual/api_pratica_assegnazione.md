@@ -31,7 +31,8 @@ Endpoint di scrittura che delega a `pratiche_service.assegna_pratica`. Aggiorna 
 
 - `pratica_id` deve essere > 0.
 - Se nessun campo di assegnazione viene fornito, il servizio non esegue update (noop).
-- Aggiorna solo i campi presenti nel payload (update parziale).
+- Aggiorna solo i campi presenti nel payload **e non `null`** (update parziale): un
+  `null` esplicito è ignorato, non azzera l'assegnazione.
 - Permission: `assegna_pratica` (area `pratiche`).
 - Endpoint v1 richiede JWT.
 

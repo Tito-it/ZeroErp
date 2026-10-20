@@ -187,8 +187,9 @@ form indirizzo.
 | `search` | — | ricerca su toponimo + denominazione |
 | `limit` | 30 | **max 100** |
 
-Restituisce `stradario_id`, via completa, comune, provincia, CAP: l'indirizzo
-esce gia' normalizzato, non da ricomporre a mano.
+Risposta `{"data": {"results": [...]}}`: ogni riga porta `stradario_id`, via
+completa, comune, provincia, CAP — l'indirizzo esce gia' normalizzato, non da
+ricomporre a mano.
 
 ### `GET /api/v1/core/search/stradario-generale/`
 
@@ -202,16 +203,18 @@ nello stradario del comune e va inserita nuova. L'operatore cerca prima la via,
 | `toponomastica_id` | no | filtro per tipo di toponimo |
 | `limit` | no | come sopra |
 
+Risposta: stessa forma, `{"data": {"results": [...]}}`.
+
 ⭐ Entrambi sono `is_search_endpoint = True` (throttling di ricerca) e
 `skip_area_check = True`: l'indirizzo si compila da qualunque area.
 
 ## Regole
 
 - `q` obbligatorio, minimo 3 caratteri (validato da `require_min_search_length`)
-- `tipo_ruolo_id` obbligatorio e intero entro `integer` (va a `p_tipo_ruolo_id integer`: oltre, 400 prima del DB). Esistenza e `ricerca_visibile` li verifica il DB (404)
+- `tipo_ruolo_id` obbligatorio (assente → 400 `E_SEARCH_VALIDATION`) e intero entro `integer` (va a `p_tipo_ruolo_id integer`): non numerico od oltre il tetto → 400 `E_VALIDATION_INPUT` prima del DB. Stessa regola per `utility_id` del dettaglio. Esistenza e `ricerca_visibile` li verifica il DB (404)
 - Perimetro dalla RLS dell'entita' del ruolo (vedi sopra): per `CL` operatori con whitelist emittenti vedono solo i clienti del proprio scope, col pattern gestore globale (`is_default=true` in `emittenti_fiscali_billing_account`). Il backend non passa uno scope
 - Throttling search attivo (`SearchBurstRateThrottle`, `is_search_endpoint = True`)
-- Nessun tetto sui risultati (dal 2026-10-10): `total_count` è il numero vero delle corrispondenze, e ordine e pagina valgono su tutte. La funzione conta, ordina e taglia la pagina sulle colonne semplici, e calcola gli aggregati (`utility_list`, `emittente_ragione_sociale`) per le sole righe della pagina
+- Nessun tetto sui risultati (dal 2026-10-10): `count` è il numero vero delle corrispondenze, e ordine e pagina valgono su tutte. La funzione conta, ordina e taglia la pagina sulle colonne semplici, e calcola gli aggregati (`utility_list`, `emittente_ragione_sociale`) per le sole righe della pagina
 - Paginazione LIMIT/OFFSET + COUNT(*) OVER() in un solo round-trip
 - Il dettaglio (livello 2) e' caricato lazy — solo quando l'utente espande la riga
 
@@ -223,7 +226,7 @@ nello stradario del comune e va inserita nuova. L'operatore cerca prima la via,
 | `E_TIPO_RUOLO_NON_RICERCABILE` | 404 | Lista e dettaglio: il tipo ruolo ha `ricerca_visibile = false` (dal DB; fino al 2026-10-10 era `E_SEARCH_VALIDATION` 400 dal backend) |
 | `E_TIPO_RUOLO_NON_TROVATO` | 404 | Lista e dettaglio: il tipo ruolo non esiste (la lista prima rispondeva zero righe) |
 | `E_SEARCH_NOT_FOUND` | 404 | Dettaglio: soggetto inesistente, senza quel ruolo, o senza righe visibili della sua entita' |
-| `E_VALIDATION_INPUT` | 400 | Parametro numerico non valido (page/page_size non numerici) |
+| `E_VALIDATION_INPUT` | 400 | Parametro numerico non valido: `page`/`page_size`, `tipo_ruolo_id`, `utility_id` non numerici o fuori tetto |
 
 ## Dipendenze DB
 

@@ -410,7 +410,7 @@ class CommesseSourceHandlersTests(TestCase):
     def test_handler_consumi_expand_rows_fanout(self):
         repo = _mock_repo(inserted=2)
         row = _make_row(
-            segment_key="CONS:uid-001",
+            segment_key="ATTIVITA_CONSUMI:uid-001",
             articolo_id=None,
             prezzo_snapshot=None,
             meta={"tipo_commessa": "AUTO", "policy_fatturazione": "DA_DOCUMENTO"},
@@ -445,8 +445,8 @@ class CommesseSourceHandlersTests(TestCase):
         inputs = repo.batch_upsert_attivita.call_args[0][0]
         self.assertEqual(len(inputs), 2)
         keys = [inp.segment_key for inp in inputs]
-        self.assertIn("CONS:uid-001:COMP:COMP_A", keys)
-        self.assertIn("CONS:uid-001:COMP:COMP_B", keys)
+        self.assertIn("ATTIVITA_CONSUMI:uid-001:COMP:COMP_A", keys)
+        self.assertIn("ATTIVITA_CONSUMI:uid-001:COMP:COMP_B", keys)
 
     # Scopo: due righe con stessi parametri commessa → get_or_create_commessa chiamata una sola volta (cache).
     def test_process_rows_cache_commessa_evita_chiamate_ripetute(self):
@@ -543,7 +543,7 @@ def _make_composito_row(**overrides) -> PushableRow:
         "fatturazione_immediata": False,
         "sorgente_tipo_id": 7,
         "sorgente_uid": "uid-preventivo-001",
-        "segment_key": "PREV:uid-preventivo-001:R:42",
+        "segment_key": "PREVENTIVO:uid-preventivo-001:R:42",
         "articolo_id": "art-composito-01",
         "istanza_utility_id": 11,
         "data_attivita": date(2026, 6, 15),
@@ -1005,7 +1005,7 @@ class BoMHandlerIntegrationTests(TestCase):
         repo = _mock_repo(inserted=2)
         # Riga consumo con articolo_id=None (default per consumi pre fan-out).
         repo.fetch_pushable_rows.return_value = [
-            _make_row(articolo_id=None, prezzo_snapshot=None, segment_key="CONS:uid-1")
+            _make_row(articolo_id=None, prezzo_snapshot=None, segment_key="ATTIVITA_CONSUMI:uid-1")
         ]
         handler = HandlerConsumi(repo, bom_expander=expander)
         # Stub fan-out consumi: 2 componenti.
@@ -1044,13 +1044,13 @@ class BoMHandlerIntegrationTests(TestCase):
         repo.fetch_pushable_rows.return_value = [
             _make_composito_row(
                 articolo_id="art-composito",
-                segment_key="PREV:uid-1:R:1",
+                segment_key="PREVENTIVO:uid-1:R:1",
                 sorgente_uid="uid-1",
                 riga_sorgente_id=11,
             ),
             _make_composito_row(
                 articolo_id="art-semplice",
-                segment_key="PREV:uid-1:R:2",
+                segment_key="PREVENTIVO:uid-1:R:2",
                 sorgente_uid="uid-1",
                 riga_sorgente_id=12,
             ),
@@ -1065,9 +1065,9 @@ class BoMHandlerIntegrationTests(TestCase):
         keys = sorted(inp.segment_key for inp in inputs)
         # Verifica: 2 componenti BoM + 1 riga semplice pass-through.
         self.assertEqual(keys, [
-            "PREV:uid-1:R:1#CMP:cmp-A",
-            "PREV:uid-1:R:1#CMP:cmp-B",
-            "PREV:uid-1:R:2",
+            "PREVENTIVO:uid-1:R:1#CMP:cmp-A",
+            "PREVENTIVO:uid-1:R:1#CMP:cmp-B",
+            "PREVENTIVO:uid-1:R:2",
         ])
 
     # Scopo: idempotenza pipeline. Re-run dell'handler con stesso snapshot
@@ -1081,7 +1081,7 @@ class BoMHandlerIntegrationTests(TestCase):
         ])
         repo1 = _mock_repo(inserted=2)
         repo1.fetch_pushable_rows.return_value = [
-            _make_composito_row(segment_key="PREV:uid-X:R:7", riga_sorgente_id=7),
+            _make_composito_row(segment_key="PREVENTIVO:uid-X:R:7", riga_sorgente_id=7),
         ]
         handler1 = HandlerPreventivi(repo1, bom_expander=expander1)
         handler1.run()
@@ -1094,7 +1094,7 @@ class BoMHandlerIntegrationTests(TestCase):
         ])
         repo2 = _mock_repo(updated=2)
         repo2.fetch_pushable_rows.return_value = [
-            _make_composito_row(segment_key="PREV:uid-X:R:7", riga_sorgente_id=7),
+            _make_composito_row(segment_key="PREVENTIVO:uid-X:R:7", riga_sorgente_id=7),
         ]
         handler2 = HandlerPreventivi(repo2, bom_expander=expander2)
         handler2.run()

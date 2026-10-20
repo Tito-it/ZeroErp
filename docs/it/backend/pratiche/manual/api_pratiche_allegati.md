@@ -76,13 +76,13 @@ La tabella `pratiche.allegati_pratiche` supporta gli allegati con versionamento 
 
 ### Errori
 
-- `400`: validazione (nome_file vuoto, tipo_allegato non trovato)
+- `400`: validazione (`E_PRATICA_VALIDATION`, col campo: nome_file vuoto, `tipo_allegato_codice` assente o non trovato)
 - `401`: JWT mancante
 - `404`: allegato non trovato o non appartiene alla pratica
 
 ## Regole
 
-- `tipo_allegato_codice` risolto a ID via lookup su `config.tipi_allegato` (codice_interno). Se non trovato o non attivo: errore `E_CONFIG_MANCANTE`.
+- `tipo_allegato_codice` risolto a ID via lookup su `config.tipi_allegato` (codice_interno). Se non trovato o non attivo: `400 E_PRATICA_VALIDATION` sul campo `tipo_allegato_codice` (fino al 2026-10-20 era un `500 E_CONFIG_MANCANTE`).
 - Ownership check: DELETE verifica che l'allegato appartenga alla pratica.
 - Il trigger DB registra automaticamente `ALLEGATO_AGGIUNTO` nel giornale all'INSERT.
 - Ordinamento GET: `data_insert DESC, id DESC`.

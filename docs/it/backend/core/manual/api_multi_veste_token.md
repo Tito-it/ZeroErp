@@ -2,7 +2,7 @@
 
 ## Scopo
 
-Documenta il contratto HTTP dei 6 endpoint di autenticazione post refactor
+Documenta il contratto HTTP degli endpoint di autenticazione post refactor
 multi-face (§8.3.1-§8.3.5): 3 login + 3 refresh, uno per namespace
 (admin / portale / shop). Ogni namespace espone solo il subset di vesti
 che gli compete; un utente con le credenziali giuste ma senza la veste
@@ -371,7 +371,7 @@ l'audit procede comunque con GUC vuote.
 - Il claim `sid` e' preservato da `SidTokenObtainPairSerializer`: il
   `MultiVesteTokenSerializer` eredita da Sid (non da `TokenObtainPairSerializer`
   diretto) — senza questa catena l'audit sessioni si romperebbe.
-- Il throttle `LoginRateThrottle` (5 richieste / 5 minuti per IP) e' applicato
+- Il throttle `LoginRateThrottle` (per IP; tasso da `DJANGO_API_LOGIN_THROTTLE_RATE`, default `5/5m`) e' applicato
   su **tutte e 3** le view di login (ereditato da `AuditTokenObtainPairView`).
   ⚠️ E' una regola diversa dal freno sulla provenienza (N password sbagliate
   sulla **stessa credenziale** dallo stesso IP): il throttle ferma chi inonda
@@ -400,7 +400,7 @@ l'audit procede comunque con GUC vuote.
 | `apps/core/services/auth_constants.py`          | Costanti `JWT_CLAIM_*` + `RUOLO_APPLICATIVO_*`                                                                                                                                                                                      |
 | `apps/core/services/error_policies_generated.py` | Classe di `E_VESTE_NON_ATTIVA`, `E_JWT_SENZA_IDENTITA`, `E_JWT_SENZA_SID`, `E_IDENTITA_NON_ATTIVA` (`CLASSE_PER_CODICE`)                                                                                                             |
 | `apps/core/api/error_responses.py`              | `drf_exception_handler` — priorita' a `default_code` E_* delle subclass AuthenticationFailed                                                                                                                                        |
-| `backend/zeroerp_backend/urls.py`               | 6 route registrate                                                                                                                                                                                                                  |
+| `backend/zeroerp_backend/urls.py`               | 9 route registrate: 3 login, 3 refresh, 3 `token/secondo-fattore/`                                                                                                                                                                                                            |
 
 ## Note di migrazione
 

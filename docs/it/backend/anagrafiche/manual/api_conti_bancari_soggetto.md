@@ -134,8 +134,8 @@ Campi ammessi, tutti opzionali: `uso`, `predefinito`, `valido_dal`,
 su date e intestazione = `NULL`. Una chiave fuori elenco (anche
 `istanza_utility_id`, che esiste solo sul legame di ruolo) → 400; un corpo
 senza campi → 400. `predefinito` e `bloccato` si controllano sommando payload e
-stato corrente. ⚠️ Qui `uso` non è portato in maiuscolo dal service: un valore
-fuori elenco lo rifiuta il `CHECK` del DB, col campo `uso`.
+stato corrente. Come nel POST, `uso` è portato in maiuscolo e validato dal
+service: un valore fuori elenco → 400 `E_ANAG_VALIDAZIONE`, campo `uso`.
 
 Il legame deve appartenere al soggetto del path. Risposta:
 `{"data": {"updated": true}}`.
@@ -192,7 +192,7 @@ per nome e codice filiale. Risposta `{"data": {"results": [...]}}` con `id`,
 | Codice | HTTP | Quando | Sede |
 |---|---|---|---|
 | `E_ANAG_NOT_FOUND` | 404 | soggetto inesistente; PATCH su un legame inesistente o di un altro soggetto | service |
-| `E_ANAG_VALIDAZIONE` | 400 | IBAN mancante o fuori formato; filiale mancante; `uso` fuori elenco (in POST dal service, in PATCH dal `CHECK`, campo `uso`); `predefinito` e `bloccato` insieme; chiave fuori elenco o corpo vuoto in PATCH; vincolo DB non mappato | service, mappa vincoli |
+| `E_ANAG_VALIDAZIONE` | 400 | IBAN mancante o fuori formato; filiale mancante; `uso` fuori elenco (POST e PATCH, dal service, campo `uso`); `predefinito` e `bloccato` insieme; chiave fuori elenco o corpo vuoto in PATCH; vincolo DB non mappato | service, mappa vincoli |
 | `E_DATA_AL_MINORE_DAL` | 400, campo `valido_al` | `valido_al < valido_dal` | guard comune `script.trgfn_guard_date_validita` |
 | `E_CONTO_BANCARIO` | 400 | il conto del registro non è attivo | `anagrafiche.trgfn_soggetti_conti_bancari_guard` |
 | `E_ANAG_DUPLICATO` | 409 | legame già presente per lo stesso conto e uso; secondo predefinito per lo stesso uso (campo `predefinito`); conto di incasso già di un altro soggetto | mappa vincoli |

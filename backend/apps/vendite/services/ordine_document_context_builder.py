@@ -74,7 +74,7 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
     CONTEXT_VERSION = 3
 
-    # Tipi indirizzo ammessi nell'ambito ORDINI (`config.tipi_indirizzi_allowed`).
+    # Tipi indirizzo ammessi nell'ambito ORDINE_VENDITA (`config.tipi_indirizzi_allowed`).
     # Dichiarati qui e non letti a runtime: il context deve essere
     # deterministico a parita' di documento (il `context_hash` governa il dedup),
     # e una modifica di configurazione non puo' cambiare la forma di un contesto

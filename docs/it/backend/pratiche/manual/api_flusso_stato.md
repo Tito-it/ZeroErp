@@ -96,14 +96,20 @@ La generazione automatica cross-pratica al completamento e' gestita dal trigger 
 ```
 
 - `400`: ownership mismatch (`E_FLUSSO_OWNERSHIP`), esito non valido o **esito di ramo non
-  selezionabile manualmente** (`E_FLUSSO_VALIDATION`), stato vuoto (`E_FLUSSO_VALIDATION`)
+  selezionabile manualmente** (`E_FLUSSO_VALIDATION`), `nuovo_stato` assente o vuoto
+  (`E_FLUSSO_VALIDATION`, campo `nuovo_stato`), `nuovo_stato` che non esiste a catalogo
+  (`E_FLUSSO_VALIDATION`, campo `nuovo_stato`; fino al 2026-10-20 era un `500
+  E_CONFIG_MANCANTE`)
+- `400`: completamento manuale di uno step con `modalita_esito = DOMINIO` (es.
+  SMISTAMENTO: si chiude con l'azione di dominio dedicata) → `E_FLUSSO_VALIDATION`
+  (guard `require_completamento_operatore_ammesso`, prima del guard DB di classe id 504)
 - `401`: JWT mancante o non valido
 - `404`: flusso non trovato (`E_FLUSSO_NOT_FOUND`)
-- `409`: **pratica terminale** (`PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE`, catalogo DB id 491): transizione/modifica di un flusso di una pratica `CHIUSA`/`ANNULLATA`. Guard `trg_flussi_a10_guard_pratica_terminale_ins_upd`.
-- `409`: **chiusura prematura** (`PRATICHE_CHIUSURA_FLUSSO_PREMATURO`, catalogo DB id 492): il flusso "di chiusura" (`template_flussi.chiude_pratica`) non puo' essere completato finche' restano altri obbligatori bloccanti. Guard `trg_flussi_a10_guard_chiusura_prematura_upd`.
-- `409`: **transizione non ammessa** (`FLUSSI_TRANSIZIONE_NON_AMMESSA`, catalogo DB id 302): la coppia `(stato_da, stato_a)` non e' in `config.transizioni_stati_flussi_pratiche` (attiva). Guard `trgfn_flussi_guard_transizione`.
-- `409`: **esito obbligatorio** (`FLUSSI_ESITO_OBBLIGATORIO`, catalogo DB id 477): passaggio a `COMPLETATO` senza `esito` (raggiungibile solo via `cambia_stato_flusso`; `completa_flusso` valida l'esito a monte con `E_FLUSSO_VALIDATION`). Guard `trgfn_flussi_guard_esito_completato`.
-- `500`: stato non trovato in config (`E_CONFIG_MANCANTE`)
+- `409`: **pratica terminale** (`E_PRATICHE_TERMINALE_FLUSSO_NON_MODIFICABILE`, catalogo DB id 491): transizione/modifica di un flusso di una pratica `CHIUSA`/`ANNULLATA`. Guard `trg_flussi_a10_guard_pratica_terminale_ins_upd`.
+- `409`: **chiusura prematura** (`E_PRATICHE_CHIUSURA_FLUSSO_PREMATURO`, catalogo DB id 492): il flusso "di chiusura" (`template_flussi.chiude_pratica`) non puo' essere completato finche' restano altri obbligatori bloccanti. Guard `trg_flussi_a10_guard_chiusura_prematura_upd`.
+- `409`: **transizione non ammessa** (`E_FLUSSI_TRANSIZIONE_NON_AMMESSA`, catalogo DB id 302): la coppia `(stato_da, stato_a)` non e' in `config.transizioni_stati_flussi_pratiche` (attiva). Guard `trgfn_flussi_guard_transizione`.
+- `400`: **esito obbligatorio** (`E_FLUSSI_ESITO_OBBLIGATORIO`, DATO_ERRATO, catalogo DB id 477): passaggio a `COMPLETATO` senza `esito` (raggiungibile solo via `cambia_stato_flusso`; `completa_flusso` valida l'esito a monte con `E_FLUSSO_VALIDATION`). Guard `trgfn_flussi_guard_esito_completato`.
+- `400`: esito di classe sbagliata per lo step (`E_FLUSSI_ESITO_NON_AMMESSO`, DATO_ERRATO, guard DB id 504)
 
 ## Regole
 

@@ -152,10 +152,20 @@ Risposta `200`:
     "utility_descrizione": "Gas",
     "valuta_id": 1,
     "valuta_codice": "EUR",
-    "valuta_descrizione": "Euro"
+    "valuta_descrizione": "Euro",
+    "fornitura": {
+      "istanza_dati_precontrattuali_id": 88, "classe_utenza_id": 7,
+      "tipo_utenza_id": 2, "param_1_num": "1500", "param_2_txt": "POD-XYZ",
+      "meta": {}
+    }
   }
 }
 ```
+
+`fornitura`: la scheda di fornitura che l'anagrafica dà alla coppia (istanza,
+utility) del BA (`vendite.fn_get_fornitura_da_anagrafica`), con cui il drawer
+precompila il sotto-oggetto `utility`. `null` senza BA o se la coppia non ha dati
+precontrattuali.
 
 Risoluzione `valuta_id` (BB `resolve_valuta_default`, allineato a
 `vendite.fn_get_valuta_id`):
@@ -191,16 +201,16 @@ Errori: `E_VENDITE_NOT_FOUND` (404) se `billing_account_id` non esiste.
 | ---------------------- | -------- | ------------------------------------------------------------------------------------------ |
 | `search`               | string   | ILIKE su `codice` offerta, `ragione_sociale_completa`, `ba_codice` e `id_fiscale_univoco_cf_piva`. Sotto 3 caratteri il termine **non filtra** (nessun errore) |
 | `billing_account_id`   | int      | Filtro cliente                                                                              |
-| `stato_codice_interno` | string   | `BOZZA` \| `EMESSA` \| `ACCETTATA` \| `RIFIUTATA` \| `ANNULLATA` \| `SUPERATA`               |
+| `stato_codice_interno` | string   | `BOZZA` \| `EMESSA` \| `ACCETTATA` \| `RIFIUTATA` \| `ANNULLATA` \| `SUPERATA`. Fuori vocabolario `config.stati_doc_offerte` → 400 `E_VENDITE_VALIDATION` col campo (2026-10-20: prima lista vuota con 200) |
 | `utility_id`           | int      | Filtro utility                                                                              |
 | `listino_id`           | int      | Filtro listino di riferimento                                                               |
 | `validita_dal_min`     | ISO date | Filtro su `validita_dal` (range minimo). Nessun default backend                             |
 | `validita_dal_max`     | ISO date | Filtro su `validita_dal` (range massimo)                                                    |
-| `solo_attiva`          | bool     | Default `true`: solo l'ultima revisione viva per lineage (`vw_offerte_commerciali_lista.is_attiva`). `false` = storico revisioni completo (2026-05-28) |
+| `solo_ultima_revisione` | bool    | Default `true`: solo la revisione non rimpiazzata per lineage (`vw_offerte_commerciali_lista.is_superata IS FALSE`). Filtra sulla posizione nella catena, non sullo stato: le ANNULLATE restano visibili. `false` = storico revisioni completo |
 | `limit`                | int      | Default 25                                                                                  |
 | `offset`               | int      | Default 0                                                                                   |
-| `order_by`             | string   | `campo_sorgente` catalogo `vendite.offerte`: `codice` \| `ragione_sociale_completa` \| `ba_codice` \| `id_fiscale_univoco_cf_piva` \| `utility_codice` \| `utility_descrizione` \| `listino_codice` \| `validita_dal` \| `validita_al` \| `data_emissione` \| `stato_descrizione` \| `stato_codice_interno` \| `data_insert`. `revisione_numero` **non ordinabile** |
-| `order_dir`            | string   | `asc` o `desc` (default)                                                                    |
+| `order_by`             | string   | `campo_sorgente` catalogo `vendite.offerte`: `codice` \| `ragione_sociale_completa` \| `ba_codice` \| `id_fiscale_univoco_cf_piva` \| `utility_codice` \| `utility_descrizione` \| `listino_codice` \| `validita_dal` \| `validita_al` \| `data_emissione` \| `data_accettazione` \| `data_rifiuto` \| `data_annullamento` \| `stato_descrizione` \| `data_insert` \| `pratica_numero` \| `fase` (default `data_insert`). Fuori whitelist → 400. `revisione_numero` **non ordinabile** |
+| `order_dir`            | string   | `asc` \| `desc`. Assente: `desc` sulle colonne data e sul default `data_insert`, `asc` sulle altre |
 
 > **`search` corto o vuoto**: vuoto, whitespace-only o sotto 3 caratteri →
 > nessun filtro, nessun errore (BB `add_ricerca_full_condition`, soglia unica
@@ -226,7 +236,7 @@ con la DataTable a video (config runtime: preferenza + preset + permessi).
 | Parametro | Tipo | Descrizione |
 |---|---|---|
 | `formato` | string | `csv` (default) o `xlsx`. **NB**: `formato` (italiano), NON `format` (magic param DRF) |
-| `search`, `billing_account_id`, `stato_codice_interno`, `utility_id`, `listino_id`, `validita_dal_min`, `validita_dal_max`, `solo_attiva`, `order_by`, `order_dir` | — | stessi della lista |
+| `search`, `billing_account_id`, `stato_codice_interno`, `utility_id`, `listino_id`, `validita_dal_min`, `validita_dal_max`, `solo_ultima_revisione`, `order_by`, `order_dir` | — | stessi della lista |
 
 - Hard cap **10.000 righe**: oltre → `422 E_UI_EXPORT_LIMIT_EXCEEDED`.
 - `formato` non valido → `400 E_UI_EXPORT_FORMAT_INVALID`.
@@ -298,7 +308,7 @@ non ancora compilato).
 ```json
 {
   "data": {
-    "id": 1, "uid": "...", "codice": "OFC-2026-0001",
+    "id": 1, "uid": "...", "codice": "OFC-0000001",
     "emittente_fiscale_id": 10,
     "billing_account_id": 100,
     "ba_codice": "BA-0123", "billing_account_display": "Acme S.p.A.",
@@ -415,7 +425,10 @@ non ancora compilato).
 
 ### Update testata `PATCH /api/v1/vendite/offerte/<id>/`
 
-Solo in stato **BOZZA**. Whitelist campi mutabili: `emittente_fiscale_id`,
+Nessun guard di stato nel service: quali colonne si cambiano in quale stato lo
+decide il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, il 409
+`E_DOC_*` passa com'e'; vedi §Regole 3). Offerta inesistente o fuori perimetro →
+404. Whitelist campi mutabili: `emittente_fiscale_id`,
 `billing_account_id`, `istanza_utility_id`, `utility_id`, `listino_id`,
 `listino_versione_id`, `valore_variazione_globale`,
 `tipo_variazione_globale`, `validita_dal`, `validita_al`, `meta`,
@@ -448,7 +461,8 @@ testata) e' ammesso ed esegue solo l'upsert utility.
 
 ### Delete `DELETE /api/v1/vendite/offerte/<id>/`
 
-Solo in stato BOZZA. Hard delete dell'offerta + cascade su
+Solo in stato BOZZA (pre-check del service: altrimenti 400
+`E_VENDITE_VALIDATION`). Hard delete dell'offerta + cascade su
 `offerte_commerciali_eccezioni` e `offerte_commerciali_utilities` via FK.
 
 **Annullamento di processo**: per "ritirare" un'offerta gia' presentata
@@ -561,8 +575,10 @@ Motivazione obbligatoria. Salvata in `motivazione_rifiuto` (colonna
 condivisa con RIFIUTATA). Il trigger DB valorizza `data_annullamento`.
 
 Annullamento ammesso **solo da BOZZA**. Pattern simmetrico ai contratti
-`DRAFT -> ANNULLATO`. Tentativo da EMESSA → 422 con
-`E_OFFERTA_TRANSIZIONE_NON_AMMESSA` propagato dal trigger DB.
+`DRAFT -> ANNULLATO`. Tentativo da un altro stato → 400 `E_VENDITE_VALIDATION`
+dal pre-check del service (stato corrente e stati attesi nel `context`); il
+trigger DB resta la rete (`E_OFFERTA_TRANSIZIONE_NON_AMMESSA`, 409). Lo stesso
+pre-check vale per `/emetti/` (da BOZZA) e `/registra-esito/` (da EMESSA).
 
 ### Crea revisione `POST /api/v1/vendite/offerte/<id>/crea-revisione/`
 
@@ -587,10 +603,9 @@ Body vuoto. Crea rev.N+1 in stato `BOZZA` a partire dall'offerta corrente
 
 Guard:
 
-- Stato corrente diverso da `EMESSA` → 422
-  `E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`. La fn DB e' guard finale; il
-  service applica anche un pre-check applicativo che ritorna
-  `E_VENDITE_VALIDATION` parlante in caso di stato fuori scope.
+- Stato corrente diverso da `EMESSA` → 400 `E_VENDITE_VALIDATION` dal
+  pre-check del service. La fn DB resta la rete
+  (`E_OFFERTA_REVISIONE_STATO_NON_AMMESSO`, 409).
 - Offerta inesistente → 404.
 
 `user` di audit: il service prende `request.user.username` se autenticato
@@ -599,10 +614,19 @@ Guard:
 ### Push a contratto `POST /api/v1/vendite/offerte/<id>/push-contratto/`
 
 ```json
-{"pratica_id": 7}
+{"pratica_id": 7, "chiudi_esistente": false}
 ```
 
-oppure body vuoto `{}` per push senza collegamento a pratica.
+Entrambi i campi opzionali (body vuoto `{}` = push senza pratica e senza
+successione):
+
+- `pratica_id` (int, anche `"7"` stringa): collega il contratto alla pratica.
+- `chiudi_esistente` (booleano JSON, default `false`): se esiste un contratto
+  attivo sovrapposto, `false` fa fallire il push con
+  `E_CONTRATTO_OVERLAP_ESISTENTE` (409), `true` lo chiude per successione e crea
+  il nuovo. Un valore non booleano (anche `"false"` stringa) → 400
+  `E_VALIDATION_INPUT` col campo (2026-10-20: prima `"false"` valeva `true` e
+  chiudeva il contratto esistente).
 
 Genera un **contratto DRAFT** a partire dall'offerta corrente (che deve
 essere in stato `ACCETTATA`). Effetti:
@@ -641,39 +665,58 @@ Ritorna gli identificativi minimi del nuovo contratto (il FE naviga al
 
 Guard:
 
-- Stato corrente ≠ `ACCETTATA` → 422 `E_OFFERTA_PUSH_STATO_NON_AMMESSO`.
-  Il service applica anche pre-check applicativo che ritorna
-  `E_VENDITE_VALIDATION` parlante in caso di stato fuori scope.
-- Doppia invocazione su stessa offerta → 422
-  `E_OFFERTA_CONTRATTO_GIA_GENERATO` (idempotenza pattern A §6.9.3).
-- `pratica_id` non-positivo o non-int → `E_VENDITE_VALIDATION`.
+- Stato corrente ≠ `ACCETTATA` → 400 `E_VENDITE_VALIDATION` dal pre-check del
+  service; la fn DB resta la rete (`E_OFFERTA_PUSH_STATO_NON_AMMESSO`, 409).
+- Doppia invocazione su stessa offerta → 409
+  `E_OFFERTA_CONTRATTO_GIA_GENERATO` (idempotenza pattern A §6.9.3); offerta
+  che ha già generato un ordine → 409 `E_OFFERTA_ORDINE_GIA_GENERATO`.
+- `pratica_id` non-positivo o non-int → 400 `E_VENDITE_VALIDATION`.
+
+### Contratto sovrapposto `GET /api/v1/vendite/offerte/<id>/contratto-sovrapposto/`
+
+Sola lettura: il contratto attivo la cui validità si sovrappone a quella che il
+push genererebbe (`vendite.fn_contratto_sovrapposto` sulla coppia BA/istanza,
+utility e `validita_dal/al` dell'offerta). Alimenta il dialog di successione dopo
+un `E_CONTRATTO_OVERLAP_ESISTENTE`.
+
+```json
+{"data": {"contratto": {"id": 55, "numero": "CNT0000031",
+  "valido_dal": "2026-01-01", "valido_al": null}}}
+```
+
+`contratto: null` se non c'è sovrapposizione. Offerta inesistente o fuori
+perimetro → 404 `E_VENDITE_NOT_FOUND`.
 
 ### Lista revisioni `GET /api/v1/vendite/offerte/<id>/revisioni/`
 
-Ritorna la **catena di revisioni** che condivide il root (rev.1) con
-l'offerta passata. Output ordinato per `revisione_numero` ASC. Lettura
-libera in ogni stato (utile per il drawer FE che vuole mostrare la
-timeline rev.1 SUPERATA → rev.2 SUPERATA → rev.3 EMESSA → ecc.).
+Ritorna, **paginata**, la catena di revisioni che condivide la radice (rev.1)
+con l'offerta passata (lista configurabile `vendite.offerta_revisioni`, tab del
+drawer). Lettura libera in ogni stato.
+
+| Parametro | Tipo | Descrizione |
+| --- | --- | --- |
+| `limit` / `offset` | int | Default 25 / 0 |
+| `order_by` | string | `revisione_numero` (default) \| `codice` \| `data_emissione` \| `stato_descrizione` |
+| `order_dir` | string | `asc` \| `desc`. Assente: `asc`, `desc` su `data_emissione` (le bozze, senza data, in coda) |
+| `emittente_fiscale_id` | int | Emittente del documento (PK). Lo legge solo il cancello di perimetro, per chi vede più emittenti: non filtra le righe |
 
 ```json
 {
-  "data": [
-    {"id": 1,  "codice": "OFC-0000001", "revisione_numero": 1,
-     "stato_codice_interno": "SUPERATA", "revisione_padre_id": null,
-     "data_emissione": "2026-04-10T09:15:00Z"},
-    {"id": 7,  "codice": "OFC-0000003", "revisione_numero": 2,
-     "stato_codice_interno": "SUPERATA", "revisione_padre_id": 1,
-     "data_emissione": "2026-05-02T16:40:00Z"},
-    {"id": 42, "codice": "OFC-0000019", "revisione_numero": 3,
-     "stato_codice_interno": "EMESSA", "revisione_padre_id": 7,
-     "data_emissione": "2026-05-25T11:00:00Z"}
-  ]
+  "data": {
+    "count": 3, "page": 1, "page_size": 25, "total_pages": 1,
+    "results": [
+      {"id": 1,  "codice": "OFC-0000001", "revisione_numero": 1,
+       "stato_codice_interno": "SUPERATA", "data_emissione": "2026-04-10T09:15:00Z", "...": "..."},
+      {"id": 42, "codice": "OFC-0000019", "revisione_numero": 3,
+       "stato_codice_interno": "EMESSA", "data_emissione": "2026-05-25T11:00:00Z", "...": "..."}
+    ]
+  }
 }
 ```
 
-Implementazione: CTE ricorsiva in due passi (risale via `revisione_padre_id`
-fino al root, poi ridiscende a tutti i discendenti). Una query, indici
-gia' presenti su `revisione_padre_id`.
+Le righe sono quelle della vista lista `vw_offerte_commerciali_lista` filtrate
+su `revisione_radice_id`. Offerta inesistente o fuori perimetro → 404
+`E_VENDITE_NOT_FOUND`.
 
 ### Genera ordine `POST /api/v1/vendite/offerte/<id>/genera-ordine/`
 
@@ -887,14 +930,17 @@ il service applica gli stessi tre gate del contratto/preventivo (BB condiviso
   sul listino fissato/operativo dell'offerta) non può eccedere le soglie
   `max_sconto_pct` / `max_maggiorazione_pct` (cascata `user → categoria_cliente →
   group → emittente → default`). Oltre soglia, senza `richiesta_approvazione`
-  → `422 E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA`
-  (`retryable=true`).
+  → `403 E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA`
+  (`retryable=true`). `richiesta_approvazione` è un booleano JSON: un altro tipo
+  → 400 `E_VENDITE_VALIDATION`.
 - **L3 — escalation**: con `richiesta_approvazione: true`, una violazione L2
   **non solleva**: crea una pratica `APPROVAZIONE_PREZZO` (sorgente `offerta`) e
   salva l'eccezione con `stato_approvazione_prezzo = PENDING` +
   `pratica_approvazione_prezzo_id`. L'eccezione PENDING è bloccata in modifica
   dal trigger DB `trgfn_righe_guard_pending` finché l'approver non risolve
-  (vedi [API approvazioni prezzo](api_approvazioni_prezzo.md)).
+  (vedi [API approvazioni prezzo](api_approvazioni_prezzo.md)). Approva/rifiuta
+  chiedono l'azione `approva_prezzo_override`: senza → 403
+  `E_PERMISSION_DENIED` dal cancello della view.
 
 Note:
 - gate **saltato** per `ESCLUSIONE` (prezzo NULL) e per i **compositi** (il
@@ -922,6 +968,30 @@ all'offerta 42).
 #### Delete `DELETE /api/v1/vendite/offerte/<id>/eccezioni/<eid>/`
 
 Solo in BOZZA. Hard delete. Stessa difesa ownership di update.
+
+#### Componenti BoM dell'eccezione composita
+
+Mirror dei componenti di riga del contratto. «Solo in bozza» lo dice il DB
+(`trgfn_doc_righe_lock_fuori_bozza` → `E_RIGA_DOC_NON_BOZZA`, 409).
+
+- `POST /<id>/eccezioni/preview-componenti/` — sola lettura, prima del save di
+  un'eccezione composita: componenti BoM col prezzo suggerito dal resolver
+  bundle-aware. Body `{articolo_id, quantita, uom_operativa_id?}`; risposta
+  `{"data": [ ... ]}`. Offerta inesistente → 404 `E_VENDITE_NOT_FOUND`.
+- `GET /<id>/eccezioni/<eid>/componenti/?solo_attivi=true|false` — componenti
+  persistiti (default solo attivi; `false` include gli opzionali disattivati).
+  Eccezione non dell'offerta dell'URL → 404 `E_VENDITE_NOT_FOUND`.
+- `PATCH /<id>/eccezioni/<eid>/componenti/<cid>/` — whitelist `prezzo_unitario`,
+  `attivo`, `meta` (chiave fuori → 400 `E_VENDITE_VALIDATION`; `{}` → 400).
+  `prezzo_unitario` non nullo richiede `prezzo_override_manuale` (403
+  `E_PRICING_OVERRIDE_NON_AUTORIZZATO`); `origine_prezzo` la calcola il server
+  (`MANUALE`, o `null` se il prezzo si azzera). Risposta
+  `{"status": "ok", "componente_id": <cid>}`.
+- `DELETE /<id>/eccezioni/<eid>/componenti/<cid>/` — soft delete
+  (`attivo = false`); risposta `{"status": "ok", "componente_id", "deleted"}`.
+
+Su PATCH/DELETE `<eid>` deve essere dell'offerta e `<cid>` dell'eccezione,
+altrimenti 404 `E_VENDITE_NOT_FOUND`.
 
 ### Utility 1:1
 
@@ -980,8 +1050,9 @@ Tutte le risposte usano l'envelope `success_response`:
 {"data": { ... }, "meta": {"timestamp": "2026-05-25T10:00:00Z"}}
 ```
 
-Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
-`{data: [...], pagination: {total, page, limit}}`.
+Per il dettaglio vedi §Detail; le liste paginate (offerte, revisioni) hanno
+`{"data": {"count", "page", "page_size", "total_pages", "results": [...]}}`
+(BB `paginated_envelope`).
 
 ## Regole
 
@@ -1032,7 +1103,10 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 
 | Codice                                              | HTTP                | Origine                                                                                                | Trigger DB                                          |
 | --------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| `E_VENDITE_VALIDATION`                              | 400 / 422           | Service: struttura payload, payload vuoto in PATCH, motivazione obbligatoria, esito non valido          | —                                                   |
+| `E_VENDITE_VALIDATION`                              | 400                 | Service: struttura payload, chiave fuori contratto, payload vuoto in PATCH, motivazione obbligatoria, esito non valido, filtro di stato fuori vocabolario, stato errato per delete/emetti/registra-esito/annulla/crea-revisione/push (pre-check) | —                                                   |
+| `E_VALIDATION_INPUT`                                | 400                 | `chiudi_esistente` del push non booleano JSON                                                           | —                                                   |
+| `E_PRICING_OVERRIDE_NON_AUTORIZZATO`                | 403                 | Prezzo manuale (eccezione o componente) senza `prezzo_override_manuale`                                  | —                                                   |
+| `E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 403  | Gate L2 oltre soglia senza `richiesta_approvazione` (`retryable=true`)                                  | —                                                   |
 | `E_VENDITE_NOT_FOUND`                               | 404                 | Service: offerta/eccezione/utility non trovata; ownership URL                                          | —                                                   |
 | `E_VENDITE_DUPLICATO`                               | 409                 | UNIQUE `uq_offerte_commerciali_codice` / `uq_offerte_commerciali_uid` / `uq_offerte_commerciali_utilities_offerta_id` / `uq_offerte_eccezioni_one_eccezione_per_articolo` / `uq_offerte_eccezioni_one_aggiunta_per_articolo` | —                                                   |
 | `E_VENDITE_FK`                                      | 400                 | FK su BA/emittente/istanza/utility/listino/articolo/uom/tipo/classe utenza                              | —                                                   |

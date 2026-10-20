@@ -477,6 +477,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_FAMIGLIA_DOCUMENTO_CHIAVE_IMMUTABILE": "Le colonne che dicono dove vive il documento non si cambiano su una famiglia che ha gia' dei registri: quei registri ne portano dentro la forma.",
     "E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE": "Il catalogo delle famiglie di documento dichiara una tabella o una colonna che non esiste: e' un difetto di configurazione, non un dato sbagliato.",
     "E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA": "La famiglia dichiara una colonna della serie che sul documento non distingue il numero: nessun vincolo di unicita' le tiene insieme, quindi la serie aprirebbe un contatore che collide con numeri gia' emessi.",
+    "E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA": "La tabella dei documenti di questa sorgente e' gia' numerata da un'altra famiglia attiva: si spegne prima quella, oppure si sceglie un'altra sorgente.",
     "E_FATTURAZIONE_GIRO_NESSUN_LOTTO": "Nessun lotto da fatturare nel perimetro indicato.",
     "E_FATTURAZIONE_GIRO_PAYLOAD": "Parametri del giro di fatturazione non validi.",
     "E_FATTURAZIONE_MIRATA_TRONCATA": "Emissione mirata troppo ampia: nessun lotto è stato creato. Selezionare meno gruppi e rilanciare.",

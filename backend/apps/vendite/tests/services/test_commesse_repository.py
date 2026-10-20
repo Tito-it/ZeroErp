@@ -93,7 +93,7 @@ _ORDINI_ROW = (
     # 27 shared (tipo_consumo ritirato, DB 20261013-60…-67)
     1, 2, 3,
     date(2026, 6, 1), date(2026, 6, 30), False,
-    6, "uid-ordine-001", "ORD:uid-ordine-001:R:200",
+    6, "uid-ordine-001", "ORDINE_VENDITA:uid-ordine-001:R:200",
     "art-uuid-001", 4, date(2026, 6, 1),
     None, Decimal("10.0"), Decimal("10.0"),
     None, Decimal("1"), date(2026, 6, 1),
@@ -498,7 +498,7 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertIsInstance(row, PushableRow)
         self.assertEqual(row.billing_account_id, 1)
         self.assertEqual(row.utility_id, 2)
-        self.assertEqual(row.segment_key, "ORD:uid-ordine-001:R:200")
+        self.assertEqual(row.segment_key, "ORDINE_VENDITA:uid-ordine-001:R:200")
         self.assertIsNone(row.uom_id)
         self.assertEqual(row.quantita, Decimal("10.0"))
         self.assertEqual(row.prezzo_snapshot, Decimal("22.50"))
@@ -638,7 +638,7 @@ class CommesseRepositoryUnitTests(TestCase):
             datetime(2026, 3, 2, 9, 30, 0, tzinfo=UTC),      # fatturata_il
             77, 210, "DEFINITIVA",               # fattura_id, _numero, _stato
             "019fc716-7386-7b0d-9c26-0a4d30f3a022",  # sorgente_uid
-            "ORDINI", 100,                       # sorgente_area, _documento_id
+            True, 100,                           # sorgente_apribile, _documento_id
             # Cinque colonne del changeSet 20260820-05, in coda alla RETURNS
             # TABLE: la riga dice COSA e' e DA DOVE VIENE.
             "NORMALE",                           # tipo_movimento
@@ -683,7 +683,7 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(row["fattura_id"], 77)
         self.assertEqual(row["fattura_numero"], 210)
         self.assertEqual(row["fattura_stato"], "DEFINITIVA")
-        self.assertEqual(row["sorgente_area"], "ORDINI")
+        self.assertIs(row["sorgente_apribile"], True)
         self.assertEqual(row["sorgente_documento_id"], 100)
         # Seconda execute (data query) contiene fn_list_commessa_attivita.
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]

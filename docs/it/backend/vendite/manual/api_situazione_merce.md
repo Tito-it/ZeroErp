@@ -174,7 +174,8 @@ solo posto in cui una persona lo guarda.
 scritto introspezionando la vista **viva** prima del push: il corpo pubblicato
 coincide con quello su cui è costruito.
 
-**Frontend**: il pannello non esiste ancora. Le tre richieste FE del §19.2 del
-brief partita — `NON_MISURABILE` visibilmente diverso da `PAREGGIATA`,
-`sospetto_duplicato_ordine` mostrato, `fatturato_anticipato` mai sommato al saldo
-— sono la definizione di fatto di quel cantiere, non di questo endpoint.
+**Frontend**: il pannello c'è, nei drawer di ordine e DDT (composable
+`frontend/src/vendite/_shared/situazioneMerce/useSituazioneMerce.js`). Le tre
+richieste FE del §19.2 del brief partita — `NON_MISURABILE` visibilmente diverso
+da `PAREGGIATA`, `sospetto_duplicato_ordine` mostrato, `fatturato_anticipato` mai
+sommato al saldo — restano il contratto di quel pannello, non di questo endpoint.

@@ -18,11 +18,11 @@ from django.db import connection
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.core.db._helpers import (
+    sql_order_direction_lista,
     RicercaFull,
     add_ricerca_full_condition,
     sql_lateral_primo_motivo,
     sql_order_clause,
-    sql_order_direction,
     sql_tiebreak_direction,
     fetch_paged_with_total,
     jsonb_out,
@@ -357,7 +357,9 @@ class EmittentiFiscaliBillingAccountRepository:
         order_col = self._ORDER_COLS.get(
             order_by, self._ORDER_COLS["billing_account_codice"]
         )
-        direction = sql_order_direction(order_dir)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=self._ORDER_COLS, default=order_col,
+        )
         tiebreak_dir = sql_tiebreak_direction(direction)
         # Default-first e' il prefisso fisso dell'ordinamento (la riga default
         # in testa qualunque colonna si ordini). Se pero' l'operatore ordina

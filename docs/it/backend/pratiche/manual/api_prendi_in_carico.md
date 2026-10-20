@@ -18,10 +18,10 @@ l'operatore `O` è eligibile secondo 4 casi (sia **skill-lock** = esiste almeno 
 
 | Caso | Flusso | Eligibile se |
 |---|---|---|
-| A — reparto + skill | reparto valorizzato, skill-lock presente | competenza attiva (altrimenti `FLUSSI_COMPETENZA_MANCANTE`) |
-| B — reparto, no skill | reparto valorizzato, skill-lock assente | appartiene al reparto **anagrafico** (`risorse_umane.unita_organizzativa_id`); altrimenti `FLUSSI_PRESA_NON_ELIGIBILE` |
+| A — reparto + skill | reparto valorizzato, skill-lock presente | competenza attiva (altrimenti `E_FLUSSI_COMPETENZA_MANCANTE`) |
+| B — reparto, no skill | reparto valorizzato, skill-lock assente | appartiene al reparto **anagrafico** (`risorse_umane.unita_organizzativa_id`); altrimenti `E_FLUSSI_PRESA_NON_ELIGIBILE` |
 | C — niente configurato | reparto NULL, skill-lock assente | **presa libera** (chiunque) |
-| D — skill senza reparto | reparto NULL, skill-lock presente | competenza attiva (altrimenti `FLUSSI_COMPETENZA_MANCANTE`) |
+| D — skill senza reparto | reparto NULL, skill-lock presente | competenza attiva (altrimenti `E_FLUSSI_COMPETENZA_MANCANTE`) |
 
 La competenza è quindi un **lucchetto-skill opzionale**: vale solo quando configurata per
 quel template; altrimenti decide l'appartenenza al reparto (o la presa libera).
@@ -48,16 +48,20 @@ quel template; altrimenti decide l'appartenenza al reparto (o la presa libera).
 ### Errori
 
 - `400`: Operatore non associato a una risorsa umana (`E_PRATICA_VALIDATION`)
-- `400`: Flusso non in stato DA_ESEGUIRE (`FLUSSI_PRESA_CARICO_STATO_ERRATO`)
-- `400`: Flusso gia' assegnato ad altro operatore (`FLUSSI_GIA_ASSEGNATO`)
-- `409`: Operatore non abilitato per il tipo di flusso — casi A/D (`FLUSSI_COMPETENZA_MANCANTE`)
-- `409`: Presa non consentita, operatore fuori dal reparto instradato — caso B (`FLUSSI_PRESA_NON_ELIGIBILE`)
+- `409`: Flusso non in stato DA_ESEGUIRE (`E_FLUSSI_PRESA_CARICO_STATO_ERRATO`, CONFLITTO_STATO)
+- `409`: Flusso gia' assegnato ad altro operatore (`E_FLUSSI_GIA_ASSEGNATO`, CONFLITTO_STATO)
+- `403`: Operatore non abilitato per il tipo di flusso — casi A/D (`E_FLUSSI_COMPETENZA_MANCANTE`, NON_PERMESSO)
+- `403`: Presa non consentita, operatore fuori dal reparto instradato — caso B (`E_FLUSSI_PRESA_NON_ELIGIBILE`, NON_PERMESSO)
 - `400`: Flusso non trovato (`E_VALORE_MANCANTE`)
 - `401`: JWT mancante o non valido
 
-> Nota: gli errori del DB (`fn_log_and_raise_error`) sono tradotti in `ServiceError` dal
-> service `pratiche_service.prendi_in_carico` via marker substring sul messaggio
-> (`"non abilitato per il flusso"` → competenza, `"non consentita del flusso"` → eligibilità).
+> Nota: i codici arrivano dal campo strutturato del DB (`fn_log_and_raise_error`) e
+> passano intatti; il ripiego per substring sul messaggio (`"non abilitato per il flusso"`
+> → competenza, `"non consentita del flusso"` → eligibilità) resta per i `RAISE` diretti.
+
+## Permesso
+
+Area `pratiche` + permesso modello `add` su `pratiche.pratica` (il `POST` mappa su `add`).
 
 ## Regole
 
@@ -84,5 +88,5 @@ quel template; altrimenti decide l'appartenenza al reparto (o la presa libera).
 - Funzione DB creata in migration `20260329-15` e fix race condition in `20260329-16`.
 - (18 giugno 2026) `20260618-05`: policy eligibilità reparto-first (competenza condizionale,
   reparto anagrafico per il caso B, presa libera per il caso C).
-- Messaggi errore in `config.messaggi_errore.csv` (id 320-322; `FLUSSI_PRESA_NON_ELIGIBILE`
-  id 496). Codici registrati in `apps/core/services/error_policies.py` (409).
+- Messaggi errore in `config.messaggi_errore.csv` (id 320-322; `E_FLUSSI_PRESA_NON_ELIGIBILE`
+  id 496). Status dalla classe a catalogo (`error_policies_generated.py`).

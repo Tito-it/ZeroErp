@@ -41,8 +41,10 @@ Catena: view `ApiCommessaOneri` (`apps.vendite.api.views`) →
   - `tipo_doc_fiscale_id` (int, **obbligatorio**) — la riga nasce
     APPROVATA + NON_EMESSA, quindi emittibile: il guard DB `tipo_doc_emittibile`
     lo esige
-  - `istanza_utility_id` (int, opzionale) — se omesso viene derivato dal
-    billing account della commessa
+  - `istanza_utility_id` (int, opzionale) — se omesso (o `0`) viene derivato
+    dal billing account della commessa; se esplicito **deve coincidere** con
+    l'istanza del BA (BB `istanza_del_billing_account`), altrimenti `400`
+    `E_COMMESSA_VALIDATION` sul campo `istanza_utility_id`
   - `motivo` (string, opzionale, max 500) — testo libero di audit
   - `data_attivita` (date `YYYY-MM-DD`, opzionale) — default `CURRENT_DATE`
 
@@ -96,7 +98,7 @@ Esempio:
 
 | Codice | HTTP | Quando |
 | --- | --- | --- |
-| `E_COMMESSA_VALIDATION` | 400 | payload malformato (UUID, importo, tipo doc, commessa) |
+| `E_COMMESSA_VALIDATION` | 400 | payload malformato (UUID, importo, tipo doc, commessa); `istanza_utility_id` diverso da quello del BA della commessa; commessa senza billing account (istanza non risolvibile) |
 | `E_COMMESSA_NOT_FOUND` | 404 | commessa inesistente o fuori scope RLS |
 | `E_ONERE_ARTICOLO_MANCANTE` | 400 | l'articolo non esiste, non è attivo, o non è un onere (nessuna causale) |
 | `E_ONERE_IMPORTO_NON_VALIDO` | 400 | importo ≤ 0 (guard DB) |

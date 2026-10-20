@@ -345,7 +345,10 @@ class PraticheServiceTests(SimpleTestCase):
 
         pratiche_service.cambia_stato_pratica(1, "APERTA")
 
-        repo.update_stato_pratica.assert_called_once_with(1, "APERTA")
+        # Lo stato l'ha scelto il client: se non esiste e' un 400 sul campo.
+        repo.update_stato_pratica.assert_called_once_with(
+            1, "APERTA", codice_errore="E_PRATICA_VALIDATION", campo="nuovo_stato",
+        )
 
     # Scopo: D1 — al massimo UNA lente di contesto (ruolo/istanza/interne):
     # due lenti insieme → ServiceError col codice catalogo DB 484.

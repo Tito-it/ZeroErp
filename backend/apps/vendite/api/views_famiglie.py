@@ -55,7 +55,7 @@ _PARAMETRI_FILTRO = [
         description=(
             "Assente = TUTTE, spente comprese. ⚠️ Il default non nasconde le "
             "famiglie spente: sono quelle che spiegano un rifiuto in creazione "
-            "(la tabella e' gia' presa) e nasconderle manderebbe a cercarle "
+            "(la tabella e' gia' numerata) e nasconderle manderebbe a cercarle "
             "dove non si vedono."
         ),
     ),
@@ -116,10 +116,15 @@ class ApiFamiglieList(AdminAPIView):
     @extend_schema(
         operation_id="vendite_famiglie_create",
         request=inline_serializer(name="VenditeFamigliaCreateReq", fields={
-            "codice_interno": serializers.CharField(),
+            "codice_interno": serializers.CharField(
+                help_text=(
+                    "Il codice_interno della SORGENTE di cui la famiglia numera i "
+                    "documenti (config.sorgenti, da `famiglie/sorgenti/`): la "
+                    "tabella e' la sua target_table. Dal 2026-10-20 non ci sono "
+                    "piu' schema_tabella e nome_tabella (G-5)."
+                ),
+            ),
             "descrizione": serializers.CharField(),
-            "schema_tabella": serializers.CharField(),
-            "nome_tabella": serializers.CharField(),
             "colonna_numero": serializers.CharField(),
             "colonna_billing_account": serializers.CharField(
                 required=False, allow_null=True,
@@ -230,8 +235,6 @@ class ApiFamigliaDetail(AdminAPIView):
             # Il codice dell'operatore (dal 2026-09-24): mutabile e unico; vuoto -> 400.
             "codice": serializers.CharField(required=False),
             "descrizione": serializers.CharField(required=False),
-            "schema_tabella": serializers.CharField(required=False),
-            "nome_tabella": serializers.CharField(required=False),
             "colonna_numero": serializers.CharField(required=False),
             "colonna_billing_account": serializers.CharField(required=False),
             "colonna_serie": serializers.CharField(required=False, allow_null=True),
@@ -326,3 +329,34 @@ class ApiFamiglieLookup(DomainAPIView):
     #    nessun log. Il presidio e' in `test_il_lookup_torna_l_envelope_results`.
     def get(self, request: Request) -> JsonResponse:
         return success_response({"results": FamiglieDocumentoService().list_lookup()})
+
+
+class ApiFamiglieSorgenti(AdminAPIView):
+    """GET /api/v1/vendite/famiglie/sorgenti/ — le sorgenti fra cui si sceglie la famiglia.
+
+    ⭐ Dal 2026-10-20 (brief-db-grammatica-unica-documenti 2c, G-5) una famiglia
+    e' quella di una SORGENTE: la creazione riceve il suo `codice_interno` e la
+    tabella dei documenti e' la sua `target_table`. Il drawer delle famiglie
+    sceglie da qui invece di scrivere schema e tabella.
+
+    ⛔ Non e' il lookup generico: quello da' `codice` (il nome mutabile) e non
+    `codice_interno`, e non sa dire se la sorgente ha gia' una famiglia o se la
+    sua tabella e' gia' numerata — le due informazioni con cui il drawer spegne
+    la voce e dice perche'. Il rifiuto vero resta al DB.
+
+    Cancello dell'amministratore, come la creazione: serve solo a lei.
+    """
+
+    @extend_schema(
+        operation_id="vendite_famiglie_sorgenti",
+        responses={200: inline_serializer(
+            name="VenditeFamiglieSorgentiResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: le sorgenti di documento con tabella, famiglia esistente e chi
+    #        numera gia' la tabella. Envelope `{"results": [...]}`, come i lookup
+    #        dedicati (vedi `ApiFamiglieLookup`).
+    def get(self, request: Request) -> JsonResponse:
+        return success_response(
+            {"results": FamiglieDocumentoService().list_sorgenti_numerabili()},
+        )

@@ -91,6 +91,7 @@ Indice test eseguiti:
 78) test_optional_meta_porta_il_campo             — idem, sui due rifiuti (JSON rotto, non oggetto)
 79) test_optional_upper                         — 2026-10-09 (regola del 2): strip + upper, vuoto -> None; non-stringa -> VALIDATION col campo
 80) test_require_campi_da_aggiornare_*          — 2026-10-14 (regola del 2, ~45 copie): vuoto -> VALIDATION col codice del dominio; un None e' un reset e conta; un sotto-oggetto conta solo se ha chiavi
+81) test_solo_chiavi_ammesse_*                 — 2026-10-20 (regola del 2, 11 copie): chiave ignota -> VALIDATION; ritorna il dict con vuoti a None; `colonne` tiene le sole colonne
 """
 
 from decimal import Decimal
@@ -130,6 +131,27 @@ class TestValidateAllowedKeys(_Base):
             self.v.validate_allowed_keys({"a": 1, "x": 2}, allowed=frozenset({"a"}))
         self.assertEqual(ctx.exception.code, _CODE)
         self.assertIn("x", ctx.exception.context["unknown_keys"])
+
+
+class TestSoloChiaviAmmesse(_Base):
+    def test_solo_chiavi_ammesse_rifiuta_la_chiave_ignota(self):
+        with self.assertRaisesValidation() as ctx:
+            self.v.solo_chiavi_ammesse({"a": 1, "x": 2}, ammesse=frozenset({"a"}))
+        self.assertEqual(ctx.exception.code, _CODE)
+        self.assertEqual(ctx.exception.context["unknown_keys"], ["x"])
+
+    def test_solo_chiavi_ammesse_ritorna_il_dict_normalizzato(self):
+        self.assertEqual(
+            self.v.solo_chiavi_ammesse({"a": "", "b": 2}, ammesse=frozenset({"a", "b", "c"})),
+            {"a": None, "b": 2},
+        )
+
+    def test_solo_chiavi_ammesse_colonne_tiene_le_sole_colonne(self):
+        dati = self.v.solo_chiavi_ammesse(
+            {"a": 1, "mappa": {"7": "1.00"}},
+            ammesse=frozenset({"a", "mappa"}), colonne=frozenset({"a"}),
+        )
+        self.assertEqual(dati, {"a": 1})
 
 
 class TestGuardPositiveInt(_Base):

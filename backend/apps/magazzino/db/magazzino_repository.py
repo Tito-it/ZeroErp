@@ -45,6 +45,7 @@ from typing import Any, cast
 from django.db import connection
 
 from apps.core.db._helpers import (
+    sql_order_direction_lista,
     predicato_giorno_operativo,
     pattern_contiene,
     RicercaFull,
@@ -54,7 +55,6 @@ from apps.core.db._helpers import (
     jsonb_out,
     rows_to_list,
     sql_order_clause,
-    sql_order_direction,
     sql_tiebreak_direction,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
@@ -570,7 +570,7 @@ class MagazzinoRepository:
         add_ricerca_full_condition(conditions, params, search, _RICERCA_PIANO)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         colonna = PIANO_SORT_COLUMNS.get(order_by or "", "articolo_codice")
-        direzione = sql_order_direction(order_dir)
+        direzione = sql_order_direction_lista(order_by, order_dir, colonne=PIANO_SORT_COLUMNS)
         rows, total = lista_paginata(
             select_sql=f"{_PIANO_SELECT} {where}",
             params=params,
@@ -887,7 +887,7 @@ class MagazzinoRepository:
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         colonna = DISPONIBILITA_SORT_COLUMNS.get(order_by or "", "articolo_codice")
-        direzione = sql_order_direction(order_dir)
+        direzione = sql_order_direction_lista(order_by, order_dir, colonne=DISPONIBILITA_SORT_COLUMNS)
         spareggio = sql_tiebreak_direction(direzione)
         rows, total = lista_paginata(
             select_sql=f"{_DISPONIBILITA_SELECT} {where}",

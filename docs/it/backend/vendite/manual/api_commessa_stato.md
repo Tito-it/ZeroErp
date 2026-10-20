@@ -172,6 +172,7 @@ Regole:
 - Metodo: `POST`
 - Path: `/api/v1/vendite/commesse/<commessa_id>/stato/`
 - Header: `Authorization: Bearer <token>` + **`Idempotency-Key` obbligatoria**
+- Permesso: area `vendite` + `post_permission = "cambia_stato_commessa"` (un solo codename per chiudi/riapri/annulla; senza → `403 E_PERMISSION_DENIED`). Si somma alle capability DB: il permesso dice se l'operatore può, la capability se l'azione è eseguibile ora. Il `GET` resta libero nell'area.
 - Body JSON:
   - `nuovo_stato` (string) — **codice stato di destinazione** (`target_state` preso da una
     delle `capabilities.available_actions`, es. `CHIUSA` / `IN_ESECUZIONE` / `ANNULLATA`).
@@ -198,7 +199,7 @@ Errori:
 - `409` `E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE` — righe già emesse: l'annullo è vietato, e il
   verbo lo dice **prima** della conferma. Nella capability l'azione è spenta col motivo,
   quindi dal frontend arriva come `E_COMMESSA_AZIONE_NON_AMMESSA`;
-- `472` `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA` / `473` `E_COMMESSA_NESSUNA_RIGA_APPROVATA`
+- `409` `E_COMMESSA_STATO_TRANSIZIONE_INVALIDA` / `409` `E_COMMESSA_NESSUNA_RIGA_APPROVATA`
   — sollevati dal guard DB se la coppia non è in matrice / precondizione non soddisfatta.
 
 ## L'annullo, con la conferma dei legami
@@ -241,6 +242,35 @@ Output `200` del verbo: la stessa forma del cambio di stato
 ⚠️ **Prima ciò che vieta, poi ciò che chiede conferma** (D-3): con righe già **emesse**
 l'annullo è vietato (`E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE`, `script.fn_check_commessa_annullabile`)
 e la conferma non viene chiesta.
+
+## GET `/api/v1/vendite/commesse/<id>/registro/` — Il registro delle righe
+
+Gli eventi che il DB scrive su `vendite.commesse_attivita_log` (oneri aggiunti,
+righe annullate a mano, ritirate alla chiusura del documento di origine,
+riportate da emettere, accrediti): chi, quando, con quale motivo. View
+`ApiCommessaRegistro` → `fn_commessa_registro` →
+`CommesseRepository.list_registro_attivita`. Area `vendite`, sola lettura.
+
+Query:
+
+- `commessa_attivita_id` (int, facoltativo) — restringe a una riga; assente = tutta la commessa;
+- `limit` (int, default 100 `DEFAULT_LIMIT_EVENTI`, 1..`MAX_LIMIT`), `offset` (int ≥ 0, default 0);
+  fuori intervallo o non interi → `400 E_COMMESSA_VALIDATION`.
+
+Ordine fisso: `data_insert DESC, id DESC`. Il vocabolario degli eventi è del DB
+e aperto: nessun filtro per evento.
+
+```json
+{ "data": { "commessa_id": 1, "count": 3, "rows": [
+  { "id": 90, "commessa_attivita_id": 412, "evento": "RIGA_MANUALE_ANNULLATA",
+    "dettaglio": { "motivo": "doppio carico" }, "motivo": "doppio carico",
+    "data_insert": "2026-10-01T09:12:00+02:00", "user_insert": "mrossi",
+    "segment_key": "...", "stato_emissione": "ANNULLATA", "tipo_movimento": "ONERE",
+    "articolo_codice": "ONR-TRASP", "articolo_descrizione": "Trasporto" } ] } }
+```
+
+Lo scope passa dal `JOIN` su `vendite.commesse_attivita` (che ha la RLS; il log
+no): commessa inesistente o fuori perimetro → `count: 0`, `rows: []`, non 404.
 
 ## Regole
 

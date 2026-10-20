@@ -86,7 +86,7 @@ def _integrity(nome_vincolo: str) -> IntegrityError:
 def _registro(**over):
     base = {
         "id": 7, "codice": "DDT-01", "descrizione": "DDT",
-        "famiglia_documento": "DDT", "emittente_soggetto_ruolo_id": 99,
+        "famiglia_documento": "DDT_VENDITA", "emittente_soggetto_ruolo_id": 99,
         "prefisso": "DDT", "suffisso": None, "lunghezza_numero": 7,
         "serie_default": None, "attivo": True,
         "rimozione_blocco_reason": None, "forma_blocco_reason": None,
@@ -350,7 +350,7 @@ class RegistriPayloadTests(TestCase):
     #    di un campo che l'operatore non ha nemmeno visto.
     def test_limiti_azzerati_su_famiglia_non_fattura(self):
         dati = RegistriService()._normalizza({
-            "famiglia_documento": "DDT",
+            "famiglia_documento": "DDT_VENDITA",
             "limite_emissione_giorni": 15,
             "limite_emissione_giorno_mese": 20,
         })
@@ -494,7 +494,7 @@ class RegistriRevisioneTests(TestCase):
     @patch.object(FamiglieDocumentoRepository, "ammette_regole_fiscali", return_value=False)
     def test_politica_data_neutralizzata_fuori_fattura(self, _ammette):
         dati = RegistriService()._normalizza({
-            "famiglia_documento": "DDT",
+            "famiglia_documento": "DDT_VENDITA",
             "politica_data_documento": "FINE_MESE_COMPETENZA",
             "limite_emissione_giorni": 15,
         })

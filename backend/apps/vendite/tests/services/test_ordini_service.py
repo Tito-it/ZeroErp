@@ -91,20 +91,23 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         repo = repo_cls.return_value
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
-        out = ordini_service.crea_ordine(
-            {"billing_account_id": 3, "utility_id": 1, "soggetto_ruolo_id": 555},
-        )
+        out = ordini_service.crea_ordine({"billing_account_id": 3})
         self.assertEqual(out["numero"], "ORD0007")
         kwargs = repo.create_ordine.call_args.kwargs
         self.assertEqual(kwargs["billing_account_id"], 3)
         self.assertNotIn("soggetto_ruolo_id", kwargs)
         self.assertNotIn("utility_id", kwargs)
+        # ⛔ E chi le manda riceve un 400, non uno scarto silenzioso (2026-10-20).
+        for copia in ({"utility_id": 1}, {"soggetto_ruolo_id": 555}):
+            with self.subTest(copia=copia), self.assertRaises(ServiceError) as cm:
+                ordini_service.crea_ordine({"billing_account_id": 3, **copia})
+            self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
 
     @patch(_REPO)
     def test_crea_ordine_senza_cliente_errore(self, repo_cls) -> None:
         # D-1: l'ordine ha sempre il BA. Validazione del payload col campo.
         with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine({"utility_id": 1})
+            ordini_service.crea_ordine({})
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
         self.assertEqual(cm.exception.context.get("field"), "billing_account_id")
         repo_cls.return_value.create_ordine.assert_not_called()
@@ -121,11 +124,13 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
     @patch(_REPO)
     def test_aggiorna_ordine_utility_scartata(self, repo_cls) -> None:
         # La utility e' una copia del BA, che sull'ordine non cambia: fuori
-        # whitelist.
+        # whitelist. ⛔ Dal 2026-10-20 e' un 400, non uno scarto silenzioso.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        ordini_service.aggiorna_ordine(7, {"billing_account_id": 3, "utility_id": 9})
-        self.assertEqual(repo.update_ordine.call_args.kwargs, {"billing_account_id": 3})
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.aggiorna_ordine(7, {"billing_account_id": 3, "utility_id": 9})
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        repo.update_ordine.assert_not_called()
 
     @patch(_REPO)
     def test_aggiorna_ordine_ba_non_numerico_rifiutato(self, repo_cls) -> None:
@@ -291,7 +296,7 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
         repo.create_riga.return_value = {"id": 50}
 
         payload = {
-            "articolo_id": "ART1", "qta_operativa": 2, "iva_id": 1,
+            "articolo_id": "ART1", "qta_operativa": 2,
             "uom_operativa_id": 3,
             "componenti_overrides": {"10": "5.50"},
         }
@@ -327,7 +332,7 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
         repo.create_riga.return_value = {"id": 51}
 
         ordini_service.gestisci_riga(
-            7, {"articolo_id": "ART1", "qta_operativa": 1, "iva_id": 1,
+            7, {"articolo_id": "ART1", "qta_operativa": 1,
                 "uom_operativa_id": 3},
             auth_user_id=42,
         )
@@ -336,11 +341,8 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
 
 
     # Scopo: ⛔ `I6` — LA CASELLA E' CHIUSA. Un client che manda ancora `iva_id`
-    #        nel payload deve vederlo IGNORATO: a decidere e' il risolutore.
-    # ⚠️ Il valore non viene RESPINTO ma SCARTATO (chiave fuori whitelist), e
-    #        senza questo caso la rimozione della chiave sarebbe invisibile: la
-    #        suite e' restata verde quando e' stata fatta, perche' nessun
-    #        presidio copriva «il payload vince».
+    #        nel payload riceve un 400 (dal 2026-10-20; prima la chiave era
+    #        SCARTATA in silenzio): a decidere e' il risolutore.
     # ⛔ E il risolutore va interrogato con `payload_iva_id=None`: passargli il
     #        valore del client lo farebbe scendere sul ramo di AUDIT, dove gli
     #        errori sono best-effort — cioe' una riga si salverebbe anche
@@ -364,16 +366,23 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
         repo.next_riga_nr.return_value = 1
         repo.create_riga.return_value = {"id": 52}
 
+        # ⛔ Dal 2026-10-20 `iva_id` nel payload e' un 400 (chiave fuori
+        #    contratto), non piu' uno scarto: la riga non nasce.
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.gestisci_riga(
+                7, {"articolo_id": "ART1", "qta_operativa": 1, "uom_operativa_id": 3,
+                    "iva_id": 999},
+                auth_user_id=42,
+            )
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        repo.create_riga.assert_not_called()
+
+        # ⭐ Senza la chiave decide il risolutore, interrogato con
+        #    `payload_iva_id=None`.
         ordini_service.gestisci_riga(
-            7, {"articolo_id": "ART1", "qta_operativa": 1, "uom_operativa_id": 3,
-                "iva_id": 999},
+            7, {"articolo_id": "ART1", "qta_operativa": 1, "uom_operativa_id": 3},
             auth_user_id=42,
         )
-
-        # ⭐ E' la WHITELIST il cancello vero: `iva_id` non e' in
-        #    `CREATE_KEYS_RIGA`, quindi non entra nemmeno in `data`. Questa
-        #    asserzione morde ANCHE se qualcuno rimettesse la chiave, perche'
-        #    allora `payload_iva_id` tornerebbe 999.
         self.assertIsNone(iva.call_args.kwargs["payload_iva_id"])
         self.assertNotIn("iva_id", ordini_service.CREATE_KEYS_RIGA)
         self.assertNotIn("iva_id", ordini_service.UPDATE_KEYS_RIGA)
@@ -883,7 +892,7 @@ class OrdiniFatturazioneImmediataTests(SimpleTestCase):
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
         ordini_service.crea_ordine({
-            "billing_account_id": 3, "utility_id": 1, "fatturazione_immediata": True,
+            "billing_account_id": 3, "fatturazione_immediata": True,
         })
         self.assertIs(
             repo.create_ordine.call_args.kwargs["fatturazione_immediata"], True,
@@ -898,7 +907,7 @@ class OrdiniFatturazioneImmediataTests(SimpleTestCase):
         repo = repo_cls.return_value
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
-        ordini_service.crea_ordine({"billing_account_id": 3, "utility_id": 1})
+        ordini_service.crea_ordine({"billing_account_id": 3})
         self.assertIsNone(
             repo.create_ordine.call_args.kwargs["fatturazione_immediata"],
         )

@@ -29,21 +29,31 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
 ### Lista + testata
 
 - Lista `GET /api/v1/vendite/resi/` — lista configurabile `vendite.resi`. Filtri:
-  `stato_codice_interno` (DRAFT|CONFERMATO|ANNULLATO), `billing_account_id`,
-  `data_da/data_a`, `search` (min 3: numero/destinatario/ba_codice/id fiscale/DDT
-  origine), `order_by`/`order_dir` (campi del catalogo).
+  `stato_codice_interno` (DRAFT|CONFERMATO|ANNULLATO; fuori vocabolario
+  `config.stati_doc_reso` → 400 `E_RESO_VALIDAZIONE` col campo, 2026-10-20: prima
+  lista vuota con 200), `billing_account_id`, `data_da/data_a`, `search` (min 3:
+  numero/destinatario/ba_codice/id fiscale/DDT origine), `order_by` (`numero`,
+  `data` default, `anno`, `destinatario_denominazione`, `ba_codice`,
+  `id_fiscale_univoco_cf_piva`, `stato_descrizione`, `ddt_origine_numero`,
+  `data_insert`, `pratica_numero`, `fase`) / `order_dir` (assente: `desc` sul
+  default `data`, «dal più recente»).
 - **Export** `GET /api/v1/vendite/resi/export/?formato=csv|xlsx` — stessi
   filtri/sort della lista; colonne visibili/ordine/permessi dalla config
   `vendite.resi`. Fetch fino a `EXPORT_MAX_ROWS+1` (nessun troncamento silenzioso;
   oltre soglia → `E_UI_EXPORT_LIMIT_EXCEEDED`).
-- Create `POST /api/v1/vendite/resi/` — `{ddt_id, data?, righe?}`. Nasce DRAFT,
-  `numero` NULL fino a CONFERMATO (trigger). BA/destinatario/utility/valuta/
-  emittente ereditati dal DDT sorgente (**CONSEGNATO**, guard DB).
+- Create `POST /api/v1/vendite/resi/` — `{ddt_id, data?, magazzino_id?, meta?, righe?}`
+  (`righe` = lista di corpi riga, vedi §Righe). Nasce DRAFT, `numero` NULL fino a
+  CONFERMATO (trigger). BA/destinatario/utility/valuta/emittente ereditati dal
+  DDT sorgente (**CONSEGNATO**, guard DB). `magazzino_id` = magazzino di rientro
+  della merce. Una chiave fuori contratto → 400 `E_RESO_VALIDAZIONE` (2026-10-20:
+  prima scartata in silenzio).
 - Detail `GET /<id>/` — testata + capabilities data-driven
   (`fn_available_actions_reso`) nella chiave `capabilities`, non fuse nella
   testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
-- Update `PATCH /<id>/` — `data`/`meta`; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a reso confermato restano aperte le note, ferme a reso annullato. Delete `DELETE /<id>/` — hard
-  delete solo DRAFT + 0 righe (abbandono bozza).
+- Update `PATCH /<id>/` — `data`/`meta`/`magazzino_id` (altre chiavi → 400
+  `E_RESO_VALIDAZIONE`; `{}` → 400), risposta `{reso_id, updated}`; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a reso confermato restano aperte le note, ferme a reso annullato. Delete `DELETE /<id>/` — hard
+  delete solo DRAFT + 0 righe (abbandono bozza; con righe 409
+  `E_RESO_STATO_TRANSIZIONE`), risposta `{reso_id, deleted}`.
 
 ### Azioni di dominio (fn madri DB, effetti atomici)
 
@@ -54,13 +64,35 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
 - Genera ri-consegna `POST /<id>/genera-ddt-riconsegna/` — body
   `{righe?: [{resi_riga_id, qta}], data?}` in unità BASE; omesse/null = tutta la
   copertura residua. Il DDT nasce DRAFT. Righe degeneri → 400 (mai degrado a
-  "ri-spedisci tutto").
+  "ri-spedisci tutto"). Risposta `{reso_id, ddt_id, numero: null}`.
+- Chiudi ri-consegna `POST /<id>/chiudi-riconsegna/` — dichiara **definitiva**
+  una quota resa per ri-consegna (non tornerà al cliente), fn madre
+  `fn_chiudi_riconsegna_reso`: il residuo ordine si chiude (→ EVASO) e
+  l'accredito in coda passa da FACOLTATIVA a DOVUTA **senza cambiare importo**.
+  Body `{righe?: [{resi_riga_id, qta}], note?}`, `qta` in unità BASE (stesso
+  contratto della ri-spedizione); `righe` omesse/null = tutta la copertura
+  residua, degeneri → 400. Risposta `{reso_id, righe_chiuse}`. Errori dal DB:
+  `E_RESO_NON_CONFERMATO`, `E_RESO_NESSUNA_RICONSEGNA_PENDENTE`,
+  `E_RESO_RINUNCIA_SUPERA_RESO`.
+- Riapri ri-consegna `POST /<id>/riapri-riconsegna/` — annulla una chiusura (fn
+  madre `fn_riapri_riconsegna_reso`): la quota torna ri-spedibile, l'ordine torna
+  PARZIALMENTE_EVASO, l'accredito torna FACOLTATIVA. Body
+  `{righe?: [{resi_riga_id, qta}]}`; omesse = tutte le rinunce del reso, scalate
+  dalle più recenti (LIFO, a DB). Risposta `{reso_id, righe_riaperte}`.
 
 ### Righe
 
 - Lista configurabile delle righe `GET /<id>/righe/lista/` (+ `export/`): BB condiviso, vedi [api_righe_documento.md](api_righe_documento.md).
 - `GET/POST /<id>/righe/`, `PATCH/DELETE /<id>/righe/<riga_id>/` — scrittura
-  solo DRAFT. Articolo/UoM/factor sono **snapshot** dalla riga DDT sorgente.
+  solo DRAFT (`E_RIGA_DOC_NON_BOZZA`). Articolo/UoM/factor sono **snapshot** dalla
+  riga DDT sorgente.
+  - Corpo create: `ddt_riga_id` (**obbligatorio**, riga del DDT sorgente del
+    reso), `tipo_reso_id` (**obbligatorio**: a credito / per ri-consegna),
+    `qta_operativa` (**obbligatoria**; la base la calcola il trigger), `motivo`,
+    `meta`. Corpo PATCH: `tipo_reso_id`, `qta_operativa`, `motivo`, `meta`.
+    Chiave fuori contratto (anche `quantita`) → 400 `E_RESO_VALIDAZIONE`
+    (2026-10-20: prima scartata). DELETE è hard delete.
+  - Risposte: PATCH `{reso_id, riga_id, updated}`, DELETE `{reso_id, riga_id, deleted}`.
 - ⭐ **`gia_accreditato`** (2026-08-18) — quanti pezzi della riga sono già stati
   accreditati, in unità di **merce**. Letto da
   `vendite.fn_resi_riga_accreditato_partita`, che è il **punto unico della
@@ -71,6 +103,27 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
   l'unica sede da cui si può ancora disfare.
 - `GET /api/v1/vendite/ddt/<ddt_id>/righe-per-reso/` — righe DDT con
   `qta_gia_resa`/`qta_resa_residua` (alimenta il pannello "crea reso").
+
+### Rientri — dove rientra la merce
+
+Sola lettura dello stato e scrittura dei rientri in bozza: bozza, prelievo della
+riga di bolla giusta e, alla conferma, quadratura, tetto per prelievo e
+ubicazione (`script.fn_check_reso_merce`) li giudica il DB; il backend non
+ricopia regole.
+
+- `GET /<id>/rientri/` — testata (`reso_id`, `muove_merce`, `magazzino_id`,
+  `magazzino_usa_ubicazioni`) + `voci[]`: la riga o il componente del kit com'era
+  uscito, ciascuna con `prelievi_origine[]` (lotto, seriale, ubicazione di
+  partenza) e `rientri[]`. Reso inesistente/fuori perimetro → 404 `E_RESO_NOT_FOUND`.
+- `POST /<id>/righe/<rid>/rientri/` — body `{ddt_riga_prelievo_id, qta,
+  ubicazione_id?}` (`ddt_riga_prelievo_id` e `qta` obbligatori). Risposta
+  `{reso_id, riga_id, rientro_id}`.
+- `PATCH /<id>/righe/<rid>/rientri/<rtid>/` — body `{qta?, ubicazione_id?}` (il
+  prelievo d'origine non cambia); risposta `{…, rientro_id, updated}`.
+- `DELETE /<id>/righe/<rid>/rientri/<rtid>/` — risposta `{…, rientro_id, deleted}`.
+
+Chiave fuori contratto → 400 `E_RESO_VALIDAZIONE`; riga non del reso o rientro
+non della riga → 404 `E_RESO_NOT_FOUND`.
 
 ### Code di lavoro (liste configurabili di RIGHE reso CONFERMATE)
 
@@ -185,8 +238,10 @@ credito» promette un documento che poi non si trova.
 
 `E_RESO_NOT_FOUND` (404), `E_RESO_DDT_NON_CONSEGNATO` (create su DDT non
 consegnato), `E_RESO_QTA_SUPERA_CONSEGNATO` (over-return), `E_RESO_ANNULLO_CON_RICONSEGNE`,
-`E_RESO_VALIDAZIONE` (400: payload del verbo, filtri coda, etichetta fuori
-whitelist), `E_RESO_STATO_TRANSIZIONE` (409: la **testata** fuori bozza),
+`E_RESO_VALIDAZIONE` (400: payload del verbo, chiavi fuori contratto su testata,
+righe e rientri, filtro di stato fuori vocabolario, filtri coda, etichetta fuori
+whitelist), `E_RESO_STATO_TRANSIZIONE` (409: delete di un reso non in bozza o con
+righe; la testata fuori bozza la ferma il lock DB, `E_DOC_*`),
 `E_RIGA_DOC_NON_BOZZA` (409: righe aggiunte/modificate/tolte fuori bozza — dal
 2026-09-22 il pre-check BE `richiedi_righe_in_bozza` usa il codice del BB a DB
 `trgfn_doc_righe_lock_fuori_bozza`, che su `resi_righe` **non è ancora

@@ -1109,7 +1109,7 @@ class DdtPrelieviTests(SimpleTestCase):
         repo.get_riga.return_value = {"id": 5, "ddt_id": 7}
         repo.create_prelievo.return_value = {"id": 99}
         out = ddt_service.crea_prelievo(
-            7, 5, {"qta": "2.5", "lotto_id": "3", "ubicazione_id": "", "estranea": 1},
+            7, 5, {"qta": "2.5", "lotto_id": "3", "ubicazione_id": ""},
         )
         self.assertEqual(out["prelievo_id"], 99)
         valori = repo.create_prelievo.call_args[0][0]
@@ -1117,6 +1117,12 @@ class DdtPrelieviTests(SimpleTestCase):
             valori,
             {"ddt_riga_id": 5, "qta": Decimal("2.5"), "lotto_id": 3, "ubicazione_id": None},
         )
+        # ⛔ Una chiave estranea e' un 400 (2026-10-20), non uno scarto.
+        repo.create_prelievo.reset_mock()
+        with self.assertRaises(ServiceError) as ctx:
+            ddt_service.crea_prelievo(7, 5, {"qta": "2.5", "estranea": 1})
+        self.assertEqual(ctx.exception.code, "E_DDT_VALIDAZIONE")
+        repo.create_prelievo.assert_not_called()
 
     @patch(_REPO)
     def test_prelievo_di_altra_riga_e_404(self, repo_cls) -> None:

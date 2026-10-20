@@ -27,10 +27,9 @@ URL: `GET /api/v1/core/users/{user_id}/permessi-audit/`
 | `data_a`    | date   | --      | Filtro data fine (fino al giorno indicato **incluso**), formato `YYYY-MM-DD` |
 | `tabella`   | string | --      | Filtro singola tabella sorgente (es. `user_override_aree`)     |
 | `page`      | int    | 1       | Numero pagina                                                  |
-| `page_size` | int    | 50      | Dimensione pagina; oltre 200 viene ridotta a 200 in silenzio   |
+| `page_size` | int    | 25      | Dimensione pagina; oltre 200 viene ridotta a 200 in silenzio   |
 
-`page` e `page_size` accettano solo cifre (altrimenti `E_VALIDATION_INPUT`, 400);
-`page` non ha limite inferiore.
+`page` e `page_size` accettano solo cifre (altrimenti `E_VALIDATION_INPUT`, 400).
 
 `page` e `page_size` partono da 1 (sotto: 400 `E_VALIDATION_INPUT`, `page_size`
 tagliato a 200). `data_a` **include** il giorno indicato: intervallo
@@ -44,7 +43,7 @@ tagliato a 200). `data_a` **include** il giorno indicato: intervallo
     "user_id": 5,
     "count": 42,
     "page": 1,
-    "page_size": 50,
+    "page_size": 25,
     "total_pages": 1,
     "events": [
       {
@@ -88,7 +87,7 @@ tagliato a 200). `data_a` **include** il giorno indicato: intervallo
 | `E_PERMESSO_NEGATO`  | 403  | Consultazione di un altro utente senza superuser/SUPER_ADMIN |
 | `E_AMM_UTENTE_NOT_FOUND` | 404 | `user_id` inesistente (dal 2026-10-08; prima 400 `E_CORE_VALIDATION`) |
 | `E_CORE_VALIDATION`  | 400  | `tabella` non ammessa                                        |
-| `E_VALIDATION_INPUT` | 400  | Data non ISO, `page`/`page_size` non numerici                |
+| `E_VALIDATION_INPUT` | 400  | Data non ISO, `page`/`page_size` non numerici o < 1          |
 
 
 ## Tabelle storico interrogate (8)

@@ -35,8 +35,40 @@ Riferimento concettuale:
   - `classe_utenza_id` (int, opzionale)
   - `emittente_soggetto_ruolo_id` (int, opzionale) — override esplicito; se assente, derivato dal JWT operatore
   - `articolo_padre_contesto` (uuid string, opzionale) — **modello unificato BoM 2026-05-13**: UUID articolo composito padre per attivare lo STADIO BUNDLE del resolver. Se fornito, il resolver cerca prima il prezzo in `vendite.listini_righe_componenti` per la coppia `(padre, figlio)` nella versione listino determinata; fallback su `listini_righe` standalone se non trovato. Quando NULL, comportamento standalone tradizionale (resolver 3 stadi promo/contratto/categoria). Usato in modo diagnostico dal TestResolverDialog FE; in produzione e' la fn `fn_preventivo_riga_componenti_preview/init` a passarlo automaticamente. Vedi `modello-componenti-bom.md` §8.
-- Output `200`: oggetto risolto con `prezzo_finale`, `prezzo_base_snapshot`, `tipo_variazione_applicata`, `valore_variazione_applicata`, `origine` (PROMO/CONTRATTO_OVERRIDE/CONTRATTO_LISTINO/CATEGORIA/**LISTINO_BUNDLE**), `listino_id`, `listino_versione_id`, `listino_riga_id`, `contratto_id`, `promo_id`, `categoria_cliente_listino_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`. Quando `origine='LISTINO_BUNDLE'`, `listino_riga_id` punta alla riga `listini_righe_componenti` (non `listini_righe`).
-- Errori applicativi sollevati dal resolver DB: `E_PREZZO_LISTINO_NON_TROVATO`, `E_CATEGORIA_LISTINO_NON_MAPPATA`, `E_PREZZO_LISTINO_RIGA_NON_TROVATA` (con `bundle_tentato` nel detail se `articolo_padre_contesto` era valorizzato), `E_LISTINO_VERSIONE_NON_ATTIVA`, `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` (tutti 403/404 con detail dal DB), fallback `E_VENDITE_PRICING_FAILED` (500)
+- ⚠️ `uom_id`, `ba_id`, `utility_id` sono interi positivi **obbligatori**:
+  assenti, non interi o ≤ 0 → `400 E_VENDITE_VALIDATION` col campo
+  (`context.field`). 2026-10-20: prima un valore assente diventava `0` e il
+  resolver rispondeva «non trovato». Anche `articolo_id` e `data_riferimento`
+  (ISO) assenti → `400 E_VENDITE_VALIDATION`. Senza
+  `emittente_soggetto_ruolo_id` e senza emittenti autorizzati per l'operatore →
+  `400 E_VENDITE_VALIDATION`.
+- Output `200`: oggetto risolto con `prezzo_finale`, `prezzo_base_snapshot`, `tipo_variazione_applicata`, `valore_variazione_applicata`, `origine` (PROMO/CONTRATTO_OVERRIDE/CONTRATTO_LISTINO/CATEGORIA/**LISTINO_BUNDLE**), `listino_id`, `listino_versione_id`, `listino_riga_id`, `contratto_id`, `promo_id`, `categoria_cliente_listino_id`, `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`, più i **campi di descrizione** accanto agli id: `listino_codice`, `listino_descrizione`, `listino_versione_codice`, `contratto_numero`, `promo_codice`, `promo_descrizione`, `categoria_cliente_codice`, `categoria_cliente_descrizione`, `classe_utenza_descrizione` (`null` quando lo stadio non li valorizza). Quando `origine='LISTINO_BUNDLE'`, `listino_riga_id` punta alla riga `listini_righe_componenti` (non `listini_righe`).
+- Errori applicativi sollevati dal resolver DB (status dalla classe a catalogo,
+  `error_policies_generated.py`):
+
+  | Codice | Classe | HTTP |
+  | --- | --- | --- |
+  | `E_PREZZO_LISTINO_NON_TROVATO` | `NON_TROVATO` | 404 |
+  | `E_PREZZO_LISTINO_RIGA_NON_TROVATA` (con `bundle_tentato` nel detail se `articolo_padre_contesto` era valorizzato) | `NON_TROVATO` | 404 |
+  | `E_CATEGORIA_LISTINO_NON_MAPPATA` | `NON_TROVATO` | 404 |
+  | `E_LISTINO_VERSIONE_NON_ATTIVA` | `NON_ESEGUIBILE` | 422 |
+  | `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C` | `DATO_ERRATO` | 400 |
+  | `E_VENDITE_PRICING_FAILED` (ripiego per ciò che il DB non ha nominato) | `DATO_ERRATO` | 400 |
+
+---
+
+### 1-bis. Diagnostica configurazione (`POST /api/v1/vendite/pricing/diagnose/`)
+
+- Auth: `vendite` livello LETTURA. Nessuna scrittura.
+- Body: gli **stessi** campi del resolver (stesse regole su obbligatori e `400`),
+  `articolo_padre_contesto` escluso dal servizio.
+- Non chiama il resolver: ispeziona la configurazione dei tre stadi per quella
+  combinazione e suggerisce come sbloccarla (`PricingDiagnoseService`).
+- Output `200`: `{ "ba": {trovato, categoria_id, categoria_codice,
+  categoria_descrizione, categoria_partecipa_promo}, "stadio_0_promo": {...},
+  "stadio_1_contratto": {...}, "stadio_2_categoria": {...}, "esito_atteso":
+  {...}, "azioni_suggerite": ["..."] }` — ogni stadio porta almeno
+  `applicabile` e `motivo`.
 
 ---
 

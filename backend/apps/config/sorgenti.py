@@ -40,6 +40,10 @@ from typing import Final
 #    dove la firma dichiara i codici ammessi (`Literal[...]`, per esempio
 #    `DocumentoEccezioni`) e una divergenza fra i due e' un errore di tipo.
 
+# La categoria delle sorgenti che sono tipi di documento (`config.sorgenti.categoria`,
+# colonna bloccata dopo l'inserimento).
+CATEGORIA_SORGENTE_DOCUMENTO: Final = "DOCUMENTO"
+
 # Documenti (categoria DOCUMENTO).
 SORGENTE_PREVENTIVO: Final = "PREVENTIVO"
 SORGENTE_OFFERTA_COMMERCIALE: Final = "OFFERTA_COMMERCIALE"

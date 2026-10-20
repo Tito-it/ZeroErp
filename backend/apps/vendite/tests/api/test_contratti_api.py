@@ -353,7 +353,9 @@ class TestRighe(_BaseApiTest):
             content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(svc_cls.return_value.update_riga.call_args.args[0], 99)
+        # ⛔ Il contratto dell'URL arriva al service: e' quello su cui il service
+        #    verifica che la riga sia sua (prima la view lo scartava).
+        self.assertEqual(svc_cls.return_value.update_riga.call_args.args[:2], (1, 99))
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_SVC)
@@ -362,7 +364,7 @@ class TestRighe(_BaseApiTest):
         resp = self.client.delete(_BASE + "1/righe/99/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["id"], 99)
-        svc_cls.return_value.delete_riga.assert_called_once_with(99)
+        svc_cls.return_value.delete_riga.assert_called_once_with(1, 99)
 
 
 class TestUtility(_BaseApiTest):

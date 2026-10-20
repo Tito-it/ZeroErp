@@ -85,12 +85,12 @@ configurabile `vendite.ordini`). Scope emittente automatico (RLS +
 | Query param | Tipo | Note |
 | --- | --- | --- |
 | `search` | str | min 3 char; ILIKE su `numero`, `ragione_sociale_completa`, `ba_codice`, `id_fiscale_univoco_cf_piva` |
-| `stato_codice_interno` | str | `codice_interno` stato (`DRAFT` | `CONFERMATO` | …) |
+| `stato_codice_interno` | str | `codice_interno` stato (`DRAFT` \| `CONFERMATO` \| …). Fuori vocabolario `config.stati_doc_ordini` → 400 `E_ORD_VALIDAZIONE` col campo (2026-10-20: prima lista vuota con 200) |
 | `billing_account_id` | int | cliente |
 | `utility_id` | int | |
 | `data_da` / `data_a` | str ISO | filtro su `data` (default lato UI, non backend) |
-| `order_by` | str | whitelist: `numero | data | ragione_sociale_completa | ba_codice | utility_codice | totale_doc | fatturazione_trigger | stato_descrizione | stato_codice_interno | data_insert`. Default `data` |
-| `order_dir` | str | `asc | desc` (default `desc`), tiebreaker `id` |
+| `order_by` | str | whitelist: `numero` \| `anno` \| `serie` \| `data` \| `ragione_sociale_completa` \| `ba_codice` \| `id_fiscale_univoco_cf_piva` \| `utility_codice` \| `utility_descrizione` \| `totale_doc` \| `imponibile_tot` \| `iva_tot` \| `fatturazione_trigger` \| `stato_descrizione` \| `data_insert` \| `pratica_numero` \| `fase`. Default `data` |
+| `order_dir` | str | `asc` \| `desc`; assente: `desc` sul default `data` («dal più recente», 2026-10-20: prima la view lo perdeva e l'elenco partiva crescente), `asc` sulle altre colonne. Tiebreaker `id` |
 | `limit` / `offset` | int | paginazione (limit cap 200) |
 
 ### Export lista `GET /api/v1/vendite/ordini/export/?formato=csv|xlsx`
@@ -100,21 +100,44 @@ Export DEF-1: stessi filtri della lista, `ListaExportService` + catalogo colonne
 `EXPORT_MAX_ROWS`. Parametro **`formato`** (italiano), MAI `format`.
 Errori: `E_UI_EXPORT_FORMAT_INVALID` (400), `E_UI_EXPORT_LIMIT_EXCEEDED` (422).
 
+### Form-defaults `GET /api/v1/vendite/ordini/form-defaults/?billing_account_id=<id>`
+
+Sola lettura, per precompilare il drawer di creazione (permesso modello
+`("vendite", "ordine")`). Senza `billing_account_id` torna solo la valuta (catena
+EF utente → gestore globale, BB `resolve_valuta_default`); con il BA aggiunge
+utility e i default di pagamento dell'anagrafica cliente del BA.
+
+```json
+{"data": {
+  "billing_account_id": 100, "utility_id": 3, "istanza_utility_id": 200,
+  "utility_codice": "GAS", "utility_descrizione": "Gas",
+  "valuta_id": 1, "valuta_codice": "EUR", "valuta_descrizione": "Euro",
+  "termine_pagamento_id": 4, "termine_pagamento_codice": "30GG", "termine_pagamento_descrizione": "...",
+  "modalita_pagamento_id": 2, "modalita_pagamento_codice": "BON", "modalita_pagamento_descrizione": "..."
+}}
+```
+
+La utility di default globale (`DEFAULT_UTILITY`) la risolve il frontend. BA
+inesistente → 404 `E_VENDITE_NOT_FOUND`.
+
 ### Create testata `POST /api/v1/vendite/ordini/`
 
 Crea un ordine in `DRAFT`. `handle_post_json`.
 
 | Campo | Tipo | Note |
 | --- | --- | --- |
-| `billing_account_id` | int | cliente, **obbligatorio** (D-1 di brief-db-esecutivi-ba-coppia). `soggetto_ruolo_id` e `utility_id` sono copie del BA: le scrive `trgfn_ordini_normalize` (BB `script.fn_cliente_dal_billing_account`) e non sono nel contratto (si scartano) |
+| `billing_account_id` | int | cliente, **obbligatorio** (D-1 di brief-db-esecutivi-ba-coppia). `soggetto_ruolo_id` e `utility_id` sono copie del BA: le scrive `trgfn_ordini_normalize` (BB `script.fn_cliente_dal_billing_account`) e non sono nel contratto: inviate sono un 400 |
 | `emittente_fiscale_id` | int | opzionale; se omesso, trigger lo valorizza da GUC |
 | `valuta_id`, `modalita_pagamento_id`, `termine_pagamento_id` | int | opzionali |
 | `fatturazione_trigger` | str | opzionale; default ereditato da BA |
 | `agente_soggetto_ruolo_id` | int | opzionale (E) |
 | `data` | str ISO | opzionale (default `CURRENT_DATE`) |
+| `fatturazione_immediata` | bool | opzionale: corsia di fatturazione decisa prima del push in commessa; dopo il push la rifiuta il guard DB `trgfn_guard_fatturazione_immediata_immutabile` |
 | `meta` | obj | opzionale |
 
-`numero`/`canale_origine`/`stato_doc_ordine_id` **non** vanno nel payload.
+`numero`/`canale_origine`/`stato_doc_ordine_id` **non** vanno nel payload: una
+chiave fuori contratto è un 400 `E_ORD_VALIDAZIONE` (2026-10-20: prima era
+scartata in silenzio).
 Ritorna `{id, uid, numero}`.
 
 ### Detail `GET /api/v1/vendite/ordini/<id>/`
@@ -156,9 +179,8 @@ aliquota** (`ROUND(SUM(imponibile_riga))`, poi imposta sul gruppo — regola DPR
 633/72 art. 21 + DM 24/12/93, identica ai preventivi); nessun calcolo Python. La
 vista riflette le righe attive correnti e i totali di testata (`*_tot`) sono
 mantenuti coerenti dal trigger `fn_ricalcola_totali_ordine`. Ordinamento
-`iva_aliquota NULLS LAST, iva_id NULLS LAST`. Scope/visibilità via
-`security_invoker=on` + RLS su `vendite.ordini` (ordine fuori perimetro → lista
-vuota). Usato dal pannello "Riepilogo IVA" del drawer e dal context builder PDF.
+`iva_aliquota NULLS LAST, iva_id NULLS LAST`. Prima la testata: ordine
+inesistente o fuori perimetro → 404 `E_ORD_NOT_FOUND`, non una lista vuota. Usato dal pannello "Riepilogo IVA" del drawer e dal context builder PDF.
 
 ### Indirizzi documento `GET/POST /<id>/indirizzi/` + `DELETE /<id>/indirizzi/<iid>/`
 
@@ -170,8 +192,10 @@ DRAFT): contratto completo in [api_indirizzi_documento.md](api_indirizzi_documen
 In bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': dopo la conferma restano aperte le note, ferme a ordine fatturato o annullato. `corpo_oggetto(request)` (non `handle_post_json`, api.md). Campi
 aggiornabili: `billing_account_id` (vedi sotto), `valuta_id`,
 `modalita_pagamento_id`, `termine_pagamento_id`, `fatturazione_trigger`,
-`agente_soggetto_ruolo_id`, `data`, `meta`. `utility_id` non c'e': e' una copia
-del BA, che sull'ordine non cambia.
+`agente_soggetto_ruolo_id`, `data`, `fatturazione_immediata`, `meta`. Una chiave
+fuori elenco è un 400 `E_ORD_VALIDAZIONE` (2026-10-20: prima scartata); `{}` →
+400. `utility_id` non c'e': e' una copia del BA, che sull'ordine non cambia.
+Risposta: `{"ordine_id": <id>, "updated": true}`.
 
 **Cliente immutabile post-creazione** (2026-06-04): un PATCH che **cambia**
 `billing_account_id` è rifiutato con 409 `E_ORD_CLIENTE_IMMUTABILE`; lo stesso BA
@@ -196,7 +220,8 @@ il create auto-salva una BOZZA per abilitare le righe; se l'operatore esce senza
 inserirne, la bozza vuota va rimossa). Guard (allineato a `elimina_preventivo`,
 **niente hard-delete di dati reali**): stato `DRAFT` **e zero righe**. Un ordine
 con righe **non si cancella, si annulla** (`cambia-stato → ANNULLATO`):
-`E_ORD_STATO_TRANSIZIONE` con messaggio dedicato. Le righe/componenti della bozza
+`E_ORD_STATO_TRANSIZIONE` (409) con messaggio dedicato. Risposta:
+`{"ordine_id": <id>, "deleted": true|false}`. Le righe/componenti della bozza
 vuota hanno ON DELETE CASCADE; il trigger DB blocca se collegato a DDT.
 
 ### Emetti `POST /api/v1/vendite/ordini/<id>/emetti/` (multipart)
@@ -306,6 +331,24 @@ nemmeno allora.
 La response espone `commesse_ids` (commesse toccate dal push), oltre a
 `stato`/`push_log_id`/`handlers`/`righe_pushable`/`fatturazione_trigger`.
 
+### Genera DDT `POST /api/v1/vendite/ordini/<id>/genera-ddt/`
+
+Evasione: crea un DDT `DRAFT` dall'ordine (verbo DB `vendite.fn_genera_ddt_da_ordine`:
+testata, righe e componenti in snapshot, fulfillment riga↔riga, proiezione dello
+stato ordine). Corpo opzionale:
+
+```json
+{"righe": [{"ordine_riga_id": 10, "qta_da_evadere": "2"}]}
+```
+
+- `righe` omesso (o `null`) = tutto il residuo; lista vuota o voce senza
+  `ordine_riga_id` → 400 `E_DDT_VALIDAZIONE`. `qta_da_evadere` in unità
+  operativa.
+- Risposta: `{"ddt_id": <id>, "numero": null, "ordine_id": <id>}` (il numero
+  arriva all'emissione del DDT).
+- Errori dal DB: `E_DDT_ORDINE_NOT_FOUND`, `E_DDT_ORDINE_STATO_NON_EVADIBILE`,
+  `E_DDT_NIENTE_DA_EVADERE`, `E_QTA_SUPERA_RESIDUO`. Dettaglio in [api_ddt.md](api_ddt.md).
+
 ### Righe
 
 | Metodo / Path | Scopo |
@@ -313,15 +356,19 @@ La response espone `commesse_ids` (commesse toccate dal push), oltre a
 | `GET /<id>/righe/` | TUTTE le righe attive, nell'ordine del documento, dalla vista `vw_ordini_righe_dettaglio` (decodifiche, `importo_riga`, evaso e residuo, `is_composito_caso_a`) |
 | `GET /<id>/righe/lista/` (+ `export/`) | La lista configurabile, BB condiviso: [api_righe_documento.md](api_righe_documento.md) |
 | `POST /<id>/righe/` | Aggiunge una riga (solo DRAFT). `riga_nr` autoassegnato. Pricing auto-fill via `PricingService` se prezzo assente e articolo non composito; per articolo composito init componenti BoM con override prezzi opzionali (`componenti_overrides`, vedi sotto) |
-| `PATCH /<id>/righe/<riga_id>/` | Aggiorna riga (solo DRAFT). `request.data` |
-| `DELETE /<id>/righe/<riga_id>/` | Hard-delete riga (solo DRAFT) |
+| `PATCH /<id>/righe/<riga_id>/` | Aggiorna riga (solo DRAFT). Risposta `{ordine_id, riga_id, updated}` |
+| `DELETE /<id>/righe/<riga_id>/` | Hard-delete riga (solo DRAFT). Risposta `{ordine_id, riga_id, deleted}` |
 | `POST /<id>/righe/<riga_id>/data-consegna-confermata/` | La promessa di consegna **dopo la conferma** (2026-10-10, sotto) |
 | `POST /<id>/righe/date-consegna/` | Una data di consegna su **più righe** (2026-10-12, sotto) |
 
 Payload riga (create): `articolo_id` (obbligatorio), `descrizione`, `quantita`,
 `qta_operativa`, `uom_operativa_id`, `factor_to_base`, `prezzo_unitario`,
-`sconto_percentuale`, `iva_id`, `meta`, e — dal 2026-09-14 — le due **date di
-consegna**. La doppia quantità operativa/base segue il
+`sconto_percentuale`, `meta`, `componenti_overrides`, e — dal 2026-09-14 — le
+due **date di consegna**. PATCH: le stesse senza `articolo_id` e
+`componenti_overrides`. **`iva_id` non c'è** (dal 2026-08-31 l'aliquota la decide
+il risolutore): inviato, come ogni chiave fuori contratto, è un 400
+`E_ORD_VALIDAZIONE` (2026-10-20: prima era scartato in silenzio). «Solo DRAFT»
+è il BB `richiedi_righe_in_bozza` → 409 `E_RIGA_DOC_NON_BOZZA`. La doppia quantità operativa/base segue il
 pattern standard (input con priorità all'operativa; `quantita` base derivata dal
 trigger `trgfn_qta_from_operativa`). I totali testata sono ricalcolati da trigger DB.
 
@@ -378,7 +425,7 @@ del verbo per riga.
 | --- | --- |
 | `POST /<id>/righe/preview-componenti/` | Preview read-only dei componenti BoM (pre-save). Payload: `articolo_id`, `uom_operativa_id`, `quantita` |
 | `GET /<id>/righe/<riga_id>/componenti/` | Lista componenti persistiti (`?solo_attivi=true`) |
-| `PATCH /<id>/righe/<riga_id>/componenti/<componente_id>/` | Aggiorna componente (solo DRAFT): `prezzo_unitario`, `attivo`, `meta`. Il modo di esposizione in fattura è della distinta (`esposizione_in_fattura` in lettura), non della riga |
+| `PATCH /<id>/righe/<riga_id>/componenti/<componente_id>/` | Aggiorna componente (solo DRAFT): whitelist `prezzo_unitario`, `attivo`, `meta` (altro → 400). `prezzo_unitario` non nullo richiede `prezzo_override_manuale` (403 `E_PRICING_OVERRIDE_NON_AUTORIZZATO`); `origine_prezzo` la calcola il server. Il modo di esposizione in fattura è della distinta (`esposizione_in_fattura` in lettura), non della riga |
 | `DELETE /<id>/righe/<riga_id>/componenti/<componente_id>/` | Soft-delete componente (`attivo=FALSE`, solo DRAFT) |
 
 **Override prezzi componente pre-save** (CREATE riga composita, simmetria
@@ -421,9 +468,10 @@ documentale avviene nel passaggio `DRAFT → CONFERMATO` via `POST /<id>/emetti/
 Risoluzione: `_CODICE_SORGENTE_ORDINE = "ORDINE_VENDITA"` →
 `resolve_contesto_documentale` risolve `sorgente_tipo_id`; il context è prodotto da
 `OrdineDocumentContextBuilder` (`CODE='ORDINE_VENDITA'`). Orchestrazione, scope e
-render restano in `DocumentGenerationService` (invariato). Permessi: area `vendite`
-(lettura) — la generazione è riproduzione PDF di un dato già visibile, non modifica
-dell'ordine. **Prerequisito**: template `ORDINE_VENDITA` con versione **PUBBLICATA**
+render restano in `DocumentGenerationService` (invariato). Permessi: oggetto
+`("vendite", "ordine")`; le letture (lista, download) con `LETTURA`, i `POST`
+(`genera`, `anteprima`, allegati) con `TUTTO`, come ogni POST non di ricerca.
+`genera/` risponde 200. **Prerequisito**: template `ORDINE_VENDITA` con versione **PUBBLICATA**
 (creazione manuale, vedi [documenti-e-stampe.md](../../../guide/documenti-e-stampe.md)):
 senza, `genera`/`anteprima` falliscono con `E_DOCUMENTI_*`.
 
@@ -451,8 +499,10 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 
 ## Regole
 
-- **Modifiche** (testata/righe/componenti) ammesse **solo in `DRAFT`**
-  (`E_ORD_STATO_TRANSIZIONE`).
+- **Modifiche**: la testata la governa il lock di testata del DB
+  (`trgfn_doc_testata_lock_fuori_bozza`, 409 `E_DOC_*` propagato); righe e
+  componenti si scrivono **solo in `DRAFT`** (`E_RIGA_DOC_NON_BOZZA`, 409).
+  `E_ORD_STATO_TRANSIZIONE` resta per delete della bozza e push.
 - **Pricing** sempre via `PricingService.resolve_prezzo` (BB condiviso, mai query
   dirette su listini). Il gate prezzi L2/L3 stile contratti **non** è applicato:
   scelta ratificata (analisi §8.bis) — pricing **stile preventivo** (resolve +
@@ -487,11 +537,12 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | Codice | HTTP | Quando |
 | --- | --- | --- |
 | `E_ORD_NOT_FOUND` | 404 | ordine/riga/componente inesistente o fuori scope |
-| `E_ORD_VALIDAZIONE` | 400 | payload non valido (cliente mancante, campi vuoti, `billing_account_id` non numerico, ecc.) |
+| `E_ORD_VALIDAZIONE` | 400 | payload non valido (cliente mancante, campi vuoti, `billing_account_id` non numerico, chiave fuori contratto su testata o righe, filtro `stato_codice_interno` fuori vocabolario, ecc.) |
+| `E_PRICING_OVERRIDE_NON_AUTORIZZATO` | 403 | prezzo manuale (componente o `componenti_overrides`) senza `prezzo_override_manuale` |
 | `E_ORD_CLIENTE_IMMUTABILE` | 409 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (lock-columns DB) |
 | `E_DOC_CLIENTE_DIVERSO_DA_BA` | 400 | ruolo o utility diversi da quelli del BA (scrittura che li passa a mano; il service non li manda) |
 | `E_DOC_EMITTENTE_FUORI_BOZZA` | 409 | cambio di emittente fuori bozza (BB `trgfn_doc_testata_lock_fuori_bozza`) |
-| `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato sulla **testata** (modifica fuori DRAFT; delete bozza con righe → annullare) |
+| `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato (delete fuori DRAFT o bozza con righe → annullare; push da stato non pushabile) |
 | `E_RIGA_DOC_NON_BOZZA` | 409 | righe e componenti si aggiungono/modificano/tolgono solo in bozza — dal 2026-09-22 è il codice del BB a DB `trgfn_doc_righe_lock_fuori_bozza` (sugli ordini montato sul solo DELETE) e il pre-check BE lo usa uguale (`richiedi_righe_in_bozza`), con la frase a catalogo |
 | `E_ORD_NESSUNA_RIGA` | 409 | conferma/push senza righe eleggibili (guard applicativo `conferma()`) |
 | `E_ORD_OFFERTA_GIA_CONVERTITA` | 409 | conversione offerta→ordine già avvenuta (univocità 1:1): guard BE fail-fast + rete UNIQUE parziale `uq_ordini_v_documento_origine_offerta` (via `map_integrity_error`) |
@@ -500,7 +551,7 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | `E_VENDITE_DUPLICATO` / `E_VENDITE_FK` | 409 / 400 | violazione UNIQUE/FK (via `map_integrity_error`) |
 | `E_ORDINE_*` | varia | altri codici sollevati dai trigger DB (estratti via regex) |
 | `E_UI_EXPORT_FORMAT_INVALID` / `E_UI_EXPORT_LIMIT_EXCEEDED` | 400 / 422 | export |
-| `E_DOCUMENTI_NOT_FOUND` / `E_DOCUMENTI_VALIDATION` / `E_DOCUMENTI_RENDER_FAILED` | 404 / 400 / 422 | stampa: ordine o template/versione non risolti, input invalido, render fallito |
+| `E_DOCUMENTI_NOT_FOUND` / `E_DOCUMENTI_VALIDATION` / `E_DOCUMENTI_RENDER_FAILED` | 404 / 400 / 500 | stampa: ordine o template/versione non risolti, input invalido, render fallito (`TECNICO`) |
 
 Tutti registrati in `error_policies.py` (gli `E_VENDITE_*` e gli `E_UI_*`
 preesistono; gli `E_ORD_*` aggiunti con questo scheletro).

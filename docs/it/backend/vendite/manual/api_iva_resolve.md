@@ -87,7 +87,8 @@ elenco non arriva mai a comporre un nome di tabella.
 }
 ```
 - `400`: payload non valido, documento non trovato, tipo fuori whitelist,
-  documento senza data, emittente non risolvibile (`E_VENDITE_VALIDATION`)
+  documento senza data, emittente non risolvibile (`E_VENDITE_VALIDATION`);
+  `documento_id` non numerico (`"abc"`) → `E_VALIDATION_INPUT`
 - `401`: JWT mancante o non valido
 
 ⚠️ **`quota` non esce dal payload**: in anteprima vale sempre `NULL` — la

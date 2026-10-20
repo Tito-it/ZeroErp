@@ -7,9 +7,13 @@
 #        parlanti. Brief: brief-be-fe-crud-registri-di-numerazione §11.10.
 # ------------------------------------------------------------
 #
-# ⛔ I TRE CODICI DEI GUARD NON SI TRADUCONO QUI, ED E' LA VOCE BE-F3 DEL BRIEF.
-#    `E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE`, `..._SERIE_NON_DISCRIMINA`
-#    e `..._CHIAVE_IMMUTABILE` arrivano come **P0001** — li solleva
+# ⛔ I QUATTRO CODICI DEI GUARD NON SI TRADUCONO QUI, ED E' LA VOCE BE-F3 DEL BRIEF.
+#    `E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE`, `..._SERIE_NON_DISCRIMINA`,
+#    `..._CHIAVE_IMMUTABILE` e `..._TABELLA_GIA_NUMERATA` (dal 2026-10-20: era
+#    l'indice `uq_famiglie_documento_tabella_attiva`, che questo service
+#    traduceva nominando la famiglia occupante; la regola e' passata nel guard
+#    dei riferimenti, perche' la tabella ora viene dalla sorgente e un indice
+#    non fa join — brief-db-grammatica-unica-documenti 2c) arrivano come **P0001** — li solleva
 #    `script.fn_log_and_raise_error` dentro un trigger, non un vincolo — quindi
 #    NON sono `IntegrityError` e non passano di qui: risalgono al middleware,
 #    che legge il codice strutturato dall'eccezione e lo risolve con la policy
@@ -43,9 +47,6 @@ E_VENDITE_VALIDATION = "E_VENDITE_VALIDATION"
 E_VENDITE_DUPLICATO = "E_VENDITE_DUPLICATO"
 E_VENDITE_NOT_FOUND = "E_VENDITE_NOT_FOUND"
 
-# Il vincolo che merita una frase sua (§11.10 BE-F8), tenuto fuori dalla mappa
-# generica perche' il suo messaggio ha bisogno di una LETTURA.
-_UQ_TABELLA_ATTIVA = "uq_famiglie_documento_tabella_attiva"
 # Il `codice` dell'operatore (dal 2026-09-24). Fuori dalla mappa generica
 # perche' il campo da accendere dipende dal verbo: in modifica e' `codice`, in
 # creazione il codice nasce uguale al `codice_interno` (trigger) — e' quello
@@ -63,6 +64,24 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple] = {
     ),
 }
 
+# ⭐ La famiglia e' quella di una SORGENTE (G-5, 2026-10-20): il suo
+#    `codice_interno` e' il `codice_interno` di `config.sorgenti`, e la FK lo
+#    pretende. Il drawer sceglie da `list_sorgenti_numerabili`, quindi qui arriva
+#    solo un client che scrive il codice a mano: gli si dice che cosa manca, non
+#    «violazione vincolo».
+# ⚠️ Su una famiglia ATTIVA rifiuta prima il guard dei riferimenti
+#    (`E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE`, la sorgente non dichiara
+#    una tabella); su una creata SPENTA il guard non guarda, e risponde la FK.
+#    Provato su dbdev il 2026-10-20: i due rami sono vivi.
+_FK_CONSTRAINTS: dict[str, tuple] = {
+    "fk_famiglie_documento_sorgenti": (
+        E_VENDITE_VALIDATION,
+        "Il codice interno della famiglia deve essere quello di una sorgente "
+        "di documento esistente (config.sorgenti).",
+        "codice_interno",
+    ),
+}
+
 # I campi che la madre pretende: senza uno di questi non si crea niente.
 # ⚠️ `colonna_serie` NON e' qui — la sua assenza e' un'informazione («questa
 #    famiglia non gestisce le serie»), non un campo dimenticato.
@@ -76,8 +95,6 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple] = {
 _OBBLIGATORI_CREATE: tuple[tuple[str, str], ...] = (
     ("codice_interno", "Il codice interno della famiglia è obbligatorio."),
     ("descrizione", "La descrizione della famiglia è obbligatoria."),
-    ("schema_tabella", "Lo schema della tabella del documento è obbligatorio."),
-    ("nome_tabella", "Il nome della tabella del documento è obbligatorio."),
     ("colonna_numero", "La colonna che porta il numero è obbligatoria."),
 )
 
@@ -98,6 +115,9 @@ class FamiglieDocumentoService:
 
     def list_lookup(self) -> list[dict[str, Any]]:
         return self.repo.list_lookup()
+
+    def list_sorgenti_numerabili(self) -> list[dict[str, Any]]:
+        return self.repo.list_sorgenti_numerabili()
 
     # Scopo: il dettaglio, o un 404 parlante.
     def get_famiglia(self, famiglia_id: int) -> dict[str, Any]:
@@ -203,13 +223,6 @@ class FamiglieDocumentoService:
     def _traduci(
         self, exc: IntegrityError, dati: dict[str, Any], *, in_modifica: bool,
     ) -> NoReturn:
-        # ⭐ IL DUPLICATO DELLA TABELLA SI NOMINA, e per questo sta fuori dalla
-        #    mappa generica. L'indice e' PARZIALE (`WHERE attivo`), quindi la
-        #    riga che blocca c'e' ed e' attiva: un «duplicato» nudo manderebbe
-        #    l'operatore a cercarla senza dirgli come si chiama, e la troverebbe
-        #    solo scorrendo la lista tabella per tabella.
-        if vincolo_violato(exc, [_UQ_TABELLA_ATTIVA]) is not None:
-            self._rifiuta_tabella_gia_presa(exc, dati)
         if vincolo_violato(exc, [_UQ_CODICE]) is not None:
             # ⚠️ Il campo lo decide il VERBO, non la presenza della chiave nel
             #    payload: in creazione il `codice` non si scrive (non e' in
@@ -233,44 +246,8 @@ class FamiglieDocumentoService:
         map_integrity_error(
             exc,
             unique_constraints=_UNIQUE_CONSTRAINTS,
+            fk_constraints=_FK_CONSTRAINTS,
             fallback_code=E_VENDITE_VALIDATION,
             fallback_message="Violazione vincolo DB sulla famiglia di documento.",
-            context={
-                "codice_interno": dati.get("codice_interno"),
-                "schema_tabella": dati.get("schema_tabella"),
-                "nome_tabella": dati.get("nome_tabella"),
-            },
+            context={"codice_interno": dati.get("codice_interno")},
         )
-
-    # Scopo: il rifiuto che NOMINA la famiglia gia' agganciata a quella tabella.
-    # ⚠️ La lettura puo' non trovare niente in una sola circostanza — la riga
-    #    concorrente e' stata spenta fra il rifiuto e questa query — e in quel
-    #    caso si dice comunque la cosa vera («quella tabella ha gia' la sua
-    #    famiglia») senza inventare un nome.
-    def _rifiuta_tabella_gia_presa(
-        self, exc: IntegrityError, dati: dict[str, Any]
-    ) -> None:
-        tabella = f"{dati.get('schema_tabella')}.{dati.get('nome_tabella')}"
-        schema, nome = dati.get("schema_tabella"), dati.get("nome_tabella")
-        occupante = (
-            self.repo.get_famiglia_attiva_per_tabella(schema, nome)
-            if schema and nome
-            else None
-        )
-        chi = (
-            f"«{occupante['descrizione']}» ({occupante['codice_interno']})"
-            if occupante
-            else "un'altra famiglia attiva"
-        )
-        ErrorManager.raise_error(
-            code=E_VENDITE_DUPLICATO,
-            message=(
-                f"La tabella {tabella} ha già la sua famiglia di documento: "
-                f"{chi}. Una tabella può appartenere a una sola famiglia "
-                "attiva — si modifica quella che c'è, o la si spegne prima."
-            ),
-            detail=str(exc),
-            context={"field": "nome_tabella", "tabella_documento": tabella},
-            cause=exc,
-        )
-

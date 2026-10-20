@@ -5,7 +5,9 @@
 Documentare gli endpoint di **comando** del cockpit di fatturazione (Fase C): i
 verbi «Fattura» e «Rendi definitive» del mese di competenza, la numerazione del
 singolo lotto, la ristampa massiva, la **finestra di numerazione** e la lettura
-degli esiti. Sono le azioni che
+degli esiti. L'approvazione massiva del mese (`POST
+fatturazione/approva-competenza/`, permesso `approva_attivita_commessa`) è
+documentata in [api_commessa_attivita.md](api_commessa_attivita.md). Sono le azioni che
 rendono azionabile la Dashboard Competenza, riusando **le stesse primitive del
 batch** (I-1: un solo processo, due modi di avvio).
 
@@ -61,8 +63,8 @@ oneri di una commessa. Un solo verbo, due perimetri: il processo è identico
   cui crea il lotto. Da lì in poi vive nel `LottoContext`, quindi un *rerun* o
   un *avanza step* dal `LottoDrawer` riproduce lo stesso perimetro invece di
   allargarlo.
-- **Idempotenza**: la chiave di *business* della coda include un digest
-  dell'insieme dei gruppi — senza, due emissioni mirate sullo stesso mese e
+- **Idempotenza**: la chiave di *business* della coda (forma completa in
+  §Regole) include un digest dell'insieme dei gruppi — senza, due emissioni mirate sullo stesso mese e
   scope con gruppi diversi cadrebbero sullo stesso job vivo e la seconda
   verrebbe assorbita in silenzio. Senza `gruppi` il digest è vuoto: la chiave
   del giro di massa resta identica a prima.
@@ -84,9 +86,15 @@ oneri di una commessa. Un solo verbo, due perimetri: il processo è identico
 ### 3. «Rendi definitive competenza» (C-4 perimetro, non bloccante)
 
 - `POST /api/v1/vendite/fatturazione/numera/` · permesso `numera_fatture_lotti`
-- Body: `{ "competenza_mese": "YYYY-MM-DD" [, "data_documento": "YYYY-MM-DD"] }`
+- Body: `{ "competenza_mese": "YYYY-MM-DD" [, "lotti": [<int>, …]] [, "data_documento": "YYYY-MM-DD"] }`
 - Accoda un job `FATTURAZIONE_NUMERA`: esegue lo step DEFINITIVA sui **lotti
   EMESSA** del mese. Polling via `run/<job_id>/`.
+- `lotti` (facoltativo): il perimetro **selezionato**, id interi > 0
+  (deduplicati). Assente = tutti i lotti EMESSA del mese; **lista vuota → `400
+  E_VALIDATION_INPUT`**, mai «tutti»: su un atto fiscale non si indovina. Non
+  lista o elemento non intero positivo → `400 E_VALIDATION_INPUT`. Lo stato
+  EMESSA si applica comunque: un lotto selezionato ma non emesso non viene
+  numerato. Il digest della selezione entra nella chiave di business.
 
 ⭐ **Lo step DEFINITIVA ha tre task, dal 2026-08-18** (prima due):
 
@@ -207,16 +215,25 @@ parziale degli step già fatti — ed è la ragione per cui l'esito porta
 
 ### 6. Esiti giri + stato coda stampa (C-5, sola lettura)
 
-- `GET /api/v1/vendite/fatturazione/esiti/`
-- Riassunto per corsia da `maintenance.job_run_log` (jobname
-  `run_fatturazione_batch*`/`draina_coda_stampa`/`draina_coda_lavori`) + conteggi
-  coda stampa per stato **scoped all'operatore** (JOIN a `vendite.fatture`).
+- `GET /api/v1/vendite/fatturazione/esiti/[?competenza_mese=YYYY-MM-DD]`
+- Due sorgenti fuse in `giri`: i job della **coda lavori** `FATTURAZIONE_GIRO` /
+  `FATTURAZIONE_NUMERA` (`dbops.coda_lavori`, `origine: "app"`) e i giri
+  schedulati da `maintenance.job_run_log` con jobname di prefisso
+  `run_fatturazione_batch` (`origine: "batch"`); più i conteggi della coda stampa
+  per stato **scoped all'operatore** (JOIN a `vendite.fatture`).
+- `competenza_mese` (facoltativo, normalizzato al 1° del mese): restringe giri e
+  coda stampa a quel mese di competenza; assente = totali da sempre. Data
+  malformata → `400`.
 
 ### 7. Finestra di numerazione (BE-5, sola lettura, 2026-08-25)
 
 - `GET /api/v1/vendite/fatturazione/finestra-numerazione/?lotto_id=<id>`
 - `GET /api/v1/vendite/fatturazione/finestra-numerazione/?competenza_mese=YYYY-MM-DD`
-- **Esattamente uno** dei due parametri (entrambi o nessuno → `E_VALIDATION_INPUT`).
+- `GET /api/v1/vendite/fatturazione/finestra-numerazione/?lotti=12&lotti=15` —
+  la **selezione** (parametro ripetuto): il pavimento più restrittivo fra i lotti
+  indicati, ricalcolato mentre l'operatore spunta
+- **Esattamente uno** dei tre perimetri (più d'uno o nessuno →
+  `E_VALIDATION_INPUT`).
 
 Risponde a due domande su due perimetri: con quale data si può numerare, e da
 quale data i documenti partono **adesso**.
@@ -224,6 +241,7 @@ quale data i documenti partono **adesso**.
 ```json
 { "data": {
     "lotto_id": 1278, "competenza_mese": null,
+    "n_lotti": null,               // quanti lotti nel perimetro (selezione/mese)
     "data_documento": null,        // la DICHIARAZIONE sul lotto (spesso assente)
     "data_corrente": "2026-08-03", // la data che i documenti da numerare portano oggi
     "data_minima":  "2026-08-23"   // il PAVIMENTO del sezionale
@@ -278,7 +296,7 @@ stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
   **le due conseguenze che l'operatore non si aspetta** sono un lotto numerato a
   metà e delle scadenze che si sono spostate. Chi non le mostra le nasconde.
 - Finestra di numerazione: vedi §7.
-- Esiti: `{ "data": { "giri": [ { "jobname": "...", "origine": "app|batch", "last_run_at": "...", "in_corso": false, "ultima_conclusa": { "started_at": "...", "ended_at": "...", "ok": true } | null, "total_runs": 24, "ok_count": 23, "fail_count": 1, "saltate_count": 0 } ], "coda_stampa": { "PENDING": 2, "FATTO": 5 } } }`.
+- Esiti: `{ "data": { "giri": [ { "jobname": "...", "origine": "app|batch", "mio_count": 3, "altri_count": 1, "last_run_at": "...", "in_corso": false, "ultima_conclusa": { "started_at": "...", "ended_at": "...", "ok": true } | null, "total_runs": 24, "ok_count": 23, "fail_count": 1, "saltate_count": 0 } ], "coda_stampa": { "PENDING": 2, "FATTO": 5 } } }`.
   ⛔ Dal 2026-09-14 **`last_ok` non c'è più**: era l'esito dell'ultimo giro
   concluso accanto alla data dell'ultimo giro *toccato*, e durante un giro in
   esecuzione il pannello mostrava l'ora del giro in corso con l'esito del
@@ -291,24 +309,29 @@ stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
   `saltate_count` c'è sulle sole righe `batch` (dal 2026-10-10): sono le sveglie
   che hanno trovato la corsia occupata, e non entrano in `total_runs` né in
   `ultima_conclusa` — una corsa saltata non ha fatto il lavoro. La coda lavori
-  non ha corse saltate.
+  non ha corse saltate. `mio_count` / `altri_count` ci sono sulle sole righe
+  `app`: quanti job sono stati accodati dallo **scope dell'operatore** che legge
+  e quanti da altri (`altri_count = total_runs - mio_count`).
 
 ## Regole
 
 - **Idempotenza a due layer**: header HTTP `Idempotency-Key`
   (`dbops.idempotency_keys`, replay della risposta) ≠ **chiave di business** della
-  coda `{job_type}:{competenza}:{scope_key}` (dedup dei job VIVI: due click sullo
-  stesso mese/scope → stesso job). La `scope_key` = «ALL» (admin) o gli emittenti
+  coda `{job_type}[:{corsia}]:{competenza}:{scope_key}[:{digest}]` (dedup dei
+  job VIVI: due click sullo stesso mese/scope → stesso job). La `corsia` c'è sul
+  solo giro `FATTURAZIONE_GIRO` (`mirata` con `gruppi`, altrimenti quella
+  on-demand); il `digest` (sha256 troncato a 12) dell'insieme di `gruppi` o
+  `lotti` c'è solo se l'insieme è valorizzato. La `scope_key` = «ALL» (admin) o gli emittenti
   autorizzati ordinati.
 - **Identità operatore catturata** all'accodamento (`auth_user_id`, `username`,
   `identita_id`, `emittente_ids`, `scope_key`): il worker la ripropone per intero
   (6 GUC via `set_jwt_gucs`) così la RLS risolve **come nel web**. Un job
-  OPERATORE senza identità completa → fail-loud.
+  OPERATORE senza identità completa → fail-loud. Identità non risolta dal token
+  all'accodamento → `400 E_CODA_SCOPE_OPERATORE_INVALIDO`.
 - **Gate fiscale I-7**: numerazione (atto fiscale) sempre dietro permesso
   `numera_fatture_lotti`, distinto da `genera_fatture_lotti`; la ristampa è gated
   a **DEFINITIVA** per non numerare mai via backstop.
-- **La data documento non entra nella chiave di business della coda**
-  (`{job_type}:{competenza}:{scope_key}`): due «Rendi definitive» vivi sullo
+- **La data documento non entra nella chiave di business della coda**: due «Rendi definitive» vivi sullo
   stesso mese e scope restano un doppione anche con date diverse — la dedup
   difende l'**atto fiscale**, non il parametro.
 - **Validata all'endpoint, non solo nel worker**: una data malformata torna 400 a
@@ -326,15 +349,17 @@ stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
 
 | Codice                                          | HTTP | Quando                                                                                                                                                                                                                                                                                                                                                                            |
 | ----------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `E_VALIDATION_INPUT`                            | 400  | `competenza_mese` assente o identità operatore non risolta dal token                                                                                                                                                                                                                                                                                                              |
+| `E_VALIDATION_INPUT`                            | 400  | `competenza_mese` assente; `gruppi`/`lotti` malformati o vuoti; finestra senza esattamente un perimetro                                                                                                                                                                                                                                                                           |
+| `E_CODA_SCOPE_OPERATORE_INVALIDO`               | 400  | identità operatore non risolta dal token: il lavoro non si accoda                                                                                                                                                                                                                                                                                                                 |
 | `E_JOB_NON_TROVATO`                             | 404  | polling di un job inesistente o di altro scope                                                                                                                                                                                                                                                                                                                                    |
 | `E_LOTTO_NON_TROVATO`                           | 404  | lotto fuori scope/inesistente (numera/ristampa singolo)                                                                                                                                                                                                                                                                                                                           |
 | `E_LOTTO_NON_NUMERABILE`                        | 409  | «Rendi definitive» su lotto non EMESSA                                                                                                                                                                                                                                                                                                                                            |
 | `E_LOTTO_NON_RISTAMPABILE`                      | 409  | ristampa massiva su lotto non DEFINITIVA                                                                                                                                                                                                                                                                                                                                          |
 | `E_IDEMPOTENCY_KEY_REQUIRED`                    | 400  | POST senza header `Idempotency-Key`                                                                                                                                                                                                                                                                                                                                               |
 | `E_FATTURA_RETTIFICATA_SENZA_NUMERO` (**937**)  | 409  | numerazione di un documento che rettifica righe di una fattura **senza numero** (o non visibile: il guard è fail-closed sulla RLS)                                                                                                                                                                                                                                                |
-| `E_FATTURA_NON_NUMERABILE_INCOERENTE` (**574**) | 409  | documento incoerente — totali, riepiloghi IVA o piano rate (sei condizioni, vedi la [guida](../../../guide/fatturazione.md))                                                                                                                                                                                                                                                      |
+| `E_FATTURA_NON_NUMERABILE_INCOERENTE` (**574**) | 422  | documento incoerente — totali, riepiloghi IVA o piano rate (sei condizioni, vedi la [guida](../../../guide/fatturazione.md))                                                                                                                                                                                                                                                      |
 | `E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO`        | 400  | la data del documento è anteriore all'ultimo numero già emesso sul sezionale. Sollevato dal **cancello** (`fn_get_next_progressivo`, sotto l'advisory lock) e, in anticipo, da `fn_imposta_data_documento_lotto`. `ui_action` **`highlight_form_fields`** e non il banner di default: il DB manda `column_name = data_documento`, cioè nomina il campo che l'operatore ha davanti |
+| `E_FATTURA_DATA_OLTRE_LIMITE_EMISSIONE`         | 400  | la data del documento è anteriore al **limite di emissione** del sezionale (troppo vecchia per essere ancora emessa). Distinto da quello sopra: si rimedia avvicinando la data a oggi. Quale dei due esce lo decide l'origine del pavimento (`fn_get_pavimento_data_documento`); il messaggio nomina il pavimento effettivo. Stesse due sedi (`fn_get_next_progressivo`, `fn_imposta_data_documento_lotto`) |
 | `E_FATTURA_DATA_NON_MODIFICABILE`               | 409  | si è tentato di cambiare la data di una fattura **già numerata** (trigger `trg_fatture_a10_guard_data_numerata_upd`)                                                                                                                                                                                                                                                              |
 | `E_TASK_FATTURA`                                | 400  | fallimento su singola fattura **che il database non ha nominato** (errore Python, guasto tecnico). Se il codice di dominio c'è, arriva quello                                                                                                                                                                                                                                     |
 

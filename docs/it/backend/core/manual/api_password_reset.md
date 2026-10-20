@@ -123,7 +123,8 @@ che l'operatore compili la nuova password.
 POST /api/v1/auth/password-reset-confirm/
 ```
 
-**Non autenticato**. Rate limiting: 3 richieste / 15 minuti per IP.
+**Non autenticato**. Rate limiting: `ConfermaTokenRateThrottle`, 10 richieste / 15 minuti per IP
+(fino al 2026-10-02 era il 3/15m della richiesta).
 
 #### Input
 
@@ -138,11 +139,13 @@ POST /api/v1/auth/password-reset-confirm/
 #### Validazioni (ordine critico)
 
 1. `token` non vuoto
-2. `new_password` non vuota
-3. `new_password == new_password_confirm`
-4. Token valido (non scaduto, non gia' usato) — **validato senza consumare**
-5. `new_password` passa i 4 validators Django
-6. **Solo dopo la validazione password**: il token viene consumato
+2. Token valido (non scaduto, non gia' usato) — **validato senza consumare**
+3. utente del token esistente
+4. `new_password` non vuota
+5. `new_password == new_password_confirm`
+6. `new_password` passa i 5 validators di `AUTH_PASSWORD_VALIDATORS` (i 4 di Django
+   + `ComplexityValidator`)
+7. **Solo dopo la validazione password**: il token viene consumato
 
 #### Azioni
 
@@ -162,7 +165,7 @@ Dopo il commit, fuori transazione:
 
 6. Invio email conferma con template `CAMBIO_PASSWORD_CONFERMA` (un errore di invio
    viene solo loggato, la risposta resta 200)
-6. Log audit: `password_reset_confirmed`
+7. Log audit: `password_reset_confirmed`
 
 `token` viene ripulito dagli spazi iniziali e finali; `new_password` e
 `new_password_confirm` **no**: si salva la password digitata, e il login non la
@@ -192,8 +195,11 @@ ripulisce (S-5, 2026-09-27).
 
 ## Rate Limiting
 
-`PasswordResetRateThrottle`: 3 richieste / 15 minuti per IP.
-Applicato su request e confirm (non su validate che e' GET sola lettura).
+- `PasswordResetRateThrottle`: 3 richieste / 15 minuti per IP, sulla **richiesta**.
+- `ConfermaTokenRateThrottle`: 10 richieste / 15 minuti per IP, sulla **conferma**
+  (contatore proprio dal 2026-10-02: una password rifiutata dai validators non
+  esaurisce i tentativi di chi ha gia' il link).
+- Nessun throttle dedicato sulla validate (GET sola lettura).
 
 Base class condivisa `_CustomRateAnonThrottle` con `LoginRateThrottle`
 per parsing rate custom (`"3/15m"`).
@@ -207,7 +213,7 @@ per parsing rate custom (`"3/15m"`).
 - **IP tracking**: il consumo del token registra l'IP di chi lo usa
 - **Validate-before-consume**: la password viene validata PRIMA di consumare il token — se la password e' troppo debole, il token resta valido e l'operatore puo' riprovare
 - **Blacklist JWT**: al reset, tutti i refresh token dell'utente vanno in blacklist; gli access token gia' emessi restano validi fino alla loro scadenza
-- **Rate limiting**: 3/15min per IP su request e confirm
+- **Rate limiting**: 3/15min per IP sulla request, 10/15min sulla confirm
 - **Email conferma**: l'operatore riceve notifica del cambio avvenuto
 
 ## Settings
@@ -232,4 +238,4 @@ per parsing rate custom (`"3/15m"`).
 | File | Scopo |
 | --- | --- |
 | `apps/core/api/password_reset_views.py` | 3 view (request, validate, confirm) |
-| `apps/core/api/throttling.py` | `PasswordResetRateThrottle` + base class condivisa |
+| `apps/core/api/throttling.py` | `PasswordResetRateThrottle`, `ConfermaTokenRateThrottle` + base class condivisa |

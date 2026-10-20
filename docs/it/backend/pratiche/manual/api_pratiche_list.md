@@ -31,7 +31,7 @@ per restituire dati pronti per la UI con display fields. La POST delega a
 
     La verità del filtro vive in `pratiche.fn_lista_pratiche_per_contesto`
     (semi-join sulla query display standard). Due o più lenti insieme →
-    `400 PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI` (catalogo DB id 484,
+    `400 E_PRATICHE_LISTA_CONTESTO_PARAMETRI_ESCLUSIVI` (catalogo DB id 484,
     validato fail-fast nel service + guard nella fn).
   - `priorita_id` (int, opzionale) — filtro priorità pratica (fix 2026-06-12:
     prima inviato dalla dashboard ma ignorato dalla view)
@@ -40,10 +40,12 @@ per restituire dati pronti per la UI con display fields. La POST delega a
   - `data_da` (string ISO date, opzionale) — filtro data inserimento, dal giorno indicato
   - `data_a` (string ISO date, opzionale) — filtro data inserimento, fino al giorno indicato **incluso**
   - i giorni sono giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09); una data malformata e' `400 E_VALIDATION_INPUT` (prima arrivava al DB come stringa: `500`)
-  - `limit` (int, opzionale) — righe per pagina, default `50`, max `200`
+  - `limit` (int, opzionale) — righe per pagina, default `25`, max `200`
   - `offset` (int, opzionale) — offset paginazione, default `0`
   - `order_by` (string, opzionale) — colonna ordinamento, default `data_insert`
-  - `order_dir` (string, opzionale) — direzione (`asc`/`desc`), default `desc`
+  - `order_dir` (string, opzionale) — direzione (`asc`/`desc`); senza, il default
+    `data_insert` e le colonne data partono `DESC` (fino al 2026-10-20 la lista senza
+    ordinamento partiva `ASC`)
 
 ### POST — Creazione pratica
 
@@ -53,7 +55,8 @@ per restituire dati pronti per la UI con display fields. La POST delega a
 - Body:
   - `emittente_fiscale_id` (int, **obbligatorio**) — ID emittente fiscale (> 0)
   - `tipo_prestazione_id` (int, **obbligatorio**) — ID tipo prestazione (> 0)
-  - `priorita_id` (int, **obbligatorio**) — ID priorita' (> 0)
+  - `priorita_id` (int, opzionale) — ID priorita' (> 0); assente o `null` = `NORMALE`,
+    risolta dal service
   - `soggetto_id` (UUID, opzionale) — UUID soggetto
   - `soggetto_ruolo_id` (int, opzionale) — FK a soggetti_ruoli (richiede soggetto_id)
   - `istanza_utility_id` (int, opzionale) — FK a istanze_utilities (richiede soggetto_id)
@@ -79,7 +82,7 @@ Envelope paginata standard (`paginated_envelope`):
   "data": {
     "count": 1,
     "page": 1,
-    "page_size": 50,
+    "page_size": 25,
     "total_pages": 1,
     "results": [
       {
@@ -130,13 +133,16 @@ Envelope paginata standard (`paginated_envelope`):
 }
 ```
 
-- `400`: validazione fallita (`E_PRATICA_VALIDATION`), JSON non valido, contesto anagrafico incoerente
+- `400`: validazione fallita (`E_PRATICA_VALIDATION`, col campo: anche
+  `emittente_fiscale_id` o `tipo_prestazione_id` **assenti** dal corpo, che fino al
+  2026-10-20 davano un errore generico), JSON non valido, contesto anagrafico incoerente
 - `401`: JWT mancante o non valido
 
 ## Regole
 
 - `emittente_fiscale_id` obbligatorio su GET; se assente → 400.
-- Su POST, `emittente_fiscale_id`, `tipo_prestazione_id` e `priorita_id` devono essere > 0.
+- Su POST, `emittente_fiscale_id` e `tipo_prestazione_id` sono obbligatori e > 0;
+  `priorita_id`, se presente, > 0.
 - Lo stato iniziale della pratica e' `APERTA`, risolto automaticamente da `config.stati_pratiche`
   (la pratica nasce gia' aperta: lo stato `BOZZA` resta nel modello per un eventuale "salva
   bozza" futuro). Il trigger DB valorizza `data_apertura` anche alla creazione diretta in `APERTA`.
@@ -150,7 +156,7 @@ Envelope paginata standard (`paginated_envelope`):
     e della sua istanza (FK composta `fk_pratiche_billing_account_istanza`)
 - `is_search_endpoint = True` sulla view GET: attiva throttling `SearchBurstRateThrottle`.
 - Ordinamento GET: configurabile via `order_by`/`order_dir`, default `data_insert DESC`, tiebreaker `id`.
-- Whitelist colonne ordinamento: `codice`, `descrizione`, `data_apertura`, `data_scadenza`, `data_insert`, `tipo_prestazione_descrizione`, `stato_descrizione`, `priorita_descrizione`, `soggetto_display`, `risorsa_umana_display`.
+- Whitelist colonne ordinamento: `id`, `codice`, `descrizione`, `data_apertura`, `data_scadenza`, `data_insert`, `tipo_prestazione_descrizione`, `stato_descrizione`, `priorita_descrizione`, `soggetto_display`, `risorsa_umana_display`.
 - Ogni riga espone `billing_account_id`, **colonna della pratica** dal 2026-10-08
   (brief-db-istanza-nasce-col-ba, D-9): il cliente di cui la pratica parla; `null` per le
   pratiche di altri ruoli, interne o con la sola istanza. Fino a quella data era

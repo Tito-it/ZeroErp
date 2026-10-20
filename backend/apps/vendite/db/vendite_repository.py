@@ -17,9 +17,18 @@ from typing import Any
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE, SORGENTE_PREVENTIVO
+from apps.config.sorgenti import (
+    SORGENTE_COMMESSA,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+    SORGENTE_RESO_VENDITA,
+)
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
+    sql_order_direction_lista,
     limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
@@ -223,36 +232,41 @@ LOTTO_GRUPPI_SORT_COLUMNS: dict[str, str] = {
 # vendite.vw_dash_fatturazione_documenti (6 aree documento) + il ramo RESI
 # che vive SOLO nel Backlog (union dedicata in vw_dash_backlog_documenti,
 # fuori dal funnel pre-commessa). Usate dalla Lente 2 Backlog (che include
-# COMMESSE e RESI).
+# commesse e resi).
+# ⭐ L'area e' il codice della SORGENTE (`config.sorgenti.codice_interno`): dal
+#    2026-10-20 le viste `vw_dash_*` non scrivono piu' il plurale (`ORDINI`,
+#    `RESI`…), ritirato col sotto-giro 2d di brief-db-grammatica-unica-documenti
+#    (G-6). Quali aree mostra la dashboard resta una scelta di presentazione,
+#    ed e' questa tupla.
 DASH_FATTURAZIONE_AREE: tuple[str, ...] = (
-    "PREVENTIVI",
-    "ORDINI",
-    "DDT",
-    "OFFERTE",
-    "CONTRATTI",
-    "COMMESSE",
-    "RESI",
+    SORGENTE_PREVENTIVO,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_CONTRATTO,
+    SORGENTE_COMMESSA,
+    SORGENTE_RESO_VENDITA,
 )
 
-# Aree con valore monetario (imponibile, decisione D-4). OFFERTE e CONTRATTI
-# restano a conteggi (decisioni D-2/D-3 confermate da DL-11), RESI idem
+# Aree con valore monetario (imponibile, decisione D-4). Offerte e contratti
+# restano a conteggi (decisioni D-2/D-3 confermate da DL-11), resi idem
 # (DL-24: nessun importo sui resi in questa slice): valore_* = NULL.
 DASH_FATTURAZIONE_AREE_EURO: frozenset[str] = frozenset(
-    {"PREVENTIVI", "ORDINI", "DDT", "COMMESSE"}
+    {SORGENTE_PREVENTIVO, SORGENTE_ORDINE_VENDITA, SORGENTE_DDT_VENDITA, SORGENTE_COMMESSA}
 )
 
 # Aree della Situazione aperta (stock documenti, §6-bis/§6-quater design
-# due-lenti): le 5 aree documento nell'ordine del funnel — NIENTE COMMESSE
-# (coperte dalla Lente 1), NIENTE RESI (DL-24: REVERSE_FLOW, non serbatoio).
+# due-lenti): le 5 aree documento nell'ordine del funnel — NIENTE commesse
+# (coperte dalla Lente 1), NIENTE resi (DL-24: REVERSE_FLOW, non serbatoio).
 # Il DDT entra con la popolazione ristretta del resolver (DL-21: solo DDT
 # con ruolo di fatturazione). Allineate al WHERE di
 # vendite.vw_dash_aperto_documenti.
 DASH_APERTO_AREE: tuple[str, ...] = (
-    "PREVENTIVI",
-    "ORDINI",
-    "DDT",
-    "OFFERTE",
-    "CONTRATTI",
+    SORGENTE_PREVENTIVO,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_CONTRATTO,
 )
 
 # Fasi VIVE del serbatoio pre-commessa (v2, DL-15/16): solo aperti-non-chiusi
@@ -260,6 +274,12 @@ DASH_APERTO_AREE: tuple[str, ...] = (
 # → palla al cliente → da lavorare. Non tutte le aree emettono tutte le fasi
 # (es. ORDINI non ha IN_ATTESA): il pivot le espone comunque tutte (griglia
 # simmetrica, il FE decide quali card mostrare — DL-13).
+# Il vocabolario INTERO della fase normalizzata dei documenti: specchio del
+# CHECK `chk_stati_doc_*_fase`, uguale su tutte le `config.stati_doc_*`
+# (presidio: `core/tests/db/test_specchi_dei_check_db`). `DASH_APERTO_FASI`
+# qui sotto ne e' il sottoinsieme VIVO, quello che il pivot mostra.
+FASI_DOCUMENTO: tuple[str, ...] = ("APERTO", "IN_ATTESA", "IN_CORSO", "CHIUSO")
+
 DASH_APERTO_FASI: tuple[str, ...] = (
     "APERTO",
     "IN_ATTESA",
@@ -347,6 +367,11 @@ STATI_ESECUZIONE_DOCUMENTO: tuple[str, ...] = (
     STATO_ESECUZIONE_ESCLUSO,
 )
 
+# Il vocabolario dello stato del LOTTO (il suo job), per il filtro della lista
+# lotti: specchio del CHECK `chk_fatturazione_lotti_stato_job`, che il
+# guardrail `test_specchi_dei_check_db` confronta col database (2026-10-20).
+STATI_LOTTO: tuple[str, ...] = ("IN_ESECUZIONE", "COMPLETATO", "ERRORE")
+
 DASH_STADIO_DA_APPROVARE = "DA_APPROVARE"
 DASH_COMPETENZA_STADI: tuple[str, ...] = (
     DASH_STADIO_DA_APPROVARE,
@@ -426,7 +451,7 @@ _RETTIFICHE_VERSI: dict[str, tuple[str, str]] = {
 # lo usa — e solo quando quel filtro e' davvero attivo.
 _ACCESSORI_COLONNE_AGGREGATI = (
     "g.tipo_gruppo",
-    "g.area_documento",
+    "g.documento_apribile",
     "g.n_attivita",
     "g.valore",
     "g.ba_fatturazione_id",
@@ -1113,7 +1138,7 @@ class VenditeRepository:
         # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): il ramo storico la
         #    ignora, e un `order_dir` estraneo passava muto (il service non la
         #    valida). Il BB la rifiuta anche quando poi non la si usa.
-        direction = sql_order_direction(order_dir)
+        direction = sql_order_direction_lista(order_by, order_dir, colonne=self.LOTTI_SORT_COLUMNS)
         if sort_col is not None:
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = f"ORDER BY {sort_col} {direction}, fl.id {tiebreak_dir}"
@@ -1414,7 +1439,7 @@ class VenditeRepository:
         # "in essere da" (i piu' vecchi prima).
         sort_col = self.DASH_APERTO_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
-            direction = sql_order_direction(order_dir)
+            direction = sql_order_direction_lista(order_by, order_dir, colonne=self.DASH_APERTO_SORT_COLUMNS)
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = (
                 f"ORDER BY {sort_col} {direction}, "
@@ -1732,7 +1757,9 @@ class VenditeRepository:
         # avere il tiebreak coerente quanto la colonna scelta dall'utente.
         # `commessa_codice` raggruppa (resta ASC), `commessa_attivita_id` e' la
         # chiave tecnica univoca e segue la direzione (2026-08-03).
-        direction = sql_order_direction(order_dir, default_desc=sort_col is None)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS, default_desc=True,
+        )
         tiebreak_dir = sql_tiebreak_direction(direction)
         tiebreak = f"commessa_codice ASC, commessa_attivita_id {tiebreak_dir}"
         if sort_col is not None:
@@ -1877,13 +1904,13 @@ class VenditeRepository:
         where_clause = "WHERE " + " AND ".join(conditions)
 
         sort_col = self.DASH_COMPETENZA_RESIDUI_SORT_COLUMNS.get(order_by or "")
-        # ⚠️ `default_desc=False`, al contrario delle liste sorelle: il default
-        #    dichiarato a catalogo e' `competenza_mese` ASC, e la direzione deve
-        #    valere anche per il TIEBREAK — altrimenti la primaria salirebbe e lo
-        #    spareggio scenderebbe, cioe' dentro lo stesso mese l'elenco andrebbe
-        #    al contrario di come e' stato chiesto (e' il difetto corretto in 30
-        #    punti il 2026-08-03).
-        direction = sql_order_direction(order_dir, default_desc=False)
+        # ⚠️ Senza `order_dir` le colonne data partono DESC (regola «date DESC»,
+        #    inferita dal nome con `e_chiave_data`, 2026-10-20), le altre ASC; la
+        #    stessa direzione vale per il TIEBREAK — altrimenti la primaria
+        #    salirebbe e lo spareggio scenderebbe, cioe' dentro lo stesso mese
+        #    l'elenco andrebbe al contrario di come e' stato chiesto (e' il
+        #    difetto corretto in 30 punti il 2026-08-03).
+        direction = sql_order_direction_lista(order_by, order_dir, colonne=self.DASH_COMPETENZA_RESIDUI_SORT_COLUMNS)
         tiebreak_dir = sql_tiebreak_direction(direction)
         # ⚠️ Il tiebreak e' `attivita_fatturabile_id`: e' la chiave del verbo,
         #    quindi l'unica univoca su questa lista — e su un elenco da cui si
@@ -2017,7 +2044,9 @@ class VenditeRepository:
         # NON aggiungere un secondo NULLS (errore di sintassi PG). Direzione
         # risolta prima del ramo cosi' anche il default DESC ha il tiebreak
         # coerente; `commessa_codice` raggruppa, `commessa_id` segue.
-        direction = sql_order_direction(order_dir, default_desc=sort_col is None)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=self.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS, default_desc=True,
+        )
         tiebreak_dir = sql_tiebreak_direction(direction)
         tiebreak = f"commessa_codice ASC, commessa_id {tiebreak_dir}"
         if sort_col is not None:
@@ -2347,7 +2376,9 @@ class VenditeRepository:
         sort_col = self.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS.get(order_by or "")
         # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST'.
         # Direzione prima del ramo: vale anche per il default DESC.
-        direction = sql_order_direction(order_dir, default_desc=sort_col is None)
+        direction = sql_order_direction_lista(
+            order_by, order_dir, colonne=self.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS, default_desc=True,
+        )
         tiebreak_dir = sql_tiebreak_direction(direction)
         tiebreak = f"gruppo_key ASC, stadio {tiebreak_dir}"
         if sort_col is not None:
@@ -2380,7 +2411,7 @@ class VenditeRepository:
             SELECT
                 g.gruppo_key,
                 g.tipo_gruppo,
-                g.area_documento,
+                g.documento_apribile,
                 g.riferimento,
                 g.commessa_id,
                 g.commessa_codice,
@@ -2449,7 +2480,7 @@ class VenditeRepository:
                 {
                     "gruppo_key": str(row[0]),
                     "tipo_gruppo": str(row[1]),
-                    "area_documento": None if row[2] is None else str(row[2]),
+                    "documento_apribile": None if row[2] is None else bool(row[2]),
                     # Nessun ramo NULL, come `gruppo_key` e `tipo_gruppo` qui
                     # sopra: `riferimento` e' NOT NULL per contratto della vista
                     # (`COALESCE(documento_numero, commessa_codice, gruppo_key)`,
@@ -2761,7 +2792,9 @@ class VenditeRepository:
                 ),
                 tipi AS (
                     SELECT g.tipo_gruppo,
-                           MIN(g.area_documento)                  AS area_documento,
+                           -- valori identici per tipo (la sorgente e' una):
+                           -- `bool_and` e non `MIN`, che sui boolean non c'e'.
+                           bool_and(g.documento_apribile)         AS documento_apribile,
                            COUNT(*)::int                          AS n_gruppi,
                            COALESCE(SUM(g.n_attivita), 0)::bigint AS n_attivita
                       FROM base g
@@ -2933,7 +2966,7 @@ class VenditeRepository:
                      task_code ASC NULLS LAST"""
         sort_col = self.DASH_COMPETENZA_ERRORI_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
-            direction = sql_order_direction(order_dir)
+            direction = sql_order_direction_lista(order_by, order_dir, colonne=self.DASH_COMPETENZA_ERRORI_SORT_COLUMNS)
             # Il tiebreak qui e' una catena di chiavi NATURALI (la union non ha
             # una PK): resta fissa, non e' uno spareggio tecnico da allineare.
             #
@@ -3172,7 +3205,7 @@ class VenditeRepository:
         # storico "fermo da" (i piu' vecchi prima).
         sort_col = self.DASH_BACKLOG_SORT_COLUMNS.get(order_by or "")
         if sort_col is not None:
-            direction = sql_order_direction(order_dir)
+            direction = sql_order_direction_lista(order_by, order_dir, colonne=self.DASH_BACKLOG_SORT_COLUMNS)
             tiebreak_dir = sql_tiebreak_direction(direction)
             order_clause = (
                 f"ORDER BY {sort_col} {direction}, "
@@ -3495,7 +3528,7 @@ class VenditeRepository:
         stato_esecuzione: str | None,
         auth_user_id: int | None = None,
         sort_by: str,
-        sort_dir: str,
+        sort_dir: str | None,
         limit: int,
         offset: int,
         max_rows: int | None = None,
@@ -3816,7 +3849,7 @@ class VenditeRepository:
         auth_user_id: int | None = None,
         stato_esecuzione: str | None = None,
         sort_by: str | None = None,
-        sort_dir: str = "asc",
+        sort_dir: str | None = None,
         limit: int,
         offset: int,
         max_rows: int | None = None,
@@ -3852,7 +3885,7 @@ class VenditeRepository:
             #    della tabella «Regola d'uso» del catalogo BB, non uno spareggio
             #    tecnico da allineare.
             order_clause = (
-                f"ORDER BY {sort_col} {sql_order_direction(sort_dir)}, gruppo_key ASC"
+                f"ORDER BY {sort_col} {sql_order_direction_lista(sort_by, sort_dir, colonne=LOTTO_GRUPPI_SORT_COLUMNS)}, gruppo_key ASC"
             )
         else:
             # ⭐ DEFAULT: i falliti in cima. Non e' l'ordine alfabetico dello
@@ -3970,7 +4003,7 @@ class VenditeRepository:
                 SELECT g.gruppo_key,
                        min(g.riferimento)                  AS riferimento,
                        min(g.tipo_gruppo)                  AS tipo_gruppo,
-                       min(g.area_documento)               AS area_documento,
+                       bool_and(g.documento_apribile)      AS documento_apribile,
                        min(g.documento_id)                 AS documento_id,
                        count(DISTINCT g.commessa_id)       AS commesse_n,
                        CASE WHEN count(DISTINCT g.commessa_id) = 1
@@ -4015,7 +4048,7 @@ class VenditeRepository:
                    END AS n_trascinati,
                    ref.riferimento,
                    ref.tipo_gruppo,
-                   ref.area_documento,
+                   ref.documento_apribile,
                    ref.documento_id,
                    ref.commessa_id,
                    ref.commessa_codice,
@@ -4077,7 +4110,7 @@ class VenditeRepository:
                     # scheda esiste. Il frontend ripiega sulla chiave.
                     "riferimento": row["riferimento"],
                     "tipo_gruppo": row["tipo_gruppo"],
-                    "area_documento": row["area_documento"],
+                    "documento_apribile": row["documento_apribile"],
                     "documento_id": (
                         None if row["documento_id"] is None else int(row["documento_id"])
                     ),

@@ -34,10 +34,10 @@ Brief di riferimento: `docs/it/dev/work-done/brief-db-esito-gruppo-lotto.md`.
 | Parametro | Tipo | Note |
 |---|---|---|
 | `lotto_id` | path | obbligatorio |
-| `stato_esecuzione` | query | `PENDING` \| `RUNNING` \| `COMPLETED` \| `ERRORE`. Assente = tutti, **compresi i mai tentati** (esito `NULL`) |
+| `stato_esecuzione` | query | `PENDING` \| `RUNNING` \| `COMPLETED` \| `ERRORE` \| `ESCLUSO` (`STATI_ESECUZIONE_DOCUMENTO`: il vocabolario comune più `ESCLUSO`, documento tolto dal giro). Fuori vocabolario → `400 E_VENDITE_VALIDATION`. Assente = tutti, **compresi i mai tentati** (esito `NULL`) |
 | `order_by` | query | whitelist `LOTTO_GRUPPI_SORT_COLUMNS`: `riferimento`, `tipo_gruppo`, `stato_esecuzione`, `errore_codice`, `errore_quando`, `commessa_codice` |
 | `order_dir` | query | `asc` \| `desc`. ⚠️ Da mandare **solo insieme** a `order_by`: da solo annullerebbe il default |
-| `page` / `page_size` | query | 1 / 50 (max 200). L'export salta la paginazione |
+| `page` / `page_size` | query | 1 / 25 (max 200). L'export salta la paginazione |
 
 ⭐ **L'ordine di default non è alfabetico**: `(stato_esecuzione = 'ERRORE') DESC`,
 poi `riferimento`. È la domanda con cui questa scheda si apre — *«quale documento
@@ -52,10 +52,15 @@ Envelope lista standard (`count`, `page`, `page_size`, `total_pages`,
 | Campo di riga | Cosa |
 |---|---|
 | `gruppo_key` | la chiave di dominio, `<sorgente>:<uid>` oppure `MAN:<commessa>`. È anche il **ripiego** a video quando l'identità non si risolve più, e la **chiave di riga**: ⛔ non c'è un `id`, perché la riga non è una riga di tabella ma l'unione di due fatti |
-| `stato_esecuzione` | vocabolario chiuso, **identico** a quello delle fatture del lotto (D-2). ⚠️ `null` = «nessuno l'ha detto», **non** «è andata bene» |
+| `stato_esecuzione` | vocabolario chiuso: quello delle fatture del lotto (D-2) più `ESCLUSO`, che una fattura non può avere. ⚠️ `null` = «nessuno l'ha detto», **non** «è andata bene» |
 | `errore_codice` · `errore_messaggio` · `errore_quando` | il perché, dalla riga di **questo** lotto |
 | `riferimento` · `tipo_gruppo` · `area_documento` · `documento_id` | l'identità del documento, risolta dalla vista di competenza |
 | `commessa_id` · `commessa_codice` · `commesse_n` | la **commessa da correggere** — vedi sotto |
+
+Errori: `400 E_VENDITE_VALIDATION` (filtro, ordinamento o paginazione fuori
+limiti; un intero non leggibile → `E_VALIDATION_INPUT`); `404
+E_LOTTO_NON_TROVATO` su lotto inesistente o fuori perimetro — vale anche per
+l'export. ⚠️ 2026-10-20: prima rispondeva `200` con zero righe.
 
 ## Regole
 
@@ -126,7 +131,8 @@ che discrimini.
 `fatturazione_lotti_esiti` hanno **RLS**, `fatturazione_lotti` sì. Leggere la figlia da sola sarebbe fail-open, e vale
 anche per il **conteggio** — un totale senza cancello direbbe «3 documenti»
 mostrandone zero. Allo scope RLS si affianca il filtro emittente esplicito
-(`_add_scope_emittente`), come su `/fatture/`.
+(`_add_scope_emittente`), come su `/fatture/`. La testata si legge **prima**
+dell'elenco (`lotto_visibile`): lotto non visibile → `404`, non elenco vuoto.
 
 ## Note di migrazione
 

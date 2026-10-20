@@ -22,8 +22,12 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 # Separatore che, dentro `segment_key`, marca una riga come componente di kit:
-#   padre:      ORD:<uid>:R:<riga>
-#   componente: ORD:<uid>:R:<riga>#CMP:<articolo_componente_uid>
+#   padre:      ORDINE_VENDITA:<uid>:R:<riga>
+#   componente: ORDINE_VENDITA:<uid>:R:<riga>#CMP:<articolo_componente_uid>
+# ⭐ La chiave del padre la costruisce il DB (`script.fn_segment_key`, dal
+#    2026-10-20 col codice della sorgente nel prefisso: era `ORD:`, G-8 di
+#    brief-db-grammatica-unica-documenti) e arriva dal lister: qui si APPENDE
+#    solo il suffisso, e non si legge mai il prefisso.
 # Il prefisso a sinistra identifica l'ISTANZA di kit, non l'articolo: lo stesso
 # kit puo' comparire due volte sulla stessa fattura da righe sorgente diverse.
 SEP_COMPONENTE = "#CMP:"

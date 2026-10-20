@@ -56,7 +56,7 @@ Via `handle_post_json`. Due flussi mutuamente esclusivi:
 - **UNA-TANTUM** (indirizzo occasionale, D-4): body `{tipo_indirizzo_id, snapshot}`.
   Chiavi ammesse: `intestazione, via, cap, citta, prov, stato, display, email,
   telefono, note` (soli valori scalari, il resto scartato); richiesto almeno
-  uno tra `via/citta/display`. `origine_indirizzo_id` resta NULL;
+  uno tra `via/citta/display` (altrimenti `E_<DOM>_VALIDAZIONE`). `origine_indirizzo_id` resta NULL;
   `origine_soggetto_ruolo_id` opzionale per dichiarare la provenienza
   "anagrafica soggetto" (picker su riga fonte=soggetto e slot di default):
   la giudica lo stesso guard DB. Semantica tag FE:
@@ -79,9 +79,10 @@ Via `handle_post_json`. Due flussi mutuamente esclusivi:
 
 ### Rimozione slot `DELETE .../<id>/indirizzi/<indirizzo_id>/`
 
-- Hard delete dello slot (nessuna storicità propria). Documento in stato
-  editabile. Riga inesistente o di altro documento → `E_<DOM>_NOT_FOUND` (404,
-  anti-tampering URL).
+- Hard delete dello slot (nessuna storicità propria). Lo stato lo giudica il
+  lock dei satelliti a DB (`E_DOC_DATI_COLLEGATI_NON_BOZZA`, 409), come
+  sull'upsert. Riga inesistente o di altro documento → `E_<DOM>_NOT_FOUND` (404,
+  anti-tampering URL). Output `200`: `{"deleted": true, "id": <indirizzo_id>}`.
 - L'obbligatorietà (es. `CON` sul DDT) è verificata dal guard DB
   **all'emissione** (`trg_ddt_a10_guard_indirizzi_obbligatori_upd` →
   `E_INDIRIZZO_DOC_OBBLIGATORIO`), non alla rimozione.

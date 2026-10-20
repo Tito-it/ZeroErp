@@ -40,6 +40,7 @@ from typing import Any, NamedTuple
 from django.db import transaction
 
 from apps.config.sorgenti import SORGENTE_DDT_VENDITA
+from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
@@ -222,6 +223,13 @@ def list_ddt_rows(
     order_dir: str = "desc",
     max_limit: int = MAX_LIMIT,
 ) -> tuple[list[Any], int]:
+    # ⛔ Il filtro di stato esiste nel vocabolario, o e' un 400 sul campo: un
+    #    valore sbagliato finiva nel WHERE e la lista rispondeva vuota con un
+    #    200 (2026-10-20). Codici dismessi ammessi: i documenti vecchi li portano.
+    richiedi_codice_a_vocabolario(
+        "config.stati_doc_ddt", "codice_interno", stato_codice,
+        codice_errore="E_DDT_VALIDAZIONE", parametro="stato_codice_interno",
+    )
     repo = DdtRepository()
     return repo.list_ddt(
         stato_codice=stato_codice,
@@ -567,10 +575,11 @@ def emetti(ddt_id: int) -> dict[str, Any]:
 def gestisci_riga(
     ddt_id: int, payload: dict[str, Any], *, auth_user_id: int | None = None,
 ) -> dict[str, Any]:
-    # Una chiave fuori whitelist e' un 400, prima di qualunque lettura (vedi
-    # CREATE_KEYS_RIGA).
-    _V.validate_allowed_keys(
-        payload, allowed=CREATE_PAYLOAD_RIGA, function_name=f"{_FN}.gestisci_riga",
+    # Una chiave fuori whitelist e' un 400, prima di qualunque lettura; il dict
+    # tiene le sole colonne, senza la mappa dei componenti (letta a parte).
+    data = _V.solo_chiavi_ammesse(
+        payload, ammesse=CREATE_PAYLOAD_RIGA, colonne=CREATE_KEYS_RIGA,
+        function_name=f"{_FN}.gestisci_riga",
     )
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="gestisci_riga")
@@ -592,7 +601,6 @@ def gestisci_riga(
         error_code="E_DDT_VALIDAZIONE",
     )
 
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_RIGA}
     articolo_id = data.get("articolo_id")
     ErrorManager.require(
         articolo_id is not None and str(articolo_id).strip() != "",
@@ -839,7 +847,8 @@ def get_prelievi(ddt_id: int) -> dict[str, Any]:
 def _payload_prelievo(
     payload: dict[str, Any], chiavi: frozenset[str], *, op: str, qta_obbligatoria: bool,
 ) -> dict[str, Any]:
-    data = {k: empty_to_none(v) for k, v in payload.items() if k in chiavi}
+    # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
+    data = _V.solo_chiavi_ammesse(payload, ammesse=chiavi, function_name=f"{_FN}.{op}")
     for chiave in _ID_PRELIEVO:
         if chiave in data:
             data[chiave] = _V.optional_positive_int(data, chiave, function_name=f"{_FN}.{op}")
@@ -952,6 +961,7 @@ def list_componenti_riga(
 # Scopo: Aggiorna un componente BoM (solo DRAFT, scope componente->riga->ddt).
 def update_componente(
     ddt_id: int, riga_id: int, componente_id: int, payload: dict[str, Any],
+    *, auth_user_id: int | None = None,
 ) -> dict[str, Any]:
     repo = DdtRepository()
     scope = repo.load_componente_with_scope(componente_id)
@@ -973,7 +983,7 @@ def update_componente(
     # estranee, compresa l'`origine_prezzo` mandata dal pannello: l'origine
     # manuale non veniva mai scritta.
     data = dati_patch_componente(
-        payload, function_name=f"{_FN}.update_componente",
+        payload, auth_user_id=auth_user_id, function_name=f"{_FN}.update_componente",
         error_code="E_DDT_VALIDAZIONE",
     )
     with _db_errors("update_componente"):

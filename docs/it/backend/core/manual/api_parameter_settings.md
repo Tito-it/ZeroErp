@@ -120,7 +120,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 - Auth: JWT, `skip_area_check = True`
 - Body JSON:
   - `parameter_code` (string, **obbligatorio**) — codice parametro da sovrascrivere
-  - `value` (string, **obbligatorio**) — nuovo valore dell'override
+  - `value` (string) — nuovo valore dell'override. ⚠️ Dichiarato obbligatorio, ma il codice non lo verifica: assente o `null` → override con stringa vuota, risposta 200 (difetto noto)
   - `scope` (string, opzionale, default `"user"`) — uno fra:
     - `"user"` — override personale (default, qualunque utente)
     - `"emittente"` — override per emittente fiscale (admin-only; EF derivato dal profilo utente)
@@ -217,7 +217,7 @@ parameter_repository.py (ParameterRepository)
     ├── get_parameter()       → fn_get_parameter_full()
     ├── get_parameters()      → fn_get_parameter_full() x N
     ├── list_for_user()       → fn_list_parameters_for_user()
-    ├── upsert_{user,emittente,categoria_cliente}_override() → CTE UPDATE-poi-INSERT (ON CONFLICT non regge i NULL degli scope)
+    ├── upsert_{user,emittente,categoria_cliente}_override() → INSERT … ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE
     ├── delete_{user,emittente,categoria_cliente}_override() → DELETE con verifica di appartenenza allo scope
     └── get_emittente_fiscale_id_for_user() → whitelist personale, poi gestore globale
 ```

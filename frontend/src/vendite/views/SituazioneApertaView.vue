@@ -34,6 +34,7 @@ import { displayDate } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { faseDocumentoSeverity } from '../../core/utils/severity'
 import DocumentoDrawerHost from '../../core/components/DocumentoDrawerHost.vue'
+import { DOCUMENTO_DRAWER_TIPI } from '../../core/drawerEntita'
 import { useDocumentoDrawer } from '../../core/composables/useDocumentoDrawer'
 import {
   DASH_AREA_CONFIG,
@@ -125,7 +126,7 @@ const cards = computed(() =>
       area: a.area,
       format: isEuro ? 'currency' : 'count',
       fasi: segmenti,
-      // Hint per misure non ovvie (es. ORDINI misura mista, DL-23): la
+      // Hint per misure non ovvie (es. ORDINE_VENDITA misura mista, DL-23): la
       // mappatura area→hint vive in DASH_AREA_CONFIG con route/severity,
       // non qui — la view non conosce le aree per nome.
       hint: DASH_AREA_CONFIG[a.area]?.apertoHintKey
@@ -148,8 +149,8 @@ const totaliAperto = computed(() => {
     if (a.valore_totale !== null && a.valore_totale !== undefined) {
       euro += Number(a.valore_totale)
     }
-    if (a.area === 'OFFERTE') offerte = a.n_documenti ?? 0
-    if (a.area === 'CONTRATTI') contratti = a.n_documenti ?? 0
+    if (a.area === DOCUMENTO_DRAWER_TIPI.OFFERTA_COMMERCIALE) offerte = a.n_documenti ?? 0
+    if (a.area === DOCUMENTO_DRAWER_TIPI.CONTRATTO) contratti = a.n_documenti ?? 0
   }
   return { euro, offerte, contratti }
 })
@@ -381,8 +382,8 @@ onActivated(() => {
             {{ formatCurrency(totaliAperto.euro) }}
           </span>
           <span class="app-dash-stat-sub">
-            {{ areaLabel('OFFERTE') }}: {{ totaliAperto.offerte }}
-            · {{ areaLabel('CONTRATTI') }}: {{ totaliAperto.contratti }}
+            {{ areaLabel(DOCUMENTO_DRAWER_TIPI.OFFERTA_COMMERCIALE) }}: {{ totaliAperto.offerte }}
+            · {{ areaLabel(DOCUMENTO_DRAWER_TIPI.CONTRATTO) }}: {{ totaliAperto.contratti }}
           </span>
         </div>
         <div

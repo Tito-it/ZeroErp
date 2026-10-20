@@ -444,13 +444,19 @@ class ResiRigheTests(SimpleTestCase):
         repo.get_stato_e_ddt_origine.return_value = dict(_RESO_DRAFT)
         repo.get_riga.return_value = {"id": 3, "reso_id": 7}
         out = resi_service.aggiorna_riga(
-            7, 3, {"qta_operativa": "2", "articolo_id": "hack"},
+            7, 3, {"qta_operativa": "2"},
         )
         self.assertTrue(out["updated"])
         kwargs = repo.update_riga.call_args.kwargs
         self.assertEqual(kwargs["qta_operativa"], "2")
-        # Lo snapshot articolo e' immutabile: fuori whitelist, scartato.
         self.assertNotIn("articolo_id", kwargs)
+        # ⛔ Lo snapshot articolo e' immutabile: fuori whitelist, e dal
+        #    2026-10-20 e' un 400 invece di uno scarto silenzioso.
+        repo.update_riga.reset_mock()
+        with self.assertRaises(ServiceError) as ctx:
+            resi_service.aggiorna_riga(7, 3, {"qta_operativa": "2", "articolo_id": "hack"})
+        self.assertEqual(ctx.exception.code, "E_RESO_VALIDAZIONE")
+        repo.update_riga.assert_not_called()
 
     @patch(_REPO)
     def test_aggiorna_riga_estranea(self, repo_cls) -> None:

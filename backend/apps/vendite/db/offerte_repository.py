@@ -351,7 +351,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     # Configurazione mixin indirizzi documento.
     _indirizzi_table = "vendite.offerte_commerciali_indirizzi"
     _indirizzi_fk_documento = "offerta_id"
-    _indirizzi_ambito = "OFFERTE"
     _indirizzi_documento = SORGENTE_OFFERTA_COMMERCIALE
 
     # =================================================================

@@ -2,8 +2,10 @@
 
 ## Scopo
 
-Restituisce il **percorso suggerito** di una pratica = i `template_flussi` del suo
-`tipo_prestazione` (in ordine), ciascuno con lo stato di istanziazione. Alimenta
+Restituisce il **percorso suggerito** di una pratica = i `template_flussi` **attivi**
+della **definizione workflow assegnata alla pratica** (`pratiche.definizione_id`, non il
+solo `tipo_prestazione`: con più edizioni dello stesso tipo la join per tipo duplicherebbe
+le righe), in ordine, ciascuno con lo stato di istanziazione. Alimenta
 la roadmap FE (`PraticaPercorso.vue`).
 
 ## Contesto
@@ -36,9 +38,13 @@ Delega a `pratiche_service.get_percorso` → `PraticheRepository.get_percorso_pr
         "obbligatorio": true,
         "direzione": "ENTRATA",
         "has_handler": false,
+        "template_attende_sorgente_tipo_id": null,
+        "template_azione_ui_key": null,
         "flusso_id": 50,
         "stato_codice_interno": "COMPLETATO",
+        "stato_descrizione": "Completato",
         "esito": "POSITIVO",
+        "esito_descrizione": "Positivo",
         "ripetibile_adesso": false,
         "completato": true,
         "percorribile": true,
@@ -65,6 +71,13 @@ Delega a `pratiche_service.get_percorso` → `PraticheRepository.get_percorso_pr
 ```
 
 - `flusso_id = null` → step non ancora creato (`has_handler=true` → step automatico).
+- `stato_descrizione` / `esito_descrizione` — le descrizioni umane dello stato e
+  dell'esito dell'ultima istanza (`config.stati_flussi_pratiche`,
+  `config.esiti_flussi_pratiche`); `null` senza istanza.
+- `template_azione_ui_key` — la chiave dell'azione UI del template (`pratiche.azioni_ui`);
+  `template_attende_sorgente_tipo_id` — il tipo di documento sorgente che lo step attende
+  (step guidato dalla proiezione); entrambi `null` se assenti.
+- Ogni step porta anche i campi `doc_*` (sotto).
 - `400`: `pratica_id` non valido (`E_INVALID_ID`).
 - `401`: JWT mancante o non valido.
 
@@ -119,13 +132,14 @@ documento (es. scadenza flippata dal job notturno, non ricalcolata qui).
 - La creazione del flusso template-bound avviene via
   `POST /api/v1/pratiche/<id>/flussi/` con `template_flusso_id`; i guard DB
   BEFORE INSERT rifiutano se lo step non è abilitato (prerequisiti
-  esito-aware) o non è ripetibile (`409 PRATICHE_FLUSSO_NON_RIPETIBILE`,
+  esito-aware) o non è ripetibile (`409 E_PRATICHE_FLUSSO_NON_RIPETIBILE`,
   catalogo DB id 483).
 - Permission: area `pratiche` (lettura).
 
 ## Dipendenze DB
 
-- `pratiche.template_flussi` (catalogo del `tipo_prestazione`)
+- `pratiche.template_flussi` (i template attivi della definizione pinnata sulla pratica)
+- `pratiche.azioni_ui`, `config.esiti_flussi_pratiche` (display)
 - `pratiche.flussi` (istanze) + `config.stati_flussi_pratiche`
 - `pratiche.fn_check_ripetibilita_flusso` (D3 — `ripetibile_adesso`)
 - `pratiche.fn_check_chiusura_pratica` (D4 — `completato`/`percorribile`/`bloccante`)
