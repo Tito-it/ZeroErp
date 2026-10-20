@@ -16,6 +16,9 @@
 #        Validazione `context_builder_code`: solo formato (stringa non
 #        vuota) — il check whitelist registry e' a carico del render
 #        service (Tranche H), non della create/update template.
+#        «Personalizza» (brief-db-modelli-documento-standard §6, D-2): il
+#        modello di un emittente che parte da uno standard, con l'origine
+#        dichiarata sulla prima versione.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -23,7 +26,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import (
@@ -33,6 +36,9 @@ from apps.core.services.payload_helpers import (
 from apps.documenti.db.documenti_repository import DocumentiRepository
 from apps.documenti.services._scope import guard_emittente_in_scope_for_user
 from apps.documenti.services.template_service import TemplateService
+from apps.documenti.services.template_versioni_admin_service import (
+    dati_bozza_copiata,
+)
 
 # Codici errore registrati in apps.core.services.error_policies.
 E_VALIDATION = "E_DOCUMENTI_VALIDATION"
@@ -68,6 +74,33 @@ _UPDATE_KEYS: frozenset[str] = frozenset({
     "attivo",
     "meta",
 })
+
+# Chiavi ammesse in payload «personalizza»: per chi, se nasce predefinito, e
+# i nomi. Tipo, sorgente, builder e nome file sono quelli dello standard: e'
+# la sua copia.
+# ⭐ Codice, codice interno e descrizione si possono dare (default: quelli
+#    dello standard) perche' l'unicita' e' per emittente + sorgente + codice:
+#    un emittente che ha gia' un suo modello con il codice dello standard, o
+#    una copia dello stesso standard, altrimenti non potrebbe personalizzare.
+_PERSONALIZZA_KEYS: frozenset[str] = frozenset({
+    "emittente_fiscale_id",
+    "is_default",
+    "codice",
+    "codice_interno",
+    "descrizione",
+})
+
+# I campi della testata che la copia riprende dallo standard quando il
+# payload non li da'.
+_PERSONALIZZA_DALLO_STANDARD: tuple[str, ...] = (
+    "tipo_documento_output_id",
+    "sorgente_tipo_id",
+    "codice",
+    "codice_interno",
+    "descrizione",
+    "context_builder_code",
+    "file_name_pattern",
+)
 
 # Limiti applicativi (DB ha varchar 120/160 ma l'UI rimane piu' contenuta).
 _MAX_CODICE_LEN = 120
@@ -149,22 +182,7 @@ class TemplateAdminService:
         )
         data = self._build_create_data(payload)
         self._guard_emittente_in_scope(user, data["emittente_fiscale_id"])
-
-        try:
-            new_id = self._repo.create_template(data)
-        except IntegrityError as exc:
-            map_integrity_error(
-                exc,
-                unique_constraints=_UNIQUE_CONSTRAINTS,
-                fk_constraints=_FK_CONSTRAINTS,
-                fallback_code=E_VALIDATION,
-                fallback_message="Violazione vincolo DB su template documento.",
-                context={
-                    "codice": data.get("codice"),
-                    "codice_interno": data.get("codice_interno"),
-                    "emittente_fiscale_id": data.get("emittente_fiscale_id"),
-                },
-            )
+        new_id = self._inserisci_testata(data)
         return self._reader.get_template(user, new_id)
 
     # =================================================================
@@ -232,8 +250,98 @@ class TemplateAdminService:
         return self._reader.get_template(user, template_id)
 
     # =================================================================
+    # Personalizza (copia dello standard per un emittente)
+    # =================================================================
+
+    # Scopo: Crea il modello dell'emittente partendo da uno standard (D-2:
+    #        lo standard si cambia solo coi changeSet, chi lo vuole diverso
+    #        se ne fa una copia dichiarata). In una transazione: la testata,
+    #        copia di quella dello standard, e la versione 1 in BOZZA, copia
+    #        dell'ultima versione PUBBLICATA dello standard, che porta
+    #        `derivata_da_versione_id` (Q-5: e' da li' che la vista dello
+    #        scarto misura quanto la copia resta indietro).
+    #        `is_default` di partenza vero: chi personalizza vuole stampare
+    #        con la copia. Finche' la bozza non e' pubblicata la copia non
+    #        puo' stampare e l'emittente resta sullo standard (`-26`).
+    #        La testata passa dalla stessa validazione della create
+    #        (`_build_create_data`): una copia non e' un modo di scrivere un
+    #        modello che la create rifiuterebbe.
+    #        Ritorna il dettaglio del modello nuovo.
+    # ⚠️ Un emittente che ha gia' un suo predefinito per la coppia incontra
+    #    `uq_template_documenti_default_attivo`, e uno che ha gia' il codice
+    #    `uq_template_documenti_emittente_sorgente_codice` (messaggi parlanti
+    #    sotto): puo' rifare con `is_default=false` o con un `codice` suo.
+    def personalizza_template(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        template_id: int,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._v.guard_positive_int(template_id, field="template_id")
+        self._v.validate_allowed_keys(
+            payload,
+            allowed=_PERSONALIZZA_KEYS,
+            message="Payload personalizzazione modello non valido.",
+        )
+        # 404 unificato se inesistente o fuori scope (lo standard e' di tutti).
+        standard = self._reader.get_template(user, template_id)
+        ErrorManager.require(
+            bool(standard["standard"]),
+            code=E_VALIDATION,
+            message="Si personalizza solo un modello standard.",
+            detail=f"template_id={template_id}",
+        )
+        dati_testata = {
+            **{campo: standard[campo] for campo in _PERSONALIZZA_DALLO_STANDARD},
+            # Chi personalizza vuole stampare con la copia.
+            "is_default": True,
+            # Una chiave nulla vale assente: resta il valore di partenza.
+            **{k: v for k, v in payload.items() if v is not None},
+            "attivo": True,
+        }
+        testata = self._build_create_data(dati_testata)
+        self._guard_emittente_in_scope(user, testata["emittente_fiscale_id"])
+
+        origine = self._repo.get_ultima_versione_pubblicata(template_id)
+        ErrorManager.require(
+            origine is not None,
+            code=E_VALIDATION,
+            message="Il modello standard non ha una versione pubblicata da cui partire.",
+            detail=f"template_id={template_id}",
+        )
+        assert origine is not None
+
+        with transaction.atomic():
+            new_id = self._inserisci_testata(testata)
+            versione = dati_bozza_copiata(origine, template_documento_id=new_id)
+            versione["versione"] = 1
+            versione["derivata_da_versione_id"] = int(origine["id"])
+            self._repo.create_versione(versione)
+        return self._reader.get_template(user, new_id)
+
+    # =================================================================
     # Helpers privati
     # =================================================================
+
+    # Scopo: INSERT della testata con le violazioni unique/FK tradotte nei
+    #        codici parlanti. Un punto solo per i due verbi che creano un
+    #        modello (create e personalizza). Ritorna l'id nuovo.
+    def _inserisci_testata(self, data: dict[str, Any]) -> int:
+        try:
+            return self._repo.create_template(data)
+        except IntegrityError as exc:
+            map_integrity_error(
+                exc,
+                unique_constraints=_UNIQUE_CONSTRAINTS,
+                fk_constraints=_FK_CONSTRAINTS,
+                fallback_code=E_VALIDATION,
+                fallback_message="Violazione vincolo DB su template documento.",
+                context={
+                    "codice": data.get("codice"),
+                    "codice_interno": data.get("codice_interno"),
+                    "emittente_fiscale_id": data.get("emittente_fiscale_id"),
+                },
+            )
 
     # Scopo: Verifica che `emittente_fiscale_id` sia nello scope dell'utente.
     #        Admin globale (scope=None) passa qualunque id valido (la FK

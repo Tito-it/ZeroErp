@@ -174,6 +174,42 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
 # Qui mantengo solo la mappa applicativa per documentazione.
 
 
+# Scopo: La BOZZA che copia una versione esistente: corpo, motore, pagina e
+#        forma dei dati letta, senza date (si fissano alla pubblicazione).
+#        Il chiamante aggiunge `versione` e, se serve, l'origine.
+# ⭐ Un punto solo per due verbi (2026-10-20): il clone di una versione nello
+#    stesso modello e «personalizza», che copia la versione standard nel
+#    modello nuovo dell'emittente. Un campo aggiunto alla versione si copia
+#    in tutti e due, o in nessuno.
+def dati_bozza_copiata(
+    source: dict[str, Any], *, template_documento_id: int,
+) -> dict[str, Any]:
+    return {
+        "template_documento_id": int(template_documento_id),
+        "stato": "BOZZA",
+        "titolo": source["titolo"],
+        "formato_template": source["formato_template"],
+        "html_template": source["html_template"],
+        "css_template": source.get("css_template"),
+        "markdown_template": source.get("markdown_template"),
+        "render_engine_id": source["render_engine_id"],
+        "page_format": source["page_format"],
+        "page_orientation": source["page_orientation"],
+        "margin_top_mm": source["margin_top_mm"],
+        "margin_right_mm": source["margin_right_mm"],
+        "margin_bottom_mm": source["margin_bottom_mm"],
+        "margin_left_mm": source["margin_left_mm"],
+        "valido_dal": None,  # la copia parte senza date,
+        "valido_al": None,   # le date nuove si fissano alla pubblicazione
+        # La forma letta si copia: il corpo e' lo stesso, quindi legge le
+        # stesse chiavi. Per prepararne una nuova (D-C4) si cambia in BOZZA.
+        "versione_contesto": source["versione_contesto"],
+        "context_schema": source.get("context_schema") or {},
+        "meta": source.get("meta") or {},
+        "attivo": True,
+    }
+
+
 class TemplateVersioniAdminService:
     """Service admin write per versioni template documentale."""
 
@@ -354,30 +390,7 @@ class TemplateVersioniAdminService:
         )
 
         # Compone il nuovo dict copiando il source e applicando override.
-        new_data: dict[str, Any] = {
-            "template_documento_id": int(template_id),
-            "stato": "BOZZA",
-            "titolo": source["titolo"],
-            "formato_template": source["formato_template"],
-            "html_template": source["html_template"],
-            "css_template": source.get("css_template"),
-            "markdown_template": source.get("markdown_template"),
-            "render_engine_id": source["render_engine_id"],
-            "page_format": source["page_format"],
-            "page_orientation": source["page_orientation"],
-            "margin_top_mm": source["margin_top_mm"],
-            "margin_right_mm": source["margin_right_mm"],
-            "margin_bottom_mm": source["margin_bottom_mm"],
-            "margin_left_mm": source["margin_left_mm"],
-            "valido_dal": None,  # default: clone parte senza date,
-            "valido_al": None,   # le date nuove si fissano alla pubblicazione
-            # La forma letta si copia: il corpo e' lo stesso, quindi legge le
-            # stesse chiavi. Per prepararne una nuova (D-C4) si cambia in BOZZA.
-            "versione_contesto": source["versione_contesto"],
-            "context_schema": source.get("context_schema") or {},
-            "meta": source.get("meta") or {},
-            "attivo": True,
-        }
+        new_data = dati_bozza_copiata(source, template_documento_id=int(template_id))
         # Override da payload (titolo, valido_*, attivo, meta).
         if "titolo" in payload:
             new_data["titolo"] = self._v.require_string(

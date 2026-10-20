@@ -73,13 +73,21 @@ def template_row(
     }
 
 
-# Scopo: I due mock della risoluzione per default, da spargere in
-#        `repo_methods`: il DB risponde con l'id e il livello, il repository
-#        rilegge la riga del modello.
-def risolto(template: dict[str, Any], *, livello: str = "EMITTENTE") -> dict[str, Any]:
+# Scopo: I mock della risoluzione per default, da spargere in
+#        `repo_methods`: il DB risponde con l'id, il livello e la versione
+#        che stampa (P-2), il repository rilegge la riga del modello. La riga
+#        della versione la da' il chiamante, come `get_versione`.
+def risolto(
+    template: dict[str, Any],
+    *,
+    livello: str = "EMITTENTE",
+    versione_id: int = 12,
+) -> dict[str, Any]:
     return {
         "risolvi_template_applicabile": {
-            "template_documento_id": template["id"], "livello": livello,
+            "template_documento_id": template["id"],
+            "livello": livello,
+            "template_versione_id": versione_id,
         },
         "get_template": template,
     }

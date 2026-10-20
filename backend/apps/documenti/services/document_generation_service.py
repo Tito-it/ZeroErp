@@ -227,7 +227,7 @@ class DocumentGenerationService:
         guard_emittente_in_scope(scope, emittente_fiscale_id)
 
         # 2) risolve template applicabile (override esplicito o default)
-        template = self._resolve_template(
+        template, versione_id = self._resolve_template(
             user,
             scope=scope,
             emittente_fiscale_id=emittente_fiscale_id,
@@ -246,8 +246,8 @@ class DocumentGenerationService:
             sorgente_tipo_id=sorgente_tipo_id,
         )
 
-        # 3) carica versione PUBBLICATA attiva
-        versione = self._resolve_versione_pubblicata(template["id"])
+        # 3) carica la versione che stampa: quella detta dalla risoluzione
+        versione = self._resolve_versione_pubblicata(template["id"], versione_id)
 
         # 4) risolve il builder e chiede al DB se la versione legge la forma
         #    dei dati che il builder produce: PRIMA di costruire il contesto e
@@ -470,7 +470,7 @@ class DocumentGenerationService:
         scope = resolve_emittente_scope(user)
         guard_emittente_in_scope(scope, emittente_fiscale_id)
 
-        template = self._resolve_template(
+        template, versione_id = self._resolve_template(
             user,
             scope=scope,
             emittente_fiscale_id=emittente_fiscale_id,
@@ -484,7 +484,7 @@ class DocumentGenerationService:
             sorgente_tipo_id=sorgente_tipo_id,
         )
 
-        versione = self._resolve_versione_pubblicata(template["id"])
+        versione = self._resolve_versione_pubblicata(template["id"], versione_id)
         # Anche l'anteprima: una versione che legge un'altra forma darebbe a
         # video un documento incompleto, senza nessun errore.
         builder = get_builder_del_template(template)
@@ -1062,12 +1062,16 @@ class DocumentGenerationService:
         )
         return emittente_scope
 
-    # Scopo: Risolve il template da generare. Due casi:
+    # Scopo: Risolve il template da generare. Ritorna `(template,
+    #        versione_id)`. Due casi:
     #         a) caller passa `template_documento_id` -> get_template via
     #            reader (404 unificato + scope automatico, standard compresi);
+    #            `versione_id` e' None: la versione la cerca
+    #            `_resolve_versione_pubblicata`;
     #         b) altrimenti -> la risoluzione a due livelli del DB
     #            (`repo.risolvi_template_applicabile`): il predefinito
-    #            dell'emittente se ha modelli attivi suoi, se no lo standard.
+    #            dell'emittente se ha modelli suoi che possono stampare, se no
+    #            lo standard, insieme alla versione con cui stampa oggi.
     #            `tipo_documento_output_id` si passa quando il chiamante lo ha;
     #            senza, il DB lo deduce se il candidato e' uno.
     def _resolve_template(
@@ -1079,11 +1083,11 @@ class DocumentGenerationService:
         sorgente_tipo_id: int,
         tipo_documento_output_id: int | None,
         template_documento_id: int | None,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], int | None]:
         if template_documento_id is not None:
             if user is not None:
                 # Path web: scope + 404 gia' applicati dal reader.
-                return self._reader.get_template(user, template_documento_id)
+                return self._reader.get_template(user, template_documento_id), None
             # Path sistema (C-0, user=None): il reader pretende l'auth —
             # qui lo scope e' gia' risolto dal chiamante, si va di repo.
             row = self._repo.get_template(
@@ -1096,7 +1100,7 @@ class DocumentGenerationService:
                 detail=f"template_id={template_documento_id}",
             )
             assert row is not None
-            return row
+            return row, None
 
         # La regola dei due livelli (emittente, poi standard) e' del DB: qui si
         # traduce il suo rifiuto, che porta il codice del caso
@@ -1126,7 +1130,7 @@ class DocumentGenerationService:
         # controllo resta acceso anche con `python -O`.
         if row is None:
             raise RuntimeError(f"template risolto {risolto!r} non leggibile")
-        return row
+        return row, int(risolto["template_versione_id"])
 
     # Scopo: Il modello scelto deve poter stampare QUESTO documento: stesso
     #        tipo sorgente, e lo stesso emittente oppure lo standard (la regola
@@ -1162,12 +1166,30 @@ class DocumentGenerationService:
                 ),
             )
 
-    # Scopo: Carica la versione PUBBLICATA attiva OGGI, nel giorno
-    #        dell'azienda (`_today` = `oggi_aziendale()`, passata come
-    #        parametro per testabilita': il service mocka `today`).
+    # Scopo: Carica la versione con cui il modello stampa.
+    #         a) modello risolto dal DB -> la versione che la risoluzione ha
+    #            scelto (`versione_id`), letta per id: «puo' stampare» lo ha
+    #            gia' deciso la funzione (P-2), qui non si rifiltra;
+    #         b) modello indicato dal chiamante (`versione_id` None) -> la
+    #            versione PUBBLICATA attiva OGGI, nel giorno dell'azienda
+    #            (`_today` = `oggi_aziendale()`, parametro per testabilita').
+    # ⚠️ Il ramo b) e' ancora la seconda copia di «puo' stampare» che la P-2
+    #    voleva chiudere: per un modello indicato la risoluzione non gira, e
+    #    il DB non ha (2026-10-20) una lettura che dia la versione stampabile
+    #    di un modello dato. Richiesta al team DB.
     def _resolve_versione_pubblicata(
-        self, template_documento_id: int,
+        self, template_documento_id: int, versione_id: int | None,
     ) -> dict[str, Any]:
+        if versione_id is not None:
+            versione = self._repo.get_versione(template_documento_id, versione_id)
+            # La funzione l'ha appena scelta per questo modello: non trovarla
+            # e' il patto del DB rotto, non un 404 dell'operatore.
+            if versione is None:
+                raise RuntimeError(
+                    f"versione {versione_id} del template {template_documento_id} "
+                    "risolta ma non leggibile"
+                )
+            return versione
         today = self._today()
         row = self._repo.get_versione_pubblicata_attiva(
             template_documento_id, today=today,

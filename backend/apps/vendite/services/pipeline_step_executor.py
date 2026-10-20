@@ -1155,7 +1155,9 @@ class PipelineStepExecutor:
     #        NESSUN render qui (invariante I-4b: lo step e' una transazione
     #        atomica col lock del registro fiscale tenuto — l'I/O di rendering
     #        vive nel worker drainer, fuori transazione). Ri-eseguibile:
-    #        l'accodamento e' idempotente (indice unico parziale della coda).
+    #        l'accodamento e' idempotente (ex_fatture_stampa_coda_vivo).
+    #        Il tipo di documento non lo passa: il task non lo conosce, e la
+    #        risoluzione lo deduce al drenaggio (C-1).
     def _handle_stampa_documenti_lotto_task(
         self,
         *,

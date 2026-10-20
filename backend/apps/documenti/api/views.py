@@ -250,6 +250,42 @@ class ApiTemplateDetail(DomainAPIView):
         return success_response(result)
 
 
+class ApiTemplatePersonalizza(DomainAPIView):
+    """POST /api/v1/documenti/templates/<id>/personalizza/ — copia di uno standard per un emittente."""
+
+    area_funzionale = "documenti"
+    post_permission = "documenti_template_manage"
+
+    @extend_schema(
+        request=inline_serializer(
+            name="DocumentiTemplatePersonalizzaRequest",
+            fields={
+                "emittente_fiscale_id": serializers.IntegerField(),
+                "is_default": serializers.BooleanField(required=False),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="DocumentiTemplatePersonalizzaResponse",
+                fields={
+                    "data": serializers.DictField(),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Crea il modello dell'emittente dallo standard `template_id`, con
+    #        la prima versione in BOZZA che ne dichiara l'origine
+    #        (brief-db-modelli-documento-standard §6, D-2). Ritorna il modello
+    #        nuovo.
+    def post(self, request: Request, template_id: int) -> JsonResponse:
+        def _handler(payload: dict) -> dict:
+            return TemplateAdminService().personalizza_template(
+                request.user, int(template_id), payload,
+            )
+        return handle_post_json(request, handler=_handler)
+
+
 class ApiTemplateVersioniList(DomainAPIView):
     """
     GET /api/v1/documenti/templates/<id>/versioni/ — versioni del template.

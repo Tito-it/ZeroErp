@@ -43,36 +43,63 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.db import connection
-from django.test.runner import DiscoverRunner
+from django.test.runner import DiscoverRunner, ParallelTestSuite, _init_worker
 
 from apps.core.services.fuso_aziendale import fuso_aziendale
+
+
+# Scopo: L'ambiente di progetto della suite, in un punto solo: lo chiama il
+#        runner nel processo principale e `_init_worker_zeroerp` in ogni
+#        worker di `--parallel`.
+def _prepara_ambiente_test() -> None:
+    settings.ERROR_LOG_DB_ENABLED = False
+    # Il client di test parla HTTP per costruzione: col redirect HTTPS
+    # acceso (default fuori da DEBUG) ogni richiesta sarebbe un 301. Stessa
+    # ragione del diario: dal runner vale ovunque, senza configurare
+    # niente. Chi prova il redirect lo riaccende con `override_settings`
+    # (`apps/core/tests/api/test_https_header.py`).
+    settings.SECURE_SSL_REDIRECT = False
+    # Il fuso dell'azienda si legge QUI, una volta, dal database configurato
+    # (BB `fuso_aziendale`, cache di processo). Dentro un `SimpleTestCase`
+    # la prima lettura sarebbe un `DatabaseOperationForbidden`: il
+    # middleware e ogni formattatore lo chiedono. Il valore e' quello vero
+    # del parametro, cosi' l'«oggi» di Python e `fn_data_operativa()` dei
+    # test sul DB vero coincidono. ⛔ Nessun ripiego: senza database la
+    # suite si ferma qui, con il motivo. Un test che asserisce un'ora o un
+    # giorno dichiara il proprio fuso con `fuso_aziendale_forzato`.
+    fuso_aziendale()
+    # ⚠️ E si richiude la connessione: la suite parte come prima, senza
+    #    connessione aperta. I middleware che azzerano lo stato di una
+    #    connessione RIUSATA (`JwtAuditMiddleware`) si accendono solo se ce
+    #    n'e' una, e dentro un `SimpleTestCase` toccarla e' vietato.
+    connection.close()
+
+
+# Scopo: Inizializzazione di un worker di `--parallel`: quella di Django, poi
+#        l'ambiente di progetto.
+# ⛔ Senza, col metodo di avvio `forkserver` (il default di Python 3.14 su
+#    Linux) o `spawn`, il worker rifa' `django.setup()` e il
+#    `setup_test_environment` generico di Django, non quello del runner: il
+#    redirect torna acceso (ogni richiesta del client e' un 301), il diario
+#    `dbops.error_log` torna aperto ai test, e il fuso non e' in cache. Con
+#    `fork` il worker eredita tutto e la chiamata e' innocua. Funzione di
+#    modulo: il worker la riceve per nome.
+def _init_worker_zeroerp(counter, *args, **kwargs) -> None:
+    _init_worker(counter, *args, **kwargs)
+    _prepara_ambiente_test()
+
+
+class ZeroErpParallelTestSuite(ParallelTestSuite):
+    init_worker = _init_worker_zeroerp
 
 
 class ZeroErpTestRunner(DiscoverRunner):
     """Runner di progetto: chiude il diario `dbops.error_log` alla suite."""
 
+    parallel_test_suite = ZeroErpParallelTestSuite
+
     # Scopo: hook standard di Django, chiamato una volta prima di tutti i test.
-    #        Spegne il logging su DB per l'intera esecuzione.
+    #        Prepara l'ambiente di progetto (`_prepara_ambiente_test`).
     def setup_test_environment(self, **kwargs) -> None:
         super().setup_test_environment(**kwargs)
-        settings.ERROR_LOG_DB_ENABLED = False
-        # Il client di test parla HTTP per costruzione: col redirect HTTPS
-        # acceso (default fuori da DEBUG) ogni richiesta sarebbe un 301. Stessa
-        # ragione del diario: dal runner vale ovunque, senza configurare
-        # niente. Chi prova il redirect lo riaccende con `override_settings`
-        # (`apps/core/tests/api/test_https_header.py`).
-        settings.SECURE_SSL_REDIRECT = False
-        # Il fuso dell'azienda si legge QUI, una volta, dal database configurato
-        # (BB `fuso_aziendale`, cache di processo). Dentro un `SimpleTestCase`
-        # la prima lettura sarebbe un `DatabaseOperationForbidden`: il
-        # middleware e ogni formattatore lo chiedono. Il valore e' quello vero
-        # del parametro, cosi' l'«oggi» di Python e `fn_data_operativa()` dei
-        # test sul DB vero coincidono. ⛔ Nessun ripiego: senza database la
-        # suite si ferma qui, con il motivo. Un test che asserisce un'ora o un
-        # giorno dichiara il proprio fuso con `fuso_aziendale_forzato`.
-        fuso_aziendale()
-        # ⚠️ E si richiude la connessione: la suite parte come prima, senza
-        #    connessione aperta. I middleware che azzerano lo stato di una
-        #    connessione RIUSATA (`JwtAuditMiddleware`) si accendono solo se ce
-        #    n'e' una, e dentro un `SimpleTestCase` toccarla e' vietato.
-        connection.close()
+        _prepara_ambiente_test()

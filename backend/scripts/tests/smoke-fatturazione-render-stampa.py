@@ -56,8 +56,6 @@ import re
 from django.db import connection, transaction
 
 from apps.config.sorgenti import SORGENTE_FATTURA
-from apps.core.services.fuso_aziendale import oggi_aziendale
-from apps.documenti.db.documenti_repository import DocumentiRepository
 from apps.documenti.services.document_generation_service import DocumentGenerationService
 from apps.documenti.services.render_service import _render_html_with_jinja, render_pdf
 from apps.vendite.services.fattura_document_context_builder import (
@@ -200,14 +198,15 @@ def template_della_fattura(fid):
     # passi, la funzione DB e la rilettura della riga). Con lo standard nel
     # seed, una mancata risoluzione non e' «materia assente» ma un difetto: il
     # service solleva ServiceError col codice del DB, e lo smoke si ferma rosso.
-    tpl = DocumentGenerationService()._resolve_template(
+    # La versione e' quella che la risoluzione ha scelto (P-2), riletta per id
+    # come la rilegge la stampa.
+    svc = DocumentGenerationService()
+    tpl, versione_id = svc._resolve_template(
         None, scope=None, emittente_fiscale_id=ef_id,
         sorgente_tipo_id=sorgente_fattura_id,
         tipo_documento_output_id=None, template_documento_id=None,
     )
-    ver = DocumentiRepository().get_versione_pubblicata_attiva(
-        tpl["id"], today=oggi_aziendale(),
-    )
+    ver = svc._resolve_versione_pubblicata(tpl["id"], versione_id)
     return ef_id, tpl, ver
 
 

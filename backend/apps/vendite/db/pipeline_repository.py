@@ -2626,14 +2626,20 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         return int(row[0])
 
     # Scopo: Accoda in vendite.fatture_stampa_coda una riga PENDING per ogni
-    #        fattura del lotto (outbox stampa, Fase C C-2c).
-    #        Idempotente (indice unico parziale sui work-item vivi).
-    #        Ritorna il numero di righe accodate.
-    def accoda_stampe_lotto(self, lotto_id: int) -> int:
+    #        fattura del lotto (outbox stampa, Fase C C-2c), col tipo di
+    #        documento da stampare quando il chiamante lo conosce (C-1,
+    #        brief-db-modelli-documento-standard §9): NULL = lo deduce la
+    #        risoluzione al drenaggio, se la sorgente ne ha uno solo.
+    #        Idempotente (vincolo di esclusione ex_fatture_stampa_coda_vivo:
+    #        una riga viva per fattura e tipo, una col tipo NULL esclude le
+    #        altre). Ritorna il numero di righe accodate.
+    def accoda_stampe_lotto(
+        self, lotto_id: int, tipo_documento_output_id: int | None = None,
+    ) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT vendite.fn_accoda_stampe_lotto(%s)",
-                [lotto_id],
+                "SELECT vendite.fn_accoda_stampe_lotto(%s, %s)",
+                [lotto_id, tipo_documento_output_id],
             )
             row = cursor.fetchone()
         assert row is not None
@@ -2708,11 +2714,13 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #        drainer. `FOR UPDATE SKIP LOCKED` → più worker in parallelo non si
     #        pestano (ognuno prende righe diverse); il flip a IN_CORSO nella
     #        stessa istruzione le sottrae ai claim successivi (e al
-    #        ri-accodamento, uq_fatture_stampa_coda_vivo). `data_update = now()`
+    #        ri-accodamento, ex_fatture_stampa_coda_vivo). `data_update = now()`
     #        = claimed_at per il reaper (la tabella non ha trigger audit).
     #        Ordine per id (indice parziale ix_fatture_stampa_coda_da_lavorare).
     #        Il render avviene FUORI da qui: la connessione non tiene il lock
-    #        durante l'I/O (I-4b). Ritorna i work-item claimati (lista dict).
+    #        durante l'I/O (I-4b). Ritorna i work-item claimati (lista dict),
+    #        col tipo di documento da stampare (NULL = lo deduce la
+    #        risoluzione).
     def claim_stampe_pending(self, limit: int) -> list[dict[str, Any]]:
         safe_limit = max(1, int(limit))
         sql = """
@@ -2731,7 +2739,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
               FROM claimed
              WHERE c.id = claimed.id
             RETURNING c.id, c.sorgente_tipo_id, c.sorgente_id, c.sorgente_uid,
-                      c.lotto_id, c.template_documento_id, c.tentativi
+                      c.lotto_id, c.template_documento_id,
+                      c.tipo_documento_output_id, c.tentativi
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [

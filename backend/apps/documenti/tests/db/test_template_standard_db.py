@@ -34,6 +34,11 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    l'applicazione non modifica lo standard:
    E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA (403). Saltato se il test gira
    col proprietario della tabella, che il guard lascia passare per costruzione.
+5) TemplateStandardDbTests.test_personalizza_dichiara_l_origine_e_stampa_da_pubblicata
+   «personalizza» crea il modello dell'emittente con la versione 1 in BOZZA
+   che dichiara `derivata_da_versione_id` (il guard a10 la accetta); finche'
+   e' bozza la stampa resta sullo standard, pubblicata stampa la copia, e la
+   vista dello scarto la da' ALLINEATA.
 """
 from __future__ import annotations
 
@@ -103,12 +108,18 @@ class TemplateStandardDbTests(unittest.TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 user, emittente, standard = self._mondo(cur)
-                template = svc._resolve_template(
+                template, versione_id = svc._resolve_template(
                     user, scope=[emittente], emittente_fiscale_id=emittente,
                     sorgente_tipo_id=standard["sorgente"],
                     tipo_documento_output_id=None, template_documento_id=None,
                 )
                 self.assertEqual(template["id"], standard["id"])
+                # La versione la dice la risoluzione (P-2), e la stampa la
+                # rilegge per id: e' una versione di QUESTO modello.
+                self.assertIsNotNone(versione_id)
+                versione = svc._resolve_versione_pubblicata(template["id"], versione_id)
+                self.assertEqual(versione["id"], versione_id)
+                self.assertEqual(versione["stato"], "PUBBLICATA")
                 self.assertTrue(template["standard"])
                 self.assertIsNone(template["emittente_fiscale_id"])
                 # La coerenza della stampa ammette lo standard (nessuna eccezione).
@@ -185,7 +196,7 @@ class TemplateStandardDbTests(unittest.TestCase):
                 # lo standard resta (il difetto della copia appena creata da
                 # «personalizza», che fermava ogni stampa dell'emittente).
                 self.assertEqual(
-                    svc._resolve_template(user, **risolvi)["id"], standard["id"],
+                    svc._resolve_template(user, **risolvi)[0]["id"], standard["id"],
                 )
                 versioni.pubblica_versione(
                     user, suo["id"], bozza["id"],
@@ -228,6 +239,71 @@ class TemplateStandardDbTests(unittest.TestCase):
                     self.fail("lo standard e' stato modificato dall'applicazione")
                 self.assertEqual(api.code, "E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA")
                 self.assertEqual(ErrorTranslator.get_http_status(api), 403)
+                raise Annulla
+        except Annulla:
+            pass
+
+    # 5. «Personalizza»: la copia dichiara l'origine, stampa solo da pubblicata.
+    def test_personalizza_dichiara_l_origine_e_stampa_da_pubblicata(self):
+        from apps.documenti.services.document_generation_service import (
+            DocumentGenerationService,
+        )
+        from apps.documenti.services.template_admin_service import TemplateAdminService
+        from apps.documenti.services.template_versioni_admin_service import (
+            TemplateVersioniAdminService,
+        )
+
+        svc = DocumentGenerationService()
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                user, emittente, standard = self._mondo(cur)
+                risolvi = {
+                    "scope": [emittente], "emittente_fiscale_id": emittente,
+                    "sorgente_tipo_id": standard["sorgente"],
+                    "tipo_documento_output_id": standard["tipo_output"],
+                    "template_documento_id": None,
+                }
+                copia = TemplateAdminService().personalizza_template(
+                    user, standard["id"], {"emittente_fiscale_id": emittente},
+                )
+                self.assertFalse(copia["standard"])
+                self.assertEqual(copia["emittente_fiscale_id"], emittente)
+                self.assertTrue(copia["is_default"])
+
+                cur.execute(
+                    """
+                    SELECT v.id, v.stato, o.template_documento_id
+                      FROM documenti.template_documenti_versioni v
+                      JOIN documenti.template_documenti_versioni o
+                        ON o.id = v.derivata_da_versione_id
+                     WHERE v.template_documento_id = %s
+                    """,
+                    [copia["id"]],
+                )
+                righe = cur.fetchall()
+                self.assertEqual(len(righe), 1)
+                bozza_id, stato, origine_template = righe[0]
+                self.assertEqual(stato, "BOZZA")
+                self.assertEqual(origine_template, standard["id"])
+
+                # Con la sola bozza la copia non puo' stampare: resta lo standard.
+                self.assertEqual(
+                    svc._resolve_template(user, **risolvi)[0]["id"], standard["id"],
+                )
+                TemplateVersioniAdminService().pubblica_versione(
+                    user, copia["id"], bozza_id,
+                    {"valido_dal": oggi_aziendale().isoformat()},
+                )
+                template, versione_id = svc._resolve_template(user, **risolvi)
+                self.assertEqual(template["id"], copia["id"])
+                self.assertEqual(versione_id, bozza_id)
+
+                cur.execute(
+                    "SELECT stato FROM documenti.vw_template_personalizzati_scarto"
+                    " WHERE template_documento_id = %s",
+                    [copia["id"]],
+                )
+                self.assertEqual(cur.fetchone(), ("ALLINEATA",))
                 raise Annulla
         except Annulla:
             pass

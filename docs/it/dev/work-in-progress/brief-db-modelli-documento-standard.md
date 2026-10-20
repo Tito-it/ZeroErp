@@ -2,9 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-20
 
-**Riparte: il BE, con la versione restituita dalla risoluzione (§8.4, P-2) e la coda di stampa che
-passa il tipo (§9.4), poi «personalizza» e la lista Modelli documento con il FE (§6); il team DB,
-con la voce nuova del censimento (§2, Q-6 … Q-8: `emittenti_fiscali_utilities`).**
+**Riparte: il team DB, con la versione stampabile di un modello indicato (§9.6, R-1), la versione
+di partenza di una copia (§6.1, R-2) e la voce
+nuova del censimento (§2, Q-6 … Q-8: `emittenti_fiscali_utilities`); il BE, con «personalizza» e la
+lista Modelli documento insieme al FE (§6), e dopo R-1 col ritiro della seconda copia.**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -19,13 +20,17 @@ con la voce nuova del censimento (§2, Q-6 … Q-8: `emittenti_fiscali_utilities
 | 8-bis | **team DB** | ✅ Correzione Q-2: conta solo un modello che può stampare (`20261020-26`), provata sullo scratch e su dbdev | §8.4 | — |
 | 8-ter | **Tid** | ✅ Apply di `20261020-26` e dei due CSV dei codici, pgTAP verdi (2026-10-20) | §8.4 | 8-bis |
 | 9 | **BE** | ✅ La risoluzione a due livelli: `risolvi_template_applicabile`, ritiro di `count_templates_attivi_no_default`, perimetro di lettura con lo standard, test e smoke allineati, policy rigenerate dopo `-26` (`fad3ad71f` PR #1905, `323c96a5c` PR #1907) | §6 | 5, 8-ter |
-| 9-bis | **BE/FE** | L'azione «personalizza» (`derivata_da_versione_id`) e la lista Modelli documento (badge standard, «si usa lo standard», emittente senza predefinito, stato dello scarto) | §6 | 9 |
+| 9-bis | **BE/FE** | ✅ BE «personalizza» (`POST templates/<id>/personalizza/`, §6.1). FE: la lista Modelli documento (badge standard, «si usa lo standard», emittente senza predefinito, stato dello scarto) e l'azione nel drawer; ⚠️ prima va sciolto il difetto delle versioni dello standard (§6.1) | §6 | 9 |
 | 9-ter | **team DB** | Censimento, voce «parametri d'importo per utility» (`emittenti_fiscali_utilities`): risposte a Q-6 … Q-8; DEVA non chiude una fattura | §2 | — |
 | 9-quater | **team DB** | ✅ Coda di stampa: risposte a Q-1 … Q-4 della richiesta BE, sulla struttura (2026-10-20). Nessun changeSet scritto | §9 | — |
 | 9-quinquies | **Tid** | ✅ C-1 … C-3, P-1 e P-2 come da proposta, e via allo sviluppo (2026-10-20) | §9.3, §8.4 | 9-quater |
 | 9-sexies | **team DB** | ✅ ChangeSet `20261020-27` … `-31`, tre righe di CSV, pgTAP e manuali, provati sullo scratch (2026-10-20) | §9.5 | 9-quinquies |
 | 9-septies | **Tid** | ✅ Apply su scratch e dbdev (2026-10-20, due migrate su dbdev), pgTAP verdi, nessuna regressione | §9.5 | 9-sexies |
-| 9-octies | **BE** | P-2: `risolvi_template_applicabile` usa `template_versione_id` e ritira i filtri di `get_versione_pubblicata_attiva` per la stampa. Coda: `claim_stampe_pending` porta la colonna, il worker la passa a `genera_documento`; il task di pipeline passa il tipo dove lo conosce | §8.4, §9.4 | 9-septies |
+| 9-octies | **BE** | ✅ P-2: la stampa usa `template_versione_id` della risoluzione. ✅ Coda: `claim_stampe_pending` porta la colonna, il worker la passa a `genera_documento`, `accoda_stampe_lotto` ha il secondo parametro. Policy rigenerate. ⚠️ I filtri di `get_versione_pubblicata_attiva` restano per il modello **indicato** dal chiamante: R-1 | §8.4, §9.4, §9.6 | 9-septies |
+| 9-nonies | **team DB** | R-1: la versione stampabile di un modello dato, con la stessa definizione di «può stampare» della risoluzione | §9.6 | 9-octies |
+| 9-decies | **BE** | Dopo R-1: il ramo del modello indicato chiama il DB, e `get_versione_pubblicata_attiva` si ritira | §9.6 | 9-nonies |
+| 9-undecies | **team DB** | R-2: la versione di partenza di una copia, con la stessa definizione della vista dello scarto; e se si personalizza uno standard non predefinito o spento | §6.1 | — |
+| 9-duodecies | **BE** | Dopo R-2: «personalizza» chiama il DB, e `get_ultima_versione_pubblicata` si ritira | §6.1 | 9-undecies |
 | 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard) | §7 | 8, 9, 9-ter |
 | 11 | **Tid** | Archiviazione in `work-done/` | — | 10 |
 
@@ -443,6 +448,53 @@ PR #1907):
 `TemplateDocumentoDrawer`, le cose elencate sopra: il badge «standard» in sola lettura, la riga
 «si usa lo standard», la segnalazione dell'emittente senza predefinito, l'azione «personalizza» nel
 kebab e lo stato dello scarto sulle copie.
+
+### 6.1 «Personalizza», lato BE (2026-10-20, sessione BE)
+
+`POST /api/v1/documenti/templates/<id>/personalizza/`, corpo `{emittente_fiscale_id,
+is_default?}`, permesso `documenti_template_manage`
+(`TemplateAdminService.personalizza_template`). In una transazione: la testata, copia di quella
+dello standard per l'emittente (`is_default` vero di partenza), e la versione 1 in BOZZA, copia
+dell'ultima versione PUBBLICATA e attiva dello standard, con `derivata_da_versione_id`. La copia
+dei campi di una versione è una sola per il clone e per «personalizza» (`dati_bozza_copiata`).
+Rifiuti: modello non standard, emittente fuori perimetro, standard senza versione pubblicata (400);
+un predefinito già presente per la coppia (`uq_template_documenti_default_attivo`), un codice già
+dell'emittente per la sorgente (`uq_template_documenti_emittente_sorgente_codice`).
+➕ **Corretto in revisione (2026-10-20):** il corpo ammette anche `codice`, `codice_interno` e
+`descrizione` (di default quelli dello standard). L'unicità è per emittente + sorgente + codice:
+senza, un emittente che ha già un suo modello col codice dello standard, o una copia dello stesso
+standard, non poteva personalizzare in nessun modo. La testata passa dalla validazione della create
+(`_build_create_data`), e l'insert con la traduzione dei vincoli è uno solo per i due verbi
+(`_inserisci_testata`).
+
+**R-2 — al team DB: la versione di partenza di una copia la dice il DB.** «Personalizza» copia
+la versione che il BE sceglie da sé (`get_ultima_versione_pubblicata`: `PUBBLICATA`, `attivo`,
+numero più alto), e la vista `vw_template_personalizzati_scarto` confronta la copia con una
+versione che sceglie con **un'altra** definizione. Le due copie divergono già sul modello:
+
+* la vista prende la `PUBBLICATA` col numero più alto **senza guardare `attivo`**, mentre il
+  trigger della derivazione rifiuta una versione spenta. Se l'ultima pubblicata dello standard è
+  spenta, la copia parte (giustamente) da una precedente e la vista la dà `STANDARD_AVANTI` dalla
+  nascita: non c'è nessuna versione da cui una copia possa uscire `ALLINEATA`;
+* la vista confronta con lo standard **predefinito attivo** della coppia, mentre la derivazione
+  ammette qualunque versione standard della stessa coppia. Una copia di uno standard non
+  predefinito è confrontata con un altro modello.
+
+Si chiede una lettura del DB che, dato uno standard, dia la versione da cui una copia parte, con la
+**stessa definizione** che la vista usa come riferimento (scritta una volta, per esempio una funzione
+che anche la vista usa), e la decisione se si possa personalizzare uno standard non predefinito o
+spento (oggi il BE lo ammette, perché il guard lo ammette). Dopo l'apply il BE chiama la lettura nuova
+e ritira `get_ultima_versione_pubblicata`. Provato su
+dbdev (`test_template_standard_db` caso 5): il guard della derivazione accetta, con la sola bozza
+si stampa con lo standard, pubblicata si stampa con la copia, la vista dello scarto la dà
+`ALLINEATA`.
+
+⚠️ **Difetto trovato (2026-10-20): le versioni di uno standard non si vedono nel drawer.** La lista
+delle versioni ha il padre composto (modello + **emittente**, `emittenteParam`) e il cancello di
+perimetro (`lista_emittente_param`, catalogo `multi_emittente = f`), scritti quando ogni modello
+aveva un emittente. Lo standard non ne ha: il FE resta in `attesaPadre` per sempre, e il cancello,
+per chi guarda «Tutti», chiederebbe un emittente che non esiste. Da quando la lista mostra gli
+standard (riga 9), aprirne uno dà un drawer senza versioni.
 
 ## 7. Ricaduta sugli smoke
 
@@ -977,3 +1029,43 @@ delle righe vive), `vendite/manual/fn_accoda_stampe_lotto.md` (il parametro, l'i
   nessuna regressione.
 * Non provati: il loader dei CSV (simulato con degli `INSERT` prima dell'apply, poi caricato
   dall'apply vero) e le automazioni di `ci_apply` (l'eccezione ATTIVO si vede solo lì).
+
+### 9.6 Ricaduta BE fatta (2026-10-20, sessione BE) e una richiesta al DB
+
+**Fatto** (`dev/backend-tid`, non committato al momento della scrittura):
+
+* `DocumentiRepository.risolvi_template_applicabile` legge anche `template_versione_id`;
+  `DocumentGenerationService._resolve_template` restituisce `(modello, versione_id)` e la stampa (e
+  l'anteprima) rilegge **quella** versione per id (`get_versione`). Una versione risolta che non si
+  rilegge è il patto del DB rotto: `RuntimeError`, non un 404.
+* Coda: `claim_stampe_pending` restituisce `tipo_documento_output_id`, il worker lo passa a
+  `genera_documento`. `accoda_stampe_lotto(lotto_id, tipo_documento_output_id=None)` chiama la firma
+  `(bigint, bigint)`. Il task della pipeline e `ristampa_lotto` non conoscono il tipo (nessun
+  riferimento in `apps/vendite`): passano NULL, e lo deduce la risoluzione.
+* `error_policies_generated.py` rigenerato: cambia solo la nota di
+  `E_CODA_ARCHIVIAZIONE_NON_AMMESSA`. Commenti di `pipeline_repository` e del task allineati a
+  `ex_fatture_stampa_coda_vivo`.
+* Prove: 4400 test di `vendite`, `documenti`, `core` verdi; su dbdev (`ZEROERP_TEST_DB_E2E=1`)
+  `test_template_standard_db` 4/4 (il caso 1 rilegge la versione risolta) e il nuovo
+  `vendite/tests/db/test_stampa_coda_tipo_documento_db.py` 2/2 (binding della firma a due
+  argomenti e della colonna nel `RETURNING`); `smoke-fatturazione-render-stampa` verde.
+
+**R-1 — al team DB: la versione stampabile di un modello dato.** La P-2 chiude la seconda copia
+di «può stampare» solo per il modello **risolto**. Quando il chiamante **indica** il modello
+(`template_documento_id`: le righe della coda con l'override, le viste di `sorgente_documenti_views`)
+la risoluzione non gira, e il BE cerca la versione con i suoi filtri
+(`get_versione_pubblicata_attiva`: `PUBBLICATA`, `attivo`, `validita @> oggi`). Sono le due copie
+che la P-2 voleva eliminare, e divergono già: il BE **non guarda se il modello è attivo**, quindi
+un modello spento indicato esplicitamente stampa ancora, mentre per la risoluzione non può
+stampare. Si chiede:
+
+* una lettura del DB che, dato un modello, dia la sua versione stampabile alla data operativa, con
+  **la stessa definizione** di candidato usata da `fn_risolvi_template_applicabile` (scritta una
+  volta, non ricopiata: forma a scelta del team DB, per esempio una funzione che anche la
+  risoluzione usa);
+* un rifiuto con un codice suo quando il modello indicato non può stampare (spento, nessuna
+  versione valida oggi), con classe e messaggio decisi dal team DB; oggi il BE dà il generico
+  `E_DOCUMENTI_NOT_FOUND`.
+
+Dopo l'apply il BE passa il ramo del modello indicato alla lettura nuova e ritira
+`get_versione_pubblicata_attiva` (9-decies).

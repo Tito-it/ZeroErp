@@ -25,10 +25,19 @@
 #  10. update_empty_payload_raises
 #  11. update_propagates_404_from_reader
 #  12. update_unique_violation_mapped
+#  13. personalizza_copia_testata_e_versione_con_origine
+#  14. personalizza_is_default_false
+#  15. personalizza_modello_non_standard_raises
+#  16. personalizza_emittente_fuori_scope_raises
+#  17. personalizza_standard_senza_pubblicata_raises
+#  18. personalizza_payload_extra_keys_raises
+#  19. personalizza_codice_proprio_e_is_default_nullo
+#  20. personalizza_codice_duplicato_mappato
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -264,3 +273,180 @@ class TemplateAdminServiceUpdateTests(SimpleTestCase):
             svc.update_template(_make_user(), 42, {"codice_interno": "DUP"})
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         self.assertIn("interno", ctx.exception.message.lower())
+
+
+_SCOPE = "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids"
+_ATOMIC = "apps.documenti.services.template_admin_service.transaction.atomic"
+
+# La testata dello standard come la rilegge il reader.
+_STANDARD: dict[str, Any] = {
+    "id": 2728,
+    "standard": True,
+    "emittente_fiscale_id": None,
+    "tipo_documento_output_id": 1,
+    "sorgente_tipo_id": 10,
+    "codice": "PREVENTIVO",
+    "codice_interno": "preventivo",
+    "descrizione": "Preventivo",
+    "context_builder_code": "PREVENTIVO",
+    "file_name_pattern": "preventivo-{numero}.pdf",
+}
+
+# L'ultima versione PUBBLICATA dello standard (proiezione di dettaglio).
+_ORIGINE: dict[str, Any] = {
+    "id": 501,
+    "titolo": "Preventivo v3",
+    "formato_template": "HTML",
+    "html_template": "<p>{{ numero }}</p>",
+    "css_template": "p {}",
+    "markdown_template": None,
+    "render_engine_id": 1,
+    "page_format": "A4",
+    "page_orientation": "PORTRAIT",
+    "margin_top_mm": 10,
+    "margin_right_mm": 10,
+    "margin_bottom_mm": 10,
+    "margin_left_mm": 10,
+    "versione_contesto": 2,
+    "context_schema": "{}",
+    "meta": "{}",
+}
+
+
+def _personalizza_mocks(
+    *, standard: dict[str, Any] | None = None, origine: Any = _ORIGINE,
+) -> tuple[TemplateAdminService, MagicMock, MagicMock]:
+    svc, repo, reader = _service_with_mocks(
+        repo_methods={
+            "get_ultima_versione_pubblicata": origine,
+            "create_template": 900,
+            "create_versione": 901,
+        },
+    )
+    nuovo = {"id": 900, "standard": False, "emittente_fiscale_id": 11}
+    reader.get_template.side_effect = (
+        lambda _user, tid: dict(standard or _STANDARD) if tid != 900 else nuovo
+    )
+    return svc, repo, reader
+
+
+class TemplateAdminServicePersonalizzaTests(SimpleTestCase):
+    # 13. La testata copia quella dello standard per l'emittente; la versione
+    #     1 e' una BOZZA che copia l'ultima pubblicata e ne dichiara l'origine.
+    @patch(_SCOPE, return_value=[11])
+    def test_personalizza_copia_testata_e_versione_con_origine(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        with patch(_ATOMIC, return_value=nullcontext()):
+            result = svc.personalizza_template(
+                _make_user(), 2728, {"emittente_fiscale_id": 11},
+            )
+        self.assertEqual(result["id"], 900)
+        testata = repo.create_template.call_args.args[0]
+        self.assertEqual(testata["emittente_fiscale_id"], 11)
+        self.assertNotIn("standard", testata)
+        for campo in (
+            "tipo_documento_output_id", "sorgente_tipo_id", "codice",
+            "codice_interno", "descrizione", "context_builder_code",
+            "file_name_pattern",
+        ):
+            self.assertEqual(testata[campo], _STANDARD[campo], campo)
+        self.assertTrue(testata["is_default"])
+        self.assertTrue(testata["attivo"])
+
+        repo.get_ultima_versione_pubblicata.assert_called_once_with(2728)
+        versione = repo.create_versione.call_args.args[0]
+        self.assertEqual(versione["template_documento_id"], 900)
+        self.assertEqual(versione["versione"], 1)
+        self.assertEqual(versione["stato"], "BOZZA")
+        self.assertEqual(versione["derivata_da_versione_id"], 501)
+        self.assertEqual(versione["html_template"], _ORIGINE["html_template"])
+        self.assertEqual(versione["versione_contesto"], 2)
+        self.assertIsNone(versione["valido_dal"])
+
+    # 14. `is_default=false`: la copia nasce non predefinita.
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_is_default_false(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        with patch(_ATOMIC, return_value=nullcontext()):
+            svc.personalizza_template(
+                _make_user(), 2728, {"emittente_fiscale_id": 11, "is_default": False},
+            )
+        self.assertFalse(repo.create_template.call_args.args[0]["is_default"])
+
+    # 15. Un modello d'emittente non si personalizza: si clona una versione.
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_modello_non_standard_raises(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks(
+            standard={**_STANDARD, "standard": False, "emittente_fiscale_id": 11},
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            svc.personalizza_template(_make_user(), 2728, {"emittente_fiscale_id": 11})
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.create_template.assert_not_called()
+
+    # 16. L'emittente deve essere nel perimetro di chi personalizza.
+    @patch(_SCOPE, return_value=[1, 2])
+    def test_personalizza_emittente_fuori_scope_raises(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        with self.assertRaises(ServiceError) as ctx:
+            svc.personalizza_template(_make_user(), 2728, {"emittente_fiscale_id": 11})
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.create_template.assert_not_called()
+
+    # 17. Uno standard senza versione pubblicata non ha niente da copiare.
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_standard_senza_pubblicata_raises(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks(origine=None)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.personalizza_template(_make_user(), 2728, {"emittente_fiscale_id": 11})
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.create_template.assert_not_called()
+
+    # 18. Il resto della testata e' dello standard: altre chiavi -> 400.
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_payload_extra_keys_raises(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        with self.assertRaises(ServiceError) as ctx:
+            svc.personalizza_template(
+                _make_user(), 2728,
+                {"emittente_fiscale_id": 11, "context_builder_code": "X"},
+            )
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        repo.create_template.assert_not_called()
+
+    # 19. Codice, codice interno e descrizione dati dal chiamante vincono su
+    #     quelli dello standard; `is_default` nullo vale assente (vero).
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_codice_proprio_e_is_default_nullo(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        with patch(_ATOMIC, return_value=nullcontext()):
+            svc.personalizza_template(
+                _make_user(), 2728,
+                {
+                    "emittente_fiscale_id": 11, "is_default": None,
+                    "codice": "PREV-ACME", "codice_interno": "prev_acme",
+                    "descrizione": "Preventivo ACME",
+                },
+            )
+        testata = repo.create_template.call_args.args[0]
+        self.assertEqual(testata["codice"], "PREV-ACME")
+        self.assertEqual(testata["codice_interno"], "prev_acme")
+        self.assertEqual(testata["descrizione"], "Preventivo ACME")
+        self.assertEqual(testata["context_builder_code"], _STANDARD["context_builder_code"])
+        self.assertTrue(testata["is_default"])
+
+    # 20. Il codice gia' usato dall'emittente: lo stesso messaggio parlante
+    #     della create, e nessuna versione scritta.
+    @patch(_SCOPE, return_value=None)
+    def test_personalizza_codice_duplicato_mappato(self, _s) -> None:
+        svc, repo, _ = _personalizza_mocks()
+        repo.create_template.side_effect = IntegrityError(
+            'duplicate key value violates unique constraint '
+            '"uq_template_documenti_emittente_sorgente_codice"'
+        )
+        with patch(_ATOMIC, return_value=nullcontext()), \
+                self.assertRaises(ServiceError) as ctx:
+            svc.personalizza_template(_make_user(), 2728, {"emittente_fiscale_id": 11})
+        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        self.assertIn("codice", ctx.exception.message.lower())
+        repo.create_versione.assert_not_called()

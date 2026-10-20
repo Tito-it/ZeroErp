@@ -62,7 +62,7 @@ class AnteprimaDocumentoTests(SimpleTestCase):
         svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
             },
         )
         with patch_scope(None), patch_get_builder({"numero": 42}), \
@@ -95,7 +95,7 @@ class AnteprimaDocumentoTests(SimpleTestCase):
         svc, repo, _, _ = service_with_mocks(
             repo_methods={
                 **risolto(template, livello="STANDARD"),
-                "get_versione_pubblicata_attiva": versione_row(),
+                "get_versione": versione_row(),
             },
         )
         with patch_scope([11]), patch_get_builder({"numero": 42}), \
@@ -130,7 +130,7 @@ class AnteprimaDocumentoTests(SimpleTestCase):
         svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
             },
         )
         with patch_scope(None), patch_get_builder({"numero": 1}):
