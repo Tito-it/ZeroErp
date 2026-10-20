@@ -7,12 +7,12 @@
 --       fn_prendi_in_carico_flusso (20260618-05): casi A/B/C/D + guard.
 --       Trigger FLUSSO_ASSEGNAZIONE_CAMBIATA (20260618-08).
 --
--- Riusa 2 operatori (risorse_umane) gia' esistenti: opA (a cui si imposta in
+-- Costruisce 2 operatori (fn_pgtap_crea_operatore_umano): opA (a cui si imposta in
 -- transazione il reparto RepA di test) e opO (l'"altro"). Crea solo 2 reparti
 -- di test e i template. Tutto in BEGIN;...ROLLBACK; -> nessun cleanup.
 --
 -- Indice:
--- 1)  Setup (2 reparti, 2 operatori riusati, template, competenza, pratica)
+-- 1)  Setup (2 reparti, 2 operatori costruiti, template, competenza, pratica)
 -- 2)  Caso C (libero): opA prende flusso senza reparto/skill -> TRUE
 -- 3)  Caso B (reparto): opA (RepA) prende flusso uo=RepA -> TRUE
 -- 4)  Caso B ko: opA prende flusso uo=RepB (non suo) -> FLUSSI_PRESA_NON_ELIGIBILE (496)
@@ -68,15 +68,18 @@ WITH ins AS (
 )
 SELECT id AS uo_id, codice_interno FROM ins;
 
--- 2 operatori esistenti distinti (riuso)
+-- 2 operatori COSTRUITI, non pescati dalla macchina: su un database
+-- ricostruito da zero non c'e' nessuna risorsa umana da riusare, e il file
+-- moriva sul NOT NULL di competenze_flussi.
+-- ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE _af_op_a AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('assegnazione flusso A', false);
+CREATE TEMP TABLE _af_op_o AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('assegnazione flusso O', false);
 CREATE TEMP TABLE _af_op AS
-WITH ops AS (
-  SELECT id, row_number() OVER (ORDER BY id) AS rn
-    FROM anagrafiche.risorse_umane WHERE attivo=true
-)
-SELECT 'A'::text AS tag, id AS op_id FROM ops WHERE rn=1
+SELECT 'A'::text AS tag, risorsa_umana_id AS op_id FROM _af_op_a
 UNION ALL
-SELECT 'O', id FROM ops WHERE rn=2;
+SELECT 'O', risorsa_umana_id FROM _af_op_o;
 
 -- opA: reparto anagrafico = RepA (impostato in transazione, rollback)
 UPDATE anagrafiche.risorse_umane
@@ -119,7 +122,7 @@ SELECT ok(
   (SELECT count(*) FROM _af_op)=2
   AND (SELECT op_id FROM _af_op WHERE tag='A') IS DISTINCT FROM (SELECT op_id FROM _af_op WHERE tag='O')
   AND (SELECT pratica_id FROM _af_pratica) IS NOT NULL,
-  '1. Setup: 2 operatori riusati (distinti), 2 reparti, template, competenza, pratica'
+  '1. Setup: 2 operatori costruiti (distinti), 2 reparti, template, competenza, pratica'
 );
 
 -- =========================================================

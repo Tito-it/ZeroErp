@@ -1,0 +1,268 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# QUALE MODELLO STAMPA UN DOCUMENTO: conta solo un modello che PUO' STAMPARE
+#   documenti.fn_risolvi_template_applicabile (rev di 20261020-09)
+#   Brief: brief-db-modelli-documento-standard, §4.1 Q-2 (strada B; correzione di Tid, 2026-10-19)
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   La strada B decideva il livello dai modelli ATTIVI dell'emittente. Ma un
+#   modello si prepara solo da attivo: una versione attiva sotto un modello
+#   spento la rifiuta trgfn_child_requires_active_parent. Su template_documenti
+#   `attivo` dice insieme «esiste» e «in uso per la stampa». Cosi' la copia appena
+#   creata da «personalizza» (una sola bozza) toglieva lo standard all'emittente,
+#   e da quel momento ogni sua stampa si fermava con «nessuna versione
+#   pubblicata».
+#
+# -- LA REGOLA ---------------------------------------------------------------------
+#   Un modello e' un CANDIDATO solo se puo' stampare: e' attivo e ha una versione
+#   PUBBLICATA, attiva e valida alla data operativa
+#   (validita @> script.fn_data_operativa()). Sono i filtri con cui chi stampa
+#   carica poi la versione (DocumentiRepository.get_versione_pubblicata_attiva).
+#   La regola vale in tutti e tre i passi, con lo stesso predicato:
+#   1. deduzione del tipo (tipo non indicato): conta solo i candidati, quindi
+#      una bozza di un altro tipo non rende ambigua una sorgente che stampa con
+#      un tipo solo;
+#   2. livello EMITTENTE: l'emittente ha almeno un candidato suo -> vale il suo
+#      predefinito, SE e' anche lui un candidato. Un modello stampabile non
+#      predefinito accanto a un predefinito ancora in preparazione e'
+#      E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO, non il predefinito che poi
+#      fallisce alla stampa; lo standard resta fuori (il motivo della strada B);
+#   3. livello STANDARD: il predefinito standard, se e' un candidato.
+#   ⚠️ Il passo 3 va oltre la richiesta («nessun cambio: lo standard nasce
+#   pubblicato dal seed»). Il modello ammette uno standard predefinito senza
+#   versione valida oggi (la versione si spegne, un'evoluzione si pubblica con
+#   una data futura): la risposta giusta e' E_DOCUMENTI_TEMPLATE_NON_RISOLTO,
+#   il cui rimedio e' del sistema, non un modello restituito che fallisce dopo
+#   con un codice generico. E un candidato si definisce una volta sola, per
+#   tutti i livelli.
+#
+# -- LA FORMA ----------------------------------------------------------------------
+#   I passi 2 e 3 sono una lettura sola: candidati dell'emittente e standard
+#   della terna, contati e scelti in aggregato (al massimo un predefinito
+#   attivo per lato: uq_template_documenti_default_attivo, NULLS NOT DISTINCT).
+#   Il predicato «puo' stampare» compare due volte, nel passo 1 e in questa
+#   lettura: sono due istruzioni della stessa funzione.
+#   La data operativa si legge una volta (STABLE: l'istante della transazione).
+#   Nel contesto di E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO la chiave
+#   `modelli_attivi` diventa `modelli_stampabili` (il BE non la legge ancora:
+#   non chiama la funzione).
+#
+#   Firma, RETURNS TABLE, STABLE e SECURITY INVOKER restano quelli di -09: CREATE
+#   OR REPLACE, nessun DROP. Nessun COST/ROWS/SET da ripetere.
+#
+# Codici: nessuno nuovo. Note e cause aggiornate in 80_data (codici_errore.csv,
+#   messaggi_errore.csv: SENZA_PREDEFINITO, NON_RISOLTO, AMBIGUO).
+# Verifica: db/pgtap/documenti/test-documenti-template-standard-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261020-26-update-fn-risolvi-template-applicabile-solo-stampabili-mctit.yaml
+
+  - changeSet:
+      id: 20261020-26-update-fn-risolvi-template-applicabile-solo-stampabili
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.fn_risolvi_template_applicabile: conta solo i modelli che possono stampare (attivi, con
+        una versione PUBBLICATA attiva e valida alla data operativa), nella deduzione del tipo, nel
+        livello EMITTENTE e nel livello STANDARD. Brief: brief-db-modelli-documento-standard §4.1 Q-2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'documenti'
+                 AND p.proname = 'fn_risolvi_template_applicabile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.fn_risolvi_template_applicabile(
+                  p_sorgente_tipo_id          documenti.template_documenti.sorgente_tipo_id%TYPE,
+                  p_emittente_fiscale_id      documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  p_tipo_documento_output_id  documenti.template_documenti.tipo_documento_output_id%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE(
+                  template_documento_id  documenti.template_documenti.id%TYPE,
+                  -- tipo esplicito: non e' una colonna, e' il livello che ha
+                  -- risolto ('EMITTENTE' | 'STANDARD')
+                  livello                text
+              )
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: il modello che stampa un documento della sorgente
+              --   p_sorgente_tipo_id dell'emittente p_emittente_fiscale_id.
+              --   Strada B (brief-db-modelli-documento-standard §4.1 Q-2): se
+              --   l'emittente ha modelli che possono stampare per (tipo,
+              --   sorgente) vale il suo predefinito, e senza predefinito
+              --   stampabile e' un errore; se non ne ha, vale il predefinito
+              --   standard.
+              --   «Puo' stampare» = attivo, con una versione PUBBLICATA, attiva
+              --   e valida alla data operativa: gli stessi filtri con cui chi
+              --   stampa carica la versione (rev 20261020-26).
+              DECLARE
+                  -- tipo esplicito: la data operativa, non una colonna
+                  v_oggi         date;
+                  v_tipo         documenti.template_documenti.tipo_documento_output_id%TYPE;
+                  -- tipo esplicito: dei conteggi, non colonne
+                  v_n_tipi       integer;
+                  v_n_propri     integer;
+                  v_template_id  documenti.template_documenti.id%TYPE;
+                  v_standard_id  documenti.template_documenti.id%TYPE;
+                  v_tipo_nome    documenti.tipi_documento_output.descrizione%TYPE;
+                  v_sorgente     config.sorgenti.codice_interno%TYPE;
+              BEGIN
+                  -- 0) Argomenti: solo un chiamante rotto li manda male.
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_risolvi_template_applicabile',
+                          'E_DOCUMENTI_RISOLVI_TEMPLATE_INPUT_INVALIDO',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id),
+                          NULL::uuid,
+                          'p_sorgente_tipo_id (obbligatorio, > 0)');
+                  END IF;
+                  IF p_emittente_fiscale_id IS NULL OR p_emittente_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_risolvi_template_applicabile',
+                          'E_DOCUMENTI_RISOLVI_TEMPLATE_INPUT_INVALIDO',
+                          jsonb_build_object('emittente_fiscale_id', p_emittente_fiscale_id),
+                          NULL::uuid,
+                          'p_emittente_fiscale_id (obbligatorio, > 0: l''emittente del documento)');
+                  END IF;
+                  IF p_tipo_documento_output_id IS NOT NULL AND p_tipo_documento_output_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_risolvi_template_applicabile',
+                          'E_DOCUMENTI_RISOLVI_TEMPLATE_INPUT_INVALIDO',
+                          jsonb_build_object('tipo_documento_output_id', p_tipo_documento_output_id),
+                          NULL::uuid,
+                          'p_tipo_documento_output_id (> 0 se indicato)');
+                  END IF;
+
+                  v_oggi := script.fn_data_operativa();
+
+                  -- 1) Il tipo di documento. Indicato: vale quello. Non indicato:
+                  --    si deduce solo se e' uno fra i modelli della sorgente che
+                  --    questo emittente puo' usare (i suoi e gli standard) e che
+                  --    possono stampare: una bozza di un altro tipo non conta.
+                  v_tipo := p_tipo_documento_output_id;
+                  IF v_tipo IS NULL THEN
+                      SELECT count(DISTINCT t.tipo_documento_output_id)::integer,
+                             min(t.tipo_documento_output_id)
+                        INTO v_n_tipi, v_tipo
+                        FROM documenti.template_documenti t
+                       WHERE t.sorgente_tipo_id = p_sorgente_tipo_id
+                         AND t.attivo
+                         AND (t.emittente_fiscale_id = p_emittente_fiscale_id OR t.standard)
+                         AND EXISTS (
+                               SELECT 1
+                                 FROM documenti.template_documenti_versioni v
+                                WHERE v.template_documento_id = t.id
+                                  AND v.stato = 'PUBBLICATA'
+                                  AND v.attivo
+                                  AND v.validita @> v_oggi);
+
+                      IF v_n_tipi > 1 THEN
+                          SELECT s.codice_interno INTO v_sorgente
+                            FROM config.sorgenti s
+                           WHERE s.id = p_sorgente_tipo_id;
+                          PERFORM script.fn_log_and_raise_error(
+                              'documenti', 'fn_risolvi_template_applicabile',
+                              'E_DOCUMENTI_TEMPLATE_AMBIGUO',
+                              jsonb_build_object(
+                                  'sorgente_tipo_id',     p_sorgente_tipo_id,
+                                  'emittente_fiscale_id', p_emittente_fiscale_id,
+                                  'tipi_candidati',       v_n_tipi),
+                              NULL::uuid,
+                              coalesce(v_sorgente::text, p_sorgente_tipo_id::text));
+                      END IF;
+                  END IF;
+
+                  IF v_tipo IS NOT NULL THEN
+                      SELECT o.descrizione INTO v_tipo_nome
+                        FROM documenti.tipi_documento_output o
+                       WHERE o.id = v_tipo;
+                  END IF;
+
+                  -- 2) I candidati della terna, in una lettura: quelli
+                  --    dell'emittente (contati, e il suo predefinito) e il
+                  --    predefinito standard. Candidato = puo' stampare.
+                  --    uq_template_documenti_default_attivo (NULLS NOT DISTINCT):
+                  --    al massimo un predefinito attivo per lato, quindi max() non
+                  --    sceglie fra due.
+                  SELECT count(*) FILTER (WHERE NOT t.standard)::integer,
+                         max(t.id) FILTER (WHERE NOT t.standard AND t.is_default),
+                         max(t.id) FILTER (WHERE t.standard AND t.is_default)
+                    INTO v_n_propri, v_template_id, v_standard_id
+                    FROM documenti.template_documenti t
+                   WHERE t.tipo_documento_output_id = v_tipo
+                     AND t.sorgente_tipo_id = p_sorgente_tipo_id
+                     AND (t.emittente_fiscale_id = p_emittente_fiscale_id OR t.standard)
+                     AND t.attivo
+                     AND EXISTS (
+                           SELECT 1
+                             FROM documenti.template_documenti_versioni v
+                            WHERE v.template_documento_id = t.id
+                              AND v.stato = 'PUBBLICATA'
+                              AND v.attivo
+                              AND v.validita @> v_oggi);
+
+                  -- 2a) Livello EMITTENTE: decide la presenza di modelli suoi che
+                  --     possono stampare, non il predefinito (strada B).
+                  IF v_n_propri > 0 THEN
+                      IF v_template_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'documenti', 'fn_risolvi_template_applicabile',
+                              'E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO',
+                              jsonb_build_object(
+                                  'tipo_documento_output_id', v_tipo,
+                                  'sorgente_tipo_id',         p_sorgente_tipo_id,
+                                  'emittente_fiscale_id',     p_emittente_fiscale_id,
+                                  'modelli_stampabili',       v_n_propri),
+                              NULL::uuid,
+                              coalesce(v_tipo_nome::text, '?'));
+                      END IF;
+
+                      template_documento_id := v_template_id;
+                      livello := 'EMITTENTE';
+                      RETURN NEXT;
+                      RETURN;
+                  END IF;
+
+                  -- 2b) Livello STANDARD.
+                  IF v_standard_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_risolvi_template_applicabile',
+                          'E_DOCUMENTI_TEMPLATE_NON_RISOLTO',
+                          jsonb_build_object(
+                              'tipo_documento_output_id', v_tipo,
+                              'sorgente_tipo_id',         p_sorgente_tipo_id,
+                              'emittente_fiscale_id',     p_emittente_fiscale_id),
+                          NULL::uuid,
+                          coalesce(v_tipo_nome::text, '?'));
+                  END IF;
+
+                  template_documento_id := v_standard_id;
+                  livello := 'STANDARD';
+                  RETURN NEXT;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.fn_risolvi_template_applicabile(
+                  documenti.template_documenti.sorgente_tipo_id%TYPE,
+                  documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  documenti.template_documenti.tipo_documento_output_id%TYPE) IS
+                  'Il modello che stampa un documento (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-2, strada B di Tid). Conta solo un modello che PUO'' STAMPARE: attivo, con una versione PUBBLICATA, attiva e valida alla data operativa (rev 20261020-26: un modello attivo con la sola bozza non toglie lo standard). Livello EMITTENTE se l''emittente del documento ha modelli stampabili per (tipo, sorgente): vale il suo predefinito, se stampabile; altrimenti E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO (lo standard non entra). Livello STANDARD se non ne ha: il predefinito standard stampabile, altrimenti E_DOCUMENTI_TEMPLATE_NON_RISOLTO. Tipo di output facoltativo: si deduce solo se fra i modelli stampabili della sorgente utilizzabili dall''emittente ce n''e'' uno solo, altrimenti E_DOCUMENTI_TEMPLATE_AMBIGUO. Argomenti rotti: E_DOCUMENTI_RISOLVI_TEMPLATE_INPUT_INVALIDO. L''emittente e'' quello del documento, gia'' letto sotto RLS dal chiamante: niente scope qui. Restituisce una riga (template_documento_id, livello).';

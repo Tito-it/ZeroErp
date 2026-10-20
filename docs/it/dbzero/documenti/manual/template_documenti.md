@@ -65,8 +65,9 @@ documento: una riga con `standard = true` e **senza emittente**
 standard, non ha emittente).
 
 * **Fa da ripiego.** Si stampa con lo standard quando l'emittente non ha nessun
-  modello suo attivo per quel documento. Se ne ha, vale il suo predefinito, e
-  senza predefinito la stampa si ferma (la regola è in
+  modello suo che può stampare per quel documento (attivo, con una versione
+  pubblicata valida oggi: la sola bozza non basta). Se ne ha, vale il suo
+  predefinito, e senza predefinito la stampa si ferma (la regola è in
   [fn_risolvi_template_applicabile](/dbzero/documenti/funzioni/fn_risolvi_template_applicabile)).
 * **Lo scrivono solo il seed e i changeSet.** Dall'applicazione si legge e
   basta (`E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA`, guard

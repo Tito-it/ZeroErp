@@ -15,14 +15,30 @@ modello diverso lo personalizza, e da quel momento vale il suo.
 
 La regola sta nel database perché è una regola del modello: il backend la chiama e non la riscrive.
 
+### Conta solo un modello che può stampare
+
+Un modello entra nella scelta solo se **può stampare**: è attivo e ha una versione **pubblicata**,
+attiva e valida alla data operativa dell'azienda. Sono le stesse condizioni con cui chi stampa
+carica poi la versione.
+
+Il motivo: un modello si prepara da attivo (una versione non può nascere sotto un modello spento).
+Quindi «attivo» non vuol dire «pronto». La copia appena creata con «personalizza» ha solo una
+bozza, e finché non la si pubblica l'emittente continua a stampare con lo standard. Lo stesso vale
+per una versione spenta e per una versione pubblicata che vale da una data futura.
+
+La condizione vale per tutti e tre i passi: la scelta del tipo, il livello dell'emittente e il
+livello standard.
+
 ### La regola, a due livelli
 
-1. **L'emittente ha almeno un modello suo attivo** per quel tipo di documento e quella sorgente →
-   si usa il **suo predefinito**. Se nessuno dei suoi è predefinito, la stampa si ferma con
-   `E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO`: lo standard **non** entra. Un modello attivo
-   dell'emittente vuol dire «per questo documento uso i miei», e un predefinito dimenticato non
-   deve far uscire il documento con la grafica sbagliata senza che nessuno se ne accorga.
-2. **L'emittente non ha nessun modello suo attivo** → si usa il **predefinito standard**. Se manca,
+1. **L'emittente ha almeno un modello suo che può stampare** per quel tipo di documento e quella
+   sorgente → si usa il **suo predefinito**, se anche lui può stampare. Altrimenti la stampa si
+   ferma con `E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO`, e lo standard **non** entra. Un modello
+   pubblicato dell'emittente vuol dire «per questo documento uso i miei». Un predefinito
+   dimenticato, o ancora in preparazione, non deve far uscire il documento con la grafica
+   sbagliata senza che nessuno se ne accorga.
+2. **L'emittente non ha nessun modello suo che può stampare** → si usa il **predefinito
+   standard**. Se manca, è spento o non ha una versione valida oggi:
    `E_DOCUMENTI_TEMPLATE_NON_RISOLTO`.
 
 Spegnere tutti i propri modelli di un tipo riporta allo standard: è voluto.
@@ -36,8 +52,9 @@ Spegnere tutti i propri modelli di un tipo riporta allo standard: è voluto.
 | `p_tipo_documento_output_id` | `template_documenti.tipo_documento_output_id%TYPE` | il tipo di documento; facoltativo |
 | **Ritorno** | `TABLE(template_documento_id, livello)` | una riga; `livello` = `EMITTENTE` o `STANDARD` |
 
-Il tipo di documento si può omettere solo se, fra i modelli attivi della sorgente che l'emittente
-può usare (i suoi e gli standard), ce n'è **uno** solo. Con più tipi la funzione non sceglie a caso:
+Il tipo di documento si può omettere solo se, fra i modelli della sorgente che l'emittente può
+usare (i suoi e gli standard) e che possono stampare, ce n'è **uno** solo: una bozza di un altro
+tipo non conta. Con più tipi la funzione non sceglie a caso:
 `E_DOCUMENTI_TEMPLATE_AMBIGUO`.
 
 `STABLE`, `SECURITY INVOKER`. Non rifà il perimetro: l'emittente è quello del documento, che il
@@ -47,12 +64,12 @@ chiamante ha già letto con i suoi permessi, e lo standard si legge da tutti.
 
 | Codice | Classe | Quando |
 |---|---|---|
-| `E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO` | `CONFLITTO_STATO` | l'emittente ha modelli suoi attivi, nessuno predefinito. Rimedia l'operatore |
-| `E_DOCUMENTI_TEMPLATE_NON_RISOLTO` | `NON_TROVATO` | nessun modello dell'emittente e nessuno standard predefinito attivo |
+| `E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO` | `CONFLITTO_STATO` | l'emittente ha modelli suoi che possono stampare, ma nessuno di loro è predefinito. Rimedia l'operatore |
+| `E_DOCUMENTI_TEMPLATE_NON_RISOLTO` | `NON_TROVATO` | nessun modello dell'emittente che può stampare, e nessuno standard predefinito che può stampare |
 | `E_DOCUMENTI_TEMPLATE_AMBIGUO` | `TECNICO` | tipo omesso su una sorgente con più tipi di documento |
 | `E_DOCUMENTI_RISOLVI_TEMPLATE_INPUT_INVALIDO` | `TECNICO` | sorgente o emittente NULL o ≤ 0, tipo ≤ 0 |
 
 ### Test
 
-`db/pgtap/documenti/test-documenti-template-standard-v1.sql` (test 11-18),
+`db/pgtap/documenti/test-documenti-template-standard-v1.sql` (test 11-23),
 `test-documenti-template-standard-app-v1.sql` (test 6, la lettura come applicazione).

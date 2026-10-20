@@ -77,37 +77,31 @@ CREATE TEMP TABLE tmp_gc_tp AS WITH ins AS (
 )
 SELECT id AS tp_id
 FROM ins;
--- Recupera un soggetto con almeno un ruolo e un'istanza
+-- Due clienti COSTRUITI (soggetto -> ruolo CL -> istanza -> BA), non pescati
+-- dalla macchina: su un database ricostruito da zero non c'e' nessun soggetto
+-- da pescare, e il file moriva alle precondizioni. Il primo e' la catena
+-- coerente; il secondo da' «l'altro soggetto» e «l'istanza di un altro».
+-- Dopo il contesto e senza terzo parametro: il legame BA -> emittente lo
+-- scrive il trigger z90 verso chi agisce.
+-- ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_gc_cli1 AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('guard contesto pratica 1');
+CREATE TEMP TABLE tmp_gc_cli2 AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('guard contesto pratica 2');
+-- Il soggetto con un ruolo e un'istanza suoi
 CREATE TEMP TABLE tmp_gc_sogg AS
-SELECT s.id AS soggetto_id,
-  sr.id AS ruolo_id,
-  iu.id AS istanza_id
-FROM anagrafiche.soggetti s
-  JOIN anagrafiche.soggetti_ruoli sr ON sr.soggetto_id = s.id
-  JOIN anagrafiche.istanze_utilities iu ON iu.soggetto_id = s.id
--- Ordine su tutte e tre le chiavi: il JOIN puo' produrre piu' righe per lo
--- stesso soggetto (piu' ruoli, piu' istanze), quindi ordinare il solo
--- soggetto lascerebbe ancora scegliere al planner ruolo e istanza.
-ORDER BY s.id, sr.id, iu.id
-LIMIT 1;
+SELECT soggetto_id,
+  soggetto_ruolo_id AS ruolo_id,
+  istanza_utility_id AS istanza_id
+FROM tmp_gc_cli1;
 -- Un soggetto diverso per test ruolo non coerente
 CREATE TEMP TABLE tmp_gc_altro_sogg AS
-SELECT s.id AS soggetto_id
-FROM anagrafiche.soggetti s
-WHERE s.id <> (
-    SELECT soggetto_id
-    FROM tmp_gc_sogg
-  )
-LIMIT 1;
+SELECT soggetto_id
+FROM tmp_gc_cli2;
 -- Un'istanza di un soggetto diverso per test istanza non coerente
 CREATE TEMP TABLE tmp_gc_altra_istanza AS
-SELECT iu.id AS istanza_id
-FROM anagrafiche.istanze_utilities iu
-WHERE iu.soggetto_id <> (
-    SELECT soggetto_id
-    FROM tmp_gc_sogg
-  )
-LIMIT 1;
+SELECT istanza_utility_id AS istanza_id
+FROM tmp_gc_cli2;
 SELECT ok(
     (
       SELECT emittente_id IS NOT NULL
