@@ -107,7 +107,7 @@ ZeroErp/
 | `script` | Viste e funzioni applicative riusabili (building block, risoluzione permessi) |
 | `maintenance` | Job schedulati (pgAgent) |
 | `django` | Tabelle di Django (auth, sessioni) |
-| `public` | Estensioni (`dblink`, `unaccent`, `postgis`, `plpgsql_check`), **nessuna tabella**. Per la versione applicata: `DATABASECHANGELOG` |
+| `public` | Estensioni (`dblink`, `unaccent`, `postgis`, `plpgsql_check`, `btree_gist`), **nessuna tabella**. Per la versione applicata: `DATABASECHANGELOG` |
 
 Schemi non applicativi presenti su dbdev: `topology` (PostGIS), `pgagent` (scheduler),
 `data_conversion`, `internal`, `test`.

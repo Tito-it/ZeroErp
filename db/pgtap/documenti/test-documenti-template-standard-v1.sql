@@ -5,7 +5,7 @@
 -- pgTAP test per Zero ERP
 -- Test: il modello di documento STANDARD (brief-db-modelli-documento-standard §4.1)
 -- ------------------------------------------------------------
--- Elenco test (plan 35):
+-- Elenco test (plan 36):
 --  Struttura (Q-1)
 --   1) template_documenti.standard NOT NULL
 --   2) CHECK standard = (emittente NULL) presente, con quella definizione
@@ -20,9 +20,10 @@
 --  10) `standard` non cambia dopo l'INSERT -> lock
 --  Risoluzione, strada B (Q-2). Conta solo un modello che PUO' STAMPARE: attivo,
 --  con una versione PUBBLICATA, attiva e valida alla data operativa (rev 20261020-26)
---  11) emittente senza modelli suoi -> lo standard, livello STANDARD
+--  11) emittente senza modelli suoi -> lo standard, livello STANDARD, e la sua versione
+--      in uso (P-2, rev 20261020-27: la funzione restituisce anche la versione)
 --  12) modello suo attivo e predefinito con la sola bozza -> STANDARD
---  13) lo stesso modello, pubblicato -> il suo, livello EMITTENTE
+--  13) lo stesso modello, pubblicato -> il suo, livello EMITTENTE, con la versione pubblicata
 --  14) uno suo stampabile non predefinito + un predefinito in bozza -> SENZA_PREDEFINITO, NON lo standard
 --  15) la versione pubblicata spenta non conta -> STANDARD
 --  16) spenti i suoi modelli -> torna lo standard
@@ -48,6 +49,8 @@
 --  33) CONTESTO_SUPERATO (precede l'origine)
 --  34) ORIGINE_NON_DICHIARATA
 --  35) l'origine si eredita dalla versione precedente che la dichiara -> ALLINEATA
+--  Versione restituita (P-2)
+--  36) due versioni pubblicate, una sola valida oggi: la funzione restituisce quella
 --
 -- Scopo:
 --  - provare sui casi COSTRUITI (non sulle righe di dbdev) il modello standard:
@@ -75,7 +78,7 @@ END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(35);
+SELECT plan(36);
 
 -- ============================================================
 -- Fixture
@@ -216,11 +219,13 @@ SELECT max(v.id) FILTER (WHERE v.versione = 1) AS v1,
   FROM documenti.template_documenti_versioni v
  WHERE v.template_documento_id = (SELECT s1 FROM _s);
 
+-- ⚠️ Dal 2026-10-20 (P-2) il test chiede anche la versione: la v2, non la v1
+--   superata. Prima chiedeva solo modello e livello.
 SELECT is(
-  (SELECT row(r.template_documento_id, r.livello)::text
+  (SELECT row(r.template_documento_id, r.livello, r.template_versione_id)::text
      FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e1, _k.tipo) r),
-  (SELECT row(s1, 'STANDARD')::text FROM _s),
-  '11) senza modelli suoi l''emittente usa lo standard');
+  (SELECT row(s1, 'STANDARD', v2)::text FROM _s, _sv),
+  '11) senza modelli suoi l''emittente usa lo standard, con la versione in uso');
 
 -- E2: un modello suo, predefinito e attivo, appena creato: la sola bozza (la
 -- copia di «personalizza» prima della pubblicazione).
@@ -248,10 +253,13 @@ SELECT documenti.fn_pubblica_template_documento_versione(v.id, script.fn_data_op
  WHERE t.codice_interno = 'pgtap-e2-1';
 
 SELECT is(
-  (SELECT row(r.template_documento_id, r.livello)::text
+  (SELECT row(r.template_documento_id, r.livello, r.template_versione_id)::text
      FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e2, _k.tipo) r),
-  (SELECT row(t.id, 'EMITTENTE')::text FROM documenti.template_documenti t WHERE t.codice_interno = 'pgtap-e2-1'),
-  '13) pubblicato, il modello suo predefinito vince');
+  (SELECT row(t.id, 'EMITTENTE', v.id)::text
+     FROM documenti.template_documenti t
+     JOIN documenti.template_documenti_versioni v ON v.template_documento_id = t.id
+    WHERE t.codice_interno = 'pgtap-e2-1' AND v.stato = 'PUBBLICATA'),
+  '13) pubblicato, il modello suo predefinito vince, con la versione pubblicata');
 
 -- Il predefinito passa a un secondo modello ancora in bozza; il primo resta
 -- stampabile ma non predefinito.
@@ -530,6 +538,28 @@ SELECT is((SELECT stato FROM _scarto WHERE codice_interno = 'pgtap-c-nondich'),
   'ORIGINE_NON_DICHIARATA', '34) nessuna origine dichiarata: ORIGINE_NON_DICHIARATA');
 SELECT is((SELECT stato FROM _scarto WHERE codice_interno = 'pgtap-c-ereditata'),
   'ALLINEATA', '35) l''origine si eredita dalla versione che la dichiara: ALLINEATA');
+
+-- ============================================================
+-- Versione restituita (P-2)
+-- ============================================================
+-- E4 ha la v1 pubblicata da fra trenta giorni (test 17). Una v2 pubblicata che
+-- vale da dieci giorni fa a fra venti (le due finestre non si toccano): oggi
+-- stampa la v2, e la funzione deve restituire proprio quella.
+INSERT INTO documenti.template_documenti_versioni (
+    template_documento_id, versione, stato, titolo, html_template,
+    render_engine_id, valido_dal, valido_al, versione_contesto)
+SELECT t.id, 2, 'PUBBLICATA', 'e4-1 v2', '<html>e4-1 v2</html>', (SELECT render FROM _k),
+       script.fn_data_operativa() - 10, script.fn_data_operativa() + 20, 2
+  FROM documenti.template_documenti t WHERE t.codice_interno = 'pgtap-e4-1';
+
+SELECT is(
+  (SELECT row(r.template_documento_id, r.livello, r.template_versione_id)::text
+     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e4, _k.tipo) r),
+  (SELECT row(t.id, 'EMITTENTE', v.id)::text
+     FROM documenti.template_documenti t
+     JOIN documenti.template_documenti_versioni v ON v.template_documento_id = t.id
+    WHERE t.codice_interno = 'pgtap-e4-1' AND v.versione = 2),
+  '36) due versioni pubblicate, una sola valida oggi: la funzione restituisce quella');
 
 SELECT * FROM finish();
 ROLLBACK;

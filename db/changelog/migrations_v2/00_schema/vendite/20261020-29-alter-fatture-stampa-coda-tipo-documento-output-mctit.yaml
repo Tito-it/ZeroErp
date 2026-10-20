@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CODA DI STAMPA DICE CHE COSA STAMPARE, NON SOLO QUALE FATTURA
+#   vendite.fatture_stampa_coda: colonna tipo_documento_output_id, override
+#   legato a tipo e sorgente, una riga viva per (fattura, tipo)
+#   Brief: brief-db-modelli-documento-standard, §9 (C-1, C-2, C-3 di Tid, 2026-10-20)
+#
+# -- IL DIFETTO -------------------------------------------------------------------
+#   Il worker stampa con documenti.fn_risolvi_template_applicabile e non le passa
+#   il tipo di documento, perche' la riga non lo porta. Col tipo NULL la funzione
+#   accetta un solo candidato, con due solleva E_DOCUMENTI_TEMPLATE_AMBIGUO. Il
+#   modello ammette piu' tipi di output per la sorgente FATTURA: quel giorno ogni
+#   riga della coda andrebbe in errore.
+#
+# -- I PEZZI -------------------------------------------------------------------------
+#   1. tipo_documento_output_id, nullable, FK su documenti.tipi_documento_output.
+#      NULL = «decide il DB, se il candidato e' uno»: la semantica di oggi. Lo
+#      scrive chi accoda (vendite.fn_accoda_stampe_lotto, 20261020-30).
+#   2. chk_fatture_stampa_coda_modello_con_tipo: chi indica il modello esatto
+#      (template_documento_id) indica anche il tipo. Senza, la FK composta del
+#      punto 3 non si controllerebbe affatto (MATCH SIMPLE salta le righe con una
+#      colonna NULL), e un override col tipo NULL bloccherebbe nel punto 4 ogni
+#      altro tipo per quella fattura.
+#   3. fk_fatture_stampa_coda_template_documento, composta (modello, tipo,
+#      sorgente) -> documenti.template_documenti (id, tipo, sorgente), bersaglio
+#      uq_template_documenti_id_tipo_sorgente (20261020-28). E' anche la FK che
+#      mancava su template_documento_id: il modello esiste, ed e' di quel tipo e
+#      di quella sorgente. L'emittente del modello non si controlla qui: lo
+#      controlla la regola 4 di trgfn_documenti_generati_check_coerenza alla
+#      generazione, e una seconda copia ne divergerebbe.
+#   4. ex_fatture_stampa_coda_vivo, al posto di uq_fatture_stampa_coda_vivo: per
+#      una fattura le righe vive (PENDING, IN_CORSO) sono O una col tipo NULL, O
+#      piu' righe con tipi diversi. Il tipo e' un intervallo di un punto, e il
+#      NULL e' l'intervallo illimitato (int8range(NULL, NULL)): si sovrappone a
+#      tutti, quindi una riga col tipo NULL esclude le altre righe vive della
+#      stessa fattura, e viceversa. Il NULL vuol dire «qualunque tipo il DB
+#      risolva»: se lo risolve in X, la riga NULL e la riga X sono la stessa
+#      stampa; se non lo risolve, la riga NULL fallisce comunque per AMBIGUO.
+#      Vincolo e non trigger: due sessioni che accodano la stessa fattura
+#      insieme non passano tutte e due.
+#      ⚠️ Il `=` su bigint in un indice gist richiede btree_gist (preCondition):
+#      c'e' gia', la usano i vincoli di esclusione di listini, contratti, promo,
+#      sospensioni e conti d'incasso.
+#
+# -- L'ORDINE ------------------------------------------------------------------------
+#   uq_fatture_stampa_coda_vivo resta fino a 20261020-30: l'ON CONFLICT di
+#   fn_accoda_stampe_lotto lo nomina per colonne, e senza indice la funzione di
+#   oggi smetterebbe di funzionare. La -30 riscrive la funzione e poi lo ritira.
+#   Fra i due changeSet valgono tutti e due i vincoli: e' piu' stretto, non piu'
+#   largo.
+#
+# -- SUL DATABASE CHE C'E' ---------------------------------------------------------
+#   Le righe vive di oggi hanno tutte il tipo NULL (la colonna nasce qui) e sono
+#   gia' una per fattura (uq_fatture_stampa_coda_vivo): il vincolo di esclusione
+#   nasce valido per costruzione. Le righe con un override prendono il tipo dal
+#   modello prima del CHECK: l'unico scrittore di righe non scrive l'override,
+#   ma il changeSet deve reggere su ogni database. Un override che punta a un
+#   modello inesistente (la FK non c'era) fa fallire il changeSet: e' un dato da
+#   correggere a mano, non da cancellare in silenzio.
+#
+# -- AUTOMAZIONI DA ci_apply ---------------------------------------------------------
+#   - ATTIVO: la FK composta e' saltata (l'automazione considera solo FK a una
+#     colonna). La FK sul tipo e' dichiarata in dbops.automazione_attivo_eccezioni
+#     (80_data, stesso giro): il trigger REQUIRE scatterebbe su ogni UPDATE della
+#     riga, e con un tipo spento il claim del worker (una UPDATE su N righe) si
+#     fermerebbe per tutto il lotto.
+#   - Indici FK (90_end): policy opt-in, nessuna riga nuova. Le due FK puntano a
+#     cataloghi piccoli e il loro controllo referenziale scatta solo quando si
+#     cancella o si cambia una riga del catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261020-29-alter-fatture-stampa-coda-tipo-documento-output-mctit.yaml
+
+  - changeSet:
+      id: 20261020-29-alter-fatture-stampa-coda-tipo-documento-output
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatture_stampa_coda: tipo_documento_output_id (FK, nullable), override legato a tipo e
+        sorgente (CHECK + FK composta), ex_fatture_stampa_coda_vivo: una riga viva per (fattura, tipo), e
+        una riga col tipo NULL esclude le altre. Brief: brief-db-modelli-documento-standard §9.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: fatture_stampa_coda
+        - sqlCheck:
+            expectedResult: 1
+            sql: SELECT count(*) FROM pg_extension WHERE extname = 'btree_gist';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1) Il tipo di documento da stampare.
+              ALTER TABLE vendite.fatture_stampa_coda
+                ADD COLUMN tipo_documento_output_id bigint;
+
+              ALTER TABLE vendite.fatture_stampa_coda
+                ADD CONSTRAINT fk_fatture_stampa_coda_tipo_documento_output
+                FOREIGN KEY (tipo_documento_output_id)
+                REFERENCES documenti.tipi_documento_output (id);
+
+              -- 2) L'override porta il tipo: le righe che ce l'hanno lo prendono
+              --    dal modello, poi il CHECK.
+              UPDATE vendite.fatture_stampa_coda c
+                 SET tipo_documento_output_id = t.tipo_documento_output_id
+                FROM documenti.template_documenti t
+               WHERE t.id = c.template_documento_id
+                 AND c.tipo_documento_output_id IS NULL;
+
+              ALTER TABLE vendite.fatture_stampa_coda
+                ADD CONSTRAINT chk_fatture_stampa_coda_modello_con_tipo
+                CHECK (template_documento_id IS NULL OR tipo_documento_output_id IS NOT NULL);
+
+              -- 3) Il modello esiste, ed e' di quel tipo e di quella sorgente.
+              ALTER TABLE vendite.fatture_stampa_coda
+                ADD CONSTRAINT fk_fatture_stampa_coda_template_documento
+                FOREIGN KEY (template_documento_id, tipo_documento_output_id, sorgente_tipo_id)
+                REFERENCES documenti.template_documenti (id, tipo_documento_output_id, sorgente_tipo_id);
+
+              -- 4) Una riga viva per (fattura, tipo); il tipo NULL copre tutti.
+              ALTER TABLE vendite.fatture_stampa_coda
+                ADD CONSTRAINT ex_fatture_stampa_coda_vivo
+                EXCLUDE USING gist (
+                    sorgente_tipo_id WITH =,
+                    sorgente_id WITH =,
+                    int8range(tipo_documento_output_id, tipo_documento_output_id, '[]') WITH &&)
+                WHERE (stato IN ('PENDING', 'IN_CORSO'));
+
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.tipo_documento_output_id IS
+                'Il tipo di documento da stampare per la fattura della riga, scritto da chi accoda (vendite.fn_accoda_stampe_lotto). NULL = decide il DB, se fra i modelli che possono stampare ce n''e'' uno solo (documenti.fn_risolvi_template_applicabile col tipo NULL; con piu'' candidati E_DOCUMENTI_TEMPLATE_AMBIGUO). Obbligatorio quando la riga indica il modello esatto (chk_fatture_stampa_coda_modello_con_tipo). Brief: brief-db-modelli-documento-standard §9 (2026-10-20).';
+
+              COMMENT ON COLUMN vendite.fatture_stampa_coda.template_documento_id IS
+                'Override: il modello esatto con cui stampare, invece di quello che il DB risolve. Se c''e'', la riga indica anche il tipo (chk_fatture_stampa_coda_modello_con_tipo), e la FK composta fk_fatture_stampa_coda_template_documento pretende che il modello sia di quel tipo e della sorgente della riga. L''emittente del modello lo controlla la generazione (trgfn_documenti_generati_check_coerenza, regola 4). Brief: brief-db-modelli-documento-standard §9.2 Q-3.';
+
+              COMMENT ON CONSTRAINT ex_fatture_stampa_coda_vivo
+                ON vendite.fatture_stampa_coda IS
+                'Righe vive (PENDING, IN_CORSO) di una fattura: O una col tipo NULL, O piu'' righe con tipi diversi. Il tipo NULL e'' l''intervallo illimitato e si sovrappone a ogni tipo: una riga col tipo NULL esclude le altre righe vive della stessa fattura, e viceversa (il NULL vuol dire «qualunque tipo il DB risolva»: con X sarebbe la stessa stampa, senza un candidato unico fallisce comunque). Le righe terminali non contano: dopo FATTO o ERRORE si riaccoda. Bersaglio dell''ON CONFLICT DO NOTHING di vendite.fn_accoda_stampe_lotto. Al posto di uq_fatture_stampa_coda_vivo (brief-db-modelli-documento-standard §9.2 Q-2, 2026-10-20).';

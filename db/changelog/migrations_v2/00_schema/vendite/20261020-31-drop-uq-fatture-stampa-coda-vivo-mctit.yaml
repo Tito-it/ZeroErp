@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRA uq_fatture_stampa_coda_vivo
+#   Brief: brief-db-modelli-documento-standard, §9.2 Q-2 (C-2 di Tid, 2026-10-20)
+#
+# L'indice diceva «una sola riga viva per fattura». Al suo posto c'e'
+#   ex_fatture_stampa_coda_vivo (20261020-29): una riga viva per (fattura, tipo),
+#   e una riga col tipo NULL esclude le altre. Finche' l'indice resta, due tipi
+#   per la stessa fattura non possono essere in coda insieme, cioe' proprio cio'
+#   che la -29 vuole ammettere.
+#
+# Viene dopo 20261020-30: fino a li' l'ON CONFLICT di fn_accoda_stampe_lotto lo
+#   nominava per colonne, e senza indice la funzione di prima non avrebbe
+#   trovato il bersaglio. Nessun changeSet di 80_data, 85_pgagent o 90_end lo
+#   nomina (censito il 2026-10-20). Restano le sue citazioni di testo: la nota
+#   di E_CODA_ARCHIVIAZIONE_NON_AMMESSA (codici_errore.csv, aggiornata nello
+#   stesso giro), le pagine manual/ e i commenti del BE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261020-31-drop-uq-fatture-stampa-coda-vivo-mctit.yaml
+
+  - changeSet:
+      id: 20261020-31-drop-uq-fatture-stampa-coda-vivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro di vendite.uq_fatture_stampa_coda_vivo: lo sostituisce il vincolo di esclusione
+        ex_fatture_stampa_coda_vivo (20261020-29). Brief: brief-db-modelli-documento-standard §9.2 Q-2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_constraint
+               WHERE conrelid = 'vendite.fatture_stampa_coda'::regclass
+                 AND conname = 'ex_fatture_stampa_coda_vivo'
+                 AND contype = 'x';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP INDEX vendite.uq_fatture_stampa_coda_vivo;
