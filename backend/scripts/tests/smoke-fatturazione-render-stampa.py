@@ -177,9 +177,10 @@ with connection.cursor() as cur:
 
 
 # Scopo: il template di una fattura e la sua versione pubblicata, come li
-#        sceglie il generatore: quello di default dell'EMITTENTE della fattura
-#        per la sorgente FATTURA. Ritorna `(emittente_fiscale_id, template,
-#        versione)`; template o versione None se mancano.
+#        sceglie il generatore: la risoluzione a due livelli (il predefinito
+#        dell'EMITTENTE della fattura, se no lo standard) per la sorgente
+#        FATTURA. Ritorna `(emittente_fiscale_id, template, versione)`;
+#        versione None se manca.
 # ⛔ Fino al 2026-10-18 lo smoke prendeva `WHERE codice = 'Fattura'` e una riga
 #    qualsiasi, ma `template_documenti` e' per emittente: poteva collaudare il
 #    template di un altro.
@@ -195,22 +196,22 @@ def template_della_fattura(fid):
             """, [fid],
         )
         ef_id = cur.fetchone()[0]
-    repo = DocumentiRepository()
-    tpl = repo.find_template_applicabile(
-        sorgente_tipo_id=sorgente_fattura_id, emittente_fiscale_id=ef_id,
-        tipo_documento_output_id=None, emittente_ids_scope=None,
+    # La STESSA risoluzione della stampa, dal service (non ricopiata qui: due
+    # passi, la funzione DB e la rilettura della riga). Con lo standard nel
+    # seed, una mancata risoluzione non e' «materia assente» ma un difetto: il
+    # service solleva ServiceError col codice del DB, e lo smoke si ferma rosso.
+    tpl = DocumentGenerationService()._resolve_template(
+        None, scope=None, emittente_fiscale_id=ef_id,
+        sorgente_tipo_id=sorgente_fattura_id,
+        tipo_documento_output_id=None, template_documento_id=None,
     )
-    ver = (repo.get_versione_pubblicata_attiva(tpl["id"], today=oggi_aziendale())
-           if tpl else None)
+    ver = DocumentiRepository().get_versione_pubblicata_attiva(
+        tpl["id"], today=oggi_aziendale(),
+    )
     return ef_id, tpl, ver
 
 
 emittente_fiscale_id, template, versione = template_della_fattura(fattura_id)
-if template is None:
-    raise SystemExit(
-        f"SENZA_MATERIA: l'emittente {emittente_fiscale_id} della fattura {fattura_id} "
-        "non ha un template di default per la fattura."
-    )
 print(f"fattura {fattura_id} ({n_righe} righe), template {template['codice']!r} "
       f"(id {template['id']}, emittente {emittente_fiscale_id})\n")
 

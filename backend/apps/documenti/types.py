@@ -34,14 +34,18 @@ class TemplateDocumentoListRow(TypedDict):
     sorgente_tipo_descrizione: str
     context_builder_code: str
     file_name_pattern: str | None
-    emittente_fiscale_id: int
-    emittente_fiscale_codice: str
+    # Modello standard di sistema: senza emittente, ripiego di chi non ha
+    # modelli suoi (brief-db-modelli-documento-standard). Le tre colonne
+    # dell'emittente sono NULL solo qui (CHECK a DB).
+    standard: bool
+    emittente_fiscale_id: int | None
+    emittente_fiscale_codice: str | None
     # Ragione sociale del SOGGETTO emittente (`soggetti.ragione_sociale_completa`),
     # non `emittenti_fiscali.descrizione` (etichetta interna divergente, in via di
     # eliminazione — brief `brief-emittente-ragione-sociale-dal-soggetto.md`).
     # Rinominata da `emittente_fiscale_descrizione` il 2026-08-03 (piano
     # PrimeVue 5, registro), in pari con viste e seed liste.
-    emittente_ragione_sociale: str
+    emittente_ragione_sociale: str | None
     data_insert: datetime
     data_update: datetime
 

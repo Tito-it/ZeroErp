@@ -412,6 +412,7 @@ _TEMPLATES_PROJECTION = """
     s.descrizione        AS sorgente_tipo_descrizione,
     t.context_builder_code,
     t.file_name_pattern,
+    t.standard,
     t.emittente_fiscale_id,
     ef.codice            AS emittente_fiscale_codice,
     s_ef.ragione_sociale_completa
@@ -425,14 +426,22 @@ _TEMPLATES_PROJECTION_DETAIL = (
     + ",\n    t.meta,\n    t.storicizza,\n    t.user_insert,\n    t.user_update"
 )
 
+# ⚠️ L'emittente e' in LEFT JOIN: il modello standard non ne ha uno
+#    (`chk_template_documenti_standard_senza_emittente`), e un JOIN interno lo
+#    toglierebbe da ogni lettura senza nessun errore.
 _TEMPLATES_FROM = """
     FROM documenti.template_documenti t
     JOIN documenti.tipi_documento_output tdo ON tdo.id = t.tipo_documento_output_id
     JOIN config.sorgenti s ON s.id = t.sorgente_tipo_id
-    JOIN anagrafiche.emittenti_fiscali ef ON ef.id = t.emittente_fiscale_id
+    LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = t.emittente_fiscale_id
     LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
     LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
 """
+
+# Il perimetro di lettura dei modelli: quelli degli emittenti in whitelist,
+# piu' gli standard, che servono a tutti (brief-db-modelli-documento-standard
+# §6). Un parametro: la whitelist `bigint[]`.
+_TEMPLATE_IN_SCOPE = "(t.standard OR t.emittente_fiscale_id = ANY(%s))"
 
 
 # Proiezione "list" versioni — esclude html_template/css_template/markdown_template.
@@ -527,8 +536,8 @@ class DocumentiRepository:
             params.append(emittente_fiscale_id)
         if emittente_ids_scope is not None:
             # Scope operatore: lista whitelist degli emittenti autorizzati.
-            # Lista vuota = nessun emittente -> 0 risultati senza errore.
-            conditions.append("t.emittente_fiscale_id = ANY(%s)")
+            # Lista vuota = nessun emittente -> i soli standard.
+            conditions.append(_TEMPLATE_IN_SCOPE)
             params.append(list(emittente_ids_scope))
         # Un punto solo: la stessa condizione serve count e pagina.
         add_ricerca_full_condition(conditions, params, search, _RICERCA_TEMPLATE_DOCUMENTI, alias="t")
@@ -570,7 +579,7 @@ class DocumentiRepository:
         conditions = ["t.id = %s"]
         params: list[Any] = [int(template_id)]
         if emittente_ids_scope is not None:
-            conditions.append("t.emittente_fiscale_id = ANY(%s)")
+            conditions.append(_TEMPLATE_IN_SCOPE)
             params.append(list(emittente_ids_scope))
         where_clause = " AND ".join(conditions)
 
@@ -1008,89 +1017,46 @@ class DocumentiRepository:
     # Resolve template + versione per render (Tranche I)
     # =================================================================
 
-    # Scopo: Risolve il template applicabile per (sorgente_tipo, emittente).
-    #        Usa il flag `is_default=true` (partial-unique DDL) come selettore
-    #        deterministico: in v1 esiste al massimo 1 template default per
-    #        coppia (output, sorgente, emittente). Se `tipo_documento_output_id`
-    #        e' fornito, vincola anche quel filtro (necessario quando lo stesso
-    #        sorgente_tipo puo' produrre output diversi). Lo scope emittente
-    #        del caller filtra come per get_template (whitelist `bigint[]`).
-    #        Ritorna None se nessun template matcha (il service traduce in
-    #        404 unificato).
-    def find_template_applicabile(
+    # Scopo: Il modello che stampa un documento della sorgente per l'emittente
+    #        del documento, chiesto al DB: `documenti.fn_risolvi_template_applicabile`
+    #        (brief-db-modelli-documento-standard §4.1 Q-2, strada B). Se
+    #        l'emittente ha modelli attivi per (tipo, sorgente) vale il suo
+    #        predefinito; se non ne ha, il predefinito standard. Ritorna
+    #        `{template_documento_id, livello}` con livello `EMITTENTE` |
+    #        `STANDARD`; ogni mancata risoluzione la solleva la funzione, con il
+    #        suo codice (SENZA_PREDEFINITO, NON_RISOLTO, AMBIGUO).
+    # ⛔ La regola non si ricopia qui: fino al 2026-10-19 il BE la scriveva da
+    #    se' (`ORDER BY t.id LIMIT 1`, cioe' l'id piu' basso quando il tipo
+    #    mancava) e con una seconda query (`count_templates_attivi_no_default`)
+    #    ne ricopiava i filtri per scegliere il messaggio.
+    #    Il perimetro non si rifa': l'emittente e' quello del documento, che il
+    #    chiamante ha gia' verificato nella whitelist.
+    def risolvi_template_applicabile(
         self,
         *,
         sorgente_tipo_id: int,
         emittente_fiscale_id: int,
         tipo_documento_output_id: int | None,
-        emittente_ids_scope: list[int] | None,
-    ) -> dict[str, Any] | None:
-        conditions = [
-            "t.sorgente_tipo_id = %s",
-            "t.emittente_fiscale_id = %s",
-            "t.attivo = true",
-            "t.is_default = true",
-        ]
-        params: list[Any] = [int(sorgente_tipo_id), int(emittente_fiscale_id)]
-        if tipo_documento_output_id is not None:
-            conditions.append("t.tipo_documento_output_id = %s")
-            params.append(int(tipo_documento_output_id))
-        if emittente_ids_scope is not None:
-            conditions.append("t.emittente_fiscale_id = ANY(%s)")
-            params.append(list(emittente_ids_scope))
-        where_clause = " AND ".join(conditions)
-
-        sql = f"""
-            SELECT {_TEMPLATES_PROJECTION_DETAIL}
-            {_TEMPLATES_FROM}
-            WHERE {where_clause}
-            ORDER BY t.id ASC
-            LIMIT 1
-        """
+    ) -> dict[str, Any]:
         with connection.cursor() as cursor:
-            cursor.execute(sql, params)
+            cursor.execute(
+                """
+                SELECT template_documento_id, livello
+                  FROM documenti.fn_risolvi_template_applicabile(%s, %s, %s)
+                """,
+                [
+                    int(sorgente_tipo_id),
+                    int(emittente_fiscale_id),
+                    int(tipo_documento_output_id) if tipo_documento_output_id is not None else None,
+                ],
+            )
             results = rows_to_list(cursor)
-        return results[0] if results else None
-
-    # Scopo: Conta i template attivi che matchano (sorgente_tipo, emittente)
-    #        ignorando il flag `is_default`. Serve al service per discriminare
-    #        l'errore E_DOCUMENTI_NOT_FOUND: "non c'e' nessun template" vs
-    #        "ci sono template ma nessuno e' marcato predefinito" — il secondo
-    #        caso e' fix istantaneo lato admin (flag default), il primo richiede
-    #        di caricare un template ex novo. Filtri identici a
-    #        find_template_applicabile (output id opzionale, scope emittente
-    #        opzionale) tranne il vincolo is_default.
-    def count_templates_attivi_no_default(
-        self,
-        *,
-        sorgente_tipo_id: int,
-        emittente_fiscale_id: int,
-        tipo_documento_output_id: int | None,
-        emittente_ids_scope: list[int] | None,
-    ) -> int:
-        conditions = [
-            "t.sorgente_tipo_id = %s",
-            "t.emittente_fiscale_id = %s",
-            "t.attivo = true",
-        ]
-        params: list[Any] = [int(sorgente_tipo_id), int(emittente_fiscale_id)]
-        if tipo_documento_output_id is not None:
-            conditions.append("t.tipo_documento_output_id = %s")
-            params.append(int(tipo_documento_output_id))
-        if emittente_ids_scope is not None:
-            conditions.append("t.emittente_fiscale_id = ANY(%s)")
-            params.append(list(emittente_ids_scope))
-        where_clause = " AND ".join(conditions)
-
-        sql = f"""
-            SELECT COUNT(*)
-            FROM documenti.template_documenti t
-            WHERE {where_clause}
-        """  # noqa: S608 — WHERE da condizioni letterali, valori come parametri
-        with connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            row = cursor.fetchone()
-        return int(row[0]) if row else 0
+        # La funzione restituisce una riga o solleva: zero righe e' il patto del
+        # DB rotto. RuntimeError e non `assert`: il patto lo tiene il DB, non
+        # questo file, e il controllo resta acceso anche con `python -O`.
+        if not results:
+            raise RuntimeError("fn_risolvi_template_applicabile senza riga e senza errore")
+        return results[0]
 
     # Scopo: Carica la versione PUBBLICATA attiva con `validita @> %s`
     #        (l'oggi dell'azienda passato dal service per testabilita'). Ritorna
