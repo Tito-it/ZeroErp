@@ -55,26 +55,34 @@ SELECT plan(13);
 CREATE TEMP TABLE tmp_cl_refs AS
 SELECT
   script.fn_pgtap_emittente_operatore() AS emittente_id,
-  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1) AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'BOZZA') AS st_bozza,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA') AS st_aperta,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'DA_ESEGUIRE') AS sf_da_eseguire,
   (SELECT id FROM config.stati_flussi_pratiche WHERE codice_interno = 'IN_CORSO') AS sf_in_corso,
   (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE') AS priorita_id;
 
--- Recupera due risorse umane distinte e una unita organizzativa
+-- Due risorse umane e un reparto COSTRUITI, non pescati dalla macchina: su un
+-- database ricostruito da zero non c'e' nessuna risorsa umana da pescare, e il
+-- file moriva sul NOT NULL di competenze_flussi. Il reparto e' di prova e non
+-- e' il reparto anagrafico di nessuno dei due: i flussi che lo portano non
+-- cadono nel livello REPARTO (coperto in test-assegnazione-flusso-eligibilita).
+-- ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_cl_op1 AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('coda lavoro 1', false);
+CREATE TEMP TABLE tmp_cl_op2 AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('coda lavoro 2', false);
+CREATE TEMP TABLE tmp_cl_uo AS
+WITH ins AS (
+  INSERT INTO config.unita_organizzative (codice, codice_interno, descrizione, attivo)
+  VALUES ('TEST_CL_UO', 'TEST_CL_UO', 'Reparto test coda lavoro', true)
+  RETURNING id
+)
+SELECT id AS uo_id FROM ins;
 CREATE TEMP TABLE tmp_cl_risorse AS
 SELECT
-  r1.id AS risorsa_1_id,
-  r2.id AS risorsa_2_id,
-  COALESCE(r1.unita_organizzativa_id,
-    (SELECT id FROM config.unita_organizzative WHERE attivo = true LIMIT 1)) AS uo_id
-FROM anagrafiche.risorse_umane r1
-CROSS JOIN LATERAL (
-  SELECT id FROM anagrafiche.risorse_umane WHERE id <> r1.id LIMIT 1
-) r2
-WHERE r1.attivo = true
-LIMIT 1;
+  (SELECT risorsa_umana_id FROM tmp_cl_op1) AS risorsa_1_id,
+  (SELECT risorsa_umana_id FROM tmp_cl_op2) AS risorsa_2_id,
+  (SELECT uo_id FROM tmp_cl_uo) AS uo_id;
 
 SELECT ok(
   (SELECT emittente_id IS NOT NULL AND st_bozza IS NOT NULL AND sf_da_eseguire IS NOT NULL
@@ -123,14 +131,14 @@ VALUES (
 )
 ON CONFLICT (template_flusso_id, unita_organizzativa_id, risorsa_umana_id) DO UPDATE SET attivo = true;
 
--- Pratica APERTA
+-- Pratica APERTA, interna (senza soggetto): la coda non guarda il cliente,
+-- e un soggetto «il primo per id» era una pesca dalla macchina.
 CREATE TEMP TABLE tmp_cl_pratica AS
 WITH ins_bozza AS (
-  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
+  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, stato_id, priorita_id)
   VALUES (
     (SELECT emittente_id FROM tmp_cl_refs),
     (SELECT tp_id FROM tmp_cl_tp),
-    (SELECT soggetto_id FROM tmp_cl_refs),
     (SELECT st_bozza FROM tmp_cl_refs),
     (SELECT priorita_id FROM tmp_cl_refs)
   )

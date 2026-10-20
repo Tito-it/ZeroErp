@@ -1,10 +1,10 @@
 # Brief DB — I modelli di documento standard: un emittente nuovo emette dal primo giorno
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-19 (verifica della sessione BE)
+## ⏭️ Chi riparte — aggiornato al 2026-10-20
 
-**Riparte: il BE, con la risoluzione a due livelli (§6, «Stato al 2026-10-19»); il team DB, con la
-voce nuova del censimento (§2, Q-6 … Q-8: `emittenti_fiscali_utilities`). Tranche 1 e 2 sono chiuse
-e committate.**
+**Riparte: il BE, con la risoluzione a due livelli (§6, «Stato al 2026-10-19») e la rigenerazione
+delle policy dopo `20261020-26` (§8.4); il team DB, con la voce nuova del censimento (§2, Q-6 … Q-8:
+`emittenti_fiscali_utilities`); Tid, con P-1 e P-2 (§8.4).**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -16,13 +16,17 @@ e committate.**
 | 6 | **Tid** | ✅ Contenuti (D-3) e testi fissi: proposte accettate (2026-10-19) | §8.2 | — |
 | 7 | **team DB** | ✅ Tranche 2: il seed dei sei standard (`20261020-13` … `-18`), provato sullo scratch e su dbdev | §8.2 | 6 |
 | 8 | **Tid** | ✅ Apply della tranche 2, pgTAP verdi (2026-10-19) | §8.2 | 7 |
-| 9 | **BE/FE** | La risoluzione a due livelli e la lista Modelli documento (policy dei codici nuovi già rigenerate) | §6 | 5 |
+| 8-bis | **team DB** | ✅ Correzione Q-2: conta solo un modello che può stampare (`20261020-26`), provata sullo scratch e su dbdev | §8.4 | — |
+| 8-ter | **Tid** | ✅ Apply di `20261020-26` e dei due CSV dei codici, pgTAP verdi (2026-10-20) | §8.4 | 8-bis |
+| 9 | **BE/FE** | La risoluzione a due livelli e la lista Modelli documento (policy dei codici nuovi già rigenerate; da rigenerare di nuovo dopo `-26`, cambiano solo le note) | §6, §8.4 | 5, 8-ter |
 | 9-bis | **team DB** | Censimento, voce «parametri d'importo per utility» (`emittenti_fiscali_utilities`): risposte a Q-6 … Q-8; DEVA non chiude una fattura | §2 | — |
 | 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard) | §7 | 8, 9, 9-bis |
 | 11 | **Tid** | Archiviazione in `work-done/` | — | 10 |
 
-**Decisioni aperte di Tid: nessuna.** Tranche 1 e tranche 2 committate (`560d5d97e`, PR #1899) e
-già nel branch `dev/backend-tid`.
+**Decisioni aperte di Tid: due, piccole (§8.4).** P-1: il livello STANDARD conta anch'esso solo uno
+standard che può stampare (fatto così, va confermato). P-2: la funzione restituisce anche la
+versione da stampare. Tranche 1 e tranche 2 committate (`560d5d97e`, PR #1899). Da committare:
+`20261020-26` con i due CSV (applicati), il pgTAP, le due pagine `manual/` e questo documento.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-18. **A chi:** Tid (§5), poi il team DB;
 > la §6 al BE/FE.
@@ -225,7 +229,10 @@ emittente no.
 * Firma: `(p_sorgente_tipo_id, p_emittente_fiscale_id, p_tipo_documento_output_id)`, STABLE,
   SECURITY INVOKER. Restituisce il `template_documento_id` e il **livello** (`EMITTENTE` |
   `STANDARD`).
-* ✅ **La regola (Tid, 2026-10-19, strada B).** Il livello si decide dai **modelli attivi**
+* ⚠️ *Corretto il 2026-10-20 (§8.4): «attivo» va letto «che può stampare». Un modello conta solo
+  se è attivo e ha una versione PUBBLICATA, attiva e valida alla data operativa; una bozza non
+  toglie lo standard.*
+  ✅ **La regola (Tid, 2026-10-19, strada B).** Il livello si decide dai **modelli attivi**
   dell'emittente, non dal suo predefinito:
   1. l'emittente ha almeno un modello attivo per la terna (tipo output, sorgente, emittente) →
      livello `EMITTENTE`. Si usa il suo default attivo; se nessuno dei suoi è predefinito, la
@@ -604,3 +611,87 @@ Lo standard «Ordine di vendita» ha la versione 2 (`20261020-25`), nella forma 
 solo sullo standard, pubblicata dalla data operativa. Dichiara la **forma dei dati 3** (chiave nuova
 `origine.etichetta`): dopo il giro BE le copie degli emittenti in forma 2 non stampano più. Sede:
 [brief-db-grammatica-unica-documenti §12.10](brief-db-grammatica-unica-documenti.md).
+
+### 8.4 Correzione Q-2: conta solo un modello che può stampare (2026-10-20; ✅ applicata da Tid, pgTAP verdi)
+
+**Il difetto** (segnalato dal BE, decisione di Tid del 2026-10-19). La strada B decideva dai
+modelli **attivi**. Ma un modello si prepara solo da attivo: una versione attiva sotto un modello
+spento la rifiuta `trgfn_child_requires_active_parent`. Su `template_documenti`, `attivo` dice
+insieme «esiste» e «in uso per la stampa». La copia appena creata da «personalizza» ha solo una
+bozza, e bastava a togliere lo standard: da lì ogni stampa dell'emittente si fermava con «nessuna
+versione pubblicata».
+
+**La regola.** Un modello è un candidato solo se **può stampare**: è attivo e ha una versione
+`PUBBLICATA`, attiva e valida alla data operativa (`validita @> script.fn_data_operativa()`). Sono i
+filtri di `get_versione_pubblicata_attiva` del BE.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/documenti/20261020-26-update-fn-risolvi-template-applicabile-solo-stampabili` | la regola nei tre passi; firma, `STABLE` e `SECURITY INVOKER` invariati (`CREATE OR REPLACE`) |
+
+* **Passo 1, la deduzione del tipo**: contano solo i candidati, come proposto. Una bozza di un altro
+  tipo non rende più ambigua una sorgente che stampa con un tipo solo.
+* **Passo 2, il livello EMITTENTE**: il conteggio e la scelta del predefinito leggono gli stessi
+  candidati. Un modello stampabile non predefinito accanto a un predefinito in bozza dà
+  `E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO`.
+* **Passo 3, il livello STANDARD — P-1, da confermare.** La richiesta diceva «nessun cambio: lo
+  standard nasce pubblicato dal seed». L'ho messo anche qui. Il modello ammette uno standard
+  predefinito senza una versione valida oggi: una versione spenta, o un'evoluzione pubblicata da
+  una data futura. In quel caso la risposta giusta è `E_DOCUMENTI_TEMPLATE_NON_RISOLTO`, il cui
+  rimedio è del sistema. Senza il filtro la funzione restituirebbe uno standard che poi fallisce
+  alla stampa con un codice generico. In più un candidato si definisce una volta sola, per tutti i
+  livelli. Se Tid preferisce la lettera della richiesta, si toglie il filtro dalla sola parte
+  standard della lettura del passo 2.
+* **La forma.** I passi 2 e 3 sono una lettura sola (conteggio dei candidati dell'emittente, il suo
+  predefinito, il predefinito standard), con il `max()` protetto da
+  `uq_template_documenti_default_attivo`. Nel contesto di `SENZA_PREDEFINITO` la chiave
+  `modelli_attivi` diventa `modelli_stampabili`. Il BE non la legge: `risolvi_template_applicabile`
+  seleziona solo `template_documento_id, livello`.
+* **Al BE**: `error_policies_generated.py` ricopia le note dei codici, che cambiano: va
+  rigenerato (solo commenti, nessuna classe cambia). I test DB del BE
+  (`test_template_standard_db.py`) usano lo standard del seed, che è pubblicato: non cambiano esito.
+* **Codici**: nessuno nuovo. Aggiornate le note di `SENZA_PREDEFINITO`, `NON_RISOLTO` e `AMBIGUO`
+  (`codici_errore.csv`) e la causa e la soluzione di `SENZA_PREDEFINITO` e `NON_RISOLTO`
+  (`messaggi_errore.csv`). Il testo dei messaggi non cambia.
+* **Manuali**: `fn_risolvi_template_applicabile.md` (§ «Conta solo un modello che può stampare»),
+  `template_documenti.md` (§ «Il modello standard»).
+
+**P-2 — proposta: la funzione restituisce anche la versione.** Ora «può stampare» è scritto in due
+livelli: nel DB, che sceglie il modello, e nel BE (`get_versione_pubblicata_attiva`), che ne carica
+la versione con gli stessi filtri. Se le due copie divergono, la funzione sceglie un modello che il
+BE poi non riesce a stampare. La forma che chiude la copia: `RETURNS TABLE` con anche
+`template_versione_id`, la versione stampabile del modello scelto, e il BE la usa invece di
+ricercarla. Cambia la firma di ritorno (`DROP` + `CREATE`). Il BE chiama già la funzione
+(`risolvi_template_applicabile`, dal 2026-10-20), ma seleziona le colonne per nome: una colonna in
+più in coda non lo rompe, e il BE passa alla versione restituita quando vuole, ritirando nello stesso
+giro i filtri di `get_versione_pubblicata_attiva` usati per la stampa. Decide Tid.
+
+**pgTAP** (`test-documenti-template-standard-v1.sql`, da 30 a 35 test; la risoluzione è 11-23):
+
+* 12) modello dell'emittente attivo e predefinito con la sola bozza → `STANDARD`;
+* 13) lo stesso modello, pubblicato con `fn_pubblica_template_documento_versione` → `EMITTENTE`;
+* 14) un modello stampabile non predefinito più un predefinito in bozza → `SENZA_PREDEFINITO`;
+* 15) versione pubblicata ma spenta → non conta, `STANDARD`;
+* 17) versione pubblicata con `valido_dal` fra trenta giorni → non conta, `STANDARD`;
+* 19) tipo non indicato, una bozza di un altro tipo → dedotto, non `AMBIGUO`;
+* 22) standard predefinito con la sola bozza → `NON_RISOLTO` (P-1).
+
+La fixture dà ora una versione pubblicata ai due standard di prova (le versioni dello standard
+salgono prima della risoluzione), e aggiunge un quarto emittente (E4) per la data futura.
+
+**La prova (2026-10-20, da owner, in transazione annullata, SQL estratto dallo YAML).**
+
+* Scratch `zeroerp_ruoli` e dbdev: il file 35/35 con il changeSet. Senza, sono rossi i test 12, 14,
+  15 e 17, e il 19 interrompe il file con `AMBIGUO`: è il corpo vecchio.
+* Stessi esiti prima e dopo su tutti i pgTAP di `documenti/` (i rossi da owner preesistenti,
+  `documenti-generati-eventi` 16 e il file app 1-5 per costruzione, sono identici) e sui presidi
+  `test-catalogo-messaggi-errore-completo`, `test-permessi-funzioni-risoluzione`,
+  `test-security-definer-search-path-v1`, `test-vw-codici-errore-motivo-nominato`,
+  `test-vw-codici-errore-valore-atteso`, `test-plan-cache-mode-piano-generico-v1`,
+  `test-rubinetto-primo-motivo-v1`, `test-riferimenti-morti-v1`, `test-stati-check-scrittori-v1`.
+* Fatto datato, non una prova: su dbdev, il 2026-10-20, nessuna delle 24 combinazioni
+  emittente × (tipo, sorgente) cambia risposta. I casi nuovi li prova il pgTAP, costruiti.
+* Il seed dei codici non è stato esercitato: cambiano solo le colonne `note`, `causa` e
+  `soluzione`, che nessun test confronta.
+* Dopo ogni corsa, `md5(pg_get_functiondef)` della funzione è uguale a prima, e non resta nessuna
+  riga `pgtap-%`.

@@ -5,7 +5,7 @@
 -- pgTAP test per Zero ERP
 -- Test: il modello di documento STANDARD (brief-db-modelli-documento-standard §4.1)
 -- ------------------------------------------------------------
--- Elenco test (plan 30):
+-- Elenco test (plan 35):
 --  Struttura (Q-1)
 --   1) template_documenti.standard NOT NULL
 --   2) CHECK standard = (emittente NULL) presente, con quella definizione
@@ -18,30 +18,36 @@
 --   8) una riga d'operatore senza emittente lo riceve dalla sessione e non e' standard
 --   9) un secondo standard predefinito per la stessa coppia -> 23505
 --  10) `standard` non cambia dopo l'INSERT -> lock
---  Risoluzione, strada B (Q-2)
+--  Risoluzione, strada B (Q-2). Conta solo un modello che PUO' STAMPARE: attivo,
+--  con una versione PUBBLICATA, attiva e valida alla data operativa (rev 20261020-26)
 --  11) emittente senza modelli suoi -> lo standard, livello STANDARD
---  12) emittente col suo predefinito attivo -> il suo, livello EMITTENTE
---  13) modello suo attivo ma non predefinito -> SENZA_PREDEFINITO, NON lo standard
---  14) spenti i suoi modelli -> torna lo standard
---  15) tipo non indicato, un tipo solo fra i candidati -> dedotto
---  16) tipo non indicato, due tipi fra i candidati -> AMBIGUO
---  17) nessun modello, neanche standard -> NON_RISOLTO
---  18) argomenti rotti -> INPUT_INVALIDO
+--  12) modello suo attivo e predefinito con la sola bozza -> STANDARD
+--  13) lo stesso modello, pubblicato -> il suo, livello EMITTENTE
+--  14) uno suo stampabile non predefinito + un predefinito in bozza -> SENZA_PREDEFINITO, NON lo standard
+--  15) la versione pubblicata spenta non conta -> STANDARD
+--  16) spenti i suoi modelli -> torna lo standard
+--  17) versione pubblicata con valido_dal nel futuro: non conta -> STANDARD
+--  18) tipo non indicato, un tipo solo fra i candidati -> dedotto
+--  19) tipo non indicato, una bozza di un altro tipo non conta -> dedotto, non AMBIGUO
+--  20) tipo non indicato, due tipi fra i candidati -> AMBIGUO
+--  21) nessun modello, neanche standard -> NON_RISOLTO
+--  22) standard predefinito con la sola bozza -> NON_RISOLTO
+--  23) argomenti rotti -> INPUT_INVALIDO
 --  Coerenza del documento generato (Q-3)
---  19) un documento di E1 reso con lo standard passa
---  20) un documento di E1 reso col modello di E2 -> E_DOCUMENTI_GENERATO_COERENZA
+--  24) un documento di E1 reso con lo standard passa
+--  25) un documento di E1 reso col modello di E2 -> E_DOCUMENTI_GENERATO_COERENZA
 --  Derivazione (Q-5)
---  21) una copia che deriva da una versione standard della stessa coppia passa
---  22) derivare da una versione NON standard -> DERIVAZIONE_INVALIDA
---  23) derivare dallo standard di un altro tipo -> DERIVAZIONE_INVALIDA
---  24) cambiare l'origine di una versione pubblicata -> PUBBLICATA_IMMUTABILE
---  25) cambiare l'origine in bozza e' ammesso
+--  26) una copia che deriva da una versione standard della stessa coppia passa
+--  27) derivare da una versione NON standard -> DERIVAZIONE_INVALIDA
+--  28) derivare dallo standard di un altro tipo -> DERIVAZIONE_INVALIDA
+--  29) cambiare l'origine di una versione pubblicata -> PUBBLICATA_IMMUTABILE
+--  30) cambiare l'origine in bozza e' ammesso
 --  Vista dello scarto (Q-5)
---  26) ALLINEATA
---  27) STANDARD_AVANTI
---  28) CONTESTO_SUPERATO (precede l'origine)
---  29) ORIGINE_NON_DICHIARATA
---  30) l'origine si eredita dalla versione precedente che la dichiara -> ALLINEATA
+--  31) ALLINEATA
+--  32) STANDARD_AVANTI
+--  33) CONTESTO_SUPERATO (precede l'origine)
+--  34) ORIGINE_NON_DICHIARATA
+--  35) l'origine si eredita dalla versione precedente che la dichiara -> ALLINEATA
 --
 -- Scopo:
 --  - provare sui casi COSTRUITI (non sulle righe di dbdev) il modello standard:
@@ -54,11 +60,13 @@
 
 BEGIN;
 
--- Tre aziende nuove, senza modelli: E1 usa lo standard, E2 ha i suoi, E3 le copie.
+-- Quattro aziende nuove, senza modelli: E1 usa lo standard, E2 ha i suoi, E3 le
+-- copie, E4 un modello pubblicato che vale solo da una data futura.
 CREATE TEMP TABLE _e ON COMMIT DROP AS
 SELECT 'E1'::text AS lato, m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 INSERT INTO _e SELECT 'E2', m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 INSERT INTO _e SELECT 'E3', m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+INSERT INTO _e SELECT 'E4', m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 
 -- Contesto: l'operatore di E1 (il default dell'emittente del test 8 lo legge).
 DO $ctx$ BEGIN
@@ -67,7 +75,7 @@ END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(30);
+SELECT plan(35);
 
 -- ============================================================
 -- Fixture
@@ -81,7 +89,8 @@ SELECT
   (SELECT r.id FROM documenti.render_engine_documento r WHERE r.codice_interno = 'WEASYPRINT')   AS render,
   (SELECT emittente_fiscale_id FROM _e WHERE lato = 'E1')                                        AS e1,
   (SELECT emittente_fiscale_id FROM _e WHERE lato = 'E2')                                        AS e2,
-  (SELECT emittente_fiscale_id FROM _e WHERE lato = 'E3')                                        AS e3;
+  (SELECT emittente_fiscale_id FROM _e WHERE lato = 'E3')                                        AS e3,
+  (SELECT emittente_fiscale_id FROM _e WHERE lato = 'E4')                                        AS e4;
 
 -- Gli standard gia' presenti (il seed) non devono collidere col predefinito
 -- del test: perdono il flag, dentro la transazione.
@@ -185,74 +194,10 @@ SELECT throws_like(
   '10) standard non cambia dopo l''INSERT (lock)');
 
 -- ============================================================
--- Risoluzione (strada B)
+-- Risoluzione (strada B): conta solo un modello che puo' stampare
 -- ============================================================
-SELECT is(
-  (SELECT row(r.template_documento_id, r.livello)::text
-     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e1, _k.tipo) r),
-  (SELECT row(s1, 'STANDARD')::text FROM _s),
-  '11) senza modelli suoi l''emittente usa lo standard');
-
--- E2: un modello suo, predefinito e attivo (senza versioni: la risoluzione
--- sceglie il modello, la versione la sceglie chi stampa).
-INSERT INTO documenti.template_documenti (
-    tipo_documento_output_id, codice, codice_interno, descrizione,
-    sorgente_tipo_id, context_builder_code, emittente_fiscale_id, is_default, attivo)
-SELECT tipo, 'PGTAP-E2-1', 'pgtap-e2-1', 'Modello di E2', sorg, 'PREVENTIVO', e2, true, true
-  FROM _k;
-
-SELECT is(
-  (SELECT row(r.template_documento_id, r.livello)::text
-     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e2, _k.tipo) r),
-  (SELECT row(t.id, 'EMITTENTE')::text FROM documenti.template_documenti t WHERE t.codice_interno = 'pgtap-e2-1'),
-  '12) col suo predefinito attivo l''emittente usa il suo');
-
-UPDATE documenti.template_documenti SET is_default = false WHERE codice_interno = 'pgtap-e2-1';
-SELECT throws_like(
-  $$SELECT * FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e2, _k.tipo)$$,
-  '%ha modelli di stampa suoi, ma nessuno è segnato come predefinito%',
-  '13) modello suo attivo ma non predefinito: errore, lo standard NON entra');
-
-UPDATE documenti.template_documenti SET attivo = false WHERE codice_interno = 'pgtap-e2-1';
-SELECT is(
-  (SELECT row(r.template_documento_id, r.livello)::text
-     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e2, _k.tipo) r),
-  (SELECT row(s1, 'STANDARD')::text FROM _s),
-  '14) spenti i suoi modelli, l''emittente torna allo standard');
-
-SELECT is(
-  (SELECT r.template_documento_id
-     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e1) r),
-  (SELECT s1 FROM _s),
-  '15) tipo non indicato, un solo tipo fra i candidati: dedotto');
-
--- Un secondo standard della stessa sorgente, di un altro tipo.
-INSERT INTO documenti.template_documenti (
-    tipo_documento_output_id, codice, codice_interno, descrizione,
-    sorgente_tipo_id, context_builder_code, standard, is_default, attivo)
-SELECT tipo2, 'PGTAP-STD-3', 'pgtap-std-3', 'Standard di un altro tipo', sorg,
-       'CONTRATTO', true, true, true
-  FROM _k;
-
-SELECT throws_like(
-  $$SELECT * FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e1)$$,
-  '%produce più tipi di documento%',
-  '16) tipo non indicato, due tipi fra i candidati: ambiguo');
-
-SELECT throws_like(
-  $$SELECT * FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e1, _k.tipo3)$$,
-  '%Nessun modello di stampa per il documento%',
-  '17) nessun modello, neanche lo standard: non risolto');
-
-SELECT throws_like(
-  $$SELECT * FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, NULL, _k.tipo)$$,
-  '%Parametro non valido per la scelta del modello di stampa%',
-  '18) argomenti rotti: input invalido');
-
--- ============================================================
--- Coerenza del documento generato
--- ============================================================
--- Le versioni dello standard: v1 superata (forma 1), v2 in uso (forma 2).
+-- Le versioni dello standard: v1 superata (forma 1), v2 in uso (forma 2). Lo
+-- standard e' un candidato perche' la v2 e' pubblicata e valida oggi.
 INSERT INTO documenti.template_documenti_versioni (
     template_documento_id, versione, stato, titolo, html_template,
     render_engine_id, valido_dal, valido_al, versione_contesto)
@@ -271,6 +216,172 @@ SELECT max(v.id) FILTER (WHERE v.versione = 1) AS v1,
   FROM documenti.template_documenti_versioni v
  WHERE v.template_documento_id = (SELECT s1 FROM _s);
 
+SELECT is(
+  (SELECT row(r.template_documento_id, r.livello)::text
+     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e1, _k.tipo) r),
+  (SELECT row(s1, 'STANDARD')::text FROM _s),
+  '11) senza modelli suoi l''emittente usa lo standard');
+
+-- E2: un modello suo, predefinito e attivo, appena creato: la sola bozza (la
+-- copia di «personalizza» prima della pubblicazione).
+INSERT INTO documenti.template_documenti (
+    tipo_documento_output_id, codice, codice_interno, descrizione,
+    sorgente_tipo_id, context_builder_code, emittente_fiscale_id, is_default, attivo)
+SELECT tipo, 'PGTAP-E2-1', 'pgtap-e2-1', 'Modello di E2', sorg, 'PREVENTIVO', e2, true, true
+  FROM _k;
+INSERT INTO documenti.template_documenti_versioni (
+    template_documento_id, versione, stato, titolo, html_template,
+    render_engine_id, versione_contesto)
+SELECT t.id, 1, 'BOZZA', 'e2-1 v1', '<html>e2-1</html>', (SELECT render FROM _k), 2
+  FROM documenti.template_documenti t WHERE t.codice_interno = 'pgtap-e2-1';
+
+SELECT is(
+  (SELECT row(r.template_documento_id, r.livello)::text
+     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e2, _k.tipo) r),
+  (SELECT row(s1, 'STANDARD')::text FROM _s),
+  '12) un modello suo predefinito con la sola bozza non toglie lo standard');
+
+-- La pubblicazione vera, da oggi.
+SELECT documenti.fn_pubblica_template_documento_versione(v.id, script.fn_data_operativa(), 2)
+  FROM documenti.template_documenti_versioni v
+  JOIN documenti.template_documenti t ON t.id = v.template_documento_id
+ WHERE t.codice_interno = 'pgtap-e2-1';
+
+SELECT is(
+  (SELECT row(r.template_documento_id, r.livello)::text
+     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e2, _k.tipo) r),
+  (SELECT row(t.id, 'EMITTENTE')::text FROM documenti.template_documenti t WHERE t.codice_interno = 'pgtap-e2-1'),
+  '13) pubblicato, il modello suo predefinito vince');
+
+-- Il predefinito passa a un secondo modello ancora in bozza; il primo resta
+-- stampabile ma non predefinito.
+UPDATE documenti.template_documenti SET is_default = false WHERE codice_interno = 'pgtap-e2-1';
+INSERT INTO documenti.template_documenti (
+    tipo_documento_output_id, codice, codice_interno, descrizione,
+    sorgente_tipo_id, context_builder_code, emittente_fiscale_id, is_default, attivo)
+SELECT tipo, 'PGTAP-E2-3', 'pgtap-e2-3', 'Nuovo predefinito di E2', sorg, 'PREVENTIVO', e2, true, true
+  FROM _k;
+INSERT INTO documenti.template_documenti_versioni (
+    template_documento_id, versione, stato, titolo, html_template,
+    render_engine_id, versione_contesto)
+SELECT t.id, 1, 'BOZZA', 'e2-3 v1', '<html>e2-3</html>', (SELECT render FROM _k), 2
+  FROM documenti.template_documenti t WHERE t.codice_interno = 'pgtap-e2-3';
+
+SELECT throws_like(
+  $$SELECT * FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e2, _k.tipo)$$,
+  '%ha modelli di stampa suoi, ma nessuno è segnato come predefinito%',
+  '14) uno suo stampabile non predefinito e un predefinito in bozza: errore, lo standard NON entra');
+
+-- Spenta la versione pubblicata di e2-1, a E2 non resta niente che stampi.
+UPDATE documenti.template_documenti_versioni v SET attivo = false
+  FROM documenti.template_documenti t
+ WHERE t.id = v.template_documento_id AND t.codice_interno = 'pgtap-e2-1';
+
+SELECT is(
+  (SELECT row(r.template_documento_id, r.livello)::text
+     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e2, _k.tipo) r),
+  (SELECT row(s1, 'STANDARD')::text FROM _s),
+  '15) una versione pubblicata ma spenta non conta: lo standard');
+
+UPDATE documenti.template_documenti_versioni v SET attivo = false
+  FROM documenti.template_documenti t
+ WHERE t.id = v.template_documento_id AND t.codice_interno = 'pgtap-e2-3';
+UPDATE documenti.template_documenti SET attivo = false WHERE codice_interno IN ('pgtap-e2-1', 'pgtap-e2-3');
+SELECT is(
+  (SELECT row(r.template_documento_id, r.livello)::text
+     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e2, _k.tipo) r),
+  (SELECT row(s1, 'STANDARD')::text FROM _s),
+  '16) spenti i suoi modelli, l''emittente torna allo standard');
+
+-- E4: il suo predefinito e' pubblicato, ma vale solo fra trenta giorni.
+INSERT INTO documenti.template_documenti (
+    tipo_documento_output_id, codice, codice_interno, descrizione,
+    sorgente_tipo_id, context_builder_code, emittente_fiscale_id, is_default, attivo)
+SELECT tipo, 'PGTAP-E4-1', 'pgtap-e4-1', 'Modello di E4', sorg, 'PREVENTIVO', e4, true, true
+  FROM _k;
+INSERT INTO documenti.template_documenti_versioni (
+    template_documento_id, versione, stato, titolo, html_template,
+    render_engine_id, valido_dal, valido_al, versione_contesto)
+SELECT t.id, 1, 'PUBBLICATA', 'e4-1 v1', '<html>e4-1</html>', (SELECT render FROM _k),
+       script.fn_data_operativa() + 30, NULL, 2
+  FROM documenti.template_documenti t WHERE t.codice_interno = 'pgtap-e4-1';
+
+SELECT is(
+  (SELECT row(r.template_documento_id, r.livello)::text
+     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e4, _k.tipo) r),
+  (SELECT row(s1, 'STANDARD')::text FROM _s),
+  '17) una versione pubblicata che vale da una data futura non conta: lo standard');
+
+SELECT is(
+  (SELECT r.template_documento_id
+     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e1) r),
+  (SELECT s1 FROM _s),
+  '18) tipo non indicato, un solo tipo fra i candidati: dedotto');
+
+-- E1 riaccende il suo modello di un altro tipo (test 8), con la sola bozza.
+UPDATE documenti.template_documenti SET attivo = true WHERE codice_interno = 'pgtap-ope-1';
+INSERT INTO documenti.template_documenti_versioni (
+    template_documento_id, versione, stato, titolo, html_template,
+    render_engine_id, versione_contesto)
+SELECT t.id, 1, 'BOZZA', 'ope-1 v1', '<html>ope-1</html>', (SELECT render FROM _k), 2
+  FROM documenti.template_documenti t WHERE t.codice_interno = 'pgtap-ope-1';
+
+SELECT is(
+  (SELECT r.template_documento_id
+     FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e1) r),
+  (SELECT s1 FROM _s),
+  '19) tipo non indicato, la bozza di un altro tipo non conta: dedotto, non ambiguo');
+
+-- Un secondo standard della stessa sorgente, di un altro tipo, che stampa.
+INSERT INTO documenti.template_documenti (
+    tipo_documento_output_id, codice, codice_interno, descrizione,
+    sorgente_tipo_id, context_builder_code, standard, is_default, attivo)
+SELECT tipo2, 'PGTAP-STD-3', 'pgtap-std-3', 'Standard di un altro tipo', sorg,
+       'CONTRATTO', true, true, true
+  FROM _k;
+INSERT INTO documenti.template_documenti_versioni (
+    template_documento_id, versione, stato, titolo, html_template,
+    render_engine_id, valido_dal, valido_al, versione_contesto)
+SELECT t.id, 1, 'PUBBLICATA', 'std3 v1', '<html>std3</html>', (SELECT render FROM _k),
+       DATE '2026-01-01', NULL, 2
+  FROM documenti.template_documenti t WHERE t.codice_interno = 'pgtap-std-3';
+
+SELECT throws_like(
+  $$SELECT * FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e1)$$,
+  '%produce più tipi di documento%',
+  '20) tipo non indicato, due tipi fra i candidati: ambiguo');
+
+SELECT throws_like(
+  $$SELECT * FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e1, _k.tipo3)$$,
+  '%Nessun modello di stampa per il documento%',
+  '21) nessun modello, neanche lo standard: non risolto');
+
+-- Uno standard predefinito del terzo tipo, con la sola bozza.
+INSERT INTO documenti.template_documenti (
+    tipo_documento_output_id, codice, codice_interno, descrizione,
+    sorgente_tipo_id, context_builder_code, standard, is_default, attivo)
+SELECT tipo3, 'PGTAP-STD-4', 'pgtap-std-4', 'Standard in preparazione', sorg,
+       'PREVENTIVO', true, true, true
+  FROM _k;
+INSERT INTO documenti.template_documenti_versioni (
+    template_documento_id, versione, stato, titolo, html_template,
+    render_engine_id, versione_contesto)
+SELECT t.id, 1, 'BOZZA', 'std4 v1', '<html>std4</html>', (SELECT render FROM _k), 2
+  FROM documenti.template_documenti t WHERE t.codice_interno = 'pgtap-std-4';
+
+SELECT throws_like(
+  $$SELECT * FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, _k.e1, _k.tipo3)$$,
+  '%Nessun modello di stampa per il documento%',
+  '22) uno standard predefinito con la sola bozza non stampa: non risolto');
+
+SELECT throws_like(
+  $$SELECT * FROM _k, documenti.fn_risolvi_template_applicabile(_k.sorg, NULL, _k.tipo)$$,
+  '%Parametro non valido per la scelta del modello di stampa%',
+  '23) argomenti rotti: input invalido');
+
+-- ============================================================
+-- Coerenza del documento generato
+-- ============================================================
 SELECT lives_ok(
   $$INSERT INTO documenti.documenti_generati (
         tipo_documento_output_id, template_documento_id, template_versione_id,
@@ -281,7 +392,7 @@ SELECT lives_ok(
            'Doc std', 'doc-std.pdf', '{"_meta": {"context_version": 2}}'::jsonb,
            repeat('1', 64), repeat('2', 64), repeat('3', 64), k.e1
       FROM _k k, _s s, _sv sv$$,
-  '19) un documento di E1 reso con lo standard passa la coerenza');
+  '24) un documento di E1 reso con lo standard passa la coerenza');
 
 -- Un modello di E2 con la sua versione: E1 non lo puo' usare.
 INSERT INTO documenti.template_documenti (
@@ -309,7 +420,7 @@ SELECT throws_like(
       JOIN documenti.template_documenti t ON t.codice_interno = 'pgtap-e2-2'
       JOIN documenti.template_documenti_versioni v ON v.template_documento_id = t.id$$,
   '%Incoerenza referenziale nel documento generato%',
-  '20) un documento di E1 col modello di E2 resta rifiutato');
+  '25) un documento di E1 col modello di E2 resta rifiutato');
 
 -- ============================================================
 -- Derivazione
@@ -340,7 +451,7 @@ SELECT lives_ok(
       JOIN documenti.template_documenti t ON t.codice_interno = c.codice
      CROSS JOIN _sv sv
      WHERE c.codice <> 'pgtap-c-ereditata'$$,
-  '21) una copia deriva da una versione standard della stessa coppia');
+  '26) una copia deriva da una versione standard della stessa coppia');
 
 SELECT throws_like(
   $$INSERT INTO documenti.template_documenti_versioni (
@@ -352,14 +463,7 @@ SELECT throws_like(
       JOIN documenti.template_documenti_versioni v ON v.template_documento_id = e.id
      WHERE t.codice_interno = 'pgtap-c-nondich'$$,
   '%non è una versione del modello standard dello stesso documento%',
-  '22) derivare da una versione non standard -> rifiutato');
-
-INSERT INTO documenti.template_documenti_versioni (
-    template_documento_id, versione, stato, titolo, html_template,
-    render_engine_id, valido_dal, valido_al, versione_contesto)
-SELECT t.id, 1, 'PUBBLICATA', 'std3 v1', '<html>std3</html>', (SELECT render FROM _k),
-       DATE '2026-01-01', NULL, 2
-  FROM documenti.template_documenti t WHERE t.codice_interno = 'pgtap-std-3';
+  '27) derivare da una versione non standard -> rifiutato');
 
 SELECT throws_like(
   $$INSERT INTO documenti.template_documenti_versioni (
@@ -371,7 +475,7 @@ SELECT throws_like(
       JOIN documenti.template_documenti_versioni v ON v.template_documento_id = s.id
      WHERE t.codice_interno = 'pgtap-c-nondich'$$,
   '%non è una versione del modello standard dello stesso documento%',
-  '23) derivare dallo standard di un altro tipo -> rifiutato');
+  '28) derivare dallo standard di un altro tipo -> rifiutato');
 
 SELECT throws_like(
   $$UPDATE documenti.template_documenti_versioni v
@@ -379,7 +483,7 @@ SELECT throws_like(
       FROM documenti.template_documenti t
      WHERE t.id = v.template_documento_id AND t.codice_interno = 'pgtap-c-allineata'$$,
   '%Una versione pubblicata di un template documentale non puo%',
-  '24) l''origine di una versione pubblicata non cambia');
+  '29) l''origine di una versione pubblicata non cambia');
 
 -- La copia «ereditata»: la v1 riprende lo standard v2 (bozza, poi superata), la
 -- v2 in uso non ridichiara l'origine.
@@ -394,7 +498,7 @@ SELECT lives_ok(
        SET derivata_da_versione_id = (SELECT v2 FROM _sv)
       FROM documenti.template_documenti t
      WHERE t.id = v.template_documento_id AND t.codice_interno = 'pgtap-c-ereditata'$$,
-  '25) in bozza l''origine si cambia');
+  '30) in bozza l''origine si cambia');
 
 UPDATE documenti.template_documenti_versioni v
    SET stato = 'OBSOLETA', valido_dal = DATE '2026-01-01', valido_al = DATE '2026-06-30'
@@ -417,15 +521,15 @@ SELECT t.codice_interno, s.stato
  WHERE s.emittente_fiscale_id = (SELECT e3 FROM _k);
 
 SELECT is((SELECT stato FROM _scarto WHERE codice_interno = 'pgtap-c-allineata'),
-  'ALLINEATA', '26) deriva dall''ultima versione standard: ALLINEATA');
+  'ALLINEATA', '31) deriva dall''ultima versione standard: ALLINEATA');
 SELECT is((SELECT stato FROM _scarto WHERE codice_interno = 'pgtap-c-avanti'),
-  'STANDARD_AVANTI', '27) deriva da una versione standard precedente: STANDARD_AVANTI');
+  'STANDARD_AVANTI', '32) deriva da una versione standard precedente: STANDARD_AVANTI');
 SELECT is((SELECT stato FROM _scarto WHERE codice_interno = 'pgtap-c-superato'),
-  'CONTESTO_SUPERATO', '28) legge una forma dei dati superata: CONTESTO_SUPERATO, prima dell''origine');
+  'CONTESTO_SUPERATO', '33) legge una forma dei dati superata: CONTESTO_SUPERATO, prima dell''origine');
 SELECT is((SELECT stato FROM _scarto WHERE codice_interno = 'pgtap-c-nondich'),
-  'ORIGINE_NON_DICHIARATA', '29) nessuna origine dichiarata: ORIGINE_NON_DICHIARATA');
+  'ORIGINE_NON_DICHIARATA', '34) nessuna origine dichiarata: ORIGINE_NON_DICHIARATA');
 SELECT is((SELECT stato FROM _scarto WHERE codice_interno = 'pgtap-c-ereditata'),
-  'ALLINEATA', '30) l''origine si eredita dalla versione che la dichiara: ALLINEATA');
+  'ALLINEATA', '35) l''origine si eredita dalla versione che la dichiara: ALLINEATA');
 
 SELECT * FROM finish();
 ROLLBACK;
