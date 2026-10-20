@@ -1,8 +1,8 @@
 # Brief BE — Gli utenti di sviluppo: forniti da un verbo, etichettati, mai in produzione
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-18
+## ⏭️ Chi riparte — aggiornato al 2026-10-21
 
-**Riparte: Tid, con le decisioni del [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §5; il team DB, col listino che non si spegne (§9.5). T-7a è fatto (§9.4); T-7b aspetta i modelli.** Il collaudo T-5 è fatto (2026-10-18, §9): provisioning, `env.sh` e login con
+**Riparte: il BE, con la riprova dello spegnimento di un listino (11-quater, §9.6), poi il passaggio unico del [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §11 e T-7b. Lato DB non resta niente: `20261021-21` … `-23` applicati su scratch e dbdev, pgTAP verdi (Tid, 2026-10-21). T-7a è fatto (§9.4).** Il collaudo T-5 è fatto (2026-10-18, §9): provisioning, `env.sh` e login con
 `dev.smoke` funzionano, `smoke` è disattivato; il giro degli smoke ha trovato un emittente di prova che non sa
 emettere (nessun modello di documento) e smoke che vivevano dei dati di `EMITEST`.
 
@@ -21,14 +21,16 @@ utenti dei portali non hanno un PF loro (la veste sta sul ruolo del cliente o de
 | 7 | ✅ **BE** | T-1 … T-4 (2026-10-18, §8) e la 2b-2: il backend crea dalle madri del DB e le sue copie sono ritirate (brief DB §6.10) | §8; brief DB §6.10 | — |
 | 8 | ✅ **Tid + BE** | Collaudo T-5: command su dbdev, `env.sh` a `dev.smoke`, giro degli smoke, `smoke` disattivato (2026-10-18). Esito e correzioni in §9 | §9 | — |
 | 9 | ✅ **FE** | T-6: il filtro e il badge nella lista Operatori (2026-10-18) | §8 | — |
-| 10 | **Tid → team DB** | I modelli di documento standard: un emittente nuovo emette dal primo giorno | [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) | — |
+| 10 | ✅ **Tid → team DB** | I modelli di documento standard: un emittente nuovo emette dal primo giorno. Lato DB chiuso e applicato (2026-10-20); il seguito è il passaggio unico BE/FE di quel brief | [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §11 | — |
 | 11 | ✅ **BE** | T-7a (2026-10-18): preventivi-componenti e guida-inversione si costruiscono la materia; trovato il listino che non si spegne | §9.4 | — |
-| 11-bis | **team DB** | Il guard di disattivazione del listino punta a una tabella eliminata: 500 a ogni spegnimento (R-1, Q-1) | §9.5 | — |
-| 12 | **BE** | T-7b: gli smoke che hanno bisogno di un documento emesso; il giro intero con `--update` della baseline | §9.3 | 10 |
+| 11-bis | ✅ **team DB** | Il guard di disattivazione del listino punta a una tabella eliminata: 500 a ogni spegnimento (R-1, Q-1). Il generatore ritira gli orfani (`20261021-21` … `-23`), provato sullo scratch e su dbdev in transazione | §9.6 | — |
+| 11-ter | ✅ **Tid** | Apply di `20261021-21` … `-23` su scratch e dbdev, pgTAP verdi (2026-10-21). Verificato: changeSet `EXECUTED`, generatore agganciato, zero orfani, il trigger su `listini_associazioni` non c'è più | §9.6 | 11-bis |
+| 11-quater | **BE** | Riprova: spegnere un listino dalla API (con le versioni già spente, §9.6), poi i quattro `SMK-COMP-*` di dbdev | §9.6 | 11-ter |
+| 12 | **BE** | T-7b: gli smoke che hanno bisogno di un documento emesso; il giro intero con `--update` della baseline | §9.3 | il passaggio unico del brief modelli §11, 11-quater |
 | 13 | **Tid** | Archiviazione in `work-done/` | — | 12 |
 
-**Decisioni aperte di Tid: nessuna qui** (§7.4 deciso il 2026-10-16); D-1 … D-3 stanno nel brief dei modelli standard. Domande aperte al team DB: nessuna (D-1 risposta dal giro 1).
-✅ **Committato** su `dev/backend-tid` (`08cc15a61`, 2026-10-18; PR #1881): T-1 … T-4, T-6 e la 2b-2. Da committare: il §9 e le correzioni degli smoke del 2026-10-18 (§9.2).
+**Decisioni aperte di Tid: nessuna** (§7.4 deciso il 2026-10-16; le tre decisioni del §9.6 prese il 2026-10-20; D-1 … D-3 chiuse nel brief dei modelli standard). Domande aperte al team DB: nessuna.
+✅ **Committato** su `dev/backend-tid` (`08cc15a61`, 2026-10-18; PR #1881): T-1 … T-4, T-6 e la 2b-2. Da committare: il §9 e le correzioni degli smoke del 2026-10-18 (§9.2). **Da committare su `dev/db-tid`** (applicato): `20261021-21` … `-23`, il pgTAP `dbops/test-trigger-attivo-orfani-v1`, le due pagine `manual/` nuove, i manuali di `fn_run_automations_attivo` e `fn_trigger_argomenti`, la guida `automazione-db.md` e questo documento.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-16. **A chi:** il team BE/FE; la §6 al
 > team DB.
@@ -354,3 +356,50 @@ Su dbdev restano accesi quattro listini `SMK-COMP-<epoch>` dei giri di prova di 
 categorie e una mappa: non pesano su nessun prezzo (ogni categoria è usata solo dal cliente del suo
 giro) e si spengono dopo la correzione.
 
+### 9.6 Risposta del team DB (sessione DB, 2026-10-21)
+
+**R-1 — fatto, ma sul generatore e non sul solo trigger.** Era la seconda volta: a giugno lo stesso
+difetto con `profili_reparto_*` (`20260610-01`, ripulito una tantum per nome). Chi genera i trigger ATTIVO
+(`dbops.fn_run_automations_attivo`) adesso ritira anche quelli rimasti senza figlia, in testa a ogni giro,
+accanto al ritiro delle eccezioni:
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261021-21-create-fn-trigger-attivo-orfani` | il lettore unico: i trigger ATTIVO che nominano una tabella o una colonna che non esiste, con motivo e dettaglio |
+| `20_code/dbops/20261021-22-create-fn-ritira-attivo-orfani` | il ritiro: toglie `TABELLA_ASSENTE` e `COLONNA_ASSENTE` |
+| `20_code/dbops/20261021-23-update-fn-run-automations-attivo-ritira-orfani` | il generatore chiama il ritiro (corpo dalla doc auto-generata, verificato uguale al vivo) |
+
+* ⛔ **Orfano = nome morto, non «FK assente».** Ci sono `require` scritti a mano su chiavi polimorfe,
+  senza FK (`note_offerte_commerciali.target_riga_id`): sono legittimi e restano. Il lettore guarda le
+  tabelle e le colonne che il corpo del trigger legge, con i default dei due corpi.
+* Legge il catalogo per nome, non `information_schema`, che filtra per privilegio: il job vedrebbe
+  «assente» una colonna valida.
+* **Niente changeSet una tantum** (decisione di Tid, 2026-10-20: non c'è produzione). Su dbdev l'orfano
+  dei listini sparisce al primo `automations_attivo` dopo l'apply, oppure con la `CALL` a mano. In CI
+  non c'è mai stato: `ci_apply` gira dopo il DROP.
+* **La regola proposta** («un DROP TABLE porta via i guard dei padri») **non si adotta** (Tid,
+  2026-10-20): il generatore si rimette in ordine da solo, e una regola da ricordare è già stata
+  dimenticata due volte.
+
+**Q-1 — sì, per il framework ATTIVO:** `db/pgtap/dbops/test-trigger-attivo-orfani-v1.sql`. Si costruisce i
+casi su tabelle TEMP (figlia eliminata, colonna FK eliminata, require polimorfo, trigger con argomenti
+insufficienti) e prova lettore, ritiro e aggancio al generatore. Il test 3 è un **presidio** su ciò che
+c'è: in CI è verde per costruzione, su dbdev è rosso finché il job non ripulisce. I trigger **scritti a
+mano** di altre famiglie che nominano tabelle per testo (`componenti_*`, `note_validate_generic`,
+`documento_interno_*`, …) restano fuori (Tid, 2026-10-20). Per controllarli servirebbe dichiarare, per ogni
+funzione, che cosa significa ciascun argomento.
+
+**Provato** (2026-10-21), con l'SQL estratto dagli YAML in transazione annullata:
+
+* pgTAP 10/10 sullo scratch; su dbdev 9/10, con il solo test 3 rosso sull'orfano dei listini, come atteso;
+* su dbdev lo spegnimento di `SMK-COMP-1792356043`: prima del ritiro `Colonna FK del figlio non trovata in
+  catalogo`, dopo il ritiro il rifiuto giusto `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (il listino ha ancora una
+  versione attiva in `vendite.listini_versioni`);
+* `plpgsql_check` pulito, `dbops/test-riferimenti-morti-v1` 9/9, guardrail CI verdi.
+
+**Applicato** (Tid, 2026-10-21 00:07) su scratch e dbdev, pgTAP verdi. Verifica della sessione DB sui
+due database: i tre changeSet `EXECUTED`, `fn_run_automations_attivo` chiama il ritiro,
+`dbops.fn_trigger_attivo_orfani()` vuota, `trg_listini_a10_listini_associazioni_block_deact_upd` sparito.
+
+**Ricaduta BE:** nessuna nel codice. ⚠️ Nella riprova (11-quater) un listino con versioni attive
+risponde col rifiuto di dominio «figli prima, padre poi»: si spengono prima le versioni, poi il listino.

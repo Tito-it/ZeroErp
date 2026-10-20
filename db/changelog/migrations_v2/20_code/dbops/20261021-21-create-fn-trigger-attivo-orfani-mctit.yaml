@@ -1,0 +1,167 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_trigger_attivo_orfani(): i trigger ATTIVO che nominano una tabella
+#   o una colonna che non esiste piu'. Brief: brief-be-utenti-di-sviluppo §9.5
+#   (R-1, Q-1).
+#
+# ── IL DIFETTO ───────────────────────────────────────────────────────
+#   I trigger del framework ATTIVO legano padre e figlia con una STRINGA negli
+#   argomenti, non con una dipendenza di catalogo: un DROP TABLE … CASCADE della
+#   figlia toglie la FK e lascia il block sul padre. Alla prima disattivazione
+#   del padre trgfn_prevent_deactivate_if_children non trova la colonna FK e
+#   solleva E_ATTIVO_BLOCK_FKCOL_NOT_FOUND (vendite.listini dopo il DROP di
+#   listini_associazioni, 20260415-05). Seconda volta: la prima e' stata
+#   profili_reparto_* (20260610-01, ripulita una tantum per nome).
+#
+# ── ⛔ ORFANO = NOME MORTO, NON «FK ASSENTE» ───────────────────────────
+#   Esistono require scritti a mano su chiavi POLIMORFE, senza FK
+#   (note_offerte_commerciali.target_riga_id, 20260524-08): sono legittimi.
+#   Un trigger e' orfano quando una delle tabelle o delle colonne che il SUO
+#   corpo legge non esiste: e' esattamente il caso in cui si rompe (o, peggio,
+#   si spegne in silenzio: una colonna letta con to_jsonb da' NULL).
+#   Grammatica degli argomenti, con i default dei due corpi:
+#     - block (sul PADRE) dbops.trgfn_prevent_deactivate_if_children:
+#       (schema_figlia, tabella_figlia, colonna_fk, rif_padre = 'id', attivo_padre = 'attivo')
+#       legge: figlia.colonna_fk, padre.rif_padre, padre.attivo_padre;
+#     - require (sul FIGLIO) dbops.trgfn_child_requires_active_parent:
+#       (schema_padre, tabella_padre, attivo_padre, colonna_fk, rif_padre = 'id')
+#       legge: padre.attivo_padre, figlio.colonna_fk, padre.rif_padre.
+#   Con meno argomenti del minimo (3 / 4) il corpo solleva sempre: e' un errore
+#   di scrittura, non un residuo, e si riporta a parte (ARGOMENTI_INSUFFICIENTI)
+#   perche' lo corregga una persona.
+#
+# ── ⛔ CATALOGO, NON information_schema ───────────────────────────────
+#   dbops.fn_col_exists legge information_schema.columns, che mostra solo le
+#   colonne su cui CHI CHIEDE ha un privilegio: per il job delle automazioni
+#   una colonna valida potrebbe risultare assente, e il ritiro toglierebbe un
+#   trigger buono. Qui si va su pg_class / pg_attribute per nome: non filtrano
+#   per privilegio e non sollevano su uno schema senza USAGE (to_regclass si').
+#
+# Una sede, due lettori: dbops.fn_ritira_attivo_orfani (20261021-22), chiamata
+#   dal generatore, e il presidio db/pgtap/dbops/test-trigger-attivo-orfani-v1.
+# Firma: nessun parametro. RETURNS TABLE ancorata al catalogo dove la colonna
+#   esiste; argomenti, motivo e dettaglio sono calcolati e restano text.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261021-21-create-fn-trigger-attivo-orfani-mctit.yaml
+
+  - changeSet:
+      id: 20261021-21-create-fn-trigger-attivo-orfani
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_trigger_attivo_orfani(): i trigger ATTIVO (block sul padre, require sul figlio) che
+        nominano una tabella o una colonna che non esiste piu', letti dal catalogo per nome con la
+        grammatica e i default dei due corpi. Lettore unico del ritiro (20261021-22) e del presidio
+        pgTAP. Brief: brief-be-utenti-di-sviluppo §9.5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_trigger_attivo_orfani()
+              RETURNS TABLE (
+                  tabella      pg_catalog.pg_trigger.tgrelid%TYPE,
+                  trigger_nome pg_catalog.pg_trigger.tgname%TYPE,
+                  funzione     pg_catalog.pg_proc.proname%TYPE,
+                  -- calcolati: nessuna colonna da ancorare
+                  argomenti    text[],
+                  motivo       text,
+                  dettaglio    text
+              )
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                -- Scopo: i trigger ATTIVO che nominano una tabella o una colonna
+                --   che non esiste. motivo: TABELLA_ASSENTE | COLONNA_ASSENTE |
+                --   ARGOMENTI_INSUFFICIENTI.
+                -- Uso: SELECT * FROM dbops.fn_trigger_attivo_orfani();
+                WITH trg AS (
+                    SELECT t.tgrelid,
+                           t.tgname,
+                           p.proname,
+                           dbops.fn_trigger_argomenti(t.tgargs) AS a,
+                           p.proname = 'trgfn_prevent_deactivate_if_children' AS is_block
+                      FROM pg_catalog.pg_trigger t
+                      JOIN pg_catalog.pg_proc p      ON p.oid = t.tgfoid
+                      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                     WHERE NOT t.tgisinternal
+                       AND n.nspname = 'dbops'
+                       AND p.proname IN ('trgfn_prevent_deactivate_if_children',
+                                         'trgfn_child_requires_active_parent')
+                ),
+                letti AS (
+                    -- l'«altra» tabella: la figlia per il block, il padre per il require;
+                    -- in entrambi i casi argomenti 1 e 2.
+                    SELECT trg.*,
+                           cardinality(trg.a) >= CASE WHEN trg.is_block THEN 3 ELSE 4 END AS args_ok,
+                           (SELECT c.oid
+                              FROM pg_catalog.pg_class c
+                              JOIN pg_catalog.pg_namespace cn ON cn.oid = c.relnamespace
+                             WHERE cn.nspname = trg.a[1]
+                               AND c.relname  = trg.a[2]
+                               AND c.relkind IN ('r', 'p')) AS altra
+                      FROM trg
+                ),
+                colonne AS (
+                    -- le tre colonne che il corpo legge, ognuna con la tabella che la porta
+                    SELECT l.tgrelid, l.tgname,
+                           string_agg(format('%s.%s', COALESCE(r.rel::regclass::text, '?'), r.col), ', '
+                                      ORDER BY r.pos) AS mancanti
+                      FROM letti l
+                      CROSS JOIN LATERAL (VALUES
+                          (1, l.altra,   l.a[3]),
+                          (2, l.tgrelid, CASE WHEN l.is_block THEN COALESCE(l.a[4], 'id') ELSE l.a[4] END),
+                          (3, CASE WHEN l.is_block THEN l.tgrelid ELSE l.altra END,
+                              CASE WHEN l.is_block THEN COALESCE(l.a[5], 'attivo') ELSE COALESCE(l.a[5], 'id') END)
+                      ) AS r(pos, rel, col)
+                     WHERE l.args_ok
+                       AND l.altra IS NOT NULL
+                       AND NOT EXISTS (SELECT 1
+                                         FROM pg_catalog.pg_attribute at
+                                        WHERE at.attrelid = r.rel
+                                          AND at.attname  = r.col
+                                          AND at.attnum   > 0
+                                          AND NOT at.attisdropped)
+                     GROUP BY l.tgrelid, l.tgname
+                )
+                SELECT l.tgrelid,
+                       l.tgname,
+                       l.proname,
+                       l.a,
+                       CASE
+                         WHEN NOT l.args_ok        THEN 'ARGOMENTI_INSUFFICIENTI'
+                         WHEN l.altra IS NULL      THEN 'TABELLA_ASSENTE'
+                         ELSE                           'COLONNA_ASSENTE'
+                       END,
+                       CASE
+                         WHEN NOT l.args_ok        THEN format('%s argomenti', cardinality(l.a))
+                         WHEN l.altra IS NULL      THEN format('%s.%s', l.a[1], l.a[2])
+                         ELSE                           c.mancanti
+                       END
+                  FROM letti l
+                  LEFT JOIN colonne c ON c.tgrelid = l.tgrelid AND c.tgname = l.tgname
+                 WHERE NOT l.args_ok
+                    OR l.altra IS NULL
+                    OR c.mancanti IS NOT NULL
+                 ORDER BY l.tgrelid::regclass::text, l.tgname;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_trigger_attivo_orfani() IS
+                  'I trigger ATTIVO che nominano una tabella o una colonna che non esiste piu'': il block sul padre (dbops.trgfn_prevent_deactivate_if_children: figlia = argomenti 1-2, legge figlia.arg3, padre.arg4 [id], padre.arg5 [attivo]) e il require sul figlio (dbops.trgfn_child_requires_active_parent: padre = argomenti 1-2, legge padre.arg3, figlio.arg4, padre.arg5 [id]). motivo: TABELLA_ASSENTE, COLONNA_ASSENTE (dettaglio: le colonne che mancano), ARGOMENTI_INSUFFICIENTI (errore di scrittura, non un residuo). Orfano = nome morto, NON «FK assente»: i require scritti a mano su chiavi polimorfe non hanno FK e sono legittimi. Legge pg_class/pg_attribute per nome, non information_schema, che filtra per privilegio. Lettore unico di dbops.fn_ritira_attivo_orfani e del pgTAP dbops/test-trigger-attivo-orfani-v1. Brief: brief-be-utenti-di-sviluppo §9.5 (R-1, Q-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_trigger_attivo_orfani();

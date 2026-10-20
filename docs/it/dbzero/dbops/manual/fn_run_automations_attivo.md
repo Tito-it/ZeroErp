@@ -121,6 +121,16 @@ dry run, in testa a ogni giro, il motore chiama
 che toglie i trigger già generati per quelle coppie: chi genera ritira.
 L'eccezione è **per FK**, non per tabella.
 
+#### ⛔ Gli orfani (dal 2026-10-21)
+
+Nello stesso punto il motore chiama
+[`dbops.fn_ritira_attivo_orfani`](/dbzero/dbops/manual/fn_ritira_attivo_orfani),
+che toglie i trigger ATTIVO che nominano una tabella o una colonna che non
+esiste più. Il legame con la figlia è una stringa negli argomenti: un `DROP
+TABLE … CASCADE` della figlia lasciava il block sul padre, e ogni
+disattivazione del padre rispondeva `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND`. Il
+presidio è `db/pgtap/dbops/test-trigger-attivo-orfani-v1.sql`.
+
 ---
 
 ### Naming dei trigger
