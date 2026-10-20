@@ -155,6 +155,11 @@ VERSIONE_CREATE_COLUMNS: tuple[str, ...] = (
     "context_schema",
     "meta",
     "attivo",
+    # L'origine di una copia dello standard: la scrive solo «personalizza»
+    # sulla prima versione (brief-db-modelli-documento-standard §4.1 Q-5).
+    # Che punti a una versione standard della stessa coppia lo controlla il
+    # guard DB (E_DOCUMENTI_TEMPLATE_DERIVAZIONE_INVALIDA).
+    "derivata_da_versione_id",
 )
 
 
@@ -461,6 +466,7 @@ _VERSIONI_PROJECTION = """
     v.valido_dal,
     v.valido_al,
     v.versione_contesto,
+    v.derivata_da_versione_id,
     v.attivo,
     v.data_insert,
     v.data_update
@@ -724,6 +730,29 @@ class DocumentiRepository:
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
+
+    # Scopo: La versione dello standard da cui parte «personalizza»: la
+    #        PUBBLICATA col numero piu' alto, cioe' quella con cui la vista
+    #        `vw_template_personalizzati_scarto` confronta le copie (una copia
+    #        che parte da li' esce ALLINEATA). Attiva: il DB rifiuta una
+    #        derivazione da una versione spenta (trigger a10 sulla FK).
+    #        None se lo standard non ne ha.
+    def get_ultima_versione_pubblicata(
+        self, template_documento_id: int,
+    ) -> dict[str, Any] | None:
+        sql = f"""
+            SELECT {_VERSIONI_PROJECTION_DETAIL}
+            {_VERSIONI_FROM}
+            WHERE v.template_documento_id = %s
+              AND v.stato = 'PUBBLICATA'
+              AND v.attivo
+            ORDER BY v.versione DESC
+            LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(template_documento_id)])
+            results = rows_to_list(cursor)
+        return results[0] if results else None
 
     # Scopo: INSERT versione template (BB `execute_dynamic_insert`) sulle
     #        colonne di VERSIONE_CREATE_COLUMNS. `validita` (daterange) e'
@@ -1022,9 +1051,14 @@ class DocumentiRepository:
     #        (brief-db-modelli-documento-standard §4.1 Q-2, strada B). Se
     #        l'emittente ha modelli attivi per (tipo, sorgente) vale il suo
     #        predefinito; se non ne ha, il predefinito standard. Ritorna
-    #        `{template_documento_id, livello}` con livello `EMITTENTE` |
-    #        `STANDARD`; ogni mancata risoluzione la solleva la funzione, con il
-    #        suo codice (SENZA_PREDEFINITO, NON_RISOLTO, AMBIGUO).
+    #        `{template_documento_id, livello, template_versione_id}` con
+    #        livello `EMITTENTE` | `STANDARD` e la versione con cui il modello
+    #        stampa oggi; ogni mancata risoluzione la solleva la funzione, con
+    #        il suo codice (SENZA_PREDEFINITO, NON_RISOLTO, AMBIGUO).
+    # ⭐ La versione la dice il DB (P-2, `20261020-27`): «puo' stampare» e'
+    #    scritto una volta sola, nella funzione. Ricercarla qui con filtri
+    #    nostri ne farebbe una seconda copia, e il giorno che divergessero la
+    #    funzione sceglierebbe un modello che poi non si stampa.
     # ⛔ La regola non si ricopia qui: fino al 2026-10-19 il BE la scriveva da
     #    se' (`ORDER BY t.id LIMIT 1`, cioe' l'id piu' basso quando il tipo
     #    mancava) e con una seconda query (`count_templates_attivi_no_default`)
@@ -1041,7 +1075,7 @@ class DocumentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT template_documento_id, livello
+                SELECT template_documento_id, livello, template_versione_id
                   FROM documenti.fn_risolvi_template_applicabile(%s, %s, %s)
                 """,
                 [

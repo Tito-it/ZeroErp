@@ -10,7 +10,7 @@
 # Note: va lanciato con il Python della VENV DEL BACKEND (il plugin Django
 #       importa settings e codice del progetto) e con l'ambiente Django
 #       caricato (le variabili che le settings pretendono):
-#           cd backend && set -a && . ./.env && set +a
+#           cd backend && set -a && . ./env.sh && set +a
 #           .venv/bin/python ../scripts/check_mypy_baseline.py
 #
 # ROSSO in tre casi, e solo in quelli:

@@ -12,6 +12,7 @@
 #   0. claim_vuota_nessun_lavoro
 #   1. happy_path_numera_genera_sistema_fatto
 #   2. genera_contesto_sistema_kwargs
+#   2b. genera_riceve_il_tipo_della_riga
 #   3. errore_terminale_incrementa_e_marca_errore
 #   4. errore_sotto_soglia_e_riprovabile
 #   5. fattura_sparita_marca_errore_senza_render
@@ -38,7 +39,9 @@ from apps.vendite.services.stampa_coda_drainer_service import draina_coda_stampa
 _EMITTENTE = 11
 
 
-def _item(coda_id: int, fattura_id: int, *, template_id=None) -> dict[str, Any]:
+def _item(
+    coda_id: int, fattura_id: int, *, template_id=None, tipo_id=None,
+) -> dict[str, Any]:
     """Work-item come lo ritorna claim_stampe_pending."""
     return {
         "id": coda_id,
@@ -47,6 +50,7 @@ def _item(coda_id: int, fattura_id: int, *, template_id=None) -> dict[str, Any]:
         "sorgente_uid": str(fattura_id),
         "lotto_id": 7,
         "template_documento_id": template_id,
+        "tipo_documento_output_id": tipo_id,
         "tentativi": 0,
     }
 
@@ -118,6 +122,18 @@ class DrainerHappyPathTests(SimpleTestCase):
         self.assertEqual(kwargs["sorgente_id"], 42)
         self.assertEqual(kwargs["sorgente_uid"], "42")
         self.assertEqual(kwargs["template_documento_id"], 5)
+        self.assertIsNone(kwargs["tipo_documento_output_id"])
+
+    # 2b. Il tipo di documento della riga arriva al render (§9): senza, su
+    #     una sorgente con piu' tipi la risoluzione si ferma con AMBIGUO.
+    def test_genera_riceve_il_tipo_della_riga(self) -> None:
+        repo, vr, ds = _mocks(claim=[_item(1, 42, tipo_id=3)])
+        draina_coda_stampa(
+            emittente_fiscale_id=_EMITTENTE, repo=repo, vendite_repo=vr,
+            doc_service=ds,
+        )
+        self.assertEqual(ds.genera_documento.call_args.kwargs["tipo_documento_output_id"], 3)
+        self.assertIsNone(ds.genera_documento.call_args.kwargs["template_documento_id"])
 
 
 class DrainerErrorPathTests(SimpleTestCase):

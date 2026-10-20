@@ -98,15 +98,16 @@ def _columns(*names: str) -> list[Any]:
 class RisolviTemplateApplicabileTests(TestCase):
     """Test risolvi_template_applicabile: la regola e' della funzione DB."""
 
-    # 0. chiama la funzione DB coi tre argomenti, ritorna id + livello.
+    # 0. chiama la funzione DB coi tre argomenti, ritorna id, livello e la
+    #    versione che stampa (P-2).
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_risolvi_template_applicabile_chiama_la_funzione_db(
         self, mocked_factory
     ) -> None:
         cursor = _mk_cursor(
             fetchone_results=[None],
-            descriptions=[_columns("template_documento_id", "livello")],
-            fetchall_results=[[(7, "STANDARD")]],
+            descriptions=[_columns("template_documento_id", "livello", "template_versione_id")],
+            fetchall_results=[[(7, "STANDARD", 12)]],
         )
         mocked_factory.return_value = cursor
 
@@ -116,8 +117,12 @@ class RisolviTemplateApplicabileTests(TestCase):
             tipo_documento_output_id=None,
         )
 
-        self.assertEqual(row, {"template_documento_id": 7, "livello": "STANDARD"})
+        self.assertEqual(
+            row,
+            {"template_documento_id": 7, "livello": "STANDARD", "template_versione_id": 12},
+        )
         sql, params = cursor.execute.call_args_list[0].args
+        self.assertIn("template_versione_id", sql)
         self.assertIn("documenti.fn_risolvi_template_applicabile(%s, %s, %s)", sql)
         # Il tipo assente arriva NULL: lo deduce il DB, non un ORDER BY qui.
         self.assertEqual(params, [10, 11, None])

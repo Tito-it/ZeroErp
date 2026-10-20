@@ -26,6 +26,7 @@
 #  14. delete_versione_200_happy_path
 #  15. clona_versione_200_happy_path
 #  16. pubblica_versione_200_happy_path
+#  16-bis. personalizza_template_routing_e_payload
 #  17. asset_list_requires_jwt
 #  18. asset_list_ok_envelope_paginated
 #  19. asset_upload_requires_file_field
@@ -494,6 +495,27 @@ class DocumentiApiVersioniWriteTests(JwtMockedApiTest):
         )
         self.assertIn(resp.status_code, (200, 201))
         self.assertEqual(resp.json()["data"]["stato"], "PUBBLICATA")
+
+    # 16-bis. POST personalizza: il verbo sul modello standard arriva al
+    #         service con l'id del path e il corpo.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(is_superuser=True), None),
+    )
+    @patch("apps.documenti.api.views.TemplateAdminService")
+    def test_personalizza_template_routing_e_payload(self, mocked_svc_cls, _mock_auth) -> None:
+        mocked_svc_cls.return_value.personalizza_template.return_value = {
+            "id": 900, "standard": False, "emittente_fiscale_id": 11,
+        }
+        resp = self.client.post(
+            "/api/v1/documenti/templates/2728/personalizza/",
+            data={"emittente_fiscale_id": 11},
+            content_type="application/json",
+        )
+        self.assertIn(resp.status_code, (200, 201))
+        self.assertEqual(resp.json()["data"]["id"], 900)
+        args = mocked_svc_cls.return_value.personalizza_template.call_args.args
+        self.assertEqual(args[1:], (2728, {"emittente_fiscale_id": 11}))
 
 
 class DocumentiAssetApiTests(JwtMockedApiTest):

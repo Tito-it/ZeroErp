@@ -21,6 +21,7 @@ from apps.documenti.api.views import (
     ApiContextBuilders,
     ApiTemplateDetail,
     ApiTemplateList,
+    ApiTemplatePersonalizza,
     ApiTemplateVersioneClona,
     ApiTemplateVersioneDetail,
     ApiTemplateVersionePubblica,
@@ -42,6 +43,12 @@ urlpatterns = [
         "templates/<int:template_id>/",
         ApiTemplateDetail.as_view(),
         name="documenti-templates-detail",
+    ),
+    # Comando sul modello standard: la copia per un emittente (D-2).
+    path(
+        "templates/<int:template_id>/personalizza/",
+        ApiTemplatePersonalizza.as_view(),
+        name="documenti-templates-personalizza",
     ),
     path(
         "templates/<int:template_id>/versioni/",

@@ -16,7 +16,9 @@
 #           codice; lo standard passa la coerenza dell'emittente;
 #         - coerenza template-input: emittente o sorgente_tipo del template
 #           diverso da quanto richiesto -> E_DOCUMENTI_VALIDATION;
-#         - resolve versione PUBBLICATA: nessuna match -> NOT_FOUND;
+#         - resolve versione: modello risolto -> la versione della
+#           risoluzione, riletta per id (non leggibile = invariante rotta);
+#           modello indicato senza versione PUBBLICATA -> NOT_FOUND;
 #         - context_builder_code vuoto sul template -> VALIDATION;
 #         - render fail (eccezione): propagato senza INSERT (Decisione 32);
 #         - render output vuoto -> E_DOCUMENTI_RENDER_FAILED;
@@ -39,6 +41,7 @@
 #   6. genera_documento_template_emittente_incoerente_raises
 #   7. genera_documento_template_sorgente_tipo_incoerente_raises
 #   8. genera_documento_no_versione_pubblicata_raises_not_found
+#   8b. genera_documento_versione_risolta_non_rileggibile_invariante
 #   9. genera_documento_context_builder_code_vuoto_raises
 #  10. genera_documento_render_pdf_solleva_propaga_no_db
 #  11. genera_documento_render_pdf_empty_raises
@@ -140,7 +143,7 @@ class GeneraDocumentoHappyPathTests(SimpleTestCase):
         svc, repo, reader, storage = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "0190a000-0000-0000-0000-000000000001"),
                 "create_documento_generato_file": 123,
@@ -175,7 +178,10 @@ class GeneraDocumentoHappyPathTests(SimpleTestCase):
 
         # Verifica chiamate repo nell'ordine atteso.
         repo.risolvi_template_applicabile.assert_called_once()
-        repo.get_versione_pubblicata_attiva.assert_called_once()
+        # La versione e' quella scelta dalla risoluzione (P-2), riletta per id:
+        # nessuna seconda ricerca con filtri del BE.
+        repo.get_versione.assert_called_once_with(7, 12)
+        repo.get_versione_pubblicata_attiva.assert_not_called()
         # Il patto versione/forma dei dati chiesto al DB: la versione
         # pubblicata (12) e la forma del builder (2).
         repo.guard_versione_contesto.assert_called_once_with(12, 2)
@@ -285,6 +291,9 @@ class GeneraDocumentoResolveTemplateTests(SimpleTestCase):
                 )
         reader.get_template.assert_called_once()
         repo.risolvi_template_applicabile.assert_not_called()
+        # Modello indicato: la risoluzione non gira, la versione si cerca.
+        repo.get_versione_pubblicata_attiva.assert_called_once()
+        repo.get_versione.assert_not_called()
 
     # 4. nessun id -> la risoluzione del DB via repo.
     def test_genera_documento_template_default_via_risolvi_applicabile(self) -> None:
@@ -293,7 +302,7 @@ class GeneraDocumentoResolveTemplateTests(SimpleTestCase):
         svc, repo, reader, _ = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
@@ -346,7 +355,7 @@ class GeneraDocumentoResolveTemplateTests(SimpleTestCase):
         svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template, livello="STANDARD"),
-                "get_versione_pubblicata_attiva": versione_row(),
+                "get_versione": versione_row(),
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
@@ -424,19 +433,33 @@ class GeneraDocumentoResolveTemplateTests(SimpleTestCase):
 
 
 class GeneraDocumentoResolveVersioneTests(SimpleTestCase):
-    # 8. nessuna versione PUBBLICATA attiva -> E_DOCUMENTI_NOT_FOUND.
+    # 8. modello indicato senza versione PUBBLICATA attiva -> E_DOCUMENTI_NOT_FOUND.
+    #    Per un modello risolto il caso non esiste: la funzione non sceglie un
+    #    modello che non puo' stampare (`-26`), lo dice lei col suo codice.
     def test_genera_documento_no_versione_pubblicata_raises_not_found(self) -> None:
-        template = template_row()
         svc, repo, _, storage = service_with_mocks(
-            repo_methods={
-                **risolto(template),
-                "get_versione_pubblicata_attiva": None,
-            },
+            repo_methods={"get_versione_pubblicata_attiva": None},
+            reader_methods={"get_template": template_row(template_id=42)},
         )
         with patch_scope(None):
             with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
+                svc.genera_documento(
+                    make_user(), template_documento_id=42, **_GENERA_DEFAULT,
+                )
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
+        repo.create_documento_generato.assert_not_called()
+        storage.write.assert_not_called()
+
+    # 8b. la versione che la risoluzione ha scelto non si rilegge -> il patto
+    #     del DB e' rotto: RuntimeError, non un 404 dell'operatore.
+    def test_genera_documento_versione_risolta_non_rileggibile_invariante(self) -> None:
+        svc, repo, _, storage = service_with_mocks(
+            repo_methods={**risolto(template_row()), "get_versione": None},
+        )
+        with patch_scope(None):
+            with self.assertRaisesRegex(RuntimeError, "risolta ma non leggibile"):
+                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
+        repo.get_versione_pubblicata_attiva.assert_not_called()
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
 
@@ -454,7 +477,7 @@ class GeneraDocumentoBuilderRenderTests(SimpleTestCase):
         svc, repo, _, _ = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
             },
         )
         with patch_scope(None):
@@ -470,7 +493,7 @@ class GeneraDocumentoBuilderRenderTests(SimpleTestCase):
         svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
             },
         )
         with patch_scope(None), patch_get_builder({"numero": 1}):
@@ -494,7 +517,7 @@ class GeneraDocumentoBuilderRenderTests(SimpleTestCase):
         svc, repo, _, _ = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
             },
         )
         with patch_scope(None), patch_get_builder({"numero": 1}), patch_render(b""):
@@ -510,7 +533,7 @@ class GeneraDocumentoBuilderRenderTests(SimpleTestCase):
         svc, repo, _, _ = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
             },
         )
         with patch_scope(None), patch_get_builder({"numero": 1}), patch_render():
@@ -534,7 +557,7 @@ class GeneraDocumentoTipoFileTests(SimpleTestCase):
         svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
                 "get_tipo_file_documento_by_codice": None,
             },
         )
@@ -552,7 +575,7 @@ class GeneraDocumentoTipoFileTests(SimpleTestCase):
         svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
                 "get_tipo_file_documento_by_codice": {
                     "id": 2, "codice": "PDF_FINALE", "attivo": False,
                 },
@@ -581,7 +604,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
         svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "get_tipo_file_documento_by_codice": {
                     "id": 2, "codice": "PDF_FINALE", "attivo": True,
@@ -608,7 +631,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
         svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
@@ -636,7 +659,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
         svc, repo, _, _ = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
@@ -677,7 +700,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
             svc, repo, _, _ = service_with_mocks(
                 repo_methods={
                     **risolto(template),
-                    "get_versione_pubblicata_attiva": versione,
+                    "get_versione": versione,
                     "next_progressivo_sorgente": 1,
                     "create_documento_generato": (99, "uid-x"),
                     "create_documento_generato_file": 1,
@@ -740,7 +763,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
         svc, _, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
@@ -791,7 +814,7 @@ class GeneraDocumentoAllegatiTests(SimpleTestCase):
         svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 123,
@@ -979,7 +1002,7 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
         svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template),
-                "get_versione_pubblicata_attiva": versione,
+                "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "create_documento_generato": (99, "uid-sys"),
                 "create_documento_generato_file": 1,
@@ -1075,7 +1098,7 @@ class GeneraDocumentoVersioneContestoTests(SimpleTestCase):
         svc, repo, _, storage = service_with_mocks(
             repo_methods={
                 **risolto(template_row()),
-                "get_versione_pubblicata_attiva": versione_row(),
+                "get_versione": versione_row(),
             },
         )
         repo.guard_versione_contesto.side_effect = ServiceError(

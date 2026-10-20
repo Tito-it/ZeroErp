@@ -2045,14 +2045,14 @@ onActivated(() => {
             class="app-dash-mese-errori"
             v-tooltip.right="t('vendite.dashboard_competenza.mese_errori', { n: statiMesi[idx].errori })"
           >
-            <i :class="STATUS_ICONS.ERRORE" /> {{ statiMesi[idx].errori }}
+            {{ statiMesi[idx].errori }} <i :class="STATUS_ICONS.ERRORE" />
           </span>
           <span
             v-if="statiMesi[idx].aperti > 0"
             class="app-dash-mese-fermi"
             v-tooltip.right="t('vendite.dashboard_competenza.mese_aperti', { n: statiMesi[idx].aperti })"
           >
-            <i :class="STATUS_ICONS.ATTESA" /> {{ statiMesi[idx].aperti }}
+            {{ statiMesi[idx].aperti }} <i :class="STATUS_ICONS.ATTESA" />
           </span>
           <i
             v-if="statiMesi[idx].stato === 'ok'"
@@ -2078,10 +2078,10 @@ onActivated(() => {
         >
           <template #badge>
             <span v-if="statoMeseCorrente.errori > 0" class="app-dash-mese-errori">
-              <i :class="STATUS_ICONS.ERRORE" /> {{ statoMeseCorrente.errori }}
+              {{ statoMeseCorrente.errori }} <i :class="STATUS_ICONS.ERRORE" />
             </span>
             <span v-if="statoMeseCorrente.aperti > 0" class="app-dash-mese-fermi">
-              <i :class="STATUS_ICONS.ATTESA" /> {{ statoMeseCorrente.aperti }}
+              {{ statoMeseCorrente.aperti }} <i :class="STATUS_ICONS.ATTESA" />
             </span>
             <i v-if="statoMeseCorrente.stato === 'ok'" class="app-dash-mese-ok" :class="STATUS_ICONS.TUTTO_OK" />
             <i v-else-if="statoMeseCorrente.stato === 'vuoto'" class="app-dash-mese-vuoto" :class="STATUS_ICONS.NON_APPLICABILE" />
