@@ -37,7 +37,6 @@ from apps.core.services.idempotency_store import IdempotencyDecision
 from apps.core.services.service_errors import ServiceError
 
 
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class VenditePipelineApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:

@@ -20,7 +20,7 @@
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client, override_settings
+from django.test import Client
 from django.urls import resolve
 
 from apps.amm_software.api.views import ProcessiAccensioneView
@@ -39,7 +39,6 @@ def _mock_user() -> Mock:
     return user
 
 
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class ProcessiAccensioneApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()

@@ -33,7 +33,7 @@ Indice test eseguiti:
 from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError
-from django.test import Client, override_settings
+from django.test import Client
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -46,10 +46,6 @@ _CRED = {
 }
 
 
-# Idempotenza forte OFF deterministica: blocca e sblocca vogliono la chiave, e
-# con DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1 nell'ambiente il claim colpirebbe
-# il DB (vietato in SimpleTestCase) → 500 finti.
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class _Base(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()

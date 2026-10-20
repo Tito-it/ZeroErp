@@ -17,15 +17,10 @@ Indice test eseguiti:
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client, override_settings
+from django.test import Client
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
-# Idempotenza forte OFF deterministica: test di routing (lo store ha i suoi
-# test dedicati in test_pipeline_api). Senza override, con
-# DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1 nell'ambiente il claim colpirebbe
-# il DB (vietato in SimpleTestCase) → 500 finti.
-@override_settings(API_STRONG_IDEMPOTENCY_ENABLED=False)
 class VenditeResetLottoFatturaDraftApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:

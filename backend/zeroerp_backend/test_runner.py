@@ -5,8 +5,10 @@
 # Scopo: il runner dei test del progetto. Legge il fuso dell'azienda prima
 #        della suite (vedi `setup_test_environment`). Spegne `ERROR_LOG_DB_ENABLED`,
 #        cioe' impedisce alla suite di scrivere nel diario tecnico
-#        `dbops.error_log`, e il redirect HTTPS (`SECURE_SSL_REDIRECT`), che
-#        manderebbe in 301 il client di test.
+#        `dbops.error_log`, il redirect HTTPS (`SECURE_SSL_REDIRECT`), che
+#        manderebbe in 301 il client di test, e l'idempotenza forte, che
+#        farebbe interrogare il DB a ogni POST. Lo stesso ambiente lo prepara
+#        in ogni worker di `--parallel` (`_init_worker_zeroerp`).
 #
 #        PERCHE' SERVE, e perche' e' un recinto e non una preferenza.
 #        I test di questa suite girano contro il DATABASE CONFIGURATO VERO:
@@ -43,7 +45,7 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.db import connection
-from django.test.runner import DiscoverRunner, ParallelTestSuite, _init_worker
+from django.test.runner import DiscoverRunner, ParallelTestSuite
 
 from apps.core.services.fuso_aziendale import fuso_aziendale
 
@@ -59,6 +61,13 @@ def _prepara_ambiente_test() -> None:
     # niente. Chi prova il redirect lo riaccende con `override_settings`
     # (`apps/core/tests/api/test_https_header.py`).
     settings.SECURE_SSL_REDIRECT = False
+    # Stessa natura: l'idempotenza forte (`DJANGO_API_STRONG_IDEMPOTENCY_ENABLED`,
+    # accesa da `env.sh` e spenta da `.env.systemd` e in CI) fa scrivere a ogni
+    # POST con `Idempotency-Key` in `dbops.idempotency_keys`, cioe' una query
+    # dentro un `SimpleTestCase`: la suite cambiava esito secondo il file
+    # d'ambiente caricato. Chi la prova la riaccende con `override_settings`
+    # (`apps/vendite/tests/api/test_pipeline_api.py`).
+    settings.API_STRONG_IDEMPOTENCY_ENABLED = False
     # Il fuso dell'azienda si legge QUI, una volta, dal database configurato
     # (BB `fuso_aziendale`, cache di processo). Dentro un `SimpleTestCase`
     # la prima lettura sarebbe un `DatabaseOperationForbidden`: il
@@ -85,8 +94,13 @@ def _prepara_ambiente_test() -> None:
 #    `fork` il worker eredita tutto e la chiamata e' innocua. Funzione di
 #    modulo: il worker la riceve per nome.
 def _init_worker_zeroerp(counter, *args, **kwargs) -> None:
-    _init_worker(counter, *args, **kwargs)
+    _INIT_WORKER_DJANGO(counter, *args, **kwargs)
     _prepara_ambiente_test()
+
+
+# L'inizializzazione di Django, presa dalla classe e non per nome: la
+# funzione di modulo e' privata, l'attributo e' il punto di estensione.
+_INIT_WORKER_DJANGO = ParallelTestSuite.init_worker
 
 
 class ZeroErpParallelTestSuite(ParallelTestSuite):
