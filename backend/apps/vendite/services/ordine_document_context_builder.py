@@ -17,6 +17,14 @@
 #         - asse OdV-specifico `fatturazione_trigger`;
 #         - provenienza upstream (`documento_origine_*`) e agente.
 #
+#        ⭐ FORMA 3 dal 2026-10-20 (brief-db-grammatica-unica-documenti
+#        §12.10.4): `ordine.origine.etichetta`, il nome del tipo d'origine come
+#        lo legge una persona (`config.sorgenti.etichetta`). Prima la carta
+#        stampava `origine.tipo`, cioe' un codice (`OFFERTA_COMMERCIALE`). Il
+#        render gira con `StrictUndefined`: un modello che legge la chiave nuova,
+#        reso da un builder che non la produce, fallisce. Per questo e' una
+#        forma nuova e non una chiave in piu' (precedente: fattura 3 → 4).
+#
 #        Confine v1 (allineato a offerta/preventivo v1):
 #         - il builder NON applica scope/permessi: responsabilita' del
 #           caller (orchestrator + view di dominio con permessi `vendite_*`);
@@ -64,7 +72,7 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
 
     CODE = SORGENTE_ORDINE_VENDITA
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
-    CONTEXT_VERSION = 2
+    CONTEXT_VERSION = 3
 
     # Tipi indirizzo ammessi nell'ambito ORDINI (`config.tipi_indirizzi_allowed`).
     # Dichiarati qui e non letti a runtime: il context deve essere
@@ -145,6 +153,7 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
                 "locale": locale,
                 "auth_user_id": auth_user_id,
                 # v2 (2026-08-05): aggiunto il blocco `indirizzi`.
+                # v3 (2026-10-20): `ordine.origine.etichetta`.
                 "context_version": self.CONTEXT_VERSION,
                 "context_code": self.CODE,
             },
@@ -197,9 +206,13 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
                 "modalita_codice": testata.get("modalita_pagamento_codice"),
                 "termine_codice": testata.get("termine_pagamento_codice"),
             },
+            # `tipo` e' il codice della sorgente (per chi lo confronta),
+            # `etichetta` il nome da stampare. Le tre chiavi ci sono sempre,
+            # `None` senza origine: il template le legge sotto StrictUndefined.
             "origine": {
                 "tipo": testata.get("documento_origine_tipo"),
                 "codice": testata.get("documento_origine_codice"),
+                "etichetta": testata.get("documento_origine_etichetta"),
             },
             "agente_denominazione": testata.get("agente_denominazione"),
             "totali": {

@@ -127,7 +127,9 @@ nella chiave `capabilities`, non fuse nella testata (dal 2026-09-23, [api.md §�
 `push_commessa` come azione applicativa; icona e colore li sceglie il frontend
 dal `key`), `can_edit_testata`, `can_edit_righe`,
 `can_push_commessa` (+ `can_push_commessa_reason`/`_reason_key`),
-`non_editable_fields`, `stato_codice`, `pdf`; sulla testata `righe_count`. *(`can_conferma` non è
+`non_editable_fields`, `stato_codice`, `pdf`; sulla testata `righe_count` e, dal 2026-10-20,
+`documento_origine_etichetta` (il nome del tipo d'origine da `config.sorgenti.etichetta`, «Preventivo»,
+«Offerta»; `null` senza origine). *(`can_conferma` non è
 più un flag: la conferma è un'entry di `available_actions`.)* 404
 (`E_ORD_NOT_FOUND`) se inesistente o fuori scope (RLS).
 
@@ -424,6 +426,22 @@ render restano in `DocumentGenerationService` (invariato). Permessi: area `vendi
 dell'ordine. **Prerequisito**: template `ORDINE_VENDITA` con versione **PUBBLICATA**
 (creazione manuale, vedi [documenti-e-stampe.md](../../../guide/documenti-e-stampe.md)):
 senza, `genera`/`anteprima` falliscono con `E_DOCUMENTI_*`.
+
+**Contratto di stampa — forma dei dati 3** (dal 2026-10-20,
+[brief-db-grammatica-unica-documenti §12.10](../../../dev/work-in-progress/brief-db-grammatica-unica-documenti.md)).
+Chiavi di primo livello: `ordine`, `cliente`, `indirizzi`, `righe`, `riepilogo_iva`, `_meta`.
+La provenienza è `ordine.origine`, con tre chiavi **sempre presenti** (`null` senza origine, il render gira
+con `StrictUndefined`):
+
+| Chiave | Che cosa |
+| --- | --- |
+| `tipo` | il codice della sorgente d'origine (`PREVENTIVO`, `OFFERTA_COMMERCIALE`): per confrontarlo, non per stamparlo |
+| `codice` | il numero del documento d'origine |
+| `etichetta` | il nome del tipo come lo legge una persona (`config.sorgenti.etichetta`): è quello che va sulla carta |
+
+Storia della forma: 2 (2026-08-05) il blocco `indirizzi`; 3 (2026-10-20) `origine.etichetta`. Una versione di
+modello in forma 2 non stampa più (409 `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`) finché non se ne pubblica una
+in forma 3.
 
 ## Output
 

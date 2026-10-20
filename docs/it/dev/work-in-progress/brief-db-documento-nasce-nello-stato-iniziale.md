@@ -16,6 +16,8 @@ Decisioni aperte di Tid: §4. Lavoro da committare: questo documento.
 [brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md) (§6.1): se questo
 cantiere introduce un registro o un parametro per tipo di documento, usa i codici di
 `config.sorgenti` (G-1) e parte **dopo il lotto 0** di quel brief (G-4, Tid 2026-10-18).
+✅ Il lotto 0 è chiuso (2026-10-19, §8 di quel brief), e dal lotto 2a anche i lettori delle testate
+parlano i codici di `config.sorgenti`: da quel lato questo cantiere può partire.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-13. **A chi:** Tid, poi il team DB.
 > **Origine:** trovato verificando `trg_ddt_a10_gen_numero_emesso_upd` nel giro del `20261013-53`

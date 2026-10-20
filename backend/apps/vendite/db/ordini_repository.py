@@ -265,11 +265,18 @@ class OrdiniRepository(
                 -- brief emissione mirata. Letta dalla tabella e non dalla vista
                 -- di lista, che non la espone (la vista e' del team DB).
                 o.fatturazione_immediata,
-                ba.istanza_utility_id
+                ba.istanza_utility_id,
+                -- Il nome del tipo d'origine come lo legge una persona: la
+                -- stampa lo mette sulla carta al posto del codice
+                -- (brief-db-grammatica-unica-documenti §12.9). LEFT: NULL
+                -- quando l'ordine non ha origine.
+                so.etichetta AS documento_origine_etichetta
               FROM vendite.vw_ordini_lista v
               JOIN vendite.ordini o ON o.id = v.id
               LEFT JOIN anagrafiche.billing_account ba
                 ON ba.id = v.billing_account_id
+              LEFT JOIN config.sorgenti so
+                ON so.codice_interno = v.documento_origine_tipo
              WHERE v.id = %s
         """
         with connection.cursor() as cursor:

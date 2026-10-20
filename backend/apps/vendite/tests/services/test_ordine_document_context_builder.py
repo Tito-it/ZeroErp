@@ -14,6 +14,7 @@
 #   3. build_context_id_non_valido_raises_validation
 #   4. build_context_ordine_inesistente_raises_not_found
 #   5. registry_contiene_ordine_vendita_dopo_import_modulo
+#   6. build_context_senza_origine_chiavi_presenti
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -66,6 +67,7 @@ def _testata_row() -> dict[str, Any]:
         "agente_denominazione": "Mario Rossi",
         "documento_origine_tipo": "PREVENTIVO",
         "documento_origine_codice": "P-2026/123",
+        "documento_origine_etichetta": "Preventivo",
         "meta": {"note": "ordine demo"},
     }
 
@@ -105,6 +107,7 @@ class BuildContextOrdineTests(SimpleTestCase):
         self.assertEqual(ordine["pagamento"]["modalita_codice"], "BB")
         self.assertEqual(ordine["origine"]["tipo"], "PREVENTIVO")
         self.assertEqual(ordine["origine"]["codice"], "P-2026/123")
+        self.assertEqual(ordine["origine"]["etichetta"], "Preventivo")
         self.assertEqual(ordine["agente_denominazione"], "Mario Rossi")
         self.assertEqual(ordine["totali"]["imponibile"], "100,00")
         self.assertEqual(ordine["totali"]["documento"], "122,00")
@@ -117,8 +120,8 @@ class BuildContextOrdineTests(SimpleTestCase):
         self.assertEqual(cliente["soggetto_ruolo_id"], 50)
 
         self.assertEqual(ctx["_meta"]["context_code"], "ORDINE_VENDITA")
-        # v2 dal 2026-08-05: il context porta il blocco `indirizzi`.
-        self.assertEqual(ctx["_meta"]["context_version"], 2)
+        # v3 dal 2026-10-20: `ordine.origine.etichetta`.
+        self.assertEqual(ctx["_meta"]["context_version"], 3)
         self.assertEqual(ctx["_meta"]["auth_user_id"], 9)
         self.assertEqual(ctx["_meta"]["locale"], "it-IT")
 
@@ -157,6 +160,28 @@ class BuildContextOrdineTests(SimpleTestCase):
         self.assertEqual(ctx["riepilogo_iva"][0]["iva_aliquota"], "22,00")
         self.assertEqual(ctx["riepilogo_iva"][0]["imposta"], "22,00")
         repo.list_riepilogo_iva.assert_called_once_with(7)
+
+    # 6. Ordine senza origine (CREATE diretta): le tre chiavi di `origine` ci
+    #    sono comunque, a None. Il template le legge sotto StrictUndefined
+    #    (`{% if ordine.origine.etichetta or ordine.origine.codice %}`): una
+    #    chiave assente sarebbe un render fallito, non un blocco vuoto.
+    def test_build_context_senza_origine_chiavi_presenti(self) -> None:
+        repo = MagicMock()
+        repo.get_ordine.return_value = {
+            **_testata_row(),
+            "documento_origine_tipo": None,
+            "documento_origine_codice": None,
+            "documento_origine_etichetta": None,
+        }
+        repo.list_righe.return_value = []
+        repo.list_riepilogo_iva.return_value = []
+
+        ctx = OrdineDocumentContextBuilder(repo=repo).build_context(7)
+
+        self.assertEqual(
+            ctx["ordine"]["origine"],
+            {"tipo": None, "codice": None, "etichetta": None},
+        )
 
 
 class BuildContextOrdineGuardTests(SimpleTestCase):

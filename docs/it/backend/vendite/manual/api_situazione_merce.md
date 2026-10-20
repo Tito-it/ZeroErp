@@ -84,7 +84,7 @@ Esempio reale (l'ordine del §3 del brief pannello, la riga da 21 pezzi):
 contesto      ORDINE_VENDITA   (dal DDT sarebbe DDT_VENDITA, e il saldo sarebbe quello delle partite)
 righe_ordine  riga 1 · ordinato 21 · tenuti 13 · fatturato 21
                      · differenza −8 · da_spedire 3 · DA_ACCREDITARE
-partite       DDT0010839 · origine ORDINE · consegnato 21 · −8 · DA_ACCREDITARE
+partite       DDT0010839 · origine ORDINE_VENDITA · consegnato 21 · −8 · DA_ACCREDITARE
 accrediti     RESO0005122 · 5 · DOVUTA      RESO0005123 · 3 · FACOLTATIVA
 riconsegne    RESO0005123 · residua 3 · DA_RICONSEGNARE
 ```

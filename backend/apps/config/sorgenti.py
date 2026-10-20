@@ -26,7 +26,9 @@
 #    `vendite.ordini.documento_origine_tipo` e
 #    `config.nature_vendita.destinazione_tipo` (FK verso `config.sorgenti`),
 #    l'`origine` di `fn_documento_legami` (tranne `ONERE`, che non e' una
-#    sorgente).
+#    sorgente). Dal 2026-10-20 (§12.8) anche l'`origine` delle partite di
+#    `vendite.fn_partite_merce` (`ORDINE_VENDITA`; `NESSUNA` e `MULTIPLA`
+#    dicono l'assenza e l'ambiguita' dell'origine, non sono sorgenti).
 # ⭐ Il NOME e' `SORGENTE_<codice_interno>`, sempre: lo presidia
 #    `config/tests/test_sorgenti_seed.py`, insieme all'esistenza e all'attivita'
 #    del codice nel seed. Un codice nuovo si aggiunge qui quando un modulo lo

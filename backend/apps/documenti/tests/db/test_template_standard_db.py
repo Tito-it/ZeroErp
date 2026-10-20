@@ -26,8 +26,10 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    la lista e il dettaglio dell'operatore mostrano lo standard, che non e'
    di nessuno dei suoi emittenti.
 3) TemplateStandardDbTests.test_modello_suo_senza_predefinito_non_usa_lo_standard
-   strada B: un modello attivo dell'emittente non predefinito ferma la
-   stampa con E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO (409), senza ripiegare.
+   strada B: un modello dell'emittente che PUO' STAMPARE (attivo, con una
+   versione pubblicata valida oggi) e non e' predefinito ferma la stampa con
+   E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO (409), senza ripiegare. Finche' ha
+   la sola bozza non conta, e la stampa resta sullo standard (`20261020-26`).
 4) TemplateStandardDbTests.test_standard_in_sola_lettura
    l'applicazione non modifica lo standard:
    E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA (403). Saltato se il test gira
@@ -42,6 +44,7 @@ from django.db import connection, transaction
 
 from apps.config.sorgenti import SORGENTE_PREVENTIVO
 from apps.core.services.error_translator import ErrorTranslator
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
@@ -137,19 +140,30 @@ class TemplateStandardDbTests(unittest.TestCase):
         except Annulla:
             pass
 
-    # 3. Strada B: un modello suo attivo e non predefinito ferma la stampa,
-    #    e lo standard NON entra.
+    # 3. Strada B: un modello suo che puo' stampare e non e' predefinito ferma
+    #    la stampa, e lo standard NON entra. Con la sola bozza non conta.
     def test_modello_suo_senza_predefinito_non_usa_lo_standard(self):
         from apps.documenti.services.document_generation_service import (
             DocumentGenerationService,
         )
+        from apps.documenti.services.context_builders import get_builder
         from apps.documenti.services.template_admin_service import TemplateAdminService
+        from apps.documenti.services.template_versioni_admin_service import (
+            TemplateVersioniAdminService,
+        )
 
         svc = DocumentGenerationService()
+        versioni = TemplateVersioniAdminService()
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 user, emittente, standard = self._mondo(cur)
-                TemplateAdminService().create_template(user, {
+                risolvi = {
+                    "scope": [emittente], "emittente_fiscale_id": emittente,
+                    "sorgente_tipo_id": standard["sorgente"],
+                    "tipo_documento_output_id": standard["tipo_output"],
+                    "template_documento_id": None,
+                }
+                suo = TemplateAdminService().create_template(user, {
                     "tipo_documento_output_id": standard["tipo_output"],
                     "sorgente_tipo_id": standard["sorgente"],
                     "emittente_fiscale_id": emittente,
@@ -158,14 +172,28 @@ class TemplateStandardDbTests(unittest.TestCase):
                     "context_builder_code": standard["builder"],
                     "is_default": False,
                 })
+                cur.execute(
+                    "SELECT id FROM documenti.render_engine_documento"
+                    " WHERE codice_interno = 'WEASYPRINT'"
+                )
+                bozza = versioni.create_versione(user, suo["id"], {
+                    "titolo": "Bozza", "html_template": "<p>x</p>",
+                    "render_engine_id": cur.fetchone()[0],
+                    "versione_contesto": get_builder(standard["builder"]).CONTEXT_VERSION,
+                })
+                # Con la sola bozza il modello non puo' stampare: non conta, e
+                # lo standard resta (il difetto della copia appena creata da
+                # «personalizza», che fermava ogni stampa dell'emittente).
+                self.assertEqual(
+                    svc._resolve_template(user, **risolvi)["id"], standard["id"],
+                )
+                versioni.pubblica_versione(
+                    user, suo["id"], bozza["id"],
+                    {"valido_dal": oggi_aziendale().isoformat()},
+                )
                 with self.assertRaises(ServiceError) as ctx:
                     with transaction.atomic():
-                        svc._resolve_template(
-                            user, scope=[emittente], emittente_fiscale_id=emittente,
-                            sorgente_tipo_id=standard["sorgente"],
-                            tipo_documento_output_id=standard["tipo_output"],
-                            template_documento_id=None,
-                        )
+                        svc._resolve_template(user, **risolvi)
                 self.assertEqual(ctx.exception.code, "E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO")
                 api = ErrorTranslator.to_api_error(ctx.exception)
                 self.assertEqual(ErrorTranslator.get_http_status(api), 409)

@@ -2560,7 +2560,7 @@ def get_situazione_merce(
     # insieme — «la riga d'ordine nel complesso sta cosi', questa spedizione
     # cosi'». Prima erano assenti sul DDT e le due schermate raccontavano due
     # storie diverse dello stesso fatto.
-    # ⚠️ Una riga di DDT senza origine ordine (`origine <> 'ORDINE'`) non ha
+    # ⚠️ Una riga di DDT senza origine ordine (`origine <> 'ORDINE_VENDITA'`) non ha
     # riga d'ordine: la sezione resta piu' corta delle partite, ed e' corretto.
     # Lista vuota e non `None`: il frontend itera sempre.
     righe_ordine = repository.list_situazione_merce_ordine(
