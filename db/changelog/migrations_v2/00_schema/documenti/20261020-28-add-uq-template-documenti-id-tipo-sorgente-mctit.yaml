@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN MODELLO SI CITA INSIEME AL SUO TIPO E ALLA SUA SORGENTE
+#   documenti.template_documenti: UNIQUE (id, tipo_documento_output_id, sorgente_tipo_id)
+#   Brief: brief-db-modelli-documento-standard, §9.2 Q-3 (C-3 di Tid, 2026-10-20)
+#
+# Perche': e' il bersaglio della FK composta di vendite.fatture_stampa_coda
+#   (20261020-29). Chi accoda una stampa con un modello esatto (l'override)
+#   dichiara anche il tipo di documento, e la riga e' gia' di una sorgente: la
+#   FK composta pretende che il modello sia proprio di quel tipo e di quella
+#   sorgente. Una FK puo' puntare solo a colonne con un vincolo unico.
+#
+# E' un sovrainsieme della chiave primaria: non restringe niente, ogni riga
+#   esistente lo rispetta per costruzione. Costo: un indice btree in piu' su una
+#   tabella di catalogo piccola.
+#
+# Effetto da sapere: con la FK composta (NO ACTION), il tipo o la sorgente di un
+#   modello citato dalla coda non si cambiano piu'. E' lo stesso che vale gia'
+#   per i modelli citati da documenti.documenti_generati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261020-28-add-uq-template-documenti-id-tipo-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261020-28-add-uq-template-documenti-id-tipo-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.template_documenti: UNIQUE (id, tipo_documento_output_id, sorgente_tipo_id), bersaglio
+        della FK composta dell'override della coda di stampa. Brief: brief-db-modelli-documento-standard
+        §9.2 Q-3.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: documenti
+            tableName: template_documenti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.template_documenti
+                ADD CONSTRAINT uq_template_documenti_id_tipo_sorgente
+                UNIQUE (id, tipo_documento_output_id, sorgente_tipo_id);
+
+              COMMENT ON CONSTRAINT uq_template_documenti_id_tipo_sorgente
+                ON documenti.template_documenti IS
+                'Sovrainsieme della chiave primaria: non restringe niente. E'' il bersaglio della FK composta fk_fatture_stampa_coda_template_documento, che lega l''override della coda di stampa al tipo di documento e alla sorgente della riga (brief-db-modelli-documento-standard §9.2 Q-3, 2026-10-20).';

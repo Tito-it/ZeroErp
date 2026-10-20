@@ -29,6 +29,19 @@ per una versione spenta e per una versione pubblicata che vale da una data futur
 La condizione vale per tutti e tre i passi: la scelta del tipo, il livello dell'emittente e il
 livello standard.
 
+### Dice anche con quale versione si stampa
+
+(20-10-2026 — §8.4 P-2)
+
+Insieme al modello la funzione restituisce **la versione** che lo rende stampabile: quella
+pubblicata, attiva e valida alla data operativa. Per ogni modello e per ogni data ce n'è al
+massimo una, perché le versioni pubblicate e attive di uno stesso modello non possono avere date di
+validità che si sovrappongono.
+
+Il motivo: chi stampa usa questa versione e non la va a cercare di nuovo. Se la cercasse con filtri
+suoi, la regola «può stampare» sarebbe scritta in due posti, e il giorno che i due posti dicessero
+cose diverse la funzione sceglierebbe un modello che poi non si riesce a stampare.
+
 ### La regola, a due livelli
 
 1. **L'emittente ha almeno un modello suo che può stampare** per quel tipo di documento e quella
@@ -50,7 +63,7 @@ Spegnere tutti i propri modelli di un tipo riporta allo standard: è voluto.
 | `p_sorgente_tipo_id` | `template_documenti.sorgente_tipo_id%TYPE` | la sorgente del documento (obbligatoria) |
 | `p_emittente_fiscale_id` | `template_documenti.emittente_fiscale_id%TYPE` | l'emittente **del documento** (obbligatorio) |
 | `p_tipo_documento_output_id` | `template_documenti.tipo_documento_output_id%TYPE` | il tipo di documento; facoltativo |
-| **Ritorno** | `TABLE(template_documento_id, livello)` | una riga; `livello` = `EMITTENTE` o `STANDARD` |
+| **Ritorno** | `TABLE(template_documento_id, livello, template_versione_id)` | una riga; `livello` = `EMITTENTE` o `STANDARD`; `template_versione_id` = la versione con cui il modello stampa oggi |
 
 Il tipo di documento si può omettere solo se, fra i modelli della sorgente che l'emittente può
 usare (i suoi e gli standard) e che possono stampare, ce n'è **uno** solo: una bozza di un altro
@@ -71,5 +84,6 @@ chiamante ha già letto con i suoi permessi, e lo standard si legge da tutti.
 
 ### Test
 
-`db/pgtap/documenti/test-documenti-template-standard-v1.sql` (test 11-23),
+`db/pgtap/documenti/test-documenti-template-standard-v1.sql` (test 11-23; la versione restituita
+nei test 11, 13 e 36),
 `test-documenti-template-standard-app-v1.sql` (test 6, la lettura come applicazione).

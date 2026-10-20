@@ -15,6 +15,22 @@ Approfondimento tabelle:
 Accoda in `vendite.fatture_stampa_coda` un work-item `PENDING` **per ogni fattura del lotto**,
 e restituisce quante ne ha accodate davvero.
 
+### Che cosa stampare: `p_tipo_documento_output_id`
+
+(rev 2026-10-20 — `brief-db-modelli-documento-standard` §9)
+
+Il secondo parametro, facoltativo, è il **tipo di documento** da produrre, e finisce sulla riga
+della coda. Senza (`NULL`) la scelta resta al database alla stampa, se fra i modelli che possono
+stampare ce n'è uno solo: è il comportamento di prima.
+
+Il tipo arriva da chi accoda e non dal lotto. Il lotto dice **quali** fatture (emittente, tipo di
+documento fiscale, competenza), non **che cosa** stampare. Se una fattura deve produrre due
+documenti, sono due chiamate, ognuna idempotente sul suo tipo.
+
+La funzione non controlla che il tipo possa stampare per le fatture: che esista lo garantisce la
+FK, se può stampare lo decide la scelta del modello al momento della stampa
+(`E_DOCUMENTI_TEMPLATE_NON_RISOLTO` sulla riga).
+
 ⭐ **Il punto è ciò che questa funzione NON fa**: non numera e non stampa. Numerazione
 (come backstop idempotente) e render vivono nel **worker drainer**, fuori dalla transazione.
 
@@ -26,15 +42,16 @@ Chiamata dal task di pipeline `stampa_documenti_lotto`, allo step DEFINITIVA.
 
 ---
 
-### Idempotenza: la garantisce l'indice, non il codice
+### Idempotenza: la garantisce il vincolo, non il codice
 
 ```sql
-ON CONFLICT (sorgente_tipo_id, sorgente_id)
-   WHERE stato IN ('PENDING', 'IN_CORSO')
-   DO NOTHING
+ON CONFLICT DO NOTHING
 ```
 
-L'indice unico **parziale** `uq_fatture_stampa_coda_vivo` copre solo i work-item *vivi*:
+Il vincolo di esclusione **parziale** `ex_fatture_stampa_coda_vivo` copre solo i work-item *vivi*,
+uno per fattura e tipo, e una riga col tipo `NULL` esclude le altre della stessa fattura. Un
+vincolo di esclusione ammette solo `ON CONFLICT DO NOTHING` senza bersaglio; l'unico altro vincolo
+che l'inserimento può incontrare è la chiave primaria, che è generata. Il vincolo copre solo i vivi:
 riaccodare un lotto già accodato non duplica nulla, ma una fattura la cui stampa è già
 conclusa (o fallita) **può essere riaccodata**. È esattamente il comportamento voluto — la
 ristampa deve restare possibile.
@@ -72,7 +89,7 @@ filtro morto — e lì il flag occupava anche spazio nel messaggio diagnostico, 
 
 | Codice | Quando |
 |--------|--------|
-| `E_PARAMETRO_INVALIDO` | `p_lotto_id` nullo o `<= 0` |
+| `E_PARAMETRO_INVALIDO` | `p_lotto_id` nullo o `<= 0`, `p_tipo_documento_output_id` `<= 0` |
 | `E_VALORE_MANCANTE` | `config.sorgenti` senza la riga `FATTURA` |
 
 ---

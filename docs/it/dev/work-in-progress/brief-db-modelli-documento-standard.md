@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-20
 
-**Riparte: il BE, con la risoluzione a due livelli (§6, «Stato al 2026-10-19»; policy rigenerate
-dopo `20261020-26`, §8.4); il team DB, con la voce nuova del censimento (§2, Q-6 … Q-8:
-`emittenti_fiscali_utilities`); Tid, con P-1 e P-2 (§8.4).**
+**Riparte: il BE, con la versione restituita dalla risoluzione (§8.4, P-2) e la coda di stampa che
+passa il tipo (§9.4), poi «personalizza» e la lista Modelli documento con il FE (§6); il team DB,
+con la voce nuova del censimento (§2, Q-6 … Q-8: `emittenti_fiscali_utilities`).**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -18,15 +18,21 @@ dopo `20261020-26`, §8.4); il team DB, con la voce nuova del censimento (§2, Q
 | 8 | **Tid** | ✅ Apply della tranche 2, pgTAP verdi (2026-10-19) | §8.2 | 7 |
 | 8-bis | **team DB** | ✅ Correzione Q-2: conta solo un modello che può stampare (`20261020-26`), provata sullo scratch e su dbdev | §8.4 | — |
 | 8-ter | **Tid** | ✅ Apply di `20261020-26` e dei due CSV dei codici, pgTAP verdi (2026-10-20) | §8.4 | 8-bis |
-| 9 | **BE/FE** | La risoluzione a due livelli e la lista Modelli documento (policy dei codici nuovi già rigenerate; ✅ rigenerate di nuovo dopo `-26` il 2026-10-20: cambiano solo le note di `AMBIGUO`, `NON_RISOLTO`, `SENZA_PREDEFINITO`) | §6, §8.4 | 5, 8-ter |
-| 9-bis | **team DB** | Censimento, voce «parametri d'importo per utility» (`emittenti_fiscali_utilities`): risposte a Q-6 … Q-8; DEVA non chiude una fattura | §2 | — |
-| 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard) | §7 | 8, 9, 9-bis |
+| 9 | **BE** | ✅ La risoluzione a due livelli: `risolvi_template_applicabile`, ritiro di `count_templates_attivi_no_default`, perimetro di lettura con lo standard, test e smoke allineati, policy rigenerate dopo `-26` (`fad3ad71f` PR #1905, `323c96a5c` PR #1907) | §6 | 5, 8-ter |
+| 9-bis | **BE/FE** | L'azione «personalizza» (`derivata_da_versione_id`) e la lista Modelli documento (badge standard, «si usa lo standard», emittente senza predefinito, stato dello scarto) | §6 | 9 |
+| 9-ter | **team DB** | Censimento, voce «parametri d'importo per utility» (`emittenti_fiscali_utilities`): risposte a Q-6 … Q-8; DEVA non chiude una fattura | §2 | — |
+| 9-quater | **team DB** | ✅ Coda di stampa: risposte a Q-1 … Q-4 della richiesta BE, sulla struttura (2026-10-20). Nessun changeSet scritto | §9 | — |
+| 9-quinquies | **Tid** | ✅ C-1 … C-3, P-1 e P-2 come da proposta, e via allo sviluppo (2026-10-20) | §9.3, §8.4 | 9-quater |
+| 9-sexies | **team DB** | ✅ ChangeSet `20261020-27` … `-31`, tre righe di CSV, pgTAP e manuali, provati sullo scratch (2026-10-20) | §9.5 | 9-quinquies |
+| 9-septies | **Tid** | ✅ Apply su scratch e dbdev (2026-10-20, due migrate su dbdev), pgTAP verdi, nessuna regressione | §9.5 | 9-sexies |
+| 9-octies | **BE** | P-2: `risolvi_template_applicabile` usa `template_versione_id` e ritira i filtri di `get_versione_pubblicata_attiva` per la stampa. Coda: `claim_stampe_pending` porta la colonna, il worker la passa a `genera_documento`; il task di pipeline passa il tipo dove lo conosce | §8.4, §9.4 | 9-septies |
+| 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard) | §7 | 8, 9, 9-ter |
 | 11 | **Tid** | Archiviazione in `work-done/` | — | 10 |
 
-**Decisioni aperte di Tid: due, piccole (§8.4).** P-1: il livello STANDARD conta anch'esso solo uno
-standard che può stampare (fatto così, va confermato). P-2: la funzione restituisce anche la
-versione da stampare. Tranche 1 e tranche 2 committate (`560d5d97e`, PR #1899). Da committare:
-`20261020-26` con i due CSV (applicati), il pgTAP, le due pagine `manual/` e questo documento.
+**Decisioni aperte di Tid: nessuna.** P-1, P-2 e C-1 … C-3 decise come da proposta (2026-10-20).
+Committati: tranche 1 e 2 (`560d5d97e`, PR #1899), `20261020-26` (`0ff115bf0`, PR #1906), BE
+(`fad3ad71f`, `323c96a5c`), e la coda di stampa con P-2 (`20261020-27` … `-31`, tre CSV, pgTAP,
+manuali, 2026-10-20).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-18. **A chi:** Tid (§5), poi il team DB;
 > la §6 al BE/FE.
@@ -34,8 +40,10 @@ versione da stampare. Tranche 1 e tranche 2 committate (`560d5d97e`, PR #1899). 
 > (§9). L'emittente di prova A, creato dal verbo di sviluppo, non emette nessun documento: non ha
 > modelli. Proposta di Tid (2026-10-18): «la cosa migliorativa è fornire un set di modelli
 > standard».
-> **Stato:** ✅ lato DB chiuso: tranche 1 e tranche 2 (seed) applicate, pgTAP verdi, committate
-> (2026-10-19). Resta il BE/FE (§6) e il giro degli smoke (§7). Dettaglio nel §8.
+> **Stato:** ✅ lato DB chiuso per i modelli: tranche 1, tranche 2 (seed) e `-26` applicate, pgTAP
+> verdi, committate. ✅ BE: la risoluzione a due livelli (2026-10-20). Restano «personalizza» e la
+> lista FE (§6), la coda di stampa che dice che cosa stampare (§9, al DB dopo le decisioni di Tid)
+> e il giro degli smoke (§7). Dettaglio nel §8.
 
 ## 1. Il caso
 
@@ -408,7 +416,9 @@ predefiniti e attivi, ognuno con la versione 1 `PUBBLICATA`.
 **Il BE, già fatto:** le policy dei sei codici nuovi sono rigenerate in `error_policies_generated.py`
 ed `error_messages_fallback.py`.
 
-**Il BE, da fare** (aggiornato a fine giro, 2026-10-20 — ✅ fatto e non ancora committato):
+**Il BE, da fare** (aggiornato il 2026-10-20 dalla sessione DB, sul codice: i punti ✅ sono
+committati in `fad3ad71f`, PR #1905, e il test della strada B adeguato alla `-26` in `323c96a5c`,
+PR #1907):
 
 1. ✅ `DocumentiRepository.find_template_applicabile` filtra ancora per emittente e chiude con
    `ORDER BY t.id LIMIT 1`, quindi lo standard non si usa mai. Deve chiamare
@@ -417,15 +427,19 @@ ed `error_messages_fallback.py`.
    `DocumentGenerationService._resolve_template` si ritirano.
 3. Il tipo di output non lo passa nessun chiamante di `genera_documento`
    (`stampa_coda_drainer_service`, `sorgente_documenti_views`). Va passato dove il BE lo conosce.
+   → Le viste di `sorgente_documenti_views` lo accettano dal chiamante
+   (`tipo_documento_output_id`, opzionale). Il worker della coda no, perché la riga della coda non
+   lo porta: è un difetto del modello della coda, ed è il §9.
 4. Il filtro `emittente_ids_scope` delle letture (lista, dettaglio, versioni, asset) deve lasciar
    passare lo standard. ✅ lista e dettaglio dei modelli (`_TEMPLATE_IN_SCOPE`), e le versioni che
    passano dal dettaglio; gli asset restano dell'emittente del documento.
-5. L'azione «personalizza», che scrive `derivata_da_versione_id`.
+5. L'azione «personalizza», che scrive `derivata_da_versione_id`. Da fare (nessun riferimento alla
+   colonna in `backend/apps/documenti`, 2026-10-20).
 6. ✅ Si allineano i test dei due metodi (`test_document_generation_service*.py`,
    `test_documenti_repository_render.py`) e lo smoke `smoke-fatturazione-render-stampa.py`, che
    li usano.
 
-**Il FE, da fare:** in `ModelliDocumentiTemplatesView`, `TemplateDocumentiSearchTable` e
+**Il FE, da fare** (ancora tutto, 2026-10-20): in `ModelliDocumentiTemplatesView`, `TemplateDocumentiSearchTable` e
 `TemplateDocumentoDrawer`, le cose elencate sopra: il badge «standard» in sola lettura, la riga
 «si usa lo standard», la segnalazione dell'emittente senza predefinito, l'azione «personalizza» nel
 kebab e lo stato dello scarto sulle copie.
@@ -634,7 +648,7 @@ filtri di `get_versione_pubblicata_attiva` del BE.
 * **Passo 2, il livello EMITTENTE**: il conteggio e la scelta del predefinito leggono gli stessi
   candidati. Un modello stampabile non predefinito accanto a un predefinito in bozza dà
   `E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO`.
-* **Passo 3, il livello STANDARD — P-1, da confermare.** La richiesta diceva «nessun cambio: lo
+* **Passo 3, il livello STANDARD — P-1, ✅ confermato da Tid (2026-10-20).** La richiesta diceva «nessun cambio: lo
   standard nasce pubblicato dal seed». L'ho messo anche qui. Il modello ammette uno standard
   predefinito senza una versione valida oggi: una versione spenta, o un'evoluzione pubblicata da
   una data futura. In quel caso la risposta giusta è `E_DOCUMENTI_TEMPLATE_NON_RISOLTO`, il cui
@@ -662,7 +676,7 @@ filtri di `get_versione_pubblicata_attiva` del BE.
 * **Manuali**: `fn_risolvi_template_applicabile.md` (§ «Conta solo un modello che può stampare»),
   `template_documenti.md` (§ «Il modello standard»).
 
-**P-2 — proposta: la funzione restituisce anche la versione.** Ora «può stampare» è scritto in due
+**P-2 — ✅ decisa da Tid (2026-10-20) e fatta: `20261020-27`, §9.5. La funzione restituisce anche la versione.** Ora «può stampare» è scritto in due
 livelli: nel DB, che sceglie il modello, e nel BE (`get_versione_pubblicata_attiva`), che ne carica
 la versione con gli stessi filtri. Se le due copie divergono, la funzione sceglie un modello che il
 BE poi non riesce a stampare. La forma che chiude la copia: `RETURNS TABLE` con anche
@@ -701,3 +715,265 @@ salgono prima della risoluzione), e aggiunge un quarto emittente (E4) per la dat
   `soluzione`, che nessun test confronta.
 * Dopo ogni corsa, `md5(pg_get_functiondef)` della funzione è uguale a prima, e non resta nessuna
   riga `pgtap-%`.
+
+## 9. La coda di stampa delle fatture dice che cosa stampare (2026-10-20)
+
+> **Chi scrive:** la richiesta è della sessione BE (2026-10-20); le risposte sono della sessione DB
+> (`dev/db-tid`), scritte sulla struttura (doc `dbzero`, corpi delle funzioni, scrittori nel
+> changelog e nel BE). È il disegno: nessun changeSet scritto. Il via lo dà Tid (§9.3).
+
+### 9.1 Il caso
+
+Il worker della coda (`stampa_coda_drainer_service`) chiama `genera_documento` senza il tipo di
+documento, perché la riga della coda non lo porta. Con il tipo NULL,
+`fn_risolvi_template_applicabile` accetta un solo candidato; con due solleva
+`E_DOCUMENTI_TEMPLATE_AMBIGUO`. Il modello ammette più tipi di output per la stessa sorgente (il
+predefinito unico è per terna, §4.1 Q-2), quindi il giorno in cui la sorgente FATTURA ha modelli di
+due tipi, ogni riga della coda va in errore tecnico. È un difetto del modello della coda, non un
+caso futuro.
+
+**Decisioni già prese da Tid** (riportate dal BE): colonna nuova `tipo_documento_output_id` sulla
+coda, nullable, con FK, scritta da chi accoda. NULL vuol dire «decide il DB, se il candidato è
+uno», cioè la semantica di oggi: le righe esistenti e gli accodamenti di oggi non cambiano
+comportamento. L'unicità delle righe vive si decide insieme alla colonna.
+
+**I fatti di struttura**, verificati (doc `dbzero`, 2026-10-20):
+
+* `vendite.fatture_stampa_coda` porta `sorgente_tipo_id`, `sorgente_id`, `template_documento_id`
+  (nullable, l'override del modello). ⚠️ `template_documento_id` non ha FK, e nemmeno
+  `documento_id` (già segnalato in `valutazione-modello-di-dominio-db`; fuori da questa richiesta).
+* **Un solo scrittore di righe**: `vendite.fn_accoda_stampe_lotto(p_lotto_id)`, chiamata dal task
+  di pipeline `stampa_documenti_lotto` (`pipeline_repository.accoda_stampe_lotto`). Non scrive né il
+  modello né il tipo: l'override esiste solo sulla carta. Gli altri scrittori (claim, reaper, esito,
+  archiviazione) fanno solo `UPDATE` di stato fra `PENDING`, `IN_CORSO`, `FATTO` ed `ERRORE`, e non
+  toccano modello e tipo.
+* `uq_fatture_stampa_coda_vivo`: unico su `(sorgente_tipo_id, sorgente_id)`, parziale su
+  `PENDING`/`IN_CORSO`. `fn_accoda_stampe_lotto` lo nomina per colonne nell'`ON CONFLICT … DO
+  NOTHING`.
+* `documenti.tipi_documento_output` non ha legami con la sorgente. Quali tipi una sorgente può
+  stampare lo dicono solo i modelli.
+* `template_documenti`: `tipo_documento_output_id` e `sorgente_tipo_id` sono `NOT NULL` e non sono
+  nel registro dei lock.
+
+### 9.2 Le risposte
+
+**Q-1 — Il tipo arriva da un parametro di `fn_accoda_stampe_lotto`, non dal lotto.**
+
+* Firma `fn_accoda_stampe_lotto(p_lotto_id bigint, p_tipo_documento_output_id bigint DEFAULT
+  NULL)`. Il parametro va in coda, e il default riproduce l'accodamento di oggi.
+* **Perché non il lotto.** Il lotto è un insieme fiscale: emittente, tipo di documento fiscale,
+  competenza. Dice **quali** fatture, non **che cosa** stampare. Se una fattura deve produrre due
+  documenti, sul lotto servirebbe un elenco, cioè una tabella in più. Con il parametro sono due
+  chiamate, ognuna idempotente sul suo tipo. E il tipo sta in una sede sola, la riga, quindi non
+  c'è da decidere quale dei due vale.
+* **Nessun controllo «tipo stampabile per la FATTURA» all'accodamento.** L'esistenza la dà la FK;
+  se il tipo può stampare lo decide la risoluzione al drenaggio (`E_DOCUMENTI_TEMPLATE_NON_RISOLTO`
+  sulla riga). Ripeterlo qui sarebbe una seconda copia della regola di `fn_risolvi_template_applicabile`.
+* Forma: `DROP` della firma vecchia e `CREATE`, perché un parametro in più crea un overload.
+  Grant da ricontrollare; il pgTAP `test-stampa-coda-fondamenta-v1` (13, `has_function(…,
+  ARRAY['bigint'])`) passa alla firma nuova.
+* Chi passa il tipo: il task di pipeline, nel BE. Oggi non lo passa nessuno, quindi NULL e nessun
+  cambio di comportamento.
+
+**Q-2 — Una regola sola, scritta come vincolo di esclusione: «una riga col tipo NULL esclude le
+altre righe vive della stessa fattura».**
+
+Per una fattura, le righe vive sono **o** una col tipo NULL, **o** più righe con tipi diversi. Il
+NULL vuol dire «qualunque tipo il DB risolva», quindi si sovrappone a tutti. Se il DB risolve il
+NULL in X, la riga NULL e la riga X sarebbero la stessa stampa; se non lo risolve, la riga NULL
+fallisce comunque con `AMBIGUO`. In nessun caso le due righe hanno senso insieme.
+
+```sql
+CONSTRAINT ex_fatture_stampa_coda_vivo
+    EXCLUDE USING gist (
+        sorgente_tipo_id WITH =,
+        sorgente_id WITH =,
+        int8range(tipo_documento_output_id, tipo_documento_output_id, '[]') WITH &&)
+    WHERE (stato IN ('PENDING', 'IN_CORSO'))
+```
+
+* `int8range(NULL, NULL)` è l'intervallo illimitato: si sovrappone a ogni tipo, ed è proprio «il
+  NULL esclude le altre». Un tipo valorizzato è un intervallo di un punto: due tipi diversi
+  convivono, due uguali no. Un solo vincolo dice le tre regole (un NULL per fattura, tipi distinti,
+  NULL contro tipati). Sul tipo l'intervallo serve anche con `=` disponibile: con `=` due NULL non
+  sono mai in conflitto, e il NULL non escluderebbe niente.
+* Il `=` sulle due colonne `bigint` della sorgente in un indice gist richiede `btree_gist`, che c'è
+  già: la crea `20260224-01-create-listini-core` e la usano i vincoli di esclusione di listini,
+  contratti, promo, sospensioni e conti d'incasso. Il changeSet porta la stessa `preCondition` di
+  quei file (`pg_extension` con `btree_gist`). ⚠️ *Corretto il 2026-10-20: la prima stesura diceva
+  che l'estensione non era installata e scriveva anche la sorgente come intervalli; l'errore veniva
+  dall'elenco delle estensioni di `PROJECT_CONTEXT.md`, che non la nomina.*
+* **Perché non un trigger.** Un guard `BEFORE ROW` che legge le altre righe non regge a due sessioni
+  concorrenti che accodano la stessa fattura; il vincolo sì.
+* **Perché non il tipo obbligatorio.** Contraddice la decisione di Tid sul NULL, e costringerebbe a
+  risolvere il tipo all'accodamento: una sola fattura ambigua fermerebbe l'accodamento dell'intero
+  lotto.
+* **L'`ON CONFLICT`.** Un vincolo di esclusione ammette solo `ON CONFLICT DO NOTHING` **senza**
+  bersaglio. Nel changeSet cambiano insieme il vincolo (al posto di `uq_fatture_stampa_coda_vivo`)
+  e la funzione. L'unico altro vincolo che l'`INSERT` può incontrare è la chiave primaria, che è
+  generata. La semantica resta quella di oggi: una riga viva che copre già la fattura vince, e il
+  valore di ritorno conta solo le righe nuove. Il caso «X accodato mentre è viva una riga NULL» si
+  chiude da solo: se il candidato è uno, la riga NULL stampa proprio quello; se sono due, la riga
+  NULL arriva a `ERRORE` per `AMBIGUO`, e il riaccodamento con il tipo passa.
+* **Sul database che c'è.** Le righe vive di oggi hanno tutte il tipo NULL e sono già una per
+  fattura (lo garantiva l'indice vecchio), quindi il vincolo nasce valido per costruzione, non per
+  conteggio.
+* Ricadute di testo: la manuale di `fatture_stampa_coda` («Un solo work-item vivo», «Archiviare una
+  riga») e quella di `fn_accoda_stampe_lotto` nominano l'indice; la nota di
+  `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` in `codici_errore.csv` pure, e la ricopia
+  `error_policies_generated.py` (da rigenerare, solo commenti). Il test 10 di
+  `test-stampa-coda-fondamenta-v1` controlla l'indice per nome e passa al vincolo
+  (`contype = 'x'` e la clausola, non solo il nome).
+* **La prova** (2026-10-20, cluster PG18 usa-e-getta, tabella di prova con la sola forma del
+  vincolo, non lo schema vero): due tipi convivono; doppione, NULL contro tipati e tipato contro
+  NULL vanno in `DO NOTHING`; dopo `FATTO` si riaccoda; un `INSERT` senza `ON CONFLICT` in
+  conflitto dà `23P01`. La prova usava la forma della prima stesura, con anche la sorgente come
+  intervalli: la parte che decide (il tipo come intervallo, il NULL illimitato) è la stessa, ma la
+  forma con `=` va riprovata nello sviluppo.
+
+**Q-3 — L'override porta il tipo, e una FK composta tiene insieme modello, tipo e sorgente.**
+
+* `CHECK (template_documento_id IS NULL OR tipo_documento_output_id IS NOT NULL)`: chi indica il
+  modello indica anche il tipo.
+* FK composta `(template_documento_id, tipo_documento_output_id, sorgente_tipo_id)` →
+  `documenti.template_documenti (id, tipo_documento_output_id, sorgente_tipo_id)`, con un `UNIQUE`
+  nuovo su quelle tre colonne di `template_documenti` (un sovrainsieme della chiave primaria). È
+  anche la FK mancante su `template_documento_id`. Più una FK semplice
+  `tipo_documento_output_id` → `tipi_documento_output`.
+* **Perché il CHECK.** Una FK composta `MATCH SIMPLE` non si controlla affatto se una delle colonne
+  è NULL: un override col tipo NULL passerebbe senza verifica della sorgente. Col CHECK, quando c'è
+  l'override ci sono sempre tutte e tre le colonne. E il tipo scritto fa lavorare il vincolo di Q-2
+  sul tipo vero: un override col tipo NULL bloccherebbe ogni altro tipo per quella fattura.
+* Nel changeSet, prima del CHECK, le righe con l'override e senza tipo prendono il tipo dal modello.
+  Lo scrittore di oggi non scrive l'override, ma il changeSet deve reggere su ogni database. Un
+  override che punta a un modello inesistente (la FK non c'era) fa fallire il changeSet: è un dato
+  da correggere a mano, non da cancellare in silenzio.
+* **L'emittente dell'override non si controlla in coda.** La regola 4 di
+  `trgfn_documenti_generati_check_coerenza` («stesso emittente, oppure standard», §4.1 Q-3) lo
+  controlla alla generazione. Un guard all'accodamento ne sarebbe una seconda copia.
+* Effetti da sapere: con la FK composta (`NO ACTION`), il tipo o la sorgente di un modello citato
+  dalla coda, righe `FATTO` comprese, non si cambiano più. Mi sembra corretto: lo stesso vale già
+  per i modelli citati da `documenti_generati`. Da `ci_apply`, l'automazione ATTIVO genererà i
+  trigger del padre attivo sulle FK nuove (si accoda solo con un tipo e un modello accesi). Per la
+  FK composta va verificato nel corpo, non dato per scontato. Poi la policy degli indici FK in
+  `90_end` e lo storico scope.
+
+**Q-4 — pgTAP: `vendite/test-stampa-coda-tipo-documento-v1.sql`, su casi costruiti.**
+
+La fixture costruisce un secondo tipo di output (`pgtap-%`) e un modello di quel tipo per la
+sorgente FATTURA, accanto al modello del tipo FATTURA_VENDITA, poi una fattura in un lotto.
+
+1. accoda col tipo X e col tipo Y → due righe vive;
+2. riaccoda X → 0 nuove;
+3. accoda col tipo NULL con X viva → 0, nessuna riga;
+4. un'altra fattura con una riga NULL viva, accoda X → 0;
+5. dopo `FATTO`, riaccoda X → una riga nuova;
+6. un `INSERT` diretto in conflitto → `23P01` (il vincolo regge anche senza la funzione);
+7. override con un tipo diverso da quello del modello → `23503`; override senza tipo → `23514`;
+8. override col modello di un'altra sorgente → `23503`;
+9. struttura: il vincolo è un'esclusione parziale sui due stati vivi; la firma `(bigint, bigint)`
+   esiste e `(bigint)` no.
+
+Il rifiuto `AMBIGUO` col tipo NULL e due candidati lo prova già
+`test-documenti-template-standard-v1`: non si ripete qui.
+
+### 9.3 Decisioni di Tid
+
+✅ **Decise il 2026-10-20: C-1, C-2 e C-3 come da proposta**, e via allo sviluppo (insieme a P-1 e
+P-2). Sviluppo nel §9.5.
+
+* **C-1** — Il tipo arriva da un parametro di `fn_accoda_stampe_lotto` e non dal lotto (Q-1).
+* **C-2** — Il vincolo di esclusione al posto dell'indice unico, con `DO NOTHING` anche sul caso NULL
+  contro tipato (Q-2).
+* **C-3** — Il CHECK «l'override porta il tipo» e la FK composta (Q-3).
+
+### 9.4 Ricaduta sul BE (dopo l'apply; la fa la sessione BE)
+
+* `claim_stampe_pending` aggiunge `tipo_documento_output_id` al `RETURNING`; il worker lo passa a
+  `genera_documento(tipo_documento_output_id=…)`.
+* `accoda_stampe_lotto` passa il tipo dove il task lo conosce (secondo parametro, per posizione).
+* Nessun codice nuovo: il rifiuto `AMBIGUO` esiste già. Da rigenerare `error_policies_generated.py`
+  se cambia la nota di `E_CODA_ARCHIVIAZIONE_NON_AMMESSA`.
+* ➕ **Cambiata (§9.5):** la nota di `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` nomina ora
+  `ex_fatture_stampa_coda_vivo`, quindi `error_policies_generated.py` va rigenerato (solo un
+  commento). I commenti di `pipeline_repository.py` che nominano `uq_fatture_stampa_coda_vivo`
+  (claim) vanno aggiornati.
+* ➕ **P-2 (§8.4):** `risolvi_template_applicabile` seleziona anche `template_versione_id`, e la
+  stampa usa quella versione invece di `get_versione_pubblicata_attiva`. Nello stesso giro si
+  ritirano i filtri di stampa di quel metodo, se la stampa era il suo solo uso (regola del 2). La
+  colonna è in coda: fino a quel giro il BE non si rompe.
+
+### 9.5 Sviluppo (2026-10-20; ✅ applicato da Tid su scratch e dbdev, pgTAP verdi, nessuna regressione)
+
+| ChangeSet | Che cosa | Risposta |
+| --- | --- | --- |
+| `20_code/documenti/20261020-27-update-fn-risolvi-template-applicabile-con-versione` | `fn_risolvi_template_applicabile` restituisce anche `template_versione_id` (`DROP` + `CREATE`: cambia il `RETURNS TABLE`, gli argomenti no). La lettura dei passi 2 e 3 va da `EXISTS` a `JOIN` sulla versione stampabile: candidato e versione escono dalla stessa riga, e il predicato resta scritto due volte, come prima | P-2 |
+| `00_schema/documenti/20261020-28-add-uq-template-documenti-id-tipo-sorgente` | `UNIQUE (id, tipo_documento_output_id, sorgente_tipo_id)` su `template_documenti`: il bersaglio della FK composta | Q-3 |
+| `00_schema/vendite/20261020-29-alter-fatture-stampa-coda-tipo-documento-output` | colonna `tipo_documento_output_id` con FK; il tipo preso dal modello per le righe con l'override; `chk_fatture_stampa_coda_modello_con_tipo`; `fk_fatture_stampa_coda_template_documento` (composta); `ex_fatture_stampa_coda_vivo` | Q-2, Q-3 |
+| `20_code/vendite/20261020-30-update-fn-accoda-stampe-lotto-tipo-documento` | `fn_accoda_stampe_lotto(p_lotto_id, p_tipo_documento_output_id DEFAULT NULL)`, `ON CONFLICT DO NOTHING` senza bersaglio, `SECURITY INVOKER` esplicito (`DROP` della firma `(bigint)` + `CREATE`) | Q-1, Q-2 |
+| `00_schema/vendite/20261020-31-drop-uq-fatture-stampa-coda-vivo` | il ritiro dell'indice vecchio, **dopo** la `-30`: fino a lì l'`ON CONFLICT` della funzione di prima lo nominava | Q-2 |
+
+**Dati (tre righe di CSV):**
+
+* `dbops/automazione_attivo_eccezioni.csv`: `vendite.fatture_stampa_coda.tipo_documento_output_id`.
+  L'automazione ATTIVO avrebbe generato su questa FK un trigger REQUIRE che scatta su **ogni**
+  `UPDATE` della riga (`trgfn_child_requires_active_parent` non guarda se la FK è cambiata). Con
+  un tipo spento il claim del worker, che è una `UPDATE` sola su N righe, si sarebbe fermato per
+  tutto il lotto. E il BLOCK sul padre avrebbe impedito di spegnere un tipo finché una riga storica
+  lo nomina. Se il tipo può stampare lo decide la risoluzione al drenaggio. La FK composta non ha
+  bisogno di eccezioni: l'automazione considera solo le FK a una colonna;
+* `dbops/stati_check_dichiarazioni.csv`: `fatture_stampa_coda.stato = IN_CORSO`, canale
+  `APPLICAZIONE` (lo scrive il claim del BE). ⚠️ Lo ha fatto emergere la prova: fino a oggi il
+  presidio lo dava scritto dal DB perché la vecchia `fn_accoda_stampe_lotto` nominava il valore
+  nell'`ON CONFLICT … WHERE stato IN ('PENDING', 'IN_CORSO')`. Nominare non è scrivere: è la stessa
+  coincidenza testuale della riga di `magazzino.inventari` del 2026-09-22;
+* `config/codici_errore.csv`: la nota di `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` nomina il vincolo nuovo.
+
+**pgTAP:**
+
+* nuovo `vendite/test-stampa-coda-tipo-documento-v1.sql` (14 test, **come app**): i casi di Q-4 su
+  un lotto e due fatture costruiti dal test; i tipi e i modelli dell'override sono quelli del seed,
+  cercati per `codice_interno`. Il rifiuto `AMBIGUO` resta a `test-documenti-template-standard-v1`
+  (20);
+* `vendite/test-stampa-coda-fondamenta-v1.sql`: il 10 guarda il vincolo di esclusione con la sua
+  clausola (`pg_get_constraintdef`), non più l'indice; il 13 e il 14 la firma `(bigint, bigint)`;
+* `documenti/test-documenti-template-standard-v1.sql` (da 35 a 36): l'11 e il 13 chiedono anche
+  la versione (prima chiedevano solo modello e livello); il 36 è nuovo: due versioni pubblicate di
+  un modello, una sola valida oggi, e la funzione restituisce quella.
+
+**Manuali:** `documenti/manual/fn_risolvi_template_applicabile.md` (§ «Dice anche con quale
+versione si stampa»), `vendite/manual/fatture_stampa_coda.md` (il tipo, l'override, il vincolo
+delle righe vive), `vendite/manual/fn_accoda_stampe_lotto.md` (il parametro, l'idempotenza).
+`PROJECT_CONTEXT.md`: `btree_gist` aggiunta all'elenco delle estensioni.
+
+**Scelte dichiarate, oltre al §9.2:**
+
+* nessuna riga di `fk_index_policy` per le due FK nuove (la policy è opt-in): puntano a cataloghi
+  piccoli, e il loro controllo scatta solo quando si cancella o si cambia una riga del catalogo;
+* `tipo_documento_output_id` e `template_documento_id` non vanno nel registro dei lock: oggi
+  nessuno li cambia dopo l'INSERT. Se servirà, sarà una riga di `automation_lock_columns`.
+
+**La prova (2026-10-20).**
+
+* **Prima dell'apply**, sullo scratch `zeroerp_ruoli`, da owner, in transazione annullata, con
+  l'SQL estratto dagli YAML: le cinque `preConditions` danno il valore atteso, e il DDL gira anche
+  su dbdev, dove la coda ha già delle righe (il vincolo nasce valido). 36 pgTAP prima e dopo:
+  stessi esiti, salvo i previsti (fondamenta 10, 13 e 14; il file della risoluzione dall'11; il
+  file nuovo). L'unica differenza non prevista era `stati-check-scrittori` 2, che ha portato alla
+  riga `IN_CORSO` sopra.
+* ⚠️ **Durante la prova Tid ha applicato** (`databasechangelog`: dbdev 11:51, scratch 11:52; su
+  dbdev un secondo migrate alle 11:53 ha caricato la riga `IN_CORSO`, aggiunta al CSV dopo il
+  primo). Le corse «dopo» con l'SQL estratto successive all'apply non valgono, e non le conto.
+* **Dopo l'apply**, gli stessi 36 file sui due database, senza SQL estratto: tutti verdi tranne i
+  rossi già noti e uguali a prima, cioè `documenti-generati-eventi` 16 e il file app 1-5 (rossi da
+  owner per costruzione). Su dbdev `test-documenti-template-documenti` si interrompe al primo
+  INSERT: il test crea un predefinito per l'emittente 32, che su dbdev ne ha già uno suo per la
+  stessa terna (modello 40, del 2026-05-04). Il vincolo che scatta,
+  `uq_template_documenti_default_attivo`, non è di questo giro: sullo scratch il file è verde. È un
+  test che pesca i dati della macchina, e va segnalato a parte.
+* Dopo ogni corsa nessuna riga `pgtap-%` è rimasta sui due database, e le righe della coda su
+  dbdev sono le stesse di prima.
+* ⚠️ Il file nuovo, da owner, non esercita la RLS. ✅ La corsa di Tid (2026-10-20): pgTAP verdi,
+  nessuna regressione.
+* Non provati: il loader dei CSV (simulato con degli `INSERT` prima dell'apply, poi caricato
+  dall'apply vero) e le automazioni di `ci_apply` (l'eccezione ATTIVO si vede solo lì).
