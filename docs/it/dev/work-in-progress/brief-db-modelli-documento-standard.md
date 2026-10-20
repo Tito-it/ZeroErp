@@ -2,10 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-20
 
-**Riparte: il team DB, con la versione stampabile di un modello indicato (§9.6, R-1), la versione
-di partenza di una copia (§6.1, R-2) e la voce
-nuova del censimento (§2, Q-6 … Q-8: `emittenti_fiscali_utilities`); il BE, con «personalizza» e la
-lista Modelli documento insieme al FE (§6), e dopo R-1 col ritiro della seconda copia.**
+**Riparte: Tid, col via al giro unico (D-4 … D-9 decise, §10.4); poi il team DB fa il giro unico
+K-1 … K-10 (§10.3); poi il BE/FE una volta sola (§10.5). Il BE ha già fatto P-2 per il modello
+risolto, la coda e «personalizza» lato BE (§9.6, §6.1): le sue richieste R-1 e R-2 sono righe del
+§10.**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -27,14 +27,17 @@ lista Modelli documento insieme al FE (§6), e dopo R-1 col ritiro della seconda
 | 9-sexies | **team DB** | ✅ ChangeSet `20261020-27` … `-31`, tre righe di CSV, pgTAP e manuali, provati sullo scratch (2026-10-20) | §9.5 | 9-quinquies |
 | 9-septies | **Tid** | ✅ Apply su scratch e dbdev (2026-10-20, due migrate su dbdev), pgTAP verdi, nessuna regressione | §9.5 | 9-sexies |
 | 9-octies | **BE** | ✅ P-2: la stampa usa `template_versione_id` della risoluzione. ✅ Coda: `claim_stampe_pending` porta la colonna, il worker la passa a `genera_documento`, `accoda_stampe_lotto` ha il secondo parametro. Policy rigenerate. ⚠️ I filtri di `get_versione_pubblicata_attiva` restano per il modello **indicato** dal chiamante: R-1 | §8.4, §9.4, §9.6 | 9-septies |
-| 9-nonies | **team DB** | R-1: la versione stampabile di un modello dato, con la stessa definizione di «può stampare» della risoluzione | §9.6 | 9-octies |
-| 9-decies | **BE** | Dopo R-1: il ramo del modello indicato chiama il DB, e `get_versione_pubblicata_attiva` si ritira | §9.6 | 9-nonies |
-| 9-undecies | **team DB** | R-2: la versione di partenza di una copia, con la stessa definizione della vista dello scarto; e se si personalizza uno standard non predefinito o spento | §6.1 | — |
-| 9-duodecies | **BE** | Dopo R-2: «personalizza» chiama il DB, e `get_ultima_versione_pubblicata` si ritira | §6.1 | 9-undecies |
-| 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard) | §7 | 8, 9, 9-ter |
+| 9-nonies | **team DB** | R-1: la versione stampabile di un modello dato, con la stessa definizione di «può stampare» della risoluzione → **assorbita in K-1 … K-3** | §9.6, §10 | 9-octies |
+| 9-decies | **BE** | → nel passaggio unico (§10.5). Dopo R-1: il ramo del modello indicato chiama il DB, e `get_versione_pubblicata_attiva` si ritira | §9.6 | 9-nonies |
+| 9-undecies | **team DB** | R-2: la versione di partenza di una copia, con la stessa definizione della vista dello scarto; e se si personalizza uno standard non predefinito o spento → **assorbita in K-6 e K-10** | §6.1, §10 | — |
+| 9-duodecies | **BE** | → nel passaggio unico (§10.5). Dopo R-2: «personalizza» chiama il DB, e `get_ultima_versione_pubblicata` si ritira | §6.1 | 9-undecies |
+| 9-terdecies | **Tid** | ✅ D-4 … D-9 come da proposta (2026-10-20); il via al giro unico resta da dare | §10.4 | — |
+| 9-quaterdecies | **team DB** | Giro unico K-1 … K-10: viste, porta unica, codici, BB della coerenza, «personalizza», parametri d'importo, guida, colonne della lista 24, riferimento dello scarto | §10.3 | 9-terdecies |
+| 9-quindecies | **BE/FE** | Il passaggio unico: assorbe 9-bis (FE), 9-decies e 9-duodecies, e il difetto del drawer delle versioni dello standard (§6.1) | §10.5 | 9-quaterdecies |
+| 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard) | §7 | 9-quindecies |
 | 11 | **Tid** | Archiviazione in `work-done/` | — | 10 |
 
-**Decisioni aperte di Tid: nessuna.** P-1, P-2 e C-1 … C-3 decise come da proposta (2026-10-20).
+**Decisioni aperte di Tid: nessuna. D-4 … D-9 decise come da proposta il 2026-10-20 (§10.4). Il via allo sviluppo non è dato.** P-1, P-2 e C-1 … C-3 decise come da proposta (2026-10-20).
 Committati: tranche 1 e 2 (`560d5d97e`, PR #1899), `20261020-26` (`0ff115bf0`, PR #1906), BE
 (`fad3ad71f`, `323c96a5c`), e la coda di stampa con P-2 (`20261020-27` … `-31`, tre CSV, pgTAP,
 manuali, 2026-10-20).
@@ -1069,3 +1072,139 @@ stampare. Si chiede:
 
 Dopo l'apply il BE passa il ramo del modello indicato alla lettura nuova e ritira
 `get_versione_pubblicata_attiva` (9-decies).
+
+## 10. Chiusura: quello che manca, tutto insieme (analisi del team DB, 2026-10-20)
+
+> **Perché questo paragrafo.** Il brief ha fatto una decina di passaggi fra DB e BE, e ogni giro DB
+> ha aperto la domanda successiva: P-2, poi la coda, poi il modello indicato a mano. Abbiamo
+> risposto a una domanda alla volta, senza confrontare l'intero percorso della stampa con la guida
+> che lo descrive. Qui il percorso è censito per intero, sulla struttura (doc `dbzero`, corpi delle
+> funzioni) e sul codice BE di oggi. L'obiettivo è **un solo giro DB** che chiuda tutto, poi **un
+> solo passaggio al BE/FE**, poi l'archiviazione.
+> ⛔ Una richiesta nuova che arriva dopo questo paragrafo va confrontata con l'elenco: se c'è già,
+> si rimanda alla sua riga; se non c'è, è un brief nuovo, non un altro giro di questo.
+> **Richieste BE già arrivate, e dove stanno:**
+> * R-1 del §9.6 (il modello indicato: la sua versione stampabile, e un codice suo) → K-1, K-2, K-3;
+> * R-2 del §6.1 (la versione di partenza di una copia; si può personalizzare uno standard non
+>   predefinito o spento?) → K-6, K-10;
+> * lo stato dell'emittente per ogni coppia (tipo, sorgente), per la lista → K-5;
+> * la colonna dello scarto nella lista 24 → K-9.
+>
+> Le ultime due il BE le ha mandate il 2026-10-20 col nome R-2 e R-3, prima che il §6.1 usasse R-2
+> per la versione di partenza: qui si citano per contenuto. Tutte aggiunte prima dello sviluppo.
+
+### 10.1 Il percorso della stampa, oggi
+
+Chi stampa (vista `sorgente_documenti_views`, worker della coda, anteprima) arriva in
+`DocumentGenerationService`, che fa quattro passi:
+
+| Passo | Dove vive oggi | Problema |
+| --- | --- | --- |
+| a. **Quale modello**, se nessuno lo indica | DB: `fn_risolvi_template_applicabile` | — |
+| b. **Quale modello**, se chi stampa lo indica (`template_documento_id`: l'override della coda, il parametro delle viste) | BE: `_resolve_template` legge il modello, `_guard_template_coerente` controlla emittente e sorgente | ⛔ è una **copia BE della regola 4** di `trgfn_documenti_generati_check_coerenza` («stesso emittente, oppure standard»), detta prima del render. Il **tipo** del modello indicato non lo controlla nessuno |
+| c. **Quale versione** | DB per il passo a (P-2, `template_versione_id`, ✅ usato dal BE dal 2026-10-20, §9.6); BE per il passo b (`get_versione_pubblicata_attiva`) | ⛔ seconda copia di «può stampare», e **già divergente**: non guarda se il modello è attivo, quindi un modello spento indicato a mano stampa ancora. In più usa il «giorno» del BE (`oggi_aziendale()`) e non `script.fn_data_operativa()`: due sorgenti della stessa data |
+| d. **La forma dei dati** (`versione_contesto`) | DB: `fn_guard_versione_contesto`, il BE la chiama | — |
+
+| e. **Da quale versione parte una copia** («personalizza», §6.1) e **a quale si confronta** (lo scarto) | BE: `get_ultima_versione_pubblicata` (`PUBBLICATA`, attiva, numero più alto); DB: `vw_template_personalizzati_scarto` (`PUBBLICATA` col numero più alto, **senza** guardare `attivo`, e sempre sullo standard **predefinito** della coppia) | ⛔ due definizioni diverse dello stesso riferimento, ed entrambe diverse da «può stampare». Una copia di uno standard non predefinito è confrontata con un altro modello; con l'ultima pubblicata spenta, una copia nasce `STANDARD_AVANTI`. E una pubblicata con decorrenza futura conterebbe già come «la versione dello standard» |
+
+Fuori dal percorso, ed è giusto così: la **ristampa fedele** usa la versione registrata sul
+documento generato, anche se oggi non stamperebbe più. Non deve passare dalla regola nuova.
+
+### 10.2 Che cosa dice la guida, e dove non è più vera
+
+`guide/documenti-e-stampe.md` (ultima revisione 22-08-2026) non conosce lo standard. In
+particolare:
+
+* §2.2 «la logica di selezione vive nel backend o nella UI»: non è più vero, la scelta è del DB;
+* §2.2 «il template è collegato a un'emittente», §6 «template e asset sono sempre collegati a
+  un'emittente»: lo standard non ha emittente;
+* §2.2 «Campo sul record sorgente» (`template_documento_id` sulla testata): **nessuna tabella
+  sorgente ha quella colonna** (censito sulla doc `dbzero`). L'unico modello indicato in un dato è
+  l'override della coda;
+* §4 «recupera il template predefinito… identifica la versione pubblicata»: oggi i livelli sono
+  due, e vale solo un modello che può stampare;
+* §2.1 elenca tipi (`ORDINE_CLIENTE`, `COMUNICAZIONE`) che non sono quelli del seed.
+
+La guida va riscritta **nello stesso giro**, come sede del disegno. Un disegno che vive solo nel
+brief si perde all'archiviazione, ed è uno dei motivi per cui le stesse domande sono tornate.
+
+### 10.3 L'elenco chiuso del lavoro DB
+
+| # | Che cosa | Perché | Chiude |
+| --- | --- | --- | --- |
+| **K-1** | `documenti.vw_template_versioni_stampabili`: una riga per ogni modello che **può stampare** oggi, `(template_documento_id, template_versione_id)`. È la sede **unica** del predicato: modello attivo, versione `PUBBLICATA`, attiva, `validita @> script.fn_data_operativa()`. Vista `security_invoker` | oggi il predicato è scritto due volte nella risoluzione e una nel BE (divergente). Una vista e non una funzione chiamata riga per riga: la risoluzione è una lettura su insieme, e il pianificatore riscrive la vista dentro la query | 10.1 c |
+| **K-2** | `fn_risolvi_template_applicabile` diventa **l'unica porta**: parametro nuovo **in coda** `p_template_documento_id DEFAULT NULL`. Senza: la risoluzione di oggi, letta da K-1. Con: il modello indicato si **verifica** e non si sceglie: sorgente, tipo (se indicato), emittente del documento oppure standard, e che possa stampare. Restituisce lo stesso `(template_documento_id, livello, template_versione_id)`, con il livello `INDICATO` | un ingresso solo per «con quale modello e quale versione si stampa questo documento». Il BE ritira `_guard_template_coerente`, `_resolve_versione_pubblicata`, `get_versione_pubblicata_attiva` e `_today` del percorso di stampa | 10.1 b, c |
+| **K-3** | Due codici nuovi. `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` (`CONFLITTO_STATO`), con il motivo per nome: `MODELLO_SPENTO`, `NESSUNA_VERSIONE_VALIDA`; rimedia l'operatore. `E_DOCUMENTI_TEMPLATE_NON_COERENTE` (`DATO_ERRATO`), motivi `EMITTENTE`, `SORGENTE`, `TIPO`; il modello indicato non è per questo documento | oggi il BE risponde con i generici `E_DOCUMENTI_NOT_FOUND` ed `E_VALIDATION` | 10.1 b, c |
+| **K-4** | La regola «il modello è per questo documento» si estrae in un BB `documenti.fn_template_coerente(...)`, usato da K-2 e dalla regola 4 di `trgfn_documenti_generati_check_coerenza` | con K-2 la regola starebbe due volte nel DB (prima del render e alla scrittura del documento). La regola del 2 vale anche dentro lo stesso livello | K-2 |
+| **K-5** | `documenti.vw_template_risoluzione_emittente`: per ogni emittente e ogni coppia (tipo, sorgente), l'esito della risoluzione (`EMITTENTE`, `STANDARD`, `SENZA_PREDEFINITO`, `NON_RISOLTO`), il modello e la versione. La legge da K-1, e `fn_risolvi_template_applicabile` legge da qui l'esito che poi solleva | la lista FE deve dire «si usa lo standard» e segnalare l'emittente senza predefinito (§6). Senza una lettura del DB il BE la calcolerebbe chiamando la funzione per ogni riga, oppure ricopiando la regola | §6 FE |
+| **K-6** | `documenti.fn_personalizza_template_standard(p_template_standard_id, p_emittente_fiscale_id, p_codice, p_codice_interno, p_descrizione, p_is_default)`, gli ultimi quattro facoltativi (quelli dello standard di default, come ha già il BE). Funzione madre, atomica: crea il modello dell'emittente e la sua bozza v1, copiata dalla **versione stampabile oggi** dello standard (K-1), e scrive `derivata_da_versione_id`. Uno standard che non può stampare (spento, o senza versione valida oggi) non si personalizza: `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` | il BE l'ha già scritto in una sua transazione (§6.1), ma sceglie la versione con `get_ultima_versione_pubblicata`: una terza definizione. Sono scritture che devono riuscire o fallire insieme (linee guida §5b), e la versione da copiare è una regola del modello. L'endpoint del BE resta, e chiama la madre | §6.1, R-2 |
+| **K-7** | `emittenti_fiscali_utilities`: Q-6 … Q-8 (§2), con la proposta del §10.4 | è l'ultima voce aperta del censimento: DEVA non chiude una fattura | §2 |
+| **K-8** | La guida `documenti-e-stampe.md` riscritta sullo stato vero (§10.2), più le pagine `manual/` degli oggetti nuovi | sede del disegno | 10.2 |
+| **K-9** | Lista 24 (`documenti.template_documenti`) in `ui/lista_colonna.csv`. Colonna `stato_scarto` («Allineamento allo standard», `informazione`, `string`, non ordinabile), che il BE valorizza in `LEFT JOIN` su `vw_template_personalizzati_scarto`. Più la colonna `standard` («Standard», `informazione`, `boolean`, filtrabile), per D-8. Le chiavi i18n seguono il prefisso della lista (`config.modelli_documenti.col_…`): il testo lo aggiunge il FE | richiesta BE R-3 (2026-10-20). La lettura dello scarto è già del DB: il BE fa solo il join | §6 FE |
+| **K-10** | `vw_template_personalizzati_scarto` con lo stesso riferimento di K-6. Lo standard di confronto è **quello da cui la copia deriva** (dal `derivata_da_versione_id`), non il predefinito della coppia; per una copia senza origine dichiarata, il predefinito della coppia come oggi. La sua versione di riferimento è quella **stampabile oggi** (K-1), non la `PUBBLICATA` col numero più alto | chiude la seconda metà di R-2: una copia appena nata esce `ALLINEATA`, e uno standard non predefinito si confronta con sé stesso | §6.1, R-2 |
+
+pgTAP: i casi costruiti di K-2 e K-3 (modello indicato spento, senza versione valida, di un altro
+emittente, di un'altra sorgente, di un altro tipo, standard indicato da un emittente qualunque). Poi
+la **parità**: per gli stessi casi, la funzione e K-5 danno lo stesso esito. E K-6 sulla madre:
+riesce tutta o niente, e non nasce dove l'emittente ha già il suo predefinito, per D-6. K-10 sui
+casi di R-2: la copia appena nata è `ALLINEATA`, anche da uno standard non predefinito e con
+l'ultima pubblicata spenta.
+
+### 10.4 Decisioni di Tid
+
+* **D-4 (K-2)** — ✅ **Decisa da Tid (2026-10-20): come da proposta.** Il modello indicato passa dalla stessa funzione, con un parametro in coda, invece
+  che da una funzione sorella. **Proposta: sì**. Una porta sola, e il BE ha un solo punto da
+  chiamare.
+* **D-5 (K-5)** — ✅ **Decisa da Tid (2026-10-20): come da proposta.** Una vista del DB per la lista Modelli documento. **Proposta: sì**. È il
+  requisito FE già deciso al §6, e senza la vista finisce nel BE.
+* **D-6 (K-6)** — ✅ **Decisa da Tid (2026-10-20): come da proposta.** Con quale flag nasce la copia di «personalizza». Il BE oggi la fa nascere
+  predefinita, e rifiuta se l'emittente ne ha già una (§6.1). **Proposta:**
+  * **predefinita**, se l'emittente non ha già un suo predefinito per quella coppia. Finché è in
+    bozza non toglie lo standard (`-26`); appena pubblicata, vince;
+  * **non predefinita** se ce l'ha: nascere predefinita violerebbe l'unico del predefinito, e
+    toglierlo all'altro modello è una scelta dell'operatore.
+
+  `codice` e `codice_interno`: quelli dello standard (l'unicità è per emittente, quindi non
+  collidono).
+* **D-9 (K-6, K-10)** — ✅ **Decisa da Tid (2026-10-20): come da proposta.** Il riferimento di una copia è la versione dello standard **stampabile
+  oggi**. Risponde anche alle due domande di R-2. Uno standard **spento** non si personalizza:
+  non stampa, e copiarlo darebbe una copia di qualcosa che il sistema non usa. Uno standard **non
+  predefinito** sì: è un'alternativa di sistema legittima (per esempio un layout in un'altra
+  lingua), e con K-10 la copia si confronta con lui. **Proposta: sì.** L'alternativa, «l'ultima
+  pubblicata, anche futura», farebbe partire una copia da una versione che oggi non stampa.
+* **D-8 (K-9)** — «Standard» ha una colonna sua nella lista. ✅ **Decisa da Tid (2026-10-20): sì, come da proposta.** Un badge nella cella
+  dell'emittente mescola due fatti: di chi è il modello, e che è di sistema. Una colonna sua si
+  filtra («solo gli standard», «solo i miei») e non dipende dal fatto che l'emittente dello
+  standard sia vuoto.
+* **D-7 (K-7)** — ✅ **Decisa da Tid (2026-10-20): come da proposta.** I parametri d'importo per utility. Fatto di struttura: **un valore di sistema
+  non esiste**. `config.utilities` non ha decimali né metodo, e `fn_lookup_utilities_per_ba` in
+  `LEFT JOIN` mostra NULL, non un ripiego. Quindi oggi la riga è di fatto obbligatoria, e nessuno
+  la crea. **Proposta:**
+  * i due parametri come valore di sistema su `config.utilities` (`NOT NULL`, 2 decimali,
+    `HALF_UP`), con la riga dell'emittente come override;
+  * `fn_ricalcola_totali_fattura` ripiega sul valore di sistema invece di sollevare;
+  * le soglie del minimo restano solo dell'emittente: NULL vuol dire «nessun minimo» (Q-7);
+  * per Q-8: un pgTAP che costruisce un emittente nuovo, senza la riga, e porta una fattura al
+    ricalcolo.
+
+  L'alternativa è creare la riga alla nascita dell'emittente per ogni utility: N copie dello
+  stesso valore, cioè il difetto del §2 rifatto.
+
+### 10.5 Il passaggio al BE/FE, una volta sola (dopo l'apply di K-1 … K-10)
+
+* **BE.** Già fatto (§9.6): la versione del modello risolto, e la coda col tipo. Resta:
+  * una chiamata sola a `fn_risolvi_template_applicabile`, col modello indicato quando c'è, e da
+    lì modello e versione. Si ritirano `_guard_template_coerente`, `_resolve_versione_pubblicata`,
+    `get_versione_pubblicata_attiva` e la data `_today` del percorso di stampa;
+  * «personalizza» (§6.1) chiama K-6. Si ritirano la transazione del service, `dati_bozza_copiata`
+    per questo verbo (resta per il clone) e `get_ultima_versione_pubblicata`;
+  * il drawer delle versioni di uno standard (§6.1): il cancello della lista 88
+    (`documenti.template_versioni`) riceve l'emittente dal padre, e lo standard non ne ha. È il
+    ramo «padre senza emittente suo» che `lista_figlia_views` ha già per la distinta
+    (`lista_emittente_param = None`), scelto quando il padre è uno standard. Lato DB non c'è niente:
+    le versioni non hanno RLS, e lo standard si legge da tutti.
+  * la lista legge K-5, e valorizza `stato_scarto` dalla vista dello scarto (K-9, K-10);
+  * le policy dei codici nuovi rigenerate.
+* **FE.** La lista e il drawer dei Modelli documento come al §6, sui campi di K-5 e sulle due
+  colonne di K-9 (con i testi delle chiavi i18n); l'azione «personalizza».
+* **Smoke** (§7), poi l'archiviazione.
