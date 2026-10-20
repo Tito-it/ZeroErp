@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_magazzino_dipendenze_inverse
 WITH (security_invoker=true) AS
@@ -101,6 +103,8 @@ WITH schemi_processo AS (
   GROUP BY oggetto, tipo_oggetto, come, schema_nominato
   ORDER BY oggetto, schema_nominato;
 ```
+
+</div>
 
 
 ---

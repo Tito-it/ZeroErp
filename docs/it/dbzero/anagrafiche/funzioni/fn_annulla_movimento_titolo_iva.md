@@ -7,6 +7,8 @@ CREATE FUNCTION fn_annulla_movimento_titolo_iva(p_movimento_id bigint, p_motivo 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_annulla_movimento_titolo_iva(p_movimento_id bigint, p_motivo character varying)
  RETURNS bigint
@@ -120,6 +122,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_annulla_movimento_titolo_iva(p_movimento_id bigint, p_motivo character varying)
 IS 'Madre: annulla una FORZATURA del registro plafond IVA scrivendo il CONTRO-MOVIMENTO di segno opposto, e ne ritorna l''id. Il registro resta append-only e l''accumulatore riporta imponibile_utilizzato al valore giusto da se'', perche'' somma senza filtri; a video restano entrambe le righe, l''errore e la correzione, ognuna con la sua data e il suo motivo. ⭐ Il chiamante passa DUE cose: quale riga e perche''. Importo e titolo si DERIVANO dalla riga annullata — ed e'' cio'' che rende i due controlli di coerenza del guard una difesa contro la scrittura diretta invece che un errore che l''operatore puo'' fare. ⭐ L''ammissibilita'' la decide script.fn_check_annullo_movimento_titolo_iva, la stessa che spegne il pulsante nel read-side: la madre la CHIAMA e solleva il codice del primo motivo, non riscrive il predicato — cosi'' i due non possono divergere. SECURITY INVOKER esplicito: RLS e scope emittente restano applicati sulla scrittura (sono la check e il guard a essere DEFINER, e solo per le letture di coerenza). Atomica per costruzione: una sola istruzione, e qualunque eccezione annulla tutto. ⚠️ data_movimento e'' la data dell''ANNULLO, non della forzatura. Piano: brief-db-titoli-iva-movimenti-annullo, Fase C.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

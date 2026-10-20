@@ -5,6 +5,8 @@
 >
 > Vista degli oggetti presenti negli schemi dbops,script (tabelle, viste, sequenze, indici ecc.)
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_catalogo_oggetti AS
 SELECT n.nspname AS schema,
@@ -26,6 +28,8 @@ SELECT n.nspname AS schema,
      LEFT JOIN pg_roles ON ((pg_roles.oid = c.relowner)))
   WHERE (n.nspname = ANY (ARRAY['dbops'::name, 'script'::name]));
 ```
+
+</div>
 
 
 ---

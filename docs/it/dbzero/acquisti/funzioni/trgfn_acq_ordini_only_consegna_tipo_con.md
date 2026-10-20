@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_acq_ordini_only_consegna_tipo_con()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION acquisti.trgfn_acq_ordini_only_consegna_tipo_con()
  RETURNS trigger
@@ -39,6 +41,8 @@ AS $function$
            END;
  $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

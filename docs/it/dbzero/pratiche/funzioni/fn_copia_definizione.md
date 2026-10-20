@@ -7,6 +7,8 @@ CREATE FUNCTION fn_copia_definizione(p_sorgente_id integer, p_emittente_dest big
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_copia_definizione(p_sorgente_id integer, p_emittente_dest bigint, p_provenance boolean)
  RETURNS integer
@@ -168,6 +170,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_copia_definizione(p_sorgente_id integer, p_emittente_dest bigint, p_provenance boolean)
 IS 'Motore di copia di un''edizione di workflow: header + template (incl. attende_sorgente_tipo_id, GUIDA D4/G1) + 7 figli (canali, handler_eventi, competenze, prerequisiti, formule_tempo, regole_generazione, avanzamento_proiezione) in una nuova edizione BOZZA, con remap dei template per codice. Unico punto del set di copia (C6). p_provenance=true valorizza preset_origine_id/versione_origine (fork). Usato da fn_fork_definizione e fn_nuova_versione_definizione.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_note_pratiche_giornale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_note_pratiche_giornale()
  RETURNS trigger
@@ -33,6 +35,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_note_pratiche_giornale()
 IS 'AFTER INSERT su note_pratiche: logga NOTA_AGGIUNTA nel giornale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

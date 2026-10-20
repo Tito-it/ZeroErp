@@ -12,6 +12,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_funzioni_check_codici
 WITH (security_invoker=true) AS
@@ -156,6 +158,8 @@ WITH RECURSIVE funzioni AS MATERIALIZED (
      JOIN checks c ON (((c.csch = l.csch) AND (c.cfn = l.cfn))))
      LEFT JOIN motivi_per_codice m ON ((m.check_oid = c.check_oid)));
 ```
+
+</div>
 
 
 ---

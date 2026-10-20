@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_dati_societari_guard_canale_fe()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_dati_societari_guard_canale_fe()
  RETURNS trigger
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_dati_societari_guard_canale_fe()
 IS 'Guard BEFORE INSERT OR UPDATE OF destinatario_fe, pec_fatturazione, codice_sdi su anagrafiche.dati_societari: codice SDI di 6-7 caratteri maiuscoli o cifre; canale C con il codice, canale P con la PEC. Un codice per campo; i CHECK del 20261010-37 fanno da rete. Brief: brief-db-character-n-spazi-di-riempimento D-6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

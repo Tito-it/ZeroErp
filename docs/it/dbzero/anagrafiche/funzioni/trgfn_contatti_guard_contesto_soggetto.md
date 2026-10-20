@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_contatti_guard_contesto_soggetto()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_contatti_guard_contesto_soggetto()
  RETURNS trigger
@@ -86,6 +88,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_contatti_guard_contesto_soggetto()
 IS 'Guard (2026-10-19) di anagrafiche.contatti: il ruolo (soggetto_ruolo_id) e l''istanza (istanza_utility_id) del contatto sono del suo soggetto (soggetto_id). BEFORE INSERT OR UPDATE in fascia a10; in UPDATE esce se soggetto, ruolo e istanza non cambiano. Rifiuti DATO_ERRATO col campo: E_RUOLO_ALTRO_SOGGETTO (soggetto_ruolo_id, dal BB anagrafiche.fn_ruolo_di_altro_soggetto), poi E_ISTANZA_ALTRO_SOGGETTO (istanza_utility_id, dal BB anagrafiche.fn_istanza_di_altro_soggetto). R-BE-15, D-17a e D-17c di Tid, brief-db-processi-accensione-per-ambiente §6.17.1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

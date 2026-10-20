@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_evento_asset(p_auth_user_id integer, p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_evento_asset(p_auth_user_id integer, p_evento_id bigint)
  RETURNS boolean
@@ -29,6 +31,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_evento_asset(p_auth_user_id integer, p_evento_id bigint)
 IS '⭐ rev 2026-10-18 (20261018-49, D-3b-2 ondata 2): l''emittente dal risolutore DEFINER (via_efba: dalla composizione delle policy, in convenzione soggetto_ruolo); una strada sola, nessuna policy del padre per chiamata. Stesse risposte. Adattatore di scope per un evento asset via l''ASSET (delega a via_asset): un evento puo'' non avere magazzino. Chiave di note_evento_asset.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

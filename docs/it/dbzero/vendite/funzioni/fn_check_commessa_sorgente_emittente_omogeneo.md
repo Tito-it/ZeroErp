@@ -6,6 +6,8 @@ CREATE FUNCTION fn_check_commessa_sorgente_emittente_omogeneo(p_commessa_id bigi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_check_commessa_sorgente_emittente_omogeneo(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text)
  RETURNS boolean
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_check_commessa_sorgente_emittente_omogeneo(p_commessa_id bigint, p_sorgente_tipo_id bigint, p_sorgente_uid text)
 IS 'Pure check (boolean, nessun raise proprio): la sorgente che si sta collegando appartiene allo STESSO emittente fiscale della commessa? E'' l''invariante detto da Tid — «una commessa non puo'' aggregare diversi emittenti insieme» — sull''asse dei documenti (H4). ⭐ rev 2026-08-26: il confronto e'' fra DUE COLONNE, senza intermediari — la commessa porta l''emittente addosso (NOT NULL dal 20260826-41) e il documento lo dice da se'' via script.fn_get_sorgente_emittente_sr_id. La versione precedente passava dal BILLING ACCOUNT su entrambi i lati, e su quattro tabelle sorgente su sei (ordini, preventivi, ddt, resi) quella colonna e'' NULLABLE: si fermava fail-closed su documenti perfettamente validi. ⛔ E'' caduta anche la scorciatoia «stesso billing account -> true»: serviva a evitare due risoluzioni, e con la lettura diretta non c''e'' piu'' niente da evitare — una scorciatoia che non fa risparmiare nulla e'' solo un ramo in piu'' da mantenere. ⭐ Il criterio resta l''EMITTENTE e non l''identita'' del billing account (decisione D-4): bloccare sul BA vieterebbe per sempre che un documento di un BA figlio contribuisca alla commessa del padre, e l''albero dei billing account esiste apposta perche'' piu'' BA stiano sotto lo stesso emittente — una decisione di dominio che nessuno ha preso. ⚠️ SECURITY DEFINER: legge vendite.commesse, che ha la RLS. ⛔ NULL -> false (fail-closed) e NON IS NOT DISTINCT FROM. ⚠️ Puo'' PROPAGARE i fail-closed del risolutore (E_SORG_*): difetti di configurazione o riferimenti rotti, non verdetti di dominio. Piano: brief-db-emittente-commessa-invariante, L6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_sorgenti_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_sorgenti_normalize()
  RETURNS trigger
@@ -19,6 +21,8 @@ BEGIN
   RETURN NEW;
 END$function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

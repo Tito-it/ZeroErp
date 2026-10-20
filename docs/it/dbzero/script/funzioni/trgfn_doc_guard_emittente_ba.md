@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_doc_guard_emittente_ba()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_doc_guard_emittente_ba()
  RETURNS trigger
@@ -137,6 +139,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_doc_guard_emittente_ba()
 IS 'Building block (2026-10-10, brief-db-guard-emittente-ba-unico): l''emittente di un documento di vendita e'' quello che il suo billing account risolve. BEFORE INSERT OR UPDATE OF (billing_account_id, <colonna dell''emittente>) FOR EACH ROW; TG_ARGV = [0] etichetta del documento, [1] colonna che lo identifica, [2] colonna dell''emittente (emittente_fiscale_id -> anagrafiche.fn_get_emittente_fiscale_pk; emittente_soggetto_ruolo_id -> anagrafiche.fn_get_emittente_fiscale_id), [3] codice d''errore (E_DOC_EMITTENTE_BA_INCOERENTE per preventivo, offerta, contratto, ordine, DDT, reso; E_COMMESSA_EMITTENTE_BA_INCOERENTE, TECNICO, per la commessa). BA NULL: esce. VARIADIC: documento, nome dell''azienda indicata, nome di quella del cliente (soggetti.ragione_sociale_completa, o l''id), codice del BA; nel contesto gli id, e `campo` solo se il codice non e'' TECNICO; tx_id della riga. Montaggio errato: E_DOC_RIGHE_LOCK_MONTAGGIO. I risolutori possono propagare E_EMITTENTE_DEFAULT_MISSING. Regola del 2: sostituisce trgfn_{preventivi,offerte_commerciali,contratti,ordini,ddt,resi,commesse}_guard_emittente_ba (ritirate da 20261010-19).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

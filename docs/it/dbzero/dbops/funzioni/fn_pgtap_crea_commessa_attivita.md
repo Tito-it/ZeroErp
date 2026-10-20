@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_s
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric DEFAULT 10, p_articolo_id uuid DEFAULT NULL::uuid, p_listino_versione_id bigint DEFAULT NULL::bigint, p_listino_riga_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(attivita_id bigint, articolo_id uuid, uom_id bigint, competenza_dal date, competenza_al date)
@@ -157,6 +159,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id bigint, p_prezzo_snapshot numeric, p_articolo_id uuid, p_listino_versione_id bigint, p_listino_riga_id bigint)
 IS 'Fixture pgTAP: un''ATTIVITA'' su una commessa gia'' costruita (dbops.fn_pgtap_crea_commessa), scritta dalla madre vendite.fn_upsert_commessa_attivita: APPROVATA e NON_EMESSA, con la commessa come sorgente, quantita'' 1 e prezzo snapshot FIXED (secondo parametro, default 10). Il builder decide il CONTESTO (istanza dal billing account della commessa, competenza dalla commessa o il mese corrente, sorgente, stati, segment key); il chiamante sceglie l''OGGETTO e la PROVENIENZA del prezzo: p_articolo_id (un articolo gia'' costruito coi suoi flag: dal guard A-10 un articolo usato non li cambia piu''; assente, lo costruisce dbops.fn_pgtap_crea_articolo, non gestito), p_listino_versione_id (la versione sotto cui la riga e'' registrata), p_listino_riga_id (la riga di listino del prezzo: da lei l''unita'' di misura e, se mancano, articolo e versione). Tutto il resto passa dalla madre. ⛔ La coerenza fra articolo, riga e versione la tiene la tabella (vendite.trgfn_attivita_guard_listino_riga). ⛔ NON emette e non lega a una fattura: e'' il caso del test. ⚠️ Una commessa, un articolo o una riga di listino inesistenti parlano. Esce con i vincoli IMMEDIATE. rev 2026-10-15: i tre parametri in coda (richiesta del team BE), DROP + CREATE. rev 2026-10-16: le colonne della riga di listino in variabili %TYPE, non in un record. rev 2026-10-16 (20261016-33): una riga di listino INVISIBILE sotto la RLS di chi agisce (di un''altra azienda) non ferma il builder se il chiamante da'' anche p_articolo_id e p_listino_versione_id: l''unita'' di misura viene dall''articolo e giudica il guard, come nel percorso del backend. Prima il builder si fermava su «nessuna riga» e il guard non veniva raggiunto (test 11 di vendite/test-guard-listino-riga-coerente-v1 verde da owner, rosso come app).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

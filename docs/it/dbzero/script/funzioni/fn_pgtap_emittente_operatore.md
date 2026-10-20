@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_emittente_operatore()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_pgtap_emittente_operatore()
  RETURNS bigint
@@ -77,6 +79,8 @@ $function$
 COMMENT ON FUNCTION script.fn_pgtap_emittente_operatore()
 IS 'Restituisce l''emittente fiscale su cui l''operatore corrente puo'' scrivere: quello assegnato a app.current_user_id se il contesto e'' impostato, altrimenti quello di un operatore reale scelto in modo deterministico. Sostituisce nelle fixture pgTAP il «SELECT id FROM anagrafiche.emittenti_fiscali WHERE attivo LIMIT 1», che senza ORDER BY pescava un emittente a caso — nel DB di sviluppo il 44, attivo ma senza documenti e senza operatore, che il guard trgfn_guard_emittente_scope rifiuta appena un contesto c''e''. Brief: brief-db-pgtap-runner-rls-baseline §8.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

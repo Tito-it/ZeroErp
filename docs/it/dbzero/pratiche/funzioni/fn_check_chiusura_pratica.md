@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_chiusura_pratica(p_pratica_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_check_chiusura_pratica(p_pratica_id bigint)
  RETURNS TABLE(template_flusso_id integer, codice character varying, obbligatorio boolean, completato boolean, percorribile boolean, bloccante boolean)
@@ -72,6 +74,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_check_chiusura_pratica(p_pratica_id bigint)
 IS 'Pure check: per ogni template attivo della DEFINIZIONE pinnata della pratica (fork-aware, definizione_id) ritorna completato (istanza COMPLETATO, qualsiasi esito), percorribile (prerequisiti esito-aware soddisfatti) e bloccante (obbligatorio non completato ancora percorribile). Il ramo morto di un bivio non blocca. Consumato dal guard di chiusura, da fn_check_pratica_chiudibile e dal percorso BE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

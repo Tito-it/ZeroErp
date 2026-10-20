@@ -6,6 +6,8 @@ CREATE FUNCTION fn_fix_lock_codice_interno_triggers(p_target_schema text, p_dry_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_fix_lock_codice_interno_triggers(p_target_schema text DEFAULT NULL::text, p_dry_run boolean DEFAULT true, p_drop_old boolean DEFAULT true, p_align_with_first_arg boolean DEFAULT true, p_force_update_column text DEFAULT NULL::text)
  RETURNS TABLE(object_schema text, object_table text, old_trigger text, new_trigger text, update_column text, action text, sql text)
@@ -139,6 +141,8 @@ AS $function$
   END;
   $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

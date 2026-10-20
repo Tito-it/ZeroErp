@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_efba_guard_albero_emittente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()
  RETURNS trigger
@@ -43,6 +45,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()
 IS 'Trigger AFTER su anagrafiche.emittenti_fiscali_billing_account: presidia i TRE movimenti che cambiano l''emittente di un BA — modifica del mapping, cancellazione del mapping (il BA ricade sul gestore globale) e spostamento di is_default (raggio N). Delega a fn_guard_albero_ba_emittente / fn_guard_albero_ba_gestore_globale. AFTER perche'' il guard rilegge il mapping per risolvere l''emittente. Brief P-1 §11.3. ⚠️ rev 2026-08-26: quei movimenti NON sono piu'' ordinari. Dal 20260826-49 anagrafiche.trgfn_efba_guard_storia_emittente li ammette solo finche'' il billing account non ha STORIA — nessuna fattura e nessuna commessa — perche'' un documento gia'' emesso congela chi lo ha emesso e spostare il cliente lo lascerebbe orfano. ⛔ Non e'' un divieto: e'' una CONDIZIONE. Un billing account nasce gia'' agganciato all''emittente dell''operatore che lo crea, quindi puo'' nascere sbagliato, e la correzione deve restare possibile finche'' su quel cliente non e'' passato del lavoro. Questo guard e'' il fratello dell''altro e resta necessario: uno dice «l''albero non puo'' diventare misto», l''altro «la storia non si sposta». Brief: brief-db-billing-account-cambio-emittente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_log_lotto_esito_fatture(p_lotto_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_log_lotto_esito_fatture(p_lotto_id bigint)
  RETURNS void
@@ -43,6 +45,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_log_lotto_esito_fatture(p_lotto_id bigint)
 IS 'Esito lotto dai log fatture (C/W/I) → evento sintetico su fatturazione_lotti_log.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

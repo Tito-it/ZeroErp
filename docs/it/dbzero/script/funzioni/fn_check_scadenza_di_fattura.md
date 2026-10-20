@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_scadenza_di_fattura(p_scadenza_id bigint, p_fattura_id 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_scadenza_di_fattura(p_scadenza_id bigint, p_fattura_id bigint)
  RETURNS boolean
@@ -44,6 +46,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_scadenza_di_fattura(p_scadenza_id bigint, p_fattura_id bigint)
 IS 'Risponde «questa rata appartiene a questa fattura?» FUORI dalla row security. 🔴 Esiste perche'' vendite.fatture_scadenze ha la RLS attiva e un guard che legge sotto RLS NON DISTINGUE «non appartiene» da «non la vedo»: due verita'' opposte che producono lo stesso EXISTS falso — la prima e'' un''incoerenza da rifiutare, la seconda e'' una riga legittima che l''operatore non ha il diritto di guardare. Rifiutarle con lo stesso messaggio vorrebbe dire dirne una falsa. ℹ️ Diverso il caso della FK: i controlli di integrita'' referenziale PostgreSQL li esegue gia'' fuori dalla row security, quindi la FK sa che la rata ESISTE — questa sa DI CHI E''. ⚠️ Non allarga nessun perimetro: risponde un booleano su una coppia che il chiamante ha gia'' nominato, nessuna riga esce e nessun elenco si popola. ⚠️ fn_check_* per convenzione: verifica e risponde, non solleva — a decidere che farne e'' il guard che la chiama (pagamenti.trgfn_vendite_contabili_righe_guard_rata), che e'' anche l''unico che sa quale messaggio dare all''operatore. Su un parametro nullo risponde NULL: «la domanda non si pone» non e'' ne'' vero ne'' falso. ⚠️ SECURITY DEFINER con search_path fissato, come le altre del progetto; l''owner lo riallinea dbops.fn_sync_functions_owner in 90_end, ed e'' quello che la rende davvero definer. S2-3 del cantiere incassi, decisione D14-b del brief madre.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

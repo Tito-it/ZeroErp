@@ -7,6 +7,8 @@ CREATE FUNCTION fn_template_esito_risoluzione(p_emittente_fiscale_id bigint, p_t
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.fn_template_esito_risoluzione(p_emittente_fiscale_id bigint, p_tipo_documento_output_id bigint, p_sorgente_tipo_id bigint)
  RETURNS TABLE(esito text, template_documento_id bigint, template_versione_id bigint, modelli_stampabili integer)
@@ -41,6 +43,8 @@ END
 COMMENT ON FUNCTION documenti.fn_template_esito_risoluzione(p_emittente_fiscale_id bigint, p_tipo_documento_output_id bigint, p_sorgente_tipo_id bigint)
 IS 'L''esito della risoluzione a due livelli per (emittente, tipo, sorgente), sui modelli che possono stampare (vw_template_versioni_stampabili) (2026-10-21, brief-db-modelli-documento-standard §10.3 K-5; strada B di §4.1 Q-2): EMITTENTE (il suo predefinito stampabile), SENZA_PREDEFINITO (ha modelli suoi stampabili, nessuno predefinito: lo standard non entra), STANDARD (il predefinito standard stampabile), NON_RISOLTO. Con modello, versione e numero dei modelli suoi stampabili. Sempre una riga. Sede unica della regola: la leggono fn_risolvi_template_applicabile e vw_template_risoluzione_emittente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

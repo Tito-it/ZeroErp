@@ -7,6 +7,8 @@ CREATE FUNCTION fn_lista_colonne_ricerca_full(p_lista_codice character varying)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION ui.fn_lista_colonne_ricerca_full(p_lista_codice character varying)
  RETURNS TABLE(codice character varying, campo_sorgente character varying)
@@ -51,6 +53,8 @@ $function$
 COMMENT ON FUNCTION ui.fn_lista_colonne_ricerca_full(p_lista_codice character varying)
 IS 'Colonne di una lista in cui l''utente corrente puo'' fare la ricerca libera, con il campo_sorgente da interrogare: attive, ricercabile_full, campo_sorgente valorizzato (NULL e stringa vuota sono vuoto), livello effettivo diverso da BLOCCATO (LETTURA entra). Il livello viene da ui.fn_lista_colonne_livello, lo stesso di fn_resolve_lista_config: non si cerca in una colonna che la lista non mostra. Utente da app.current_user_id, veste da ui.fn_veste_corrente(); l''emittente non entra nel livello di colonna. Senza utente nessun grant: le colonne sensibili escono. Lista assente o spenta: E_UI_LISTA_NON_TROVATA, dal building block ui.fn_lista_da_codice (2026-09-25), lo stesso del risolutore. Richiesta del team BE, 2026-09-23. Brief: brief-db-ricerca-full-colonne-permessi.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

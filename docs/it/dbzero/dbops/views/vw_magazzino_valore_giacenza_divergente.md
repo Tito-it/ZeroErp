@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_magazzino_valore_giacenza_divergente
 WITH (security_invoker=true) AS
@@ -25,6 +27,8 @@ WITH registro AS (
      FULL JOIN magazzino.valore_giacenza vg ON (((vg.articolo_id = r.articolo_id) AND (vg.magazzino_id = r.magazzino_id))))
   WHERE (vg.valore IS DISTINCT FROM r.valore_registro);
 ```
+
+</div>
 
 
 ---

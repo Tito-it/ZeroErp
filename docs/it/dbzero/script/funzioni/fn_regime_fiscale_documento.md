@@ -7,6 +7,8 @@ CREATE FUNCTION fn_regime_fiscale_documento(p_emittente_fiscale_id bigint, p_reg
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_regime_fiscale_documento(p_emittente_fiscale_id bigint, p_regime_fiscale_rf character varying DEFAULT NULL::character varying)
  RETURNS character varying
@@ -35,6 +37,8 @@ $function$
 COMMENT ON FUNCTION script.fn_regime_fiscale_documento(p_emittente_fiscale_id bigint, p_regime_fiscale_rf character varying)
 IS 'Il regime fiscale di un documento: quello CONGELATO che il chiamante passa in p_regime_fiscale_rf, se non e'' vuoto (la fattura lo prende dallo snapshot dell''intestazione, D-8), altrimenti quello vivo dell''emittente; NULL se non ci sono ne'' l''uno ne'' l''altro. Un congelato fuori catalogo esce com''e'': che cosa significa lo dice chi legge config.regimi_fiscali. Una regola sola per l''esigibilita'' delle righe (script.fn_esigibilita_iva_documento) e per le annotazioni della fattura (vendite.fn_regime_fiscale_fattura). Brief: brief-db-esigibilita-iva-per-cassa-emittente (R-DB-3).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scope_note_magazzino_ef_whitelist(p_auth_user_id integer, p_t
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_note_magazzino_ef_whitelist(p_auth_user_id integer, p_target_tipo character varying, p_target_id bigint)
  RETURNS boolean
@@ -37,6 +39,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_note_magazzino_ef_whitelist(p_auth_user_id integer, p_target_tipo character varying, p_target_id bigint)
 IS 'Smistatore di scope per il PADRE partizionato magazzino.note: sceglie l''adattatore dalla famiglia (target_tipo) e passa target_id, che nelle partizioni _riga e'' la testata. ELSE false: un target_tipo nuovo e non gestito rende quelle note invisibili, non pubbliche — e'' la riga che conta, presidiata dal pgTAP di P-12 contro chk_note_target_tipo. Stampo: fn_scope_note_ef_whitelist (vendite). Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.10.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

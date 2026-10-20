@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_installazione_guard_immutabile()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.trgfn_installazione_guard_immutabile()
  RETURNS trigger
@@ -49,6 +51,8 @@ $function$
 COMMENT ON FUNCTION dbops.trgfn_installazione_guard_immutabile()
 IS 'Guard su dbops.installazione: rifiuta UPDATE e DELETE (trigger di riga) e TRUNCATE (trigger di istruzione) con E_AMBIENTE_IMMUTABILE. L''ambiente si scrive una volta, alla nascita, dalla fase post del provisioning, e non cambia in nessuna delle due direzioni: un database di sviluppo non si certifica pulito, una copia della produzione resta produzione (decisione di Tid del 2026-10-16). Anche un UPDATE allo stesso valore e'' rifiutato. Il proprietario puo'' disattivare il trigger: la difesa contro un DBA malevolo sono i ruoli, non un guard. Brief: brief-db-processi-accensione-per-ambiente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

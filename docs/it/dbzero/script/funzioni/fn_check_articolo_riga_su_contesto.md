@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint DEFAULT NULL::bigint)
  RETURNS jsonb
@@ -397,6 +399,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_articolo_riga_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint)
 IS 'Check pura (fn_check_*): i motivi, in ordine DICHIARATO, per cui l''articolo p_articolo_id non puo'' stare in una riga del documento descritto da p_contesto (costruito da script.fn_articolo_riga_contesto: mai a mano; senza documento E_PARAMETRO_INVALIDO). ''[]'' = ammesso; altrimenti {codice, reason, reason_key, dettaglio, valori}. Le regole, per documento, sono quelle scritte nel COMMENT di script.fn_check_articolo_riga, che e'' questa funzione sul contesto letto da quella firma; rev 2026-10-14 (20261014-06, D-7): KIT_SENZA_COMPONENTI (E_ARTICOLO_KIT_SENZA_COMPONENTI), un composito senza nessun legame attivo in catalogo.articoli_componenti, motivo 2 di preventivo, ordine, bolla e di AGGIUNTA e OVERRIDE di offerta e contratto (dopo il solo componente); il caso date-dipendente resta all''init dei componenti (E_DOC_COMPOSITO_BOM_VUOTA). In piu'' PROMO_ARTICOLO (D-6, 2026-10-14): 1. solo componente (E_PROMO_ARTICOLO_SOLO_COMPONENTE: nessun prezzo a se'', e il resolver salta la promo in contesto bundle); il composito non e'' un motivo (riceve la promo quando il contratto gli da'' un prezzo con un''eccezione). p_natura_vendita_id: la natura congelata della riga, se c''e''; altrimenti quella dell''articolo. Due chiamanti, una regola (A-2): la firma di sempre script.fn_check_articolo_riga (i guard di tabella) e il picker catalogo.fn_articoli_ammessi, che legge il contesto una volta e giudica ogni articolo trovato (R-5). Nasce il 2026-10-14 dal corpo di 20261013-59, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4). ⭐ rev 2026-10-19 (20261019-32, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. Le due check del listino (fn_check_esclusione_articolo_documento, fn_check_riga_erogazione) ricevono il documento del contesto com''e'': la chiave doc_listino non c''e'' piu'' (20261019-31). ⭐ rev 2026-10-19 (20261019-99, brief-db-grammatica-unica-documenti lotto 2b): la destinazione della natura e'' il codice della sorgente (ORDINE_VENDITA, era ORDINE): il motivo NATURA_NON_MERCE di ordine e bolla confronta due codici dello stesso vocabolario.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

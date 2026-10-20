@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_pipeline_task_implementation(p_dominio_id bigint, p_task_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_get_pipeline_task_implementation(p_dominio_id bigint, p_task_code text, p_implementation_key text DEFAULT NULL::text)
  RETURNS TABLE(handler_code text, implementation_key text, task_registry_id bigint)
@@ -92,6 +94,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_get_pipeline_task_implementation(p_dominio_id bigint, p_task_code text, p_implementation_key text)
 IS 'Risoluzione implementazione task con fallback su default.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

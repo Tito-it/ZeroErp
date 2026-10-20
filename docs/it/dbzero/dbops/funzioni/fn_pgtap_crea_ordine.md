@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_crea_ordine(p_etichetta text, p_stato_codice_interno ch
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ordine(p_etichetta text DEFAULT 'pgTAP'::text, p_stato_codice_interno character varying DEFAULT 'DRAFT'::character varying)
  RETURNS TABLE(ordine_id bigint, ordine_uid uuid, emittente_fiscale_id bigint, emittente_soggetto_ruolo_id bigint, auth_user_id integer, billing_account_id bigint, istanza_utility_id bigint, cliente_soggetto_ruolo_id bigint, utility_id integer, stato_doc_ordine_id bigint, valuta_id integer)
@@ -76,6 +78,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_ordine(p_etichetta text, p_stato_codice_interno character varying)
 IS 'Fixture pgTAP: un ORDINE di vendita del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata nello stato scelto alla nascita, con l''emittente del mondo, il suo billing account, la sua utility e la prima valuta del catalogo. Numero, anno, registro e fatturazione_trigger li assegnano i trigger del dominio, come in produzione. ⛔ NON scrive righe: sono il caso del test. ⛔ Non cambia stato: vendite.ordini ha un guard di transizione, lo stato si sceglie col secondo parametro. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

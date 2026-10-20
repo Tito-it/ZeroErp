@@ -7,6 +7,8 @@ CREATE FUNCTION fn_login_parametri()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_login_parametri()
  RETURNS TABLE(max_tentativi integer, blocco_minuti integer, tetto_credenziale integer, attesa_base_secondi integer, attesa_max_secondi integer)
@@ -56,6 +58,8 @@ $function$
 COMMENT ON FUNCTION script.fn_login_parametri()
 IS 'I parametri del login in una lettura sola (regola del 2: la usano fn_check_blocco_login e fn_registra_tentativo_login): login_max_tentativi_falliti e login_blocco_minuti (freno sulla coppia credenziale + provenienza), login_tetto_credenziale, login_attesa_base_secondi e login_attesa_max_secondi (attesa crescente sulla credenziale). Default NUDO di config.parameters, non la cascata di override: la protezione del login non si personalizza, e prima del login l''utente non e'' noto. Fail-loud: un parametro assente, vuoto o non intero positivo solleva E_CONFIG_MANCANTE, mai un ripiego nel codice. Brief: brief-db-blocco-login-per-credenziale §2.4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -6,6 +6,8 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_preventivo(p_auth_user_id integer, p_p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_preventivo(p_auth_user_id integer, p_preventivo_id bigint)
  RETURNS boolean
@@ -32,6 +34,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_preventivo(p_auth_user_id integer, p_preventivo_id bigint)
 IS '⭐ rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l''emittente lo chiede a script.fn_resolve_emittente_fiscale_id (DEFINER), non lo legge sotto la RLS del padre: una strada sola, e nessuna policy del padre rieseguita a ogni chiamata. Stesse risposte. Adattatore di scope per i satelliti di vendite.preventivi: risale dalla chiave della testata a `emittente_fiscale_id` e delega a script.fn_scope_ef_whitelist. STABLE e NON security definer, come gli altri fn_scope_*: una funzione security definer dentro una policy guarderebbe con gli occhi dell''owner, che la RLS non vede. Preventivo inesistente -> emittente NULL -> false a whitelist valorizzata (fail-closed). Brief: brief-db-perimetro-emittente-righe-documento.md';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

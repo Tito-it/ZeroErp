@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_override_scaduti(p_giorni_tolleranza integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_override_scaduti(p_giorni_tolleranza integer DEFAULT 0)
  RETURNS TABLE(tipo_override text, override_id bigint, auth_user_id integer, dettaglio text, valido_al date, giorni_scaduto integer)
@@ -85,6 +87,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_override_scaduti(p_giorni_tolleranza integer)
 IS 'Restituisce override utente scaduti (valido_al < oggi) per segnalazione/pulizia.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_auth_user_id_for_email(p_email text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_auth_user_id_for_email(p_email text)
  RETURNS integer
@@ -52,6 +54,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_auth_user_id_for_email(p_email text)
 IS 'Building block: la credenziale (django.auth_user.id) che porta questa email, senza distinguere maiuscole e minuscole (D-9 di brief-db-blocco-login-per-credenziale: l''email e'' la chiave d''ingresso di portale e shop). Confronto lower(email) = lower(btrim(p_email)) su email <> '''': stessa espressione e stesso predicato dell''indice unico ix_auth_user_email_lower_unique, che la serve. Email NULL o vuota -> NULL (la stringa vuota e'' l''email mancante nel modello di Django, non una chiave). Due credenziali con la stessa email -> E_CREDENZIALE_EMAIL_AMBIGUA (TECNICO): dove l''indice non c''e'' (CI) il modello le ammette, e sceglierne una sarebbe un''ambiguita'', non una scelta. Consumatori: anagrafiche.fn_crea_auth_user (guard di unicita''), anagrafiche.fn_crea_operatore_v2 (riuso della credenziale, D-6), il backend dell''invito portale/shop. plpgsql e tipi espliciti perche'' nomina django.*. INVOKER, STABLE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

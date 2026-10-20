@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ricevute_guard_ba_canale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION shop.trgfn_ricevute_guard_ba_canale()
  RETURNS trigger
@@ -74,6 +76,8 @@ $function$
 COMMENT ON FUNCTION shop.trgfn_ricevute_guard_ba_canale()
 IS 'Trigger function: blocca INSERT/UPDATE di shop.ricevute se billing_account_id punta a un BA con canale_origine != SHOP. Applicata BEFORE INSERT + UPDATE OF billing_account_id. Codice errore E_SHOP_RICEVUTA_BA_CANALE_INVALIDO (id 386).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

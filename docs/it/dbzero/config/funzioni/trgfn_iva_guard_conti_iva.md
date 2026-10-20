@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_iva_guard_conti_iva()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_iva_guard_conti_iva()
  RETURNS trigger
@@ -67,6 +69,8 @@ COMMENT ON FUNCTION config.trgfn_iva_guard_conti_iva()
 IS 'Controlla i vincoli sui conti IVA in fase di inserimento/aggiornamento.La funzione verifica che i conti IVA di acquisto e vendita siano rispettivamente
      di tipo A (acquisti) e V (vendite).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

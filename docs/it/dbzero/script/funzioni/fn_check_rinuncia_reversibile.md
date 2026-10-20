@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_rinuncia_reversibile(p_resi_riga_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_rinuncia_reversibile(p_resi_riga_id bigint)
  RETURNS jsonb
@@ -114,6 +116,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_rinuncia_reversibile(p_resi_riga_id bigint)
 IS 'Funzione PURA (fn_check_*): motivi che impediscono di RIAPRIRE una rinuncia di ri-consegna (brief-db-chiusura-riconsegna-reso-definitivo S5.1). Ritorna [] se reversibile, altrimenti un array di {codice, reason, reason_key, dettaglio}. ⭐ NON E'' PIU'' DORMIENTE dal 2026-08-19 (P-3, brief note-credito §12): al ramo «riga inesistente» si e'' aggiunto il gate della nota di credito, che il commento del 2026-07-26 teneva in caldo dichiarando di non registrare ancora il codice «per non lasciare a catalogo un codice mai sollevato». ⚠️ La condizione e'' «esiste una riga in vendite.resi_righe_accrediti», NON «nota di credito emessa»: la finestra pericolosa si apre AL VERBO — fra l''accredito e la fattura la quota e'' gia'' impegnata e la riga e'' gia'' uscita dalla coda, quindi aspettare l''emissione lascerebbe scoperta la parte piu'' lunga del giro. Il ramo sta DOPO «riga inesistente», che e'' l''identita'' della riga e non una sua condizione. ⭐⚠️ VINCOLO RECIPROCO, ORA SU TRE POSTI: questo gate, vendite.fn_annulla_accredito_riga_reso e la guardia E_RESO_ANNULLO_CON_ACCREDITO di vendite.fn_annulla_reso (dal 2026-08-19). Tutti e tre si AUTO-RIPARANO perche'' l''annullo dell''accredito CANCELLA le righe di ponte — se un giorno diventasse un soft-delete, questi rami continuerebbero a vedere la riga e vieterebbero per sempre una rinuncia ormai reversibile e un annullo di reso ormai ammesso, IN SILENZIO, perche'' nessuno dei lati sarebbe sbagliato da solo. Le TRE funzioni si cambiano INSIEME. La madre vendite.fn_riapri_riconsegna_reso NON e'' stata toccata: solleva gia'' il primo motivo prodotto. reason_key da tradurre lato FE. rev 2026-08-19; stesso giorno, nota del vincolo estesa a TRE posti con la guardia di vendite.fn_annulla_reso.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

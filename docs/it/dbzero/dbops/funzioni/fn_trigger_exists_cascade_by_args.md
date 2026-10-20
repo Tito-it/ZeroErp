@@ -7,6 +7,8 @@ CREATE FUNCTION fn_trigger_exists_cascade_by_args(p_parent_rel regclass, p_child
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_cascade_by_args(p_parent_rel regclass, p_child_schema text, p_child_table text, p_fk_col text)
  RETURNS boolean
@@ -26,6 +28,8 @@ AS $function$
   );
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

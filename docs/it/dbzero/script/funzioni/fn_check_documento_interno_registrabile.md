@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_documento_interno_registrabile(p_famiglia text, p_docum
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_documento_interno_registrabile(p_famiglia text, p_documento_id bigint)
  RETURNS jsonb
@@ -277,6 +279,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_documento_interno_registrabile(p_famiglia text, p_documento_id bigint)
 IS 'I motivi che impediscono di REGISTRARE un documento interno di magazzino (p_famiglia = INVENTARIO | RETTIFICA). Funzione PURA: torna [] se si puo'' registrare, altrimenti un array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. I motivi sono i TRE rifiuti delle madri del posting, in quest''ordine (precedenza dichiarata, si esce al primo): stato diverso da CONFIRM (E_MAG_DOCUMENTO_TRANSIZIONE_NON_AMMESSA, con reason DOCUMENTO_NON_CONFERMATO | DOCUMENTO_GIA_REGISTRATO | DOCUMENTO_ANNULLATO secondo lo stato: un codice, tre tooltip), nessuna riga (E_MAG_DOCUMENTO_SENZA_RIGHE), una riga che la primitiva rifiuterebbe — li'' il `codice` e i `valori` sono quelli del PRIMO motivo di script.fn_check_riga_magazzino (la stessa funzione che magazzino.fn_scrivi_movimento chiama), mentre `reason` e `reason_key` sono del documento (RIGHE_NON_POSTABILI). ⭐ La chiamano le due madri (fn_posta_inventario, fn_posta_rettifica) e le due capability (script.fn_available_actions_inventario / _rettifica): una sede sola, perche'' un pulsante non puo'' promettere cio'' che la madre rifiutera'' (linee-guida-sql §12.1, §12.5.2). INVOKER e STABLE: sotto RLS un documento fuori perimetro NON C''E'' e si solleva E_MAG_DOCUMENTO_NON_TROVATO, mai [] (sarebbe un fail-open). Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1. rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, P-10): terza famiglia TRASFERIMENTO (il trasferimento interno, D-L2-g). Stato stato_trasferimento, righe trasferimenti_righe; al motivo 3 tre domande per riga: nello stesso magazzino servono due ubicazioni (E_MAG_TRASFERIMENTO_STESSA_POSIZIONE), poi la partenza (magazzino di origine, ubicazione_id_da) e l''arrivo (magazzino di destinazione, ubicazione_id_a) con script.fn_check_riga_magazzino.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

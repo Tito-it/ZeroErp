@@ -7,6 +7,8 @@ CREATE FUNCTION fn_calcola_tempo_netto_da_a(p_pratica_id bigint, p_flusso_da_id 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_calcola_tempo_netto_da_a(p_pratica_id bigint, p_flusso_da_id bigint, p_flusso_a_id bigint)
  RETURNS integer
@@ -64,6 +66,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_calcola_tempo_netto_da_a(p_pratica_id bigint, p_flusso_da_id bigint, p_flusso_a_id bigint)
 IS 'Check pura STABLE: giorni netti tra completamento flusso_da e flusso_a, al netto delle sospensioni.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_cleanup_at_params(p_schema text, p_table text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_cleanup_at_params(p_schema text, p_table text)
  RETURNS jsonb
@@ -66,6 +68,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_cleanup_at_params(p_schema text, p_table text)
 IS 'I params (ttl_days, base_ts_column, ...) della regola CLEANUP_AT piu'' specifica di dbops.automation_rules_tbl che copre la tabella: priority, poi id, fallback alla *all — lo stesso criterio di dbops.fn_run_automations_cleanup. ⭐ Esiste perche'' il termine sta in UNA sede sola: il trigger che scrive cleanup_at alla nascita e il job che lo applica al pregresso devono leggere lo stesso numero. Generalizza vendite.fn_event_log_ttl_days (ritirata). ⚠️ NULL = nessuna regola: la riga non scade mai (in dubbio non si cancella). Analisi: analisi-osservabilita-log.md, Passo D.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

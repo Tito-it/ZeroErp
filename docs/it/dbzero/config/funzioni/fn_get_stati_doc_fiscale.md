@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_stati_doc_fiscale(p_target text, p_from_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_get_stati_doc_fiscale(p_target text, p_from_id bigint DEFAULT NULL::bigint)
  RETURNS SETOF config.stati_doc_fiscale
@@ -68,6 +70,8 @@ $function$
 COMMENT ON FUNCTION config.fn_get_stati_doc_fiscale(p_target text, p_from_id bigint)
 IS 'Restituisce stati validi per lotto/fattura e transizioni ammesse.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

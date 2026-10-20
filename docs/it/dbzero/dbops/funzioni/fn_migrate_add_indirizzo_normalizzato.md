@@ -6,6 +6,8 @@ CREATE FUNCTION fn_migrate_add_indirizzo_normalizzato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_migrate_add_indirizzo_normalizzato()
  RETURNS void
@@ -39,6 +41,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

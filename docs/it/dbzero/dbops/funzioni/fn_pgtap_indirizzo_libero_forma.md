@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_indirizzo_libero_forma(p_stato_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_indirizzo_libero_forma(p_stato_id integer)
  RETURNS TABLE(comune_id integer, codice_postale_id integer, locality character varying, postal_code character varying)
@@ -66,6 +68,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_indirizzo_libero_forma(p_stato_id integer)
 IS 'Helper di fixture pgTAP (2026-10-18): una riga con comune_id, codice_postale_id, locality, postal_code nella forma che anagrafiche.trgfn_indirizzi_guard_forma_libera pretende per lo stato. Stato col catalogo completo (config.stati.catalogo_comuni_completo): il primo comune dello stato con un CAP, e quel CAP (ordine per id, deterministico). Altrimenti locality ''Localita pgTAP'' e postal_code ''00000''. La regola si legge dal flag, come il guard: le fixture non se la inventano. Lo usano dbops.fn_pgtap_crea_soggetto_ruolo, fn_pgtap_crea_soggetto_pg e le fixture dei pgTAP. D-2 di Tid, richiesta BE in brief-db-processi-accensione-per-ambiente §6.11.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

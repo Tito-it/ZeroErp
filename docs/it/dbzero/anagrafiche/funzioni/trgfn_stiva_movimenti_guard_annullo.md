@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_stiva_movimenti_guard_annullo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_stiva_movimenti_guard_annullo()
  RETURNS trigger
@@ -115,6 +117,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_stiva_movimenti_guard_annullo()
 IS 'Guard sulle righe che ANNULLANO un movimento del registro plafond IVA (BEFORE INSERT, WHEN annulla_movimento_id IS NOT NULL). Due famiglie di controlli: (1) AMMISSIBILITA'', che non e'' scritta qui ma si CHIAMA da script.fn_check_annullo_movimento_titolo_iva sollevando il codice del PRIMO motivo — cosi'' il pulsante spento del read-side e questo rifiuto leggono la stessa regola e non possono divergere; (2) COERENZA della riga scritta — stesso titolo IVA e importo esattamente opposto — che e'' difesa contro una scrittura DIRETTA, perche'' passando dalla madre quei valori sono derivati. ⛔ Il controllo sull''importo e'' cio'' che rende vero il presidio del brief: senza, un annullo di 100 su una forzatura di 250 passerebbe e imponibile_utilizzato non tornerebbe al valore precedente. ⛔ Quello sul titolo e'' il peggiore dei due: decurterebbe il plafond sbagliato SENZA sollevare niente, perche'' l''accumulatore somma per titolo e del collegamento non sa nulla. ⛔ SECURITY DEFINER perche'' legge la riga annullata su una tabella con RLS: da INVOKER «fuori perimetro» si leggerebbe come «non esiste» mentre la FK la RLS la scavalca sempre. La madre resta INVOKER. ⚠️ Solo BEFORE INSERT: dal 20260830-22 il registro non ammette UPDATE. Piano: brief-db-titoli-iva-movimenti-annullo, B-c.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

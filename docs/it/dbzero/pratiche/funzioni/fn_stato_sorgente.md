@@ -7,6 +7,8 @@ CREATE FUNCTION fn_stato_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_stato_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text)
  RETURNS TABLE(sorgente_tipo_id bigint, sorgente_uid text, risolto boolean, stato_codice_interno text, stato_codice text, stato_descrizione text, fase text, esito text, terminale boolean)
@@ -116,6 +118,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_stato_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text)
 IS 'API di motore per il descrittore normalizzato dello stato del documento sorgente (D3, brief-db-proiezione-stato-dominio). Sempre esattamente 1 riga: proiezione da script.vw_stato_sorgente (risolto=true) oppure sentinella UNKNOWN (risolto=false, fase APERTO, esito NULL, terminale false) senza errore — un tipo senza resolver degrada al comportamento manuale odierno. Guard parametri: E_STATO_SORGENTE_PARAM_INVALIDO su tipo NULL/<=0 o uid vuoto. Per le liste joinare direttamente script.vw_stato_sorgente (niente N+1). rev 2026-07-01. ⭐ rev 2026-10-05 (20261005-23): cerca la chiave nel suo TIPO (sorgente_chiave_uuid / sorgente_chiave_id della union), non come testo. Il confronto testuale sotto RLS non arriva all''indice e per un documento solo leggeva per intero tutte le tabelle-documento (dbdev come applicazione, 2026-10-05: 391 chiamate 3,6 s -> 0,05 s). Stessi risultati del confronto testuale: si accetta solo la forma CANONICA (quella che uid::text / id::text producono — un uid maiuscolo o un id con zeri davanti restano UNKNOWN come prima), e una chiave che non e'' ne'' un uuid ne'' un intero da'' la sentinella senza errore (pg_input_is_valid prima del cast). ⭐ rev 2026-10-05 (20261005-24): la conversione della chiave nel suo tipo non e'' piu'' scritta qui ma nei building block script.fn_sorgente_chiave_uuid / script.fn_sorgente_chiave_id, gli stessi che usa script.vw_pratica_doc_sorgente (regola del 2: la copia di qui e'' ritirata nello stesso giro). Nessun cambio di comportamento.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

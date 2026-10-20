@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_emittente_for_user(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_resolve_emittente_for_user(p_auth_user_id integer)
  RETURNS bigint
@@ -76,6 +78,8 @@ $function$
 COMMENT ON FUNCTION script.fn_resolve_emittente_for_user(p_auth_user_id integer)
 IS 'Resolver utente->emittente di lavoro. Regola (rev 2026-08-04): emittente attivo (GUC app.current_emittente_id) se valido per l''utente secondo fn_check_user_emittente_scope, altrimenti la riga 1-a-1 di config.user_emittenti_fiscali. Ritorna anagrafiche.emittenti_fiscali.id (PK reale) o NULL se l''utente non ha ne'' emittente attivo ne'' riga (admin globale in modalita'' "tutti gli emittenti"). Nessun filtro su ef.attivo: per costruzione l''EF associato a un utente e'' sempre attivo (trigger di guardia su entrambi i lati). NON solleva errore in caso di NULL: il chiamante decide la semantica (i trigger di default emittente sollevano *_EMITTENTE_NON_RISOLTO).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_definizione_congelata(p_definizione_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_check_definizione_congelata(p_definizione_id integer)
  RETURNS boolean
@@ -36,6 +38,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_check_definizione_congelata(p_definizione_id integer)
 IS 'TRUE sse la definizione workflow e'' un''edizione forkata (emittente_fiscale_id valorizzato) in stato PUBBLICATA: e'' congelata dall''immutabilita'' strutturale «Leggera». Il preset (emittente NULL) e le BOZZA/RITIRATA non sono mai congelati. Funzione pura (no raise); usata dai guard trgfn_template_flussi_guard_immutabile e trgfn_template_flussi_figli_guard_immutabile. NULL/non trovata => false.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

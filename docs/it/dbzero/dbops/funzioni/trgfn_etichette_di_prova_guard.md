@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_etichette_di_prova_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.trgfn_etichette_di_prova_guard()
  RETURNS trigger
@@ -61,6 +63,8 @@ $function$
 COMMENT ON FUNCTION dbops.trgfn_etichette_di_prova_guard()
 IS 'Guard delle etichette di prova (dbops.credenziali_di_prova, dbops.soggetti_di_prova). INSERT: ammesso solo se dbops.fn_dati_di_sviluppo_ammessi_su_valori(script.fn_ambiente_installazione()), altrimenti E_DATI_DI_SVILUPPO_IN_PRODUZIONE (lo stesso codice del verbo dei dati di sviluppo: e'' la stessa decisione); ambiente non dichiarato: E_CONFIG_MANCANTE. UPDATE, DELETE (trigger di riga) e TRUNCATE (trigger di istruzione): sempre rifiutati con E_ETICHETTA_DI_PROVA_IMMUTABILE, perche'' togliere un''etichetta nasconderebbe la radice al presidio. Il proprietario puo'' disattivare il trigger: la difesa contro un DBA malevolo sono i ruoli. Brief: brief-db-processi-accensione-per-ambiente (R-4).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

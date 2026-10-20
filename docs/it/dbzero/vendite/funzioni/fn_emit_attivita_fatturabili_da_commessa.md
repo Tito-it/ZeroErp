@@ -7,6 +7,8 @@ CREATE FUNCTION fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean DEFAULT true, p_dry_run boolean DEFAULT false, p_gruppi text[] DEFAULT NULL::text[], p_emit_batch_id uuid DEFAULT NULL::uuid)
  RETURNS TABLE(total_candidate integer, inserted_rows integer, updated_rows integer, skipped_rows integer)
@@ -348,6 +350,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean, p_gruppi text[], p_emit_batch_id uuid)
 IS 'Il PULL: emette le righe di una commessa in vendite.attivita_fatturabili, in modo idempotente (sorgente COMMESSA + segment_key), propagando snapshot pricing e tipo_movimento. Quali righe: si legge la CLASSE da vendite.vw_commesse_attivita_emittibilita, vista DAL GIRO con vendite.fn_classe_emittibilita_per_giro — una riga TRATTENUTA soltanto dal lotto corrente (vendite.fn_lotto_da_emit_batch(p_emit_batch_id)) e'' PRONTA, cosi'' il RILANCIO riprende i propri documenti; una riga trattenuta da un altro lotto in gioco resta fuori; con p_only_approved = false entrano anche NON_APPROVATA e RIFIUTATA. p_gruppi restringe alle chiavi richieste (emissione mirata). p_emit_batch_id e'' anche il marchio scritto su ogni riga consegnata. Rev 2026-09-12: auto-esclusione dalla sede unica, la stessa di fn_list_commesse_emittibili (brief-db-rilancio-step-non-rivede-le-proprie-commesse, D1). Rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa R-2): propaga anche listino_riga_id, cosi'' la riga di listino di un documento emesso resta «propagata» per vendite.trgfn_listini_righe_guard_stato anche dopo che la commessa e'' stata riallineata su un''altra riga.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

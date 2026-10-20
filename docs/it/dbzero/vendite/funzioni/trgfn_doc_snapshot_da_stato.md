@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_doc_snapshot_da_stato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_doc_snapshot_da_stato()
  RETURNS trigger
@@ -79,6 +81,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_doc_snapshot_da_stato()
 IS 'BB (2026-10-11, brief-db-annullo-documento-con-legami D-6): copia sulla riga le bandiere booleane del vocabolario degli stati, a ogni INSERT e UPDATE (BEFORE, fascia _z90_, senza OF: lo snapshot e'' derivato e una scrittura a mano non lo falsifica). Montaggio: [0] colonna di stato, [1] vocabolario (schema.tabella), poi coppie (colonna snapshot, colonna del vocabolario). Serve a indici e colonne generate, che non leggono un''altra tabella: vendite.contratti (is_abortito_snapshot, is_draft_snapshot -> partecipa_overlap_snapshot e uq_contratti_offerta_id) e vendite.ordini (is_abortito_snapshot -> uq_ordini_v_documento_origine_offerta). Stato NULL o assente: false. Montaggio sbagliato: E_VENDITE_CHIAMATA_NON_VALIDA. Regola del 2: prende il posto di vendite.trgfn_contratti_sync_is_abortito_snapshot.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

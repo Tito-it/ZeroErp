@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fornitori_guard_ruolo_fornitore()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_fornitori_guard_ruolo_fornitore()
  RETURNS trigger
@@ -35,6 +37,8 @@ IS 'Trigger che, prima di inserire/aggiornare in anagrafiche.fornitori,
 chiama fn_guard_soggetto_ruolo per validare il legame
 soggetto→ruolo (cd_int_ruolo = ''FO'').';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

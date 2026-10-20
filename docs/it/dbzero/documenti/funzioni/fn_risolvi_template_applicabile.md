@@ -7,6 +7,8 @@ CREATE FUNCTION fn_risolvi_template_applicabile(p_sorgente_tipo_id bigint, p_emi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.fn_risolvi_template_applicabile(p_sorgente_tipo_id bigint, p_emittente_fiscale_id bigint, p_tipo_documento_output_id bigint DEFAULT NULL::bigint, p_template_documento_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(template_documento_id bigint, livello text, template_versione_id bigint)
@@ -215,6 +217,8 @@ $function$
 COMMENT ON FUNCTION documenti.fn_risolvi_template_applicabile(p_sorgente_tipo_id bigint, p_emittente_fiscale_id bigint, p_tipo_documento_output_id bigint, p_template_documento_id bigint)
 IS 'La porta unica: il modello e la versione con cui si stampa un documento (2026-10-21, brief-db-modelli-documento-standard §10.3 K-2, D-4 di Tid). Senza p_template_documento_id: strada B (§4.1 Q-2), l''esito di documenti.fn_template_esito_risoluzione; livello EMITTENTE (il suo predefinito stampabile) o STANDARD (il predefinito standard stampabile); E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO se l''emittente ha modelli suoi stampabili ma nessuno predefinito (lo standard non entra), E_DOCUMENTI_TEMPLATE_NON_RISOLTO se non stampa nemmeno lo standard. Tipo di output facoltativo: si deduce solo se fra i modelli stampabili della sorgente utilizzabili dall''emittente ce n''e'' uno solo, altrimenti E_DOCUMENTI_TEMPLATE_AMBIGUO. Con p_template_documento_id: il modello indicato si verifica, livello INDICATO; E_DOCUMENTI_TEMPLATE_NON_COERENTE se non e'' adatto al documento (motivo SORGENTE, TIPO, EMITTENTE: documenti.fn_template_motivo_non_coerente), E_DOCUMENTI_TEMPLATE_NON_STAMPABILE se oggi non puo'' stampare (motivo MODELLO_SPENTO, NESSUNA_VERSIONE_VALIDA). «Puo'' stampare» = documenti.vw_template_versioni_stampabili. Argomenti rotti, o un id che non e'' un modello: E_DOCUMENTI_RISOLVI_TEMPLATE_INPUT_INVALIDO. L''emittente e'' quello del documento, gia'' letto sotto RLS dal chiamante: niente scope qui. Restituisce una riga (template_documento_id, livello, template_versione_id).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

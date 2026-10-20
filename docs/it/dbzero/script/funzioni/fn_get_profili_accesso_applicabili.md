@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_profili_accesso_applicabili(p_auth_user_id integer, p_ruo
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_profili_accesso_applicabili(p_auth_user_id integer, p_ruolo_applicativo config.ruolo_applicativo DEFAULT NULL::config.ruolo_applicativo)
  RETURNS TABLE(profilo_accesso_id integer, priorita smallint)
@@ -103,6 +105,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_profili_accesso_applicabili(p_auth_user_id integer, p_ruolo_applicativo config.ruolo_applicativo)
 IS 'Profili applicabili a un auth_user, dal piu'' specifico al piu'' generale: AD_HOC priorita'' 1 (sull''identita''), REPARTO 2 (sull''unita'' organizzativa), PORTALE 3 (sulla veste). Rev 20260925-80 (D-3 di brief-db-pgtap-permessi-ereditati): PORTALE era 2, a pari merito col REPARTO, e sotto la veste OPERATORE lo spareggio per priorita'' sceglieva a caso. p_ruolo_applicativo NULL = tutte le vesti (legacy), valorizzato = solo quella veste; con una veste sola ogni priorita'' ha al massimo un profilo (indici unici dei binding e di risorse_umane). I resolver dei permessi da operatore passano ''OPERATORE'' tramite script.fn_get_permessi_ereditati_aree / _azioni (D-1). Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): una veste spenta si riconosce solo da attivo; il controllo su DISABILITATO (rami AD_HOC e PORTALE) e'' caduto con il tipo. Rev 2026-10-07 (brief-db-veste-utilizzabile): la veste conta se e'' utilizzabile oggi (script.fn_veste_utilizzabile) in tutti e tre i rami; nel ramo REPARTO il controllo del rapporto (prima solo ru.attivo) e'' quello del building block, con le date.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

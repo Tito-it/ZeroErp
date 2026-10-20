@@ -7,6 +7,8 @@ CREATE FUNCTION fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
  RETURNS TABLE(preventivo_id bigint, stato_precedente character varying, stato_nuovo character varying)
@@ -212,6 +214,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_cambia_stato_preventivo(p_preventivo_id bigint, p_nuovo_stato character varying, p_user text)
 IS 'Transizione di stato preventivo validata dalla matrice config.transizioni_stati_preventivi. Guard DRAFT->EMESSO: SOLO presenza di righe attive (PREV_NESSUNA_RIGA_ATTIVA). Verso ANNULLATO: l''ammissibilita'' e'' delegata a script.fn_check_preventivo_annullabile — sede unica condivisa col trigger di guard e con fn_available_actions_preventivo — e si solleva il codice del primo motivo. Stato corrente/destinazione e RETURNS per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #1. rev 2026-07-16: rimossi guard PREV_TOTALE_NON_POSITIVO e filtro quantita>0. rev 2026-08-04: assorbita la regola locale sull''annullamento dentro la fn pura; esce di scena PREV_ANNULLAMENTO_COMMESSA_ATTIVA. rev 2026-08-05: la matrice e'' vincolante anche per il database (vendite.trgfn_preventivi_guard_transizione) e la porta solleva lo STESSO codice del guard, E_PREV_TRANSIZIONE_NON_AMMESSA; il precedente PREV_TRANSIZIONE_NON_AMMESSA, senza prefisso E_ e iscritto nel registro del debito, esce di scena (brief-db-vie-uscita-operatore §7.4 punto 3). rev 2026-08-06: la destinazione non risolta solleva E_STATO_WORKFLOW_NON_TROVATO (892) invece di E_STATO_SCONOSCIUTO (9), ritirato perche'' condiviso con config.trgfn_toponomastica_normalize, dove «stato» significava NAZIONE dell''indirizzo: due verita'' sotto un nome solo, nessun http_status giusto per entrambe. Da non confondere con E_PREV_STATO_CORRENTE_NON_TROVATO, che riguarda lo stato DA CUI si parte. Brief brief-db-be-terzo-lato-presidio-codici §11.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

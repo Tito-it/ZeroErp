@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_cliente_chiave_unica(p_cliente_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_cliente_chiave_unica(p_cliente_id bigint)
  RETURNS void
@@ -80,6 +82,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_guard_cliente_chiave_unica(p_cliente_id bigint)
 IS 'Guard fail-fast (C-1, C-2, C-3 di Tid del 2026-10-13): fra le istanze fittizie un cliente non si sovrappone nel periodo a un altro con lo stesso soggetto, utility e azienda emittente. Il predicato di chi occupa la chiave e'' anagrafiche.fn_clienti_stessa_chiave. Solleva E_CLIENTE_STESSA_CHIAVE col codice del billing account del cliente esistente. Cliente inesistente o fuori dalla chiave: niente da presidiare. Lo chiamano al COMMIT i constraint trigger su clienti, sul collegamento BA -> azienda e su istanze_utilities.fittizia. SECURITY DEFINER: clienti e billing_account sono in RLS. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

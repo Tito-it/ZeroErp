@@ -7,6 +7,8 @@ CREATE FUNCTION fn_preventivo_riga_componenti_preview(p_articolo_id uuid, p_uom_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_preventivo_riga_componenti_preview(p_articolo_id uuid, p_uom_id bigint, p_quantita_padre numeric, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_sr_id bigint, p_classe_utenza_id integer DEFAULT NULL::integer)
  RETURNS TABLE(articolo_componente_id uuid, componente_id uuid, componente_codice character varying, componente_descrizione character varying, coeff_qta_snapshot numeric, quantita_componente numeric, uom_id bigint, uom_codice character varying, iva_id bigint, prezzo_suggerito numeric, origine_prezzo character varying, resolver_error_reason text, obbligatorio boolean, esposizione_in_fattura character varying)
@@ -85,6 +87,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_preventivo_riga_componenti_preview(p_articolo_id uuid, p_uom_id bigint, p_quantita_padre numeric, p_data_riferimento date, p_ba_id bigint, p_utility_id integer, p_emittente_sr_id bigint, p_classe_utenza_id integer)
 IS 'Preview componenti BoM CASO A per drawer riga preventivo (form atomic). Read-only STABLE. rev 2026-05-13, modello unificato: aggiunta obbligatorio + esposto_in_fattura nella proiezione. Rimosso filtro esposto_in_fattura=TRUE: tutti i componenti attivi e validi sono restituiti. prezzo_suggerito=NULL + resolver_error_reason se listino mancante. rev 2026-10-01: esposto_in_fattura (boolean) diventa esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO), letta dalla distinta (brief-db-esposizione-componenti-kit-in-fattura).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

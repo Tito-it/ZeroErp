@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scope_ef_perimetro(p_perimetro bigint[], p_emittente_fiscale_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_perimetro(p_perimetro bigint[], p_emittente_fiscale_id bigint)
  RETURNS boolean
@@ -37,6 +39,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ef_perimetro(p_perimetro bigint[], p_emittente_fiscale_id bigint)
 IS 'Funzione di scope delle policy ef_whitelist (linee-guida-sql §10.3): l''emittente della riga sta nel perimetro dell''operatore? Il perimetro (script.fn_get_emittenti_scope_pk_ids: NULL = tutti, ''{}'' = nessuno) lo passa la policy in UNA sottoquery scalare non correlata, valutata una volta per istruzione (InitPlan); per riga resta questa chiamata pura (~1,5 µs). Emittente NULL -> false salvo perimetro tutti. Rev 2026-10-18 (20261018-24, D-3b-2c): sostituisce la firma a tre argomenti, che calcolava il perimetro due volte per istruzione.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

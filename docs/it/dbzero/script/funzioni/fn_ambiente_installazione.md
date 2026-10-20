@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ambiente_installazione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_ambiente_installazione()
  RETURNS text
@@ -47,6 +49,8 @@ $function$
 COMMENT ON FUNCTION script.fn_ambiente_installazione()
 IS 'L''ambiente di questa installazione, SVILUPPO o PRODUZIONE, per chi DECIDE in base a lui (la sveglia dei processi, il provisioning di sviluppo). Sede unica: chi deve saperlo lo chiede qui. Come script.fn_fuso_operativo(): niente cascata di override, niente ripiego. Valore assente o fuori vocabolario: E_CONFIG_MANCANTE — l''installazione va dichiarata dalla fase post di scripts/sql/provision_zeroerp.sql (-v ambiente=...). Chi DESCRIVE senza decidere usa script.fn_ambiente_dichiarato(), che torna NULL. Brief: brief-db-processi-accensione-per-ambiente (A-1, R-1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_stati_doc_fiscale_chiude_lotto_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_stati_doc_fiscale_chiude_lotto_guard()
  RETURNS trigger
@@ -42,6 +44,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_stati_doc_fiscale_chiude_lotto_guard()
 IS 'Guard singleton chiude_lotto: esattamente 1 riga TRUE in config.stati_doc_fiscale. Errore: E_CHIUDE_LOTTO_SINGLETON.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

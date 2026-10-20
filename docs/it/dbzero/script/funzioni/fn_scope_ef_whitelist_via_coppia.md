@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_coppia(p_auth_user_id integer, p_istan
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_coppia(p_auth_user_id integer, p_istanza_utility_id bigint, p_utility_id integer)
  RETURNS boolean
@@ -31,6 +33,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_coppia(p_auth_user_id integer, p_istanza_utility_id bigint, p_utility_id integer)
 IS 'Scope RLS per le righe che nominano la coppia (istanza_utility_id, utility_id): true se l''operatore vede il billing account della coppia. Delega a script.fn_scope_ef_whitelist_via_efba (la regola resta una). BA fuori perimetro o assente: false (fail-closed). Usata dalla policy rls_istanze_dati_precontrattuali_ef_whitelist. Brief: brief-db-istanza-nasce-col-ba (§6.13).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

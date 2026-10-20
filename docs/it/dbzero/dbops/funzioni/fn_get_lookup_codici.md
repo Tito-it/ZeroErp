@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_d
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text DEFAULT 'descrizione'::text, p_order_dir text DEFAULT 'ASC'::text, p_attivo_only boolean DEFAULT true, p_limit integer DEFAULT 500, p_offset integer DEFAULT 0, p_includi_obsoleti boolean DEFAULT true)
  RETURNS TABLE(id bigint, codice text, codice_interno text, descrizione text, attivo boolean)
@@ -320,6 +322,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_get_lookup_codici(p_rel regclass, p_order_col text, p_order_dir text, p_attivo_only boolean, p_limit integer, p_offset integer, p_includi_obsoleti boolean)
 IS 'Lookup generico id/codice/codice_interno/descrizione/attivo. Filtri opzionali e introspettivi: attivo (p_attivo_only, DEFAULT true) e obsoleto_dal (p_includi_obsoleti, DEFAULT true = mostra tutto; false = esclude obsoleto_dal <= CURRENT_DATE, selezione per il nuovo). Colonne attivo/obsoleto_dal opzionali: se assenti il filtro non si applica. Consulta automation_overrides_cols (CODICE_COL/CODICE_INTERNO_COL). Base: 20260520-04.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

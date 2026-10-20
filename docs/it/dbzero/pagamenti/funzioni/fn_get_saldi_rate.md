@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_saldi_rate(p_scadenza_ids bigint[], p_escludi_contabile_r
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.fn_get_saldi_rate(p_scadenza_ids bigint[], p_escludi_contabile_riga_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(scadenza_id bigint, saldo numeric, in_lavorazione numeric, incassato numeric, has_movimenti boolean)
@@ -143,6 +145,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.fn_get_saldi_rate(p_scadenza_ids bigint[], p_escludi_contabile_riga_id bigint)
 IS 'IL NUCLEO dei saldi delle rate: la formula scritta UNA volta in forma set-based, per N rate. `saldo` = importo della rata meno i movimenti attivi che la NOMINANO meno la quota IMPUTATA dei movimenti del documento senza rata; `in_lavorazione` = righe contabili attive, postabili, sotto distinta non finale, dirette piu'' la quota imputata di quelle senza rata; `incassato` = cassa vera (centro presente, non fondo fattura ne'' compensazione), diretta piu'' la quota imputata in proporzione; `has_movimenti` = movimenti diretti o quota imputata diversa da zero. ⭐ rev 2 del 2026-09-17 — L''IMPUTAZIONE DERIVATA (Q-A/γ, decisione di Tid): i movimenti e le righe SENZA rata di un documento si attribuiscono alle sue rate in ordine di data_scadenza (poi numero_rata, id) fino alla capienza di ciascuna, e l''ultima assorbe l''eccedenza — cosi'' Σ saldi delle rate = saldo del documento SEMPRE, per costruzione; il verso e'' quello del documento (sign della somma delle rate: su una nota di credito le rate sono negative, la capienza e'' in valore assoluto — la forma di D14-c), e un non-imputato di verso contrario va tutto sulla prima rata, dove resta visibile come MOVIMENTO_CONTRARIO. Nessuno scrive niente: e'' D2 («lo stato della rata e'' derivato, mai scritto») fino in fondo. E'' la risposta al PUNTO CIECO della rata: il fondo fattura scrive la propria riga sul documento sorgente senza rata, D16 ammette la riga manuale «fattura si'', rata no», e prima di questa rev una fattura a rata unica pagata cosi'' aveva saldo_fattura 0 e saldo_rata 100 — e la rata della nota di credito (P-5) avrebbe contato il credito riportato due volte. ⚠️ Per imputare servono TUTTE le rate del documento: il nucleo legge il piano intero dei documenti delle rate chieste e restituisce le chieste. p_scadenza_ids e'' OBBLIGATORIO (`= ANY` nudo, indicizzabile in ogni forma; NULL = zero righe: per tutte le rate c''e'' vw_saldi_rate). p_escludi_contabile_riga_id toglie la riga che sta scrivendo, diretta o senza rata. ⭐ TRE PORTE, UNA FORMULA: fn_get_saldo_rata (caso a un elemento, con guard ed E_RATA_NON_TROVATA), vw_saldi_rate (tutte le rate), la chiamata con l''array della pagina dal backend. ⚠️ STABLE e LANGUAGE sql: non solleva mai, INVOKER (somma cio'' che chi legge vede). Brief: brief-db-distinta-ricerca-rate §4-bis.4 e §4-bis.6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

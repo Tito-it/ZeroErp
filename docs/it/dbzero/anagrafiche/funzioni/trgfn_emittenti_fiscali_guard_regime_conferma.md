@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_emittenti_fiscali_guard_regime_conferma()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_regime_conferma()
  RETURNS trigger
@@ -57,6 +59,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_regime_conferma()
 IS 'Guard a10 su anagrafiche.emittenti_fiscali (BEFORE INSERT / UPDATE OF regime_fiscale_confermato_il, regime_fiscale_confermato_da): le due colonne della conferma del regime non si scrivono da fuori. Rifiuta una INSERT che le valorizza (la INSERT non conferma mai) e un UPDATE che le cambia (il valore, non la menzione: riscriverle uguali passa). Le deriva il trigger a20 trgfn_emittenti_fiscali_regime_conferma da un UPDATE OF regime_fiscale_rf, e parla dopo questo guard: e'' l''ordine a10 < a20 che separa lo scrittore esterno dalla derivazione. Errore: E_EMITTENTE_REGIME_CONFERMA_DERIVATA (TECNICO). Brief: brief-db-esigibilita-iva-per-cassa-emittente (sezione 10).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

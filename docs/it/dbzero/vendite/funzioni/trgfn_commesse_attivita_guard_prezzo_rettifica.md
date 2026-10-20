@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_commesse_attivita_guard_prezzo_rettifica()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_attivita_guard_prezzo_rettifica()
  RETURNS trigger
@@ -62,6 +64,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_commesse_attivita_guard_prezzo_rettifica()
 IS 'Guard immutabilita PREZZO delle righe RETTIFICA di vendite.commesse_attivita: blocca il CAMBIO di prezzo_snapshot o prezzo_bloccato, in qualunque stato. Il prezzo di una rettifica non e'' un dato da tenere aggiornato, e'' una CITAZIONE della riga di fattura che rettifica (fn_accredita_riga_reso, N-1: copiato da vendite.fatture_righe, mai ricalcolato e mai riletto dal listino): cambiarlo accrediterebbe un importo diverso da quello fatturato, cioe'' una nota di credito che non corrisponde al documento che dichiara di correggere. ⚠️ STA NEL DATABASE E NON NEL BACKEND perche'' il prezzo si scrive con una UPDATE DIRETTA (update_attivita_prezzo nel repository), non da una funzione madre: un controllo applicativo sarebbe una convenzione e non un blocco, e chiunque scrivesse quella colonna per un''altra strada lo aggirerebbe senza accorgersene — stessa ragione per cui tipo_movimento e'' una colonna con CHECK e non una chiave di meta. ⭐ Blocca il CAMBIAMENTO e non la scrittura (IS DISTINCT FROM): una UPDATE che riscrive lo stesso valore passa, cosi'' l''ON CONFLICT DO UPDATE di fn_upsert_commessa_attivita non si rompe. ⚠️ NON dipende da stato_emissione, a differenza del gemello sulla quantita'': quello protegge un fatto gia'' uscito, questo una citazione — che e'' sbagliata anche prima di uscire, anzi soprattutto prima, perche'' e'' li'' che i tre percorsi di pricing (riallinea, variazione eccezionale, sblocca) la toccherebbero. ⛔ Nessun bypass di manutenzione: verificato che il reset lotto (fn_cleanup_fatture_by_ids) scrive su questa tabella solo stato_emissione. prezzo_da_riallineare NON e'' fra le colonne guardate — misurato che nessun percorso lo porta a true su una rettifica. Errore E_COMMESSA_ATTIVITA_PREZZO_RETTIFICA_IMMUTABILE (936). Decisione di Tid 2026-08-20, brief-design-note-credito-resi §42.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

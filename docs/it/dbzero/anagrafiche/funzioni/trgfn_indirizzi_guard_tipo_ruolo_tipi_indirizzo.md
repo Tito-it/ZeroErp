@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
  RETURNS trigger
@@ -83,6 +85,8 @@ Verifica che il tipo_indirizzo sia ammesso per il tipo_ruolo del soggetto_ruolo 
 Se non esiste alcuna riga di matrice per il tipo_ruolo, tutti i tipi sono ammessi.
 Altrimenti, solo i tipi attivi e validi sono permessi.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_esigibilita_iva_documento(p_emittente_fiscale_id bigint, p_bi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_esigibilita_iva_documento(p_emittente_fiscale_id bigint, p_billing_account_id bigint, p_iva_id integer, p_regime_fiscale_rf character varying DEFAULT NULL::character varying)
  RETURNS TABLE(esigibilita character, split_payment boolean)
@@ -55,6 +57,8 @@ $function$
 COMMENT ON FUNCTION script.fn_esigibilita_iva_documento(p_emittente_fiscale_id bigint, p_billing_account_id bigint, p_iva_id integer, p_regime_fiscale_rf character varying)
 IS 'Le parti di un documento di vendita per la regola dell''esigibilita'' (script.fn_esigibilita_iva): il regime per cassa dell''emittente (o quello CONGELATO che il chiamante passa in p_regime_fiscale_rf: la fattura lo prende dallo snapshot dell''intestazione, cosi'' righe e testata dicono lo stesso regime, D-8; quale regime vale lo decide script.fn_regime_fiscale_documento) e scissione e partita IVA del cliente dal billing account. Una catena sola per fattura, preventivi, ordini e DDT (regola del 2). SECURITY INVOKER: un cliente che chi chiama non vede diventa «non noto» e la coppia esce NULL/NULL. Brief: brief-db-esigibilita-iva-per-cassa-emittente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

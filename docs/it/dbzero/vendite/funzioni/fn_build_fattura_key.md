@@ -7,6 +7,8 @@ CREATE FUNCTION fn_build_fattura_key(p_attivita_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_build_fattura_key(p_attivita_id bigint)
  RETURNS jsonb
@@ -152,6 +154,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_build_fattura_key(p_attivita_id bigint)
 IS 'Chiave logica di aggregazione del documento a partire da un''attivita'' fatturabile: due attivita'' con la stessa chiave finiscono sulla stessa fattura. Undici elementi dal 2026-08-18, e da qui in giu'' vanno usati tutti e undici — chi separa nella chiave e non separa nel lookup annulla le due meta'' e fa tornare le attivita'' nella stessa fattura. rev 2026-08-18 (brief-design-note-credito-resi N2b): il registro si risolve passando ANCHE utility ed emittente, senza i quali i sezionali intestati erano irraggiungibili. rev 2026-08-18 (N3): la chiave porta natura_doc_id e serie. ⭐ E'' qui che la separazione fisica della nota di credito finisce: lotto, testata, registro e numerazione si separano da soli, senza una riga di codice scritta per la NC. ⚠️ Da questo momento un LOTTO puo'' contenere documenti di natura diversa: chi lo legge non deve piu'' assumere «sono tutte fatture». rev 2026-08-26 (brief-db-registro-e-data-prevista-in-competenza, L3): la catena del SEZIONALE non si risolve piu'' qui — una sola chiamata a vendite.fn_resolve_registro_documento sostituisce il COALESCE sul parent_account_id, la lettura di ba.utility_id, anagrafiche.fn_get_emittente_fiscale_id e vendite.fn_get_registro_id. ⭐ E'' questo che rende la colonna «data prevista» delle viste di competenza una LETTURA e non una profezia: la lista e il documento non coincidono perche'' due implementazioni si comportano uguale, ma perche'' e'' la STESSA funzione. ⛔ Il JOIN su anagrafiche.billing_account resta, ma come GUARD e non per leggere la utility: e'' la condizione che produce E_VALORE_MANCANTE quando il billing account non esiste o non e'' visibile sotto RLS. ⛔ I due cancelli restano QUI perche'' il resolver non ferma (e non deve: e'' cio'' che lo rende usabile da una vista) — emittente NULL richiama anagrafiche.fn_get_emittente_fiscale_id, registro NULL richiama l''involucro vendite.fn_get_registro_id, cosi'' i messaggi restano identici e la seconda risoluzione si paga solo quando si sta gia'' andando in errore. ⚠️ L''ordine dei due cancelli e'' portante: prima l''emittente, poi il registro — invertendoli un BA senza emittente mappato leggerebbe «registro non risolto» invece di «emittente di default mancante».';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

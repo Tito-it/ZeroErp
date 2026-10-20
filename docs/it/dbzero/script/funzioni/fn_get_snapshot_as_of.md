@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_snapshot_as_of(p_schema text, p_table text, p_id text, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_snapshot_as_of(p_schema text, p_table text, p_id text, p_fk_col text, p_as_of timestamp with time zone)
  RETURNS jsonb
@@ -145,6 +147,8 @@ IS 'Restituisce il JSONB di un record al momento p_as_of: 1) dallo storico se es
     psql (Europe/Rome) leggeva due istanti diversi. Documento
     valutazione-modello-di-dominio-db, V-3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

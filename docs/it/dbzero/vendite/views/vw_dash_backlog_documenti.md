@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_dash_backlog_documenti
 WITH (security_invoker=on) AS
@@ -96,6 +98,8 @@ WITH base AS (
      LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
   WHERE ((COALESCE(mf.classe, 'ANOMALIA'::character varying))::text <> 'FISIOLOGICO'::text);
 ```
+
+</div>
 
 
 ---

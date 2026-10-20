@@ -6,6 +6,8 @@ CREATE FUNCTION fn_slega_profilo_identita(p_profilo_accesso_id integer, p_identi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_slega_profilo_identita(p_profilo_accesso_id integer, p_identita_digitale_id bigint)
  RETURNS integer
@@ -48,6 +50,8 @@ $function$
 COMMENT ON FUNCTION config.fn_slega_profilo_identita(p_profilo_accesso_id integer, p_identita_digitale_id bigint)
 IS 'MADRE (2026-10-19): toglie il binding di un''identita'' digitale da QUEL profilo di accesso (un''identita'' che ha un altro profilo non perde l''altro); ritorna quanti binding ha tolto, 0 se non ce n''era (idempotente). Il contrario di config.fn_lega_profilo_identita. L''ultimo super admin attivo lo protegge il trigger della tabella (trgfn_profili_accesso_bindings_guard_ultimo_super_admin, anche sul DELETE), per ogni scrittore. Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Non controlla il permesso (backend). INVOKER. Sede unica del DELETE di AmmSoftwareRepository._set_super_admin_binding (ramo enabled = false). R-BE-7, D-16c di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

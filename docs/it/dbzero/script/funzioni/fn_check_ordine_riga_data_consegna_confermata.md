@@ -6,6 +6,8 @@ CREATE FUNCTION fn_check_ordine_riga_data_consegna_confermata(p_ordine_riga_id b
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_ordine_riga_data_consegna_confermata(p_ordine_riga_id bigint)
  RETURNS jsonb
@@ -87,6 +89,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_ordine_riga_data_consegna_confermata(p_ordine_riga_id bigint)
 IS 'Check di riga (2026-10-11, brief-db-date-consegna-righe-in-blocco D-7, P-1, linee-guida-sql §12.5): la data di consegna confermata di questa riga d''ordine si cambia ora? Funzione pura. NULL: riga, o il suo ordine, assente o non visibile (RLS). []: ammessa. Altrimenti i motivi, in quest''ordine (l''ordine e'' il contratto: il guard solleva il primo): 1) lo stato dell''ordine, cioe'' i motivi di script.fn_check_ordine_data_consegna_confermata cosi'' come sono (STATO_NON_AMMETTE, E_RIGA_DOC_NON_BOZZA: gli stati ammessi stanno nel montaggio del lock di vendite.ordini_righe; in DRAFT nessun motivo); 2) RIGA_SPEDITA (E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA, CONFLITTO_STATO): la riga e'' gia'' partita con un DDT uscito dalla bozza, anche per una parte (vendite.fn_ordine_riga_spedita) — la data di consegna si scrive prima di spedire. reason_key vendite.ordini.data_consegna_confermata_reason.riga_spedita; valori etichetta dell''ordine e numero di riga. Consumatori: il guard vendite.trgfn_ordini_righe_guard_data_consegna_spedita, la colonna data_consegna_confermata_blocco di vendite.vw_ordini_righe_dettaglio, la selezione dell''utility del backend che aggiorna le date di consegna in blocco (salta le righe con un motivo). ⭐ rev 2026-10-19 (20261019-58, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_search_indirizzi_dettaglio(p_stradario_id integer, p_civico i
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_search_indirizzi_dettaglio(p_stradario_id integer DEFAULT NULL::integer, p_civico integer DEFAULT NULL::integer, p_estensione_civico text DEFAULT NULL::text, p_palazzina text DEFAULT NULL::text, p_scala text DEFAULT NULL::text, p_piano text DEFAULT NULL::text, p_interno text DEFAULT NULL::text, p_indirizzo_norm text DEFAULT NULL::text, p_limit integer DEFAULT 50)
  RETURNS SETOF anagrafiche.vw_indirizzi_dettaglio
@@ -86,6 +88,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_search_indirizzi_dettaglio(p_stradario_id integer, p_civico integer, p_estensione_civico text, p_palazzina text, p_scala text, p_piano text, p_interno text, p_indirizzo_norm text, p_limit integer)
 IS 'Ricerca indirizzi dettaglio: per stradario_id (esatta) o per pattern fuzzy su indirizzo_normalizzato. Solo righe attive, limitate da p_limit.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

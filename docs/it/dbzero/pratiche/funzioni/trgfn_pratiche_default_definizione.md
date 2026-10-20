@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pratiche_default_definizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_default_definizione()
  RETURNS trigger
@@ -30,6 +32,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_default_definizione()
 IS 'BEFORE INSERT su pratiche.pratiche: auto-pin di definizione_id via fn_risolvi_definizione(tipo, emittente) quando NULL — edizione PUBBLICATA dell''emittente > preset. Il BE create_pratica non deve passare la colonna.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

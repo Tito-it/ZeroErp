@@ -7,6 +7,8 @@ CREATE FUNCTION fn_audit_end(p_id bigint, p_status text, p_message text, p_sqlst
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_audit_end(p_id bigint, p_status text DEFAULT 'OK'::text, p_message text DEFAULT NULL::text, p_sqlstate text DEFAULT NULL::text, p_error_context text DEFAULT NULL::text, p_rows_affected integer DEFAULT NULL::integer, p_result jsonb DEFAULT NULL::jsonb)
  RETURNS void
@@ -66,6 +68,8 @@ BEGIN
 END;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

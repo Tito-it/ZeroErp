@@ -7,6 +7,8 @@ CREATE FUNCTION fn_coppie_fattura_scoperte(p_emittente_soggetto_ruolo_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_coppie_fattura_scoperte(p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(emittente_soggetto_ruolo_id bigint, tipo_doc_fiscale_id bigint, natura_doc_id bigint)
@@ -54,6 +56,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_coppie_fattura_scoperte(p_emittente_soggetto_ruolo_id bigint)
 IS 'LETTORE (2026-10-18): per ogni emittente ATTIVO (o per quello indicato), le coppie (tipo documento attivo, natura attiva) che vendite.fn_lookup_registro_id non sa risolvere con utility NULL, cioe'' i documenti per cui vendite.fn_get_registro_id solleverebbe «registro non risolto». ⭐ La copertura la decide il lookup, CHIAMATO e non riscritto: non puo'' dire una cosa diversa da quella che vede chi emette. Un registro legato a UNA utility non copre le altre. Un emittente spento non e'' un buco: lo provisiona il trigger su anagrafiche.emittenti_fiscali quando si riaccende. Lettori: vendite.fn_provision_registri (registro standard delle fatture e suoi collegamenti, 20261019-08), il pgTAP vendite/test-registro-fattura-nasce-con-emittente-v1. R-BE-14, D-14a … D-14d di Tid, brief-db-processi-accensione-per-ambiente §6.14.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

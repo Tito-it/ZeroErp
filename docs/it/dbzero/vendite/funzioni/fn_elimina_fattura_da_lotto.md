@@ -7,6 +7,8 @@ CREATE FUNCTION fn_elimina_fattura_da_lotto(p_lotto_id bigint, p_fattura_id bigi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_elimina_fattura_da_lotto(p_lotto_id bigint, p_fattura_id bigint)
  RETURNS TABLE(updated_attivita integer, deleted_fatture integer, deleted_righe integer, riemesse_attivita integer)
@@ -70,6 +72,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_elimina_fattura_da_lotto(p_lotto_id bigint, p_fattura_id bigint)
 IS 'Toglie UNA fattura da un lotto PRE-FISCALE cancellandola, senza toccare il lotto ne'' le altre fatture. Rinominata da fn_elimina_fattura_da_lotto_draft il 2026-08-04 (RD-7): il «draft» era riferito al LOTTO, che ora non deve piu'' essere in bozza — basta che sia pre-fiscale, lo stesso confine delle due sorelle. ⚠️ L''allargamento chiude un disallineamento vivo: il drawer gatava la voce di riga sul solo stato della fattura, quindi su un lotto EMESSA la proponeva e la chiamata falliva (terza occorrenza dello stesso difetto). RD-7: togliere = CANCELLARE, il modello «reperto» e'' caduto perche'' era incoerente che il ritorno in bozza di un lotto INTERO cancellasse le sue fatture EMESSA mentre la stessa operazione su UNA riga lasciasse un documento vuoto. ⚠️ La cancellazione NON lascia traccia del contenuto: vendite.fatture.storicizza e'' false di default; resta storicizzata la sola riga di ponte. Le precondizioni non sono scritte qui — arrivano da script.fn_check_fattura_eliminabile_da_lotto, che solleva codici parlanti (831-834) al posto di quattro E_PARAMETRO_INVALIDO indistinguibili. Da C-22 passa NULL come lock_batch_id alla primitiva: il batch del lotto libererebbe anche le attivita'' delle altre fatture. Quarto contatore riemesse_attivita dal 2026-08-04, coerente con le sorelle (RD-4: le commesse_attivita tornano NON_EMESSA, ed e'' un fatto diverso dallo sblocco delle attivita_fatturabili).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_situazione_merce_ordine(p_ddt_ids bigint[], p_ordine_ids bigi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_situazione_merce_ordine(p_ddt_ids bigint[] DEFAULT NULL::bigint[], p_ordine_ids bigint[] DEFAULT NULL::bigint[])
  RETURNS TABLE(ordine_riga_id bigint, ordine_id bigint, riga_nr integer, articolo_id uuid, ordinato numeric, consegnato numeric, reso numeric, in_riconsegna numeric, tenuti numeric, fatturato_merce numeric, fatturato_da_ordine numeric, fatturato numeric, fatturato_anticipato numeric, da_spedire numeric, partite_merce integer, misurabile boolean, differenza numeric, stato character varying, data_consegna_richiesta_cliente date, data_consegna_confermata date, giorni_ritardo integer)
@@ -200,6 +202,8 @@ END
 COMMENT ON FUNCTION vendite.fn_situazione_merce_ordine(p_ddt_ids bigint[], p_ordine_ids bigint[])
 IS 'LA SITUAZIONE MERCE PER RIGA D''ORDINE, PER DOCUMENTO (D14 giro 2 — D3, 2026-09-21): lo stesso aggregato parlante di vendite.vw_situazione_merce_ordine — che ne e'' la proiezione senza filtro, fn(NULL, NULL) — ristretto alle righe d''ordine chieste. Semi, nello stesso ordine di fn_partite_merce: p_ddt_ids (i DDT: le righe d''ordine che hanno TOCCATO via fulfillment, con la loro situazione INTERA, non la sola partita di quel DDT) e p_ordine_ids (gli ordini: tutte le loro righe attive); entrambi NULL = tutte; un array VUOTO semina zero righe; entrambi valorizzati = unione. Le partite si chiedono a fn_partite_merce(NULL, <ordini della chiusura>): l''aggregato di una riga d''ordine e'' completo per costruzione, perche'' la partita esce sotto `ordine_id` della riga minima e l''ordine porta tutte le sue righe. `ful` sulle righe dell''uscita; `ord` (corsia ORD di fn_af_merce_per_riga) PER CHIAVE dal giro 4 (D5, 2026-09-21): una chiave ORD per riga in uscita, chiave BASE (i suffissi #CMP li risolve la funzione). BEGIN ATOMIC: dipendenze in pg_depend, catena RLS leggibile dal presidio security_invoker attraverso fn_partite_merce. I due modi sono rami in UNION ALL, mai `p IS NULL OR`; sulla partita anche perche'' il seme calcolato (sub-select) non si inlina — Function Scan, che regge in piano generico — mentre il ramo TUTTI con due letterali resta inlinato, identico alla vista. COALESCE(array_agg, ''{}''): un DDT senza fulfillment non deve diventare «tutte». INVOKER: la RLS resta di chi legge. Chiamanti per documento: BE list_situazione_merce_ordine (per ordine ARRAY[%s] nel secondo seme, per DDT nel primo). Brief: brief-db-partita-merce-per-documento §7 giro 2. Rev 2026-10-20 (20261020-88, brief-db-grammatica-unica-documenti 2e, G-8): le chiavi chieste al contatore le compone script.fn_segment_key; la corsia e'' ORDINE_VENDITA.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

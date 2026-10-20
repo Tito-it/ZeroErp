@@ -7,6 +7,8 @@ CREATE FUNCTION fn_parametri_importo_utility(p_emittente_soggetto_ruolo_id bigin
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_parametri_importo_utility(p_emittente_soggetto_ruolo_id bigint, p_utility_id integer)
  RETURNS TABLE(arrotondamento_importi_dec smallint, metodo_arrotondamento_importi character varying, minimo_soglia_min numeric, minimo_soglia_max numeric, personalizzata boolean)
@@ -27,6 +29,8 @@ END
 COMMENT ON FUNCTION anagrafiche.fn_parametri_importo_utility(p_emittente_soggetto_ruolo_id bigint, p_utility_id integer)
 IS 'I parametri d''importo effettivi di un emittente per una utility (2026-10-21, brief-db-modelli-documento-standard §10.3 K-7, D-7 di Tid): decimali e metodo d''arrotondamento della riga attiva di anagrafiche.emittenti_fiscali_utilities se c''e'', altrimenti (per il solo metodo) la policy generale emittenti_fiscali.rounding_policy, altrimenti il valore di sistema di config.utilities; le soglie del minimo solo dall''emittente (NULL = nessun minimo); personalizzata = la riga dell''emittente c''e''. Una riga se l''utility esiste, zero se non esiste o e'' NULL. Sede unica: la leggono fn_ricalcola_totali_fattura e fn_lookup_utilities_per_ba.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

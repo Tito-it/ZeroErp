@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_clienti_set_parent_istanza()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_set_parent_istanza()
  RETURNS trigger
@@ -113,6 +115,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_clienti_set_parent_istanza()
 IS 'Calcola parent_istanza_id dell''istanza del cliente (la catena). Con PDP: il cliente precedente sullo stesso PDP. Senza PDP su un''istanza fittizia (rev 2026-10-14, C-9): l''ultimo cliente con la stessa chiave soggetto + utility + azienda, da anagrafiche.fn_clienti_stessa_chiave. Senza PDP su un''istanza vera: nessun cambio. Esclusi i clienti AN e quelli senza data_attivazione. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility; per il ramo PDP: brief-db-catena-istanze-pdp.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

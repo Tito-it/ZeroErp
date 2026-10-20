@@ -205,6 +205,15 @@ def gen_table_md(schema, table, cur):
 # Assicurati che OUT_DIR sia definito (come nel tuo script)
 # OUT_DIR = os.path.join(BASE_DIR, "docs", "it", "dbzero")
 # Genera Markdown funzione
+# Avvolge un blocco di codice in un riquadro escluso dalla ricerca. Zensical
+# indicizza ogni sezione come un solo campo e rifiuta quelli oltre 16 KB
+# (zensical 0.0.71): il corpo intero di una funzione o di una vista lo supera e
+# ferma la build. Il testo della pagina resta cercabile, il codice no.
+# ⚠️ Serve l'estensione `md_in_html` in mkdocs.yml: senza, il riquadro e' HTML
+#   grezzo e il blocco di codice dentro non viene interpretato.
+def _fuori_dalla_ricerca(lines):
+    return ["<div data-search-exclude markdown>", ""] + lines + ["", "</div>"]
+
 def gen_function_md(schema, func, cur):
     # ⚠️ UNA PAGINA PER NOME, UN BLOCCO PER FIRMA (2026-10-14). Prima la query
     #   chiudeva con `LIMIT 1` e senza `ORDER BY`: di due firme dello stesso
@@ -236,18 +245,20 @@ def gen_function_md(schema, func, cur):
             f"CREATE {kind_verb} {row['proname']}({row['args']})",
             "```",
             "\n**Definizione completa:**\n",
+        ]
+        corpo = [
             "```sql",
             (row.get("defn") or "").strip(),
         ]
         obj_comment = row.get("obj_comment")
         if obj_comment:
-            lines += [
+            corpo += [
                 "",
                 f"COMMENT ON {kind_verb} {schema}.{row['proname']}({row['args']})",
                 f"IS {sql_literal(obj_comment)};"
             ]
-        lines += ["```"]
-        return lines
+        corpo += ["```"]
+        return lines + _fuori_dalla_ricerca(corpo)
 
     kind_label = "Procedura" if rows[0]["prokind"] == "p" else "Funzione"
     lines = [f"# ⚙️ {kind_label} `{rows[0]['proname']}`\n"]
@@ -425,13 +436,15 @@ def gen_view_md(schema, view, cur):
                 "`REFRESH MATERIALIZED VIEW`.\n"
             )
 
-    lines.append("```sql")
+    corpo = ["```sql"]
     if is_matview:
-        lines.append(f"CREATE MATERIALIZED VIEW {schema}.{view} AS")
+        corpo.append(f"CREATE MATERIALIZED VIEW {schema}.{view} AS")
     else:
-        lines.append(f"CREATE OR REPLACE VIEW {schema}.{view}{with_clause} AS")
-    lines.append(definition.strip())
-    lines.append("```\n")
+        corpo.append(f"CREATE OR REPLACE VIEW {schema}.{view}{with_clause} AS")
+    corpo.append(definition.strip())
+    corpo.append("```")
+    lines.extend(_fuori_dalla_ricerca(corpo))
+    lines.append("")
 
     if is_matview:
         lines.extend(_matview_indexes_md(schema, view, cur))

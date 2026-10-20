@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_identita_digitali_guard_ultimo_super_admin()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin()
  RETURNS trigger
@@ -85,6 +87,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin()
 IS 'Guard anti-lockout sulla veste (AFTER UPDATE di attivo, valido_dal, valido_al): rifiuta una scrittura che riduce la garanzia di una veste con binding SUPER_ADMIN attivo (spegnerla, darle una data di fine, spostarne l''inizio nel futuro) se dopo non resta nessun SUPER_ADMIN senza scadenza (script.fn_check_almeno_un_super_admin_attivo). Le scritture che migliorano non si fermano mai. Codice E_PROFILO_ULTIMO_SUPER_ADMIN. rev 2026-06-29: tipo invece di codice (§4a). Rev 2026-10-07 (brief-db-veste-utilizzabile, decisione di Tid): anche le date, perche'' il calendario non scrive e una data di fine messa all''ultimo amministratore lo avrebbe fatto scadere senza che nessun guard lo vedesse.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

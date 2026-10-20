@@ -7,6 +7,8 @@ CREATE FUNCTION fn_predicato_soggetto_ruolo_visibile(p_tipo_ruolo_id integer, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_predicato_soggetto_ruolo_visibile(p_tipo_ruolo_id integer, p_alias_soggetto_ruolo text DEFAULT 'sr'::text)
  RETURNS text
@@ -80,6 +82,8 @@ $function$
 COMMENT ON FUNCTION script.fn_predicato_soggetto_ruolo_visibile(p_tipo_ruolo_id integer, p_alias_soggetto_ruolo text)
 IS 'Regola unica della ricerca universale: chi si vede. Valida il tipo ruolo (NULL o <= 0: E_PARAMETRO_INVALIDO; inesistente: E_TIPO_RUOLO_NON_TROVATO; ricerca_visibile = false: E_TIPO_RUOLO_NON_RICERCABILE) e rende il PREDICATO SQL su anagrafiche.soggetti_ruoli (alias p_alias_soggetto_ruolo, default sr) che dice se un soggetto-ruolo si mostra: almeno una riga della sua config.tipi_ruoli.entita_esistenza che chi guarda vede (il perimetro lo fa la RLS di quella tabella, per CL anagrafiche.clienti), oppure ''true'' se il ruolo non ha entita_esistenza. Lo stato dell''entita'' non conta: cliente chiuso e fornitore disattivato si ritrovano (Q-3). Nemmeno soggetti.attivo: il modello non ammette un soggetto-ruolo col soggetto spento (Q-5). Predicato e non check per riga: il ruolo e'' uno per chiamata, la regola si risolve una volta e lista e dettaglio la compongono nel proprio SQL dinamico. Lettori: script.fn_search_soggetti_universale (filtro di riga) e script.fn_get_search_detail (verifica d''esistenza): non possono dissentire su chi si vede. SECURITY INVOKER: il predicato gira con l''identita'' del chiamante. Nasce il 2026-10-10 al posto di script.fn_check_soggetto_ruolo_visibile (letterale CL), brief-db-codici-non-trovato-email-e-permessi R-6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

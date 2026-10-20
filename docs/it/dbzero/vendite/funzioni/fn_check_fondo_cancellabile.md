@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_fondo_cancellabile(p_source_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_check_fondo_cancellabile(p_source_id bigint)
  RETURNS text
@@ -207,6 +209,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_check_fondo_cancellabile(p_source_id bigint)
 IS 'PERCHE'' un atto di fondo fattura non si puo'' cancellare — oppure NULL, che vuol dire «si puo''». Vocabolario CHIUSO: ATTO_NON_TROVATO, ATTO_ESEGUITO, RIGA_REGISTRATA, CONTABILE_CHIUSA, FIGLIA_CONGELATA, SISTEMAZIONE_ATTIVA. ⛔ Esiste perche'' non si estrae la funzione ma il PREDICATO: i due consumatori vogliono dallo stesso criterio cose opposte — fn_reset_fondi_fattura SEGNALA E PROSEGUE (giro tecnico su N atti, un''eccezione fermerebbe il reset di un lotto), fn_cancella_fondo_fattura RIFIUTA E LO DICE (gesto di una persona su un atto, e li'' il silenzio e'' il difetto). Due copie del criterio direbbero, senza nessun errore, che un atto e'' intoccabile mentre il reset lo cancella. ⚠️ L''ORDINE dei motivi e'' portante: SISTEMAZIONE_ATTIVA si dice per ultimo perche'' e'' l''unico con un rimedio compibile, e anticiparlo manderebbe a fare un gesto destinato a fallire. ⭐ La quarta condizione (G-3) legge config.stati_doc_fiscale.congela_fiscale e NON la lista DRAFT/EMESSA: dal changeSet 20260830-02 la soglia e'' un DATO, e riscrivere la lista qui ne rimetterebbe in circolo una copia. Distingue due casi che il modello ammette entrambi: la figlia che NON SI LEGGE (cancellata, o invisibile sotto la row security) vale CONGELATA — da qui non si puo'' certificare che sia lavorabile — mentre la figlia che si legge ma non ha stato NON blocca, ed e'' la stessa decisione che trgfn_fattura_satellite_guard_congelamento prende gia'' sullo stesso caso. ⚠️ Confonderle in un COALESCE(..., TRUE) rendeva rossi sette test di test-fondi-fattura.sql, la cui figlia nasce senza stato. ⭐ Il bypass zeroerp.maintenance_reset_lotto_draft spegne la SOLA quarta condizione, stesso contratto di trgfn_fattura_satellite_guard_congelamento: e'' cosi'' che il gesto di una persona e la pulizia di un lotto restano due porte diverse. ⚠️ ATTO_NON_TROVATO e SISTEMAZIONE_ATTIVA non erano nei quattro motivi del brief: il primo nasce con la row security di D-20 (dove «non esiste» e «non e'' tuo» devono dare la stessa risposta), il secondo e'' la FK fk_sistemazioni_fondo_source detta prima che scatti, cioe'' un 23503 nudo evitato. ⚠️ SECURITY INVOKER come tutta la famiglia: le due letture su pagamenti.vendite_contabili* possono in teoria essere cieche sotto RLS, e in quel caso la rete e'' la FK — la cancellazione fallirebbe forte invece di riuscire in silenzio; un SECURITY DEFINER spegnerebbe ATTO_NON_TROVATO. D-21 di brief-db-fondo-fattura-ricalcolo-e-governo §9.5-a e §9.7-b.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

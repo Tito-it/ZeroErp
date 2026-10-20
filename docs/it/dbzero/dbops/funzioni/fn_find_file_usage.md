@@ -7,6 +7,8 @@ CREATE FUNCTION fn_find_file_usage(p_target_table regclass)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_find_file_usage(p_target_table regclass)
  RETURNS TABLE(table_with_fk regclass, fk_column name, referenced_table regclass, pk_column name)
@@ -35,6 +37,8 @@ AS $function$
     AND c.confrelid = p_target_table;
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

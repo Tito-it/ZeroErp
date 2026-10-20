@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_qta_from_operativa()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_qta_from_operativa()
  RETURNS trigger
@@ -224,6 +226,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_qta_from_operativa()
 IS 'Calcola quantita (UoM base) da qta_operativa * fattore: quantita è una colonna CALCOLATA, la scrive solo questo trigger. TG_ARGV[0] = fill_factor_to_base (snapshot del fattore in factor_to_base se NULL); TG_ARGV[1] = colonna della fonte della quantità (fonte_quantita_attesa, su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni). Con una fonte a valle (script.fn_fonte_porta_quantita = false: MANUALE, LETTURE, TIMESHEET) porta quantita a NULL a ogni INSERT e UPDATE, anche se gli input operativi non cambiano; qta_operativa valorizzata la rifiuta prima il guard script.trgfn_righe_guard_quantita_per_fonte. Con qta_operativa NULL: E_QTA_MISSING, salvo una fonte diversa da FISSA (DERIVATA_COMPONENTI). Short-circuit su UPDATE senza variazioni agli input operativi; su INSERT calcola sempre. Rev 2026-05-27 (short-circuit), 2026-08-04 (rami morti), 2026-10-08 (fonte a valle: brief-db-offerta-emissione-ed-erogazione §F.1, F-1.1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

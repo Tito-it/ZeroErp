@@ -7,6 +7,8 @@ CREATE FUNCTION fn_trigger_exists_require_by_args(p_child_rel regclass, p_parent
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_trigger_exists_require_by_args(p_child_rel regclass, p_parent_schema text, p_parent_table text, p_parent_attivo_col text, p_fk_col text, p_parent_ref_col text)
  RETURNS boolean
@@ -34,6 +36,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_trigger_exists_require_by_args(p_child_rel regclass, p_parent_schema text, p_parent_table text, p_parent_attivo_col text, p_fk_col text, p_parent_ref_col text)
 IS 'Verifica esistenza trigger REQUIRE (trgfn_child_requires_active_parent) su tabella figlio matchando la signature a 5 args.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

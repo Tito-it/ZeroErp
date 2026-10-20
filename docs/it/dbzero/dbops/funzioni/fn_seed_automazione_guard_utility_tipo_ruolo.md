@@ -7,6 +7,8 @@ CREATE FUNCTION fn_seed_automazione_guard_utility_tipo_ruolo(p_schemas text[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_seed_automazione_guard_utility_tipo_ruolo(p_schemas text[] DEFAULT NULL::text[])
  RETURNS void
@@ -124,6 +126,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_seed_automazione_guard_utility_tipo_ruolo(p_schemas text[])
 IS 'Popola dbops.automazione_guard_utility_tipo_ruolo autodetectando tabelle con utility_id + colonna ruolo (FK diretta o naming *_soggetto_ruolo_id). Post 18-08-2026: NON SCRIVE PIU''. La configurazione e'' un mirror del CSV 80_data/sql/dbops/automazione_guard_utility_tipo_ruolo.csv, come le altre automazione_* di dbops; questa funzione rileva soltanto e segnala con un NOTICE le tabelle che qualificano ma non sono a catalogo. Scriveva con ON CONFLICT DO NOTHING, quindi una riga scritta una volta non si raddrizzava piu'' e la configurazione e'' rimasta ferma al 2026-02-16 mentre lo schema andava avanti: al 2026-08-18, 4 righe su 7 descrivevano tabelle che avevano perso utility_id o erano state rinominate.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

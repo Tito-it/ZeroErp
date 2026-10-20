@@ -7,6 +7,8 @@ CREATE FUNCTION fn_riattiva_articolo(p_articolo_id uuid)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.fn_riattiva_articolo(p_articolo_id uuid)
  RETURNS void
@@ -74,6 +76,8 @@ $function$
 COMMENT ON FUNCTION catalogo.fn_riattiva_articolo(p_articolo_id uuid)
 IS 'Riattiva un articolo (attivo=true) senza toccare i figli (pattern "padre prima, figli poi"). Idempotente su gia'' attivo, raise E_ARTICOLO_NOT_FOUND (404) se id NULL o inesistente. Disattivazione resta UPDATE diretto, coperto da trgfn_prevent_deactivate_if_children.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

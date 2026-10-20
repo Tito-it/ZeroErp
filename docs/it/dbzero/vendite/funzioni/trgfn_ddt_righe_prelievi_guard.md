@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_ddt_righe_prelievi_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_righe_prelievi_guard()
  RETURNS trigger
@@ -85,6 +87,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_ddt_righe_prelievi_guard()
 IS 'Guard BEFORE INSERT OR UPDATE OR DELETE su vendite.ddt_righe_prelievi: coerenza con la regola del kit (D-L3-f), E_DDT_PRELIEVO_INCOERENTE: senza componente l''articolo della riga e'' gestito; con componente, il componente e'' della riga ed e'' gestito, e la riga no; un prelievo non cambia riga ne'' componente. Lotto, seriale e ubicazione li giudica la check dell''emissione (script.fn_check_riga_magazzino). Brief: brief-db-magazzino-lotto-3-scarico-da-ddt. rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui §1, regola del 2): la regola «solo con la bolla in bozza, salvo un UPDATE della sola ubicazione_arrivo_id con la bolla EMESSO o SPEDITO» (D-L3-c) non e'' piu'' scritta qui: la dice il building block vendite.trgfn_doc_righe_lock_fuori_bozza, montato a livello RIGA con le colonne ammesse (trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt, 20261008-93), che parla prima di questo guard. Sul DELETE questa funzione non ha piu'' niente da dire.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

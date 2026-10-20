@@ -7,6 +7,8 @@ CREATE FUNCTION fn_reconcile_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_reconcile_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text)
  RETURNS integer
@@ -165,6 +167,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_reconcile_sorgente(p_sorgente_tipo_id bigint, p_sorgente_uid text)
 IS 'GUIDA D4/G3a: motore di avanzamento milestone su esito proiettato. Se il documento (tipo, uid) proietta un verdetto (fn_stato_sorgente.esito), completa i milestone in attesa (template_flussi.attende_sorgente_tipo_id + binding template_flussi_avanzamento_proiezione), a due salti (D-B2), idempotente sui non-terminali (D-B11). Tie-break multi-istanza via pratiche_sorgenti.flusso_id (D-B5) applicato SOLO se il flusso linkato attende esso stesso il tipo (v_link_usabile): un link ancorato al flusso d''ORIGINE non esclude piu'' il milestone in attesa. INVOKER (D-B4). Ritorna il numero di milestone avanzati. ⭐ rev 2026-10-05 (20261005-22): se il documento non e'' agganciato a nessuna pratica (nessuna riga visibile di pratiche_sorgenti su tipo e uid) esce con 0 PRIMA di calcolarne l''esito. Stesso risultato di prima — senza agganci il ciclo non girava — ma il trigger AFTER UPDATE di stato sui documenti smette di pagare fn_stato_sorgente, che per un documento solo legge tutte le tabelle-documento sotto RLS (dbdev come applicazione, 2026-10-05: ~15 ms contro 0,16 ms dell''EXISTS su ix_pratiche_sorgenti_tipo_uid).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

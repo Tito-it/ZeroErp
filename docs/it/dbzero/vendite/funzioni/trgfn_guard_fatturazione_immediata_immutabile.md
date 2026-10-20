@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_guard_fatturazione_immediata_immutabile()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile()
  RETURNS trigger
@@ -123,6 +125,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile()
 IS 'Guard generico (BEFORE UPDATE OF fatturazione_immediata): blocca il cambio del flag di instradamento corsia su un documento che sta in una commessa APERTA. Sorgente passata come codice_interno in TG_ARGV[0]. La chiave e'' quella CANONICA secondo config.sorgenti.key_selector (''uid'' -> uid::text, ''id'' -> id::text), la forma che vendite.fn_link_commessa_sorgente normalizza in scrittura, non quella che il push passa (sempre l''uid): dedurla dal chiamante produrrebbe un guard che non trova mai il link. Vedi guida /guide/sorgente-polimorfa §2 e §4. Finche'' il documento e'' in una commessa aperta il flag e'' inerte: e'' nella chiave di dedup di fn_get_or_create_commessa, e si sposterebbe l''intera commessa multi-sorgente. Il caso «cambio idea dopo» e'' coperto dall''emissione mirata per gruppo fatturabile. Errore: E_FATT_IMMEDIATA_NON_MODIFICABILE. brief-db-emissione-fattura-per-documento-sorgente PARTE B / D-7, rev 2026-07-27. ⭐ rev 2026-10-12 (20261012-47, brief-db-annullo-a-valle-riapre-a-monte D-14 di Tid): conta solo una commessa APERTA (vendite.fn_commessa_viva_di_sorgente). Il link resta come storia dopo la chiusura o l''annullo della commessa (20261012-43): il documento non e'' piu'' legato a una commessa per sempre, e quando la sua commessa e'' annullata torna da mandare con il flag di nuovo modificabile.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

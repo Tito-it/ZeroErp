@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_cleanup_at_alla_nascita()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.trgfn_cleanup_at_alla_nascita()
  RETURNS trigger
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION dbops.trgfn_cleanup_at_alla_nascita()
 IS 'BEFORE INSERT generico: scrive NEW.cleanup_at = base_ts_column + ttl_days leggendo la regola CLEANUP_AT che copre la tabella (dbops.fn_cleanup_at_params). Nessuna regola → NULL, la riga non scade mai. ⭐ Alla nascita e non con l''UPDATE del job perche'' su un registro quell''UPDATE riscriverebbe data_update/user_update e passerebbe dai trigger di UPDATE; il job resta per il pregresso. ⚠️ Sovrascrive cio'' che passa il chiamante: un diario non lascia scegliere quando scade. Fase _m50_: dopo gli _a10_ che riscrivono l''orario. Montato su vendite.event_log e sui quattro registri di fatturazione e push. Analisi: analisi-osservabilita-log.md, Passo D.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

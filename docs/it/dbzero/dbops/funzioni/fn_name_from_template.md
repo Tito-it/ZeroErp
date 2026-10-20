@@ -7,6 +7,8 @@ CREATE FUNCTION fn_name_from_template(p_template text, p_schema text, p_table te
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_name_from_template(p_template text, p_schema text, p_table text, p_parent text DEFAULT NULL::text, p_child text DEFAULT NULL::text, p_fk text DEFAULT NULL::text, p_op text DEFAULT NULL::text)
  RETURNS text
@@ -75,6 +77,8 @@ IS 'Questa funzione ha lo scopo di generare in modo dinamico un nome di oggetto 
     2)   Il nome finale non superi il limite di PostgreSQL (63 caratteri): in caso di overflow
      viene troncato e completato con un digest hash per assicurare l’univocità.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,6 +1,8 @@
 {% include-markdown "it/dbzero/catalogo/manual/vw_articoli_uom_operativa_dettaglio.md" %}
 # 🔍 View `vw_articoli_uom_operativa_dettaglio`
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW catalogo.vw_articoli_uom_operativa_dettaglio AS
 SELECT auo.id,
@@ -41,6 +43,8 @@ SELECT auo.id,
      LEFT JOIN catalogo.unita_misura u ON ((u.id = auo.uom_id)))
      LEFT JOIN catalogo.articoli a ON ((a.id = auo.articolo_id)));
 ```
+
+</div>
 
 
 ---

@@ -5,6 +5,8 @@
 >
 > Estensione dei dati degli stati: include info ISTAT, catastale e contesto da jsonb.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_stati_estesi AS
 SELECT id,
@@ -19,6 +21,8 @@ SELECT id,
     (extra_country ->> 'stato_utilizzo'::text) AS stato_utilizzo
    FROM config.stati s;
 ```
+
+</div>
 
 
 ---

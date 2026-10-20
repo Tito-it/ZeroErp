@@ -7,6 +7,8 @@ CREATE FUNCTION fn_imposta_accensione_processo(p_processo_codice text, p_acceso 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_imposta_accensione_processo(p_processo_codice text, p_acceso boolean, p_motivo text)
  RETURNS boolean
@@ -58,6 +60,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_imposta_accensione_processo(p_processo_codice text, p_acceso boolean, p_motivo text)
 IS 'Il verbo della scelta a mano: accende (true), spegne (false) o rimette al default per ambiente (NULL) la sveglia di un processo su questa installazione, col motivo, obbligatorio anche per il default. Tutti e tre i gesti scrivono la riga di dbops.processi_accensione (acceso NULL = segue il default): la riga e'' l''ultimo gesto, la storia sta in storico.processi_accensione. Chi e quando li scrive l''audit generato da ci_apply (script.trgfn_audit_data_user_generic, app.jwt_user), non il verbo. Restituisce lo stato effettivo dopo il gesto (dbops.fn_processo_acceso_dichiarato). I limiti li dice il guard della tabella (E_PROCESSO_SENZA_SVEGLIA, E_PROCESSO_NON_SPEGNIBILE, E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO); codice inesistente: E_PROCESSO_NON_TROVATO. INVOKER: il permesso e'' del backend, come per Esegui ora. Brief: brief-db-processi-accensione-per-ambiente (A-2, S-1, R-BE-1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

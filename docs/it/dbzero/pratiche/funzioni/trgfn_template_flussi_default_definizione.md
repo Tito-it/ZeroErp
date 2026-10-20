@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_template_flussi_default_definizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_default_definizione()
  RETURNS trigger
@@ -26,6 +28,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_template_flussi_default_definizione()
 IS 'BEFORE INSERT su pratiche.template_flussi: se definizione_id e'' NULL lo risolve al preset PUBBLICATA del tipo (fn_risolvi_definizione). Mantiene invariati seed e fixture dopo il SET NOT NULL di Fase 0.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

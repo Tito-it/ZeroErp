@@ -6,6 +6,8 @@ CREATE FUNCTION fn_scope_ba_ownership_via_fattura_sdi(p_identita_id bigint, p_sd
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership_via_fattura_sdi(p_identita_id bigint, p_sdi_id bigint)
  RETURNS boolean
@@ -26,6 +28,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ba_ownership_via_fattura_sdi(p_identita_id bigint, p_sdi_id bigint)
 IS 'Come fn_scope_ef_whitelist_via_fattura_sdi ma per la veste CLIENTE_PORTALE. ⚠️ Esiste perche'' vendite.fatture ha DUE vesti e ogni satellite le rispecchia entrambe: con la sola veste operatore un cliente del portale smetterebbe di vedere gli eventi SDI delle proprie fatture.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

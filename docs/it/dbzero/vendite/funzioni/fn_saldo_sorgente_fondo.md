@@ -7,6 +7,8 @@ CREATE FUNCTION fn_saldo_sorgente_fondo(p_fattura_sorgente_id bigint, p_source_i
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_saldo_sorgente_fondo(p_fattura_sorgente_id bigint, p_source_id bigint DEFAULT NULL::bigint)
  RETURNS numeric
@@ -82,6 +84,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_saldo_sorgente_fondo(p_fattura_sorgente_id bigint, p_source_id bigint)
 IS 'Residuo della fattura sorgente al netto del contributo gia'' dato dal fondo indicato: saldo(movimenti) - (saldo contabile postabile - quota di questo fondo). Lo scorporo dell''ultimo termine e'' il punto: se il fondo e'' gia'' passato di li'', la riga contabile che ha creato sulla sorgente e'' dentro il saldo contabile, e confrontarci il fondo stesso significherebbe chiedergli di coprire cio'' che copre lui. p_source_id assente = nessun contributo proprio (prima applicazione). ⭐ rev 2026-08-21 (cantiere incassi, lotto 3): la quota propria si riconosce dalla COLONNA pagamenti.vendite_contabili_righe.fondo_source_id (S1-14) e non piu'' da meta->>''fondo_source_id''; cade con essa il filtro su meta->>''origine'', che diceva la stessa cosa in un secondo modo. ⚠️ ASSUNZIONE, ora scritta (S1-9): lo scorporo somma le sole righe POSTABILI, quindi vale finche'' la riga del fondo e'' IN LAVORAZIONE. Su un fondo il cui trasferimento e'' gia'' REGISTRATO la sua riga non sarebbe piu'' contata (POSTATA non e'' postabile), lo scorporo verrebbe a zero e il residuo risulterebbe piu'' basso del vero — il fondo sembrerebbe non piu'' capiente. Non capita perche'' un trasferimento registrato porta l''atto a ESEGUITO (trigger pagamenti.trgfn_vendite_contabili_righe_marca_fondo_eseguito) e tutti e tre i chiamanti filtrano ASSEGNATO o DISPONIBILE. ⛔ Chi aggiungesse un quarto chiamante deve rispettare questa condizione: e'' l''invariante presidiata da db/pgtap/vendite/test-fondo-fattura-eseguito.sql. ⚠️ Deliberatamente NON STABLE: chiama due funzioni pagamenti.* dichiarate VOLATILE, e promettere stabilita'' su un valore che non lo e'' autorizza il planner a cache/inline sbagliati. Estratta il 2026-08-15 dalla copia inline di fn_sync_contabili_fondo_fattura (regola del 2, tre chiamanti previsti). D-3 di brief-db-fondo-fattura-ricalcolo-e-governo §8.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

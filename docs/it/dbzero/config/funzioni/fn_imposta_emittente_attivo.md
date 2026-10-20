@@ -7,6 +7,8 @@ CREATE FUNCTION fn_imposta_emittente_attivo(p_auth_user_id integer, p_emittente_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_imposta_emittente_attivo(p_auth_user_id integer, p_emittente_fiscale_id bigint)
  RETURNS bigint
@@ -49,6 +51,8 @@ $function$
 COMMENT ON FUNCTION config.fn_imposta_emittente_attivo(p_auth_user_id integer, p_emittente_fiscale_id bigint)
 IS 'BB (2026-10-18): imposta l''emittente attivo di un utente (config.user_emittente_attivo): UPSERT sull''utente (uq_user_emittente_attivo_auth_user); l''UPDATE tocca la riga anche a valore invariato, cosi'' la storia registra ogni conferma esplicita della scelta (come il backend). Argomenti NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Emittente attivo: il trigger require_attivo della tabella. Non controlla lo SCOPE dell''utente sull''emittente (pre-check del backend sulla canonica script.fn_check_user_emittente_scope; regola senza guard sulla tabella, debito dichiarato) ne'' il permesso. INVOKER. Ritorna l''id. Prende il posto di EmittenteAttivoRepository.set_preferenza (2b-2) ed e'' la sede del verbo dei dati di sviluppo (2b-3). Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 9).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_clienti_sync_utility_from_ba()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()
  RETURNS trigger
@@ -111,6 +113,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_clienti_sync_utility_from_ba()
 IS 'Fornitura e PDP del cliente: (1) ruolo e utility sono copie del billing account, scritte se mancano e rifiutate se dissentono dal BB script.fn_cliente_dal_billing_account (E_DOC_CLIENTE_DIVERSO_DA_BA), su INSERT e quando cambia una delle tre colonne (su UPDATE parla prima il lock E_CLIENTE_FORNITURA_IMMUTABILE); (2) policy richiede_pdp della utility (E_PDP_OBBLIGATORIO); (3) PDP della stessa utility (E_PDP_UTILITY_MISMATCH). rev 2026-10-10 (brief-db-esecutivi-ba-coppia §10.2 domanda 2, regola del 2): la copia passa al BB, anche per il ruolo; esce il ramo E_BILLING_ACCOUNT_UTILITY_NULL (billing_account.utility_id e'' NOT NULL); E_CLIENTE_UTILITY_MISMATCH_BA non e'' piu'' sollevato qui (resta a catalogo per fn_get_or_create_commessa).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

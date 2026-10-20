@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_accessi_sistema
 WITH (security_invoker=true) AS
@@ -46,6 +48,8 @@ SELECT c.auth_user_id,
      LEFT JOIN config.credenziali cr ON ((cr.auth_user_id = c.auth_user_id)))
   WHERE (script.fn_categoria_accesso(c.auth_user_id) = 'SISTEMA'::text);
 ```
+
+</div>
 
 
 ---

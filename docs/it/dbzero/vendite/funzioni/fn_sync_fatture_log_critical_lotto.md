@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sync_fatture_log_critical_lotto(p_fattura_ids bigint[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_sync_fatture_log_critical_lotto(p_fattura_ids bigint[])
  RETURNS void
@@ -104,6 +106,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_sync_fatture_log_critical_lotto(p_fattura_ids bigint[])
 IS 'Ricalcola fatture.critical e propaga stato_esecuzione su lotti_fatture tramite helper condiviso. rev 2026-08-04 (D-M): via il predicato su lf.esclusa, che era una condizione sempre vera, e via l''argomento p_esclusa all''helper.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_dashboard_config(p_dashboard_codice character varying
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION ui.fn_resolve_dashboard_config(p_dashboard_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
  RETURNS jsonb
@@ -313,6 +315,8 @@ $function$
 COMMENT ON FUNCTION ui.fn_resolve_dashboard_config(p_dashboard_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
 IS 'Risolve la configurazione effettiva di una dashboard per un utente: cascata preset (GUC-aware, deterministica per priorita), merge widget nuovi, filtro permessi via resolver script.* (mappe aggregate, fail-closed non-OPERATORE), arricchimento campi opachi (deep_link/contatore_key/soglia). Ritorna JSONB { widget[], dimensione_max, widget_nuovi, preset_aggiornato }. Mirror di ui.fn_resolve_lista_config (brief-db-dashboard-home §3). 2026-09-23: la veste la legge ui.fn_veste_corrente(), building block condiviso con fn_resolve_lista_config e fn_lista_colonne_ricerca_full. Brief: brief-db-ricerca-full-colonne-permessi.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

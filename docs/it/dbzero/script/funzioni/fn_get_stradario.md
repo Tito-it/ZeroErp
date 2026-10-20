@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_stradario(p_comune_id integer, p_indirizzo text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_stradario(p_comune_id integer DEFAULT NULL::integer, p_indirizzo text DEFAULT ''::text)
  RETURNS TABLE(stradario_id integer, via_id integer, toponomastica_id integer, descrizione_toponomastica character varying, sigla_stato character varying, descrizione_via character varying, descrizione_breve character varying, cod_postale text, comune character varying, provincia text, geoloc geometry, descrizione_completa text)
@@ -85,6 +87,8 @@ AS $function$
 COMMENT ON FUNCTION script.fn_get_stradario(p_comune_id integer, p_indirizzo text)
 IS 'Stradario per comune (o ricerca libera su stradario_generale). cod_postale e provincia sono text esplicito: erano character = char(1) (brief-db-bonifica-riferimenti-morti F2).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

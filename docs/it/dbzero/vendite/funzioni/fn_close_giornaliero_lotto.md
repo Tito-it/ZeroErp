@@ -7,6 +7,8 @@ CREATE FUNCTION fn_close_giornaliero_lotto(p_lotto_id bigint, p_inviata_stato_do
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_close_giornaliero_lotto(p_lotto_id bigint, p_inviata_stato_doc_fiscale_id bigint)
  RETURNS TABLE(updated_lotti integer, updated_fatture integer)
@@ -90,6 +92,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_close_giornaliero_lotto(p_lotto_id bigint, p_inviata_stato_doc_fiscale_id bigint)
 IS 'Chiude lotto giornaliero e allinea stato doc fiscale su tutte le fatture collegate.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

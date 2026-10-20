@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_sospensioni_set_periodo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_sospensioni_set_periodo()
  RETURNS trigger
@@ -30,6 +32,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_sospensioni_set_periodo()
 IS 'Sync periodo_sospensione tstzrange da data_inizio/data_fine. Migrazione daterange.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_resi_rinunce_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_rinunce_guard()
  RETURNS trigger
@@ -91,6 +93,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_rinunce_guard()
 IS 'Guard ponte RINUNCE: tipo riapre_residuo obbligatorio (E_RESO_RICONSEGNA_TIPO_NON_VALIDO, riuso 533) + Sigma riconsegnate + Sigma rinunciate <= qta_resa (E_RESO_RINUNCIA_SUPERA_RESO 560), lock FOR UPDATE su resi_righe e su ENTRAMBI i ponti. Mirror di trgfn_resi_riconsegne_guard: le due uscite (ri-spedire / dichiarare definitiva) condividono la stessa copertura, quindi lo stesso invariante e'' presidiato dai due lati. Il FOR UPDATE sulla riga reso padre serializza rinuncia e ri-consegna concorrenti senza advisory lock. rev 2026-07-26.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_search_column_usage(p_column_name text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_search_column_usage(p_column_name text)
  RETURNS TABLE(object_type text, schema_name text, object_name text)
@@ -69,6 +71,8 @@ AS $function$
     WHERE con.conbin ILIKE '%' || p_column_name || '%';
 $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_event_log_append_only()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_event_log_append_only()
  RETURNS trigger
@@ -93,6 +95,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_event_log_append_only()
 IS 'Tiene vendite.event_log append-only distinguendo fra ALTERARE LA STORIA e RITIRARE CIO'' CHE E'' SCADUTO. UPDATE sempre vietato (E_UPDATE_NOT_ALLOWED); DELETE ammesso solo con la GUC zeroerp.maintenance_allow_delete_logs (parita'' con script.trgfn_logs_guard_delete dei log gemelli) o su riga con cleanup_at <= now(). ⭐ Il criterio del secondo ramo non e'' CHI cancella ma COSA: cosi'' dbops.fn_purge_cleanup_expired funziona com''e'', senza propagare GUC ne'' riconoscere ruoli. ⭐ Ed e'' il veto sull''UPDATE a rendere immutabile cleanup_at: nessuno puo'' anticipare la scadenza di una riga scomoda. ⚠️ Prima del 2026-08-22 era un RAISE EXCEPTION nudo, senza codice registrato, e vietava anche il DELETE della retention: con cleanup_at il job settimanale avrebbe iniziato a fallire.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

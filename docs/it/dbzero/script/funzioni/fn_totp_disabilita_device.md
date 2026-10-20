@@ -7,6 +7,8 @@ CREATE FUNCTION fn_totp_disabilita_device(p_auth_user_id integer, p_motivo text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_totp_disabilita_device(p_auth_user_id integer, p_motivo text)
  RETURNS void
@@ -82,6 +84,8 @@ $function$
 COMMENT ON FUNCTION script.fn_totp_disabilita_device(p_auth_user_id integer, p_motivo text)
 IS 'Disabilita il secondo fattore (TOTP) di una credenziale CANCELLANDO il device: segreto e codici spariscono (D-T3). Chi agisce: la credenziale stessa (motivo facoltativo); oppure un ALTRO, con motivo obbligatorio (E_TOTP_MOTIVO_OBBLIGATORIO): la sessione del migratore (dbops.fn_sessione_del_migratore: il caso senza via d''uscita, l''unico super admin senza telefono e codici; D-T4, lo sblocco si fa dal server, l''app non raggiunge questo ramo) o un SUPER_ADMIN (script.fn_guard_super_admin, se no E_PERMESSO_NEGATO). La traccia: dall''applicazione la scrive il backend (D-T3); DAL SERVER la scrive il verbo, nella stessa istruzione, in dbops.sessioni_utente (evento TOTP_DISABILITATO, dettaglio: via SERVER, sessione = ruolo di login, chi_agisce, motivo — D-T5, 2026-09-29). Device assente -> E_TOTP_DEVICE_ASSENTE. Chi ha l''obbligo torna al setup al prossimo accesso (middleware del backend). SECURITY DEFINER del PROPRIETARIO, search_path bloccato. Brief: brief-db-secondo-fattore-totp §3, §9.6.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

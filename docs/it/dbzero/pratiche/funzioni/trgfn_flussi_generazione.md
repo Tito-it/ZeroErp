@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_generazione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_generazione()
  RETURNS trigger
@@ -80,6 +82,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_generazione()
 IS 'AFTER UPDATE OF stato_id su flussi: genera pratiche cross-pratica solo alla transizione a COMPLETATO (idempotente; dedup in fn_genera_pratica_da_flusso).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

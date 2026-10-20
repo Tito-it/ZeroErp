@@ -14,6 +14,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_documenti_trattenuti_da_lotto
 WITH (security_invoker=true) AS
@@ -27,6 +29,8 @@ SELECT le.gruppo_key,
      JOIN vendite.vw_lotti_fase f ON ((f.lotto_id = le.lotto_id)))
   WHERE ((le.stato_esecuzione <> 'ESCLUSO'::text) AND f.in_gioco);
 ```
+
+</div>
 
 
 ---

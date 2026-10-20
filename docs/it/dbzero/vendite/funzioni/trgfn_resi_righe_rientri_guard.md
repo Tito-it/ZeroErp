@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_resi_righe_rientri_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_resi_righe_rientri_guard()
  RETURNS trigger
@@ -65,6 +67,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_resi_righe_rientri_guard()
 IS 'Guard BEFORE INSERT OR UPDATE su vendite.resi_righe_rientri: E_RESO_RIENTRO_INCOERENTE, la regola nel VARIADIC — il prelievo nominato non e'' della riga di bolla della riga di reso (resi_righe.ddt_riga_id), o un rientro cambia riga o prelievo. Quadratura, tetto per prelievo e posizione (ubicazione secondo il magazzino) li giudica la check della conferma (script.fn_check_reso_merce). «Solo in bozza» (E_RIGA_DOC_NON_BOZZA) non sta piu'' qui dal 2026-10-05: lo dice il building block vendite.trgfn_doc_righe_lock_fuori_bozza a livello RIGA (trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt), e la copia scritta qui e'' stata ritirata (regola del 2; brief-db-righe-esclusione-solo-non-si-vende §8.2 B3). Brief d''origine: brief-db-magazzino-lotto-3-bis-carico-da-reso.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

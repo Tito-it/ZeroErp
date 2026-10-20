@@ -6,6 +6,8 @@ CREATE FUNCTION fn_reso_merce_da_rientrare(p_reso vendite.resi)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_reso_merce_da_rientrare(p_reso vendite.resi)
  RETURNS TABLE(resi_riga_id bigint, riga_nr integer, ddt_riga_id bigint, ddt_riga_componente_id bigint, articolo_id uuid, prelievo_unico_id bigint, n_prelievi integer, qta numeric, esatta boolean, rientrata numeric, riga_con_rientri boolean, automatico boolean)
@@ -89,6 +91,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_reso_merce_da_rientrare(p_reso vendite.resi)
 IS 'Le voci di un reso che fanno rientrare merce, in una sede sola (D-3b-b, D-3b-g). Una voce e'' cio'' che era USCITO con la riga di bolla d''origine: la riga, o ciascun componente del kit — lo dicono i PRELIEVI di quella riga, e la regola del kit (D-L3-f) non si riscrive. Righe di reso attive. Per voce: qta = quanto dovrebbe rientrare (UoM base: la quantita'' resa per la riga; per un componente la proporzione di quanto ne era uscito, arrotondata a 6 decimali), esatta = la proporzione non ha resto, rientrata = somma dei rientri gia'' scritti, riga_con_rientri = la riga di reso ne ha almeno uno, automatico = un solo prelievo, magazzino di rientro senza ubicazioni, proporzione esatta e riga non ancora toccata: allora il rientro lo crea la conferma (prelievo_unico_id). Una riga di reso la cui riga di bolla non ha prelievi non ha voci: la bolla non aveva mosso merce. Prende la RIGA del reso. Consumatori: script.fn_check_reso_merce, vendite.fn_reso_muove_merce, vendite.fn_conferma_reso. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

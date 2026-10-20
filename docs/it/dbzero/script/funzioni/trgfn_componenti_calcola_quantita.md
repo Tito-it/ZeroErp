@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_componenti_calcola_quantita()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_componenti_calcola_quantita()
  RETURNS trigger
@@ -41,6 +43,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_componenti_calcola_quantita()
 IS 'Trigger function BEFORE INS/UPD su _righe_componenti: imposta NEW.quantita = NEW.coeff_qta_snapshot * quantita_riga_padre. Defense-in-depth contro BE che invia quantita inconsistente. TG_ARGV[0]=schema [1]=tab_padre [2]=col_fk_figli->padre.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

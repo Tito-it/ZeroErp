@@ -7,6 +7,8 @@ CREATE FUNCTION fn_lista_colonne_livello(p_lista_id integer, p_auth_user_id inte
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION ui.fn_lista_colonne_livello(p_lista_id integer, p_auth_user_id integer, p_veste config.ruolo_applicativo)
  RETURNS TABLE(colonna_id integer, codice character varying, livello_accesso config.livello_accesso)
@@ -69,6 +71,8 @@ $function$
 COMMENT ON FUNCTION ui.fn_lista_colonne_livello(p_lista_id integer, p_auth_user_id integer, p_veste config.ruolo_applicativo)
 IS 'Livello effettivo (TUTTO, LETTURA, BLOCCATO) di un utente su ogni colonna attiva di una lista, sotto una veste (NULL = tutte). Fra piu'' grant vince il profilo piu'' specifico (priorita asc), a parita'' il piu'' restrittivo; senza grant la colonna sensibile e'' BLOCCATO, le altre TUTTO. Una riga per ogni colonna attiva, anche BLOCCATA: filtra chi legge. L''emittente fiscale non entra: i grant sono per profilo d''accesso. Estratta il 2026-09-23 dai passi 4-5 di fn_resolve_lista_config (regola del 2), secondo consumatore fn_lista_colonne_ricerca_full. Brief: brief-db-ricerca-full-colonne-permessi.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts()
  RETURNS trigger
@@ -29,6 +31,8 @@ $function$
 COMMENT ON FUNCTION ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts()
 IS 'Azzera preset_base_data_update e preset_aggiornato_ignored_at quando preset_base_id cambia (IS DISTINCT FROM). Previene badge FE "preset aggiornato" non coerente dopo cambio o eliminazione del preset di base. Mirror del trigger ui.lista_preferenza_utente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

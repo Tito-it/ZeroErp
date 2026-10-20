@@ -7,6 +7,8 @@ CREATE FUNCTION fn_change_user_emittenti_scope(p_auth_user_id integer, p_emitten
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_change_user_emittenti_scope(p_auth_user_id integer, p_emittente_ids bigint[])
  RETURNS jsonb
@@ -138,6 +140,8 @@ $function$
 COMMENT ON FUNCTION script.fn_change_user_emittenti_scope(p_auth_user_id integer, p_emittente_ids bigint[])
 IS 'Orchestrazione atomica del cambio scope emittenti per un auth_user (drawer Operatore Fase 2 P1 2026-04-29; refactor error handling Fase 5 2026-04-29). Contratto array future-proof: NULL/[]=GLOBAL, [id]=SINGLE, multi=raise. Tutti gli errori passano per script.fn_log_and_raise_error: E_OPERATORE_SCOPE_PARAM_NON_VALIDO (409), E_OPERATORE_SCOPE_MULTI_NON_AMMESSO (405), E_PROFILO_ULTIMO_SUPER_ADMIN (384). Override locale di guard_delete via GUC zeroerp.allow_user_emittente_delete_override=on per i passaggi DELETE+INSERT. Ritorna jsonb {changed, scope_mode, emittente_id}.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_lotto_annullabile(p_lotto_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_lotto_annullabile(p_lotto_id bigint)
  RETURNS jsonb
@@ -127,6 +129,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_lotto_annullabile(p_lotto_id bigint)
 IS 'Funzione PURA (fn_check_*): motivi ostativi all''annullamento di un lotto. Ritorna [] se annullabile, altrimenti array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto non in DRAFT (798) — ANNULLATA e'' terminale e non si riapre; da EMESSA la via d''uscita non distruttiva e'' fn_riporta_lotto_a_draft. Motivo 2: fatture oltre il pre-fiscale (799), delegato a script.fn_check_lotto_fatture_pre_fiscali. Motivo 3 (2026-08-18): fatture gia'' NUMERATE (801), deliberatamente ridondante rispetto al 2 e da NON semplificare via. ⭐ Motivo 4 (2026-08-22): righe di fattura gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ meno probabile qui (questa porta vuole il DRAFT) ma piu'' grave, perche'' ANNULLATA e'' terminale e un annullamento passato per errore toglierebbe anche la via d''uscita. Il motivo 3 non lo copre: l''accredito si registra PRIMA della numerazione. Il tipo di lotto NON e'' un motivo: dal 2026-08-02 vale per MASSIVO e GIORNALIERO. rev 2026-08-22. rev 2026-09-09: lo stato del lotto si legge da vendite.vw_lotti_fase (sede unica della fase di un lotto) invece che con un join proprio, e i parametri usano %TYPE — nessuna decisione cambia, e i pgTAP di questa funzione restano verdi senza essere toccati. ⭐ Motivo 5 (2026-10-04): fatture che hanno gia'' CONSUMATO il plafond di un titolo IVA, delegato a script.fn_check_fatture_con_plafond_consumato — il consumo avviene PRIMA della numerazione, quindi il motivo sul numero non lo copre; un movimento e'' un fatto contabile e la fattura non si disfa piu'' (brief-db-bom-flag-quantita-e-kit-in-fattura §14, strada A).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_risorse_umane_guard_identita_attiva()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_guard_identita_attiva()
  RETURNS trigger
@@ -65,6 +67,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_guard_identita_attiva()
 IS 'Guard (BEFORE UPDATE OF attivo su risorse_umane): rifiuta attivo true->false se esiste un''identita_digitali OPERATORE attiva sullo stesso soggetto_ruolo_id — E_RISORSA_UMANA_IDENTITA_ATTIVA (CONFLITTO_STATO), nel VARIADIC lo username. Scritto a mano perche'' il legame non e'' una FK e l''automazione ATTIVO non lo vede; sostituisce il guard che leggeva la vista risorse_umane_auth_user (ritirata il 12-09-2026).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

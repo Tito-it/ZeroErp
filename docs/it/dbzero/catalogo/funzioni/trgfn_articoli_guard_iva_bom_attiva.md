@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_articoli_guard_iva_bom_attiva()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_iva_bom_attiva()
  RETURNS trigger
@@ -97,6 +99,8 @@ $function$
 COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_iva_bom_attiva()
 IS 'Trigger BEFORE UPDATE OF iva_id su articoli: caso A padre composito -> figli attivi devono avere stessa IVA; caso B figlio -> padre attivo deve avere stessa IVA. Messaggio mostra aliquota % (non id numerico). Raise E_BOM_IVA_DISCORDANTE (445). rev 2026-05-13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

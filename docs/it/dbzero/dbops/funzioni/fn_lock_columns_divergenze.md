@@ -7,6 +7,8 @@ CREATE FUNCTION fn_lock_columns_divergenze(p_exec_mode text, p_schemas text[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_lock_columns_divergenze(p_exec_mode text, p_schemas text[])
  RETURNS TABLE(schema_name text, table_name text, azione text, trigger_atteso text, colonne_attese text[], argomenti_attesi text[], trigger_vivi text[], colonne_perse text[])
@@ -155,6 +157,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_lock_columns_divergenze(p_exec_mode text, p_schemas text[])
 IS 'Il lock di colonna ATTESO (codice_interno implicito + righe attive di dbops.automation_lock_columns; una riga di un altro exec_mode resta attesa se la colonna e'' gia'' bloccata) confrontato con quello VIVO (ogni trigger su script.trgfn_lock_columns, qualunque nome abbia). Una riga per tabella che diverge: azione CREA, RIGENERA o TOGLIE; colonne_perse = colonne bloccate dal vivo che il registro non nomina affatto (una riga con enabled = false e'' invece una decisione di togliere il blocco). Criterio unico di dbops.fn_run_automations_lock_columns e del presidio pgTAP dbops/test-lock-columns-convergenza. Brief: brief-db-lock-di-colonna-fuori-registro §4 D2-D3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

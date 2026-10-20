@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_livello_area(p_auth_user_id integer, p_area_schema_db
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_resolve_livello_area(p_auth_user_id integer, p_area_schema_db character varying)
  RETURNS config.livello_accesso
@@ -92,6 +94,8 @@ $function$
 COMMENT ON FUNCTION script.fn_resolve_livello_area(p_auth_user_id integer, p_area_schema_db character varying)
 IS 'Risolve il livello di accesso di un utente su un''area. Catena: gate di contesto (app.ruolo_applicativo valorizzata e diversa da OPERATORE -> BLOCCATO), identita'' OPERATORE attiva, super admin -> TUTTO, override utente valido, ereditato dal profilo (script.fn_get_permessi_ereditati_aree: sola veste OPERATORE, AD_HOC > REPARTO > PORTALE), default BLOCCATO. Rev 20260925-83 (brief-db-pgtap-permessi-ereditati, D-1 e D-2): il passo 4 non riscrive lo spareggio e non conta piu'' i profili delle altre vesti dell''utente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

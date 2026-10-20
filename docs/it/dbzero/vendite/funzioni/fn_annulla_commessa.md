@@ -7,6 +7,8 @@ CREATE FUNCTION fn_annulla_commessa(p_commessa_id bigint, p_legami_confermati in
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_annulla_commessa(p_commessa_id bigint, p_legami_confermati integer DEFAULT NULL::integer)
  RETURNS integer
@@ -75,6 +77,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_annulla_commessa(p_commessa_id bigint, p_legami_confermati integer)
 IS 'VERBO (2026-10-12, brief-db-annullo-a-valle-riapre-a-monte D-1/D-2/D-3/D-7 di Tid): annulla una commessa. Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_commessa; fuori perimetro E_COMMESSA_NON_TROVATA). Dal BB vendite.fn_documento_ritira_legami: prima i motivi che vietano (script.fn_check_commessa_annullabile, righe EMESSA: E_COMMESSA_ANNULLA_CON_RIGHE_EMESSE), poi la conferma — chi conferma DICHIARA quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''COMMESSA'', id): le righe NON_EMESSA); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI — poi il ritiro: righe con sorgente ANNULLATA col registro (il documento o il consumo torna da mandare, il preventivo EVASO torna ACCETTATO dal trigger delle righe), accrediti annullati (il reso torna da accreditare), oneri annullati. Poi lo stato passa ad ANNULLATA (vendite.fn_cambia_stato_commessa: matrice e guard) e la porta del ritiro si chiude. L''ordine non cambia stato (D-6): torna solo da mandare. UNA transazione. Senza legami non c''e'' niente da confermare. Ritorna i legami confermati. SECURITY DEFINER con search_path bloccato. EXECUTE solo all''app.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

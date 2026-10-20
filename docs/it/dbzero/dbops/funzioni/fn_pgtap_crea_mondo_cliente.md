@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_crea_mondo_cliente(p_etichetta text, p_sigla character 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_mondo_cliente(p_etichetta text DEFAULT 'pgTAP'::text, p_sigla character varying DEFAULT NULL::character varying)
  RETURNS TABLE(emittente_fiscale_id bigint, emittente_codice character varying, emittente_soggetto_ruolo_id bigint, auth_user_id integer, identita_id bigint, billing_account_id bigint, istanza_utility_id bigint, cliente_soggetto_ruolo_id bigint, cliente_soggetto_id uuid, utility_id integer)
@@ -141,6 +143,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_mondo_cliente(p_etichetta text, p_sigla character varying)
 IS 'Fixture pgTAP: il MONDO MINIMO di un test di dominio in una chiamata — azienda + operatore + contesto aperto + cliente fatturabile legato a quella azienda — e ritorna tutte le chiavi. ⭐ Esiste per la REGOLA D''ORDINE, non per fare l''elenco della spesa: prima il mondo, poi il contesto, e il legame BA -> emittente lo scrive il trigger z90 verso chi agisce (chiederlo anche col terzo parametro di fn_pgtap_crea_cliente_ba li fa sbattere su uq_emittenti_fiscali_ba). ⚠️ Con un contesto gia'' aperto RIUSA l''azienda di chi agisce e rifiuta p_sigla: una seconda azienda si costruisce coi builder atomici, prima del contesto. ⛔ NON comprende registro (script.fn_pgtap_registro_fattura si semina dal contesto), articolo (i flag sono il caso del test) ne'' i cataloghi di 80_data, che da zero ci sono e vanno scelti con un ORDER BY stabile. ⚠️ Esce con i vincoli IMMEDIATE: chi li vuole differiti riapre con SET CONSTRAINTS ALL DEFERRED e lo dichiara in testa al file (rev 20260921-18). Brief: brief-db-fixture-che-costruiscono-giro-2.md';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

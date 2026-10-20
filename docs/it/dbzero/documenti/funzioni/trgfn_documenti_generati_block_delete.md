@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_documenti_generati_block_delete()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_block_delete()
  RETURNS trigger
@@ -42,6 +44,8 @@ $function$
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_block_delete()
 IS 'Guard A5: blocca DELETE fisico su documenti_generati. Tabella append-only: usa stato per ciclo vita, mai DELETE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

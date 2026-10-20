@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scope_identita_processo(p_auth_user_id integer, p_processo_co
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_identita_processo(p_auth_user_id integer, p_processo_codice text)
  RETURNS boolean
@@ -55,6 +57,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_identita_processo(p_auth_user_id integer, p_processo_codice text)
 IS 'Dice se p_auth_user_id e'' l''identita'' tecnica VIVA del processo p_processo_codice. ⭐ Nasce il 2026-09-05 per togliere due copie dello stesso EXISTS dalla policy rls_email_outbox_ambito (USING e WITH CHECK): la famiglia duplica anche altrove, ma li'' e'' UNA CHIAMATA, e due chiamate identiche non possono divergere — dieci righe si''. ⭐ E la regola e'' piu'' stretta di quella che sostituisce: guarda CINQUE livelli (legame attivo, processo vivo, identita'' attiva, ruolo OPERATORE, utente Django attivo) invece del solo legame, perche'' un''identita'' revocata a un livello solo avrebbe continuato a leggere. ⚠️ L''emittente non entra: qui si chiede «chi sei», non «su quale azienda lavori» — quello e'' dbops.vw_processi_roster, e legarli toglierebbe la lettura delle email di SISTEMA, che di azienda non ne hanno. ⚠️ LANGUAGE sql STABLE perche'' una policy si valuta per riga e il pianificatore la puo'' incorporare. ⛔ Niente STRICT: con un parametro NULL l''EXISTS non trova niente e la funzione torna false — fail-closed per costruzione, non per coincidenza. ⚠️ django.* si attraversa da script.fn_get_auth_user_stato (plpgsql, late-bound), mai da una vista: regola presa col changeSet 20260905-30. Rev 2026-10-07 (brief-db-veste-utilizzabile): il livello «identita'' attiva» e'' diventato «identita'' utilizzabile oggi» (script.fn_veste_utilizzabile: accesa, nelle sue date, soggetto attivo; l''identita'' tecnica non pretende un rapporto).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

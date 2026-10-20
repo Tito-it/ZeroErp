@@ -7,6 +7,8 @@ CREATE FUNCTION fn_capability_promo_articolo(p_promo_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_capability_promo_articolo(p_promo_id bigint)
  RETURNS jsonb
@@ -103,6 +105,8 @@ $function$
 COMMENT ON FUNCTION script.fn_capability_promo_articolo(p_promo_id bigint)
 IS 'Capability promo articolo per detail API: stato_temporale (FUTURA/INIZIATA/SCADUTA), can_update, non_editable_fields, min_valido_dal/al. Specchio del trigger guard data-driven. Fase 1 refactor frontend vendite.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

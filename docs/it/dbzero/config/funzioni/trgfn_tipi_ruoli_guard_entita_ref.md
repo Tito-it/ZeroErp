@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_tipi_ruoli_guard_entita_ref()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_tipi_ruoli_guard_entita_ref()
  RETURNS trigger
@@ -176,6 +178,8 @@ $function$
 COMMENT ON FUNCTION config.trgfn_tipi_ruoli_guard_entita_ref()
 IS 'Guard INSERT/UPDATE su config.tipi_ruoli. entita_tabella (ricerca del codice): regclass valido, tabella o vista, con soggetto_ruolo_id e la colonna codice (entita_colonna_codice, default codice); se NULL, entita_colonna_codice deve essere NULL. entita_esistenza (rev 2026-10-10, brief-db-codici-non-trovato-email-e-permessi R-6): se valorizzata, una TABELLA esistente (relkind r o p, mai una vista: il perimetro lo fa la RLS della tabella) con soggetto_ruolo_id. Errore: E_TIPI_RUOLI_ENTITA_INVALIDA, E_PARAMETRO_INVALIDO per la coerenza dei NULL. ⚠️ Vale in scrittura: una tabella cancellata dopo la presidia il pgTAP script/test-search-regola-unica-visibile-v1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

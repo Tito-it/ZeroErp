@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_email_da_guardare
 WITH (security_invoker=true) AS
@@ -28,6 +30,8 @@ SELECT id,
    FROM config.vw_email_in_coda c
   WHERE (dovuta_dal < (now() - '01:00:00'::interval));
 ```
+
+</div>
 
 
 ---

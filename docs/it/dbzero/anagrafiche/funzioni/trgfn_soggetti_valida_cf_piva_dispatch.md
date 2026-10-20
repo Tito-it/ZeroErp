@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_soggetti_valida_cf_piva_dispatch()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()
  RETURNS trigger
@@ -36,6 +38,8 @@ AS $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()
 IS 'Dispatcher per la validazione della partita IVA e del codice fiscale per i soggetti in base al paese.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -6,6 +6,8 @@ CREATE FUNCTION fn_check_riga_erogazione(p_documento character varying, p_docume
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_riga_erogazione(p_documento character varying, p_documento_id bigint, p_articolo_id uuid, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_tipo_erogazione character varying, p_fonte character varying)
  RETURNS jsonb
@@ -115,6 +117,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_riga_erogazione(p_documento character varying, p_documento_id bigint, p_articolo_id uuid, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_tipo_erogazione character varying, p_fonte character varying)
 IS 'Check pura: i motivi per cui una riga di contratto (p_documento = CONTRATTO) o di offerta (OFFERTA) non può avere questo articolo con questa erogazione e questa fonte. ''[]'' = ammessa. Sui valori della riga (la chiama un guard BEFORE ROW). Motivi in ordine: 1) E_RIGA_TIPOLOGIA_FUORI_UTILITY (reason TIPOLOGIA_FUORI_UTILITY, campo articolo_id): l''articolo ha una tipologia di listino che la utility del documento non prevede (config.listini_tipologie_utilities); 2) E_RIGA_EROGAZIONE_FUORI_PERIMETRO (reason EROGAZIONE_FUORI_PERIMETRO): la combinazione non è fra quelle di vendite.fn_articolo_erogazioni — campo fonte_quantita_attesa se l''erogazione è ammessa con un''altra fonte, tipo_erogazione altrimenti. Il campo viaggia in dettaglio.campo. L''ESCLUSIONE non si giudica; erogazione o fonte mancanti nessun motivo (parlano il guard d''obbligo e i CHECK). Altro p_documento: E_DOC_TIPO_NON_GESTITO. Lettore: script.trgfn_righe_guard_erogazione_perimetro. Decisioni di Tid del 2026-10-07 (B-R3, B-D4: il perimetro è la tipologia dell''articolo). Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B3). ⭐ rev 2026-10-19 (20261019-21, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. p_documento ancorato a config.sorgenti.codice_interno%TYPE: la firma passa da text a character varying (DROP + CREATE, nessun dipendente registrato).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

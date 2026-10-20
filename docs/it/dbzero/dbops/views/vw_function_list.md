@@ -9,6 +9,8 @@
 > - Numero di argomenti
 > - Commenti/documentazione (se presenti)
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_function_list AS
 SELECT n.nspname AS schema,
@@ -23,6 +25,8 @@ SELECT n.nspname AS schema,
      LEFT JOIN pg_description d ON ((p.oid = d.objoid)))
   WHERE (n.nspname = ANY (ARRAY['dbops'::name, 'script'::name]));
 ```
+
+</div>
 
 
 ---

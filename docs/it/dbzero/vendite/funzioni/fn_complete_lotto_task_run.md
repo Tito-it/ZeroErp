@@ -7,6 +7,8 @@ CREATE FUNCTION fn_complete_lotto_task_run(p_task_run_id bigint, p_meta jsonb)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_complete_lotto_task_run(p_task_run_id bigint, p_meta jsonb DEFAULT '{}'::jsonb)
  RETURNS void
@@ -27,6 +29,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_complete_lotto_task_run(p_task_run_id bigint, p_meta jsonb)
 IS 'Chiude un task run lotto con esito COMPLETATO (via helper condiviso). rev 2026-08-04: l''helper non ha piu'' p_scope.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

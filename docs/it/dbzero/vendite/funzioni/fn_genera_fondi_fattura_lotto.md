@@ -7,6 +7,8 @@ CREATE FUNCTION fn_genera_fondi_fattura_lotto(p_lotto_id bigint, p_tipo_fondo_co
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_genera_fondi_fattura_lotto(p_lotto_id bigint, p_tipo_fondo_codice_interno character varying)
  RETURNS TABLE(fatture_count integer, chiavi_count integer, fondi_creati integer)
@@ -101,6 +103,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_genera_fondi_fattura_lotto(p_lotto_id bigint, p_tipo_fondo_codice_interno character varying)
 IS 'Madre DB del giro di generazione dei fondi per un lotto: risolve il tipo di fondo dal CODICE INTERNO, legge lo scope da vendite.fn_get_scope_fatture_lotto, ne estrae le CHIAVI DISTINTE e chiama fn_genera_fondi_fattura_source una volta per chiave. Ritorna fatture_count, chiavi_count e fondi_creati. ⭐ Prende il codice interno e NON l''id del tipo fondo perche'' e'' cio'' che arriva dalla configurazione del task (una stringa): con l''id il chiamante dovrebbe fare prima una query di lookup, e «una SELECT per task» — il senso di R-3 — non si otterrebbe. Nessun DEFAULT sul codice: il ripiego F_F_ADD_ACC lo risolve gia'' il chiamante, e un DEFAULT qui aprirebbe la strada all''ambiguita'' di overload. ⭐ Il backend passa da uno statement con venti righe di SQL dello scope in Python a una chiamata sola, e smette di conoscere la pseudo-chiave a cinque parametri: due cose di dominio che stavano in un repository. ⭐ E il giro gira una volta per CHIAVE e non per FATTURA — la query Python faceva SELECT DISTINCT con l''id della fattura in proiezione, quindi il DISTINCT non deduplicava nulla e su un lotto di 500 fatture dello stesso emittente la generazione riscandiva le stesse sorgenti 500 volte per crearle una volta (l''atto unico bloccava le altre 499). Non e'' un''ottimizzazione a posteriori: chi itera sulle fatture per passare una chiave sta iterando sull''oggetto sbagliato. ⚠️ Una funzione = uno statement = una transazione: il giro non puo'' restare a meta'' nemmeno se chiamato fuori dalla pipeline. ℹ️ NON decide se una fattura meriti un fondo — quello e'' fn_fondo_fattura_proponibile: questa porta soltanto il lotto fino alla chiave. R-3 di brief-db-fondo-fattura-ricalcolo-e-governo §8.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

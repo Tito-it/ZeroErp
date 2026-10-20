@@ -6,6 +6,8 @@ CREATE FUNCTION fn_check_ddt_merce(p_ddt vendite.ddt)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_ddt_merce(p_ddt vendite.ddt)
  RETURNS jsonb
@@ -158,6 +160,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_ddt_merce(p_ddt vendite.ddt)
 IS 'I motivi FISICI che impediscono di emettere una bolla che muove merce. PURA. In ordine, si esce al primo: magazzino di partenza mancante, magazzino di arrivo mancante su una bolla di trasferimento (E_DDT_MAGAZZINO_OBBLIGATORIO); una voce i cui prelievi non ne coprono la quantita'', o senza prelievi e non automatica (E_DDT_PRELIEVI_INCOMPLETI); un prelievo che la primitiva rifiuterebbe (il codice di script.fn_check_riga_magazzino); merce non disponibile, sommata per articolo/lotto/seriale (il codice di script.fn_check_disponibilita_uscita), salvo causale con giacenza negativa ammessa. Ogni motivo porta i VALORI della frase: la solleva il verbo vendite.fn_cambia_stato_ddt col primo motivo. La accoda script.fn_check_ddt_emittibile (capability «Emetti»). Una bolla che non muove merce torna []. L''ubicazione di arrivo non si controlla qui (si compila fino al CONSEGNATO). Chiavi i18n: vendite.ddt.azione_reason.{magazzino_mancante, magazzino_arrivo_mancante, prelievi_incompleti, merce_non_prelevabile, merce_non_disponibile}. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-6).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

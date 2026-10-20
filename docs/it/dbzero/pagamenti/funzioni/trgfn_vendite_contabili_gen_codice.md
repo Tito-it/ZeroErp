@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_vendite_contabili_gen_codice()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_gen_codice()
  RETURNS trigger
@@ -92,6 +94,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_gen_codice()
 IS 'Assegna il codice alla distinta contabile ALLA CREAZIONE, chiamando vendite.fn_assegna_numero_documento sulla famiglia DISTINTA e sul registro dell''emittente della riga: DIS-<sigla>-<anno>-<7 cifre> (D1/D2 del brief distinta-numerata-sul-registro). ⭐ La sigla dell''emittente entra come CORPO — come la commessa, ed e'' per questo che il compositore ha un p_corpo — perche'' l''identita'' della distinta e'' la STRINGA NUDA (uq_vendite_contabili_codice): con un registro per emittente, due emittenti produrrebbero entrambi DIS-2026-0000001 e il secondo INSERT prenderebbe un 23505 a ogni tentativo (il numeratore piantato della guida §8-bis). L''anno lo mette il compositore generico perche'' il registro nasce con anno_nel_numero = true, e viene da data_contabile: una distinta datata 31/12 e inserita il 2/1 e'' dell''anno vecchio. ⚠️ Scrive INSIEME registro_id, anno e codice: sono la chiave del documento. ⭐ NO-OP su un codice fornito: rispetta le fixture dei pgTAP e rende innocua ogni finestra; ⛔ NON e'' una porta per le madri (nessuna funzione viva passa codice: presidio in test-distinta-numerazione-registro-v1, test 13), ed e'' la ragione per cui il DEFAULT di colonna e'' caduto — con il DEFAULT vivo NEW.codice arriverebbe sempre pieno e il numeratore sarebbe muto per sempre. ⚠️ Presuppone che a10_emittente abbia gia'' risolto l''emittente (precede per NOME) e che l''emittente abbia il registro DISTINTA (20260915-34 per gli esistenti, il trigger z90 di provisioning per i futuri): senza, E_CONFIG_MANCANTE, fail-closed. ⚠️ Il pregresso numerato prima (VC_…, SIS_…) non si rinumera: forma diversa, registro_id e anno NULL, guida §6.6. Rev 2026-09-15. Rev 2026-10-20 (20261020-45, brief-db-grammatica-unica-documenti 2c, G-5): la famiglia di numerazione e'' DISTINTA_INCASSO, il codice della sorgente (era DISTINTA).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

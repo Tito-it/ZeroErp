@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_azione_processo(p_auth_user_id integer, p_permission_co
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_azione_processo(p_auth_user_id integer, p_permission_codename character varying)
  RETURNS boolean
@@ -47,6 +49,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_azione_processo(p_auth_user_id integer, p_permission_codename character varying)
 IS 'Verifica se un''azione di processo e'' abilitata per un utente. Legge la catena da script.fn_get_permessi_effettivi_azioni (sede unica, con fn_get_user_actions_map e il pannello permessi): gate di contesto (app.ruolo_applicativo valorizzata e diversa da OPERATORE -> false), identita'' OPERATORE attiva, super admin -> true (prima del tetto), override utente valido, ereditato dal profilo, default negata; poi il TETTO D''AREA: l''azione vale solo se il livello dell''area dell''azione arriva al suo livello_minimo_area (script.fn_area_consente_azione). Codename NULL -> false. Rev 20261004-55 (brief-db-permessi-tetto-area R2): l''area e'' un tetto, anche sul profilo (D-2).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

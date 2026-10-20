@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_pratiche_guard_transizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_guard_transizione()
  RETURNS trigger
@@ -57,6 +59,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_guard_transizione()
 IS 'BEFORE UPDATE OF stato_id: blocca transizioni non ammesse per le pratiche.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

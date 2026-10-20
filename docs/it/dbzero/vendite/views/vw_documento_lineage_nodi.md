@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_documento_lineage_nodi
 WITH (security_invoker=on) AS
@@ -24,6 +26,8 @@ SELECT tipo_id,
     (tipo_codice_interno)::character varying(50) AS tipo_codice_interno
    FROM vendite.fn_documento_lineage_nodi(NULL::bigint[], NULL::text[]) n(tipo_id, uid, codice, stato_codice_interno, stato_codice, stato_descrizione, fase, is_abortito, pipeline_rank, natura_doc_codice_interno, natura_doc_descrizione, tipo_codice_interno);
 ```
+
+</div>
 
 
 ---

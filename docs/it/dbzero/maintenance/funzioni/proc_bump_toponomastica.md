@@ -7,6 +7,8 @@ CREATE PROCEDURE proc_bump_toponomastica(IN p_toponomastica_id integer, IN p_des
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE PROCEDURE maintenance.proc_bump_toponomastica(IN p_toponomastica_id integer, IN p_descrizione text)
  LANGUAGE plpgsql
@@ -24,6 +26,8 @@ $procedure$
 COMMENT ON PROCEDURE maintenance.proc_bump_toponomastica(IN p_toponomastica_id integer, IN p_descrizione text)
 IS 'Procedura di riallineamento toponomastica per cambio descrizione.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

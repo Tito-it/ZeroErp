@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_titolo_iva_ambito(p_titolo_iva_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_check_titolo_iva_ambito(p_titolo_iva_id bigint)
  RETURNS jsonb
@@ -128,6 +130,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_check_titolo_iva_ambito(p_titolo_iva_id bigint)
 IS 'Single source dei motivi per cui l''AMBITO di un titolo IVA non sta in piedi. Ritorna [] se coerente, altrimenti array ORDINATO di {codice, reason, dettaglio, valori}. PURA: non solleva e non scrive. La chiamano DUE trigger — quello sulle righe di ambito e quello sul padre — e li chiamano invece di riscrivere il predicato: un test che confrontasse due predicati proverebbe che OGGI coincidono, cosi'' invece non possono divergere (linee-guida-sql §12.5.2). ⭐ Il secondo trigger non e'' ridondanza: due titoli diventano sovrapposti anche quando cambia il PADRE — si allarga valido_al, si riattiva un titolo spento, si cambia il tipo — e in nessuno di quei casi la figlia viene toccata. Due motivi: (1) E_TITOLO_IVA_AMBITO_NON_AMMESSO, righe di ambito su un titolo che vale per TUTTO — una tabella che dice due cose opposte, di cui il risolutore ne leggerebbe una sola; (2) E_TITOLO_IVA_AMBITO_SOVRAPPOSTO, il PAREGGIO: due titoli attivi dello stesso soggetto verso lo stesso emittente, dello stesso tipo, con periodi che si toccano, sullo STESSO oggetto allo STESSO livello. ⚠️ Livelli diversi NON sono un pareggio e non si bloccano: D13 li risolve per specificita'' — articolo > categoria di merce > tutto, la stessa cascata degli indirizzi — e bloccarli rifiuterebbe una configurazione legittima. A parita'' di specificita'' invece non c''e'' niente da scegliere: e'' un errore di configurazione, e un''ambiguita'' che si risolve sull''ordine degli id e'' quello che AGENTS.md chiama un''ambiguita'' del modello. ⚠️ SECURITY INVOKER: il confronto e'' fra titoli verso lo STESSO emittente, quindi la policy RLS e'' la stessa per entrambi e non esiste il conflitto invisibile che renderebbe cieco il guard. I7 di brief-db-be-iva-risolutore-e-regime-cliente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

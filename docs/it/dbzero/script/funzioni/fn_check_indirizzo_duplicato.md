@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_indirizzo_duplicato(p_stradario_id integer, p_civico in
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_indirizzo_duplicato(p_stradario_id integer DEFAULT NULL::integer, p_civico integer DEFAULT NULL::integer, p_estensione_civico character varying DEFAULT NULL::character varying, p_palazzina character varying DEFAULT NULL::character varying, p_scala character varying DEFAULT NULL::character varying, p_piano character varying DEFAULT NULL::character varying, p_interno character varying DEFAULT NULL::character varying, p_stradario_generale_id integer DEFAULT NULL::integer, p_comune_id integer DEFAULT NULL::integer, p_codice_postale_id integer DEFAULT NULL::integer)
  RETURNS TABLE(indirizzo_dettaglio_id bigint, indirizzo_normalizzato text, descrizione_comune character varying, exact_match boolean)
@@ -144,6 +146,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_indirizzo_duplicato(p_stradario_id integer, p_civico integer, p_estensione_civico character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying, p_stradario_generale_id integer, p_comune_id integer, p_codice_postale_id integer)
 IS 'Check duplicato indirizzo con risoluzione stradario. Flusso A: p_stradario_id diretto. Flusso B: risolve da stradario_generale_id + comune_id + codice_postale_id. Usa fn_build_indirizzo_normalizzato, cerca match prefix con exact_match. STABLE, PARALLEL SAFE.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -6,6 +6,8 @@ CREATE FUNCTION fn_apri_blocco(p_magazzino_id bigint, p_articolo_id uuid, p_qta 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.fn_apri_blocco(p_magazzino_id bigint, p_articolo_id uuid, p_qta numeric, p_soggetto_ruolo_id bigint, p_nota text, p_lotto_id bigint DEFAULT NULL::bigint, p_asset_id bigint DEFAULT NULL::bigint, p_ubicazione_id bigint DEFAULT NULL::bigint)
  RETURNS bigint
@@ -80,6 +82,8 @@ $function$
 COMMENT ON FUNCTION magazzino.fn_apri_blocco(p_magazzino_id bigint, p_articolo_id uuid, p_qta numeric, p_soggetto_ruolo_id bigint, p_nota text, p_lotto_id bigint, p_asset_id bigint, p_ubicazione_id bigint)
 IS 'VERBO: apre un blocco manuale (D-L3-j) — un atteso in uscita (SCARICO_VEN, qta = -p_qta: la quantita'' si passa POSITIVA), APERTA, senza sorgente, per chi (p_soggetto_ruolo_id) o perche'' (p_nota): lo pretende il CHECK per_chi. Prima riga script.fn_guard_azione(utente, ''blocca_merce''). SECURITY DEFINER: il magazzino deve essere attivo e nel perimetro di chi agisce (E_MAG_MAGAZZINO_NON_VALIDO), la posizione la giudica script.fn_check_riga_magazzino come per la primitiva. In meta aperto_da. Il blocco ferma gli scarichi degli altri (M-3) finche'' non lo libera magazzino.fn_libera_blocco. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

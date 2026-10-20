@@ -7,6 +7,8 @@ CREATE FUNCTION fn_fail_lotto_task_run(p_task_run_id bigint, p_error_code charac
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_fail_lotto_task_run(p_task_run_id bigint, p_error_code character varying, p_error_message text, p_meta jsonb DEFAULT '{}'::jsonb)
  RETURNS void
@@ -27,6 +29,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_fail_lotto_task_run(p_task_run_id bigint, p_error_code character varying, p_error_message text, p_meta jsonb)
 IS 'Chiude un task run lotto con esito ERRORE (via helper condiviso). rev 2026-08-04: l''helper non ha piu'' p_scope.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

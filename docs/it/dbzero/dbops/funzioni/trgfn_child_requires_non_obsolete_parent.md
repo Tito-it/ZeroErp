@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_child_requires_non_obsolete_parent()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.trgfn_child_requires_non_obsolete_parent()
  RETURNS trigger
@@ -181,6 +183,8 @@ $function$
 COMMENT ON FUNCTION dbops.trgfn_child_requires_non_obsolete_parent()
 IS 'Trigger function (OBSOLETO/REQUIRE): impedisce INSERT/UPDATE sul figlio se il catalogo padre referenziato ha obsoleto_dal <= CURRENT_DATE. Gemella di trgfn_child_requires_active_parent sull''asse obsoleto_dal. TG_ARGV: parent_schema, parent_table, parent_obsoleto_col, fk_col [, parent_ref_col]. Su UPDATE controlla solo se la FK cambia (lifecycle delle istanze storiche mai bloccato). FK NULL e obsoleto_dal NULL/futura = consentiti.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_tfap_guard_compatibilita()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_tfap_guard_compatibilita()
  RETURNS trigger
@@ -62,6 +64,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_tfap_guard_compatibilita()
 IS 'BEFORE INSERT OR UPDATE su pratiche.template_flussi_avanzamento_proiezione (GUIDA D4/G2): il binding di avanzamento su proiezione e'' ammesso solo su step non-DOMINIO (D-B3, TEMPLATE_FLUSSO_PROIEZIONE_STEP_DOMINIO 517) e non puo'' coesistere con un handler_eventi COMPLETATO sullo stesso step (D-B10, TEMPLATE_FLUSSO_PROIEZIONE_CONFLITTO_HANDLER 518).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

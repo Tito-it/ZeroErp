@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_doc_testata_guard_data_consegna_righe()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_doc_testata_guard_data_consegna_righe()
  RETURNS trigger
@@ -59,6 +61,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_doc_testata_guard_data_consegna_righe()
 IS 'Guard di testata (2026-10-13, collaudo date di consegna): la data del documento non si sposta oltre una data di consegna gia'' scritta su una sua riga attiva — il lato opposto di script.trgfn_doc_righe_guard_data_consegna, senza il quale la regola si aggirerebbe dalla testata. Rifiuto E_DOC_DATA_OLTRE_CONSEGNA_RIGHE (DATO_ERRATO), campo data; valori: etichetta del documento, data nuova, la data di consegna piu'' bassa fra quelle che resterebbero prima (il limite oltre cui la testata non va). Righe e colonne le dice script.fn_doc_date_consegna_anteriori (DEFINER, sede unica dell''elenco). Montaggio: TG_ARGV[0] = documento (ORDINE, PREVENTIVO). BEFORE UPDATE FOR EACH ROW WHEN (OLD.data IS DISTINCT FROM NEW.data), fascia _a10_: fuori bozza parla prima il lock della testata (_a05_).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_template_flussi_guard_immutabile()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()
  RETURNS trigger
@@ -104,6 +106,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_template_flussi_guard_immutabile()
 IS 'BEFORE INS/UPD/DEL su pratiche.template_flussi: immutabilita'' strutturale «Leggera» strategia C. INSERT/UPDATE (oltre descrizione) vietati su edizione forkata emessa (pubblicata o ritirata, fn_check_definizione_struttura_bloccata); DELETE vietato solo su pubblicata (fn_check_definizione_congelata) -> RITIRATA cancellabile. Errore TEMPLATE_DEFINIZIONE_CONGELATA (514). Preset (emittente NULL) e BOZZA editabili.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_non_editable_fields(p_schema text, p_table text, p_record_id 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_non_editable_fields(p_schema text, p_table text, p_record_id text)
  RETURNS text[]
@@ -70,6 +72,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_non_editable_fields(p_schema text, p_table text, p_record_id text)
 IS 'Ritorna i campi non editabili per (schema, tabella, id_riga). Unisce: lock statici (vw_non_editable_fields) + lock condizionali (lock_columns_conditional) valutati su p_record_id via EXECUTE USING. VOLATILE (legge stato corrente DB). SECURITY INVOKER (rispetta RLS). p_record_id = id come text; condition_expr casta $1 al tipo target. rev 2026-05-22.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

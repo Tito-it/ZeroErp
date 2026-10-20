@@ -7,6 +7,8 @@ CREATE FUNCTION fn_set_runtime_task_run_esito(p_task_run_id bigint, p_task_stato
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_set_runtime_task_run_esito(p_task_run_id bigint, p_task_stato text, p_error_code text DEFAULT NULL::text, p_error_message text DEFAULT NULL::text, p_meta jsonb DEFAULT '{}'::jsonb)
  RETURNS void
@@ -142,6 +144,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_set_runtime_task_run_esito(p_task_run_id bigint, p_task_stato text, p_error_code text, p_error_message text, p_meta jsonb)
 IS 'Helper condiviso per chiudere un task-run runtime del LOTTO. rev 2026-08-04: via il ramo ATTIVITA_FATTURABILI e con esso il parametro p_scope, che restava con un solo valore lecito. Quel ramo aggiornava vendite.attivita_fatturabili_lotti_task_runs, droppata il 2026-02-27 (20260227-16) col resto della famiglia «attivita pipeline»: il CASCADE non porta via i corpi plpgsql, che PostgreSQL non traccia come dipendenze. ⚠️ Non era mai esplosa perche'' plpgsql pianifica per singolo statement alla prima esecuzione di quello statement, e i tre wrapper passavano tutti ''LOTTO'' cablato — il ramo morto non e'' mai stato nemmeno pianificato. Il COMMENT precedente prometteva due domini: era l''unica cosa che mentiva davvero.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_rettifica(p_auth_user_id integer, p_re
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_rettifica(p_auth_user_id integer, p_rettifica_id bigint)
  RETURNS boolean
@@ -29,6 +31,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_rettifica(p_auth_user_id integer, p_rettifica_id bigint)
 IS '⭐ rev 2026-10-18 (20261018-49, D-3b-2 ondata 2): l''emittente dal risolutore DEFINER (via_efba: dalla composizione delle policy, in convenzione soggetto_ruolo); una strada sola, nessuna policy del padre per chiamata. Stesse risposte. Adattatore di scope per una rettifica via il suo magazzino (delega a via_magazzino). Chiave di rettifiche_righe e delle note note_rettifica e note_rettifica_riga.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

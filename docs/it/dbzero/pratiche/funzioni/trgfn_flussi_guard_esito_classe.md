@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_guard_esito_classe()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_guard_esito_classe()
  RETURNS trigger
@@ -120,6 +122,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_guard_esito_classe()
 IS 'BEFORE INSERT OR UPDATE OF stato_id su pratiche.flussi: alla transizione verso COMPLETATO la classe dell''esito deve corrispondere alla modalita_esito del template (DOMINIO => ramo is_verdetto=false, altrimenti verdetto is_verdetto=true) — FLUSSI_ESITO_NON_AMMESSO (504). Scoped alla transizione: righe gia'' COMPLETATE non ri-validate (legacy PRA-0000243).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

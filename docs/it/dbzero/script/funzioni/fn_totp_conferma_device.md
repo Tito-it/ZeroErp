@@ -7,6 +7,8 @@ CREATE FUNCTION fn_totp_conferma_device(p_auth_user_id integer, p_passo bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_totp_conferma_device(p_auth_user_id integer, p_passo bigint)
  RETURNS void
@@ -62,6 +64,8 @@ $function$
 COMMENT ON FUNCTION script.fn_totp_conferma_device(p_auth_user_id integer, p_passo bigint)
 IS 'Conferma il device del secondo fattore (TOTP) dopo che il backend ha verificato il primo codice: confermato = true e il PASSO di quel codice diventa il primo registrato (da li'' l''anti-replay di script.fn_totp_registra_uso). Una istruzione (UPDATE … WHERE NOT confermato). Gia'' confermato -> E_TOTP_DEVICE_GIA_ATTIVO; nessun device -> E_TOTP_DEVICE_ASSENTE; passo NULL o < 0 -> E_AUTH_CHIAMATA_NON_VALIDA. Nessun controllo di passo gia'' usato: un device non confermato non ne ha. Chi agisce: la credenziale stessa (script.fn_guard_utente_stesso). SECURITY DEFINER del PROPRIETARIO, search_path bloccato. Brief: brief-db-secondo-fattore-totp §3-4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

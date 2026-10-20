@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resolve_termini_pagamento(p_attivita_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_resolve_termini_pagamento(p_attivita_id bigint)
  RETURNS TABLE(termine_pagamento_id bigint, modalita_pagamento_id integer)
@@ -187,6 +189,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_resolve_termini_pagamento(p_attivita_id bigint)
 IS 'Catena unica condizioni di pagamento per attivita'' (C-13): ritorna la coppia (termine_pagamento_id, modalita_pagamento_id) scendendo documento sorgente -> COMMESSA (D-R) -> cliente del BA padre -> default TP_1RATA sul solo termine. I due campi scendono in modo indipendente: il preventivo porta il termine ma non la modalita''. rev 2026-08-03 (T.2): il livello 1 risolve la SORGENTE EFFETTIVA. Il pull riscrive sorgente = COMMESSA sull''attivita'' generata, quindi il livello 1 non scattava MAI su cio'' che arriva in fattura (misurato: 35 attivita'' su 35). Il documento vero si ritrova da commessa_attivita_id -> commesse_attivita.sorgente_tipo_id/sorgente_uid, perche'' attivita_fatturabili conserva il TIPO d''origine ma non l''UID. Copre due strade: attivita'' inserita direttamente con sorgente documento (invariata) e attivita'' dal pull. La sovrascrittura avviene solo se la sorgente risolve: un SELECT INTO senza righe azzera, e azzerare perderebbe la prima strada. Ogni livello legge in variabili proprie e la fusione avviene con COALESCE in codice. rev 2026-10-08 (20261008-70): il livello 3 aggancia il cliente per BA (uq_clienti_billing_account), non piu'' per istanza: un''istanza ha tanti clienti quanti BA. Brief: brief-db-istanza-nasce-col-ba (R-8, D-6).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

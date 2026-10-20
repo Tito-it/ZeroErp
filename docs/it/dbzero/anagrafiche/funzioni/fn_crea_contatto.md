@@ -7,6 +7,8 @@ CREATE FUNCTION fn_crea_contatto(p_soggetto_id uuid, p_soggetto_ruolo_id bigint,
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_contatto(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_campi jsonb)
  RETURNS jsonb
@@ -73,6 +75,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_crea_contatto(p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_campi jsonb)
 IS 'BB (2026-10-17): crea un contatto del soggetto (p_soggetto_ruolo_id NULL) o di un suo ruolo, con le chiavi di p_campi: tipo_contatto_id, nominativo, email, telefono, cellulare, pec, note, is_default, default_context, titolo_cortesia_id, unita_organizzativa_id, istanza_utility_id (le assenti al DEFAULT). Nominativo e tipo di contatto obbligatori e non vuoti: E_CONTATTO_INCOMPLETO col campo sul canale COLUMN. Chiave estranea: E_CAMPO_NON_AMMESSO. Soggetto mancante o campi non oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA. Ritorna la riga creata (jsonb). Scrive con script.fn_scrivi_riga_da_jsonb; i guard della tabella (coerenza col ruolo, contatto di default) scattano come sempre. Non controlla il permesso (dominio anagrafiche, B-5). INVOKER. Regola del 2: sede unica dell''INSERT che era in SoggettiRepository.crea_contatto (2b-2), anagrafiche.fn_crea_soggetto_pf, fn_crea_soggetto_pg, script.fn_crea_utente_tecnico e dbops.fn_pgtap_crea_soggetto_pg. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 3).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

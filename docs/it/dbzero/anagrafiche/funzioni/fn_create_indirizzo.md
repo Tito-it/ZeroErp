@@ -7,6 +7,8 @@ CREATE FUNCTION fn_create_indirizzo(p_stradario_id integer, p_toponomastica_id i
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_create_indirizzo(p_stradario_id integer DEFAULT NULL::integer, p_toponomastica_id integer DEFAULT NULL::integer, p_descrizione_via character varying DEFAULT NULL::character varying, p_comune_id integer DEFAULT NULL::integer, p_codice_postale_id integer DEFAULT NULL::integer, p_civico integer DEFAULT NULL::integer, p_estensione_civico character varying DEFAULT NULL::character varying, p_palazzina character varying DEFAULT NULL::character varying, p_scala character varying DEFAULT NULL::character varying, p_piano character varying DEFAULT NULL::character varying, p_interno character varying DEFAULT NULL::character varying)
  RETURNS bigint
@@ -55,6 +57,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_create_indirizzo(p_stradario_id integer, p_toponomastica_id integer, p_descrizione_via character varying, p_comune_id integer, p_codice_postale_id integer, p_civico integer, p_estensione_civico character varying, p_palazzina character varying, p_scala character varying, p_piano character varying, p_interno character varying)
 IS 'Funzione madre atomica: risolve/crea lo stradario (upsert generale + civico-strada) e l''indirizzo di dettaglio in un''unica statement (o tutto o rollback). SECURITY INVOKER. Le validazioni via-nuova restano pre-check del service. Piano: analisi-fix-transazioni Classe D #13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

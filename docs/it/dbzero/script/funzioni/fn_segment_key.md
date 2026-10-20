@@ -6,6 +6,8 @@ CREATE FUNCTION fn_segment_key(p_sorgente character varying, p_uid text, p_riga 
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_segment_key(p_sorgente character varying, p_uid text, p_riga bigint DEFAULT NULL::bigint, p_mese date DEFAULT NULL::date)
  RETURNS character varying
@@ -34,6 +36,8 @@ $function$
 COMMENT ON FUNCTION script.fn_segment_key(p_sorgente character varying, p_uid text, p_riga bigint, p_mese date)
 IS 'La chiave d''idempotenza del push verso la commessa: <sorgente>:<uid>[:R:<riga>][:M:<AAAA-MM>], col codice della sorgente come prefisso (G-8). Il SOLO costruttore; i suffissi #CMP:/#RET: li aggiunge chi scrive la riga. LANGUAGE sql STABLE senza SET: si espande in linea. Brief: brief-db-grammatica-unica-documenti §13.3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

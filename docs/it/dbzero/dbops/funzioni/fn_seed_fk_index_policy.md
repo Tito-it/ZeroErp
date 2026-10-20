@@ -7,6 +7,8 @@ CREATE FUNCTION fn_seed_fk_index_policy()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_seed_fk_index_policy()
  RETURNS void
@@ -41,6 +43,8 @@ AS $function$
 COMMENT ON FUNCTION dbops.fn_seed_fk_index_policy()
 IS 'Registro policy indici per foreign key: seed automatico da view';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_valuta_id(p_billing_account_id bigint, p_emittente_sogget
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_valuta_id(p_billing_account_id bigint, p_emittente_soggetto_ruolo_id bigint)
  RETURNS integer
@@ -44,6 +46,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_valuta_id(p_billing_account_id bigint, p_emittente_soggetto_ruolo_id bigint)
 IS 'Risoluzione valuta_id: BA → emittente → gestore (fallback).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

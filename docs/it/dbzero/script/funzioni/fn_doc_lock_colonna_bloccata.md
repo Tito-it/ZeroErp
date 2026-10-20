@@ -7,6 +7,8 @@ CREATE FUNCTION fn_doc_lock_colonna_bloccata(p_regola jsonb, p_stato text, p_col
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_doc_lock_colonna_bloccata(p_regola jsonb, p_stato text, p_colonne text[])
  RETURNS text
@@ -97,6 +99,8 @@ $function$
 COMMENT ON FUNCTION script.fn_doc_lock_colonna_bloccata(p_regola jsonb, p_stato text, p_colonne text[])
 IS 'Building block (2026-10-10, brief-db-testata-dopo-emissione fase 1, R-1): la DECISIONE dei due building block «si tocca solo in bozza». Con il documento in p_stato (codice_interno), quale delle colonne p_colonne il montaggio p_regola (uscita di script.fn_doc_lock_regola) non lascia cambiare? NULL = passa; altrimenti la prima che ferma, ''*'' = la riga intera. Montaggio sbagliato: ''*''. Stato bozza: NULL. p_stato NULL = fuori bozza in nessuno stato ammesso. RIGHE: p_colonne NULL (INSERT, DELETE) = ''*''; fuori dagli stati ammessi la prima colonna non tecnica, o ''*'' anche se non ne cambia nessuna; negli stati ammessi la prima colonna che non e'' ammessa ne'' tecnica (data_update, user_update, tx_id). TESTATA: la prima colonna nominata dal montaggio (nel suo ordine) che cambia e che nello stato non e'' aperta; le colonne non nominate sono libere; p_colonne NULL = tutte. La chiamano vendite.trgfn_doc_righe_lock_fuori_bozza, vendite.trgfn_doc_testata_lock_fuori_bozza e script.fn_doc_colonna_modificabile: trigger e capability decidono con la stessa funzione. IMMUTABLE. rev 2026-10-18 (brief-db-indirizzi-documento-seguono-il-cliente §8.7): sulla TESTATA una colonna con ferma_sempre (terna con ''-'', script.fn_doc_lock_regola) si ferma in ogni stato, bozza compresa: la bozza non chiude piu'' la decisione prima dei due rami, la chiude ciascun ramo. RIGHE invariato. Lo stato bozza da'' NULL salvo una colonna ferma sempre che cambia.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

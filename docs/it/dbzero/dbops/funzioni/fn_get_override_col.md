@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_override_col(p_schema text, p_table text, p_role text, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_get_override_col(p_schema text, p_table text, p_role text, p_default text)
  RETURNS text
@@ -49,6 +51,8 @@ IS '
     - Non valida l’esistenza reale della colonna; in combinazione usare `dbops._col_exists`.
   ';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

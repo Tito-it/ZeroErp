@@ -7,6 +7,8 @@ CREATE FUNCTION fn_crea_indirizzi_soggetto(p_soggetto_id uuid, p_indirizzi jsonb
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_indirizzi_soggetto(p_soggetto_id uuid, p_indirizzi jsonb, p_copia_obbligatori boolean DEFAULT true)
  RETURNS integer
@@ -102,6 +104,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_crea_indirizzi_soggetto(p_soggetto_id uuid, p_indirizzi jsonb, p_copia_obbligatori boolean)
 IS 'MADRE PLURALE (2026-10-19): scrive gli indirizzi di un soggetto e ritorna quanti ne ha scritti. Elementi con la grammatica di anagrafiche.fn_indirizzo_elemento; se p_copia_obbligatori (il flag auto_clone del backend, vero di default) i tipi obbligatori della matrice del TIPO DI SOGGETTO (config.tipi_soggetto_dettaglio_tipi_indirizzo, righe attive) che mancano ricevono una copia del primo (anagrafiche.fn_indirizzi_con_obbligatori); un tipo che il soggetto ha gia'' si salta; ogni riga la scrive la singolare anagrafiche.fn_crea_indirizzo_soggetto. Soggetto inesistente E_SOGGETTO_NOT_FOUND, elenco non array E_SCRIPT_CHIAMATA_NON_VALIDA, elenco vuoto 0. Gemella di anagrafiche.fn_crea_indirizzi_ruolo (D-16a). Ritira la saga del backend SoggettiService._apply_auto_clone + _create_indirizzi_batch. R-BE-12, D-16a di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

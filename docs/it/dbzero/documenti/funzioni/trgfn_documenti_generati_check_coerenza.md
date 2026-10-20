@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_documenti_generati_check_coerenza()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()
  RETURNS trigger
@@ -82,6 +84,8 @@ $function$
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_check_coerenza()
 IS 'Guard A6: valida coerenza referenziale tra template_versione_id, template_documento_id, tipo_documento_output_id, sorgente_tipo_id, emittente_fiscale_id. Regola 1 (la versione e'' di quel modello) qui; regole 2-4 (stessa sorgente, stesso tipo, stesso emittente oppure modello standard) dal BB documenti.fn_template_motivo_non_coerente, la stessa domanda che la risoluzione fa sul modello indicato prima del render (rev 2026-10-21, 20261021-06, brief-db-modelli-documento-standard §10.3 K-4). Il contesto porta il motivo per nome. Storia: regola 4 «oppure standard» dal 20261020-08 (§4.1 Q-3).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

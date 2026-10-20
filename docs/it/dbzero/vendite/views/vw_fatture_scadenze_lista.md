@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_fatture_scadenze_lista
 WITH (security_invoker=on) AS
@@ -54,6 +56,8 @@ SELECT sc.id AS scadenza_id,
      LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
      LEFT JOIN config.valute v_val ON ((v_val.id = f.valuta_id)));
 ```
+
+</div>
 
 
 ---

@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ddt
 WITH (security_invoker=on) AS
@@ -73,6 +75,8 @@ WITH righe AS (
   WHERE ((COALESCE(ord.fatturazione_trigger, 'SPEDITO'::character varying))::text <> 'CONFERMATO'::text)
   GROUP BY d.id, d.uid, d.numero, d.data, d.emittente_fiscale_id, sdd.codice_interno, sdd.codice, sdd.fase, sdd.is_abortito, sdd.ordine, trg.ordine, sped.ordine, s.ragione_sociale_completa;
 ```
+
+</div>
 
 
 ---

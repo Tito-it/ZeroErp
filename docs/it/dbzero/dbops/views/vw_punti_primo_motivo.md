@@ -12,6 +12,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_punti_primo_motivo
 WITH (security_invoker=true) AS
@@ -34,6 +36,8 @@ WITH punti AS (
    FROM (punti pt
      LEFT JOIN dbops.vw_funzioni_check_codici k ON (((k.sch = pt.sch) AND (k.fn = pt.fn))));
 ```
+
+</div>
 
 
 ---

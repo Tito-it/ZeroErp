@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW documenti.vw_template_versioni_stampabili
 WITH (security_invoker=true) AS
@@ -21,6 +23,8 @@ SELECT t.id AS template_documento_id,
      JOIN documenti.template_documenti_versioni v ON (((v.template_documento_id = t.id) AND ((v.stato)::text = 'PUBBLICATA'::text) AND v.attivo AND (v.validita @> ( SELECT script.fn_data_operativa() AS fn_data_operativa)))))
   WHERE t.attivo;
 ```
+
+</div>
 
 
 ---

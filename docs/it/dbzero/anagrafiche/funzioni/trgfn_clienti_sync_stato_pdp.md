@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_clienti_sync_stato_pdp()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()
  RETURNS trigger
@@ -83,6 +85,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_clienti_sync_stato_pdp()
 IS 'Trigger AFTER su anagrafiche.clienti: lo stato tecnico del PDP segue l''occupazione (anagrafiche.fn_check_pdp_occupato, il periodo che contiene il giorno operativo): occupato e DISP -> ATT; libero e ATT -> DISP; DTEC e DISM non si toccano. Se il cliente cambia PDP si ricalcolano entrambi. rev 2026-10-14 (C-8): prima leggeva lo stato del cliente, solo AT/CH, sotto RLS. Limite: una chiusura con data futura libera il PDP alla prossima scrittura, non alla data. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

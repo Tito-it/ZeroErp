@@ -7,6 +7,8 @@ CREATE FUNCTION fn_documento_lineage_nodi(p_tipo_ids bigint[], p_uids text[])
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage_nodi(p_tipo_ids bigint[] DEFAULT NULL::bigint[], p_uids text[] DEFAULT NULL::text[])
  RETURNS TABLE(tipo_id bigint, uid text, codice character varying, stato_codice_interno character varying, stato_codice character varying, stato_descrizione character varying, fase character varying, is_abortito boolean, pipeline_rank smallint, natura_doc_codice_interno character varying, natura_doc_descrizione character varying, tipo_codice_interno character varying)
@@ -314,6 +316,8 @@ END
 COMMENT ON FUNCTION vendite.fn_documento_lineage_nodi(p_tipo_ids bigint[], p_uids text[])
 IS '⭐ rev 2026-10-11 (20261011-67): SET jit = off e SET plan_cache_mode = force_generic_plan sulla funzione. Con un seme non costante il piano tiene i rami dei due modi e il JIT ne compilava le espressioni a ogni chiamata; le clausole la rendono non incorporabile e la pianificano una volta per sessione: chi la chiama non deve dichiarare niente. I NODI della lineage dei documenti, per CHIAVE DEL NODO. Il seme e'' la coppia (tipo_id, uid::text) in due array paralleli: p_tipo_ids[i] e'' un config.sorgenti.id, p_uids[i] la chiave del documento resa a text secondo key_selector (uid per preventivo e offerta, id per gli altri). Entrambi NULL = tutti i nodi (vw_documento_lineage_nodi ne e'' la proiezione); array vuoti = zero righe; una coppia con un tipo ignoto o una chiave inesistente non seleziona niente. Il seme si smista una volta in array tipizzati e ogni ramo cerca per indice. I due modi sono rami in UNION ALL, mai `p IS NULL OR`. BEGIN ATOMIC (dipendenze in pg_depend), INVOKER: la RLS resta di chi legge. Brief: brief-db-lineage-seminata-per-chiave §8.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

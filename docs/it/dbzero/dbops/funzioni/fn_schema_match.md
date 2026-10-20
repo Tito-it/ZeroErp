@@ -7,6 +7,8 @@ CREATE FUNCTION fn_schema_match(p_rule_target text, p_schema text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_schema_match(p_rule_target text, p_schema text)
  RETURNS boolean
@@ -25,6 +27,8 @@ AS $function$
   END;
   $function$
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

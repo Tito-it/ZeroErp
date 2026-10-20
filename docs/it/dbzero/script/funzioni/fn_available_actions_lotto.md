@@ -7,6 +7,8 @@ CREATE FUNCTION fn_available_actions_lotto(p_lotto_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_available_actions_lotto(p_lotto_id bigint)
  RETURNS jsonb
@@ -148,6 +150,8 @@ $function$
 COMMENT ON FUNCTION script.fn_available_actions_lotto(p_lotto_id bigint)
 IS 'Capability del lotto di fatturazione per il detail API: available_actions + can_change_state + stato_codice + tipo_lotto. Ottava della famiglia fn_available_actions_*, mirror di fn_available_actions_commessa. I verbi numera / riporta_a_draft / annulla nascono DATA-DRIVEN da config.stati_doc_fiscale_transizioni (meta seedato il 2026-08-04) con lo STESSO predicato del guard vivo vendite.trgfn_fatturazione_lotti_guard_stato (ammesso + solo_fattura=false + meta.tipo_lotto compatibile): matrice e pulsanti non possono divergere. La ristampa e'' cablata perche'' non e'' una transizione (stampare e'' leggere, I-4) ed e'' disponibile su lotto DEFINITIVA. ATTENZIONE CONTRATTO: la presenza di un''azione in available_actions NON significa eseguibile — i consumatori devono leggere enabled e mostrare reasons; enabled/reasons di annulla e riporta_a_draft arrivano dalle funzioni PURE script.fn_check_lotto_annullabile / _riportabile_a_draft, le STESSE usate dalle fn di mutazione per sollevare. can_change_state e'' calcolato sulle sole azioni ABILITATE e sulle sole transizioni (la ristampa non cambia stato). 🔴 NON espone avanza_step / rilancia_step: quel gate (step successivo + criticita'' + rilancio dello stesso step, D-Q p.1) vive in LottoPipelineRunner e ricostruirlo qui sarebbe una seconda copia della regola. Fallback NULL se il lotto non esiste. rev 2026-08-04. rev 2026-08-06: + target_state_descrizione accanto a target_state (config.stati_doc_fiscale.descrizione della destinazione). Serve alla frase di conferma «portare il documento nello stato X»: il codice_interno non e'' la forma leggibile e derivarla nel FE sarebbe una seconda copia del vocabolario degli stati; NULL sulla ristampa, che non cambia stato. rev 2026-09-27 (20260927-10): le azioni non portano piu'' la chiave icon. Il DB manda il SIGNIFICATO (key), il frontend sceglie il segno dal key con una mappa verbo -> icona in core/ (decisione D-1 di Tid, opzione A): un segno scritto qui era l''unico dell''app che non passava dalle costanti del frontend, e lo stesso verbo ne portava due. Brief: brief-db-icone-azioni-per-significato (D-1). rev 2026-09-28 (20260928-07): le azioni non portano piu'' la chiave severity. Come l''icona, il colore del pulsante lo decide il VERBO, uguale in tutti i domini, e il frontend lo ricava dal key (mappa verbo -> aspetto in core/, decisione di Tid): lo stesso verbo portava colori diversi fra i domini. label_key e outlined restano dati. Brief: brief-db-icone-azioni-per-significato (§9).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

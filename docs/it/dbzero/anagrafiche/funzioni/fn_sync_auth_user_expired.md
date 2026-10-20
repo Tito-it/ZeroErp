@@ -7,6 +7,8 @@ CREATE FUNCTION fn_sync_auth_user_expired()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_sync_auth_user_expired()
  RETURNS integer
@@ -95,6 +97,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_sync_auth_user_expired()
 IS 'Batch notturno: riallinea django.auth_user.is_active alla data di oggi nei due versi, perche'' una data che arriva non scrive niente e non fa scattare trigger. Spegne le credenziali che hanno vesti ma nessuna piu'' utilizzabile (veste o rapporto scaduti) e accende quelle che ne hanno una diventata valida oggi; la regola e'' script.fn_veste_utilizzabile, la stessa di fn_sync_auth_user_is_active, che fa l''aggiornamento. Una credenziale senza vesti resta fuori. Invocata da pgAgent daily e dal management command Django. Ritorna il numero di credenziali riallineate (spente o accese). Rev 2026-10-07 (brief-db-veste-utilizzabile): fino alla v4 solo spegneva, e una credenziale con l''unica veste a valido_dal futuro restava spenta anche il giorno in cui la veste diventava valida; il nome resta perche'' pgAgent, command e repository BE lo chiamano.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

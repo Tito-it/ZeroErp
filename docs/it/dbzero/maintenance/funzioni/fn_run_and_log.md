@@ -7,6 +7,8 @@ CREATE FUNCTION fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lo
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION maintenance.fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint DEFAULT NULL::bigint, p_processo_codice text DEFAULT NULL::text, p_auth_user_id integer DEFAULT NULL::integer)
  RETURNS void
@@ -172,6 +174,8 @@ $function$
 COMMENT ON FUNCTION maintenance.fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint, p_processo_codice text, p_auth_user_id integer)
 IS 'Registra una corsa di job in maintenance.job_run_log ed esegue il lavoro. ⭐ Rev 2026-09-05 (R-12): il verbale di un FALLIMENTO viene scritto anche FUORI transazione, con maintenance.fn_job_run_log_failure, prima del RAISE. ⛔ Prima il gestore d''eccezione scriveva la riga ok=false e poi rilanciava: il RAISE annulla la transazione, quindi anche quella riga — il verbale veniva redatto e distrutto nello stesso istante, e NESSUNO dei dodici job che passano di qui poteva lasciare una riga rossa. Cosi'' apply_storicizza_weekly e'' morto ogni settimana per sei mesi con l''ultimo verdetto agli atti a «done». ⚠️ L''UPDATE in transazione resta e non e'' un doppione: copre il caso in cui il chiamante catturi l''eccezione senza propagarla, dove la transazione sopravvive. Nel caso normale muore e resta solo la riga fuori transazione — o l''una o l''altra, mai due. ⚠️ Il RAISE non si toglie: smettere di propagare farebbe risultare riuscito un lavoro che non lo e''. Il lavoro si annulla, il verbale no. ⚠️ fn_job_run_log_failure non solleva mai: se il canale dblink non c''e'' emette un WARNING e si torna al comportamento precedente. ⭐ Rev 2026-10-10: col lock occupato la riga nasce SALTATA (saltata = TRUE), chiusa e con ok NULL. Prima nasceva ok = TRUE e aperta — «riuscita e mai chiusa» — e ogni lettore la contava come una corsa vera. Brief: brief-db-corsa-saltata-non-e-una-corsa §8. ⭐ Rev 2026-10-15: le due INSERT scrivono ruolo_sessione = session_user, il ruolo che si e'' collegato (dentro una procedura DEFINER current_user sarebbe il proprietario). La riga di un fallimento la valorizza maintenance.fn_job_run_log_failure. Brief: brief-db-ruoli-di-sistema D-5. ⭐ Rev 2026-10-16: lo SQLSTATE dell''errore va in job_run_log.sqlstate; error_code diventa «il codice piu'' preciso che si ha» (D5): il codice di dominio quando l''errore rispetta il contratto «P0001 + CONSTRAINT valorizzato» di script.fn_log_and_raise_error, altrimenti lo SQLSTATE. Prima un errore di dominio di un job lasciava solo P0001. Il verbale fuori transazione riceve tutti e due (p_sqlstate in coda). Brief: brief-db-presidio-job-run-a-chi-tocca §4.4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

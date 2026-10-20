@@ -7,6 +7,8 @@ CREATE FUNCTION fn_genera_pratica_da_flusso(p_flusso_id bigint, p_regola_id bigi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.fn_genera_pratica_da_flusso(p_flusso_id bigint, p_regola_id bigint)
  RETURNS bigint
@@ -258,6 +260,8 @@ $function$
 COMMENT ON FUNCTION pratiche.fn_genera_pratica_da_flusso(p_flusso_id bigint, p_regola_id bigint)
 IS 'Genera pratica figlia da flusso completato secondo regola di generazione. Idempotente per (flusso, tipo dest): ritorna la figlia esistente. Copia emittente/soggetto/contesto/priorita; valorizza pratica_padre_id e flusso_origine_id; crea il flusso iniziale se la regola dichiara template_flusso_dest_id, RIMAPPANDOLO per codice nella definizione pinnata della figlia (D2-8 definizione-aware; fail-fast 512 se assente). Stato iniziale APERTA. rev 2026-10-08 (20261008-69): copia dalla madre anche billing_account_id (il cliente di cui parla la pratica). Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

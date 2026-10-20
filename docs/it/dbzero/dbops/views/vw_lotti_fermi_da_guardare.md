@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_lotti_fermi_da_guardare
 WITH (security_invoker=true) AS
@@ -30,6 +32,8 @@ SELECT s.lotto_id,
      LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id)))
   WHERE (s.fermo AND f.pre_fiscale AND (s.fermo_da < (now() - '01:00:00'::interval)));
 ```
+
+</div>
 
 
 ---

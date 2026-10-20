@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_utility_tipo_ruolo(p_utility_id integer, p_tipo_ruolo_i
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_guard_utility_tipo_ruolo(p_utility_id integer, p_tipo_ruolo_id integer, p_context text DEFAULT NULL::text)
  RETURNS void
@@ -105,6 +107,8 @@ $function$
 COMMENT ON FUNCTION script.fn_guard_utility_tipo_ruolo(p_utility_id integer, p_tipo_ruolo_id integer, p_context text)
 IS 'Guard utility→tipo_ruolo: fail-open se matrice assente; fail-close se presente e ruolo non ammesso. Errore: E_UTILITY_RUOLO_NON_AMMESSO.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

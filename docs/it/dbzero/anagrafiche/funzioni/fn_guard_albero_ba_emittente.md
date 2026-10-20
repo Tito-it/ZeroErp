@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_albero_ba_emittente(p_billing_account_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_albero_ba_emittente(p_billing_account_id bigint)
  RETURNS void
@@ -97,6 +99,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_guard_albero_ba_emittente(p_billing_account_id bigint)
 IS 'Guard fail-fast: verifica che il billing account indicato sia omogeneo per emittente con il PADRE e con TUTTI i FIGLI. Solleva E_ALBERO_EMITTENTE_MISTO nominando i due BA e i due emittenti. SECURITY DEFINER perche'' legge anagrafiche.billing_account, che ha la RLS: da SECURITY INVOKER un padre o un figlio di un altro emittente sarebbe invisibile e il guard direbbe «a posto» proprio nel caso da bloccare (brief §11.1). Nessuna eccezione per il pregresso e nessuna GUC di override: un invariante con l''interruttore non e'' un invariante. Brief P-1 §3.5. ⚠️ rev 2026-08-26: il corpo parla di «cambiare l''emittente di un BA» come di un movimento normale, e fino al 20260826-49 lo era. Ora quel movimento e'' ammesso solo finche'' il billing account non ha STORIA (fatture o commesse): lo presidia anagrafiche.trgfn_efba_guard_storia_emittente. ⭐ Questo guard NON cambia e resta indispensabile: risponde a un''altra domanda — l''omogeneita'' dell''albero — e i due cancelli si sommano invece di sovrapporsi. Brief: brief-db-billing-account-cambio-emittente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

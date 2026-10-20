@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_commesse_guard_transizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_commesse_guard_transizione()
  RETURNS trigger
@@ -107,6 +109,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_commesse_guard_transizione()
 IS 'Trigger function: enforcement del grafo transizioni stato commessa (matrice vendite.transizioni_stati_commessa) + regole di dominio delegate alle fn_check_* pure, condivise con script.fn_available_actions_commessa. rev 2026-08-04: anche l''ingresso in PRONTA_FATTURAZIONE passa dalla funzione pura (prima era scritto a mano nel trigger), perche'' la transizione diventa manuale e bottone e guard devono leggere lo stesso verdetto.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

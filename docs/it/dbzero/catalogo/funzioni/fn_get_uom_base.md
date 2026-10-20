@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_uom_base(p_articolo_id uuid)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.fn_get_uom_base(p_articolo_id uuid)
  RETURNS bigint
@@ -32,6 +34,8 @@ $function$
 COMMENT ON FUNCTION catalogo.fn_get_uom_base(p_articolo_id uuid)
 IS 'Ritorna la UoM BASE (uom_id) dell’articolo indicato. Se articolo non trovato o senza UoM, ritorna NULL.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

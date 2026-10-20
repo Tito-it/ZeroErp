@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_uo_id_for_user(p_auth_user_id integer)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_uo_id_for_user(p_auth_user_id integer)
  RETURNS integer
@@ -35,6 +37,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_uo_id_for_user(p_auth_user_id integer)
 IS 'Ritorna unita_organizzativa_id dell''operatore autenticato o NULL se non operatore / senza RU attiva / senza UO / inesistente. Catena: auth_user -> identita_digitali (OPERATORE) -> risorse_umane. STABLE, inlineable.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

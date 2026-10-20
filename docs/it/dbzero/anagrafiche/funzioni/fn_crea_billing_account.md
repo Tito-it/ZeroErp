@@ -7,6 +7,8 @@ CREATE FUNCTION fn_crea_billing_account(p_soggetto_ruolo_id bigint, p_utility_id
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_billing_account(p_soggetto_ruolo_id bigint, p_utility_id integer, p_campi jsonb DEFAULT '{}'::jsonb, p_istanza_utility_id bigint DEFAULT NULL::bigint, p_istanza jsonb DEFAULT '{}'::jsonb, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(billing_account_id bigint, istanza_utility_id bigint)
@@ -134,6 +136,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_crea_billing_account(p_soggetto_ruolo_id bigint, p_utility_id integer, p_campi jsonb, p_istanza_utility_id bigint, p_istanza jsonb, p_emittente_soggetto_ruolo_id bigint)
 IS 'BB (2026-10-18): crea il billing account di un ruolo per una utility, in una sola istruzione. Se p_istanza_utility_id e'' NULL nasce l''istanza utility fittizia del soggetto del ruolo, coi campi di p_istanza (codice, indirizzo_dettaglio_id); con un''istanza indicata p_istanza deve essere vuoto. Il BA coi campi di p_campi (categoria_cliente_id, codice, fatturazione_ordini, parent_account_id, valuta_id; le assenti e le null al DEFAULT, il codice lo genera il trigger; la categoria non ha default: risponde il NOT NULL), riletto a istruzione finita per (istanza_utility_id, utility_id) con script.fn_scrivi_riga_da_jsonb(..., p_rileggi_per): sotto la RLS il BA si vede solo dopo il legame scritto dal trigger AFTER z90_link_ef. Se p_emittente_soggetto_ruolo_id e'' indicato il BA si lega a quell''emittente (is_default = false); se z90 lo ha gia'' legato a un altro (operatore in sessione): E_SCRIPT_CHIAMATA_NON_VALIDA. Chiave estranea: E_CAMPO_NON_AMMESSO; ruolo inesistente: E_SOGGETTO_RUOLO_NON_TROVATO; chiamata malformata: E_SCRIPT_CHIAMATA_NON_VALIDA. Il resto (amministratore globale, coerenza soggetto/istanza, albero, unicita'') lo dicono i guard e i vincoli. Non cambia il modo dei vincoli: l''istanza vuole un satellite al commit (vincolo differito), e la finestra e'' di chi chiama. Limite: il guard z95 (un''istanza ha i BA di una sola azienda) scatta all''INSERT, prima del legame chiesto; senza sessione un secondo BA con un emittente esplicito su un''istanza esistente non passa (con la sessione il legame lo scrive z90, prima di z95). INVOKER. Ritorna (billing_account_id, istanza_utility_id). Prende il posto dei passi 2 e 3 di ClientiService._execute_creazione (2b-2, via anagrafiche.fn_crea_cliente) e degli INSERT di dbops.fn_pgtap_crea_cliente_ba. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 5).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

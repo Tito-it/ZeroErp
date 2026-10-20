@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_gestori_guard()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_gestori_guard()
  RETURNS trigger
@@ -111,6 +113,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_gestori_guard()
 IS 'Guard di dominio per anagrafiche.gestori.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

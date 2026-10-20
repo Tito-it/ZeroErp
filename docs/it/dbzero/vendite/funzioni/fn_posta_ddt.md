@@ -6,6 +6,8 @@ CREATE FUNCTION fn_posta_ddt(p_ddt_id bigint, p_fase text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_posta_ddt(p_ddt_id bigint, p_fase text)
  RETURNS TABLE(movimento_id bigint, prelievo_id bigint, qta numeric)
@@ -114,6 +116,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_posta_ddt(p_ddt_id bigint, p_fase text)
 IS 'Il posting di una bolla: un movimento per prelievo (sorgente DDT_VENDITA_PRELIEVO, D-L3-d), righe attive, in ordine di riga e di prelievo. p_fase = USCITA (all''EMESSO): dal magazzino della bolla, con la causale di magazzino della sua causale di trasporto (vendite.fn_ddt_causale_magazzino), quantita'' negativa, ubicazione di partenza, data della bolla; per la bolla di trasferimento transfer_uid = uid della bolla. p_fase = ARRIVO (al CONSEGNATO, solo trasferimento): nel magazzino di arrivo, TRASF_IN, ubicazione di arrivo, stesso transfer_uid — il costo e'' quello dell''uscita, lo trova la primitiva. Non ricontrolla (la primitiva e'' la rete, la check della merce ha gia'' parlato), non crea prelievi, non guarda lo stato: QUANDO lo decide il verbo. SECURITY DEFINER, RISERVATA: ci si arriva solo da vendite.fn_cambia_stato_ddt. Ritorna (movimento_id, prelievo_id, qta). Sta in vendite e non in magazzino: chi muove merce scrive il proprio posting e chiama la primitiva, il registro non legge le tabelle di un documento (D-2). Fino al 2026-10-01 era magazzino.fn_posta_ddt. Brief: brief-db-magazzino-lotto-3-scarico-da-ddt (P-7), brief-db-magazzino-registro-anello-interno (P-1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

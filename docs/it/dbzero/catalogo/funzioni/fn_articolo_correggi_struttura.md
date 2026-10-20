@@ -7,6 +7,8 @@ CREATE FUNCTION fn_articolo_correggi_struttura(p_articolo_id uuid, p_campi jsonb
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION catalogo.fn_articolo_correggi_struttura(p_articolo_id uuid, p_campi jsonb)
  RETURNS void
@@ -123,6 +125,8 @@ $function$
 COMMENT ON FUNCTION catalogo.fn_articolo_correggi_struttura(p_articolo_id uuid, p_campi jsonb)
 IS 'VERBO (A-10 di brief-db-articoli-ammessi-per-documento, 2026-10-13): la porta amministratore della regola «un articolo usato non cambia i flag strutturali» (catalogo.trgfn_articoli_guard_struttura_se_usato). Solo SUPER_ADMIN (script.fn_guard_super_admin su app.current_user_id; altrimenti E_PERMESSO_NEGATO). p_campi: oggetto jsonb con le sole colonne da cambiare fra quelle di catalogo.fn_articolo_colonne_struttura() (vuoto, non oggetto o chiavi estranee -> E_PARAMETRO_INVALIDO); articolo assente -> E_ARTICOLO_NOT_FOUND. Scrive le sole colonne passate, ciascuna col tipo della sua colonna (jsonb_populate_record), con la GUC transazionale zeroerp.articolo_correggi_struttura = id dell''articolo, che il guard onora solo insieme al proprietario della tabella (questo verbo e'' SECURITY DEFINER), e la richiude. Gli altri guard dell''articolo parlano lo stesso. Poi confronta le righe vive non ammesse (catalogo.fn_articolo_righe_vive_non_ammesse: attive, documento non chiuso, primo motivo di script.fn_check_articolo_riga) prima e dopo la scrittura, in tutte le aziende: se la correzione RENDE non ammessa almeno una riga -> E_ARTICOLO_STRUTTURA_RIGHE_APERTE (valori: codice, righe, documenti; dettaglio.righe: le prime 50, col codice del motivo) e la correzione si annulla. Una riga gia'' non ammessa prima non blocca. Le righe gia'' scritte non si toccano. La via normale resta un articolo nuovo. search_path bloccato; EXECUTE solo all''app. Rev 2026-10-18 (R-DB-3): le colonne dalla sede leggibile. Rev 2026-10-18 (A-11 di Tid): le righe vive (20261018-72), poi solo quelle che la correzione rende non ammesse (20261018-74).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

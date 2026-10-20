@@ -7,6 +7,8 @@ CREATE FUNCTION fn_riporta_attivita_da_emettere(p_attivita_fatturabili_ids bigin
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_riporta_attivita_da_emettere(p_attivita_fatturabili_ids bigint[])
  RETURNS TABLE(riportate integer, riemesse_attivita integer)
@@ -169,6 +171,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_riporta_attivita_da_emettere(p_attivita_fatturabili_ids bigint[])
 IS 'Verbo «Riporta da emettere»: rimette in coda di fatturazione un elenco di vendite.attivita_fatturabili RESIDUE. Le libera (lucchetto, timbro, legame con la riga di fattura, stato di esecuzione) e riporta a NON_EMESSA le vendite.commesse_attivita che erano passate a EMESSA per causa loro; il lavoro ricompare in «Da emettere» e segue il giro normale — nessun lotto viene rigenerato, nessuna fattura viene ricreata. ⭐ Non inventa logica: sono le STESSE due scritture della pulizia, e vivono nella primitiva condivisa vendite.fn_libera_attivita_fatturabili. I motivi ostativi stanno in script.fn_check_attivita_riportabile_da_emettere, che li compone tutti; qui si solleva il PRIMO, con il contesto che porta l''elenco completo per il backend. ⛔ NON imposta la GUC zeroerp.maintenance_reset_lotto_draft, ed e'' il presidio: su un''attivita'' ORFANA fattura_riga_id e'' gia'' NULL e trgfn_attivita_fatturabili_guard_fatturato lascia passare da se''; impostarla sarebbe l''unico modo di trasformare questo verbo in un modo per SCOLLEGARE UNA FATTURA VIVA. Il guard di dominio e quello di riga dicono cosi'' la stessa cosa da due livelli diversi: se il primo si rompesse, il trigger tiene. ⚠️ Il lock (FOR UPDATE, ORDER BY id) viene PRIMA dei motivi: due riporti concorrenti scriverebbero altrimenti due eventi di log per un solo riporto, e l''ORDER BY evita il deadlock fra selezioni che si intersecano in ordine opposto. ⚠️ E lock_batch_id e stato_esecuzione si fotografano PRIMA di liberare, perche'' sono cio'' che il log deve raccontare e la primitiva li azzera. ⭐ Q-2 (Tid, 2026-08-26): NESSUN motivo richiesto — a differenza di fn_annulla_commessa_attivita, qui non si distrugge niente: se il riporto era sbagliato si rifattura e si e'' al punto di prima. Ma il log e'' SEMPRE scritto (evento RIGA_RIPORTATA_DA_EMETTERE su vendite.commesse_attivita_log): serve il FATTO, non la RAGIONE, perche'' «il lavoro e'' sparito da un lotto» non deve poter essere indistinguibile da un difetto. ⭐ Q-8 (Tid, 2026-08-26): vale ANCHE sulle attivita'' di RETTIFICA, e NON c''e'' whitelist su tipo_movimento. ⚠️ La distinzione ORIGINE/NATURA ha gia'' morso il dominio il 2026-08-20 su fn_annulla_commessa_attivita, dove la risposta e'' stata OPPOSTA (whitelist su ONERE): li'' il verbo DISTRUGGE e lasciar passare una riga di nota di credito lasciava l''accredito senza documento. Qui il verbo NON distrugge — rimettere in coda una rettifica orfana rigenera la nota di credito al giro successivo, che e'' gia'' il comportamento dichiarato nella guida operativa. ⚠️ E'' SINCRONO: due scritture, una transazione, nessun job. Accodarlo per simmetria con «Rendi definitive» importerebbe il problema della dedup, che qui non esiste. Permesso: riporta_da_emettere (config.azioni_processo id 33), presidiato dal backend. Piano: brief-db-lavoro-che-non-torna-indietro, L5 / D-4.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

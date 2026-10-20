@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_tipi_prestazione_bootstrap_definizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_tipi_prestazione_bootstrap_definizione()
  RETURNS trigger
@@ -50,6 +52,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_tipi_prestazione_bootstrap_definizione()
 IS 'AFTER INSERT su pratiche.tipi_prestazione: crea il preset v1 PUBBLICATA della definizione workflow del nuovo tipo (idempotente). Invariante Fase 0: ogni tipo ha sempre un preset risolvibile da fn_risolvi_definizione. SECURITY DEFINER con search_path fisso: workflow_definizioni e'' in sola lettura per il ruolo applicativo (20260703-15), e da INVOKER questo bootstrap rendeva impossibile creare un tipo di prestazione. Stessa strada di fn_fork_nuova_versione e fn_pubblica_definizione.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

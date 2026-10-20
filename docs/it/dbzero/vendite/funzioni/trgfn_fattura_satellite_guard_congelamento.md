@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fattura_satellite_guard_congelamento()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento()
  RETURNS trigger
@@ -130,6 +132,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fattura_satellite_guard_congelamento()
 IS 'Guard (BEFORE INSERT OR UPDATE OR DELETE) PARAMETRICO per i satelliti della fattura: oltre la soglia DRAFT/EMESSA il documento e'' uno snapshot fiscale e i suoi satelliti non si toccano piu''. La colonna FK verso vendite.fatture si passa in TG_ARGV[0], cosi'' la stessa regola vale su fatture_scadenze, fatture_indirizzi e (quando servira'') fatture_riepiloghi_iva senza copie da tenere allineate. Soglia identica a fn_ricalcola_riepilogo_iva_fattura, per codice_interno. Bypass via GUC zeroerp.maintenance_reset_lotto_draft, che vendite.fn_cleanup_fatture_by_ids imposta per il reset lotto. Esce in testa se la fattura non ha stato: e'' il caso della DELETE in CASCADE dalla testata, in cui la riga padre non esiste piu'' quando i figli scattano. Errore: E_FATTURA_SATELLITE_CONGELATO. Modello: trgfn_fatture_righe_guard_congelamento. piano-db-satelliti-fattura C-11, Fase 1.1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

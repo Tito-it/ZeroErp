@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_billing_account_guard_soggetto_coerenza_istanza()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza()
  RETURNS trigger
@@ -80,6 +82,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza()
 IS 'Guard del ruolo del billing account: (1) soggetti_ruoli.soggetto_id = istanze_utilities.soggetto_id, E_BA_SOGGETTO_INCOERENTE_ISTANZA — rev 2026-10-19 (D-17b, brief-db-processi-accensione-per-ambiente §6.17.1): il confronto dal BB anagrafiche.fn_istanza_di_altro_soggetto, comune ai guard di indirizzi, contatti, conti del ruolo e pratiche (regola del 2); codice, contesto e frase invariati; (2) rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-7): il ruolo e'' di tipo CLIENTE, dal BB script.fn_guard_soggetto_ruolo(NULL, sr, ''CL''), E_SOGGETTI_RUOLI — prima un BA poteva nascere sul ruolo FORNITORE del soggetto giusto, perche'' si confrontava il soggetto e non il tipo. Trigger in fascia _a20_ (dal 20261009-69): dopo il lock di colonna, che su UPDATE del ruolo o dell''istanza deve parlare per primo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

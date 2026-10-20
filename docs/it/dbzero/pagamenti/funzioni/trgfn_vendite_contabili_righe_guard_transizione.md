@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_vendite_contabili_righe_guard_transizione()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_transizione()
  RETURNS trigger
@@ -76,6 +78,8 @@ $function$
 COMMENT ON FUNCTION pagamenti.trgfn_vendite_contabili_righe_guard_transizione()
 IS 'Guard del grafo degli stati della riga contabile, da pagamenti.transizioni_stati_contabile_riga. Solo UPDATE OF stato_id. ⭐ Con POSTATA terminale chiude per costruzione il difetto C-2: il sync dei fondi non puo'' piu'' riportare ad ABBINATA una riga il cui movimento esiste gia''.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

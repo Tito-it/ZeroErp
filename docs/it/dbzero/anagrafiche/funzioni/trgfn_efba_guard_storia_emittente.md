@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_efba_guard_storia_emittente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente()
  RETURNS trigger
@@ -123,6 +125,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente()
 IS 'Trigger BEFORE INSERT/UPDATE/DELETE su anagrafiche.emittenti_fiscali_billing_account: presidia i movimenti che cambiano l''emittente di un billing account e li blocca quando quel cliente ha gia'' della storia (fatture o commesse), delegando ad anagrafiche.fn_guard_ba_cambio_emittente e, per il raggio N, ad anagrafiche.fn_guard_ba_gestore_globale_storia. La tassonomia dei movimenti e'' la stessa gia'' scritta in anagrafiche.trgfn_efba_guard_albero_emittente e non e'' stata reinventata: INSERT di un mapping specifico (prima = gestore globale), UPDATE dell''emittente sul mapping (prima = OLD, dopo = NEW), UPDATE che sposta il mapping da un BA a un altro (si guardano ENTRAMBI i billing account), DELETE del mapping specifico (dopo = gestore globale), riga senza billing account = gestore globale (raggio N). ⚠️ La CANCELLAZIONE non e'' un caso di scuola: verificato il 2026-08-26, il backend non ha nessun UPDATE sul mapping — la sotto-risorsa espone create_mapping e delete_mapping — quindi «spostare un BA da un emittente all''altro» si fa con DELETE + INSERT, e un guard sul solo INSERT lascerebbe passare tutto perche'' il danno lo fa la cancellazione. ⚠️ BEFORE e non AFTER come il fratello, ed e'' una differenza motivata: quello e'' z95 AFTER perche'' RILEGGE il mapping per risolvere l''emittente e gli serve lo stato finale, questo ricava «prima» e «dopo» da OLD/NEW e sta in a10, la fase dei guard di blocco. ⛔ Sul DELETE il «dopo» NON si calcola con script.fn_get_ba_emittente_sr_id: in un BEFORE DELETE la riga c''e'' ancora e il risolutore risponderebbe il mapping che si sta cancellando — «prima» e «dopo» coinciderebbero e il guard non scatterebbe mai. Si legge direttamente dalla riga is_default, escludendo quella in cancellazione. ⛔ E in un BEFORE DELETE si ritorna OLD: NEW li'' e'' NULL, e un RETURN NULL annullerebbe la cancellazione in silenzio — la differenza fra un guard che blocca dicendolo e uno che fa sparire il gesto senza errori. ⚠️ Convive con trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt senza ordine critico (a10 prima di z95): i due sono complementari — uno dice «l''albero non puo'' diventare misto», l''altro «la storia non si sposta». Piano: brief-db-billing-account-cambio-emittente, M3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

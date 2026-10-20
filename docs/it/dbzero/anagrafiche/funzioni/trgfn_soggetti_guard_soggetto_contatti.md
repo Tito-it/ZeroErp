@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_soggetti_guard_soggetto_contatti()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti()
  RETURNS trigger
@@ -53,6 +55,8 @@ AS $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_soggetto_contatti()
 IS 'Trigger che verifica al commit che un soggetto abbia almeno un contatto valido;utilizza fn_log_and_raise_error per log e exception.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pannello_scrivi(p_tabella text, p_id bigint, p_dati jsonb)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.fn_pannello_scrivi(p_tabella text, p_id bigint, p_dati jsonb)
  RETURNS jsonb
@@ -114,6 +116,8 @@ $function$
 COMMENT ON FUNCTION config.fn_pannello_scrivi(p_tabella text, p_id bigint, p_dati jsonb)
 IS 'VERBO del pannello di configurazione (modello «una scrittura = un verbo», D-3 di brief-db-permesso-nel-verbo-di-scrittura). Scrive una riga di una tabella di config.tabelle_gestibili con pannello = true: p_id NULL = INSERT, altrimenti UPDATE per id. Passo 0: tabella in lista, esistente e SENZA RLS (il verbo non sa rimettere un perimetro, D-P2) -> altrimenti E_PANNELLO_TABELLA_NON_AMMESSA. Passo 1: script.fn_guard_livello(utente, app_label, model_name, TUTTO) sull''oggetto della riga di lista, non sull''area del pannello (E_PERMESSO_NEGATO). Passo 2: p_dati oggetto jsonb non vuoto (E_PANNELLO_DATI_VUOTI) con sole colonne scrivibili, che da'' config.fn_pannello_colonne_scrivibili (sede unica della regola, letta anche dal metadata del backend); una chiave estranea si RIFIUTA (E_PANNELLO_CAMPO_NON_AMMESSO con campo, D-P3). Passo 3: valori convertiti da jsonb_populate_record sul tipo di riga, scritte solo le colonne del payload; UPDATE su id assente -> E_PANNELLO_RIGA_NON_TROVATA. Ritorna la riga con id e le colonne scrivibili, cioe'' i campi del form. I trigger della tabella scattano come sempre. Nessun DELETE. SECURITY DEFINER del proprietario con search_path bloccato; il nome della tabella si compone dalla lista con format(%I.%I). Brief: brief-db-pannello-config-verbo-generico §3.3 e §6. Rev 2026-10-17: la scrittura del passo 3 la fa il BB script.fn_scrivi_riga_da_jsonb e la chiave estranea del passo 2 la trova script.fn_prima_chiave_estranea (regola del 2, brief-db-processi-accensione-per-ambiente 2b-1); comportamento, codici e firma invariati.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

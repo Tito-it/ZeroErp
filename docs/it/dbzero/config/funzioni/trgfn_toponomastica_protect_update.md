@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_toponomastica_protect_update()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_toponomastica_protect_update()
  RETURNS trigger
@@ -46,6 +48,8 @@ COMMENT ON FUNCTION config.trgfn_toponomastica_protect_update()
 IS 'Trigger function per proteggere aggiornamenti non autorizzati su config.toponomastica.
   Operazioni di manutenzione possono essere abilitate tramite la GUC ''zeroerp.maintenance_toponomastica''.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_annotazioni_fattura(p_fattura_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_annotazioni_fattura(p_fattura_id bigint)
  RETURNS TABLE(codice text, testo text, ordine integer)
@@ -54,6 +56,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_annotazioni_fattura(p_fattura_id bigint)
 IS 'Le annotazioni di legge che una fattura deve stampare: una riga (codice, testo, ordine) per voce, nell''ordine di stampa; nessuna voce = nessuna riga. Oggi una voce, ESIGIBILITA_DIFFERITA: il regime della fattura (vendite.fn_regime_fiscale_fattura, lo stesso delle righe) e'' per cassa e almeno una riga e'' a esigibilita'' D; testo da config.regimi_fiscali.annotazione_documento. Le voci future sono righe nuove di questa funzione, senza forma nuova del contesto ne'' versione nuova del template. La legge il builder della fattura (forma 4). Solleva E_VENDITE_CHIAMATA_NON_VALIDA su un id nullo o non positivo. Brief: brief-db-esigibilita-iva-per-cassa-emittente (R-DB-3, AN-1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

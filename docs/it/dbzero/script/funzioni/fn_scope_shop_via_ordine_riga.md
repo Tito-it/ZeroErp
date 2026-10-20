@@ -6,6 +6,8 @@ CREATE FUNCTION fn_scope_shop_via_ordine_riga(p_identita_id bigint, p_riga_id bi
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_shop_via_ordine_riga(p_identita_id bigint, p_riga_id bigint)
  RETURNS boolean
@@ -22,6 +24,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_shop_via_ordine_riga(p_identita_id bigint, p_riga_id bigint)
 IS 'Come fn_scope_shop_via_ordine ma a partire da una riga d''ordine.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

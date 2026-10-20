@@ -7,6 +7,8 @@ CREATE FUNCTION fn_gruppi_trascinati_da_uscita(p_lotto_id bigint, p_gruppo_key t
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_gruppi_trascinati_da_uscita(p_lotto_id bigint, p_gruppo_key text)
  RETURNS jsonb
@@ -53,6 +55,8 @@ $function$
 COMMENT ON FUNCTION script.fn_gruppi_trascinati_da_uscita(p_lotto_id bigint, p_gruppo_key text)
 IS 'Gli ALTRI documenti del lotto che condividono una bozza con quello indicato: se lui esce dal giro la bozza viene cancellata, e loro tornano «da emettere» con l''esito riportato a PENDING. Ritorna [] quando l''uscita non trascina nessuno — ed e'' il caso del documento caduto al PULL, che una bozza non l''ha mai avuta. ⭐ SEDE UNICA di tre consumatori: il conteggio sulla riga a video, la frase di conferma, e il reset che fa vendite.fn_escludi_documento_da_giro. Scritta tre volte, il giorno che una cambia l''operatore vede un numero e ne subisce un altro. ⛔ La bozza condivisa NON e'' un motivo di rifiuto (D-2b): rifiutare li'' lascerebbe bloccati anche i documenti di un''ALTRA bozza — il sequestro di partenza in forma piu'' stretta. Legge script.vw_lotto_documento_righe, dove vive la catena. Brief: brief-db-uscita-documento-dal-giro §5.4-bis.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

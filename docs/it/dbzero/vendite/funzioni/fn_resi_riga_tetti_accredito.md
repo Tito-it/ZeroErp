@@ -7,6 +7,8 @@ CREATE FUNCTION fn_resi_riga_tetti_accredito(p_resi_riga_id bigint, p_fattura_ri
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_resi_riga_tetti_accredito(p_resi_riga_id bigint, p_fattura_riga_id bigint)
  RETURNS TABLE(accredito_dovuto numeric, qta_riga_fattura numeric)
@@ -56,6 +58,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_resi_riga_tetti_accredito(p_resi_riga_id bigint, p_fattura_riga_id bigint)
 IS 'I due tetti dell''accredito di una riga di reso, letti SOPRA la RLS: l''accredito dovuto secondo il conto della merce (in unita'' PADRE) e la quantita'' della riga di fattura che si sta rettificando (in unita'' di riga). ⭐ rev 2026-09-21 (D14 giro 2, D3): il primo tetto si legge PER DOCUMENTO da vendite.fn_resi_da_accreditare(ARRAY[ddt della riga resa], NULL) — la coda di quel DDT — e non piu'' da vw_resi_da_accreditare intera, che questo guard pagava a ogni riga scritta sul ponte; stesso numero (la vista e'' la proiezione della funzione). ⚠️ SECURITY DEFINER perche'' i consumatori sono un guard (trgfn_resi_accrediti_guard) e una funzione madre: sotto RLS una riga fuori perimetro si legge come «non c''e''», e un tetto letto zero smette di dire la verita''. Dentro la DEFINER la funzione INVOKER a valle gira come l''owner, sopra la RLS. search_path fissato: una SECURITY DEFINER senza e'' dirottabile (i corpi BEGIN ATOMIC a valle hanno i nomi gia'' risolti). Restituisce 0 sull''assenza, che e'' il valore fail-closed; su una riga inesistente il seme e'' ''{}'' (zero righe, non «tutta la coda»). ⭐ Le due misure sono in UNITA'' DIVERSE e vanno consumate da due presidi diversi: su un articolo composito tre righe di documento valgono UNA unita'' di merce (vw_af_merce_per_riga calcola quantita_padre = max(quantita/coeff_qta), non la somma). brief-design-note-credito-resi D-NC-10. rev 2026-08-18.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

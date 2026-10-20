@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_lotto_fatture_guard_stato_coerente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_lotto_fatture_guard_stato_coerente()
  RETURNS trigger
@@ -54,6 +56,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_lotto_fatture_guard_stato_coerente()
 IS 'Trigger function condivisa dai constraint trigger DEFERRED su vendite.fatture, vendite.fatturazione_lotti e vendite.fatturazione_lotti_fatture: risolve i lotti impattati dalla riga e delega a vendite.fn_guard_lotto_fatture_stato_coerente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

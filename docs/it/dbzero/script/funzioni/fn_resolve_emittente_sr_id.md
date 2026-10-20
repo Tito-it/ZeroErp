@@ -6,6 +6,8 @@ CREATE FUNCTION fn_resolve_emittente_sr_id(p_modo text, p_valore bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_resolve_emittente_sr_id(p_modo text, p_valore bigint)
  RETURNS bigint
@@ -90,6 +92,8 @@ $function$
 COMMENT ON FUNCTION script.fn_resolve_emittente_sr_id(p_modo text, p_valore bigint)
 IS 'Risolve il soggetto_ruolo_id dell''emittente di una riga FUORI dalla row security. ⭐ Gemello in convenzione SR di script.fn_resolve_emittente_fiscale_id: il doppio binario PK/SR e'' una scelta dichiarata del progetto (refactor-emittente-id-canonico, 2026-05-02). Modi: lotto | commessa | fattura — e in tutti e tre e'' una COPIA della colonna del padre, non una ricerca. ⚠️ SECURITY DEFINER perche'' le tre tabelle hanno la RLS accesa: per un utente fuori perimetro la riga non c''e'', e «non la vedo» non e'' «non esiste». ⚠️ Dipende dalla RLS abilitata e NON forzata (il proprietario la salta): con un FORCE va rivista. ⛔ Un modo sconosciuto SOLLEVA: restituire NULL farebbe smettere di scrivere il giornale in silenzio.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

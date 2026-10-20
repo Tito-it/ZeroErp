@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_regioni_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION config.trgfn_regioni_normalize()
  RETURNS trigger
@@ -34,6 +36,8 @@ AS $function$
 COMMENT ON FUNCTION config.trgfn_regioni_normalize()
 IS 'Function che pulisce i campi di config.regioni e imposta i valori di default per le colonne che non hanno un valore specificato: stato_id dal BB script.fn_stato_proposto_id (rev 2026-10-18: prima state_code_iso3 con fn_get_default_by_param, ritirati; D-1 di Tid).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_snapshot_fattura_lotto(p_lotto_id bigint, p_batch_size intege
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_snapshot_fattura_lotto(p_lotto_id bigint, p_batch_size integer DEFAULT 1000)
  RETURNS TABLE(fatture_count integer, inserted_rows integer, updated_rows integer, intestazioni_scritte integer, skipped_rows integer, failed_rows integer)
@@ -194,6 +196,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_snapshot_fattura_lotto(p_lotto_id bigint, p_batch_size integer)
 IS 'Wrapper di lotto dello snapshot della fattura: chiama le due sorelle — fn_snapshot_indirizzi_fattura e fn_snapshot_intestazione_fattura — nello stesso giro e nella stessa transazione. Rinominata da fn_snapshot_indirizzi_lotto il 2026-07-31: da quando scrive anche l''intestazione, il vecchio nome diceva meta'' della verita'' (precedente D-L). Il task_code del registry resta `snapshot_indirizzi_lotto`, che e'' l''identita'' stabile del passo di pipeline. (1) Le fatture oltre EMESSA si FILTRANO prima di scrivere (D-F esteso): per un documento definitivo non c''e'' lavoro da fare, quindi il giro non si ferma e resta una sola nota informativa di lotto. (2) Il fallimento di UNA fattura non uccide il giro (D-Q): sotto-blocco BEGIN/EXCEPTION che comprende ENTRAMBE le sorelle — se una fallisce non resta niente di parziale — la fattura viene marcata ''C'' su fatture_log e il giro prosegue. Si cattura raise_exception (P0001), non others. (3) Al successo il task ritira le PROPRIE segnalazioni, filtrando su meta->>''task'': il source e'' il nome della funzione e le funzioni si rinominano, il task_code no. Sei contatori: fatture_count, inserted_rows, updated_rows, intestazioni_scritte, skipped_rows, failed_rows — l''intestazione non produce righe e non poteva entrare in inserted/updated senza mescolare unita'' di misura. piano-db-satelliti-fattura Fase 2.2 + brief intestazione §3.3. ⭐ rev 2026-08-21 (cantiere brief-db-liste-drawer-lotto, L1/P-3): il ramo EXCEPTION cattura anche CONSTRAINT_NAME e lo scrive in meta->>''error_code''. Prima registrava solo RETURNED_SQLSTATE, che qui vale SEMPRE P0001 per costruzione — la clausola cattura `raise_exception` e nient''altro — quindi come codice non distingueva niente: una chiave che risponde sempre lo stesso valore. Il codice registrato a catalogo, quello su cui il backend mappa status HTTP e ui_action, viaggia nel campo CONSTRAINT della diagnostica, dove lo mette script.fn_log_and_raise_error. jsonb_strip_nulls e non jsonb_build_object nudo: CONSTRAINT_NAME e'' vuoto quando l''errore non viene da fn_log_and_raise_error (un CHECK violato, per dire), e una chiave presente con valore null in una lista si legge come una cella bianca indistinguibile da «non c''e''». Le altre quattro chiavi non sono mai nulle, quindi lo strip non puo'' mangiare altro. FORWARD-ONLY: le righe di log gia'' scritte non hanno il codice e non lo avranno mai, perche'' dal testo del messaggio non e'' ricostruibile.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

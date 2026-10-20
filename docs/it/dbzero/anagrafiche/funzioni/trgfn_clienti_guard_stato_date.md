@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_clienti_guard_stato_date()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_guard_stato_date()
  RETURNS trigger
@@ -135,6 +137,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_clienti_guard_stato_date()
 IS 'Guard BEFORE INSERT OR UPDATE su anagrafiche.clienti (C-5, C-6 di Tid del 2026-10-13/14): (1) il cambio di stato segue config.transizioni_stati_cliente (E_CLIENTE_STATO_TRANSIZIONE_INVALIDA; l''INSERT non passa dal grafo); (2) da chiuso (CH, CM, CW, CF) la data di chiusura non cambia (E_CLIENTE_DATA_CHIUSURA_IMMUTABILE); (3) ogni stato pretende la sua data: AT/RS l''attivazione, SF/SC anche la sospensione, i chiusi anche la chiusura, AT da un sospeso la riattivazione (E_CLIENTE_STATO_SENZA_DATA); la chiusura non precede l''attivazione (E_DATA_CHIUSURA). PR, AN, AG senza date pretese. La frase porta il codice del billing account. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

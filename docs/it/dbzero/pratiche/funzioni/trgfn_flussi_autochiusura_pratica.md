@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_autochiusura_pratica()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_autochiusura_pratica()
  RETURNS trigger
@@ -102,6 +104,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_autochiusura_pratica()
 IS 'AFTER UPDATE OF stato_id su flussi: al completamento chiude la pratica padre (APERTA -> CHIUSA) secondo il modello misto (flusso di chiusura | auto con >=1 obbligatorio | no-op). Fork-aware: flusso di chiusura e gate obbligatori scopati per la DEFINIZIONE pinnata (definizione_id), non per tipo. Il modello auto usa fn_check_pratica_chiudibile con predicato D1 (nessun bloccante E nessun flusso aperto, escluso NEW.id). Riusa guard transizione/chiusura e giornale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

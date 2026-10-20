@@ -7,6 +7,8 @@ CREATE FUNCTION fn_audit_summary(p_audit_source_code text, p_storico_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_audit_summary(p_audit_source_code text, p_storico_id bigint)
  RETURNS jsonb
@@ -193,6 +195,8 @@ $function$
 COMMENT ON FUNCTION script.fn_audit_summary(p_audit_source_code text, p_storico_id bigint)
 IS 'Diff lazy on-read fra uno snapshot storico e il suo precedente sulla stessa riga originale (Fase 5 P1 2026-04-29). Dispatch dinamico via dbops.audit_sources (storico_table + storico_pk_col). Ritorna jsonb {summary: "<N> modifiche", diff: [{field,old,new},...]}. Esclude le 5 colonne audit standard. NULL-safe via IS DISTINCT FROM. LANGUAGE plpgsql STABLE - nessuna scrittura, nessun trigger, nessuna colonna aggiuntiva sulle storico.*';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_resi_righe_effettive
 WITH (security_invoker=on) AS
@@ -23,6 +25,8 @@ SELECT rr.id AS resi_riga_id,
      JOIN config.tipi_reso tr ON ((tr.id = rr.tipo_reso_id)))
   WHERE (((sr.codice_interno)::text = 'CONFERMATO'::text) AND (rr.attivo IS TRUE));
 ```
+
+</div>
 
 
 ---

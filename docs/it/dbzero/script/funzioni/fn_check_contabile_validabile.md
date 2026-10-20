@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_contabile_validabile(p_contabile_id bigint, p_importo_d
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_contabile_validabile(p_contabile_id bigint, p_importo_dichiarato numeric)
  RETURNS jsonb
@@ -145,6 +147,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_contabile_validabile(p_contabile_id bigint, p_importo_dichiarato numeric)
 IS 'Pure check (§12.5.1): i motivi che impediscono di portare una distinta contabile a VALIDATA — «ho finito di inserire» (D14-a-bis). Ritorna [] se si puo'', altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio, valori}. NOMINA i codici e non solleva (salvo i due guard di chiamata). ⭐ SEDE UNICA del predicato: pagamenti.trgfn_vendite_contabili_guard_validazione la CHIAMA entrando in VALIDATA e solleva il codice del primo motivo con fn_raise_primo_motivo_se_presente; il backend la legge nel dettaglio della distinta (can_validare, validazione_blocco_*) per spegnere «Porta a VALIDATA» col perche'' — cosi'' tooltip e rifiuto non possono divergere (§12.5.2). ⚠️ L''ORDINE e'' il contratto: (1) RIGHE_NON_LAVORATE — righe attive in uno stato con lavorata = false (IMPORTATA, DA_ABBINARE: la domanda si fa al catalogo, D20-a), codice E_CONTABILE_VALIDAZIONE_RIGHE_NON_LAVORATE, dettaglio con quante e gli id; (2) TOTALE_NON_QUADRA — solo se p_importo_dichiarato non e'' NULL e la somma delle righe attive (SCARTATA compresa) non corrisponde: riuso di E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA con gli stessi tre valori di prima, dettaglio con campo = importo_dichiarato. ⭐ Il dichiarato e'' un PARAMETRO e non si rilegge per id: il guard gira BEFORE ROW e il valore che sta entrando non e'' ancora nella tabella — una check che lo rileggesse verificherebbe il totale di ieri. Chi chiama passa quello che vede (NEW.importo_dichiarato nel guard, c.importo_dichiarato nel backend). Nessun DEFAULT: NULL e'' «non dichiara niente» (D12), un valore legittimo, e dimenticarlo deve non compilare. ⚠️ SECURITY INVOKER sotto la row security: una distinta che non si legge — inesistente o di un altro — solleva E_CONTABILE_NON_TROVATA (404, no-leak); rispondere [] sarebbe un fail-open. ⛔ Guard di parametro su E_PAGAMENTI_CHIAMATA_NON_VALIDA (TECNICO). ⛔ Il reason non porta il prefisso E_. ⚠️ Le reason_key pagamenti.distinte.validazione_reason.* sono un DEBITO VERSO IL FE (FE-6). Brief: brief-db-validata-e-registrazione-tardiva §2.1 (D20-a), §4 P-3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_identita_digitali_guard_natura_credenziale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_natura_credenziale()
  RETURNS trigger
@@ -74,6 +76,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_natura_credenziale()
 IS 'Guard a10 su anagrafiche.identita_digitali (BEFORE INSERT / UPDATE OF auth_user_id, ruolo_applicativo, tecnica): tutte le vesti di una credenziale, anche spente, hanno la stessa natura, persona o macchina (script.fn_veste_di_sistema). Altrimenti E_CREDENZIALE_PERSONA_E_SISTEMA. Una credenziale e'' una password per tutte le porte, e le sue azioni (blocco, secondo fattore) sono di tutte le sue vesti: su una credenziale mista bloccare la persona fermerebbe il processo. Rende univoca la categoria script.fn_categoria_accesso. Le righe gia'' scritte, e la gara fra due transazioni concorrenti, le segnala il presidio dbops.vw_credenziali_da_sanare. Brief: brief-db-be-fe-area-accessi (R-DB-A1).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

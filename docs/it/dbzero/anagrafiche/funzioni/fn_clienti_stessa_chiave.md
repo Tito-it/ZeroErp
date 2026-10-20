@@ -7,6 +7,8 @@ CREATE FUNCTION fn_clienti_stessa_chiave(p_soggetto_ruolo_id bigint, p_utility_i
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_clienti_stessa_chiave(p_soggetto_ruolo_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint)
  RETURNS TABLE(cliente_id bigint, billing_account_id bigint, billing_account_codice character varying, istanza_utility_id bigint, stato_codice_interno character varying, data_attivazione date, data_chiusura date, periodo daterange)
@@ -49,6 +51,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_clienti_stessa_chiave(p_soggetto_ruolo_id bigint, p_utility_id integer, p_emittente_soggetto_ruolo_id bigint)
 IS 'I clienti delle istanze fittizie che occupano la chiave soggetto (ruolo CL) + utility + azienda emittente (C-1 di Tid del 2026-10-13): con un periodo e in uno stato di fornitura per elenco (AT, RS, SF, SC, CH, CM, CW, CF; fuori AN, PR, AG). L''azienda si legge per l''installazione (script.fn_get_ba_emittente_sr_id_installazione), mai per chi agisce. Restituisce anche il periodo: la sovrapposizione la decide chi legge. Predicato unico (C-4) di tre lettori: il guard anagrafiche.fn_guard_cliente_chiave_unica (E_CLIENTE_STESSA_CHIAVE), l''avviso del pre-contrattuale (BE) e la catena delle fittizie (anagrafiche.trgfn_clienti_set_parent_istanza, C-9). SECURITY DEFINER: clienti e billing_account sono in RLS. Ordine: data_attivazione e id decrescenti. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

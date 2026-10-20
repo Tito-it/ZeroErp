@@ -7,6 +7,8 @@ CREATE FUNCTION fn_ordine_riga_qta_riconsegna(p_ordine_riga_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_ordine_riga_qta_riconsegna(p_ordine_riga_id bigint)
  RETURNS numeric
@@ -63,6 +65,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_ordine_riga_qta_riconsegna(p_ordine_riga_id bigint)
 IS 'Addendo reso del residuo per riga ordine: Sigma quantita (base) delle righe reso EFFETTIVE (vw_resi_righe_effettive) di tipo riapre_residuo, AL NETTO della quota rinunciata (vendite.resi_righe_rinunce). Single source per fn_ordine_ha_residuo_evasione e trgfn_ordini_ful_guard_consistenza (coerenza formula). rev 2026-07-13. rev 2026-07-17 (step 2): legge l helper unico; ora filtra anche resi_righe.attivo (canonico CONFERMATI+attivi). rev 2026-07-26 (brief-db-chiusura-riconsegna-reso-definitivo S4.2): sottrae le RINUNCE, cosi'' una quota dichiarata definitiva smette di pesare sul residuo e l''ordine passa a EVASO. La sottrazione sta QUI e NON in vw_resi_righe_effettive, che alimenta anche la partita di merce (vendite.fn_partite_merce; fino al 2026-09-22 vw_contatore_merce, ritirata dal 20260922-08): toccarla farebbe sparire l''accredito dalla coda. Si sottraggono solo le rinunce, non le ri-consegne (quelle sono gia'' contate come evaso dal fulfillment).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

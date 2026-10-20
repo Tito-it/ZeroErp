@@ -7,6 +7,8 @@ CREATE FUNCTION fn_generate_codice(tipo text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_generate_codice(tipo text)
  RETURNS text
@@ -96,6 +98,8 @@ $function$
 COMMENT ON FUNCTION script.fn_generate_codice(tipo text)
 IS 'Genera un codice basato su config.sistema_codici. Se usa_sequenza = false restituisce NULL. Richiede sequenza pre-provisionata <schema>.<tabella>_<colonna>_seq.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

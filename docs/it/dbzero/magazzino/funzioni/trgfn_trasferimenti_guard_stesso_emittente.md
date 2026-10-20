@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_trasferimenti_guard_stesso_emittente()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()
  RETURNS trigger
@@ -61,6 +63,8 @@ $function$
 COMMENT ON FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()
 IS 'Guard M-6 sui trasferimenti: i due magazzini devono appartenere allo stesso emittente fiscale, altrimenti E_MAG_TRASFERIMENTO_EMITTENTI_DIVERSI (DATO_ERRATO, campo magazzino_id_to: la destinazione la sceglie una persona). Legge magazzini sotto RLS: un magazzino fuori perimetro non risolve e si rifiuta lo stesso (fail-closed). La policy RLS di trasferimenti poggia su magazzino_id_from; questo guard copre la destinazione. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.7.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

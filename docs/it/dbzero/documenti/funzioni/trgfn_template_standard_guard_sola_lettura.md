@@ -6,6 +6,8 @@ CREATE FUNCTION trgfn_template_standard_guard_sola_lettura()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION documenti.trgfn_template_standard_guard_sola_lettura()
  RETURNS trigger
@@ -87,6 +89,8 @@ $function$
 COMMENT ON FUNCTION documenti.trgfn_template_standard_guard_sola_lettura()
 IS 'Guard BEFORE INSERT/UPDATE/DELETE su documenti.template_documenti e documenti.template_documenti_versioni (2026-10-20, brief-db-modelli-documento-standard D-2): il modello standard (colonna standard) e le sue versioni si scrivono solo dal proprietario della tabella (script.fn_is_proprietario_tabella: il seed e i changeSet). Dall''applicazione si leggono, e chi vuole un modello diverso lo personalizza per il suo emittente. Su UPDATE conta la riga di prima e quella di dopo; sulle versioni conta il modello padre di prima e di dopo. Rifiuto E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA (NON_PERMESSO; valori: codice del modello). Fase a05: parla prima degli altri guard e del default dell''emittente.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

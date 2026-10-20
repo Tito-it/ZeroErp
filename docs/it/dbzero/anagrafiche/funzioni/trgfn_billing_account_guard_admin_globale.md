@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_billing_account_guard_admin_globale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
  RETURNS trigger
@@ -61,6 +63,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_admin_globale()
 IS 'Guard BEFORE INSERT su billing_account: rifiuta la creazione quando l''utente non ha un emittente fiscale su cui scrivere, cioe'' ne'' una riga in config.user_emittenti_fiscali ne'' un app.current_emittente_id valido per lui (tipicamente il super admin in «Tutti gli emittenti»), ed esistono emittenti fiscali attivi. La regola e'' delegata a script.fn_check_user_can_create_ba (rev 2026-08-04). Skip se GUC app.current_user_id non impostato (seed/bootstrap). Solleva E_BA_ADMIN_GLOBALE_VIETATO (il nome del codice resta per compatibilita'').';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

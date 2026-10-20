@@ -7,6 +7,8 @@ CREATE FUNCTION fn_arrotonda_importo(p_valore numeric, p_decimali integer, p_met
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_arrotonda_importo(p_valore numeric, p_decimali integer, p_metodo text)
  RETURNS numeric
@@ -85,6 +87,8 @@ $function$
 COMMENT ON FUNCTION script.fn_arrotonda_importo(p_valore numeric, p_decimali integer, p_metodo text)
 IS 'Arrotonda un importo secondo decimali e metodo configurati, in UN punto solo per tutto il database. Vocabolario unico del modello (20260728-07): UP = allontana da zero, DOWN = avvicina a zero, HALF_UP = sul mezzo allontana, HALF_DOWN = sul mezzo avvicina. Estratta dal CASE inline di vendite.fn_ricalcola_totali_fattura, di cui conserva esattamente la semantica sui negativi (ceil/floor sull''assoluto col segno riapplicato). ⚠️ Un metodo non riconosciuto SOLLEVA E_PARAMETRO_INVALIDO invece di cadere in un default silenzioso: il CASE inline assorbiva l''ignoto in HALF_UP, e un importo sbagliato che sembra giusto e'' il peggiore dei casi. STRICT: guardare i parametri spetta ai chiamanti, che gia'' lo fanno. VOLATILE perche'' l''errore passa dal canale di log. brief-fix-importi-riga-fattura-zero §4.1, rev 2026-07-28.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

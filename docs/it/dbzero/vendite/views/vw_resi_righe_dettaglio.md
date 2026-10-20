@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_resi_righe_dettaglio
 WITH (security_invoker=on) AS
@@ -63,6 +65,8 @@ SELECT rr.id,
      CROSS JOIN LATERAL ( SELECT vendite.fn_resi_riga_accreditato_partita(rr.id) AS accreditato) acc)
      CROSS JOIN LATERAL ( SELECT (((script.fn_check_accredito_annullabile(rr.id) -> 0) ->> 'reason'::text))::character varying AS codice) ann);
 ```
+
+</div>
 
 
 ---

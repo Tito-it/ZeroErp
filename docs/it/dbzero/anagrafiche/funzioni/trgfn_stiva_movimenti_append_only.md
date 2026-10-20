@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_stiva_movimenti_append_only()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_stiva_movimenti_append_only()
  RETURNS trigger
@@ -77,6 +79,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_stiva_movimenti_append_only()
 IS 'Rende il registro dei movimenti di plafond IVA «solo aggiunte»: rifiuta UPDATE e DELETE con E_TITOLO_IVA_MOVIMENTO_IMMUTABILE. Una riga si corregge con un CONTRO-MOVIMENTO di segno opposto, che lascia a video l''errore, la correzione e la data di entrambi. Decisione di Tid del 2026-08-30: prima era una promessa che il backend manteneva, e l''argomento del brief ci poggiava sopra. ⛔ Vieta ENTRAMBI, e la meta'' che sembra meno grave e'' la peggiore: un UPDATE riscrive la storia in silenzio, perche'' l''accumulatore ricalcola e il totale resta «giusto». ⚠️ Da qui sono irraggiungibili — e restano come difesa in profondita'' — la branca non-INSERT dell''accumulatore, il trigger di storico e l''audit su UPDATE. ⚠️ Nessuna esenzione per l''owner. ⛔ La pulizia della fattura, con I5, dovra'' passare: o un''apertura dichiarata via GUC, o (preferibile) storna invece di cancellare. Piano: brief-db-titoli-iva-movimenti-annullo.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

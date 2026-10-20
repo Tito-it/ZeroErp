@@ -7,6 +7,8 @@ CREATE FUNCTION fn_prepare_sdi_payload(p_lotto_id bigint, p_stato_sdi_codice_int
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_prepare_sdi_payload(p_lotto_id bigint, p_stato_sdi_codice_interno character varying DEFAULT 'DA_INVIARE'::character varying, p_force_new_tentativo boolean DEFAULT false)
  RETURNS TABLE(fattura_sdi_id bigint, fattura_id bigint, tentativo_num smallint, stato_sdi_id bigint, codice_documento text, numero_fattura bigint, data_fattura date, billing_account_id bigint, emittente_soggetto_ruolo_id bigint, valuta_id integer, totale_a_pagare numeric)
@@ -110,6 +112,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_prepare_sdi_payload(p_lotto_id bigint, p_stato_sdi_codice_interno character varying, p_force_new_tentativo boolean)
 IS 'Prepara/aggiorna le righe vendite.fatture_sdi del lotto e ne restituisce il payload. Tentativo numerato MAX+1 (>= 1, come da chk_fatture_sdi_tentativo_num). Task pipeline prepare_sdi_payload_lotto.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

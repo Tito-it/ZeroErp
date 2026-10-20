@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fatture_righe_importo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fatture_righe_importo()
  RETURNS trigger
@@ -71,6 +73,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fatture_righe_importo()
 IS 'Calcola vendite.fatture_righe.imponibile_riga a ogni INSERT/UPDATE: qta * prezzo_unitario * (1 - sconto/100), arrotondato con decimali e metodo configurati su vendite.articolo_regole_fatturazione per l''articolo della riga (senza regole: i parametri effettivi dell''emittente per l''utility della fattura, vendite.fn_parametri_importo_riga, rev 20261021-15; prima il letterale 2 / HALF_UP). L''arrotondamento e'' delegato a script.fn_arrotonda_importo, unico punto in cui vive la regola. ⚠️ Sostituisce la colonna generata del 20260728-01, che era il presidio piu'' forte ma non poteva leggere le regole per articolo — una GENERATED usa solo dati della propria riga. Un valore passato dall''esterno viene SOVRASCRITTO (con la colonna generata veniva rifiutato): il risultato e'' lo stesso, la segnalazione no, ed e'' compensata da un pgTAP dedicato. NON tocca qta: l''arrotondamento delle quantita'' e'' una regola della singola attivita'' a monte, mai dell''aggregato di riga. brief-fix-importi-riga-fattura-zero §4.1 (D1), rev 2026-07-28.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

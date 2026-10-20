@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_or_create_fattura_header(p_lotto_id bigint, p_attivita_id
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_fattura_header(p_lotto_id bigint, p_attivita_id bigint)
  RETURNS bigint
@@ -235,6 +237,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_or_create_fattura_header(p_lotto_id bigint, p_attivita_id bigint)
 IS 'Recupera o crea la testata DRAFT della fattura a cui l''attivita'' appartiene, dentro il lotto dato. Il WHERE del lookup e la INSERT nominano gli STESSI elementi della chiave di fn_build_fattura_key: se la chiave separa e il lookup no, le due meta'' si annullano e le attivita'' tornano nella stessa fattura. rev 2026-08-18 (brief-design-note-credito-resi N3): la chiave ha undici elementi, natura e serie compresi. ⚠️ `serie` non era MAI stata scritta da questa INSERT — restava NULL e fn_assign_numero_fattura cadeva sul serie_default del registro: calcolarla senza scriverla avrebbe dato alla nota di credito un numero VALIDO nella serie delle fatture, cioe'' un difetto che non solleva nulla e si scopre guardando un registro IVA. Confronto: `=` sulla natura (NOT NULL), IS NOT DISTINCT FROM sui quattro nullable. ⭐ rev 2026-08-25 (cantiere numerazione-data-documento): la data non e'' piu'' `current_date` ma vendite.fn_calcola_data_documento. ⛔ Questa e'' l''UNICA riga in tutto il repo che scrive vendite.fatture.data — e dal 2026-08-26 anche l''unica che scrive vendite.fatture.competenza_mese — verificato su pg_proc, su backend/ e sulla doc auto-gen: cambiarla qui cambia il comportamento ovunque, ed e'' anche il motivo per cui il difetto di `current_date` era rimasto invisibile (non c''era un secondo posto in cui vedere due implementazioni divergenti). ⭐ rev 2026-08-26 (cantiere limite-emissione, DB-7 e DB-13), TRE modifiche: (1) la SERIE entra fra gli argomenti della data — il clamp legge il contatore di (registro, SERIE) e senza la serie leggerebbe quello di un''ALTRA sequenza, rispondendo «nessun pavimento» proprio dove il cancello rifiuta; (2) la INSERT scrive `competenza_mese`, che serve al cancello per applicare il limite di emissione senza dover leggere il lotto sotto RLS — il valore e'' gia'' in mano, si legge dal lotto due righe piu'' su per calcolare la data, quindi costa una parola nella lista e non una query. ⚠️ Si scrive ALLA NASCITA e non si insegue: la fattura nasce dentro UN lotto, e se piu'' tardi entrera'' in un secondo lotto con un''altra competenza la colonna resta quella di nascita; (3) i guard di parametro passano da E_PARAMETRO_INVALIDO — che portava `p_lotto_id e p_attivita_id obbligatori e > 0` nella frase letta da una persona — a E_VENDITE_CHIAMATA_NON_VALIDA, UNO PER PARAMETRO. ⭐ Il lotto si legge DOPO il lookup e non in testa: la funzione gira una volta per attivita'' e quasi sempre trova la testata gia'' creata. ⚠️ vendite.fatturazione_lotti ha la RLS e questa funzione e'' SECURITY INVOKER: un lotto fuori perimetro si legge come «non c''e''» e si esce con E_LOTTO_NON_TROVATO. Brief: brief-db-limite-emissione-e-data-verificata §11 DB-7 e DB-13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

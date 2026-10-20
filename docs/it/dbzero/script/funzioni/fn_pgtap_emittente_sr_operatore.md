@@ -7,6 +7,8 @@ CREATE FUNCTION fn_pgtap_emittente_sr_operatore()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_pgtap_emittente_sr_operatore()
  RETURNS bigint
@@ -35,6 +37,8 @@ $function$
 COMMENT ON FUNCTION script.fn_pgtap_emittente_sr_operatore()
 IS 'Helper pgTAP: soggetto_ruolo dell''emittente dell''operatore di contesto, per le tabelle a convenzione SR (vendite.commesse, vendite.fatture). Compagna di script.fn_pgtap_emittente_operatore, che risponde per la convenzione emittente_fiscale_id. Rende scrivibile cio'' che l''applicazione scriverebbe: NON e'' una scorciatoia per aggirare la RLS, e una fixture che ha bisogno di un emittente diverso deve cambiare contesto operatore. Brief: brief-db-pgtap-runner-rls-baseline.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

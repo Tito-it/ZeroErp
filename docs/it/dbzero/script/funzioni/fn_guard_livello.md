@@ -7,6 +7,8 @@ CREATE FUNCTION fn_guard_livello(p_auth_user_id integer, p_app_label character v
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_guard_livello(p_auth_user_id integer, p_app_label character varying, p_model_name character varying, p_livello_minimo config.livello_accesso)
  RETURNS void
@@ -51,6 +53,8 @@ $function$
 COMMENT ON FUNCTION script.fn_guard_livello(p_auth_user_id integer, p_app_label character varying, p_model_name character varying, p_livello_minimo config.livello_accesso)
 IS 'Guard dei verbi di scrittura, forma «livello su un oggetto» (D-2, D-5 di brief-db-permesso-nel-verbo-di-scrittura; gemello di script.fn_guard_azione). Il verbo dichiara l''OGGETTO (app_label, model_name) e il livello minimo; l''area la ricava script.fn_area_di_oggetto e la regola la decide script.fn_resolve_livello_oggetto, la stessa del backend (gate di contesto, identita'' OPERATORE attiva, super admin, override utente sull''oggetto, poi l''area). Sotto il minimo -> E_PERMESSO_NEGATO (NON_PERMESSO, lo stesso codice del backend), anche a utente, oggetto o minimo NULL: fail-closed. ⛔ L''enum livello_accesso e'' ordinato TUTTO < LETTURA < BLOCCATO: il rifiuto e'' livello > minimo. INVOKER. Brief: brief-db-pannello-config-verbo-generico §3.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

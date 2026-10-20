@@ -6,6 +6,8 @@
 > Stradario esteso: tipo toponimo + nome strada, 
 >         stato e indirizzo composito.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW script.vw_stradario_esteso AS
 SELECT v.id AS id_via,
@@ -19,6 +21,8 @@ SELECT v.id AS id_via,
      JOIN config.toponomastica t ON ((v.toponomastica_id = t.id)))
      LEFT JOIN config.stati s ON ((t.stato_id = s.id)));
 ```
+
+</div>
 
 
 ---

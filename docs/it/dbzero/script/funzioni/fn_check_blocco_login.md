@@ -7,6 +7,8 @@ CREATE FUNCTION fn_check_blocco_login(p_auth_user_id integer, p_nome_digest byte
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_blocco_login(p_auth_user_id integer, p_nome_digest bytea, p_provenienza inet)
  RETURNS void
@@ -149,6 +151,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_blocco_login(p_auth_user_id integer, p_nome_digest bytea, p_provenienza inet)
 IS 'Check del login, PRIMA della verifica della password, per NOME TENTATO e PROVENIENZA (R-7). La chiave e'' la credenziale quando p_auth_user_id e'' valorizzato, il nome tentato (config.nomi_tentati, per digest) quando e'' NULL: stessa decisione e stessi codici per le due, cosi'' la risposta non dice se il nome esiste. Nell''ordine, il primo che scatta vince: (1) blocco dell''admin -> E_CREDENZIALE_BLOCCATA, non scade, solo sulla credenziale (rivela l''esistenza del nome: accettato, §13.5 (b)); (2) freno sulla coppia chiave + provenienza -> E_UTENTE_BLOCCATO con i minuti rimanenti nel messaggio e nel contesto, e un freno scaduto fa ripartire la coppia (riga cancellata); (3) attesa crescente sulla chiave (fn_login_attesa_secondi) -> E_LOGIN_ATTESA con i secondi rimanenti. Nessuna riga = passa. Provenienza NULL, digest NULL o non di 32 byte, credenziale <= 0 -> E_AUTH_CHIAMATA_NON_VALIDA. Il digest lo calcola il backend (HMAC del nome normalizzato): il nome non entra mai. SECURITY DEFINER del PROPRIETARIO, search_path bloccato; nessun guard di permesso, dichiarato (gira prima del login). Brief: brief-db-blocco-login-per-credenziale §2.4, §3.1, §12.8, §13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

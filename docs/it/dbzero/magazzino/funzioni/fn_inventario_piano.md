@@ -7,6 +7,8 @@ CREATE FUNCTION fn_inventario_piano(p_inventario_id bigint)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.fn_inventario_piano(p_inventario_id bigint)
  RETURNS TABLE(riga_id bigint, articolo_id uuid, ubicazione_id bigint, lotto_id bigint, asset_id bigint, qta_contata numeric, qta_sistema numeric, delta numeric, causale_codice_interno character varying, esito text, posting_blocco_reason text, posting_blocco_reason_key text)
@@ -115,6 +117,8 @@ $function$
 COMMENT ON FUNCTION magazzino.fn_inventario_piano(p_inventario_id bigint)
 IS 'Il PIANO di un inventario (D-L2-n): una riga per ogni posizione (articolo, ubicazione, lotto, asset — IS NOT DISTINCT FROM) che il registro del magazzino HA (giacenza <> 0) o che il conteggio NOMINA, per gli articoli contati, con qta_contata, qta_sistema (letto alla grana della riga, D-L2-f), delta, la causale che verra'' usata e l''esito: INV_INIZIALE (delta > 0 e nessun movimento dell''articolo in questo magazzino: primo carico), RETT_POS / RETT_NEG (contata con differenza), INVARIATA (delta zero: nessun movimento), NON_CONTATA (a registro, nessuna riga la copre: riga_id e qta_contata NULL, resta com''e'' — informazione, non blocco), NON_POSTABILE (C8: la primitiva la rifiuterebbe — posting_blocco_reason / _reason_key dal primo motivo di script.fn_check_riga_magazzino, la stessa funzione che la primitiva chiama). Una sede sola per UI e posting: fn_posta_inventario scrive qta_sistema DAL PIANO e posta le righe con delta <> 0. INVOKER, STABLE, sotto RLS: testata fuori perimetro = zero righe (il 404 lo da'' il BE sulla testata). Brief: brief-db-magazzino-lotto-2-motore, sezione 3 (D-L2-n), 6-ter C8.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

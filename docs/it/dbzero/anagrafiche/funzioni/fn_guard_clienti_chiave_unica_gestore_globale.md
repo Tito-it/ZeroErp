@@ -6,6 +6,8 @@ CREATE FUNCTION fn_guard_clienti_chiave_unica_gestore_globale()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale()
  RETURNS void
@@ -41,6 +43,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale()
 IS 'Raggio N di anagrafiche.fn_guard_cliente_chiave_unica (E_CLIENTE_STESSA_CHIAVE): quando l''azienda predefinita cambia o sparisce, cambia la chiave di tutti i clienti dei BA senza collegamento; si controllano quelli delle istanze fittizie. La chiama il constraint trigger sul collegamento BA -> azienda per la riga di default. Gemella di anagrafiche.fn_guard_istanza_ba_gestore_globale. SECURITY DEFINER: clienti in RLS. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

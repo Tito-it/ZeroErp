@@ -7,6 +7,8 @@ CREATE FUNCTION fn_documento_interno_transizioni(p_stato_da text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.fn_documento_interno_transizioni(p_stato_da text)
  RETURNS text[]
@@ -45,6 +47,8 @@ $function$
 COMMENT ON FUNCTION magazzino.fn_documento_interno_transizioni(p_stato_da text)
 IS 'La matrice degli stati dei documenti interni di magazzino (inventari e rettifiche, la stessa per le due famiglie — D-L2-h): le destinazioni ammesse da uno stato. DRAFT -> {CONFIRM, CANCEL}; CONFIRM -> {POSTED, CANCEL, DRAFT} (riapri, C13); POSTED e CANCEL -> {} (terminali). Uno stato sconosciuto torna {}: il cancello sui valori e'' il CHECK di tabella. IMMUTABLE: non legge niente, la matrice e'' una costante del modello. ⭐ Esiste per avere UNA sede con due lettori: magazzino.trgfn_documento_interno_guard_transizione la fa rispettare, script.fn_available_actions_inventario / _rettifica disegnano i pulsanti (linee-guida-sql §12.2 punto 1). ⚠️ POSTED e'' ammesso ma non richiedibile: la porta la apre solo l''operazione con la GUC transazionale, quindi la capability lo esclude dalle azioni e propone «registra». Brief: brief-db-magazzino-lotto-2-bis-be-fe R-1.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

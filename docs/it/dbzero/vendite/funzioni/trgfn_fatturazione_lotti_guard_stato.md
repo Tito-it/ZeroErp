@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fatturazione_lotti_guard_stato()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fatturazione_lotti_guard_stato()
  RETURNS trigger
@@ -63,6 +65,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fatturazione_lotti_guard_stato()
 IS 'Guard transizioni stato lotti via config.stati_doc_fiscale_transizioni. Bypass via GUC.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

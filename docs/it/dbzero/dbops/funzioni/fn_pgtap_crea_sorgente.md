@@ -6,6 +6,8 @@ CREATE FUNCTION fn_pgtap_crea_sorgente(p_codice_interno character varying, p_tar
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_sorgente(p_codice_interno character varying, p_target_table regclass DEFAULT NULL::regclass)
  RETURNS bigint
@@ -48,6 +50,8 @@ $function$
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_sorgente(p_codice_interno character varying, p_target_table regclass)
 IS 'Builder pgTAP: una sorgente di PROVA (codice, tabella dei documenti opzionale), costruita e non pescata; ritorna l''id, il primo libero (config.sorgenti.id non ha default). Spenta come documento: apribile falso, scope CATALOGO. Serve a chi costruisce una famiglia di numerazione di prova, che dal 2026-10-20 e'' una sorgente (G-5). Brief: brief-db-grammatica-unica-documenti §13.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

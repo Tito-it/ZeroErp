@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_lotti_fatture_incoerenti
 WITH (security_invoker=on) AS
@@ -33,6 +35,8 @@ SELECT l.id AS lotto_id,
      LEFT JOIN config.stati_doc_fiscale sf ON ((sf.id = f.stato_doc_fiscale_id)))
   WHERE ((COALESCE(f.critical, false) IS FALSE) AND (f.stato_doc_fiscale_id IS DISTINCT FROM l.stato_doc_fiscale_id));
 ```
+
+</div>
 
 
 ---

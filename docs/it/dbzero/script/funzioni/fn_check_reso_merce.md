@@ -6,6 +6,8 @@ CREATE FUNCTION fn_check_reso_merce(p_reso vendite.resi)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_check_reso_merce(p_reso vendite.resi)
  RETURNS jsonb
@@ -179,6 +181,8 @@ $function$
 COMMENT ON FUNCTION script.fn_check_reso_merce(p_reso vendite.resi)
 IS 'I motivi FISICI che impediscono di confermare un reso che fa rientrare merce. PURA. In ordine, si esce al primo: magazzino di rientro mancante (E_RESO_MAGAZZINO_OBBLIGATORIO); una voce non coperta dai rientri — la riga uscita intera deve rientrare per la quantita'' resa, un componente non oltre la sua proporzione, e una riga senza rientri con una voce non automatica chiede la scelta (E_RESO_RIENTRI_INCOMPLETI); un rientro che la primitiva rifiuterebbe nel magazzino di rientro (il codice di script.fn_check_riga_magazzino, con lotto e seriale del prelievo d''origine); un prelievo da cui, sommando i resi non annullati, rientrerebbe piu'' di quanto era uscito (E_RESO_RIENTRO_OLTRE_USCITO). I rientri AUTOMATICI contano come gia'' scritti: la capability parla prima che la conferma li crei. Ogni motivo porta i VALORI della frase: la solleva vendite.fn_conferma_reso col primo motivo. La legge script.fn_available_actions_reso (capability «Conferma»). Un reso che non muove merce torna []. Chiavi i18n: vendite.reso.azione_reason.{magazzino_mancante, rientri_incompleti, merce_non_ricollocabile, rientro_oltre_uscito}. ⚠️ Il tetto e'' esatto solo sotto il lock della bolla d''origine che prende la conferma: due conferme concorrenti si serializzano li''. Brief: brief-db-magazzino-lotto-3-bis-carico-da-reso (P-6). rev 2026-09-29: i valori vuoti del motivo 1 si scrivono jsonb_build_array() e non ''[]''::jsonb — script/test-catalogo-messaggi-errore-completo (test 7) conta i valori dal jsonb_build_array che segue ''valori'', e con il letterale finiva sul jsonb_build_array del motivo dopo (1 valore contro 0 segnaposto). rev 2026-09-29 (bis): il motivo 4 (E_RESO_RIENTRO_OLTRE_USCITO) passa da un FOR con il RETURN dentro alla forma SELECT … INTO + IF FOUND, come il motivo 2: dbops/test-vw-codici-errore-motivo-nominato (test 6) non vedeva la guardia, lontana piu'' di 25 righe dal motivo. Nessun cambio di comportamento: il primo prelievo sforato, nello stesso ordine.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_child_requires_active_parent()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.trgfn_child_requires_active_parent()
  RETURNS trigger
@@ -191,6 +193,8 @@ $function$
 COMMENT ON FUNCTION dbops.trgfn_child_requires_active_parent()
 IS 'Trigger function (ATTIVO/REQUIRE): impedisce INSERT/UPDATE sul figlio se il padre non e'' attivo. TG_ARGV: parent_schema, parent_table, parent_attivo_col, fk_col [, parent_ref_col]. Il 5° arg e'' la colonna del padre referenziata dalla FK (puo'' essere UNIQUE diversa dalla PK).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

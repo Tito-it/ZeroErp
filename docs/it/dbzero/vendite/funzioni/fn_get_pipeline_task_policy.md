@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_pipeline_task_policy(p_pipeline_id bigint, p_task_code ch
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_get_pipeline_task_policy(p_pipeline_id bigint, p_task_code character varying)
  RETURNS TABLE(annullabile boolean, resume_mode character varying, attivo boolean, meta jsonb)
@@ -38,6 +40,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_get_pipeline_task_policy(p_pipeline_id bigint, p_task_code character varying)
 IS 'Policy attiva del task per pipeline (annullabile/resume_mode/meta).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -6,6 +6,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_ddt_emessi_senza_scarico
 WITH (security_invoker=true) AS
@@ -24,6 +26,8 @@ SELECT d.id AS ddt_id,
              JOIN config.sorgenti so ON (((so.id = m.sorgente_tipo_id) AND ((so.codice_interno)::text = 'DDT_VENDITA_PRELIEVO'::text))))
           WHERE ((dr.ddt_id = d.id) AND (m.qta < (0)::numeric) AND (m.storno_di_movimento_id IS NULL))))));
 ```
+
+</div>
 
 
 ---

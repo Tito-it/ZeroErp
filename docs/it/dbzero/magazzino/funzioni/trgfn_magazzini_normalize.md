@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_magazzini_normalize()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION magazzino.trgfn_magazzini_normalize()
  RETURNS trigger
@@ -22,6 +24,8 @@ END$function$
 COMMENT ON FUNCTION magazzino.trgfn_magazzini_normalize()
 IS 'Normalizza i dati magazzino.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

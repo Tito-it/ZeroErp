@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_guard_sorgente_polimorfa_tipizzata()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()
  RETURNS trigger
@@ -164,6 +166,8 @@ $function$
 COMMENT ON FUNCTION script.trgfn_guard_sorgente_polimorfa_tipizzata()
 IS 'Guard polimorfo MODELLO A (colonne tipizzate alternative): valida che la sorgente esista nella target_table di config.sorgenti leggendo NEW.sorgente_riga (BIGINT) per key_selector=id e NEW.sorgente_uid (UUID) per key_selector=uid. Ex trgfn_guard_sorgente_polimorfa (rinominata 2026-07-18, brief-db-guard-sorgente-polimorfa: nasce la sorella _testuale per il modello B a chiave unica testuale). NON agganciata ad alcuna tabella: il trigger su attivita_fatturabili fu rimosso con 20260225-45 (ridondante con FK commessa_attivita_id nel flusso commessa-only); riaggancio da ri-decidere.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

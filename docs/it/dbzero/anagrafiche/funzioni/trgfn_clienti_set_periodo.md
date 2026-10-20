@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_clienti_set_periodo()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION anagrafiche.trgfn_clienti_set_periodo()
  RETURNS trigger
@@ -51,6 +53,8 @@ $function$
 COMMENT ON FUNCTION anagrafiche.trgfn_clienti_set_periodo()
 IS 'Trigger BEFORE INSERT OR UPDATE su anagrafiche.clienti: deriva periodo = [data_attivazione, data_chiusura) (chiusura esclusa, aperto senza chiusura; NULL senza attivazione). Lo stato AN azzera date e periodo. Il periodo e'' la misura di «cliente attivo» del modello (ex_clienti_no_overlap_stesso_pdp, anagrafiche.fn_clienti_stessa_chiave). rev 2026-10-14: i controlli sulle date stanno in anagrafiche.trgfn_clienti_guard_stato_date. Brief: brief-db-cliente-manuale-uno-per-soggetto-e-utility.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -7,6 +7,8 @@ CREATE FUNCTION fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_do
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid DEFAULT NULL::uuid, p_lock boolean DEFAULT false, p_data_fatturazione date DEFAULT script.fn_data_operativa(), p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_valuta_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_area_geografica_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_gruppi text[] DEFAULT NULL::text[])
  RETURNS SETOF vendite.attivita_fatturabili
@@ -122,6 +124,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid, p_lock boolean, p_data_fatturazione date, p_billing_account_id bigint, p_utility_id integer, p_valuta_id integer, p_emittente_soggetto_ruolo_id bigint, p_area_geografica_id bigint, p_limit integer, p_gruppi text[])
 IS 'Select attivita_fatturabili eleggibili con lock opzionale e stato_esecuzione=PENDING. rev 2026-06-19: FOR UPDATE OF a (lock ristretto). rev 2026-07-27 (brief emissione mirata A4): p_gruppi text[] restringe la selezione ai gruppi fatturabili richiesti — NULL = nessuna restrizione (comportamento storico, G1), array vuoto = zero righe, chiave inesistente = zero righe senza errore. ⭐ E'' IL PUNTO CRITICO della slice: senza questo filtro un giro mirato consumerebbe le AF GIA'' ESISTENTI di altri gruppi nello stesso perimetro (residui di un giro interrotto, di un reset-a-bozza o del giro schedulato), perche'' nessun altro criterio di questa funzione sa nulla della sorgente — garanzia G12. Il legame al documento passa dal JOIN a commesse_attivita via commessa_attivita_id (NOT NULL): su attivita_fatturabili sorgente_tipo_id/sorgente_uid sono rioccupati dall''idempotenza del pull. Il join si aggiunge SOLO con p_gruppi valorizzato: il giro schedulato non paga nulla. ⚠️ FOR UPDATE OF a resta ristretto ad attivita_fatturabili: non estendere il lock a commesse_attivita.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

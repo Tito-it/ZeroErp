@@ -7,6 +7,8 @@ CREATE FUNCTION fn_get_messaggio(p_codice text, p_valore text, p_lingua text)
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_messaggio(p_codice text, p_valore text DEFAULT NULL::text, p_lingua text DEFAULT NULL::text)
  RETURNS text
@@ -69,6 +71,8 @@ $function$
 COMMENT ON FUNCTION script.fn_get_messaggio(p_codice text, p_valore text, p_lingua text)
 IS 'Restituisce il messaggio formattato per (codice, lingua). Post 23-04-2026: fallback su lingua=''it'' se la lingua richiesta non ha riga (supporta rollout incrementale traduzioni EN). Se nemmeno ''it'' ha riga -> placeholder "[MESSAGGIO NON DEFINITO: <codice>]". Volatilita'' STABLE (era IMMUTABLE per errore, corretto).';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

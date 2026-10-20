@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_flussi_giornale_ins()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION pratiche.trgfn_flussi_giornale_ins()
  RETURNS trigger
@@ -34,6 +36,8 @@ $function$
 COMMENT ON FUNCTION pratiche.trgfn_flussi_giornale_ins()
 IS 'AFTER INSERT su flussi: logga FLUSSO_CREATO nel giornale.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

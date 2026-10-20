@@ -6,6 +6,8 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_listino_versione(p_auth_user_id intege
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_listino_versione(p_auth_user_id integer, p_versione_id bigint)
  RETURNS boolean
@@ -32,6 +34,8 @@ $function$
 COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_listino_versione(p_auth_user_id integer, p_versione_id bigint)
 IS '⭐ rev 2026-10-18 (20261018-32, D-3b-2 giro 1b): l''emittente lo chiede a script.fn_resolve_emittente_fiscale_id (DEFINER), non lo legge sotto la RLS del padre: una strada sola, e nessuna policy del padre rieseguita a ogni chiamata. Stesse risposte. Adattatore di scope per i satelliti di vendite.listini_versioni (listini_righe, listini_righe_componenti): risale da listino_versione_id al listino e delega a script.fn_scope_ef_whitelist_via_listino — la stessa che protegge listini_versioni, cosi'' la riga e la sua versione non possono divergere. STABLE e NON security definer, come gli altri fn_scope_*. Versione inesistente -> listino NULL -> false a whitelist valorizzata (fail-closed). Brief: brief-db-perimetro-emittente-righe-documento.md §11.11';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

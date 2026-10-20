@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW vendite.vw_resi_da_accreditare
 WITH (security_invoker=on) AS
@@ -39,6 +41,8 @@ SELECT resi_riga_id,
     annullo_blocco_codice
    FROM vendite.fn_resi_da_accreditare(NULL::bigint[], NULL::bigint[]) q(resi_riga_id, reso_id, reso_uid, reso_numero, data, emittente_fiscale_id, billing_account_id, ba_codice, destinatario_soggetto_ruolo_id, destinatario_denominazione, articolo_id, descrizione, quantita, qta_operativa, uom_operativa_id, motivo, ddt_riga_id, ddt_id, ddt_numero, ordine_riga_id, tenuti, fatturati, accredito_dovuto, etichetta, gia_accreditato, blocco_codice, annullo_blocco_codice);
 ```
+
+</div>
 
 
 ---

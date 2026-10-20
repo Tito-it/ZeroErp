@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW dbops.vw_credenziali_da_sanare
 WITH (security_invoker=true) AS
@@ -25,6 +27,8 @@ UNION ALL
          HAVING (bool_or(script.fn_veste_di_sistema(idg.ruolo_applicativo, idg.tecnica)) AND bool_or((NOT script.fn_veste_di_sistema(idg.ruolo_applicativo, idg.tecnica))))) m
      LEFT JOIN LATERAL script.fn_get_auth_user_stato(m.auth_user_id) au(username, is_active) ON (true));
 ```
+
+</div>
 
 
 ---

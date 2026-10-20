@@ -6,6 +6,8 @@ CREATE FUNCTION fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text, p_
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text DEFAULT NULL::text, p_livello character DEFAULT NULL::bpchar, p_solo_attive boolean DEFAULT true, p_solo_job_corrente boolean DEFAULT false, p_limit integer DEFAULT 500, p_offset integer DEFAULT 0, p_order_by text DEFAULT NULL::text, p_order_dir text DEFAULT 'desc'::text)
  RETURNS TABLE(riga_key text, id bigint, origine text, data_ora timestamp with time zone, livello character, messaggio text, error_code text, fase text, fattura_id bigint, documento_display text, importo numeric, disabilitato boolean, job_corrente boolean, total_count bigint, fuori_job_count bigint, target jsonb, gruppo_key text, riferimento text)
@@ -308,6 +310,8 @@ $function$
 COMMENT ON FUNCTION vendite.fn_list_lotto_segnalazioni(p_lotto_id bigint, p_origine text, p_livello character, p_solo_attive boolean, p_solo_job_corrente boolean, p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
 IS 'Le segnalazioni di un lotto, dai DUE registri (fatture_log e fatturazione_lotti_log) in una lista sola, paginata e ordinabile. ⭐ rev 2026-09-08: espone `riferimento` accanto a `gruppo_key` — la stessa cosa, leggibile: ORD0036004 invece di ORDINE_VENDITA:<uuid>. La CHIAVE resta in riga perche'' la vuole vendite.fn_escludi_documento_da_giro, cioe'' il pulsante «Togli dal giro»; il RIFERIMENTO e'' per la persona, ed e'' l''unico dei due che si vede (la colonna gruppo_fatturabile e'' spenta a catalogo dallo stesso giro). ⛔ La risoluzione non e'' scritta qui: la fa vendite.fn_riferimento_gruppo_fatturabile, che compone lo split della chiave e fn_get_sorgente_documento_ref — riscriverla sarebbe la terza sede della stessa scala di ripiego. ⭐ Si ordina sul RIFERIMENTO e non sulla chiave (decisione Tid 2026-09-08): e'' l''etichetta che l''operatore legge. ⛔ `gruppo_key` NON entra in whitelist — la sua colonna e'' spenta, quindi non c''e'' nessuna freccia da cliccare, e una voce che il seed non offre e'' una capacita'' irraggiungibile che il presidio di gen_seed_lista.py segnala. ⛔ Ordinando per riferimento i NULL vanno in TESTA e non in coda: li'' il NULL non e'' un dato mancante, e'' la critica DEL GIRO — quella che blocca e che non si puo'' togliere in nessun modo. In coda, su una lista paginata, l''operatore toglierebbe trenta documenti uno per uno e il lotto non ripartirebbe lo stesso. ⚠️ La colonna nuova e'' IN CODA: spostare le esistenti cambia significato a ogni lettore posizionale senza fallire. ⚠️ DROP + CREATE, perche'' CREATE OR REPLACE non cambia una RETURNS TABLE. Brief: brief-db-uscita-documento-dal-giro §6.2.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

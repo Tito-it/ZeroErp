@@ -7,6 +7,8 @@ CREATE FUNCTION trgfn_fatturazione_lotti_esiti_uscita()
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION vendite.trgfn_fatturazione_lotti_esiti_uscita()
  RETURNS trigger
@@ -82,6 +84,8 @@ $function$
 COMMENT ON FUNCTION vendite.trgfn_fatturazione_lotti_esiti_uscita()
 IS 'Governa l''uscita di un documento dal giro di fatturazione. 1) ESCLUSO e'' TERMINALE: il documento uscito non rientra (D-3 del brief) — se si vuole tutto in un lotto solo si annulla il lotto e si rigenera. 2) uscita_quando/uscita_da le DERIVA questa funzione dalla GUC app.jwt_user, mai il chiamante: data_update e user_update le riscriverebbe qualunque aggiornamento successivo e il momento dell''uscita si perderebbe in silenzio. ⚠️ Il rifiuto guarda la DIREZIONE e non la menzione della colonna (UPDATE OF scatta anche riassegnando lo stesso valore). ⛔ Su INSERT non solleva mai — solo timbra —, quindi il CHECK chk_fatturazione_lotti_esiti_uscita_parlante continua a valutare dopo e a rifiutare l''uscita senza motivo. ⛔ Il nome non porta guard perche'' la funzione scrive NEW. Errore: E_LOTTO_DOC_USCITA_IRREVERSIBILE, classe TECNICO — qui ci arriva solo un UPDATE diretto, perche'' la madre fn_escludi_documento_da_giro chiede prima alla sua check. Brief: brief-db-uscita-documento-dal-giro.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

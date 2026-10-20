@@ -7,6 +7,8 @@ CREATE FUNCTION fn_run_automations_storico_provision(p_exec_mode text, p_schemas
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION dbops.fn_run_automations_storico_provision(p_exec_mode text, p_schemas text[], p_dry_run boolean)
  RETURNS void
@@ -104,6 +106,8 @@ IS '
   - La funzione è pensata per essere richiamata da automazioni/maintenance e si appoggia agli helper dbops per scope, override e provisioning.
   ';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

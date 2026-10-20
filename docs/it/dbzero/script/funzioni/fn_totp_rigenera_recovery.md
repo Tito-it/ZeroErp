@@ -7,6 +7,8 @@ CREATE FUNCTION fn_totp_rigenera_recovery(p_auth_user_id integer, p_recovery_cod
 
 **Definizione completa:**
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_totp_rigenera_recovery(p_auth_user_id integer, p_recovery_codes_hash jsonb)
  RETURNS void
@@ -53,6 +55,8 @@ $function$
 COMMENT ON FUNCTION script.fn_totp_rigenera_recovery(p_auth_user_id integer, p_recovery_codes_hash jsonb)
 IS 'Sostituisce il mazzo dei codici di recupero del secondo fattore di un device CONFERMATO: i vecchi, usati o no, non valgono piu''. Il backend ha verificato prima un codice corrente e mostra i nuovi una volta sola. Forma del mazzo: script.fn_check_totp_recovery_hash (se no E_AUTH_CHIAMATA_NON_VALIDA). Device assente o non confermato -> E_TOTP_DEVICE_ASSENTE (durante il setup i codici li da'' la registrazione). Chi agisce: la credenziale stessa (script.fn_guard_utente_stesso). SECURITY DEFINER del PROPRIETARIO, search_path bloccato. Brief: brief-db-secondo-fattore-totp §3.';
 ```
+
+</div>
 
 ---
 {% include-markdown "signature-core.md" %}

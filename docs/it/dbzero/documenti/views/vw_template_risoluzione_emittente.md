@@ -7,6 +7,8 @@
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
+<div data-search-exclude markdown>
+
 ```sql
 CREATE OR REPLACE VIEW documenti.vw_template_risoluzione_emittente
 WITH (security_invoker=true) AS
@@ -24,6 +26,8 @@ SELECT e.id AS emittente_fiscale_id,
           WHERE (t.standard OR (t.emittente_fiscale_id = e.id))) c)
      CROSS JOIN LATERAL documenti.fn_template_esito_risoluzione(e.id, c.tipo_documento_output_id, c.sorgente_tipo_id) r(esito, template_documento_id, template_versione_id, modelli_stampabili));
 ```
+
+</div>
 
 
 ---
