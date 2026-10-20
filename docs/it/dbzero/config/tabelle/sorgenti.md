@@ -25,12 +25,14 @@
 | scope | character varying(30) | NO |  |
 | area | character varying(30) | YES |  |
 | label_selector | character varying(63) | YES |  |
+| etichetta | character varying(60) | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_sorgenti_area_non_vuota |  |
 | CHECK | chk_sorgenti_codice_interno_non_vuoto |  |
+| CHECK | chk_sorgenti_etichetta_non_vuota |  |
 | CHECK | chk_sorgenti_key_selector_values |  |
 | CHECK | chk_sorgenti_label_selector_identificatore |  |
 | CHECK | chk_sorgenti_scope |  |

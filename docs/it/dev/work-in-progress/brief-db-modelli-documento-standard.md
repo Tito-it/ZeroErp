@@ -560,3 +560,10 @@ La prima stesura del paragrafo, prima delle scelte:
 mirror `loadUpdateData`; le versioni in un changeSet forward-only per modello in
 `80_data/changelog`, che scrive la bozza e la pubblica con
 `fn_pubblica_template_documento_versione`. Poi il file app perde i suoi skip.
+
+### 8.3 La prima evoluzione di uno standard (rimando, 2026-10-20)
+
+Lo standard «Ordine di vendita» ha la versione 2 (`20261020-25`), nella forma di Q-5: copia della pubblicata,
+solo sullo standard, pubblicata dalla data operativa. Dichiara la **forma dei dati 3** (chiave nuova
+`origine.etichetta`): dopo il giro BE le copie degli emittenti in forma 2 non stampano più. Sede:
+[brief-db-grammatica-unica-documenti §12.10](brief-db-grammatica-unica-documenti.md).

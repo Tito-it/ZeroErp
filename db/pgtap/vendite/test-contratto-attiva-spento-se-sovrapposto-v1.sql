@@ -32,7 +32,7 @@
 --   B_ESCE DRAFT    2080-07-01 .. 2080-09-30   sopra INC, esce nella stessa istruzione
 --   D1, D2 DRAFT    2082 / 2082-06..2082-12    due bozze sovrapposte fra loro
 --
--- Indice test (1..20):
+-- Indice test (1..24):
 --   Forma
 --    1) la check esiste con la firma della quintupla (nessun id da escludere)
 --    2) capability e guard CHIAMANO la check (la regola sta in un posto solo)
@@ -60,6 +60,12 @@
 --   La difesa dura
 --   19) un INSERT diretto in ATTIVO sopra INC (nessuna transizione): 23P01 dall'EXCLUDE
 --   20) dopo il rifiuto B_OVL e' ancora in bozza
+--   La struttura su cui poggia la regola (dal test ritirato il 2026-10-20,
+--   test-contratti-overlap-draft-escluso-v1, che pescava la fixture dai dati)
+--   21) partecipa_overlap_snapshot e' una colonna GENERATED STORED
+--   22) l'EXCLUDE ex_contratti_no_overlap la usa come predicato
+--   23) fn_contratto_sovrapposto la usa (fuori dai commenti)
+--   24) nel catalogo degli stati solo DRAFT e' bozza (is_bozza)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -79,7 +85,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(20);
+SELECT plan(24);
 
 -- ============================================================
 -- Fixture
@@ -291,6 +297,46 @@ SELECT is(
       WHERE c.numero = 'PGTAP_SOV_B_OVL'),
     'DRAFT',
     '20) dopo il rifiuto la bozza sovrapposta e'' ancora in bozza');
+
+-- ============================================================
+-- La struttura su cui poggia la regola
+-- ============================================================
+-- ⭐ Vengono da test-contratti-overlap-draft-escluso-v1, ritirato il 2026-10-20:
+--   i suoi casi di comportamento li prova gia' questo file (4 -> 15, 5 -> la
+--   fixture di B_OVL, 6 -> 5, 7 -> 16/17, 8 -> 4), e la sua fixture pescava un
+--   contratto dai dati, quindi su un database ricostruito da zero non provava
+--   niente. Queste quattro leggono la struttura e non hanno bisogno di dati.
+
+SELECT is(
+    (SELECT a.attgenerated FROM pg_attribute a
+      WHERE a.attrelid = 'vendite.contratti'::regclass
+        AND a.attname  = 'partecipa_overlap_snapshot'),
+    's'::"char",
+    '21) partecipa_overlap_snapshot e'' una colonna GENERATED STORED');
+
+SELECT ok(
+    (SELECT pg_get_constraintdef(con.oid)
+       FROM pg_constraint con
+      WHERE con.conname = 'ex_contratti_no_overlap' AND con.contype = 'x')
+    ~ 'WHERE \(partecipa_overlap_snapshot\)',
+    '22) ex_contratti_no_overlap vale sui soli contratti che partecipano (partecipa_overlap_snapshot)');
+
+-- Fuori dai commenti: un presidio sul sorgente non si accende sulla prosa.
+SELECT ok(
+    (SELECT regexp_replace(p.prosrc, '--[^\n]*', '', 'g')
+       FROM pg_proc p
+      WHERE p.oid = 'vendite.fn_contratto_sovrapposto(bigint, bigint, integer, character varying, date, date)'::regprocedure)
+    ~ 'partecipa_overlap_snapshot',
+    '23) fn_contratto_sovrapposto usa lo stesso predicato dell''EXCLUDE');
+
+-- ⛔ Il difetto del 2026-10-19: su un database ricostruito da zero DRAFT aveva
+--   is_bozza = false (l'UPDATE di 20260602-17 girava prima del seed), e una
+--   bozza partecipava all'EXCLUDE. La sede e' il CSV stati_doc_contratti.
+SELECT is(
+    (SELECT string_agg(codice_interno::text, ',' ORDER BY codice_interno)
+       FROM config.stati_doc_contratti WHERE is_bozza),
+    'DRAFT',
+    '24) nel catalogo degli stati del contratto e'' bozza DRAFT, e solo DRAFT');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -1,0 +1,215 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL MODELLO STANDARD DELL'ORDINE STAMPA IL NOME DELLA PROVENIENZA, NON IL CODICE
+#   Brief: brief-db-grammatica-unica-documenti §12.9 (L2b-1 = (a), Tid
+#   2026-10-19). Forma dell'evoluzione: brief-db-modelli-documento-standard
+#   §4.1 Q-5 (i changeSet di evoluzione scrivono SOLO sullo standard).
+#
+# -- IL CASO --------------------------------------------------------------
+#   Il riquadro «Origine documento» stampava `ordine.origine.tipo`, cioe'
+#   vendite.ordini.documento_origine_tipo: un CODICE (PREVENTIVO, e dal lotto
+#   2b OFFERTA_COMMERCIALE). La versione 2 stampa `ordine.origine.etichetta`,
+#   il nome che config.sorgenti.etichetta (20261020-22) da' alla sorgente
+#   d'origine. Il ripiego «Documento origine» resta. Nient'altro cambia.
+#
+# -- LA FORMA DEI DATI: 3 ----------------------------------------------------
+#   `etichetta` e' una chiave NUOVA del contesto dell'ordine: la produce il
+#   builder del backend (OrdineDocumentContextBuilder, richiesta del §12.9)
+#   dalla JOIN su config.sorgenti. Il template rende con StrictUndefined:
+#   letta da un builder che non la produce, la chiave fa fallire il render.
+#   Per il patto della forma dei dati (documenti.fn_guard_versione_contesto)
+#   una chiave nuova e' una forma nuova, come `annotazioni` della fattura
+#   (forma 3 -> 4, 2026-10-02): la versione 2 dichiara la forma 3, e il
+#   backend porta ORDINE_VENDITA a CONTEXT_VERSION = 3 nello stesso giro.
+#   ⚠️ Fra questo apply e il giro BE lo standard dell'ordine non stampa (409
+#   E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA, non un PDF sbagliato); dopo il
+#   giro BE non stampano le versioni che dichiarano la forma 2 (le copie
+#   degli emittenti): la vista documenti.vw_template_personalizzati_scarto
+#   le mostra CONTESTO_SUPERATO. E' il patto che fa il suo lavoro.
+#
+# -- COME ------------------------------------------------------------------
+#   * Lo standard si cerca per (standard, tipo di output, sorgente,
+#     codice_interno), la chiave con cui il 20261020-16 lo ha creato.
+#   * La versione nuova si COPIA dalla pubblicata valida oggi e cambia per
+#     sostituzione contata (forma del 20260816-01): due occorrenze di
+#     `ordine.origine.tipo`, ne' una di piu' ne' una di meno. Un template
+#     ritoccato nel frattempo ferma il changeSet invece di pubblicare una
+#     copia sbagliata.
+#   * Pubblicata da script.fn_data_operativa(), la data con cui il backend
+#     sceglie la versione da stampare (get_versione_pubblicata_attiva):
+#     fn_pubblica_template_documento_versione chiude la versione 1 al giorno
+#     prima. Le ristampe dei documenti gia' generati non cambiano: rileggono
+#     la versione e il contesto congelati allora.
+#   * Idempotente: se la pubblicata valida oggi legge gia' l'etichetta, non
+#     fa niente. Scritto dal proprietario della tabella (il migrate): il guard
+#     di sola lettura dello standard (20261020-07) lo lascia passare.
+#   * Le copie degli emittenti NON si toccano (Q-5): sono dati
+#     dell'applicazione, non del catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261020-25-template-standard-ordine-vendita-origine-etichetta-mctit.yaml
+
+  - changeSet:
+      id: 20261020-25-template-standard-ordine-vendita-origine-etichetta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Modello standard «Ordine di vendita»: versione 2, il riquadro «Origine documento» stampa
+        ordine.origine.etichetta (config.sorgenti.etichetta) al posto del codice; forma dei dati 3.
+        Pubblicata dalla data operativa. Brief: brief-db-grammatica-unica-documenti §12.9 (L2b-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: config
+                tableName: sorgenti
+                columnName: etichetta
+            # Lo standard dell'ordine c'e' (20261020-16): e' lui che si fa evolvere.
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT count(*)
+                    FROM documenti.template_documenti t
+                    JOIN config.sorgenti s ON s.id = t.sorgente_tipo_id
+                    JOIN documenti.tipi_documento_output o ON o.id = t.tipo_documento_output_id
+                   WHERE t.standard
+                     AND s.codice_interno = 'ORDINE_VENDITA'
+                     AND o.codice_interno = 'ORDINE_VENDITA'
+                     AND t.codice_interno = 'ordine_vendita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $evolve$
+              DECLARE
+                  c_brief     CONSTANT text := 'brief-db-grammatica-unica-documenti';
+                  c_vecchia   CONSTANT text := 'ordine.origine.tipo';
+                  c_nuova     CONSTANT text := 'ordine.origine.etichetta';
+                  -- La forma dei dati che la versione nuova legge (vedi l'intestazione).
+                  c_forma     CONSTANT documenti.template_documenti_versioni.versione_contesto%TYPE := 3;
+                  v_oggi      CONSTANT date := script.fn_data_operativa();
+                  v_tpl       documenti.template_documenti.id%TYPE;
+                  v_src       documenti.template_documenti_versioni%ROWTYPE;
+                  v_html      documenti.template_documenti_versioni.html_template%TYPE;
+                  -- un conteggio di sottostringhe: nessuna colonna di cui sia il riflesso
+                  v_occorrenze integer;
+                  v_versione_id documenti.template_documenti_versioni.id%TYPE;
+                  v_esito     record;
+              BEGIN
+                  SELECT t.id INTO v_tpl
+                    FROM documenti.template_documenti t
+                    JOIN config.sorgenti s ON s.id = t.sorgente_tipo_id
+                    JOIN documenti.tipi_documento_output o ON o.id = t.tipo_documento_output_id
+                   WHERE t.standard
+                     AND s.codice_interno = 'ORDINE_VENDITA'
+                     AND o.codice_interno = 'ORDINE_VENDITA'
+                     AND t.codice_interno = 'ordine_vendita';
+
+                  -- Sorgente: la versione che la stampa sceglie oggi.
+                  SELECT v.* INTO v_src
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.template_documento_id = v_tpl
+                     AND v.stato = 'PUBBLICATA'
+                     AND v.attivo IS TRUE
+                     AND v.validita @> v_oggi
+                   ORDER BY v.versione DESC, v.id DESC
+                   LIMIT 1;
+
+                  IF NOT FOUND THEN
+                      RAISE EXCEPTION
+                        'Standard ordine_vendita senza versione PUBBLICATA valida al %: non c''e'' da cosa partire.', v_oggi;
+                  END IF;
+
+                  -- Idempotente: la versione di oggi legge gia' l'etichetta.
+                  IF strpos(v_src.html_template, c_vecchia) = 0
+                     AND strpos(v_src.html_template, c_nuova) > 0 THEN
+                      RAISE NOTICE 'standard ordine_vendita: la versione % legge gia'' %, niente da fare.',
+                          v_src.versione, c_nuova;
+                      RETURN;
+                  END IF;
+
+                  -- Lo standard si cambia solo coi changeSet: una bozza lasciata
+                  -- in giro e' un'anomalia da guardare, non da sovrascrivere.
+                  IF EXISTS (SELECT 1 FROM documenti.template_documenti_versioni b
+                              WHERE b.template_documento_id = v_tpl AND b.stato = 'BOZZA') THEN
+                      RAISE EXCEPTION 'Standard ordine_vendita con una BOZZA gia'' presente: rivederla prima di pubblicare.';
+                  END IF;
+
+                  v_occorrenze := (length(v_src.html_template)
+                                   - length(replace(v_src.html_template, c_vecchia, '')))
+                                  / length(c_vecchia);
+
+                  IF v_occorrenze <> 2 THEN
+                      RAISE EXCEPTION
+                        '% trovato % volte invece di 2 nella versione % dello standard ordine_vendita: il template e'' stato ritoccato, rivedere il changeSet.',
+                        c_vecchia, v_occorrenze, v_src.versione;
+                  END IF;
+
+                  v_html := replace(v_src.html_template, c_vecchia, c_nuova);
+
+                  -- Le due meta' della modifica, verificate sul risultato.
+                  IF strpos(v_html, 'origine.tipo') > 0 THEN
+                      RAISE EXCEPTION 'Nell''HTML risultante resta origine.tipo.';
+                  END IF;
+                  IF (length(v_html) - length(replace(v_html, c_nuova, ''))) / length(c_nuova) <> 2 THEN
+                      RAISE EXCEPTION 'Nell''HTML risultante % non compare 2 volte.', c_nuova;
+                  END IF;
+
+                  INSERT INTO documenti.template_documenti_versioni (
+                      template_documento_id, versione, stato, titolo,
+                      formato_template, html_template, css_template,
+                      markdown_template, render_engine_id, page_format,
+                      page_orientation, margin_top_mm, margin_right_mm,
+                      margin_bottom_mm, margin_left_mm, context_schema,
+                      storicizza, versione_contesto, meta)
+                  SELECT v_tpl,
+                         -- Numero successivo PER TEMPLATE.
+                         (SELECT max(v2.versione) + 1
+                            FROM documenti.template_documenti_versioni v2
+                           WHERE v2.template_documento_id = v_tpl),
+                         'BOZZA',
+                         v_src.titolo,
+                         v_src.formato_template,
+                         v_html,
+                         v_src.css_template,
+                         v_src.markdown_template,
+                         v_src.render_engine_id,
+                         v_src.page_format,
+                         v_src.page_orientation,
+                         v_src.margin_top_mm, v_src.margin_right_mm,
+                         v_src.margin_bottom_mm, v_src.margin_left_mm,
+                         v_src.context_schema,
+                         v_src.storicizza,
+                         c_forma,
+                         v_src.meta || jsonb_build_object(
+                             'brief',               c_brief,
+                             'origine',             'L2b-1',
+                             'origine_versione_id', v_src.id,
+                             'motivo',              'la provenienza si stampa col nome della sorgente (etichetta), non col codice')
+                  RETURNING id INTO v_versione_id;
+
+                  SELECT * INTO v_esito
+                    FROM documenti.fn_pubblica_template_documento_versione(v_versione_id, v_oggi, c_forma, NULL);
+
+                  RAISE NOTICE 'standard ordine_vendita: pubblicata la versione id % dal % (forma %), versioni rese obsolete: %',
+                      v_versione_id, v_oggi, c_forma, v_esito.versioni_obsolete;
+              END
+              $evolve$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le versioni non si cancellano (trgfn_template_documenti_versioni_block_delete):
+              -- per tornare indietro si pubblica una versione nuova con un changeSet nuovo.
+              SELECT 1;

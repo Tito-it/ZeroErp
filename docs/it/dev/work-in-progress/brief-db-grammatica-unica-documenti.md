@@ -1,12 +1,13 @@
 # Brief DB — Una sola grammatica per i tipi di documento
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-19
+## ⏭️ Chi riparte — aggiornato al 2026-10-20
 
-**Riparte: il team DB** col §12.9 (L2b-1 = (a), decisa da Tid): la colonna `config.sorgenti.etichetta` e i
-modelli di stampa dell'ordine ripubblicati con l'etichetta. Poi la sessione BE (il contesto di stampa la porta),
-e Tid con la prova a video del 2b (§12.7). Il §12.8 (l'`origine` della partita) è pronto per il team DB ma
-aspetta il quando di Tid. Il 2b è chiuso su DB e BE/FE, revisione compresa, e riprovato sullo stato attuale
-(§12.7). Il 2a è chiuso su DB, BE e FE (§11.6). I lotti 0 e 1 sono chiusi su DB, BE e FE.
+**Riparte: la sessione BE** (§12.10.4: `CONTEXT_VERSION = 3` dell'ordine con `origine.etichetta`, i commenti e la
+doc del §12.8). `20261020-22` … `-25` sono applicati su dbdev (2026-10-19 sera), pgTAP come app verdi senza
+regressioni (2026-10-20). Subito dopo il riavvio del backend
+in forma 3, Tid lancia lo SQL una tantum di L2b-2 (§12.10.3), poi la prova a video del 2b (§12.7).
+Il 2b è chiuso su DB e BE/FE, revisione compresa (§12.7). Il 2a è chiuso su DB, BE e FE (§11.6). I lotti 0 e 1
+sono chiusi su DB, BE e FE.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -30,16 +31,17 @@ aspetta il quando di Tid. Il 2b è chiuso su DB e BE/FE, revisione compresa, e r
 | 6-septies-a | ✅ team DB | Lotto 2b scritto e provato in transazione: `20261019-87` … `-99`, tre CSV, 16 pgTAP (uno nuovo) | §12 | — |
 | 6-septies-b | ✅ sessione BE/FE | Il giro BE/FE del 2b: origine dell'ordine da offerta, origine dei legami, destinazione dello smistamento (tre risposte API), e2e sul DB vero (2026-10-19) | §12.4, §12.7 | 6-septies-a |
 | 6-septies-d | **Tid** | Prova a video del 2b (§12.7); ✅ L2b-1 decisa: (a), etichetta in una colonna a DB (2026-10-19) | §12.7, §12.9 | 6-septies-b |
-| 6-septies-f | team DB | `config.sorgenti.etichetta` (colonna, CSV), modelli di stampa dell'ordine ripubblicati con l'etichetta, pgTAP | §12.9 | 6-septies-d |
-| 6-septies-g | sessione BE | Il contesto di stampa dell'ordine porta `origine.etichetta` (JOIN su `config.sorgenti`), test | §12.9 | 6-septies-f |
 | 6-septies-c | ✅ **Tid** | Apply del 2b su dbdev e corsa dei pgTAP come app: verdi (2026-10-19) | §12.6 | 6-septies-a |
-| 6-septies-e | team DB, poi sessione BE | Correzione dell'`origine` della partita (`fn_partite_merce`, `ORDINE` → `ORDINE_VENDITA`): changeSet + pgTAP, poi commento BE e doc | §12.8 | il quando di Tid |
+| 6-septies-e+f | ✅ team DB | §12.8 e §12.9 insieme (via di Tid, 2026-10-19 sera): `config.sorgenti.etichetta` (colonna, CSV, `NOT NULL` in `90_end`), `fn_partite_merce` con `ORDINE_VENDITA`, lo standard dell'ordine v2 (forma 3); `20261020-22` … `-25`, provati in transazione (2026-10-20) | §12.10 | — |
+| 6-septies-h | ✅ **Tid** | Apply di `20261020-22` … `-25` su dbdev (2026-10-19 sera) e corsa dei pgTAP come app: verdi, nessuna regressione (2026-10-20); L2b-2 = (c) (2026-10-20) | §12.10.3, §12.10.5 | 6-septies-e+f |
+| 6-septies-g | sessione BE | `get_ordine` con `documento_origine_etichetta`, builder dell'ordine in **forma 3** con `origine.etichetta`, test, `api_ordini.md`; i commenti e la doc del §12.8 | §12.10.4 | 6-septies-h |
+| 6-septies-i | **Tid** | Subito dopo il riavvio del backend in forma 3: lo SQL una tantum di L2b-2 su dbdev | §12.10.3 | 6-septies-g |
 | 6-sexies | team DB + sessione BE/FE | Sotto-giri 2c … 2e (DB e backend nello stesso giro; col 2e il SQL a mano delle chiavi, G-8), e lotto 3 (anticipabile); censimento su `pg_get_functiondef`, non su `prosrc` (§12.3) | §10, §5 G-4 | 6-septies-b |
 | 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6-sexies |
 
-**Decisioni aperte di Tid:** il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in
-fondo); il momento della correzione
-dell'`origine` della partita (§12.8: la correzione è decisa, resta il quando). L2-1 decisa il 2026-10-19
+**Decisioni aperte di Tid:** il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
+§12.8 e §12.9 (§12.10) è **da committare** su `dev/db-tid`. Il §12.8 è partito il 2026-10-19 sera, insieme al
+§12.9 (Tid). L2-1 decisa il 2026-10-19
 (§10.3); il 2b applica G-3 così com'è (§12.2); L2b-1 decisa il 2026-10-19: (a), colonna a DB (§12.9). Il giro BE/FE
 del 2b con la sua revisione (§12.7) e questo brief sono committati su `dev/backend-tid` (2026-10-19). Nello
 stesso commit c'è anche un lavoro **fuori da questo brief**: `core/utils/ripristinaLookup.js`,
@@ -1132,6 +1134,8 @@ revisione in testa a ciascuno).
 
 ### 12.8 Correzione richiesta: l'`origine` della partita (`vendite.fn_partite_merce`) — team DB
 
+> ✅ **Scritta il 2026-10-20** (`20261020-24`, §12.10), applicata su dbdev il 2026-10-19 sera.
+>
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-19, su decisione di Tid. **A chi:** il team DB, poi la
 > sessione BE per la ricaduta.
 
@@ -1182,6 +1186,10 @@ fare da solo prima del 2c. Il momento lo decide Tid.
 
 ### 12.9 L2b-1: l'etichetta della sorgente nella stampa (team DB, poi sessione BE)
 
+> ✅ **Lato DB scritto il 2026-10-20** (`20261020-22`, `-23`, `-25`, §12.10), applicato su dbdev il 2026-10-19 sera. ⚠️ Due punti di questa
+> richiesta sono cambiati nello sviluppo: si evolve lo **standard**, non le versioni 264 e 3113 degli emittenti
+> (§12.10.2), e il contesto dell'ordine passa alla **forma 3** (§12.10.4).
+>
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-19. **Decisione di Tid:** L2b-1 = (a), e
 > l'etichetta sta **in una colonna a DB** (non nel backend, non nella `descrizione` ripulita). **A chi:** il team
 > DB, poi la sessione BE.
@@ -1234,3 +1242,115 @@ su dbdev) hanno il blocco `fattura.origine.tipo`, ma `VenditeRepository.get_fatt
 `origine_tipo` né `origine_codice`: il blocco non si vede mai. Una fattura può nascere da più documenti, quindi
 non è «la stessa correzione»: è da decidere a parte (togliere il blocco dal modello, o dire che cosa una fattura
 chiama «origine»).
+
+## 12.10 Il giro DB dei §12.8 e §12.9 (team DB, 2026-10-20)
+
+Via di Tid il 2026-10-19 sera: i due giri insieme, un solo apply. Numeri `20261020-22` … `-25` (il 19 è pieno
+fino a `-99`).
+
+### 12.10.1 Che cosa contiene
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-22` (`00_schema`) | `config.sorgenti.etichetta` `varchar(60)`, **nullable qui**, col `CHECK` di non-vuoto (`chk_sorgenti_etichetta_non_vuota`) e il COMMENT |
+| CSV `sorgenti.csv` + loader `20251002-21` | la colonna `etichetta` per tutte le 29 righe; il loader esteso sul posto, come per `area` e `label_selector` |
+| `-23` (`90_end`) | il `NOT NULL`, dopo il mirror: in `00_schema` la tabella ha già righe (le INSERT dei `20260928-62`/`-85`), stessa sede e forma del `20260904-42`; se una riga è scoperta lo dice con una frase, non con un `23502` |
+| `-24` (`20_code`) | `vendite.fn_partite_merce`: `origine` `ORDINE` → `ORDINE_VENDITA` (§12.8); `NESSUNA` e `MULTIPLA` restano |
+| `-25` (`80_data/changelog`) | lo **standard** «Ordine di vendita», versione 2: stampa `ordine.origine.etichetta` al posto di `ordine.origine.tipo`, dichiara la **forma dei dati 3**, pubblicata dalla data operativa |
+
+pgTAP: nuovo `config/test-grammatica-etichetta-sorgenti-v1` (8); `vendite/test-fn-partite-merce-chiusura-v1` passa
+a 16 (il 16 costruisce la riga che evade una riga d'ordine e vuole `ORDINE_VENDITA`). Doc: `dbzero/config/manual/sorgenti.md`
+(la colonna, e la nota del 20-08 sulle `*_RIGA` fuori dal CSV, superata: il CSV ha tutte le 29 righe),
+`dbzero/vendite/manual/fn_partite_merce.md` (i tre valori di `origine`).
+
+### 12.10.2 Le scelte
+
+* **Le etichette** sono quelle che il brief proponeva per i documenti di vendita, cioè le stesse del lineage a
+  video (`vendite.lineage.tipo_*`: «Preventivo», «Offerta», «Ordine», «DDT», «Reso», «Contratto», «Commessa»,
+  «Fattura», «Consumi»); per il resto quelle di `config.tipi_entita.*` («Ordine d'acquisto», «Riga di DDT»,
+  «Prelievo»…). Si cambiano nel CSV.
+* ⚠️ **Il §12.9 chiedeva di ripubblicare le versioni 264 e 3113: superato.** Dal 2026-10-19 vale la regola del
+  brief dei modelli standard ([brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §4.1
+  Q-5): *i changeSet di evoluzione scrivono solo sullo standard*. Le 264 e 3113 sono le copie degli emittenti
+  32 e 44, dati dell'applicazione: il changeSet non le tocca.
+* **Forma dei dati 3.** `etichetta` è una chiave **nuova** del contesto dell'ordine, e il render gira con
+  `StrictUndefined`: un modello che la legge, reso da un builder che non la produce, fallisce. Il patto della
+  forma (`documenti.fn_guard_versione_contesto`) esiste per questo, e il precedente c'è: la chiave nuova
+  `annotazioni` della fattura è stata la forma 3 → 4 (2026-10-02). Quindi la versione 2 dello standard dichiara
+  la forma 3, e il builder dell'ordine passa a `CONTEXT_VERSION = 3` (§12.10.4).
+* **La versione 2 si copia, non si riscrive**: dalla pubblicata valida oggi, per sostituzione contata (due
+  occorrenze di `ordine.origine.tipo`, né una di più né una di meno), nella forma del `20260816-01`. Un modello
+  ritoccato nel frattempo ferma il changeSet. Idempotente; una bozza dello standard già presente lo ferma.
+* **Pubblicata da `script.fn_data_operativa()`**, la data con cui il backend sceglie la versione da stampare
+  (`get_versione_pubblicata_attiva`), non da `current_date`, che dipende dal fuso della sessione.
+* **`fn_partite_merce`**: corpo dal `20261012-32`, verificato uguale al vivo; `RETURNS TABLE` ancorato con
+  `%TYPE` dove la colonna esiste (`origine` su `config.sorgenti.codice_interno`: il tipo resta
+  `character varying`, quindi `CREATE OR REPLACE` senza `DROP`, e `vw_partite_merce` con le funzioni
+  `BEGIN ATOMIC` che la leggono restano in piedi); `SECURITY INVOKER` scritto. Lettori censiti su
+  `pg_get_functiondef`: nessuno confronta `'ORDINE'` (`fn_situazione_merce_ordine` legge solo `MULTIPLA`).
+
+### 12.10.3 La conseguenza della forma 3 — L2b-2, per Tid
+
+Fatto di dbdev, letto il 2026-10-20: l'ordine si stampa oggi con tre modelli, tutti in forma 2. Lo standard
+(template 2731, versione 1) e le copie degli emittenti 32 (template 75, versione 264) e 44 (template 2531,
+versione 3113); le due copie leggono `origine.tipo`.
+
+* **Fra l'apply e il giro BE**: lo standard ha solo la versione 2 (forma 3), il builder produce ancora la 2 → lo
+  standard non stampa (409 `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`, non un PDF sbagliato). Su dbdev non lo usa
+  nessuno: la risoluzione a due livelli del BE non c'è ancora (brief dei modelli standard, §6).
+* **Dopo il giro BE**: le copie in forma 2 non stampano più (409), finché qualcuno non ne pubblica una versione
+  in forma 3. `documenti.vw_template_personalizzati_scarto` le mostra `CONTESTO_SUPERATO`. È il patto che fa il
+  suo lavoro, come per la fattura il 2026-10-02.
+
+**L2b-2 — le due copie di dbdev.** (a) Tid le ripubblica dall'app (Clona → `origine.tipo` → `origine.etichetta`
+nelle due righe → «Legge i dati nella forma» = 3 → Pubblica), come la fattura v6 del 2026-10-02; (b) le spegne,
+quando il BE avrà la risoluzione a due livelli, e gli emittenti 32 e 44 passano allo standard; (c) un SQL una
+tantum a mano su dbdev, che il team DB prepara (non un changeSet: sono dati dell'applicazione).
+**Proposta: (a) o (c)**, perché (b) dipende da un giro BE di un altro brief.
+✅ **Decisa da Tid il 2026-10-20: (c).** Lo script è
+[sql-una-tantum-l2b2-copie-ordine-forma-3.sql](sql-una-tantum-l2b2-copie-ordine-forma-3.sql) (accanto a questo
+brief; si cancella all'archiviazione). Cerca per criterio, non per id: i modelli d'ordine degli emittenti la cui
+versione stampata oggi è in forma 2 e legge `origine.tipo`. Li copia, sostituisce le due occorrenze, li porta
+alla forma 3 e li pubblica dalla data operativa. Si ferma, annullando tutto, se un modello ha già una bozza attiva
+o se le occorrenze non sono due; rilanciato non fa niente. **Si lancia subito dopo il riavvio del backend in
+forma 3** (`psql -X -v ON_ERROR_STOP=1 -f …`, come owner). Provato su dbdev il 2026-10-20 in transazione annullata,
+con un secondo giro nella stessa transazione: le copie 75 (emittente 32) e 2531 (emittente 44) passano dalla
+versione 4 alla 5 (forma 3), il secondo giro non trova niente, e dopo il giro tutti e tre i modelli che stampano
+l'ordine sono in forma 3 e nessuno legge il codice. ⚠️ Se invece Tid preferisce che una
+chiave aggiunta **non** cambi la forma (forma 2 «estesa»), cambiano un letterale nel `-25` e il test 8 del pgTAP
+nuovo, e le copie non si fermano; ma il patto smette di dire quali chiavi un modello può leggere, e il precedente
+della fattura va nell'altro verso.
+
+### 12.10.4 Richiesta al backend (stesso apply) — aggiorna la tabella del §12.9 e del §12.8
+
+| Dove | Oggi | Dopo |
+| --- | --- | --- |
+| `OrdiniRepository.get_ordine` | `v.*` di `vw_ordini_lista` | + `LEFT JOIN config.sorgenti` su `documento_origine_tipo`, colonna `documento_origine_etichetta` (NULL quando l'ordine non ha origine) |
+| `ordine_document_context_builder` | `CONTEXT_VERSION = 2`; `origine: {tipo, codice}` | ⭐ **`CONTEXT_VERSION = 3`**; `origine: {tipo, codice, etichetta}`, chiave **sempre presente** (`None` senza origine: `StrictUndefined`); `tipo` resta (il codice, per chi lo confronta) |
+| test del builder, `api_ordini.md` (contratto di stampa) | | la forma 3 e il campo nuovo |
+| §12.8: `vendite_service.py:2563` (commento), `api_situazione_merce.md:87` (esempio), `apps/config/sorgenti.py` (commento dei vocabolari) | `ORDINE` | `ORDINE_VENDITA`; ⚠️ cambia `partite[].origine` nella risposta della situazione merce; il FE non legge il valore (da riverificare con un grep) |
+
+Il frontend non cambia per il §12.9: il dettaglio dell'ordine non mostra il tipo dell'origine.
+
+### 12.10.5 La prova (2026-10-20, scratch `zeroerp_ruoli`, come owner, in transazione annullata)
+
+* **SQL estratto** dei quattro changeSet (non riscritto), nell'ordine del migrate: `-22`, il mirror del CSV
+  simulato con 29 `UPDATE` per id, `-23`, `-24`, `-25`. Passa: `etichetta` `NOT NULL`; lo standard ha la
+  versione 1 `OBSOLETA` fino a ieri e la 2 `PUBBLICATA` (forma 3) da oggi. Il `-25` lanciato una seconda volta
+  non fa niente (idempotente). ⚠️ **Non provato: il loader vero** (`loadUpdateData` del `20251002-21`), che il
+  seed simulato non copre; il CSV è confrontato col DB colonna per colonna prima della modifica (0 differenze).
+* **`-24`**: il corpo del `20261012-32` è identico al vivo (definizione e COMMENT); dopo il `-24` l'unica
+  differenza della definizione è il letterale, ACL invariata, `origine` resta `character varying`,
+  `vw_partite_merce` in piedi; il rollback riporta definizione e COMMENT al vivo.
+* **pgTAP**: 64 file (chi nomina le partite e i loro lettori, `config.sorgenti`, i modelli e la forma dei dati),
+  ciascuno com'è e con l'SQL estratto dopo la riga `BEGIN;`, uno alla volta. **43 verdi prima e dopo, 19 rossi
+  identici prima e dopo** (fixture senza `billing_account`, test di scope e `-app` rossi da owner per
+  costruzione). Cambiano solo i due di questo giro: il nuovo, rosso senza (la colonna non c'è) e 8/8 con;
+  `test-fn-partite-merce-chiusura-v1`, il caso 16 rosso senza e verde con (gli resta rosso lo scope, rosso da
+  owner come prima).
+* Cancelli statici verdi; `guardrail_pgtap_preambolo` resta rosso solo per
+  `dbops/test-automazioni-guasto-ambiente-rilanciato-v1`, di un altro cantiere (§12.5).
+* Non provato prima dell'apply: i pgTAP **come app** (li lancia Tid), il loader del CSV, il giro BE del §12.10.4.
+* ✅ **Apply su dbdev** (Tid, 2026-10-19 sera): i quattro changeSet `EXECUTED`. Il `-23` è passato, quindi il
+  loader vero ha dato l'etichetta a ogni riga. Lo standard dell'ordine stampa la versione 2, in forma 3.
+* ✅ **pgTAP come app** (Tid, 2026-10-20): verdi, nessuna regressione.

@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-grammatica-unica-documenti §12.9 (L2b-1) — il NOT NULL su
+# config.sorgenti.etichetta.
+#
+# ⚠️ PERCHE' STA IN `90_end` E NON ACCANTO ALLA COLONNA. La colonna nasce in
+# `00_schema` (20261020-22) e la riempie il mirror del CSV (20251002-21), che
+# gira in `80_data`, cioe' DOPO. Un NOT NULL in `00_schema` fallirebbe sulle
+# righe gia' presenti (dbdev) e, da zero, su quelle inserite dai changeSet di
+# `00_schema` prima del seed. Stessa sede e stessa forma del 20260904-42.
+#
+# ⭐ Il motivo del NOT NULL e' sul modello: una sorgente e' un tipo di
+# documento (o di riga) che il database nomina; senza il suo nome la stampa
+# non ha parole da mettere sulla carta. Una sorgente nuova senza etichetta non
+# deve poter entrare.
+#
+# ⚠️ Idempotente e difensivo: se una riga fosse ancora scoperta il changeSet
+# lo dice con una frase leggibile, non con un 23502 nudo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261020-23-alter-sorgenti-etichetta-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261020-23-alter-sorgenti-etichetta-not-null
+      author: mctit
+      failOnError: true
+      comment: >
+        config.sorgenti.etichetta diventa NOT NULL, dopo che il mirror CSV di 80_data l'ha
+        riempita. In 90_end perche' e' la fase che gira dopo il seed. Brief:
+        brief-db-grammatica-unica-documenti §12.9 (L2b-1).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            { schemaName: config, tableName: sorgenti, columnName: etichetta }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $notnull$
+              DECLARE
+                  -- un elenco di codici per il messaggio: nessuna colonna di cui sia il riflesso
+                  v_scoperte text;
+              BEGIN
+                  SELECT string_agg(s.codice_interno, ', ' ORDER BY s.id) INTO v_scoperte
+                    FROM config.sorgenti s
+                   WHERE s.etichetta IS NULL;
+
+                  IF v_scoperte IS NOT NULL THEN
+                      RAISE EXCEPTION
+                        'Impossibile rendere NOT NULL config.sorgenti.etichetta: sorgenti senza etichetta (%). '
+                        'Aggiungere il valore nel CSV 80_data/sql/config/sorgenti.csv.',
+                        v_scoperte;
+                  END IF;
+
+                  -- Idempotente: se il NOT NULL c'e' gia', non si rifa'.
+                  IF EXISTS (
+                      SELECT 1
+                        FROM pg_attribute a
+                        JOIN pg_class c ON c.oid = a.attrelid
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'config'
+                         AND c.relname = 'sorgenti'
+                         AND a.attname = 'etichetta'
+                         AND NOT a.attnotnull) THEN
+                      ALTER TABLE config.sorgenti
+                          ALTER COLUMN etichetta SET NOT NULL;
+                      RAISE NOTICE 'config.sorgenti.etichetta ora e'' NOT NULL.';
+                  END IF;
+              END
+              $notnull$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sorgenti
+                  ALTER COLUMN etichetta DROP NOT NULL;
