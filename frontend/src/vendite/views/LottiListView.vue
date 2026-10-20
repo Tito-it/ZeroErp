@@ -774,7 +774,7 @@ const azioniPagina = computed(() =>
             class="app-dash-mese-lotti"
             v-tooltip.right="t('vendite.lotti.mese_lotti', { n: mesi[idx].n_lotti })"
           >
-            <i :class="MANAGE_ICONS.LOTTO" /> {{ mesi[idx].n_lotti }}
+            {{ mesi[idx].n_lotti }} <i :class="MANAGE_ICONS.LOTTO" />
           </span>
         </template>
       </DashMesiSidebar>
@@ -789,7 +789,7 @@ const azioniPagina = computed(() =>
         >
           <template #badge>
             <span v-if="mesi[meseIdx].n_lotti > 0" class="app-dash-mese-lotti">
-              <i :class="MANAGE_ICONS.LOTTO" /> {{ mesi[meseIdx].n_lotti }}
+              {{ mesi[meseIdx].n_lotti }} <i :class="MANAGE_ICONS.LOTTO" />
             </span>
           </template>
         </DashMeseStepper>
