@@ -22,7 +22,12 @@ AS $function$
 --         e la scomposizione in testata resta vera — e' quella che
 --         va in stampa. Da D-N pezzo 1 l'ambito comprende anche le
 --         condizioni di pagamento della fattura. Da 3b.3 l'utility
---         si LEGGE dalla testata invece di essere dedotta.
+--         si LEGGE dalla testata invece di essere dedotta. Da K-7
+--         (20261021-02) decimali, metodo e soglie sono quelli effettivi
+--         di anagrafiche.fn_parametri_importo_utility: la riga
+--         dell'emittente se c'e', se no il valore di sistema
+--         dell'utility. Senza la riga la fattura si chiude. Da R-2
+--         (20261021-16) arrotonda con script.fn_arrotonda_importo.
 DECLARE
     v_imponibile_tot  vendite.fatture.imponibile_tot%TYPE;
     v_imposta_tot     vendite.fatture.imposta_tot%TYPE;
@@ -76,15 +81,17 @@ BEGIN
     v_totale_fondi := vendite.fn_get_totale_fondi_fattura(p_fattura_id);
     v_totale_doc := COALESCE(v_imponibile_tot, 0) + COALESCE(v_imposta_tot, 0);
 
-    SELECT e.minimo_soglia_min, e.minimo_soglia_max, e.arrotondamento_importi_dec, COALESCE(e.metodo_arrotondamento_importi, 'HALF_UP')
+    -- K-7 (20261021-02): i parametri effettivi, dal BB. La riga
+    -- dell'emittente e' un override: senza, valgono quelli di sistema
+    -- dell'utility. Zero righe solo se l'utility manca (anche NULL).
+    SELECT p.minimo_soglia_min, p.minimo_soglia_max, p.arrotondamento_importi_dec, p.metodo_arrotondamento_importi
       INTO v_min_soglia_min, v_min_soglia_max, v_decimali, v_metodo
-      FROM anagrafiche.emittenti_fiscali_utilities e
-     WHERE e.emittente_soggetto_ruolo_id = v_emittente_soggetto_ruolo_id AND e.utility_id = v_utility_id AND e.attivo IS TRUE LIMIT 1;
+      FROM anagrafiche.fn_parametri_importo_utility(v_emittente_soggetto_ruolo_id, v_utility_id) p;
 
     IF v_decimali IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'fn_ricalcola_totali_fattura', 'E_CONFIG_MANCANTE',
             jsonb_build_object('emittente', v_emittente_soggetto_ruolo_id, 'utility_id', v_utility_id, 'fattura_id', p_fattura_id),
-            NULL::uuid, concat('configurazione emittente/utility mancante per fattura ', p_fattura_id));
+            NULL::uuid, concat('utility mancante o sconosciuta per fattura ', p_fattura_id));
     END IF;
 
     -- D-N pezzo 2: il saldo d'ambito AL NETTO del proprio contributo.
@@ -98,17 +105,12 @@ BEGIN
     v_arro_precedente := COALESCE(v_saldo_scope, 0) - COALESCE(v_arro_proprio, 0);
 
     v_raw_totale := v_totale_doc + COALESCE(v_totale_fondi, 0) + COALESCE(v_arro_precedente, 0);
-    v_round_totale := 0;
-
-    IF v_metodo = 'UP' THEN
-        v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN ceil(v_raw_totale * power(10::NUMERIC, v_decimali)) ELSE -ceil(abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) END) / power(10::NUMERIC, v_decimali);
-    ELSIF v_metodo = 'DOWN' THEN
-        v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN floor(v_raw_totale * power(10::NUMERIC, v_decimali)) ELSE -floor(abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) END) / power(10::NUMERIC, v_decimali);
-    ELSIF v_metodo = 'HALF_DOWN' THEN
-        v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN ceil((v_raw_totale * power(10::NUMERIC, v_decimali)) - 0.5) ELSE -ceil((abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) - 0.5) END) / power(10::NUMERIC, v_decimali);
-    ELSE
-        v_round_totale := (CASE WHEN v_raw_totale >= 0 THEN floor((v_raw_totale * power(10::NUMERIC, v_decimali)) + 0.5) ELSE -floor((abs(v_raw_totale) * power(10::NUMERIC, v_decimali)) + 0.5) END) / power(10::NUMERIC, v_decimali);
-    END IF;
+    -- R-2 (20261021-16): la regola d'arrotondamento vive in un punto
+    -- solo, script.fn_arrotonda_importo (vocabolario 20260728-07). Prima
+    -- qui c'era una copia delle quattro formule, con un ripiego muto su
+    -- HALF_UP per un metodo sconosciuto: ora un metodo fuori vocabolario
+    -- si ferma (i CHECK sulle colonne non lo lasciano arrivare).
+    v_round_totale := script.fn_arrotonda_importo(v_raw_totale, v_decimali, v_metodo);
 
     v_arro_attuale := v_round_totale - v_raw_totale;
     v_totale_a_pagare := v_raw_totale + v_arro_attuale;
@@ -131,7 +133,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_ricalcola_totali_fattura(p_fattura_id bigint)
-IS 'Ricalcola totali e arrotondamento della fattura. D-N pezzo 1: l''ambito di compensazione comprende (termine_pagamento_id, modalita_pagamento_id). D-N pezzo 2: il saldo d''ambito si legge al netto del contributo gia'' dato da questa fattura, cosi'' la riesecuzione ripete il primo calcolo invece di inseguirlo e la scomposizione precedente/attuale in testata resta vera. Da 3b.3 l''utility si legge da vendite.fatture.utility_id: la deduzione COALESCE(lotto, BA) partiva dal BA della fattura (il padre) mentre la chiave usa quello dell''attivita'' (il figlio), quindi con la gerarchia attiva avrebbe scelto la configurazione di arrotondamento di un''altra utility.';
+IS 'Ricalcola totali e arrotondamento della fattura. D-N pezzo 1: l''ambito di compensazione comprende (termine_pagamento_id, modalita_pagamento_id). D-N pezzo 2: il saldo d''ambito si legge al netto del contributo gia'' dato da questa fattura, cosi'' la riesecuzione ripete il primo calcolo invece di inseguirlo e la scomposizione precedente/attuale in testata resta vera. Da 3b.3 l''utility si legge da vendite.fatture.utility_id: la deduzione COALESCE(lotto, BA) partiva dal BA della fattura (il padre) mentre la chiave usa quello dell''attivita'' (il figlio), quindi con la gerarchia attiva avrebbe scelto la configurazione di arrotondamento di un''altra utility. Da K-7 (2026-10-21, brief-db-modelli-documento-standard §10.3, D-7): decimali, metodo e soglie dal BB anagrafiche.fn_parametri_importo_utility, cioe'' la riga dell''emittente se c''e'' e altrimenti il valore di sistema dell''utility; E_CONFIG_MANCANTE resta solo per una fattura senza utility. Da R-2 (2026-10-21, §10.7): l''arrotondamento del totale e'' script.fn_arrotonda_importo, la sede unica delle quattro regole, al posto di una copia delle formule.';
 ```
 
 ---

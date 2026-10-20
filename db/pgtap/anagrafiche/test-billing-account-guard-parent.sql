@@ -391,15 +391,20 @@ DECLARE
     v_fattura_id bigint;
     v_riga_id    bigint;
 BEGIN
+-- ⚠️ utility_id dal BA, come la testata vera (fn_get_or_create_fattura_header):
+--   una fattura senza utility l'applicazione non la crea, e dal 20261021-15 le sue
+--   righe senza regole dell'articolo non hanno parametri d'importo
+--   (brief-db-modelli-documento-standard §10.7 R-3).
     INSERT INTO vendite.fatture (
         registro_id, emittente_soggetto_ruolo_id, billing_account_id,
-        tipo_doc_fiscale_id, valuta_id, stato_doc_fiscale_id, data)
+        tipo_doc_fiscale_id, valuta_id, stato_doc_fiscale_id, data, utility_id)
     SELECT script.fn_pgtap_registro_fattura(script.fn_pgtap_emittente_sr_operatore()),
            script.fn_pgtap_emittente_sr_operatore(),
            af.billing_account_id, af.tipo_doc_fiscale_id, af.valuta_id,
            (SELECT s.id FROM config.stati_doc_fiscale s
              WHERE s.codice_interno = 'DRAFT' ORDER BY s.id LIMIT 1),
-           script.fn_data_operativa()
+           script.fn_data_operativa(),
+           (SELECT ba.utility_id FROM anagrafiche.billing_account ba WHERE ba.id = af.billing_account_id)
       FROM vendite.attivita_fatturabili af
      WHERE af.billing_account_id = (SELECT child1_ba_id FROM tmp_ids_guard)
      ORDER BY af.id

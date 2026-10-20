@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA REGOLA DEI DUE LIVELLI, SCRITTA UNA VOLTA
+#   documenti.fn_template_esito_risoluzione (BB nuovo)
+#   Brief: brief-db-modelli-documento-standard §10.3 K-5, D-5 di Tid (2026-10-20)
+#
+# Per un emittente e una coppia (tipo di documento, sorgente), l'esito della
+#   strada B (§4.1 Q-2, rev 20261020-26), sui soli modelli che possono stampare
+#   (documenti.vw_template_versioni_stampabili, 20261021-04):
+#   * EMITTENTE: l'emittente ha modelli suoi che possono stampare, e uno e'
+#     predefinito: quello, con la sua versione;
+#   * SENZA_PREDEFINITO: ha modelli suoi che possono stampare, ma nessuno e'
+#     predefinito. Lo standard non entra;
+#   * STANDARD: non ne ha nessuno; vale il predefinito standard, con la sua
+#     versione;
+#   * NON_RISOLTO: non ne ha nessuno, e nemmeno lo standard puo' stampare.
+#   Piu' il numero dei modelli suoi che possono stampare.
+#
+# Due lettori: documenti.fn_risolvi_template_applicabile (20261021-09), che
+#   solleva sugli esiti negativi, e documenti.vw_template_risoluzione_emittente
+#   (20261021-08), la lettura della lista Modelli documento. Prima la regola stava
+#   solo dentro la funzione, e la lista l'avrebbe dovuta ricopiare nel BE.
+#
+# Una riga sempre (un aggregato). Al massimo un predefinito attivo per lato
+#   (uq_template_documenti_default_attivo, NULLS NOT DISTINCT) e una versione
+#   stampabile per modello (K-1): max() non sceglie fra due.
+# Funzione e non vista: chi la legge ha gia' la terna, e non legge
+#   anagrafiche.emittenti_fiscali. Cosi' la stampa non dipende da cosa la RLS
+#   lascia vedere degli emittenti.
+# Forma: LANGUAGE sql BEGIN ATOMIC (§5c), STABLE, SECURITY INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261021-07-create-fn-template-esito-risoluzione-mctit.yaml
+
+  - changeSet:
+      id: 20261021-07-create-fn-template-esito-risoluzione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti.fn_template_esito_risoluzione: per (emittente, tipo, sorgente) l'esito della
+        risoluzione a due livelli (EMITTENTE, SENZA_PREDEFINITO, STANDARD, NON_RISOLTO), col modello e la
+        versione. Sede unica della regola. Brief: brief-db-modelli-documento-standard §10.3 K-5.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'documenti'
+                 AND c.relname = 'vw_template_versioni_stampabili';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION documenti.fn_template_esito_risoluzione(
+                  p_emittente_fiscale_id      documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  p_tipo_documento_output_id  documenti.template_documenti.tipo_documento_output_id%TYPE,
+                  p_sorgente_tipo_id          documenti.template_documenti.sorgente_tipo_id%TYPE
+              )
+               RETURNS TABLE(
+                  -- tipo esplicito: l'esito, non una colonna
+                  esito                  text,
+                  template_documento_id  documenti.template_documenti.id%TYPE,
+                  template_versione_id   documenti.template_documenti_versioni.id%TYPE,
+                  -- tipo esplicito: un conteggio
+                  modelli_stampabili     integer
+              )
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT CASE
+                           WHEN x.n_propri > 0 AND x.def_proprio IS NOT NULL THEN 'EMITTENTE'
+                           WHEN x.n_propri > 0 THEN 'SENZA_PREDEFINITO'
+                           WHEN x.def_standard IS NOT NULL THEN 'STANDARD'
+                           ELSE 'NON_RISOLTO'
+                         END,
+                         CASE WHEN x.n_propri > 0 THEN x.def_proprio ELSE x.def_standard END,
+                         CASE WHEN x.n_propri > 0 THEN x.ver_proprio ELSE x.ver_standard END,
+                         x.n_propri
+                    FROM (
+                      SELECT count(DISTINCT s.template_documento_id) FILTER (WHERE NOT s.standard)::integer AS n_propri,
+                             max(s.template_documento_id) FILTER (WHERE NOT s.standard AND s.is_default) AS def_proprio,
+                             max(s.template_versione_id)  FILTER (WHERE NOT s.standard AND s.is_default) AS ver_proprio,
+                             max(s.template_documento_id) FILTER (WHERE s.standard AND s.is_default)     AS def_standard,
+                             max(s.template_versione_id)  FILTER (WHERE s.standard AND s.is_default)     AS ver_standard
+                        FROM documenti.vw_template_versioni_stampabili s
+                       WHERE s.tipo_documento_output_id = p_tipo_documento_output_id
+                         AND s.sorgente_tipo_id = p_sorgente_tipo_id
+                         AND (s.emittente_fiscale_id = p_emittente_fiscale_id OR s.standard)
+                    ) x;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION documenti.fn_template_esito_risoluzione(
+                  documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  documenti.template_documenti.tipo_documento_output_id%TYPE,
+                  documenti.template_documenti.sorgente_tipo_id%TYPE) IS
+                  'L''esito della risoluzione a due livelli per (emittente, tipo, sorgente), sui modelli che possono stampare (vw_template_versioni_stampabili) (2026-10-21, brief-db-modelli-documento-standard §10.3 K-5; strada B di §4.1 Q-2): EMITTENTE (il suo predefinito stampabile), SENZA_PREDEFINITO (ha modelli suoi stampabili, nessuno predefinito: lo standard non entra), STANDARD (il predefinito standard stampabile), NON_RISOLTO. Con modello, versione e numero dei modelli suoi stampabili. Sempre una riga. Sede unica della regola: la leggono fn_risolvi_template_applicabile e vw_template_risoluzione_emittente.';

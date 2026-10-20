@@ -1200,7 +1200,7 @@ esiste più manda qualcuno nella direzione sbagliata. Corretta (§12.7 il resto)
 delle tabelle presidiate (erano dodici, sono **quindici**).
 
 ⚠️ **Un passo resta a chi genera la doc**: il generatore inserisce la riga
-`{% include-markdown %}` nella pagina auto-gen **solo se il file manuale esisteva
+`include-markdown` nella pagina auto-gen **solo se il file manuale esisteva
 quando ha girato**. ⇒ Dopo aver scritto un `manual/` nuovo va rilanciato
 `scripts/gen_db_docs.py`, o la pagina resta scritta e **non agganciata**.
 

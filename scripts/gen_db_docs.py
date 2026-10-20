@@ -675,6 +675,13 @@ def _link_job_pgagent(schema_dir, lines):
                   "esistono, quando partono e che cosa chiamano", ""]
 
 
+# Front matter degli indici di schema: fuori dalla ricerca. Zensical indicizza
+# ogni sezione `##` come un solo campo e rifiuta quelli oltre 16 KB (zensical
+# 0.0.71): l'elenco «Funzioni» di uno schema grande lo supera e ferma la build.
+# Il contenuto dell'indice e' solo navigazione: lo scopo di ogni oggetto e' gia'
+# cercabile nella sua pagina.
+_INDEX_FRONT_MATTER = "---\nsearch:\n  exclude: true\n---\n"
+
 # Scrive index.md per schema
 def write_index(schema_dir, schema):
     index_path  = os.path.join(schema_dir, 'index.md')
@@ -683,7 +690,7 @@ def write_index(schema_dir, schema):
     manual_dir  = os.path.join(schema_dir, 'manual')
     views_dir   = os.path.join(schema_dir, 'views')
 
-    lines = [f"# Schema `{schema}`\n"]
+    lines = [_INDEX_FRONT_MATTER, f"# Schema `{schema}`\n"]
 
     # 1. Tabelle con Scopo Principale
     if os.path.isdir(tables_dir):
@@ -771,7 +778,7 @@ def write_index_ci(schema_dir, schema):
     views_dir = os.path.join(schema_dir, 'views')
     manual_dir = os.path.join(schema_dir, 'manual')
 
-    lines = [f"# Schema `{schema}`\n"]
+    lines = [_INDEX_FRONT_MATTER, f"# Schema `{schema}`\n"]
 
     if not os.path.isdir(manual_dir):
         with open(index_path, 'w', encoding='utf-8') as f:

@@ -146,7 +146,7 @@ non si eseguono.
 * Stack: `zensical` (con `deepmerge`), versioni in `requirements.txt`. `mkdocs build` non è
   più il comando di progetto.
 * Build: `python scripts/build_docs_zensical.py` — preprocessa `docs/` in `.tmp/zensical_docs`,
-  espande gli `{% include-markdown %}`, riscrive i link `](/dbzero/...)` in `](/it/dbzero/...)`,
+  espande gli `include-markdown`, riscrive i link `](/dbzero/...)` in `](/it/dbzero/...)`,
   genera `mkdocs.zensical.yml` e produce `site-zensical/`.
 * Anteprima: `bash scripts/serve_docs.sh` — build più server statico su `127.0.0.1:8010`,
   scrive solo in `/tmp/zeroerp-docs-preview`.

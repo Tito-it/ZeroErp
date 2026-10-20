@@ -16,10 +16,18 @@ la lista Modelli documento lo può segnalare prima che una stampa si fermi.
 
 ### Una riga per modello personalizzato
 
-Ogni modello di un emittente, attivo e con una versione pubblicata, per cui esiste uno standard
-predefinito attivo dello stesso tipo di documento e della stessa sorgente. Si confrontano la
-versione **in uso** del modello (la pubblicata col numero più alto) e l'ultima versione pubblicata
-dello standard.
+(rev 21-10-2026 — §10.3 K-10, D-9 di Tid)
+
+Ogni modello di un emittente che **stampa oggi**. Si confrontano due versioni, tutte e due quelle
+con cui si stampa oggi (`vw_template_versioni_stampabili`):
+
+* la versione della copia;
+* la versione dello **standard di riferimento**: quello da cui la copia deriva. Per una copia senza
+  origine dichiarata, lo standard predefinito dello stesso tipo e della stessa sorgente.
+
+È lo stesso riferimento da cui parte `fn_personalizza_template_standard`: una copia appena nata e
+pubblicata è `ALLINEATA`. La copia di uno standard non predefinito si confronta con lui. Una copia o
+uno standard che oggi non stampano non hanno riga: lo scarto si misura fra due cose che stampano.
 
 L'origine di una copia la dichiara la versione che l'ha ripresa dallo standard
 (`template_documenti_versioni.derivata_da_versione_id`); le versioni successive della stessa copia
@@ -31,7 +39,7 @@ la **ereditano** senza ripeterla.
 |---|---|
 | `CONTESTO_SUPERATO` | la versione in uso legge i dati in una forma (`versione_contesto`) più vecchia di quella dello standard. È il caso che **si ferma alla stampa**: viene per primo |
 | `ORIGINE_NON_DICHIARATA` | nessuna versione dice da dove viene (modelli nati prima dello standard, o scritti da zero) |
-| `ALLINEATA` | parte dall'ultima versione standard |
+| `ALLINEATA` | parte dalla versione con cui lo standard stampa oggi |
 | `STANDARD_AVANTI` | parte da una versione standard precedente: funziona, ma non ha l'aggiornamento |
 
 ⚠️ La forma dei dati che il sistema prepara è una costante del backend, che il database non conosce.
@@ -42,4 +50,12 @@ cambio di forma.
 
 ### Test
 
-`db/pgtap/documenti/test-documenti-template-standard-v1.sql` (test 26-30).
+`db/pgtap/documenti/test-documenti-template-standard-v1.sql` (test 31-35),
+`test-documenti-personalizza-v1.sql` (test 12-14: il riferimento).
+
+### Note di migrazione
+
+Fino al 21-10-2026 il riferimento era sempre lo standard predefinito della coppia, e la versione
+la pubblicata col numero più alto, senza guardare `attivo` né la data: la copia di uno standard non
+predefinito si confrontava con un altro modello, e con l'ultima pubblicata spenta una copia nasceva
+`STANDARD_AVANTI`.

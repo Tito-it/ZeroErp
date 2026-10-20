@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Schema `anagrafiche`
 
 ## 📚 Tabelle (manuale)
@@ -82,6 +87,7 @@
 - [fn_istanza_di_altro_soggetto](manual/fn_istanza_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a … D-17d di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [fn_lookup_utilities_per_ba](manual/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
 - [fn_notify_cambio_reparto](manual/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
+- [fn_parametri_importo_utility](manual/fn_parametri_importo_utility.md)
 - [fn_provisiona_dati_di_sviluppo](manual/fn_provisiona_dati_di_sviluppo.md)
 - [fn_ruolo_di_altro_soggetto](manual/fn_ruolo_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a e D-17b di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [fn_scrivi_dati_societari_alla_nascita](manual/fn_scrivi_dati_societari_alla_nascita.md)

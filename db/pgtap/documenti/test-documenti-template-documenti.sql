@@ -4,12 +4,21 @@
 -- Test: documenti.template_documenti — unique, default unico, lock codice
 -- ------------------------------------------------------------
 -- Indice test (1..6):
---  1) Setup: emittente fiscale disponibile per fixture
+--  1) Setup: i due emittenti della fixture esistono
 --  2) Unique (emittente, sorgente, codice) bloccato su duplicato
 --  3) Unique (emittente, sorgente, codice_interno) bloccato su duplicato
 --  4) Indice parziale: due is_default=true attivi sulla stessa tripla bloccati
 --  5) Stesso codice ammesso per emittente diverso (validazione SCOPE)
 --  6) Lock columns: trigger su template_documenti presente
+--
+-- ⛔ LA FIXTURE SI COSTRUISCE, non si cerca (rev 2026-10-20,
+--   brief-db-modelli-documento-standard §10.7 R-1). Fino a quel giorno il file
+--   pescava «il primo emittente attivo»: su dbdev e' l'emittente 32, che ha gia'
+--   un suo predefinito per (PREVENTIVO, PREVENTIVO), e il primo INSERT moriva
+--   sull'unico del predefinito. E il test 5, senza un secondo emittente, passava
+--   lo stesso («skip soft»): verde per sottrazione. Ora due aziende NUOVE
+--   (dbops.fn_pgtap_crea_emittente_operatore), senza modelli: il test 5 e' una
+--   asserzione vera.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -27,7 +36,15 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ Le aziende si costruiscono, e il contesto e' quello dell'operatore della
+--   prima.
+CREATE TEMP TABLE tmp_td_mondi AS
+SELECT 'E1'::text AS lato, m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m
+UNION ALL
+SELECT 'E2', m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM tmp_td_mondi WHERE lato = 'E1')); END $ctx$;
 
 SELECT plan(6);
 
@@ -36,17 +53,18 @@ SELECT plan(6);
 -- ============================================================
 CREATE TEMP TABLE tmp_td_ctx AS
 SELECT
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo = true ORDER BY ef.id LIMIT 1)                      AS emittente_id,
+  (SELECT emittente_fiscale_id FROM tmp_td_mondi WHERE lato = 'E1')   AS emittente_id,
+  (SELECT emittente_fiscale_id FROM tmp_td_mondi WHERE lato = 'E2')   AS emittente2_id,
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'PREVENTIVO')                              AS sorgente_id,
   (SELECT t.id FROM documenti.tipi_documento_output t
     WHERE t.codice_interno = 'PREVENTIVO')                              AS tipo_output_id;
 
--- 1) Pre-condizione: emittente fiscale disponibile
+-- 1) Pre-condizione: le due aziende della fixture esistono, e sono diverse
 SELECT ok(
-  (SELECT emittente_id IS NOT NULL FROM tmp_td_ctx),
-  'Setup: emittente fiscale disponibile per fixture'
+  (SELECT emittente_id IS NOT NULL AND emittente2_id IS NOT NULL
+          AND emittente_id <> emittente2_id FROM tmp_td_ctx),
+  'Setup: i due emittenti della fixture esistono'
 );
 
 -- ============================================================
@@ -62,8 +80,7 @@ SELECT
     'PGTAP-TD-001', 'PGTAP_TD_001', 'Template PGTAP base',
     sorgente_id, 'pgtap.builder.documenti', emittente_id,
     true, true
-FROM tmp_td_ctx
-WHERE emittente_id IS NOT NULL;
+FROM tmp_td_ctx;
 
 -- 2) Unique (emittente, sorgente, codice) duplicato bloccato
 SELECT throws_ok(
@@ -114,47 +131,19 @@ SELECT throws_ok(
   'Indice parziale uq_template_documenti_default_attivo: secondo default bloccato'
 );
 
--- 5) Lo stesso codice e' ammesso per un emittente diverso.
---    Verifica costruendo un INSERT che cambia emittente: l'oggetto del test
---    e' che NON debba fallire con 23505. Usiamo un SAVEPOINT, ma teniamo
---    pgTAP fuori dai rollback intermedi: facciamo un test che cattura
---    l'esistenza eventuale di un secondo emittente.
-DO $$
-DECLARE
-  v_em2 bigint;
-  v_inserted boolean := false;
-BEGIN
-  SELECT ef.id INTO v_em2
-    FROM anagrafiche.emittenti_fiscali ef
-   WHERE ef.attivo = true
-     AND ef.id <> (SELECT emittente_id FROM tmp_td_ctx)
-   ORDER BY ef.id
-   LIMIT 1;
-
-  IF v_em2 IS NOT NULL THEN
-    INSERT INTO documenti.template_documenti (
-        tipo_documento_output_id, codice, codice_interno, descrizione,
-        sorgente_tipo_id, context_builder_code, emittente_fiscale_id,
-        is_default, attivo
+-- 5) Lo stesso codice e' ammesso per un emittente diverso: l'unicita' e' per
+--    emittente. E2 e' un'azienda costruita, quindi l'asserzione e' vera.
+SELECT lives_ok(
+  $$INSERT INTO documenti.template_documenti (
+      tipo_documento_output_id, codice, codice_interno, descrizione,
+      sorgente_tipo_id, context_builder_code, emittente_fiscale_id,
+      is_default, attivo
     )
     SELECT
-        tipo_output_id, 'PGTAP-TD-001', 'PGTAP_TD_001', 'stesso codice altro emittente',
-        sorgente_id, 'pgtap.builder.documenti', v_em2, false, true
-    FROM tmp_td_ctx;
-    v_inserted := true;
-  ELSE
-    -- Non e' disponibile un secondo emittente: il test non puo' essere
-    -- esercitato in pieno. Si registra come passato (non smentito).
-    v_inserted := true;
-  END IF;
-
-  -- Salva risultato in temp table per il test pgTAP successivo
-  CREATE TEMP TABLE tmp_td_dup_em AS SELECT v_inserted AS ok;
-END$$;
-
-SELECT ok(
-  (SELECT ok FROM tmp_td_dup_em),
-  'Stesso codice ammesso per emittente diverso (o skip soft se em2 assente)'
+      tipo_output_id, 'PGTAP-TD-001', 'PGTAP_TD_001', 'stesso codice altro emittente',
+      sorgente_id, 'pgtap.builder.documenti', emittente2_id, false, true
+    FROM tmp_td_ctx$$,
+  'Stesso codice ammesso per emittente diverso'
 );
 
 -- 6) Trigger LOCK_COLUMNS provisionato sulla tabella template_documenti

@@ -1108,3 +1108,5 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 1108,106,origine,Origine,,origine,informazione,string,,110,90,center,,,f,t,t,f,f,t,2026-10-05 00:00:00,mctit,vendite.offerte.col_origine,30
 1109,106,azioni,Azioni,,,azione,string,,,999,center,,99,f,f,f,f,f,t,2026-10-05 00:00:00,mctit,common.col_azioni,100
 1110,28,override_count,Override,"Override dei permessi scritti per l operatore (aree, azioni e oggetti)",override_count,informazione,numeric,number,110,35,right,,,f,t,t,f,f,t,2026-10-06 00:00:00,mctit,amministrazione.col_override,70
+1111,24,standard,Standard,"Modello standard di sistema: in sola lettura, vale per gli emittenti che non hanno un modello loro",standard,informazione,boolean,,,80,center,,,t,t,t,f,f,t,2026-10-21 00:00:00,mctit,config.modelli_documenti.col_standard,50
+1112,24,stato_scarto,Allineamento allo standard,Quanto la copia e rimasta indietro rispetto al modello standard da cui deriva,stato_scarto,informazione,string,,,90,left,,,f,f,t,f,f,t,2026-10-21 00:00:00,mctit,config.modelli_documenti.col_stato_scarto,50

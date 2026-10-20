@@ -1667,7 +1667,7 @@ lotto; le rate che vanno rigenerate perché la somma non cambia e le date sì;
 EMESSA).
 
 ⚠️ **Serve un'altra passata di `scripts/gen_db_docs.py`.** La riga
-`{% include-markdown … %}` che aggancia il manuale alla pagina di riferimento la
+`include-markdown` che aggancia il manuale alla pagina di riferimento la
 scrive il generatore, e **solo se il file manuale esiste già** quando gira: la
 passata del 2026-08-25 è avvenuta prima che queste sei pagine fossero scritte,
 quindi al momento esistono ma non sono agganciate a niente.

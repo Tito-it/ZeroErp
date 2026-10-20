@@ -42,7 +42,6 @@ db/pgtap/vendite/test-drop-uq-commesse-attivita-src-uid-partial-v1.sql	ERRORE_FI
 db/pgtap/vendite/test-elimina-fattura-da-lotto-effetti-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-emissione-mirata-gruppi-fatturabili-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-esito-gruppi-giro-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fattura-guard-uscita-draft-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fattura-satelliti-lock-congelamento-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fattura-utils-critical-termini.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fatturazione-draft.sql	ERRORE_FIXTURE

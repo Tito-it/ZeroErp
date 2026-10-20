@@ -11,14 +11,17 @@
 -- Piano: piano-db-satelliti-fattura.md Fase 2.5, criterio allargato dal
 --        brief-db-snapshot-intestazione-fattura.md §3.5 (passo I.4)
 -- ------------------------------------------------------------
--- Indice test (1..11):
+-- Indice test (plan 12; il 6-bis e' del 2026-10-21):
 --   1) Cablaggio: BEFORE UPDATE OF stato_doc_fiscale_id, FOR EACH ROW
 --   2) Fixture: tre fatture nude create (due DRAFT, una EMESSA)
 --   3) DRAFT -> EMESSA a mani vuote: rifiutato
 --   4) ...e il messaggio nomina ENTRAMBE le mancanze
 --   5) Con il solo indirizzo FATT: ancora rifiutato, e solo per l'intestazione
 --   6) Intestazione a '{}' e non NULL: ancora rifiutata (jsonb_typeof, non IS NULL)
---   7) Fattura completa: DRAFT -> EMESSA passa
+--   6-bis) Intestazione senza la sede legale del cedente: rifiutata, e il
+--      messaggio dice che manca la sede (brief-db-modelli-documento-standard
+--      §10.7 R-5, changeSet 20261021-13)
+--   7) Fattura completa, con la sede del cedente: DRAFT -> EMESSA passa
 --   8) Fattura gia' oltre la bozza: EMESSA -> DEFINITIVA passa anche se nuda
 --   9) Riscrittura dello stato con lo stesso valore: nessun presidio
 --  10) UPDATE di un'altra colonna: il trigger non scatta affatto
@@ -65,9 +68,21 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ L'AZIENDA SI COSTRUISCE, e il contesto e' quello del SUO operatore
+--   (rev 2026-10-21, brief-db-modelli-documento-standard §10.7 R-5). Fino a quel
+--   giorno la fixture pescava «il primo BA con un emittente risolvibile»: su un
+--   database ricostruito da zero (lo scratch, la CI) non ce n'e' uno, e il file
+--   era rosso dal test 2 in poi, cioe' non verificava niente.
+CREATE TEMP TABLE tmp_mondo_gud AS
+SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 
-SELECT plan(11);
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
+    (SELECT auth_user_id FROM tmp_mondo_gud)); END $ctx$;
+
+CREATE TEMP TABLE tmp_cli_gud AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('guard uscita draft') c;
+
+SELECT plan(12);
 
 -- ============================================================
 -- 1) Cablaggio sul catalogo.
@@ -95,13 +110,12 @@ SELECT is(
 );
 
 -- ============================================================
--- Riferimenti e fixture (stesso criterio di 2.6: si parte da un BA che ha un
--- emittente fiscale risolvibile, altrimenti la fattura non e' creabile)
+-- Riferimenti e fixture: l'azienda e il cliente costruiti sopra
 -- ============================================================
 CREATE TEMP TABLE tmp_refs_gud AS
 SELECT
-  ba.id                                          AS billing_account_id,
-  anagrafiche.fn_get_emittente_fiscale_id(ba.id) AS emittente_soggetto_ruolo_id,
+  c.billing_account_id                           AS billing_account_id,
+  m.soggetto_ruolo_id                            AS emittente_soggetto_ruolo_id,
   (SELECT m.registro_id
      FROM vendite.tipi_doc_fiscale_registri m
      JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
@@ -118,10 +132,7 @@ SELECT
   (SELECT s.id FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'DEFINITIVA' AND s.attivo IS TRUE) AS stato_def_id,
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'FATT') AS fatt_id
-FROM anagrafiche.billing_account ba
-WHERE anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-ORDER BY ba.id
-LIMIT 1;
+FROM tmp_mondo_gud m, tmp_cli_gud c;
 
 
 -- ⛔ IL REGISTRO SI ALLINEA ALL'EMITTENTE, e prima non lo faceva.
@@ -208,11 +219,30 @@ SELECT throws_like(
 );
 
 -- ============================================================
--- 7) Documento completo: la porta si apre. E' il test di NON-REGRESSIONE che
---    dice che la pipeline reale non e' ostacolata.
+-- 6-bis) L'intestazione dell'emittente c'e', ma senza la sede legale del
+--    cedente: e' quello che lo snapshot scrive quando l'azienda non ha la sede
+--    (la chiave manca). Non e' completa, e il messaggio lo dice.
 -- ============================================================
 UPDATE vendite.fatture
    SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","id_fiscale":"00000000000"}'::jsonb,
+       cliente_snapshot   = '{"denominazione":"Cliente pgTAP","id_fiscale":"11111111111"}'::jsonb
+ WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata');
+
+SELECT throws_like(
+  format($$ UPDATE vendite.fatture SET stato_doc_fiscale_id = %s WHERE id = %s $$,
+         (SELECT stato_emessa_id FROM tmp_refs_gud),
+         (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata')),
+  '%intestazione incompleta: manca la sede legale dell''emittente%',
+  '6-bis) intestazione senza la sede legale del cedente: rifiutata'
+);
+
+-- ============================================================
+-- 7) Documento completo: la porta si apre. E' il test di NON-REGRESSIONE che
+--    dice che la pipeline reale non e' ostacolata. ⚠️ Dal 2026-10-21 completo
+--    vuol dire anche con la sede del cedente nell'intestazione.
+-- ============================================================
+UPDATE vendite.fatture
+   SET emittente_snapshot = '{"denominazione":"Emittente pgTAP","id_fiscale":"00000000000","sede":{"via":"Via Cedente 1","cap":"83100"}}'::jsonb,
        cliente_snapshot   = '{"denominazione":"Cliente pgTAP","id_fiscale":"11111111111"}'::jsonb
  WHERE id = (SELECT id FROM tmp_fatture_gud WHERE caso = 'lavorata');
 
