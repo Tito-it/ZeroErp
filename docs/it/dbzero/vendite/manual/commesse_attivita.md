@@ -99,7 +99,7 @@ All'esecuzione del resolver prezzi v5, l'attivita' in commessa riceve uno snapsh
 | `tipo_variazione_applicata`      | varchar(16)   | `PERCENTUALE` \| `VALORE_FISSO` \| `PREZZO_FISSO` \| `NESSUNA`                                    |
 | `valore_variazione_applicata`    | numeric(10,4) | Valore della variazione effettivamente applicata                                                  |
 | `promo_id`                       | bigint        | FK a `vendite.promo_articoli`; valorizzato se `origine_prezzo = 'PROMO'`                          |
-| `contratto_id`                   | bigint        | FK a `vendite.contratti`; valorizzato se `origine_prezzo CONTRATTO_*`                             |
+| `contratto_id`                   | bigint        | FK a `vendite.contratti`; valorizzato se `origine_prezzo CONTRATTO_*`; il contratto è del conto di fatturazione della commessa (guard `trgfn_attivita_guard_contratto`) |
 | `categoria_cliente_id_snapshot`  | smallint      | FK a `anagrafiche.categorie_clienti`; congela la categoria al momento del calcolo                 |
 | `classe_utenza_id_snapshot`      | integer       | FK a `config.classi_utenze`; congela la classe utenza al momento del calcolo                      |
 

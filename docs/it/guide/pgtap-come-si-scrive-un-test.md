@@ -103,6 +103,7 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | --- | --- |
 | **il mondo di un test di dominio**: azienda + operatore + contesto aperto + un cliente fatturabile legato a quell'azienda | `dbops.fn_pgtap_crea_mondo_cliente('<etichetta>')` |
 | **una fattura** del mondo (registro coerente, coppia emittente/utility configurata, stato scelto alla nascita) | `dbops.fn_pgtap_crea_fattura('<etichetta>'[, '<stato>'[, <ba_id>]])` |
+| **un contratto** del mondo, nato dalla madre del dominio (`DRAFT`; `ATTIVO` con un listino del mondo; `ANNULLATO` dal verbo) — col terzo parametro sul cliente di un'altra fixture, per esempio quello di una commessa | `dbops.fn_pgtap_crea_contratto('<etichetta>'[, '<stato>'[, <ba_id>]])` |
 | **un ordine** di vendita del mondo (emittente del cliente, numero dal dominio, stato scelto alla nascita) | `dbops.fn_pgtap_crea_ordine('<etichetta>'[, '<stato>'])` |
 | **un preventivo** del mondo (emittente del cliente, numero dal dominio, validità da oggi, stato scelto alla nascita) | `dbops.fn_pgtap_crea_preventivo('<etichetta>'[, '<stato>'])` |
 | **una testata che cambia stato dopo aver preso le righe** (ordine o preventivo: nasce `DRAFT`, il test scrive le righe, poi lo stato per le transizioni vere — fuori bozza le righe non si scrivono) | `dbops.fn_pgtap_porta_a_stato('vendite.ordini' \| 'vendite.preventivi', <id>, '<stato>')` |
@@ -160,6 +161,11 @@ agisce** prima che sul gestore globale, quindi un super admin costruito come
 utente tecnico (che un'azienda ce l'ha sempre) sposta il ripiego. E toglierla
 dopo non si può. Si costruisce con `fn_pgtap_crea_operatore_umano(…,
 p_super_admin := true)`, che passa dalla madre di produzione e nasce senza.
+Un super admin **lavora** su un'azienda solo se la **sceglie**, come in alto:
+`app.current_emittente_id`. Con l'azienda scelta, il mondo e i builder che lo
+compongono (fattura, ordine, contratto…) costruiscono su quella, come il trigger
+che lega il cliente; senza, il mondo lo rifiuta. È il modo in cui lavorano gli
+smoke Python con l'utente `dev.smoke`.
 
 ⛔ **Ciò che un builder scrive si legge in un'istruzione SEPARATA.** Un `JOIN`
 sulla tabella che il builder ha appena scritto, o una funzione `STABLE`, nella

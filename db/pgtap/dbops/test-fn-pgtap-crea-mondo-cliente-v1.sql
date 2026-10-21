@@ -148,6 +148,9 @@ $$,
 -- ============================================================
 -- La GUC si cambia in modo TRANSAZIONALE (terzo argomento true): il rollback
 -- del sotto-blocco di throws_like la riporta da se' a quella del mondo.
+-- Rev 2026-10-21 (20261021-68): l'azienda la dice il risolutore, e il messaggio
+--   nomina anche la scelta del super admin; il caso del super admin con
+--   l'emittente scelto e' in test-fn-pgtap-crea-mondo-cliente-risolutore-v1.
 SELECT throws_like($$
     DO $guard$
     BEGIN
@@ -155,7 +158,7 @@ SELECT throws_like($$
         PERFORM dbops.fn_pgtap_crea_mondo_cliente('contesto senza emittente');
     END $guard$
 $$,
-    '%non ha un emittente in config.user_emittenti_fiscali%',
+    '%non ha un''azienda su cui scrivere%',
     'guard: un contesto aperto su un utente senza emittente parla invece di tornare una tupla con un NULL dentro'
 );
 

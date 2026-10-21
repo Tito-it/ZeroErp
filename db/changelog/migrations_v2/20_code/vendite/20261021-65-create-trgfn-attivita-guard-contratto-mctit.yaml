@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.trgfn_attivita_guard_contratto()
+#   Il contratto citato per il prezzo (contratto_id) e' del billing account
+#   della commessa della riga. Il predicato e'
+#   vendite.fn_check_contratto_provenienza (20261021-64); qui resta il quando.
+#   Decisione di Tid D-1, 2026-10-21 (richiesta BE, smoke-group-attivita-contratto).
+#
+# -- DUE TABELLE, UNA FUNZIONE ---------------------------------------------
+#   La montano vendite.commesse_attivita e vendite.attivita_fatturabili
+#   (20261021-66): sono i due posti che portano contratto_id. Il valore nasce
+#   sulla commessa (vendite.fn_upsert_commessa_attivita, o l'UPDATE di riprezzo
+#   del backend) e l'emissione lo copia 1:1 sull'attivita' fatturabile; ma
+#   sull'attivita' esiste anche l'UPDATE diretto, quindi il guard sta su
+#   entrambe, come quello della riga di listino (20261015-22).
+#
+# -- QUANDO ---------------------------------------------------------------
+#   AFTER INSERT OR UPDATE, per riga: giudica la riga FINALE, dopo ogni
+#   trigger BEFORE. Contratto NULL -> niente da giudicare. In UPDATE si
+#   giudica solo se cambiano contratto o commessa: le scritture
+#   dell'emissione e degli stati riscrivono lo stesso valore e non rileggono
+#   il contratto.
+#
+# -- IL CODICE ------------------------------------------------------------
+#   E_ATTIVITA_CONTRATTO_INCOERENTE, TECNICO: il contratto non lo sceglie
+#   l'operatore, lo scrive il programma dal risolutore dei prezzi. Frase
+#   chiusa (VARIADIC vuoto): il contratto puo' essere di un'azienda che
+#   l'operatore non vede. Il dettaglio nel contesto, campo contratto_id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261021-65-create-trgfn-attivita-guard-contratto-mctit.yaml
+
+  - changeSet:
+      id: 20261021-65-create-trgfn-attivita-guard-contratto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova vendite.trgfn_attivita_guard_contratto: su commesse_attivita e attivita_fatturabili il
+        contratto citato per il prezzo e' del billing account della commessa, altrimenti
+        E_ATTIVITA_CONTRATTO_INCOERENTE. Decisione di Tid D-1, 2026-10-21.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_guard_contratto()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- Il codice del motivo, dalla check.
+                  v_codice config.codici_errore.codice%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   AFTER INSERT OR UPDATE su commesse_attivita e
+                  --   attivita_fatturabili: il contratto citato come
+                  --   provenienza del prezzo e' del billing account della
+                  --   commessa (vendite.fn_check_contratto_provenienza).
+                  -- =========================================================
+                  IF NEW.contratto_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.contratto_id IS NOT DISTINCT FROM OLD.contratto_id
+                     AND NEW.commessa_id  IS NOT DISTINCT FROM OLD.commessa_id THEN
+                      RETURN NULL;
+                  END IF;
+
+                  v_codice := vendite.fn_check_contratto_provenienza(
+                      NEW.commessa_id, NEW.contratto_id);
+
+                  IF v_codice IS NOT NULL THEN
+                      -- Frase chiusa: il contratto puo' essere di un'azienda
+                      -- che l'operatore non vede.
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, v_codice,
+                          jsonb_build_object(
+                              'campo',        'contratto_id',
+                              'tabella',      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',           NEW.id,
+                              'commessa_id',  NEW.commessa_id,
+                              'contratto_id', NEW.contratto_id),
+                          NEW.tx_id,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  RETURN NULL;   -- trigger AFTER: il valore di ritorno e' ignorato
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_attivita_guard_contratto()
+              IS 'Guard AFTER INSERT OR UPDATE su vendite.commesse_attivita e vendite.attivita_fatturabili (decisione di Tid D-1, 2026-10-21): il contratto citato come provenienza del prezzo (contratto_id) e'' del billing account della commessa della riga -> altrimenti E_ATTIVITA_CONTRATTO_INCOERENTE (TECNICO: il contratto lo scrive il programma dal risolutore dei prezzi, non l''operatore; frase chiusa, campo contratto_id). Predicato: vendite.fn_check_contratto_provenienza (SECURITY DEFINER). AFTER: giudica la riga finale. Contratto NULL -> passa; in UPDATE giudica solo se cambiano contratto o commessa. Gemello di vendite.trgfn_attivita_guard_listino_riga, che giudica l''altra meta'' della provenienza.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_attivita_guard_contratto();
