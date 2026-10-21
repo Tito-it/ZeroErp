@@ -22,6 +22,7 @@ from apps.documenti.api.views import (
     ApiTemplateDetail,
     ApiTemplateList,
     ApiTemplatePersonalizza,
+    ApiTemplateRisoluzione,
     ApiTemplateVersioneClona,
     ApiTemplateVersioneDetail,
     ApiTemplateVersionePubblica,
@@ -38,6 +39,12 @@ urlpatterns = [
         "templates/",
         ApiTemplateList.as_view(),
         name="documenti-templates-list",
+    ),
+    # Con che cosa stampa ogni azienda (lettura del DB, K-5).
+    path(
+        "templates/risoluzione/",
+        ApiTemplateRisoluzione.as_view(),
+        name="documenti-templates-risoluzione",
     ),
     path(
         "templates/<int:template_id>/",

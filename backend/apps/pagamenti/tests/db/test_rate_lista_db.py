@@ -558,7 +558,7 @@ class RicercaListeDbTests(_MondoRateDbTests):
 
             verifica_ricerca_colonna_per_colonna(
                 self, cur, "pagamenti.distinte", dist, {"codice": dist_codice},
-                lambda t: pagamenti_service.list_distinte(search=t, page_size=200)["results"],
+                lambda t: pagamenti_service.list_distinte(search=t, limit=200)["results"],
             )
             verifica_ricerca_colonna_per_colonna(
                 self, cur, "pagamenti.distinta_righe", riga_1010,
@@ -570,12 +570,12 @@ class RicercaListeDbTests(_MondoRateDbTests):
                 self, cur, "pagamenti.righe", riga_coda,
                 {"riferimento_ente": "BE_RICERCA_CODA", "billing_account_descrizione": cliente,
                  "fattura_numero": "101", "contabile_codice": coda_codice},
-                lambda t: pagamenti_service.list_coda_righe(search=t, page_size=200)["results"],
+                lambda t: pagamenti_service.list_coda_righe(search=t, limit=200)["results"],
             )
             verifica_ricerca_colonna_per_colonna(
                 self, cur, "pagamenti.rate_fuori_capienza", rate[1],
                 {"fattura_numero": "101", "numero_documento": "101 - A"},
-                lambda t: pagamenti_service.list_rate_fuori_capienza(search=t, page_size=200)["results"],
+                lambda t: pagamenti_service.list_rate_fuori_capienza(search=t, limit=200)["results"],
                 chiave="scadenza_id",
             )
             # ⭐ Le rate (dal 24-09 sul catalogo): i valori si leggono dalla
@@ -605,7 +605,7 @@ class RicercaListeDbTests(_MondoRateDbTests):
             verifica_ricerca_colonna_per_colonna(
                 self, cur, "pagamenti.eccedenze", fattura_101,
                 {"cliente_ragione_sociale": cliente, "fattura_numero": "101"},
-                lambda t: sistemazioni_service.list_eccedenze(search=t, page_size=200)["results"],
+                lambda t: sistemazioni_service.list_eccedenze(search=t, limit=200)["results"],
                 chiave="fattura_id",
             )
         self._nel_mondo(_prova)

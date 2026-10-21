@@ -439,6 +439,9 @@ class SoggettiRuoliView(DomainAPIView):
 class ValidaCFPIVAView(DomainAPIView):
     """POST validazione CF (congruenza + duplicato) e P.IVA (duplicato)."""
     area_funzionale = "anagrafiche"
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=inline_serializer(name="ValidaCFPIVAReq", fields={
@@ -541,6 +544,9 @@ class SoggettiExportView(DomainAPIView):
 class GeneraCFView(DomainAPIView):
     """POST genera codice fiscale italiano da dati anagrafici."""
     area_funzionale = "anagrafiche"
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=inline_serializer(name="GeneraCFReq", fields={

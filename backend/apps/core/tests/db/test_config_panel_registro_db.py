@@ -147,7 +147,7 @@ class ConfigPanelRegistroDbTests(TestCase):
                     with transaction.atomic():
                         dati = fn_list_lookup_codici(
                             rel=rel, search=None, order_col="descrizione", order_dir="asc",
-                            attivo_only=False, page=1, page_size=1,
+                            attivo_only=False, limit=1, offset=0,
                         )
                         self.assertIsInstance(dati["count"], int, rel)
                 except Exception as exc:  # si raccoglie, si asserisce sotto

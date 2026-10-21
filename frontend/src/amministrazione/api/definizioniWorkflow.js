@@ -5,7 +5,6 @@
 // SECURITY DEFINER delle fn DB (brief-db-accesso-be-definizioni-workflow §P1).
 
 import api from '../../core/api'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 
 const BASE = '/pratiche/definizioni'
 
@@ -23,8 +22,8 @@ export function getDefinizioneDettaglio(definizioneId) {
 }
 
 // --- Editing strutturale della BOZZA (Slice 2 anello 3): CRUD step. ---
-// Gli endpoint step NON richiedono Idempotency-Key (solo le azioni di ciclo di
-// vita lo esigono). Campi core: codice, descrizione, sequenza, obbligatorio,
+// La Idempotency-Key delle POST la mette l'interceptor di `core/api.js`
+// (PATCH/DELETE ne restano fuori). Campi core: codice, descrizione, sequenza, obbligatorio,
 // direzione, modalita_esito, esito_default. definizione_id/tipo_prestazione_id
 // sono impostati dal BE. L'immutabilita' (edizione emessa) e' guard DB.
 
@@ -81,7 +80,6 @@ export function forkDefinizione(definizioneId, emittenteFiscaleId) {
   return api.post(
     `${BASE}/${definizioneId}/fork/`,
     { emittente_fiscale_id: emittenteFiscaleId },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -89,7 +87,6 @@ export function nuovaVersioneDefinizione(definizioneId) {
   return api.post(
     `${BASE}/${definizioneId}/nuova-versione/`,
     {},
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -97,6 +94,5 @@ export function pubblicaDefinizione(definizioneId) {
   return api.post(
     `${BASE}/${definizioneId}/pubblica/`,
     {},
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }

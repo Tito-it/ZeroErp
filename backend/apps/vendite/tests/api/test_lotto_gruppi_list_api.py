@@ -80,14 +80,14 @@ class VenditeLottoGruppiListApiTests(JwtMockedApiTest):
         mocked_list.return_value = _LIST_RESPONSE
         self.client.get(
             self.url, {"stato_esecuzione": "ERRORE", "order_by": "riferimento",
-                       "order_dir": "desc", "page": "2", "page_size": "10"},
+                       "order_dir": "desc", "limit": "10", "offset": "10"},
         )
         kwargs = mocked_list.call_args.kwargs
         self.assertEqual(kwargs["stato_esecuzione"], "ERRORE")
         self.assertEqual(kwargs["order_by"], "riferimento")
         self.assertEqual(kwargs["order_dir"], "desc")
-        self.assertEqual(kwargs["page"], 2)
-        self.assertEqual(kwargs["page_size"], 10)
+        self.assertEqual(kwargs["limit"], 10)
+        self.assertEqual(kwargs["offset"], 10)
 
     # 4) ⚠️ IL VERSO GREZZO, non un default scritto nella view. Il repository ha
     #    un ordine di default suo — i FALLITI in cima — che si accende solo su

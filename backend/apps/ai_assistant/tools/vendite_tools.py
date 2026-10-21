@@ -82,7 +82,7 @@ class CercaContrattiTool(AITool):
                         "type": "string",
                         "description": "Mese di scadenza in formato YYYY-MM (es. 2026-07). Filtra contratti che scadono nel mese indicato.",
                     },
-                    "page_size": {
+                    "limit": {
                         "type": "integer",
                         "description": "Numero risultati (default 10, max 50).",
                     },
@@ -127,7 +127,7 @@ class CercaContrattiTool(AITool):
             data_da=params.get("data_da"),
             data_a=params.get("data_a"),
             scadenza_mese=params.get("scadenza_mese"),
-            limit=self.safe_page_size(params),
+            limit=self.safe_limit(params),
             offset=0,
             order_by="data",
             order_dir="desc",
@@ -272,7 +272,7 @@ class CercaPreventiviTool(AITool):
                         "type": "boolean",
                         "description": "True (default) ritorna solo l'ultima revisione per numero. False per vedere lo storico revisioni.",
                     },
-                    "page_size": {
+                    "limit": {
                         "type": "integer",
                         "description": "Numero risultati (default 10, max 50).",
                     },
@@ -316,8 +316,7 @@ class CercaPreventiviTool(AITool):
             search=self.termine_ricerca(params),
             solo_ultima_revisione=params.get("solo_ultima_revisione", True),
             auth_user_id=auth_user_id,
-            page=1,
-            page_size=self.safe_page_size(params),
+            limit=self.safe_limit(params),
         )
         results = envelope.get("results") or []
         total = int(envelope.get("count") or 0)
@@ -433,7 +432,7 @@ class CercaPromoArticoliTool(AITool):
                         "type": "string",
                         "description": "Data per filtrare le promo valide in quel giorno (YYYY-MM-DD).",
                     },
-                    "page_size": {
+                    "limit": {
                         "type": "integer",
                         "description": "Numero risultati (default 10, max 50).",
                     },
@@ -472,7 +471,7 @@ class CercaPromoArticoliTool(AITool):
             uom_id=params.get("uom_id"),
             tipo_variazione=params.get("tipo_variazione"),
             valid_at=params.get("valid_at"),
-            limit=self.safe_page_size(params),
+            limit=self.safe_limit(params),
             offset=0,
             order_by="valido_dal",
             order_dir="desc",
@@ -520,7 +519,7 @@ class CercaListiniTool(AITool):
                         "type": "boolean",
                         "description": "True per solo listini attivi.",
                     },
-                    "page_size": {
+                    "limit": {
                         "type": "integer",
                         "description": "Numero risultati (default 10, max 50).",
                     },
@@ -554,7 +553,7 @@ class CercaListiniTool(AITool):
             utility_id=params.get("utility_id"),
             tipologia_id=params.get("tipologia_id"),
             attivo=params.get("attivo"),
-            limit=self.safe_page_size(params),
+            limit=self.safe_limit(params),
             offset=0,
             order_by="codice",
             order_dir="asc",

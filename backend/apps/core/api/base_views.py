@@ -18,11 +18,60 @@ from apps.core.api.permissions import (
     PortaleBasePermission,
     ShopBasePermission,
     ZeroERPPermission,
+    chiamata_in_scrittura,
 )
 from apps.core.services import perimetro_emittente
+from apps.core.services.request_context import get_idempotency_key
+from apps.core.services.service_errors import ServiceError
 
 
-class DomainAPIView(APIView):
+class _ApiViewBase(APIView):
+    """Le regole comuni alle quattro porte (dominio, admin, portale, shop).
+
+    ⛔ **Una POST che scrive porta l'`Idempotency-Key`** (decisione Tid del
+    2026-10-20, brief-be-verifica-documentazione-api §A5). Una POST di
+    creazione o di azione non e' idempotente: ripetuta, crea o agisce due
+    volte. PATCH, PUT e DELETE lo sono per semantica HTTP, e restano senza.
+    Una POST che LEGGE lo dichiara con `post_accesso = "view"` (lo stesso
+    attributo che abbassa il permesso alla lettura) e resta fuori.
+
+    Fino a quel giorno la key era una scelta della singola view
+    (`handle_post_json(require_idempotency_key=True)`): 82 scritture su 457 la
+    chiedevano, senza un criterio — il cambio stato in cinque documenti si' e
+    in cinque no. Un controllo che ogni view deve ricordarsi e' quello che la
+    centesima dimentica: qui vale per costruzione, anche per le view nuove.
+
+    ⚠️ Vive in `initial()`, DOPO autenticazione e permessi: chi non e'
+    autenticato o non ha il permesso riceve 401/403, non un 400 sulla key.
+    `handle_post_json(require_idempotency_key=True)` resta per la modalita'
+    forte (claim/replay su `dbops.idempotency_keys`), che il controllo di
+    presenza da solo non fa.
+    """
+
+    # ⭐ «Questa POST scrive?» lo decide il BB `chiamata_in_scrittura`, la
+    #    stessa regola dei permessi (`post_accesso`, le `action` dei ViewSet,
+    #    fail-closed su un tipo non valido): una seconda lettura dell'attributo
+    #    qui divergeva da quella al primo refuso.
+    # ⚠️ Una view senza `post` risponde 405, non un 400 sulla key: `initial()`
+    #    gira prima che DRF cerchi l'handler.
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if (
+            request.method == "POST"
+            and hasattr(self, "post")
+            and chiamata_in_scrittura(
+                self, method="POST", action=getattr(self, "action", None),
+            )
+            and not get_idempotency_key()
+        ):
+            raise ServiceError(
+                code="E_IDEMPOTENCY_KEY_REQUIRED",
+                message="Idempotency-Key obbligatoria per questa operazione.",
+                detail="Header Idempotency-Key mancante: una POST che scrive la porta sempre.",
+            )
+
+
+class DomainAPIView(_ApiViewBase):
     """Base per view di dominio con JWT + permessi area.
 
     Ogni sottoclasse DEVE definire `area_funzionale`.
@@ -130,7 +179,7 @@ class DomainAPIView(APIView):
         )
 
 
-class AdminAPIView(APIView):
+class AdminAPIView(_ApiViewBase):
     """Base per view riservate ad amministratori (Amm. Software).
 
     Check diretto binding SUPER_ADMIN tramite
@@ -144,7 +193,7 @@ class AdminAPIView(APIView):
     skip_area_check = True
 
 
-class PortaleAPIView(APIView):
+class PortaleAPIView(_ApiViewBase):
     """Base per view del portale clienti/fornitori (`/api/portale/*`).
 
     Richiede autenticazione JWT + `ruolo_applicativo` in
@@ -162,7 +211,7 @@ class PortaleAPIView(APIView):
     skip_area_check = True
 
 
-class ShopAPIView(APIView):
+class ShopAPIView(_ApiViewBase):
     """Base per view del negozio online (`/api/shop/*`).
 
     Ammette richieste anonime (catalogo pubblico) e autenticate con

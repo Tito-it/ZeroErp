@@ -8,7 +8,6 @@
 //       un'altra schermata e il client non deve seguirla.
 // ------------------------------------------------------------
 import api from '../../core/api'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 
 // POST /vendite/attivita-fatturabili/riporta-da-emettere/
 // Rimette in coda di fatturazione le attivita' indicate: le libera e riporta a
@@ -21,14 +20,14 @@ export function riportaDaEmettere(attivitaFatturabiliIds) {
   return api.post(
     '/vendite/attivita-fatturabili/riporta-da-emettere/',
     { attivita_fatturabili_ids: attivitaFatturabiliIds },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
 // POST /vendite/attivita-fatturabili/riportabili/
 // I motivi che impedirebbero il riporto, senza tentarlo.
 // ⚠️ E' un POST pur essendo una LETTURA: una selezione di 200 righe non sta in
-//    una query string. Nessun side-effect, nessuna Idempotency-Key.
+//    una query string. Nessun side-effect: la key che l'interceptor
+//    aggiunge a ogni POST qui e' innocua (il BE la ignora).
 // ⭐ Serve a spiegare invece di far fallire: incontrare
 //    `E_ATTIVITA_GIA_DA_EMETTERE` significa che l'elenco a schermo era
 //    invecchiato, quindi si ri-guarda prima di agire su una selezione vecchia.

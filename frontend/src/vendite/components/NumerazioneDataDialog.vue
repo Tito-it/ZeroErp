@@ -23,8 +23,17 @@
 //   sotto RLS (una fattura fuori perimetro non entra nel massimo). Il rifiuto
 //   vero resta del DB. Questo dialog non decide niente — mostra e chiede.
 //
-// Non chiama l'API di numerazione: emette `conferma` con la data scelta e
-// lascia al chiamante il verbo, i toast e il refresh (che sono suoi).
+// Non conosce l'API di numerazione: riceve il verbo come prop `azione(data)` e
+// lascia al chiamante la chiamata, i toast e il refresh (che sono suoi).
+//
+// ⭐ IL DIALOG RESTA APERTO FINO ALL'ESITO (2026-10-21, ok Tid). `azione`
+//   risponde `true` se il verbo e' andato e `false` se no: solo col `true` il
+//   dialog si chiude; intanto il pulsante gira. E' cio' che da' un confine al
+//   GESTO dell'idempotenza (`useChiaveGesto`): un reinvio dopo un timeout
+//   avviene QUI DENTRO, con la stessa key, e il backend risponde con l'esito
+//   della prima esecuzione; chiudere e riaprire e' un gesto nuovo (chi apre il
+//   dialog azzera la key). Prima il dialog si chiudeva al clic, e «riaprire»
+//   e «riprovare» erano lo stesso gesto: a separarli restava solo il tempo.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DatePicker from 'primevue/datepicker'
@@ -74,8 +83,10 @@ const props = defineProps({
   //   conferma, questo dialog deve assorbirne anche il testo, o l'operatore
   //   perderebbe l'informazione piu' importante delle due.
   perimetroTesto: { type: String, default: '' },
+  // Il verbo: `async (dataDocumento) => boolean` (vedi la testa del file).
+  azione: { type: Function, required: true },
 })
-const emit = defineEmits(['update:visible', 'conferma'])
+const emit = defineEmits(['update:visible'])
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
@@ -204,12 +215,19 @@ const nonCaricato = computed(() => !inCreazione.value && !loading.value && !cari
 
 function onHide() { emit('update:visible', false) }
 
-function conferma() {
+const inviando = ref(false)
+
+async function conferma() {
   // ⚠️ In creazione il vuoto e' una risposta legittima — «non dichiaro niente,
   //    decida il registro» — e viaggia come `null`, non come la data di oggi.
-  if (!inCreazione.value && !dataScelta.value) return
-  emit('conferma', dataScelta.value ? toDateString(dataScelta.value) : null)
-  onHide()
+  if (inviando.value || (!inCreazione.value && !dataScelta.value)) return
+  inviando.value = true
+  try {
+    const ok = await props.azione(dataScelta.value ? toDateString(dataScelta.value) : null)
+    if (ok === true) onHide()
+  } finally {
+    inviando.value = false
+  }
 }
 
 // D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
@@ -222,7 +240,7 @@ const fotografia = useFotografiaDialog(() => ({ dataScelta: dataScelta.value }),
     :visible="visible"
     width="sm"
     :header="t(inCreazione ? 'vendite.numerazione_data.titolo_creazione' : 'vendite.numerazione_data.titolo')"
-    :loading="loading"
+    :loading="loading || inviando"
     :save-disabled="(!inCreazione && !dataScelta) || nienteDaNumerare || nonCaricato"
     :save-label="t(inCreazione ? 'vendite.numerazione_data.conferma_creazione' : 'vendite.numerazione_data.conferma')"
     save-severity="success"

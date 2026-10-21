@@ -114,7 +114,7 @@ filtro opzionale per stato attivo.
 | `attivo` | bool | No | — | Filtra per flag attivo (`true`/`false`). Se omesso: nessun filtro |
 | `limit` | int | No | 25 | Risultati per pagina (max: 200) |
 | `offset` | int | No | 0 | Offset per paginazione |
-| `order_by` | string | No | `ragione_sociale_completa` | Campo di ordinamento (vedi sotto); fuori elenco → default |
+| `order_by` | string | No | `ragione_sociale_completa` | Campo di ordinamento (vedi sotto); fuori elenco → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
 | `order_dir` | string | No | `asc` (`desc` per `data_insert`) | Direzione: `asc` / `desc` |
 
 **Colonne ordinabili:** `codice`, `ragione_sociale_completa`, `partita_iva`,
@@ -222,8 +222,9 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" \
 
 1. Validazione campi obbligatori (`soggetto_id`, `codice`). Il nome dell'emittente
    e' la ragione sociale del soggetto: `descrizione` non esiste piu' (colonna
-   eliminata). In creazione le chiavi fuori tabella, `descrizione` compresa, sono
-   **ignorate** (non 400).
+   eliminata). In creazione una chiave fuori tabella, `descrizione` compresa, è un
+   **400** `E_ANAG_VALIDAZIONE` (dal 2026-10-21: prima era ignorata, mentre la
+   PATCH la rifiutava già).
 2. Validazione **P.IVA del soggetto**: query su `anagrafiche.soggetti.partita_iva`;
    se NULL/empty -> `E_ANAG_VALIDAZIONE 400`. Requisito legale per emissione fattura SDI.
 3. Apertura transazione atomica.
@@ -374,7 +375,7 @@ mapping specifico).
 | `search` | string | — | Ricerca ILIKE sulle colonne (fra `billing_account_codice`, `billing_account_ragione_sociale`, `id_fiscale_univoco`) accese dal catalogo della lista `anagrafiche.emittente_billing_account`; sotto soglia non filtra |
 | `limit` | int | 25 | Righe per pagina (max 200) |
 | `offset` | int | 0 | Offset |
-| `order_by` | string | `billing_account_codice` | `billing_account_codice`, `billing_account_ragione_sociale`, `id_fiscale_univoco`, `is_default`, `data_insert`; fuori elenco → default |
+| `order_by` | string | `billing_account_codice` | `billing_account_codice`, `billing_account_ragione_sociale`, `id_fiscale_univoco`, `is_default`, `data_insert`; fuori elenco → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
 | `order_dir` | string | `asc` (`desc` per `data_insert`) | `asc` / `desc` |
 
 #### Esempio cURL

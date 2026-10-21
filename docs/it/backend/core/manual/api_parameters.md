@@ -179,7 +179,7 @@ Body JSON:
 | Campo            | Tipo   | Obbligatorio | Note |
 |------------------|--------|:------------:|------|
 | `parameter_code` | string | Si           | Codice del parametro da sovrascrivere |
-| `value`          | string | Si (non verificato) | Nuovo valore dell'override. ⚠️ Il codice non ne verifica la presenza: assente o `null` → override con stringa vuota, risposta 200 (difetto noto) |
+| `value`          | string | Si | Nuovo valore dell'override. Assente o `null` → 400 `E_PARAMETER_VALIDATION` (campo `value`), niente scritto (dal 2026-10-21: prima override con stringa vuota e 200). `""` esplicito resta un valore |
 | `scope`          | string | No           | `user` (default), `emittente` (admin), `categoria_cliente` (admin) |
 | `categoria_cliente_id` | int | Se `scope=categoria_cliente` | Intero positivo |
 

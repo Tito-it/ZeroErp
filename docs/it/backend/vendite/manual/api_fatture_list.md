@@ -50,8 +50,10 @@ non è una dimenticanza.
   - `id_fiscale` (string) — codice fiscale / partita IVA, **confronto esatto**
   - `utility_id` (int)
   - `data_da` / `data_a` (date ISO) — **data del DOCUMENTO**
-  - `limit` (int, default `25`, max `200`; fuori limiti riportato nei limiti) ·
-    `offset` (int)
+  - `limit` (int, default `25`, max `200`) · `offset` (int, default `0`): fuori
+    limiti (`limit` fuori da 1..200, `offset` negativo) o non interi → 400
+    `E_VALIDATION_INPUT` (il fuori limite dal 2026-10-21; prima si riportava nei
+    limiti)
   - `order_by` (string) — `campo_sorgente` del catalogo `vendite.fatture`,
     whitelist `_ORDER_COLS_FATTURE`; default `data`
   - `order_dir` (string) — `asc` | `desc` (default `desc`)

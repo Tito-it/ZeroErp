@@ -37,7 +37,10 @@ Indice test eseguiti:
 
 from unittest.mock import Mock, patch
 
-from django.test import Client
+
+from django.test import Client, SimpleTestCase
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -53,7 +56,7 @@ class TestResiApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     def test_list_richiede_jwt(self) -> None:
         resp = self.client.get(_BASE)
@@ -346,8 +349,9 @@ class TestResiApi(JwtMockedApiTest):
     @patch(f"{_SVC}.accredita_righe_reso")
     def test_accrediti_senza_idempotency_key(self, mock_acc, _auth) -> None:
         # Modifica di stato su un documento fiscale: senza chiave il service
-        # non viene nemmeno chiamato.
-        resp = self.client.post(
+        # non viene nemmeno chiamato. `Client` semplice: `ClientApi` la
+        # metterebbe da se'.
+        resp = Client().post(
             f"{_BASE}accrediti/",
             data={"resi_riga_ids": [5797]},
             content_type="application/json",
@@ -385,3 +389,15 @@ class TestResiApi(JwtMockedApiTest):
             ApiResoRigaAnnullaAccredito.post_permission, "accredita_riga_reso",
         )
         self.assertEqual(ApiResiAccrediti.area_funzionale, "vendite")
+
+
+class ResiPermessoAzioneTests(SimpleTestCase):
+    # Scopo: conferma e annullo del reso chiedono l'azione di processo che il
+    #        verbo DB applica (`conferma_reso`), come il gemello preventivo
+    #        chiede `cambia_stato_preventivi` (2026-10-20, §A5 del brief).
+    def test_conferma_e_annullo_dichiarano_conferma_reso(self) -> None:
+        from apps.vendite.api.views_resi import ApiResoAnnulla, ApiResoConferma
+
+        for view in (ApiResoConferma, ApiResoAnnulla):
+            with self.subTest(view=view.__name__):
+                self.assertEqual(view.post_permission, "conferma_reso")

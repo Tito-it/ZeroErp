@@ -16,6 +16,7 @@ from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
 from apps.core.api.payload_validators import (
+    pagina_da_query,
     optional_bool,
     optional_istante,
     qp_iso_date_optional,
@@ -331,8 +332,7 @@ class ApiPraticaGiornale(DomainAPIView):
     # Scopo: Restituisce via GET il giornale di bordo della pratica (con tx_id).
     def get(self, request: Request, pratica_id: int) -> JsonResponse:
         qp = request.query_params
-        limit = optional_int({"v": qp.get("limit", str(DEFAULT_LIMIT_EVENTI))}, "v") or DEFAULT_LIMIT_EVENTI
-        offset = optional_int({"v": qp.get("offset", "0")}, "v") or 0
+        limit, offset = pagina_da_query(qp, default_limit=DEFAULT_LIMIT_EVENTI)
 
         items, total = pratiche_service.get_giornale(pratica_id, limit=limit, offset=offset)
         return success_response({"count": total, "results": items})

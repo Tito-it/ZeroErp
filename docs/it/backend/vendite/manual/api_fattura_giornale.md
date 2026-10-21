@@ -50,8 +50,8 @@ Storie in `apps/vendite/api/_giornale_params.py`. ⛔ Il vecchio contratto
 
 | Query param | Default | Cosa fa |
 | --- | --- | --- |
-| `limit` | `25` | Righe per pagina, riportato in `[1, 200]`: fuori limiti non è un `400` (`parse_list_params`) |
-| `offset` | `0` | Scostamento, riportato a `≥ 0`; la `page` della risposta si ricava da qui |
+| `limit` | `25` | Righe per pagina, max `200`: fuori da 1..200 è un `400 E_VALIDATION_INPUT` (`parse_list_params` → `pagina_da_query`, dal 2026-10-21; prima si riportava nei limiti) |
+| `offset` | `0` | Scostamento; negativo → `400 E_VALIDATION_INPUT`; la `page` della risposta si ricava da qui |
 | `order_by` | `quando` | Colonna di ordinamento (`campo_sorgente` del catalogo): `quando` o `gravita`. ⛔ Fuori whitelist → **400** `E_VENDITE_VALIDATION`: una lista ordinata diversamente da come è stata chiesta non solleva niente |
 | `order_dir` | *(assente = `desc`)* | Verso: `desc` o `asc` |
 | `emittente_soggetto_ruolo_id` | — | L'emittente (soggetto-ruolo) del documento. È il `lista_emittente_param` della view: la lista è `perimetro_emittente` e **non** `multi_emittente`, e senza chi ha più emittenti nello scope riceverebbe `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` dentro il drawer. ⚠️ **Non filtra** le righe: il perimetro è la fattura del path, e a dire se la si vede è il cancello di testata |
@@ -117,7 +117,7 @@ trasversale): è la colonna «Riferimento» della lista a catalogo, risolta sull
 pagina da `_aggiungi_entita_display`, che ora chiama il corpo comune
 `_list_giornale` per tutti e tre i lettori.
 
-- `400`: `E_VENDITE_VALIDATION` — `fattura_id` non positivo, `order_by`/`order_dir` fuori whitelist (la paginazione fuori limiti viene riportata nei limiti, non rifiutata); `E_VALIDATION_INPUT` — `ritirate` non booleano
+- `400`: `E_VENDITE_VALIDATION` — `fattura_id` non positivo, `order_by`/`order_dir` fuori whitelist; `E_VALIDATION_INPUT` — `ritirate` non booleano, `limit`/`offset` non interi o fuori limiti
 - `403`: area `vendite` BLOCCATA, oppure oggetto `vendite.fattura` bloccato
 - `404`: `E_FATTURA_NON_TROVATA` — inesistente **oppure fuori scope emittente**
 

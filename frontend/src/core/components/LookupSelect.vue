@@ -21,7 +21,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useGlobalLookup } from '../composables/useGlobalLookup'
-import { LOOKUP_CODICI_PAGE_SIZE, useLookupCodici } from '../composables/useLookupCodici'
+import { LOOKUP_CODICI_LIMIT, useLookupCodici } from '../composables/useLookupCodici'
 import { etichettaVoce } from '../utils/etichettaSelezionata'
 import Select from 'primevue/select'
 
@@ -56,7 +56,7 @@ const props = defineProps({
   // me» dentro il transform resterebbe scritto nella cache condivisa — la
   // seconda entita' aperta non vedrebbe la prima fra i padri possibili.
   excludeValue: { type: [Number, String], default: null },
-  pageSize: { type: Number, default: LOOKUP_CODICI_PAGE_SIZE },
+  limit: { type: Number, default: LOOKUP_CODICI_LIMIT },
   // Prepend di una voce "Tutti" (value=null) — per i Select usati come filtro
   // lista (es. stato email log). Etichetta da `allLabel`.
   includeAllOption: { type: Boolean, default: false },
@@ -100,7 +100,7 @@ const lookup = props.fetcher
   ? useGlobalLookup(props.lookupKey || props.rel, props.fetcher, lookupOptions)
   : useLookupCodici(props.rel, {
       includiObsoleti: props.includiObsoleti,
-      pageSize: props.pageSize,
+      limit: props.limit,
       ...lookupOptions,
     })
 
@@ -121,8 +121,8 @@ const filteredItems = computed(() => {
 //    dopo un errore). Prima, o se la lettura fallisce, l'elenco vuoto farebbe
 //    dire «non attiva» a una voce attivissima.
 // ⚠️ «Non e' nell'elenco» vale «non e' proposta» perche' il lookup legge una
-//    tabella di configurazione INTERA, in una pagina (`LOOKUP_CODICI_PAGE_SIZE`):
-//    con un `pageSize` ridotto dal chiamante non varrebbe piu'.
+//    tabella di configurazione INTERA, in una pagina (`LOOKUP_CODICI_LIMIT`):
+//    con un `limit` ridotto dal chiamante non varrebbe piu'.
 const voceFuoriElenco = computed(() => {
   const v = props.voceCorrente
   const valore = v?.[props.valueField]

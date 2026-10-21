@@ -149,7 +149,7 @@ else
     # Fallback: riusa un preventivo esistente (BA+utility+istanza coerenti).
     log_info "lookup BA vuoto/scope; provo a riusare un preventivo esistente"
     PREV_PAYLOAD=$(curl -s -H "Authorization: Bearer $TOKEN" \
-        "${BASE_URL}/api/v1/vendite/preventivi/?page_size=1" 2>/dev/null | python3 -c "
+        "${BASE_URL}/api/v1/vendite/preventivi/?limit=1" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -200,7 +200,7 @@ if [[ -z "$ARTICOLO_ID" ]]; then
 fi
 log_info "articolo_id (merce) = $ARTICOLO_ID"
 do_curl POST "/api/v1/vendite/preventivi/${PREV_ID}/righe/" \
-    "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"10\", \"prezzo_unitario\": \"100.00\", \"iva_id\": 16}"
+    "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"10\", \"prezzo_unitario\": \"100.00\"}"
 check "POST aggiungi riga merce" 200 "data.id" || true
 RIGA_ID="$EXTRACTED"; log_info "riga_id = $RIGA_ID"
 
@@ -289,7 +289,7 @@ fi
 echo ""; echo "-- 8. Crea/riusa articolo servizio (natura SERVIZIO_UNA_TANTUM) --"
 SERV_CODICE="SMOKE-SERV-UT"
 SERV_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?search=${SERV_CODICE}&page_size=5" 2>/dev/null | python3 -c "
+    "${BASE_URL}/api/v1/catalogo/articoli/?search=${SERV_CODICE}&limit=5" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -324,11 +324,11 @@ if [[ -n "$SERV_ID" && "$SPLIT_OK" == "1" ]]; then
     if check "POST crea preventivo misto" 200 "data.id"; then
         PREV2_ID="$EXTRACTED"; log_info "preventivo_id (misto) = $PREV2_ID"
         do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/righe/" \
-            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"3\", \"prezzo_unitario\": \"100.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"3\", \"prezzo_unitario\": \"100.00\"}"
         check "POST riga merce" 200 "data.id" || true
         RIGA_MERCE2_ID="$EXTRACTED"
         do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/righe/" \
-            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"50.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"50.00\"}"
         check "POST riga servizio" 200 "data.id" || true
         smoke_emetti preventivi "${PREV2_ID}"   # BB _smoke_documenti.sh
         if [[ "$LAST_STATUS" == "200" ]]; then
@@ -402,7 +402,7 @@ if [[ "$MISTO_OK" == "1" && -n "${COMMESSE:-}" ]]; then
     if check "POST crea preventivo servizio-only" 200 "data.id"; then
         PREV3_ID="$EXTRACTED"
         do_curl POST "/api/v1/vendite/preventivi/${PREV3_ID}/righe/" \
-            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"30.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"30.00\"}"
         check "POST riga servizio" 200 || true
         smoke_emetti preventivi "${PREV3_ID}"   # BB _smoke_documenti.sh
         if [[ "$LAST_STATUS" == "200" ]]; then

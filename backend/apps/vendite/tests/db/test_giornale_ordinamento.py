@@ -9,7 +9,7 @@
 """
 Indice test eseguiti:
 1) test_default_ordina_per_tempo_dal_piu_recente
-2) test_colonna_fuori_whitelist_ricade_sul_default
+2) test_colonna_fuori_whitelist_e_rifiutata
 3) test_dentro_la_gravita_il_tempo_resta_dal_piu_recente
 4) test_quando_ordina_col_tiebreak_allineato
 5) test_quando_ascendente_porta_con_se_il_tiebreak
@@ -41,12 +41,14 @@ class GiornaleOrdinamentoTests(SimpleTestCase):
         self.assertTrue(clausola.startswith("t.quando DESC"))
         self.assertEqual(clausola, _giornale_order_clause(GIORNALE_ORDINE_DEFAULT, "desc"))
 
-    # Scopo: ⚠️ Una colonna che non esiste non e' un errore da 400: e' una
-    # preferenza che non si applica. Il ripiego e' il default, non un ORDER BY
-    # vuoto — che lascerebbe l'ordine al piano di esecuzione, cioe' a nessuno.
-    def test_colonna_fuori_whitelist_ricade_sul_default(self) -> None:
+    # Scopo: ⛔ Una colonna che non esiste e' un 400 (`order_by_invalid`), non
+    # il default: dal 2026-10-20 nessuna lista risponde ordinata diversamente
+    # da come e' stato chiesto (brief-be-verifica-documentazione-api §A1). Assente = il default.
+    def test_colonna_fuori_whitelist_e_rifiutata(self) -> None:
+        with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+            _giornale_order_clause("cosa", "desc")
         self.assertEqual(
-            _giornale_order_clause("cosa", "desc"),
+            _giornale_order_clause(None, "desc"),
             _giornale_order_clause(GIORNALE_ORDINE_DEFAULT, "desc"),
         )
 

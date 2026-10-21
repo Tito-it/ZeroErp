@@ -25,6 +25,7 @@ from django.db import connection
 from apps.config.sorgenti import SORGENTE_RESO_VENDITA
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
+    colonna_ordinamento,
     limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
@@ -544,7 +545,7 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
         # Il service garantisce «al piu' uno» dei due id (`_valida_filtro_documento`,
         # rifiuto parlante); con entrambi il BB solleva, per programmazione.
         lettura = lettura_coda_per_documento(vista, ddt_id=ddt_id, ordine_id=ordine_id)
-        order_column = meta["order_cols"].get(order_by) or "v.data"
+        order_column = colonna_ordinamento(order_by, meta["order_cols"]) or "v.data"
         direction = sql_order_direction(order_dir, default_desc=True)
         # ⚠️ Qui il tiebreak NON si allinea alla direzione (regola 2026-08-03,
         # che vale per gli spareggi TECNICI): `v.reso_id DESC` raggruppa le

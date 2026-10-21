@@ -3,12 +3,12 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.openapi_params import parametri_finestra
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.permissions import richiedi_se_stesso_o_amministratore
 
 from apps.core.api.error_responses import exception_to_error_response
-from apps.core.api.payload_validators import qp_bool, qp_int_strict
+from apps.core.api.payload_validators import pagina_da_query, qp_bool_optional
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.services.lookup_service import fn_list_lookup_codici
@@ -82,8 +82,7 @@ class ApiLookupCodici(DomainAPIView):
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, enum=["asc", "desc"], description="Direzione ordinamento (default: asc)."),
             OpenApiParameter(name="attivo_only", type=bool, location=OpenApiParameter.QUERY, required=False, description="Filtra solo record attivi (default: true)."),
             OpenApiParameter(name="includi_obsoleti", type=bool, location=OpenApiParameter.QUERY, required=False, description="Includi voci di catalogo obsolete (obsoleto_dal <= oggi). Default: true (mostra tutto). Passare false nella selezione-per-il-nuovo per nascondere gli obsoleti."),
-            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -115,13 +114,12 @@ class ApiLookupCodici(DomainAPIView):
         order_col = request.query_params.get("order_col", "descrizione").strip() or "descrizione"
         order_dir = request.query_params.get("order_dir", "asc").strip() or "asc"
 
-        attivo_only = qp_bool(request.query_params.get("attivo_only"))
+        attivo_only = qp_bool_optional(request.query_params.get("attivo_only"), "attivo_only", default=True)
         # Default true = comportamento storico (mostra tutto, anche gli obsoleti):
         # è il chiamante "selezione per il nuovo" a passare false per nasconderli.
-        includi_obsoleti = qp_bool(request.query_params.get("includi_obsoleti"))
+        includi_obsoleti = qp_bool_optional(request.query_params.get("includi_obsoleti"), "includi_obsoleti", default=True)
 
-        page = qp_int_strict(request.query_params.get("page"), "page", 1)
-        page_size = qp_int_strict(request.query_params.get("page_size"), "page_size", DEFAULT_LIMIT)
+        limit, offset = pagina_da_query(request.query_params)
 
         data = fn_list_lookup_codici(
             rel=rel,
@@ -130,8 +128,8 @@ class ApiLookupCodici(DomainAPIView):
             order_dir=order_dir,
             attivo_only=attivo_only,
             includi_obsoleti=includi_obsoleti,
-            page=page,
-            page_size=page_size,
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -275,8 +273,7 @@ class ApiPermessiAudit(DomainAPIView):
             OpenApiParameter(name="data_da", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro data inizio (YYYY-MM-DD)."),
             OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro data fine (YYYY-MM-DD)."),
             OpenApiParameter(name="tabella", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro singola tabella sorgente (es. user_override_aree)."),
-            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False, description="Numero pagina (default 1)."),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -303,7 +300,7 @@ class ApiPermessiAudit(DomainAPIView):
     # filtri opzionali e paginazione. L'elenco e' `PermissionsAuditRepository`.
     # Solo SUPER_ADMIN e superuser possono consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
-        from apps.core.api.payload_validators import optional_int, optional_iso_date
+        from apps.core.api.payload_validators import optional_iso_date
         from apps.core.db.permissions_audit_repository import PermissionsAuditRepository
 
         # Stessa policy di permessi-effettivi: lo stesso BB.
@@ -330,22 +327,10 @@ class ApiPermessiAudit(DomainAPIView):
                 message="Tabella non valida.",
                 detail=f"Tabella '{tabella}' non riconosciuta. Valori ammessi: {sorted(PermissionsAuditRepository._VALID_TABLE_NAMES)}.",
             )
-        page = optional_int(
-            {"page": request.query_params.get("page", "1")}, "page"
-        )
-        page_size = optional_int(
-            {"page_size": request.query_params.get("page_size", str(DEFAULT_LIMIT))}, "page_size"
-        )
-        # Mai None: i due valori arrivano sempre come stringa (default di
-        # `get`), e optional_int da' None solo per un valore assente.
-        assert page is not None and page_size is not None
-        # ⛔ Pagina e dimensione partono da 1: `page=0` dava un OFFSET negativo,
-        #    cioe' un errore del DB (F-4). `ValueError` = 400 E_VALIDATION_INPUT.
-        if page < 1:
-            raise ValueError("page_invalid")
-        if page_size < 1:
-            raise ValueError("page_size_invalid")
-        page_size = min(page_size, MAX_LIMIT)
+        # ⛔ La finestra dal BB (dal 2026-10-21 un dialetto solo, `limit`/
+        #    `offset`): fuori dai limiti la riporta `limiti_pagina`, illeggibile
+        #    e' un 400 (prima `page=0` dava un OFFSET negativo, F-4).
+        limit, offset = pagina_da_query(request.query_params)
 
         # Scopo: Risolve UO dell'utente target per includere tabelle reparto.
         target_cache: dict = {}
@@ -360,8 +345,8 @@ class ApiPermessiAudit(DomainAPIView):
             data_da=data_da,
             data_a=data_a,
             tabella=tabella,
-            page=page,
-            page_size=page_size,
+            limit=limit,
+            offset=offset,
         )
         result["user_id"] = user_id
         return success_response(result)

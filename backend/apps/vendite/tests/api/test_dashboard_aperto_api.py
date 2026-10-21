@@ -168,10 +168,10 @@ class DashboardApertoDocumentiApiTests(JwtMockedApiTest):
     @patch("apps.vendite.api.views_dashboard_aperto.fn_dash_aperto_documenti")
     def test_documenti_paginazione_parametri(self, mocked_fn, _mock_auth):
         mocked_fn.return_value = _DOCUMENTI_RESPONSE
-        self.client.get(f"{self._URL}?page=3&page_size=10")
+        self.client.get(f"{self._URL}?limit=10&offset=20")
         kwargs = mocked_fn.call_args.kwargs
-        self.assertEqual(kwargs["page"], 3)
-        self.assertEqual(kwargs["page_size"], 10)
+        self.assertEqual(kwargs["limit"], 10)
+        self.assertEqual(kwargs["offset"], 20)
 
     # Scopo: order_by/order_dir (ordinamento colonne, convenzione standard)
     #        inoltrati al service; la whitelist/validazione e' definizione unica

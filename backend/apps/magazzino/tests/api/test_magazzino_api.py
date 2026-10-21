@@ -296,7 +296,7 @@ class ConsultazioneApiTests(_Base):
     @patch(f"{_CONS}.list_disponibilita")
     def test_disponibilita_filtri_tradotti(self, mocked, _auth):
         mocked.return_value = {"count": 0, "results": []}
-        self.client.get("/api/v1/magazzino/disponibilita/?magazzino_id=3&solo_negativa=1&search=abc")
+        self.client.get("/api/v1/magazzino/disponibilita/?magazzino_id=3&solo_negativa=true&search=abc")
         kwargs = mocked.call_args.kwargs
         self.assertEqual((kwargs["magazzino_id"], kwargs["solo_negativa"], kwargs["solo_con_giacenza"], kwargs["search"]),
                          (3, True, False, "abc"))

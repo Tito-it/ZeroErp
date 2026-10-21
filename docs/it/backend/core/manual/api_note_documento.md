@@ -46,12 +46,17 @@ Ogni dominio espone **due** rotte:
 |---|---|---|
 | `target_riga_id` | — | filtra le note **di una riga**; vuoto = tutte |
 | `include_invisible` | `true` | `false` esclude le note con `visibile = false` |
-| `page` | 1 | |
-| `page_size` | 25 | il service lo riporta in silenzio fra 1 e 200 |
+| `limit` | 25 | max 200; fuori da 1..200 → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_200`) |
+| `offset` | 0 | negativo → 400 (`offset_negativo`) |
 
-Risposta: `data: {count, page, page_size, results}`. `page` e `page_size`
-sono quelli **richiesti**, non quelli effettivamente applicati dopo il
-contenimento.
+`limit`/`offset` li legge `pagina_da_query`: un valore non intero è un 400
+`E_VALIDATION_INPUT` (`limit_invalid`/`offset_invalid`). ⛔ `page`/`page_size`
+in query sono un 400 `E_VALIDATION_INPUT` dal 2026-10-21 (prima erano il
+contratto di questa lista).
+
+Risposta: envelope paginato standard `data: {count, page, page_size,
+total_pages, results}` (`envelope_da_offset`). `page_size` è il `limit`
+chiesto, `page` la pagina ricavata dall'offset.
 
 ⭐ **`include_invisible` sta a `true` di default, ed e' la scelta giusta**:
 l'endpoint serve il drawer dell'operatore, che le note nascoste **deve** vederle

@@ -134,9 +134,9 @@ const lotto = ref(null)
 // Lo stato paginato lo tiene un composable solo, usato tre volte: scritto a
 // mano tre volte sarebbero state tre occasioni di dimenticare l'azzeramento
 // della pagina al cambio ordinamento.
-const listaDocumenti = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
+const listaDocumenti = useListaDrawerPaginata(({ limit, offset, sortBy, sortDir }) =>
   listLottoFatture(props.lottoId, {
-    page, page_size: pageSize, ...(sortBy ? { sort_by: sortBy, sort_dir: sortDir } : {}),
+    limit, offset, ...(sortBy ? { order_by: sortBy, order_dir: sortDir } : {}),
   }))
 // ⭐ LA QUARTA SCHEDA — I DOCUMENTI PRESI IN CARICO (brief-db-esito-gruppo-lotto).
 //
@@ -161,8 +161,8 @@ const listaDocumenti = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir
 //    anche gli ESITI, che ci sono su entrambi i tipi di giro, e zero righe ne
 //    vuol dire una sola.
 const listaGruppi = useListaDrawerPaginata(
-  ({ page, pageSize, sortBy, sortDir }) =>
-    listLottoGruppi(props.lottoId, { page, pageSize, orderBy: sortBy, orderDir: sortDir }),
+  ({ limit, offset, sortBy, sortDir }) =>
+    listLottoGruppi(props.lottoId, { limit, offset, orderBy: sortBy, orderDir: sortDir }),
 )
 
 // ⭐ Ordinamento iniziale «Fine» DESC: la diagnostica si legge dall'ULTIMA cosa
@@ -195,9 +195,9 @@ const ampiezzaTask = ref('RILEVANTI')
 const esclusiTask = ref(0)
 
 const listaTask = useListaDrawerPaginata(
-  async ({ page, pageSize, sortBy, sortDir }) => {
+  async ({ limit, offset, sortBy, sortDir }) => {
     const res = await listLottoTaskRuns(props.lottoId, {
-      page, pageSize, orderBy: sortBy, orderDir: sortDir,
+      limit, offset, orderBy: sortBy, orderDir: sortDir,
       taskStato: AMPIEZZE_TASK[ampiezzaTask.value],
     })
     // Letto QUI e non nel composable: è un campo extra di questo endpoint, e
@@ -218,9 +218,9 @@ const listaTask = useListaDrawerPaginata(
 // ⛔ Per questo si passa dal rango a `data_ora` senza perdere niente: la
 //    gravita' la fa il FILTRO, non l'ordinamento.
 const listaSegnalazioni = useListaDrawerPaginata(
-  ({ page, pageSize, sortBy, sortDir }) =>
+  ({ limit, offset, sortBy, sortDir }) =>
     listLottoSegnalazioni(props.lottoId, {
-      livello: livelloSegnalazioni.value, page, pageSize, orderBy: sortBy, orderDir: sortDir,
+      livello: livelloSegnalazioni.value, limit, offset, orderBy: sortBy, orderDir: sortDir,
     }),
   { sortBy: 'data_ora', sortDir: -1 },
 )
@@ -257,8 +257,8 @@ const azioniDocumenti = useListaAzioni(() => listaDocumentiRef.value, {
     formato,
     ...(listaDocumenti.sortField.value
       ? {
-          sort_by: listaDocumenti.sortField.value,
-          sort_dir: listaDocumenti.sortOrder.value === -1 ? 'desc' : 'asc',
+          order_by: listaDocumenti.sortField.value,
+          order_dir: listaDocumenti.sortOrder.value === -1 ? 'desc' : 'asc',
         }
       : {}),
   }),
@@ -586,7 +586,7 @@ async function loadLotto() {
 async function caricaSegnalazioni() {
   await listaSegnalazioni.carica()
   const res = await listLottoSegnalazioni(props.lottoId, {
-    livello: livelloSegnalazioni.value, page: 1, pageSize: 1,
+    livello: livelloSegnalazioni.value, limit: 1,
   })
   segnalazioniFuoriJob.value = res.data?.data?.fuori_job_count ?? 0
   livelloCaricato.value = livelloSegnalazioni.value
@@ -1775,7 +1775,7 @@ const fotoEsclusione = useFotografiaDialog(() => ({ motivo: esclusioneMotivo.val
     <NumerazioneDataDialog
       v-model:visible="numeraDialog.visible"
       :lotto-id="numeraDialog.lottoId"
-      @conferma="confermaNumera"
+      :azione="confermaNumera"
     />
 
     <!-- ⭐ USCITA DI UN DOCUMENTO DAL GIRO. Non è un «sei sicuro?»: chiede il

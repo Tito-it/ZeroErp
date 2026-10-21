@@ -163,8 +163,10 @@ class ListDocumentiPerSorgenteTests(TestCase):
         self.assertEqual(totale, 7)
 
     # 4-bis. `order_by` dalla whitelist (chiave = campo_sorgente del catalogo);
-    #        una colonna DATA senza verso ripiega DESC; fuori whitelist ->
-    #        ordinamento di partenza.
+    #        una colonna DATA senza verso ripiega DESC; fuori whitelist -> 400
+    #        (`ValueError("order_by_invalid")`, decisione Tid 2026-10-20,
+    #        brief-be-verifica-documentazione-api §A1: nessuna lista ripiega in
+    #        silenzio sul default).
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_list_documenti_per_sorgente_ordina_dalla_whitelist(
         self, mocked_factory
@@ -173,7 +175,6 @@ class ListDocumentiPerSorgenteTests(TestCase):
             (("titolo", "asc"), "ORDER BY d.titolo ASC NULLS FIRST, d.id ASC"),
             (("progressivo_sorgente", "desc"), "ORDER BY d.progressivo_sorgente DESC NULLS LAST, d.id DESC"),
             (("generato_at", None), "ORDER BY d.generato_at DESC NULLS LAST, d.id DESC"),
-            (("has_file_principale", "asc"), "ORDER BY d.generato_at ASC NULLS FIRST, d.id ASC"),
         ]
         for (order_by, order_dir), atteso in casi:
             with self.subTest(order_by=order_by, order_dir=order_dir):
@@ -184,6 +185,12 @@ class ListDocumentiPerSorgenteTests(TestCase):
                 )
                 sql, _ = cursor.execute.call_args_list[0].args
                 self.assertIn(atteso, sql)
+        # «Originale» non ordina a catalogo: chiederlo e' un 400, non un ripiego.
+        mocked_factory.return_value = _mk_cursor()
+        with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+            DocumentiRepository().list_documenti_per_sorgente(
+                **self._default_args(order_by="has_file_principale", order_dir="asc"),
+            )
 
     # 4-ter. ricerca: la condizione del BB (`add_ricerca_full_condition`) sulle
     #        colonne accese dal catalogo, dentro lo stesso WHERE della pagina.

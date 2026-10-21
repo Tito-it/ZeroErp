@@ -42,7 +42,7 @@ const coll = useStepFigliCollection({
 // Risorse umane dalla lista operatori: value = risorsa_umana_id, label =
 // "cognome nome". Filtra chi non ha una risorsa umana e deduplica per id.
 function risorseFetcher() {
-  return listOperatori({ page_size: 200 })
+  return listOperatori({ limit: 200 })
 }
 function risorseTransform(res) {
   const seen = new Set()

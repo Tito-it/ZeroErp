@@ -338,8 +338,36 @@ class ParameterOverrideView(DomainAPIView):
         def handler(payload: dict) -> dict:
             scope = _parse_scope(payload.get("scope"))
             raw_value = payload.get("value")
-            value = str(raw_value) if raw_value is not None else ""
+            # ⛔ Un override senza valore e' un 400 sul campo, non un override
+            #    vuoto: fino al 2026-10-21 `value` assente o `null` diventava `""`
+            #    e si scriveva, con un 200 (brief-be-verifica-documentazione-api
+            #    §B6). La stringa vuota ESPLICITA resta un valore.
+            ErrorManager.require(
+                raw_value is not None,
+                code="E_PARAMETER_VALIDATION",
+                message="Valore dell'override obbligatorio.",
+                context={"field": "value"},
+            )
+            # ⛔ Il valore di un parametro e' TESTO (la colonna e il drawer):
+            #    `str()` su un JSON qualunque scriveva `true` come "True" e un
+            #    oggetto come "{'a': 1}", con un 200.
+            ErrorManager.require(
+                isinstance(raw_value, str),
+                code="E_PARAMETER_VALIDATION",
+                message="Il valore dell'override dev'essere una stringa.",
+                detail=f"value={type(raw_value).__name__}",
+                context={"field": "value"},
+            )
+            assert isinstance(raw_value, str)
+            value = raw_value
             parameter_code = payload.get("parameter_code", "")
+            # Un codice non stringa arrivava a `.strip()` nel service: un 500.
+            ErrorManager.require(
+                isinstance(parameter_code, str),
+                code="E_PARAMETER_VALIDATION",
+                message="Codice parametro non valido.",
+                context={"field": "parameter_code"},
+            )
 
             if scope == SCOPE_EMITTENTE:
                 emittente_fiscale_id = _require_admin_emittente_id(request, svc)

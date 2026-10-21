@@ -253,8 +253,8 @@ class PartitionedNoteService:
         target_id: int,
         target_riga_id: int | None = None,
         include_invisible: bool = True,
-        page: int = 1,
-        page_size: int = DEFAULT_LIMIT,
+        limit: int = DEFAULT_LIMIT,
+        offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         self._validator.guard_positive_int(target_id, field="target_id")
         if target_riga_id is not None:
@@ -264,8 +264,8 @@ class PartitionedNoteService:
             target_id,
             target_riga_id=target_riga_id,
             include_invisible=include_invisible,
-            page=max(1, page),
-            page_size=min(MAX_LIMIT, max(1, page_size)),
+            limit=min(MAX_LIMIT, max(1, limit)),
+            offset=max(0, offset),
         )
 
     # Scopo: Restituisce una singola nota per id + target_id. Solleva
@@ -340,11 +340,11 @@ class PartitionedNoteService:
         auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         # Verifica esistenza prima di accettare il patch (404 esplicito).
-        existing = self.get_nota(note_id=note_id, target_id=target_id)
+        self.get_nota(note_id=note_id, target_id=target_id)
         normalized = self._normalize_payload(patch, is_create=False, auth_user_id=auth_user_id)
-        if not normalized:
-            # Patch vuoto: idempotente, ritorna lo stato corrente.
-            return existing
+        # ⛔ Un PATCH senza campi e' un 400, non un 200 che restituisce la nota
+        #    com'e' (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
+        self._validator.require_campi_da_aggiornare(normalized)
         try:
             with transaction.atomic():
                 updated = self._repo.update(note_id, target_id, normalized)

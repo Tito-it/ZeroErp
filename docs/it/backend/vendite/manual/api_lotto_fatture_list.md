@@ -87,15 +87,21 @@ cancella il documento dal lotto, «non lo so» non può voler dire «vai».
     vocabolario `PENDING` · `RUNNING` · `COMPLETED` · `ERRORE`
     (`STATI_ESECUZIONE_LOTTO`). Fuori vocabolario → `400 E_VENDITE_VALIDATION`
     col campo (2026-10-20: prima lista vuota; `OK` non è mai esistito)
-  - `sort_by` (string) — colonna ordinamento da whitelist
+  - `order_by` (string) — colonna ordinamento da whitelist
     `LOTTO_FATTURE_SORT_COLUMNS` (`backend/apps/vendite/db/vendite_repository.py`):
     `fattura_id` (default), `numero`, `serie`, `data`,
     `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`,
     `natura_doc_descrizione`, `stato_doc_fiscale_descrizione`,
     `stato_esecuzione`, `totale_doc`, `totale_a_pagare`
-  - `sort_dir` (string) — direzione: `asc` (default) | `desc`
-  - `page` (int) — numero pagina, default `1`
-  - `page_size` (int) — righe per pagina, default `25`, max `200`
+  - `order_dir` (string) — direzione: `asc` | `desc`; assente, la decide la
+    lista (le date partono DESC). ⚠️ Fino al 2026-10-20 i due parametri si
+    chiamavano `sort_by`/`sort_dir`, unica lista del prodotto (brief-be-verifica-
+    documentazione-api §A4): i vecchi nomi oggi sono ignorati
+  - `limit` (int) — righe per pagina, default `25`, max `200`; fuori da 1..200 → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_200`)
+  - `offset` (int) — righe da saltare, default `0`; negativo → 400 (`offset_negativo`)
+  - ⛔ `page`/`page_size` sono un **400** `E_VALIDATION_INPUT` (dal 2026-10-21:
+    fino a quel giorno erano il contratto di questa lista). La risposta porta
+    ancora `page`/`page_size`, ricavati da `limit`/`offset`
 
 ## Output
 
@@ -144,9 +150,11 @@ cancella il documento dal lotto, «non lo so» non può voler dire «vai».
   "meta": { "request_id": "..." }
 }
 ```
-- `400`: parametri non validi (`E_VENDITE_VALIDATION`: paginazione, `sort_by`
-  fuori whitelist, `sort_dir`, `stato_esecuzione` fuori vocabolario;
-  `E_VALIDATION_INPUT` per un intero non leggibile)
+- `400`: parametri non validi (`E_VENDITE_VALIDATION`: `order_by` fuori
+  whitelist, `order_dir`, `stato_esecuzione` fuori vocabolario;
+  `E_VALIDATION_INPUT` per un intero non leggibile — `limit`/`offset` compresi —,
+  per `limit` fuori da 1..200 o `offset` negativo e per `page`/`page_size`
+  presenti)
 - `401`: JWT mancante o non valido
 - `403`: permesso modello `("vendite", "fattura")` mancante
 - `404`: `E_LOTTO_NON_TROVATO` — lotto inesistente **o fuori perimetro**: la
@@ -157,10 +165,12 @@ cancella il documento dal lotto, «non lo so» non può voler dire «vai».
 
 - `lotto_id` proviene dal path URL; il WHERE `fllf.lotto_id = :lotto_id` e' sempre presente.
 - Filtri opzionali: assenza equivale a nessun filtro.
-- `sort_by` accetta solo valori nella whitelist `LOTTO_FATTURE_SORT_COLUMNS`; valore non valido → 400.
-- `sort_dir` accetta `asc`/`desc` (maiuscole e spazi ammessi); valore non valido → 400.
+- `order_by` accetta solo valori nella whitelist `LOTTO_FATTURE_SORT_COLUMNS`; valore non valido → 400.
+- `order_dir` accetta `asc`/`desc` (maiuscole e spazi ammessi); valore non valido → 400.
 - Tiebreaker deterministico su `fllf.fattura_id` (`sql_order_clause`).
-- `page` deve essere >= 1; `page_size` deve essere compreso tra 1 e 200.
+- Finestra `limit`/`offset` letta da `pagina_da_query`: non intera o fuori
+  limiti è un 400 `E_VALIDATION_INPUT` (dal 2026-10-21; prima si riportava nei
+  limiti in silenzio).
 - `is_search_endpoint = True` sulla view: attiva throttling `SearchBurstRateThrottle`.
 - `stato_doc_fiscale_codice` = `config.stati_doc_fiscale.codice_interno` (chiave
   stabile) — mai la `descrizione`, che e' display e puo' cambiare. Serve a
@@ -197,12 +207,15 @@ cancella il documento dal lotto, «non lo so» non può voler dire «vai».
 - Query raw nel repository (`VenditeRepository.list_lotto_fatture`); nessuna funzione SQL dedicata.
 - Due query per request: `COUNT(*)` + dati con `LIMIT/OFFSET` (pattern offset pagination).
 - L'ordinamento usa la whitelist `LOTTO_FATTURE_SORT_COLUMNS` nel repository; mai interpolazione diretta di input utente nel SQL.
+- 2026-10-21: la finestra passa da `page`/`page_size` a `limit`/`offset`
+  (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope
+  di risposta invariato.
 
 ## Export
 
 - `GET /api/v1/vendite/lotti/{lotto_id}/fatture/export/?formato=csv|xlsx`
-- Stessi filtri e ordinamento della lista (`stato_esecuzione`, `sort_by`,
-  `sort_dir`), senza paginazione; stesso permesso `("vendite", "fattura")` e
+- Stessi filtri e ordinamento della lista (`stato_esecuzione`, `order_by`,
+  `order_dir`), senza paginazione; stesso permesso `("vendite", "fattura")` e
   stesso `404` sul lotto non visibile.
 - Colonne dal catalogo `vendite.lotto_fatture`; oltre `EXPORT_MAX_ROWS` →
   `422 E_UI_EXPORT_LIMIT_EXCEEDED`.

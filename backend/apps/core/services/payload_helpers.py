@@ -21,11 +21,11 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Collection, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Any, NoReturn
+from typing import Any, NoReturn, TypeVar
 from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError
@@ -68,6 +68,9 @@ class MissingType:
 
 
 MISSING = MissingType()
+
+# Il tipo della voce letta da `PayloadValidator.voci`.
+_T = TypeVar("_T")
 
 
 class PayloadValidator:
@@ -1238,6 +1241,156 @@ class PayloadValidator:
             context={f"{key}_type": type(raw).__name__, "field": key},
             **em,
         )
+
+    # =================================================================
+    # PATCH letta per presenza
+    # =================================================================
+
+    # Scopo: ⭐ I campi di una PATCH, letti per PRESENZA: una chiave presente
+    #        si scrive (anche `null`, che svuota un campo nullable), una chiave
+    #        assente non si tocca. Una chiave fuori contratto e' un 400
+    #        (`validate_allowed_keys`), una PATCH che non porta campi e' un 400
+    #        (`require_campi_da_aggiornare`). Ritorna il dict da scrivere.
+    #   - `testi`: chiave -> (nullable, max_len). nullable False = NOT NULL a
+    #     DB (`null` e `""` sono 400); `max_len` la lunghezza della colonna
+    #     (None = nessun tetto). Letti con `extract_optional_string`;
+    #   - `maiuscoli`: i testi che si scrivono in maiuscolo (sigle, codici ISO);
+    #   - `interi`: chiave -> nullable. True: `null` AZZERA, un valore e' un
+    #     id positivo; False: id positivo obbligatorio se la chiave c'e';
+    #   - `flag`: booleani NOT NULL (`require_bool`: un `null` e' un 400, non
+    #     uno «spegni»);
+    #   - `altri`: chiave -> lettore `(payload, chiave)`, chiamato solo se la
+    #     chiave c'e' — le forme che il dominio legge con un altro BB
+    #     (`optional_meta`, `require_date`, `optional_date`...);
+    #   - `ammesse`: il contratto PUBBLICATO del metodo (la costante che legge
+    #     anche lo schema OpenAPI), quando esiste. Deve coincidere con le chiavi
+    #     dichiarate: una chiave ammessa e non letta sarebbe scartata in
+    #     silenzio, una letta e non ammessa un 400 su un campo del contratto.
+    #     Assente, il contratto sono le chiavi dichiarate.
+    #   - `message` per la chiave fuori contratto; `message_vuoto` /
+    #     `detail_vuoto` / `context_vuoto` per la PATCH vuota: le frasi del
+    #     dominio. Il codice e' il `validation_code` dell'istanza.
+    # ⛔ Una dichiarazione incoerente (la stessa chiave in due gruppi, un
+    #    maiuscolo che non e' un testo, `ammesse` diversa dalle dichiarate) e'
+    #    `RuntimeError`, un 500: e' un errore di chi scrive il service, non di
+    #    chi chiama (stessa scelta di `execute_dynamic_update`).
+    # ⭐ Regola del 2 (ok Tid 2026-10-21): la stessa lettura era scritta in
+    #    geo (`_campi_patch_geo`), nelle anagrafiche di magazzino
+    #    (`_testi_presenti` / `_int_nullable_presente` / `_bool_presente`),
+    #    nella testata della commessa e nell'unita' di misura del catalogo.
+    #    Le copie dicevano un `null` su un flag in due frasi diverse e un testo
+    #    NOT NULL vuoto in due altre.
+    def campi_per_presenza(
+        self,
+        payload: dict[str, Any],
+        *,
+        testi: Mapping[str, tuple[bool, int | None]] | None = None,
+        maiuscoli: Collection[str] = frozenset(),
+        interi: Mapping[str, bool] | None = None,
+        flag: Collection[str] = frozenset(),
+        altri: Mapping[str, Callable[[dict[str, Any], str], Any]] | None = None,
+        ammesse: frozenset[str] | None = None,
+        message: str = "Payload non valido.",
+        message_vuoto: str = "Nessun campo aggiornabile presente nel payload.",
+        detail_vuoto: str | None = None,
+        context_vuoto: dict[str, Any] | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> dict[str, Any]:
+        testi = testi or {}
+        interi = interi or {}
+        altri = altri or {}
+        dichiarate = [*testi, *interi, *flag, *altri]
+        lette = frozenset(dichiarate)
+        if len(lette) != len(dichiarate):
+            raise RuntimeError(f"campi_per_presenza: chiave dichiarata in due gruppi ({sorted(dichiarate)}).")
+        if not frozenset(maiuscoli) <= frozenset(testi):
+            raise RuntimeError(f"campi_per_presenza: maiuscoli fuori dai testi ({sorted(frozenset(maiuscoli) - frozenset(testi))}).")
+        if ammesse is not None and ammesse != lette:
+            raise RuntimeError(
+                "campi_per_presenza: il contratto e le chiavi lette divergono "
+                f"(ammesse e non lette: {sorted(ammesse - lette)}; lette e non ammesse: {sorted(lette - ammesse)})."
+            )
+        em: dict[str, Any] = {"log_to_db": log_to_db, "function_name": function_name}
+        self.validate_allowed_keys(payload, allowed=lette, message=message, **em)
+        campi: dict[str, Any] = {}
+        for chiave, (nullable, max_len) in testi.items():
+            valore = self.extract_optional_string(payload, chiave, nullable=nullable, max_len=max_len, **em)
+            if isinstance(valore, MissingType):
+                continue
+            campi[chiave] = valore.upper() if valore and chiave in maiuscoli else valore
+        for chiave, nullable in interi.items():
+            if chiave in payload:
+                campi[chiave] = (
+                    self.optional_positive_int(payload, chiave, **em) if nullable
+                    else self.require_positive_int(payload, chiave, **em)
+                )
+        for chiave in sorted(flag):
+            if chiave in payload:
+                campi[chiave] = self.require_bool(payload, chiave, **em)
+        for chiave, leggi in altri.items():
+            if chiave in payload:
+                campi[chiave] = leggi(payload, chiave)
+        self.require_campi_da_aggiornare(
+            campi, message=message_vuoto, detail=detail_vuoto, context=context_vuoto, **em,
+        )
+        return campi
+
+    # =================================================================
+    # Liste di voci
+    # =================================================================
+
+    # Scopo: ⭐ Una LISTA DI VOCI dal corpo, ogni voce un oggetto: `valori`
+    #        deve essere una lista, ogni elemento un dict, e ogni voce passa da
+    #        `leggi(voce, indice)`, che ne estrae i campi col BB (400 col
+    #        campo) e ritorna la voce da scrivere. Ritorna le voci lette.
+    #        `campo` e' la chiave del corpo: sta nel `context` (`field`) e nelle
+    #        frasi; l'indice della voce sta nel `detail` e nel `context`.
+    #        `message` sostituisce le due frasi quando il dominio ne ha una
+    #        sua («Preferenza lista non valida.»): il dettaglio resta.
+    # ⛔ `None` NON e' una lista vuota: e' un 400. Chi riceve la lista spesso
+    #    sostituisce in blocco (DELETE + INSERT), e un corpo `{}` diventato
+    #    `[]` svuotava tutto con un 200. Dove la lista e' davvero facoltativa
+    #    (le righe alla creazione di un reso, le colonne di una preferenza) lo
+    #    decide il chiamante, che non chiama il BB se la chiave manca.
+    # ⭐ Regola del 2 (ok Tid 2026-10-21): la stessa lettura era in
+    #    amm_software (`_voci`: override dell'operatore e profilo di reparto),
+    #    nel salvataggio dei prezzi bundle del listino, nella creazione del
+    #    reso e nelle colonne di preferenza e preset delle liste — dove una
+    #    voce che non e' un oggetto era, secondo il punto, un 400, un
+    #    `AttributeError` o un `KeyError` (500).
+    def voci(
+        self,
+        valori: Any,
+        leggi: Callable[[dict[str, Any], int], _T],
+        *,
+        campo: str,
+        message: str | None = None,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> list[_T]:
+        em = self._em_kwargs(log_to_db=log_to_db, function_name=function_name)
+        ErrorManager.require(
+            isinstance(valori, list),
+            code=self._code,
+            message=message or f"'{campo}' deve essere una lista.",
+            detail=f"Il campo '{campo}' deve essere una lista.",
+            context={"field": campo},
+            **em,
+        )
+        assert isinstance(valori, list)
+        lette: list[_T] = []
+        for indice, voce in enumerate(valori):
+            ErrorManager.require(
+                isinstance(voce, dict),
+                code=self._code,
+                message=message or f"Ogni voce di '{campo}' deve essere un oggetto.",
+                detail=f"{campo}[{indice}] deve essere un oggetto.",
+                context={"field": campo, "indice": indice},
+                **em,
+            )
+            lette.append(leggi(voce, indice))
+        return lette
 
 
 # =================================================================

@@ -21,7 +21,7 @@ Tutti gli endpoint di lista accettano i seguenti query parameters:
 | search     | string | no           | —            | Ricerca full guidata dal catalogo lista (colonne e soglia minima di caratteri). Sotto soglia la ricerca non si applica: nessun 400 |
 | limit      | int    | no           | 25           | Righe per pagina (1–200)                 |
 | offset     | int    | no           | 0            | Offset per la paginazione                |
-| order_by   | string | no           | descrizione  | Colonna di ordinamento, dalla whitelist dell'entita' (vedi sezioni). Valore fuori whitelist → default |
+| order_by   | string | no           | descrizione  | Colonna di ordinamento, dalla whitelist dell'entita' (vedi sezioni). Valore fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
 | order_dir  | string | no           | asc          | `asc` o `desc`                           |
 
 ## Formato risposta comune
@@ -48,9 +48,12 @@ paginazione; i campi di ogni riga sono indicati per entita'.
 
 Creazione (`POST`): restituisce la riga creata riletta dalla stessa sorgente di
 lista e dettaglio (con le descrizioni dei JOIN). Aggiornamento (`PATCH`):
-restituisce `{"data": {"updated": true}}`; i campi non riconosciuti sono ignorati,
-e un corpo senza campi aggiornabili risponde 404 `E_ANAG_NOT_FOUND` come un id
-inesistente. Duplicati → 409 `E_ANAG_DUPLICATO`; descrizione/campi obbligatori
+restituisce `{"data": {"updated": true}}`. Dal 2026-10-20 i campi si leggono per
+presenza: una chiave presente si scrive, anche `null`, che svuota un campo nullable
+(ISO2/ISO3, sigla, telefono e continente dello stato; la regione della provincia);
+`null` o `""` su un campo obbligatorio → 400. Una chiave fuori elenco e un corpo
+senza campi → 400 `E_ANAG_VALIDAZIONE` (prima: ignorata, e 404 come un id
+inesistente). Duplicati → 409 `E_ANAG_DUPLICATO`; descrizione/campi obbligatori
 mancanti → 400 `E_ANAG_VALIDAZIONE`.
 
 In caso di errore: `{"error": {"code": "...", "message": "..."}, "meta": {...}}`.

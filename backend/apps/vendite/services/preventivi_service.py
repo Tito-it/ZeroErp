@@ -70,7 +70,7 @@ from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_PENDING,
     STATO_APPROVAZIONE_REJECTED,
 )
-from apps.core.api.payload_validators import paginated_envelope
+from apps.core.api.payload_validators import envelope_da_offset
 
 
 # ── Costanti di validazione ──
@@ -234,18 +234,19 @@ def list_preventivi(
     search: str | None = None,
     solo_ultima_revisione: bool = True,
     auth_user_id: int | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     order_by: str = "data",
     order_dir: str = "desc",
 ) -> dict[str, Any]:
+    # ⭐ `limit`/`offset` come ogni lista (2026-10-21, un dialetto solo): fino a
+    #    quel giorno `page`/`page_size`, l'ultimo wrapper che li parlava.
     ErrorManager.require(
-        page >= 1 and 1 <= page_size <= MAX_LIMIT,
+        1 <= limit <= MAX_LIMIT and offset >= 0,
         code=E_PREV_VALIDAZIONE,
         message="Parametri paginazione non validi.",
         function_name=f"{_FN}.list_preventivi",
     )
-    offset = (page - 1) * page_size
     results, total_count = list_preventivi_rows(
         stato_codice=stato_codice,
         billing_account_id=billing_account_id,
@@ -255,12 +256,12 @@ def list_preventivi(
         search=search,
         solo_ultima_revisione=solo_ultima_revisione,
         auth_user_id=auth_user_id,
-        limit=page_size,
+        limit=limit,
         offset=offset,
         order_by=order_by,
         order_dir=order_dir,
     )
-    return paginated_envelope(results, total_count, page, page_size)
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 
 # Scopo: Etichette leggibili dei filtri attivi, incluse come metadato nel file
@@ -527,7 +528,8 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
             validita_dal=payload.get("validita_dal"),
             validita_al=payload.get("validita_al"),
             competenza_mese=payload.get("competenza_mese"),
-            fatturazione_immediata=payload.get("fatturazione_immediata", False),
+            # Un flag del corpo e' un booleano JSON (`"false"` e' un 400 sul campo).
+            fatturazione_immediata=_V.optional_bool(payload, "fatturazione_immediata") or False,
             stato_doc_preventivo_id=stato_bozza_id,
             meta=payload.get("meta"),
         )
@@ -609,6 +611,10 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
         if key in payload:
             val = payload[key]
             update_fields[key] = empty_to_none(val) if isinstance(val, str) else val
+    # ⛔ Il flag e' NOT NULL e booleano: presente, dev'essere `true`/`false`
+    #    JSON. Prima `"false"` arrivava al DB come stringa e `""` come NULL.
+    if "fatturazione_immediata" in payload:
+        update_fields["fatturazione_immediata"] = _V.require_bool(payload, "fatturazione_immediata")
 
     # Il cliente si cambia per coppia: BA e istanza viaggiano insieme, letti dal
     # lato che il payload porta (stessa regola della creazione). Cambiare il
@@ -624,9 +630,11 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
             function_name=f"{_FN}.aggiorna_preventivo",
         )
 
-    if update_fields:
-        with _vincoli_cliente_preventivo():
-            repo.update_preventivo(preventivo_id, **update_fields)
+    # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+    #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+    _V.require_campi_da_aggiornare(update_fields)
+    with _vincoli_cliente_preventivo():
+        repo.update_preventivo(preventivo_id, **update_fields)
 
     return {"status": "ok", "preventivo_id": preventivo_id}
 

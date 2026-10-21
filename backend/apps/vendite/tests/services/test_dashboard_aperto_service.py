@@ -347,11 +347,13 @@ class DashApertoDocumentiServiceTests(TestCase):
         data = fn_dash_aperto_documenti(area="PREVENTIVO")
         self.assertEqual(data["results"][0]["anzianita_giorni"], 42)
 
-    # Scopo: Paginazione invalida -> E_VENDITE_VALIDATION (validate_pagination).
-    def test_documenti_page_invalida(self):
-        with self.assertRaises(ServiceError) as ctx:
-            fn_dash_aperto_documenti(page=0)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+    # Scopo: la finestra arriva al repository come `limit`/`offset` (dal
+    #        2026-10-21 un dialetto solo: la valida `pagina_da_query`, nella view).
+    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti", return_value=([], 0))
+    def test_documenti_page_invalida(self, mock_repo):
+        fn_dash_aperto_documenti(limit=10, offset=30)
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 30))
 
     # Scopo: Rientro da pagina stantia: il repository clampa l'offset in SQL
     #        (una sola valutazione della union) e il service dichiara
@@ -362,7 +364,7 @@ class DashApertoDocumentiServiceTests(TestCase):
         return_value=([{"documento_id": 1}], 10),
     )
     def test_documenti_pagina_stantia_clampata(self, _mock_repo):
-        data = fn_dash_aperto_documenti(page=99, page_size=50)
+        data = fn_dash_aperto_documenti(limit=50, offset=4900)
         self.assertEqual(data["count"], 10)
         self.assertEqual(data["page"], 1)
         self.assertEqual(data["total_pages"], 1)

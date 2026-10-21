@@ -12,7 +12,7 @@
 # ------------------------------------------------------------
 """
 Indice test eseguiti:
-1) OrdinamentoListeCatalogoTests.test_order_by_fuori_whitelist_ripiega_sul_default
+1) OrdinamentoListeCatalogoTests.test_order_by_fuori_whitelist_e_rifiutato
    Tutte e quattro: `order_by` sconosciuto ripiega sul default della lista.
    ⛔ Su articoli era un KeyError (`ARTICOLI_ORDER_COLUMNS[order_by]`).
 2) OrdinamentoListeCatalogoTests.test_desc_mette_i_null_in_coda_e_allinea_il_tiebreak
@@ -69,13 +69,18 @@ def _order_by(sql: str) -> str:
 
 
 class OrdinamentoListeCatalogoTests(unittest.TestCase):
-    # 1. Fuori whitelist: default della lista, nessuna eccezione.
-    def test_order_by_fuori_whitelist_ripiega_sul_default(self):
+    # 1. Fuori whitelist: 400 (`order_by_invalid`), non il default della lista
+    #    (dal 2026-10-20, brief-be-verifica-documentazione-api §A1). Assente: il default.
+    def test_order_by_fuori_whitelist_e_rifiutato(self):
         for nome, chiamata, default, tiebreak in _LISTE:
             with self.subTest(lista=nome):
+                with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+                    _cattura(
+                        chiamata, order_by="colonna_inesistente", order_dir="asc",
+                        limit=25, offset=0,
+                    )
                 sql, _p, _o = _cattura(
-                    chiamata, order_by="colonna_inesistente", order_dir="asc",
-                    limit=25, offset=0,
+                    chiamata, order_by=None, order_dir="asc", limit=25, offset=0,
                 )
                 self.assertEqual(
                     _order_by(sql), f"{default} ASC NULLS FIRST, {tiebreak} ASC",

@@ -509,6 +509,12 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
+# Gli ingressi del gate L2 sulla variazione globale (`_check_limite_variazione_globale`).
+_INGRESSI_GATE_L2 = frozenset({
+    "valore_variazione_globale", "tipo_variazione_globale", "billing_account_id",
+})
+
+
 class ContrattiService:
     """Service CRUD contratti v5 (F2-BE-05)."""
 
@@ -693,7 +699,13 @@ class ContrattiService:
     #        globale pre-DB, opzionalmente crea la riga utility 1:1 nella
     #        stessa transazione (trigger DB gestira' fail-fast su coerenze
     #        dinamiche).
-    def create_contratto(self, payload: dict[str, Any]) -> dict[str, Any]:
+    # ⛔ `auth_user_id`: il gate L2 sulla variazione globale vale anche alla
+    #    NASCITA. Fino al 2026-10-21 lo applicava la sola PATCH, e un contratto
+    #    creato con una variazione oltre la soglia dell'operatore passava
+    #    (brief-be-verifica-documentazione-api §B9).
+    def create_contratto(
+        self, payload: dict[str, Any], *, auth_user_id: int | None = None,
+    ) -> dict[str, Any]:
         self._v.reject_keys(
             payload,
             forbidden=_FORBIDDEN_TESTATA_CREATE,
@@ -705,6 +717,9 @@ class ContrattiService:
         self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_TESTATA, message=_MESSAGE)
 
         data = self._build_create_data_testata(payload)
+        self._check_limite_variazione_globale(
+            existing={}, data=data, auth_user_id=auth_user_id,
+        )
         utility_payload = payload.get("utility")
         utility_data: dict[str, Any] | None = None
         if utility_payload is not None:
@@ -2056,18 +2071,27 @@ class ContrattiService:
         data: dict[str, Any],
         auth_user_id: int | None,
     ) -> None:
-        # Skip se il PATCH non tocca la variazione globale.
-        if "valore_variazione_globale" not in data:
+        # ⛔ La soglia dipende da TRE ingressi — valore, tipo e cliente — e il
+        #    gate scatta quando il payload ne tocca uno qualunque: fino al
+        #    2026-10-21 guardava il solo valore, e spostare il contratto su un
+        #    cliente con soglia piu' bassa (o passare da VALORE_FISSO a
+        #    PERCENTUALE) lasciava il contratto oltre soglia senza controllo.
+        #    In creazione `existing` e' vuoto.
+        if not _INGRESSI_GATE_L2 & data.keys():
             return
-        tipo_post = data.get("tipo_variazione_globale") if "tipo_variazione_globale" in data else (
-            existing.get("tipo_variazione_globale")
-        )
+
+        def dopo(chiave: str) -> Any:
+            return data[chiave] if chiave in data else existing.get(chiave)
+
         check_limite_variazione_globale(
             auth_user_id=auth_user_id,
-            tipo_variazione=tipo_post,
-            valore_variazione=data["valore_variazione_globale"],
+            tipo_variazione=dopo("tipo_variazione_globale"),
+            valore_variazione=dopo("valore_variazione_globale"),
             function_name="contratti_service._check_limite_variazione_globale",
-            ba_id=existing.get("billing_account_id"),
+            # Il cliente su cui si misura la soglia e' quello che il contratto
+            # AVRA': quello del payload (nascita, o cambio cliente in bozza),
+            # altrimenti quello che ha.
+            ba_id=dopo("billing_account_id"),
         )
 
     # Scopo: Verifica coerenza della coppia variazione globale (tipo + valore).

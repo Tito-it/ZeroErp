@@ -30,6 +30,7 @@ import Tag from 'primevue/tag'
 
 import AppDialog from '../../core/components/AppDialog.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useChiaveGesto } from '../../core/composables/useChiaveGesto'
 import { useNotify } from '../../core/composables/useNotify'
 import { useLetturaTreStati } from '../../core/composables/useLetturaTreStati'
 import { statoRigaContabileSeverity } from '../../core/utils/severity'
@@ -46,6 +47,10 @@ const emit = defineEmits(['update:visible', 'registrata'])
 const { t } = useI18n()
 const notify = useNotify()
 const { execute, loading } = useApiHandler()
+// ⭐ La key del GESTO: un «Registra» ripremuto dopo un timeout rimanda la
+//    stessa, e il backend risponde con la ricevuta della prima esecuzione
+//    invece di registrare due volte. Vive finche' il dialog resta aperto.
+const gesto = useChiaveGesto()
 
 // ⛔ «Non ho letto l'anteprima» e «l'anteprima dice zero» sono due cose diverse,
 //    e a video si somigliano — un dialog vuoto col pulsante spento. Senza
@@ -79,6 +84,8 @@ const scartoAperto = computed(
 
 watch(() => props.visible, async (aperto) => {
   azzeraAnteprima()
+  // Chiudere o riaprire il dialog chiude il gesto: il prossimo e' un altro.
+  gesto.azzera()
   if (!aperto || !props.distintaId) return
   await caricaAnteprima(props.distintaId)
 })
@@ -89,11 +96,17 @@ async function onRegistra() {
   //    toast di successo su `NULLA_DA_POSTARE` direbbe «registrata» di un gesto
   //    che non e' successo — su una distinta di denaro e' la bugia peggiore che
   //    si possa costruire.
+  // ⚠️ La key segue i NUMERI: se l'anteprima riletta dopo un rifiuto ne
+  //    porta di diversi, la dichiarazione e' un'altra e la key e' nuova.
+  const dichiarazione = {
+    righeAttese: anteprima.value.righe_registrabili,
+    totaleAtteso: anteprima.value.totale_registrabile,
+  }
   const ricevuta = await execute(
-    () => registraDistinta(props.distintaId, {
-      righeAttese: anteprima.value.righe_registrabili,
-      totaleAtteso: anteprima.value.totale_registrabile,
-    }),
+    () => gesto.invia(
+      { distintaId: props.distintaId, ...dichiarazione },
+      (config) => registraDistinta(props.distintaId, dichiarazione, config),
+    ),
   )
 
   if (ricevuta === null) {

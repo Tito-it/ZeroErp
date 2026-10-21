@@ -62,7 +62,7 @@ smoke_chiudi_contratti() {
     [[ -z "$ba" || -z "$ambito" ]] && return 0
     oggi=$(date +%F)
     righe=$(curl -s -H "Authorization: Bearer ${TOKEN:-none}" \
-        "${BASE_URL}/api/v1/vendite/contratti/?billing_account_id=${ba}&limit=500" 2>/dev/null | python3 -c "
+        "${BASE_URL}/api/v1/vendite/contratti/?billing_account_id=${ba}&limit=200" 2>/dev/null | python3 -c "
 import sys, json
 try:
     rows = json.load(sys.stdin).get('data', {}).get('results') or []
@@ -111,7 +111,7 @@ except Exception:
 smoke_articolo_merce() {
     local offset righe
     ARTICOLO_ID=""
-    # `limit`/`offset`: la lista ignora `page`/`page_size`.
+    # `limit`/`offset`: la lista rifiuta `page`/`page_size` (400).
     for offset in $(seq 0 100 3000); do
         righe=$(curl -s -H "Authorization: Bearer ${TOKEN:-none}" \
             "${BASE_URL}/api/v1/catalogo/articoli/?attivo=true&limit=100&offset=${offset}" 2>/dev/null)

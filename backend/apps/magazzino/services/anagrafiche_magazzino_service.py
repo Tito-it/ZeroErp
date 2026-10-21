@@ -32,7 +32,6 @@ from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import (
-    MISSING,
     PayloadValidator,
     make_db_errors_translator,
 )
@@ -112,43 +111,6 @@ _db_errors = make_db_errors_translator(
 # ══════════════════════════════════════════════════════════════════
 #  Helper privati
 # ══════════════════════════════════════════════════════════════════
-
-# Scopo: Un boolean OBBLIGATORIO quando la chiave c'e' (le colonne sono NOT
-#        NULL): `null` non e' un valore ammesso in un PATCH.
-def _bool_presente(payload: dict[str, Any], key: str) -> bool:
-    valore = _PAYLOAD.optional_bool(payload, key)
-    ErrorManager.require(
-        valore is not None,
-        code=E_VALIDAZIONE,
-        message=f"Campo '{key}' deve essere vero o falso.",
-        context={"field": key},
-        function_name=_FN,
-    )
-    assert valore is not None
-    return valore
-
-
-# Scopo: Un intero positivo NULLABLE quando la chiave c'e' (`parent_id`):
-#        `null` AZZERA, un valore va validato.
-def _int_nullable_presente(payload: dict[str, Any], key: str) -> int | None:
-    if payload.get(key) is None:
-        return None
-    return _PAYLOAD.require_positive_int(payload, key)
-
-
-# Scopo: I campi testuali di un PATCH, presenti nel payload: `None`/vuoto
-#        azzera i nullable, e' un 400 sugli obbligatori.
-def _testi_presenti(
-    payload: dict[str, Any], campi: dict[str, Any], *, obbligatori: dict[str, int], nullable: dict[str, int],
-) -> None:
-    for key, max_len in obbligatori.items():
-        if key in payload:
-            campi[key] = _PAYLOAD.require_string(payload, key, max_len=max_len)
-    for key, max_len in nullable.items():
-        valore = _PAYLOAD.extract_optional_string(payload, key, nullable=True, max_len=max_len)
-        if valore is not MISSING:
-            campi[key] = valore
-
 
 # Scopo: Legge il magazzino o solleva il 404 di dominio — PRIMA di ogni
 #        figlia (api.md: «leggi prima la testata»).
@@ -264,24 +226,19 @@ def crea_magazzino(payload: dict[str, Any]) -> MagazzinoRow:
 #        cosi' il lock su `codice` scatta solo se il codice cambia davvero e
 #        il guard su `usa_ubicazioni` solo se lo si tocca.
 def aggiorna_magazzino(magazzino_id: int, payload: dict[str, Any]) -> MagazzinoRow:
-    _PAYLOAD.validate_allowed_keys(payload, allowed=UPDATE_KEYS_MAGAZZINO)
+    # Il payload per presenza (BB): chiave fuori contratto e PATCH senza campi
+    # sono un 400 (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
+    campi = _PAYLOAD.campi_per_presenza(
+        payload, ammesse=UPDATE_KEYS_MAGAZZINO,
+        testi={"codice": (False, _MAX_CODICE), "descrizione": (False, _MAX_DESCRIZIONE)},
+        interi={"indirizzo_dettaglio_id": False},
+        flag=frozenset({"usa_ubicazioni", "predefinito", "attivo"}),
+        altri={"meta": _PAYLOAD.optional_meta},
+    )
     repository = AnagraficheMagazzinoRepository()
     _magazzino_o_404(repository, magazzino_id)
-    campi: dict[str, Any] = {}
-    _testi_presenti(
-        payload, campi,
-        obbligatori={"codice": _MAX_CODICE, "descrizione": _MAX_DESCRIZIONE}, nullable={},
-    )
-    if "indirizzo_dettaglio_id" in payload:
-        campi["indirizzo_dettaglio_id"] = _PAYLOAD.require_positive_int(payload, "indirizzo_dettaglio_id")
-    for flag in ("usa_ubicazioni", "predefinito", "attivo"):
-        if flag in payload:
-            campi[flag] = _bool_presente(payload, flag)
-    if "meta" in payload:
-        campi["meta"] = _PAYLOAD.optional_meta(payload, "meta")
-    if campi:
-        with _db_errors("aggiorna_magazzino"):
-            repository.update_magazzino(magazzino_id, campi)
+    with _db_errors("aggiorna_magazzino"):
+        repository.update_magazzino(magazzino_id, campi)
     return _magazzino_o_404(repository, magazzino_id)
 
 
@@ -360,27 +317,22 @@ def crea_ubicazione(magazzino_id: int, payload: dict[str, Any]) -> UbicazioneRow
 # Scopo: Aggiorna l'ubicazione per DELTA. ⛔ `magazzino_id` non e' fra le
 #        chiavi: un'ubicazione nasce dentro il suo magazzino (lock a DB).
 def aggiorna_ubicazione(magazzino_id: int, ubicazione_id: int, payload: dict[str, Any]) -> UbicazioneRow:
-    _PAYLOAD.validate_allowed_keys(payload, allowed=UPDATE_KEYS_UBICAZIONE)
+    # Il payload per presenza (BB), come `aggiorna_magazzino`.
+    campi = _PAYLOAD.campi_per_presenza(
+        payload, ammesse=UPDATE_KEYS_UBICAZIONE,
+        testi={
+            "codice": (False, _MAX_CODICE), "descrizione": (True, _MAX_DESCRIZIONE),
+            **{key: (True, max_len) for key, max_len in _POSIZIONE.items()},
+        },
+        interi={"tipo_id": False, "parent_id": True},
+        flag=frozenset({"attivo"}),
+        altri={"meta": _PAYLOAD.optional_meta},
+    )
     repository = AnagraficheMagazzinoRepository()
     _magazzino_o_404(repository, magazzino_id)
     _ubicazione_o_404(repository, magazzino_id, ubicazione_id)
-    campi: dict[str, Any] = {}
-    _testi_presenti(
-        payload, campi,
-        obbligatori={"codice": _MAX_CODICE},
-        nullable={"descrizione": _MAX_DESCRIZIONE, **_POSIZIONE},
-    )
-    if "tipo_id" in payload:
-        campi["tipo_id"] = _PAYLOAD.require_positive_int(payload, "tipo_id")
-    if "parent_id" in payload:
-        campi["parent_id"] = _int_nullable_presente(payload, "parent_id")
-    if "attivo" in payload:
-        campi["attivo"] = _bool_presente(payload, "attivo")
-    if "meta" in payload:
-        campi["meta"] = _PAYLOAD.optional_meta(payload, "meta")
-    if campi:
-        with _db_errors("aggiorna_ubicazione"):
-            repository.update_ubicazione(magazzino_id, ubicazione_id, campi)
+    with _db_errors("aggiorna_ubicazione"):
+        repository.update_ubicazione(magazzino_id, ubicazione_id, campi)
     return _ubicazione_o_404(repository, magazzino_id, ubicazione_id)
 
 
@@ -451,20 +403,19 @@ def crea_lotto(payload: dict[str, Any]) -> LottoRow:
 # Scopo: Aggiorna il lotto per DELTA. ⛔ `articolo_id` non e' fra le chiavi:
 #        un lotto nasce del suo articolo. `data_scadenza: null` la toglie.
 def aggiorna_lotto(lotto_id: int, payload: dict[str, Any]) -> LottoRow:
-    _PAYLOAD.validate_allowed_keys(payload, allowed=UPDATE_KEYS_LOTTO)
+    # Il payload per presenza (BB), come `aggiorna_magazzino`.
+    campi = _PAYLOAD.campi_per_presenza(
+        payload, ammesse=UPDATE_KEYS_LOTTO,
+        testi={"codice": (False, _MAX_CODICE)},
+        flag=frozenset({"attivo"}),
+        altri={
+            "data_arrivo": _PAYLOAD.require_date,
+            "data_scadenza": _PAYLOAD.optional_date,
+            "meta": _PAYLOAD.optional_meta,
+        },
+    )
     repository = AnagraficheMagazzinoRepository()
     _lotto_o_404(repository, lotto_id)
-    campi: dict[str, Any] = {}
-    _testi_presenti(payload, campi, obbligatori={"codice": _MAX_CODICE}, nullable={})
-    if "data_arrivo" in payload:
-        campi["data_arrivo"] = _PAYLOAD.require_date(payload, "data_arrivo")
-    if "data_scadenza" in payload:
-        campi["data_scadenza"] = _PAYLOAD.optional_date(payload, "data_scadenza")
-    if "attivo" in payload:
-        campi["attivo"] = _bool_presente(payload, "attivo")
-    if "meta" in payload:
-        campi["meta"] = _PAYLOAD.optional_meta(payload, "meta")
-    if campi:
-        with _db_errors("aggiorna_lotto"):
-            repository.update_lotto(lotto_id, campi)
+    with _db_errors("aggiorna_lotto"):
+        repository.update_lotto(lotto_id, campi)
     return _lotto_o_404(repository, lotto_id)

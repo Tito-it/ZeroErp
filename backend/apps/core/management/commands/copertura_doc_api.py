@@ -105,9 +105,24 @@ FILE_SORGENTE = re.compile(r"\.(py|js|vue|md|ts|json|yaml|sql)$")
 VALORE_ESEMPIO = re.compile(r"^(\d+|[0-9a-f]{4,}(-[0-9a-f.]+)+|[0-9a-f-]{8,}\.\.\.)$", re.I)
 # Trappola 3: le righe che dichiarano una rimozione — anche quando lo dicono
 # in prosa («il vecchio path …», «il path legacy …»).
+# ⭐ Dal 2026-10-21 anche le forme che la doc usa davvero per un endpoint
+# ritirato: il titolo barrato (`~~POST …~~ — Ritirato`), «ritirato/ritirata», e
+# la prosa storica («esistevano solo …»). Senza, le lapidi scritte bene
+# risultavano fantasmi (brief-be-verifica-documentazione-api §E).
+# ⚠️ Una lapide esce anche dalla copertura: se una di queste parole finisce su
+# una riga che cita una rotta VIVA, quella rotta risulta scoperta — il verso
+# prudente, che si vede.
 LAPIDE = re.compile(
-    r"⛔|RIMOSS|non esiste piu|non esistono piu|vecchio path|path legacy", re.I
+    r"⛔|RIMOSS|non esiste piu|non esistono piu|vecchio path|path legacy"
+    r"|ritirat|~~|esistevano",
+    re.I,
 )
+# Trappola 9 (2026-10-21, brief-be-verifica-documentazione-api §E): una riga
+# che DICHIARA di non documentare («queste rotte non sono documentate») nomina
+# i path apposta, e contarla come copertura e' il verso PERMISSIVO — la rotta
+# risultava documentata proprio dalla frase che dice che non lo e'. Quelle
+# citazioni non coprono; non sono nemmeno fantasmi (la rotta esiste).
+NON_DOCUMENTA = re.compile(r"non\s+(?:sono\s+|e'\s+|è\s+|ancora\s+)*documentat", re.I)
 # Trappola 8: i segnaposto che stanno per una RISORSA, non per un
 # identificativo. E' una lista CHIUSA e corta di proposito: un nome fuori da
 # qui resta `{}`, cioe' il caso conservativo.
@@ -179,13 +194,20 @@ def leggi_citazioni() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     assolute: dict[str, set[str]] = defaultdict(set)
     for f in sorted(DOCS.rglob("*.md")):
         testo = f.read_text(errors="ignore")
-        vive = "\n".join(r for r in testo.splitlines() if not LAPIDE.search(r))
+        vive = [r for r in testo.splitlines() if not LAPIDE.search(r)]
         trovate = [
-            norma(x) for x in ASSOLUTA.findall(vive) if not FILE_SORGENTE.search(x)
+            norma(x) for x in ASSOLUTA.findall("\n".join(vive)) if not FILE_SORGENTE.search(x)
         ]
         for p in trovate:
             assolute[p].add(f.name)
-            tutte[p].add(f.name)
+        # La copertura no dalle righe che dichiarano di NON documentare
+        # (trappola 9): i fantasmi si', la rotta citata li' esiste.
+        for riga in vive:
+            if NON_DOCUMENTA.search(riga):
+                continue
+            for x in ASSOLUTA.findall(riga):
+                if not FILE_SORGENTE.search(x):
+                    tutte[norma(x)].add(f.name)
         # Basi del file: i prefissi che cita, a due profondita'.
         # ⚠️ Serve anche quella corta `/api/v1/<area>`: una pagina che elenca
         # `GET /admin/definizioni/` in tabella e cita l'area altrove documenta
@@ -203,6 +225,8 @@ def leggi_citazioni() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
         # segmenti, le basi si fermano a quattro).
         aree = {b for b in basi if len(b.strip("/").split("/")) == 3}
         for riga in testo.splitlines():
+            if NON_DOCUMENTA.search(riga):
+                continue
             sulla_riga = {
                 norma(x) for x in ASSOLUTA.findall(riga) if not FILE_SORGENTE.search(x)
             }
@@ -310,6 +334,68 @@ def matcher_copertura(
     return coperta
 
 
+# I valori che riempiono il segnaposto di un converter Django. Fuori da qui
+# (`str`, `slug`, `path`, un converter del progetto) vale un segmento qualunque.
+_VALORE_DEL_CONVERTER = {
+    "int": r"\d+",
+    "uuid": r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+}
+_CONVERTER = re.compile(r"<(?:(\w+):)?\w+>")
+
+
+# Scopo: la regex delle ISTANZE di una rotta, dal path ORIGINALE (`valore[0]`
+#        di `leggi_rotte`), che conserva i converter. Senza originale, o con
+#        un path a regex (`re_path`), resta il segmento qualunque di `_regex`.
+def _regex_istanza(normata: str, valore: Any) -> re.Pattern[str]:
+    originale = valore[0] if isinstance(valore, tuple) and valore and valore[0] else ""
+    if not originale or "(?" in originale:
+        return _regex(normata)
+    marcatori: list[str] = []
+
+    def marca(m: re.Match[str]) -> str:
+        marcatori.append(_VALORE_DEL_CONVERTER.get((m.group(1) or "str").lower(), "[^/]+"))
+        return f"zzconv{len(marcatori) - 1}zz"
+
+    forma = norma(_CONVERTER.sub(marca, originale))
+    pattern = _pattern(forma)
+    for i, valore_rx in enumerate(marcatori):
+        pattern = pattern.replace(f"zzconv{i}zz", valore_rx)
+    return re.compile("^" + pattern + "$")
+
+
+# Scopo: il predicato «questa citazione e' servita da una rotta» (il contrario
+#        di un fantasma). Fuori da `handle` per la stessa ragione di
+#        `matcher_copertura`: si prova su casi costruiti.
+def matcher_servita(rotte: dict[str, Any]) -> Callable[[str], bool]:
+    # Trappola 4-bis (2026-10-21, §E del brief-be-verifica-documentazione-
+    # api): un ESEMPIO non e' solo un numero o un uuid. `ruoli/CL/…`,
+    # `processi/digest_presidi/…` scrivono un codice al posto del
+    # segnaposto, e `VALORE_ESEMPIO` non puo' riconoscerli dalla forma.
+    # Si guarda allora l'altro verso: la citazione e' un'ISTANZA di una
+    # rotta se ogni suo segmento e' quello della rotta o ne riempie un
+    # segnaposto. ⚠️ Solo per i fantasmi: un esempio non documenta la
+    # rotta, e in copertura resta il verso prudente.
+    # ⛔ E un segnaposto lo riempie solo un valore del suo CONVERTER: un
+    #    `<int:pk>` vuole cifre, un `<uuid:…>` un uuid. Col solo `[^/]+` un
+    #    fantasma letterale (`/ordini/esporta`) passava per un'istanza di
+    #    `/ordini/<int:pk>` e spariva — il verso permissivo.
+    istanze_di = [_regex_istanza(r, v) for r, v in rotte.items()]
+
+    def servita(citazione: str) -> bool:
+        rx = _regex(citazione)
+        if any(rx.match(r) for r in rotte):
+            return True
+        if any(rx_rotta.match(citazione) for rx_rotta in istanze_di):
+            return True
+        # Trappola 6: una citazione di PREFISSO non e' un fantasma.
+        # «Tutti gli endpoint sono sotto `/api/v1/core/tracciamento/`» non e'
+        # una rotta mancante: e' una pagina che dice dove si e'.
+        prefisso = re.compile("^" + _pattern(citazione) + "/")
+        return any(prefisso.match(r) for r in rotte)
+
+    return servita
+
+
 class Command(ComandoAziendale):
     help = "Copertura della documentazione API: rotte scoperte e path fantasma."
 
@@ -328,15 +414,7 @@ class Command(ComandoAziendale):
         doc_tutte, doc_assolute = leggi_citazioni()
         coperta = matcher_copertura(doc_tutte, doc_assolute)
 
-        def servita(citazione: str) -> bool:
-            rx = _regex(citazione)
-            if any(rx.match(r) for r in rotte):
-                return True
-            # Trappola 6: una citazione di PREFISSO non e' un fantasma.
-            # «Tutti gli endpoint sono sotto `/api/v1/core/tracciamento/`» non e'
-            # una rotta mancante: e' una pagina che dice dove si e'.
-            prefisso = re.compile("^" + _pattern(citazione) + "/")
-            return any(prefisso.match(r) for r in rotte)
+        servita = matcher_servita(rotte)
 
         aree_richieste = [a.strip() for a in opts["aree"].split(",") if a.strip()]
         aree = sorted({

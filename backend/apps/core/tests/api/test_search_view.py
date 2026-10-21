@@ -134,18 +134,23 @@ class SearchUniversaleApiTests(JwtMockedApiTest):
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_search_paginazione(self, _mock_auth, mock_search):
         mock_search.return_value = ([], 0)
-        self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&page=2&page_size=10")
+        self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&limit=10&offset=10")
         kwargs = mock_search.call_args.kwargs
         self.assertEqual(kwargs["limit"], 10)
         self.assertEqual(kwargs["offset"], 10)
 
-    # Scopo: Verifica che page_size > 100 restituisce 400.
+    # Scopo: dal 2026-10-21 la ricerca pagina con `limit`/`offset`: `page_size`
+    #        e' un 400, e cosi' un `limit` oltre il massimo (100): niente riduzione muta.
+    @patch("apps.core.api.search_view.SearchRepository.search_soggetti")
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_search_page_size_troppo_grande(self, _mock_auth):
-        response = self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&page_size=200")
+    def test_search_page_size_troppo_grande(self, _mock_auth, mock_search):
+        response = self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&page_size=50")
         self.assertEqual(response.status_code, 400)
-        body = response.json()["error"]
-        self.assertEqual(body["code"], "E_SEARCH_VALIDATION")
+        self.assertEqual(response.json()["error"]["code"], "E_VALIDATION_INPUT")
+        response = self.client.get(_SEARCH_URL + "?q=rossi&tipo_ruolo_id=1&limit=200")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], "E_VALIDATION_INPUT")
+        mock_search.assert_not_called()
 
     # Scopo: Verifica risultati vuoti → 200 con count=0.
     @patch("apps.core.api.search_view.SearchRepository.search_soggetti")

@@ -5,7 +5,7 @@
 // sorgente: tutto cio' che cambia e' il basePath.
 //
 // Pattern URL atteso (vendite, default):
-//   GET    {basePath}/note/[?target_riga_id=&include_invisible=&page=&page_size=]
+//   GET    {basePath}/note/[?target_riga_id=&include_invisible=&limit=&offset=]
 //   POST   {basePath}/note/                  (Idempotency-Key obbligatoria)
 //   GET    {basePath}/note/{noteId}/
 //   PATCH  {basePath}/note/{noteId}/
@@ -20,7 +20,6 @@
 // il chiamante non vede la differenza di URL routing.
 
 import api from '../api'
-import { generateIdempotencyKey } from '../utils/idempotency'
 
 // Normalizza un path stripando eventuale slash trailing — lo aggiunge il caller
 // (es. `${base}/note/`). Riusato per basePath e detailBase.
@@ -42,7 +41,7 @@ export function makeNotesApi(basePath, { detailBase = null } = {}) {
   const base = _stripTrailingSlash(basePath)
   const detail = detailBase ? _stripTrailingSlash(detailBase) : base
 
-  // Lista note del documento. `params` ammette {target_riga_id, include_invisible, page, page_size}.
+  // Lista note del documento. `params` ammette {target_riga_id, include_invisible, limit, offset}.
   function listNote(params = {}) {
     return api.get(`${base}/note/`, { params })
   }
@@ -52,13 +51,11 @@ export function makeNotesApi(basePath, { detailBase = null } = {}) {
     return api.get(`${detail}/note/${noteId}/`)
   }
 
-  // Crea nota. Genera Idempotency-Key automaticamente (richiesta dal BE).
+  // Crea nota (la Idempotency-Key la mette l'interceptor di `core/api.js`).
   // Il payload accetta: testo, testo_md, anchor_tipo, posizione, seq,
   // visibile, solo_stampa, id_stile, id_lingua, meta, target_riga_id.
   function createNota(payload) {
-    return api.post(`${base}/note/`, payload, {
-      headers: { 'Idempotency-Key': generateIdempotencyKey() },
-    })
+    return api.post(`${base}/note/`, payload)
   }
 
   // Aggiorna parzialmente nota. target_riga_id immutabile lato BE.

@@ -519,12 +519,13 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
     )
     assert stato_bozza_id is not None
 
-    righe = data.get("righe")
-    ErrorManager.require(
-        righe is None or isinstance(righe, list),
-        code="E_RESO_VALIDAZIONE",
-        message="righe deve essere una lista di righe reso.",
-        function_name=f"{_FN}.crea_reso",
+    # Le righe sono FACOLTATIVE alla nascita (un reso puo' nascere vuoto): se
+    # ci sono, una lista di voci, ogni voce un oggetto (BB), giudicate PRIMA di
+    # scrivere la testata. I campi della riga li legge `_crea_riga`.
+    righe_raw = data.get("righe")
+    righe: list[dict[str, Any]] = (
+        [] if righe_raw is None
+        else _PAYLOAD.voci(righe_raw, lambda voce, _indice: dict(voce), campo="righe", function_name=f"{_FN}.crea_reso")
     )
 
     meta = data.get("meta")
@@ -541,17 +542,11 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
         )
         reso_id = int(creato["id"])
         righe_ids: list[int] = []
-        for idx, riga_payload in enumerate(righe or []):
-            ErrorManager.require(
-                isinstance(riga_payload, dict),
-                code="E_RESO_VALIDAZIONE",
-                message="Ogni riga reso deve essere un oggetto.",
-                function_name=f"{_FN}.crea_reso",
-            )
+        for idx, riga_payload in enumerate(righe):
             # Testata appena creata (0 righe): riga_nr deterministico idx+1,
             # nessun round-trip next_riga_nr per riga (era N+1).
             out = _crea_riga(
-                repo, reso_id, ddt_id, dict(riga_payload), riga_nr=idx + 1,
+                repo, reso_id, ddt_id, riga_payload, riga_nr=idx + 1,
             )
             righe_ids.append(out["riga_id"])
 
@@ -1151,26 +1146,9 @@ def _parse_righe_riconsegna(righe_raw: Any) -> list[dict[str, Any]] | None:
     fn = f"{_FN}._parse_righe_riconsegna"
     if righe_raw is None:
         return None
-    ErrorManager.require(
-        isinstance(righe_raw, list) and len(righe_raw) > 0,
-        code="E_RESO_VALIDAZIONE",
-        message=(
-            "righe deve essere una lista non vuota di {resi_riga_id, qta}; "
-            "ometterla per ri-spedire tutta la copertura residua."
-        ),
-        detail=f"righe={righe_raw!r}",
-        function_name=fn,
-    )
-    parsed: list[dict[str, Any]] = []
-    for elem in righe_raw:
-        ErrorManager.require(
-            isinstance(elem, dict),
-            code="E_RESO_VALIDAZIONE",
-            message="Ogni elemento di righe deve essere un oggetto "
-                    "{resi_riga_id, qta}.",
-            detail=f"elem={elem!r}",
-            function_name=fn,
-        )
+    # La forma (lista, ogni voce un oggetto) la giudica il BB; qui il dominio:
+    # vuota non e' «tutto», e' un 400 (per tutto si omette).
+    def _leggi(elem: dict[str, Any], _indice: int) -> dict[str, Any]:
         resi_riga_id = _PAYLOAD.require_positive_int(
             elem, "resi_riga_id",
             message="resi_riga_id obbligatorio in ogni riga di ri-spedizione.",
@@ -1184,7 +1162,20 @@ def _parse_righe_riconsegna(righe_raw: Any) -> list[dict[str, Any]] | None:
                     "(unita' BASE).",
             function_name=fn,
         )
-        parsed.append({"resi_riga_id": resi_riga_id, "qta": qta})
+        return {"resi_riga_id": resi_riga_id, "qta": qta}
+
+    parsed = _PAYLOAD.voci(righe_raw, _leggi, campo="righe", function_name=fn)
+    ErrorManager.require(
+        len(parsed) > 0,
+        code="E_RESO_VALIDAZIONE",
+        message=(
+            "righe deve essere una lista non vuota di {resi_riga_id, qta}; "
+            "ometterla per ri-spedire tutta la copertura residua."
+        ),
+        detail="righe=[]",
+        context={"field": "righe"},
+        function_name=fn,
+    )
     return parsed
 
 

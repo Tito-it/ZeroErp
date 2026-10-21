@@ -28,7 +28,7 @@ from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
     parse_list_params,
-    qp_bool,
+    qp_bool_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
@@ -506,6 +506,9 @@ class ApiDdtRigaPreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "ddt")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -541,7 +544,7 @@ class ApiDdtRigaComponentiList(DomainAPIView):
     )
     # Scopo: Lista componenti BoM persistiti della riga.
     def get(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
-        solo_attivi = qp_bool(request.query_params.get("solo_attivi"), default=True)
+        solo_attivi = qp_bool_optional(request.query_params.get("solo_attivi"), "solo_attivi", default=True)
         return success_response(
             ddt_service.list_componenti_riga(
                 int(ddt_id), int(riga_id), solo_attivi=solo_attivi,

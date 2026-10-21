@@ -167,7 +167,7 @@ log_step "1) Setup CASO A: crea articolo composito-${SUFFIX} + BoM esposta"
 #        $1 = path della lista (senza query), $2 = codice. Vuoto se non c'e'.
 id_per_codice() {
     curl -s -G -H "Authorization: Bearer $TOKEN" --data-urlencode "search=$2" \
-        --data-urlencode "limit=50" --data-urlencode "page_size=50" \
+        --data-urlencode "limit=50" \
         "${BASE_URL}$1" 2>/dev/null | python3 -c "
 import sys, json
 try:
@@ -362,7 +362,7 @@ if [[ -z "$EMITTENTE_ID" ]]; then log_fail "Nessun emittente attivo trovato"; ex
 # 3) Cleanup proattivo: delete preventivi smoke precedenti
 # =====================================================
 log_step "3) Cleanup proattivo preventivi smoke vecchi"
-do_curl GET "/api/v1/vendite/preventivi/?search=${SUFFIX}&page_size=10"
+do_curl GET "/api/v1/vendite/preventivi/?search=${SUFFIX}&limit=10"
 # Idempotente: anche se search non matcha nulla (suffisso unico), niente da fare
 log_info "Nessun preventivo precedente col suffisso ${SUFFIX} (atteso)"
 

@@ -21,10 +21,11 @@ export function usePagination(options = {}) {
   const totalRecords = ref(0)
   const totalPages = computed(() => Math.max(1, Math.ceil(totalRecords.value / rows.value)))
 
-  // Parametri query da inviare all'API backend
+  // Parametri query da inviare all'API backend: la FINESTRA `limit`/`offset`
+  // (2026-10-21, un dialetto solo: il backend rifiuta `page`/`page_size`).
   const queryParams = computed(() => ({
-    page: page.value,
-    page_size: rows.value
+    limit: rows.value,
+    offset: (page.value - 1) * rows.value
   }))
 
   // Aggiorna lo stato dalla risposta API (formato DRF: { count, results })

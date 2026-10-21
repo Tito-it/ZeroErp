@@ -34,7 +34,7 @@ Restituisce la lista degli indirizzi dettaglio con paginazione e ricerca full-te
 | comune_id   | int    | no           | —                           | Filtra per comune                                 |
 | limit       | int    | no           | 25                          | Righe per pagina (1–200)                          |
 | offset      | int    | no           | 0                           | Offset per la paginazione                         |
-| order_by    | string | no           | indirizzo_normalizzato      | `indirizzo_normalizzato`, `civico`, `descrizione_comune`, `cap`, `provincia`, `attivo`, `data_insert`; fuori whitelist → default |
+| order_by    | string | no           | indirizzo_normalizzato      | `indirizzo_normalizzato`, `civico`, `descrizione_comune`, `cap`, `provincia`, `attivo`, `data_insert`; fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
 | order_dir   | string | no           | asc                         | `asc` o `desc`. Se omessa, `data_insert` parte `desc` |
 
 ### Risposta 200
@@ -207,9 +207,15 @@ Aggiorna parzialmente un indirizzo dettaglio esistente. Inviare solo i campi da 
 | interno            | string  | Interno                              |
 | attivo             | boolean | Flag attivo/disattivo (booleano JSON; altro tipo → 400 `E_VALIDATION_INPUT`) |
 
-`stradario_id` non e' modificabile. I campi non elencati sono ignorati; un
-corpo senza campi aggiornabili risponde 404 `E_ANAG_NOT_FOUND`, come un id
-inesistente.
+`stradario_id` non e' modificabile. Dal 2026-10-20 (brief-be-verifica-documentazione-api
+§A2, §B2, §B3):
+
+- una chiave presente si scrive, anche `null`, che **svuota** il campo; una chiave
+  assente non si tocca (prima `null` voleva dire «non toccare», e svuotare la
+  palazzina non scriveva niente);
+- una chiave fuori elenco → 400 `E_ANAG_VALIDAZIONE` (prima era ignorata);
+- un corpo senza campi → 400 `E_ANAG_VALIDAZIONE` (prima 404, come un id inesistente);
+- `attivo` vuole un booleano JSON: `null` → 400 (prima spegneva l'indirizzo).
 
 ### Risposta 200
 

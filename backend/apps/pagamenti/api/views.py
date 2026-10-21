@@ -22,6 +22,7 @@ from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
+    pagina_da_query,
     corpo_oggetto,
     parse_list_params,
     qp_bool_optional,
@@ -31,7 +32,7 @@ from apps.core.api.payload_validators import (
     qp_str,
     qp_str_upper,
 )
-from apps.core.api.openapi_params import descrizione_order_by
+from apps.core.api.openapi_params import parametri_finestra, descrizione_order_by
 from apps.core.api.success_responses import success_response
 from apps.pagamenti.db.pagamenti_repository import (
     DISTINTA_RIGHE_SORT_COLUMNS,
@@ -182,20 +183,14 @@ class ApiDistinteList(DomainAPIView):
                 name="order_dir", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="asc | desc (default desc).",
             ),
-            OpenApiParameter(
-                name="page", type=int, location=OpenApiParameter.QUERY,
-                required=False, description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size", type=int, location=OpenApiParameter.QUERY,
-                required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},
     )
     # Scopo: Restituisce via GET l'elenco paginato delle distinte contabili.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         data = pagamenti_service.list_distinte(
             stato=qp_str_upper(qp.get("stato")),
             origine=qp_str_upper(qp.get("origine")),
@@ -208,8 +203,8 @@ class ApiDistinteList(DomainAPIView):
             search=qp_str(qp.get("search")),
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
-            page=qp_int_strict(qp.get("page"), "page", 1),
-            page_size=qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -832,20 +827,14 @@ class ApiRigheCoda(DomainAPIView):
                 name="order_dir", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="asc | desc (default desc).",
             ),
-            OpenApiParameter(
-                name="page", type=int, location=OpenApiParameter.QUERY, required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size", type=int, location=OpenApiParameter.QUERY,
-                required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},
     )
     # Scopo: Restituisce via GET le righe da lavorare, di tutte le distinte.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         data = pagamenti_service.list_coda_righe(
             coda=qp_str_upper(qp.get("coda")),
             billing_account_id=qp_int_optional(
@@ -856,8 +845,8 @@ class ApiRigheCoda(DomainAPIView):
             search=qp_str(qp.get("search")),
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
-            page=qp_int_strict(qp.get("page"), "page", 1),
-            page_size=qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -1029,20 +1018,14 @@ class ApiRateFuoriCapienza(DomainAPIView):
                 name="order_dir", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="asc | desc (default desc).",
             ),
-            OpenApiParameter(
-                name="page", type=int, location=OpenApiParameter.QUERY, required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size", type=int, location=OpenApiParameter.QUERY,
-                required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},
     )
     # Scopo: Restituisce via GET le rate uscite dalla banda di capienza.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         data = pagamenti_service.list_rate_fuori_capienza(
             motivo=qp_str_upper(qp.get("motivo")),
             billing_account_id=qp_int_optional(
@@ -1051,8 +1034,8 @@ class ApiRateFuoriCapienza(DomainAPIView):
             search=qp_str(qp.get("search")),
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
-            page=qp_int_strict(qp.get("page"), "page", 1),
-            page_size=qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -1176,14 +1159,7 @@ class ApiEccedenze(DomainAPIView):
                 name="order_dir", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="asc | desc (default desc).",
             ),
-            OpenApiParameter(
-                name="page", type=int, location=OpenApiParameter.QUERY, required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size", type=int, location=OpenApiParameter.QUERY,
-                required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},
     )
@@ -1192,6 +1168,7 @@ class ApiEccedenze(DomainAPIView):
     #    (`eccedenza_cliente`, `documenti_cliente`): il backend non somma niente.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         data = sistemazioni_service.list_eccedenze(
             chi_e_in_credito=qp_str_upper(qp.get("chi_e_in_credito")),
             billing_account_id=qp_int_optional(
@@ -1200,8 +1177,8 @@ class ApiEccedenze(DomainAPIView):
             search=qp_str(qp.get("search")),
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
-            page=qp_int_strict(qp.get("page"), "page", 1),
-            page_size=qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 
@@ -1442,20 +1419,14 @@ class ApiEntiIncasso(DomainAPIView):
                 name="order_dir", type=str, location=OpenApiParameter.QUERY,
                 required=False, description="asc (default) | desc.",
             ),
-            OpenApiParameter(
-                name="page", type=int, location=OpenApiParameter.QUERY, required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size", type=int, location=OpenApiParameter.QUERY,
-                required=False, description=f"Dimensione pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
+            *parametri_finestra(),
         ],
         responses={200: _RISPOSTA_GENERICA},
     )
     # Scopo: Restituisce via GET l'elenco dei canali di incasso.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         data = enti_incasso_service.list_enti_incasso(
             tipo=qp_str_upper(qp.get("tipo")),
             centro_riscossione_id=qp_int_optional(
@@ -1464,8 +1435,8 @@ class ApiEntiIncasso(DomainAPIView):
             attivo=qp_bool_optional(qp.get("attivo"), "attivo"),
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
-            page=qp_int_strict(qp.get("page"), "page", 1),
-            page_size=qp_int_strict(qp.get("page_size"), "page_size", DEFAULT_LIMIT),
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 

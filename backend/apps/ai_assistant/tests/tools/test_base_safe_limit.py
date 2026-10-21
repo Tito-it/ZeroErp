@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Il `page_size` che arriva da un LLM, normalizzato senza sorprese.
+# Scopo: Il `limit` che arriva da un LLM, normalizzato senza sorprese.
 #
 # 🔴 PERCHE' ESISTE (2026-09-10). Chi chiama questi tool non e' un form ne' un
 #    client scritto da noi: e' un modello, che manda `"20"` con la stessa
@@ -37,51 +37,51 @@ class SafePageSizeTests(unittest.TestCase):
     """Il tetto dei risultati non si rompe su cio' che un modello manda davvero."""
 
     def test_assente_usa_il_default(self):
-        self.assertEqual(AITool.safe_page_size({}), 10)
+        self.assertEqual(AITool.safe_limit({}), 10)
 
     def test_null_esplicito_usa_il_default(self):
-        # `params.get("page_size", 10)` qui NON basta: torna None, non 10.
-        self.assertEqual(AITool.safe_page_size({"page_size": None}), 10)
+        # `params.get("limit", 10)` qui NON basta: torna None, non 10.
+        self.assertEqual(AITool.safe_limit({"limit": None}), 10)
 
     def test_intero_valido_passa(self):
-        self.assertEqual(AITool.safe_page_size({"page_size": 20}), 20)
+        self.assertEqual(AITool.safe_limit({"limit": 20}), 20)
 
     def test_stringa_numerica_viene_convertita(self):
-        self.assertEqual(AITool.safe_page_size({"page_size": "20"}), 20)
-        self.assertEqual(AITool.safe_page_size({"page_size": " 7 "}), 7)
+        self.assertEqual(AITool.safe_limit({"limit": "20"}), 20)
+        self.assertEqual(AITool.safe_limit({"limit": " 7 "}), 7)
 
     def test_sopra_il_tetto_viene_clampato(self):
-        self.assertEqual(AITool.safe_page_size({"page_size": 200}), 50)
-        self.assertEqual(AITool.safe_page_size({"page_size": 200}, max_size=25), 25)
+        self.assertEqual(AITool.safe_limit({"limit": 200}), 50)
+        self.assertEqual(AITool.safe_limit({"limit": 200}, max_size=25), 25)
 
     def test_zero_e_negativi_sono_un_errore_parlante(self):
         for valore in (0, -5, "0"):
             with self.subTest(valore=valore), self.assertRaises(ValueError) as ctx:
-                AITool.safe_page_size({"page_size": valore})
-            self.assertIn("page_size", str(ctx.exception))
+                AITool.safe_limit({"limit": valore})
+            self.assertIn("limit", str(ctx.exception))
 
     def test_non_numerico_e_un_errore_non_un_typeerror(self):
         for valore in ("molti", "20.5", [], {}):
             with self.subTest(valore=valore), self.assertRaises(ValueError):
-                AITool.safe_page_size({"page_size": valore})
+                AITool.safe_limit({"limit": valore})
 
     def test_bool_non_e_un_intero(self):
         # In Python `True == 1`: senza guard esplicito una richiesta assurda
         # diventerebbe silenziosamente «una riga».
         with self.assertRaises(ValueError):
-            AITool.safe_page_size({"page_size": True})
+            AITool.safe_limit({"limit": True})
 
     def test_float_non_intero_rifiutato(self):
         with self.assertRaises(ValueError):
-            AITool.safe_page_size({"page_size": 20.5})
-        self.assertEqual(AITool.safe_page_size({"page_size": 20.0}), 20)
+            AITool.safe_limit({"limit": 20.5})
+        self.assertEqual(AITool.safe_limit({"limit": 20.0}), 20)
 
     def test_il_messaggio_e_azionabile(self):
         # ⭐ Chi legge e' un modello: il messaggio deve dire QUALE parametro e
         #    QUALE valore, o il giro dopo ripete lo stesso errore.
         with self.assertRaises(ValueError) as ctx:
-            AITool.safe_page_size({"page_size": "molti"})
+            AITool.safe_limit({"limit": "molti"})
         messaggio = str(ctx.exception)
-        self.assertIn("page_size", messaggio)
+        self.assertIn("limit", messaggio)
         self.assertIn("molti", messaggio)
         self.assertIn("50", messaggio)

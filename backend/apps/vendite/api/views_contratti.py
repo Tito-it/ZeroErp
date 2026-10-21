@@ -28,6 +28,7 @@ from apps.core.api.payload_validators import (
     qp_int_optional,
     qp_iso_date_optional,
     qp_str,
+    qp_bool_optional,
 )
 from apps.core.api.request_parsers import parse_iso_date
 from apps.core.api.success_responses import success_response
@@ -244,7 +245,13 @@ class ApiContrattiList(DomainAPIView):
     )
     # Scopo: Crea nuovo contratto. Numero generato dal service; stato DRAFT.
     def post(self, request: Request) -> JsonResponse:
-        return handle_post_json(request, handler=ContrattiService().create_contratto)
+        auth_user_id = get_actor_user_id(request)
+        return handle_post_json(
+            request,
+            handler=lambda payload: ContrattiService().create_contratto(
+                payload, auth_user_id=auth_user_id,
+            ),
+        )
 
 
 class ApiContrattoDetail(DomainAPIView):
@@ -568,6 +575,9 @@ class ApiContrattoRigaPreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "contratto")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -617,8 +627,8 @@ class ApiContrattoRigaComponentiList(DomainAPIView):
     def get(
         self, request: Request, contratto_id: int, riga_id: int,
     ) -> JsonResponse:
-        solo_attivi_raw = request.query_params.get("solo_attivi", "true")
-        solo_attivi = str(solo_attivi_raw).lower() not in ("false", "0", "no", "off")
+        # Il BB dei flag di trasporto (§A6), come i gemelli DDT e ordini.
+        solo_attivi = qp_bool_optional(request.query_params.get("solo_attivi"), "solo_attivi", default=True)
         return success_response(
             ContrattiService().list_componenti_riga(
                 contratto_id, riga_id, solo_attivi=solo_attivi,

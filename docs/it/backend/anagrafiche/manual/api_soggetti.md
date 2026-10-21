@@ -42,7 +42,7 @@ Restituisce l'elenco paginato dei soggetti con ricerca full-text e filtro per ti
 | `tipo_soggetto_dettaglio_id` | int | No | Filtra per tipo soggetto (PF, SRL, SPA, ecc.) |
 | `limit` | int | No | Righe per pagina (default 25, max 200) |
 | `offset` | int | No | Offset per paginazione |
-| `order_by` | string | No | `codice`, `ragione_sociale_completa` (default), `id_fiscale_univoco_cf_piva`, `tipo_descrizione`, `data_insert`; fuori whitelist → default |
+| `order_by` | string | No | `codice`, `ragione_sociale_completa` (default), `id_fiscale_univoco_cf_piva`, `tipo_descrizione`, `data_insert`; fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
 | `order_dir` | string | No | `asc` o `desc`. Se omessa: `asc`, salvo `data_insert` che parte `desc` |
 
 ### Risposta (200)
@@ -373,8 +373,8 @@ Aggiorna uno o piu' campi del soggetto. Invia solo i campi da modificare.
 | `dati_societari` | object | La sezione dati societari, **stato intero**: crea o aggiorna la riga col verbo `anagrafiche.fn_scrivi_dati_societari`. Chiavi: `forma_giuridica_id`, `id_prov_iscri_rea`, `iscrizione_rea`, `capitale_sociale`, `socio_unico`, `liquidazione`, `destinatario_fe`, `pec_fatturazione`, `codice_sdi`, `data_costituzione`. Una chiave assente vale `null` |
 
 Inviare solo i campi che si intende modificare. Una chiave fuori dall'elenco
-sopra → 400 `E_ANAG_VALIDAZIONE`; un corpo vuoto → 404 `E_ANAG_NOT_FOUND`
-(come un soggetto inesistente). ⚠️ Fa eccezione `dati_societari`:
+sopra → 400 `E_ANAG_VALIDAZIONE`; un corpo vuoto (o con `dati_societari: {}`) →
+400 `E_ANAG_VALIDAZIONE` (dal 2026-10-20: prima 404, come un soggetto inesistente). ⚠️ Fa eccezione `dati_societari`:
 se c'e', porta la sezione **intera** (il verbo non distingue «non toccare» da
 «svuota»).
 

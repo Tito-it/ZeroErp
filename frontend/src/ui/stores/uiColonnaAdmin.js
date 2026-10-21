@@ -15,7 +15,6 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 import {
   createAdminColonna,
   deleteAdminColonna,
@@ -68,8 +67,7 @@ export const useUiColonnaAdminStore = defineStore('ui-colonna-admin', () => {
 
   // Scopo: Crea una nuova colonna nella lista indicata.
   async function create(listaId, payload) {
-    const idempotencyKey = generateIdempotencyKey()
-    const res = await createAdminColonna(listaId, payload, idempotencyKey)
+    const res = await createAdminColonna(listaId, payload)
     emitDataChanged(TAB_ENTITIES.UI_COLONNA, res.data.data.id)
     return res.data.data
   }

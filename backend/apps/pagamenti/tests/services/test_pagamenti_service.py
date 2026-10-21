@@ -43,7 +43,7 @@ Indice test eseguiti:
 18) ImportiTests.test_stringa_non_numerica_rifiutata
 19) ImportiTests.test_booleano_rifiutato
 20) PatchTests.test_riga_non_accetta_abbinamento
-21) PatchTests.test_patch_vuoto_non_scrive
+21) PatchTests.test_patch_vuoto_rifiutato
 22) ListaTests.test_ordinamento_fuori_whitelist_rifiutato
 23) ListaTests.test_righe_della_distinta_ordinamento_fuori_whitelist_rifiutato
 24) ListaTests.test_righe_della_distinta_senza_ordinamento_e_un_none_e_un_conteggio_vero
@@ -515,9 +515,11 @@ class PatchTests(_ServiceTestCase):
             pagamenti_service.aggiorna_riga(11, {"fattura_id": 2263})
         self.repo.update_riga.assert_not_called()
 
-    # Scopo: Un PATCH che non nomina nessun campo non scrive niente.
-    def test_patch_vuoto_non_scrive(self):
-        pagamenti_service.aggiorna_riga(11, {})
+    # Scopo: ⛔ Un PATCH che non nomina nessun campo e' un 400 (Tid,
+    #        2026-10-20, §A2), e non scrive niente.
+    def test_patch_vuoto_rifiutato(self):
+        with self.assertRaises(ServiceError):
+            pagamenti_service.aggiorna_riga(11, {})
         self.repo.update_riga.assert_not_called()
 
 

@@ -20,6 +20,16 @@
 //        l'operatore standard (1-a-1 col proprio emittente) il valore e'
 //        derivato dal profilo e mostrato read-only; per l'admin globale
 //        compare un Select popolato dal lookup admin esistente.
+//
+// ⭐ IL MODELLO STANDARD (brief-db-modelli-documento-standard §11 F-3/F-4): un
+//    modello di sistema, senza azienda, che si cambia solo coi changeSet (D-2).
+//    Nel drawer e' in SOLA LETTURA — form e versioni — e l'unica azione e'
+//    «Personalizza», che ne crea la copia per un'azienda (la fa il DB, che
+//    sceglie da quale versione partire). Il rifiuto di una scrittura lo da'
+//    comunque il DB (E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA): qui si evita
+//    di offrire un gesto destinato a fallire.
+// ⭐ SU UNA COPIA, l'allineamento allo standard (`stato_scarto`, della vista
+//    del DB) col suo significato in parole.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateDocumentiStore } from '../stores/templateDocumenti'
@@ -29,9 +39,13 @@ import { useLookup } from '../../core/composables/useLookup'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { statoScartoTemplateSeverity } from '../../core/utils/severity'
 import { labelOrCode } from '../../core/utils/i18nLabel'
 import AppDrawer from '../../core/components/AppDrawer.vue'
+import AppDialog from '../../core/components/AppDialog.vue'
+import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import TemplateVersioniSection from './TemplateVersioniSection.vue'
@@ -40,6 +54,7 @@ import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
 import Divider from 'primevue/divider'
+import Tag from 'primevue/tag'
 
 const { t, te } = useI18n()
 const store = useTemplateDocumentiStore()
@@ -54,14 +69,19 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
+// `personalizzato`: e' nata la copia di uno standard (il dettaglio del modello
+// nuovo): chi apre il drawer ci passa sopra.
+const emit = defineEmits(['update:visible', 'saved', 'cancelled', 'personalizzato', 'versione-pubblicata'])
 
 // `mode` evolve da create a edit dopo il primo save (memoria
 // feedback_drawer_create_autosave_bozza).
 const localMode = ref(props.mode)
 const createdId = ref(null)
 const isEdit = computed(() => localMode.value === 'edit' || createdId.value !== null)
-const isReadOnlyEffective = computed(() => props.readonly || isReadonly.value)
+// Sola lettura di CHI GUARDA (permessi, prop): spegne anche «Personalizza».
+const isReadOnlyUtente = computed(() => props.readonly || isReadonly.value)
+// Sola lettura del MODELLO: lo standard non si modifica dall'applicazione.
+const isReadOnlyEffective = computed(() => isReadOnlyUtente.value || standardLetto.value === true)
 const effectiveId = computed(() => props.recordId || createdId.value)
 
 // I builder registrati nel backend: la tendina li legge dal registro
@@ -109,6 +129,17 @@ const emittenteLetto = ref(null)
 // versioni la mostra e ne precompila la nuova versione. `null` = in attesa, o
 // builder non registrato.
 const versioneContestoBuilder = ref(null)
+// Il modello letto e' uno standard? `null` = dettaglio non ancora arrivato:
+// la lista delle versioni aspetta, come per l'emittente.
+const standardLetto = ref(null)
+// L'allineamento allo standard della copia letta (`stato_scarto`), o null.
+const statoScartoLetto = ref(null)
+// Il riquadro del drawer prende il colore del Tag dello scarto; `Message`
+// chiama `error` cio' che `Tag` chiama `danger`.
+const severityMessaggioScarto = computed(() => {
+  const sev = statoScartoTemplateSeverity(statoScartoLetto.value)
+  return sev === 'danger' ? 'error' : sev
+})
 
 const form = ref(emptyForm())
 // Modifiche non salvate della testata: fotografia a form popolato, conferma
@@ -133,11 +164,24 @@ function emptyForm() {
   }
 }
 
+// Scopo: una versione pubblicata cambia lo stato dello scarto del modello e
+//        la risoluzione: si rilegge lo SCARTO (non `loadDetail`, che riscrive
+//        il form e perderebbe una testata modificata e non salvata), e la
+//        vista rilegge il resto.
+async function onVersionePubblicata() {
+  emit('versione-pubblicata')
+  if (!effectiveId.value) return
+  const data = await store.fetchDetail(effectiveId.value)
+  if (data) statoScartoLetto.value = data.stato_scarto ?? null
+}
+
 async function loadDetail() {
   if (!effectiveId.value) return
   const data = await store.fetchDetail(effectiveId.value)
   if (!data) return
   emittenteLetto.value = data.emittente_fiscale_id ?? null
+  standardLetto.value = data.standard === true
+  statoScartoLetto.value = data.stato_scarto ?? null
   versioneContestoBuilder.value = data.versione_contesto_builder ?? null
   form.value = {
     codice: data.codice ?? '',
@@ -164,6 +208,8 @@ watch(
     localMode.value = mode
     createdId.value = null
     emittenteLetto.value = null
+    standardLetto.value = null
+    statoScartoLetto.value = null
     versioneContestoBuilder.value = null
     if (mode === 'edit') {
       loadDetail()
@@ -241,11 +287,68 @@ async function handleSave() {
       // Il template appena salvato ha l'emittente scelto nel form: e' il
       // padre della lista delle versioni, che senza resterebbe in attesa.
       emittenteLetto.value = result.emittente_fiscale_id ?? payload.emittente_fiscale_id ?? null
+      // Dall'applicazione nasce solo il modello di un'azienda.
+      standardLetto.value = false
       versioneContestoBuilder.value = result.versione_contesto_builder ?? null
       localMode.value = 'edit'
       fissa()
       emit('saved', result)
     }
+  }
+}
+
+// ── «Personalizza» (solo sullo standard) ─────────────────────────────────
+const drawerActions = computed(() => (standardLetto.value === true ? [{
+  key: 'personalizza',
+  kind: 'primary',
+  label: t('config.modelli_documenti.personalizza.action'),
+  // `CLONE` = «duplica un record»: «Personalizza» crea il modello
+  // dell'azienda come copia dello standard.
+  icon: MANAGE_ICONS.CLONE,
+  disabled: isReadOnlyUtente.value,
+  command: apriPersonalizza,
+}] : []))
+
+const personalizzaVisibile = ref(false)
+const personalizzaForm = ref(personalizzaVuoto())
+// `is_default`: null = decide il sistema (predefinita se l'azienda non ne ha
+// gia' una sua per questo documento, D-6). Le scelte esplicite sono due.
+const opzioniPredefinito = computed(() => [
+  { value: null, label: t('config.modelli_documenti.personalizza.predefinito_auto') },
+  { value: true, label: t('common.yes') },
+  { value: false, label: t('common.no') },
+])
+function personalizzaVuoto() {
+  return {
+    emittente_fiscale_id: null, codice: '', codice_interno: '', descrizione: '', is_default: null,
+  }
+}
+function apriPersonalizza() {
+  personalizzaForm.value = {
+    ...personalizzaVuoto(), emittente_fiscale_id: defaultEmittenteId.value,
+  }
+  personalizzaVisibile.value = true
+}
+const fotoPersonalizza = useFotografiaDialog(
+  () => ({ ...personalizzaForm.value }), { visibile: () => personalizzaVisibile.value },
+)
+
+// Scopo: la copia per l'azienda scelta. I campi vuoti non viaggiano: li
+//        decide il DB (i nomi dello standard).
+async function confermaPersonalizza() {
+  const f = personalizzaForm.value
+  const payload = { emittente_fiscale_id: f.emittente_fiscale_id }
+  for (const campo of ['codice', 'codice_interno', 'descrizione']) {
+    if (f[campo]?.trim()) payload[campo] = f[campo].trim()
+  }
+  if (f.is_default !== null) payload.is_default = f.is_default
+  const result = await execute(
+    () => store.personalizza(effectiveId.value, payload),
+    { successMessage: t('config.modelli_documenti.personalizza.done') },
+  )
+  if (result !== null) {
+    personalizzaVisibile.value = false
+    emit('personalizzato', result)
   }
 }
 </script>
@@ -267,6 +370,25 @@ async function handleSave() {
     @cancel="emit('cancelled')"
     @save="handleSave"
   >
+    <template v-if="isEdit && standardLetto === true">
+      <DrawerActionsBar :actions="drawerActions" />
+      <Message severity="info" :closable="false">
+        {{ t('config.modelli_documenti.standard_hint') }}
+      </Message>
+    </template>
+    <Message
+      v-else-if="isEdit && statoScartoLetto"
+      :severity="severityMessaggioScarto"
+      :closable="false"
+     
+    >
+      <Tag
+        :value="t(`config.modelli_documenti.scarto.${statoScartoLetto}`)"
+        :severity="statoScartoTemplateSeverity(statoScartoLetto)"
+      />
+      {{ t(`config.modelli_documenti.scarto.${statoScartoLetto}_hint`) }}
+    </Message>
+
     <div class="form-grid">
       <div class="form-grid-2col">
         <div class="form-field">
@@ -391,9 +513,68 @@ async function handleSave() {
       <TemplateVersioniSection
         :template-id="effectiveId"
         :emittente-fiscale-id="emittenteLetto"
+        :standard="standardLetto"
         :versione-contesto-builder="versioneContestoBuilder"
         :readonly="isReadOnlyEffective"
+        @pubblicata="onVersionePubblicata"
       />
     </template>
+
+    <!-- ⛔ `readonly` dai soli PERMESSI: il drawer di uno standard e' in sola
+         lettura, e senza la prop il dialog lo ereditava nascondendo «Salva» —
+         il verbo «Personalizza» esiste proprio per lo standard. -->
+    <AppDialog
+      v-model:visible="personalizzaVisibile"
+      :readonly="isReadOnlyUtente"
+      :conferma-uscita="fotoPersonalizza.chiudiConConferma"
+      :header="t('config.modelli_documenti.personalizza.title')"
+      width="sm"
+      :loading="loading"
+      :save-disabled="!personalizzaForm.emittente_fiscale_id"
+      :save-label="t('config.modelli_documenti.personalizza.action')"
+      @save="confermaPersonalizza"
+    >
+      <div class="form-grid">
+        <Message severity="info" :closable="false">
+          {{ t('config.modelli_documenti.personalizza.hint') }}
+        </Message>
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_emittente') }} *</label>
+          <EmittenteFiscaleField
+            v-model="personalizzaForm.emittente_fiscale_id"
+            :invalid="campiErrati.includes('emittente_fiscale_id')"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_codice') }}</label>
+          <InputText v-model="personalizzaForm.codice" maxlength="120" fluid
+            :placeholder="form.codice" :invalid="campiErrati.includes('codice')" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_codice_interno') }}</label>
+          <InputText v-model="personalizzaForm.codice_interno" maxlength="120" fluid
+            :placeholder="form.codice_interno" :invalid="campiErrati.includes('codice_interno')" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_descrizione') }}</label>
+          <InputText v-model="personalizzaForm.descrizione" maxlength="500" fluid
+            :placeholder="form.descrizione" :invalid="campiErrati.includes('descrizione')" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_is_default') }}</label>
+          <Select
+            v-model="personalizzaForm.is_default"
+            :options="opzioniPredefinito"
+            option-label="label"
+            option-value="value"
+            fluid
+            :invalid="campiErrati.includes('is_default')"
+          />
+        </div>
+        <small class="app-text-muted">
+          {{ t('config.modelli_documenti.personalizza.nomi_hint') }}
+        </small>
+      </div>
+    </AppDialog>
   </AppDrawer>
 </template>

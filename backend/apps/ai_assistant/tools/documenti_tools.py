@@ -77,7 +77,7 @@ class CercaDocumentiGeneratiTool(AITool):
                         "type": "integer",
                         "description": "ID applicativo del record sorgente (es. preventivo_id). Usare prima il tool di ricerca del dominio per ottenere l'ID.",
                     },
-                    "page_size": {
+                    "limit": {
                         "type": "integer",
                         "description": "Numero versioni da restituire (default 10, max 50).",
                     },
@@ -133,7 +133,7 @@ class CercaDocumentiGeneratiTool(AITool):
             user,
             sorgente_tipo_id=sorgente_tipo_id,
             sorgente_uid=sorgente_uid,
-            limit=self.safe_page_size(params),
+            limit=self.safe_limit(params),
             offset=0,
         )
         rows = result.get("results") or []

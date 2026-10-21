@@ -224,7 +224,7 @@ echo "-- 2. Seed catalogo + anagrafiche --"
 # E_VALIDATION_INPUT «corpo non e' un JSON valido»).
 ARTICOLO_ID=""; UOM_ID=""; LISTINO_TIPOLOGIA_ID=""
 # ⚠️ La lista pagina con `limit`/`offset` (parse_list_params): `page` e
-# `page_size` sono ignorati e tornerebbero sempre la stessa prima pagina.
+# `page_size` sono un 400 (dal 2026-10-20; prima erano ignorati).
 for offset in $(seq 0 100 3000); do
     do_curl GET "/api/v1/catalogo/articoli/?attivo=true&limit=100&offset=${offset}&order_by=codice&order_dir=asc"
     [[ "$LAST_STATUS" != "200" ]] && break
@@ -312,7 +312,7 @@ trap 'smoke_chiudi_contratti "$BA_ID" COMMERCIO; rm -f "$TMPFILE"' EXIT
 # il giro notturno, partito ogni ora a hh:00:03, riprendeva gli stessi anni del
 # giro prima e l'attivazione rispondeva E_VENDITE_CONTRATTO_OVERLAP.
 ANNO_MAX=$(curl -s -H "Authorization: Bearer ${TOKEN:-none}" \
-    "${BASE_URL}/api/v1/vendite/contratti/?billing_account_id=${BA_ID}&limit=500" 2>/dev/null | python3 -c "
+    "${BASE_URL}/api/v1/vendite/contratti/?billing_account_id=${BA_ID}&limit=200" 2>/dev/null | python3 -c "
 import sys, json
 try:
     rows = json.load(sys.stdin).get('data', {}).get('results') or []

@@ -70,7 +70,7 @@ Query param (tutti opzionali):
 | `origine` | `FATTURA` · `LOTTO`; assente = tutte |
 | `solo_attive` | bool, default `true` (le ritirate non si mostrano) |
 | `solo_job_corrente` | bool, default `false` |
-| `page` / `page_size` | default `1` / `25`, `page_size` max `500` |
+| `limit` / `offset` | `limit` default `25`, max `500` (`LOTTO_LISTE_PAGINA_MAX`); `offset` default `0`. Fuori limiti → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_500`, `offset_negativo`). ⛔ `page`/`page_size` sono un 400 dal 2026-10-21 (prima erano il contratto di questa lista) |
 | `order_by` | passato alla funzione DB, che possiede la whitelist |
 | `order_dir` | `asc` \| `desc`, default `desc` |
 
@@ -88,7 +88,10 @@ di cui parla la riga; `null` = critica del giro), `uscita_blocco_reason` /
 `script.fn_check_documento_escludibile_da_giro`), `riferimento` (il documento
 come lo legge una persona).
 
-Errori: `400 E_PIPELINE_VALIDATION` (`lotto_id`, paginazione, `order_dir`);
+Errori: `400 E_PIPELINE_VALIDATION` (`lotto_id`, `order_dir`); `400
+E_VALIDATION_INPUT` (la finestra: `limit`/`offset` non interi, `limit` fuori
+da 1..500, `offset` negativo, `page`/`page_size` presenti — dal 2026-10-21 il
+service non ripete il controllo con `E_PIPELINE_VALIDATION`);
 `404 E_LOTTO_NON_TROVATO` come il riepilogo.
 
 ## Export — `GET lotti/{lotto_id}/segnalazioni/export/?formato=csv|xlsx`
@@ -170,3 +173,5 @@ catalogo `vendite.lotto_segnalazioni`. Oltre `EXPORT_MAX_ROWS` →
   funzione vera). Il collaudo di parità DB ⇔ vecchia somma Python
   (`test_parita_verdetto_lotto_fermo_transitorio.py`) è **transitorio** e si
   toglie con la PR successiva.
+- 2026-10-21: `rows/` legge la finestra come `limit`/`offset` (`pagina_da_query`,
+  max 500); `page`/`page_size` in query diventano un 400. Envelope invariato.

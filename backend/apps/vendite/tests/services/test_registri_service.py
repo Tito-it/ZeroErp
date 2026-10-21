@@ -418,16 +418,15 @@ class RegistriRepositoryQueryTests(TestCase):
         self.assertNotIn("CROSS JOIN LATERAL", sql)
         self.assertEqual(sql.count("LEFT JOIN LATERAL"), 2)
 
-    # Scopo: `order_by` fuori whitelist non finisce nell'SQL — ci finisce il
-    #        default. La colonna arriva dal client e un ORDER BY non e'
-    #        parametrizzabile.
+    # Scopo: `order_by` fuori whitelist e' un 400 (`order_by_invalid`) e non
+    #        arriva all'SQL: la colonna viene dal client e un ORDER BY non e'
+    #        parametrizzabile. Dal 2026-10-20 non ripiega piu' sul default.
     @patch("apps.vendite.db.registri_repository.connection.cursor")
-    def test_order_by_fuori_whitelist_ripiega_sul_default(self, mock_factory):
+    def test_order_by_fuori_whitelist_e_rifiutato(self, mock_factory):
         mock_factory.return_value = _mock_cursor(fetchall=[], description=[])
-        RegistriRepository().list_registri(None, order_by="; DROP TABLE x")
-        sql = mock_factory.return_value.execute.call_args[0][0]
-        self.assertNotIn("DROP TABLE", sql)
-        self.assertIn("ORDER BY r.codice", sql)
+        with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+            RegistriRepository().list_registri(None, order_by="; DROP TABLE x")
+        mock_factory.return_value.execute.assert_not_called()
 
 
 # Scopo: un `MagicMock` non deve passare per una lista di id — se un domani

@@ -1181,7 +1181,7 @@ a `paramsRicerca`:
 
 ```js
 function buildParams(f, _termine, ricerca) {
-  const p = paramsPagina(f)
+  const p = paramsFinestra(f)                   // limit/offset + ordinamento
   Object.assign(p, paramsRicerca(f, ricerca))  // soglia della lista
   // ... filtri di dominio ...
   return p

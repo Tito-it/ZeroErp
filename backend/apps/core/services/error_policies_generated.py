@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1118, di cui 120 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1121, di cui 120 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -646,6 +646,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOCUMENTI_GENERATO_FILE_IMMUTABILE": "CONFLITTO_STATO",
     "E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE": "CONFLITTO_STATO",
     "E_DOCUMENTI_NOT_FOUND": "NON_TROVATO",
+    # documenti.fn_personalizza_template_standard (2026-10-21, brief-db-modelli-documento-standard §10.3 K-6): si personalizza solo un modello standard (D-2); il modello indicato e' gia' di un emittente. Valori: codice del modello.
+    "E_DOCUMENTI_PERSONALIZZA_NON_STANDARD": "DATO_ERRATO",
     "E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO": "DATO_ERRATO",
     "E_DOCUMENTI_RENDER_FAILED": "TECNICO",
     # documenti.fn_risolvi_template_applicabile (2026-10-20): argomenti NULL o <= 0 dove non ammessi. Solo un chiamante rotto li produce -> TECNICO; il messaggio nomina il parametro.
@@ -655,8 +657,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOCUMENTI_TEMPLATE_AMBIGUO": "TECNICO",
     # Guard documenti.trgfn_template_documenti_versioni_guard_derivata_da (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-5): derivata_da_versione_id deve puntare a una versione di un modello standard con lo stesso tipo e la stessa sorgente, e la versione che la porta non e' di uno standard. La scrive l'azione «personalizza» del BE -> TECNICO. Valori: id della versione d'origine.
     "E_DOCUMENTI_TEMPLATE_DERIVAZIONE_INVALIDA": "TECNICO",
+    # documenti.fn_risolvi_template_applicabile col modello indicato (p_template_documento_id) (2026-10-21, brief-db-modelli-documento-standard §10.3 K-3): il modello indicato non e' adatto al documento. Motivi nel contesto, per nome, da documenti.fn_template_motivo_non_coerente: SORGENTE (e' per un'altra sorgente), TIPO (produce un altro tipo di documento), EMITTENTE (e' di un'altra azienda e non e' standard). La stessa regola che trgfn_documenti_generati_check_coerenza applica alla scrittura (E_DOCUMENTI_GENERATO_COERENZA), detta prima del render. Prende il posto del generico E_VALIDATION del BE. Valori: codice del modello, motivo in parole.
+    "E_DOCUMENTI_TEMPLATE_NON_COERENTE": "DATO_ERRATO",
     # documenti.fn_risolvi_template_applicabile (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-2): l'emittente non ha modelli che possono stampare per (tipo, sorgente) e lo standard predefinito manca, e' spento o non ha una versione pubblicata valida alla data operativa (rev 20261020-26). Prende il posto, per la risoluzione, del generico E_DOCUMENTI_NOT_FOUND che il BE sollevava. Valori: descrizione del tipo di documento.
     "E_DOCUMENTI_TEMPLATE_NON_RISOLTO": "NON_TROVATO",
+    # documenti.fn_risolvi_template_applicabile col modello indicato (p_template_documento_id), e documenti.fn_personalizza_template_standard attraverso la stessa porta (2026-10-21, brief-db-modelli-documento-standard §10.3 K-3): il modello indicato oggi non puo' stampare. Motivi nel contesto, per nome: MODELLO_SPENTO (il modello e' disattivato), NESSUNA_VERSIONE_VALIDA (nessuna versione PUBBLICATA, attiva e valida alla data operativa: documenti.vw_template_versioni_stampabili). Rimedia l'operatore: riaccende il modello o ne pubblica una versione. Prende il posto del generico E_DOCUMENTI_NOT_FOUND che il BE dava per il modello indicato. Valori: codice del modello, motivo in parole.
+    "E_DOCUMENTI_TEMPLATE_NON_STAMPABILE": "CONFLITTO_STATO",
     # documenti.fn_risolvi_template_applicabile (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-2, strada B di Tid): l'emittente ha modelli che possono stampare per (tipo, sorgente) ma nessuno di loro e' predefinito (rev 20261020-26: puo' stampare = attivo, con una versione PUBBLICATA attiva e valida alla data operativa; un predefinito ancora in bozza non basta). Lo standard NON entra: un modello dell'emittente che stampa dice «uso i miei». Il rimedio e' dell'operatore (segnare un predefinito). Valori: descrizione del tipo di documento.
     "E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO": "CONFLITTO_STATO",
     # Guard documenti.trgfn_template_standard_guard_sola_lettura (2026-10-20, brief-db-modelli-documento-standard D-2): il modello standard e le sue versioni si scrivono solo dal proprietario della tabella (seed e changeSet, script.fn_is_proprietario_tabella). NON_PERMESSO: e' un diritto che l'applicazione non ha, non uno stato che cambia riprovando. Valori: codice del modello.

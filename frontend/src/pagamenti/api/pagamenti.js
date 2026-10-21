@@ -12,22 +12,16 @@
 // ------------------------------------------------------------
 
 import api from '../../core/api'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 
 const BASE = '/pagamenti'
 
-// Scopo: header di una scrittura. Il backend dichiara `require_idempotency_key`
-//        su tutte le POST che muovono stato: senza, rispondono 400.
-function idem() {
-  return { headers: { 'Idempotency-Key': generateIdempotencyKey() } }
-}
 
 // ══════════════════════════════════════════════════════════════
 //  Distinte contabili
 // ══════════════════════════════════════════════════════════════
 
-// Elenco paginato. ⚠️ PAGE-BASED (`page`/`page_size`): la conversione da
-// `limit`/`offset` — la lingua di `useSearchTable` — la fa lo store, una volta.
+// Elenco paginato con `limit`/`offset`, come ogni lista (fino al 2026-10-21
+// PAGE-BASED: la conversione la faceva lo store).
 export function listDistinte(params = {}) {
   return api.get(`${BASE}/distinte/`, { params })
 }
@@ -40,7 +34,7 @@ export function listDistinte(params = {}) {
 // Payload: `centro_riscossione_id` (obbligatorio), `data_contabile`,
 // `ente_incasso_id`, `importo_dichiarato`, `meta`.
 export function creaDistinta(payload) {
-  return api.post(`${BASE}/distinte/`, payload, idem())
+  return api.post(`${BASE}/distinte/`, payload)
 }
 
 // Dettaglio: testata + totali derivati + i DUE cataloghi di stato, in un
@@ -62,7 +56,6 @@ export function cambiaStatoDistinta(contabileId, nuovoStato) {
   return api.post(
     `${BASE}/distinte/${contabileId}/stato/`,
     { nuovo_stato: nuovoStato },
-    idem(),
   )
 }
 
@@ -96,7 +89,7 @@ export function exportRigheDistinta(contabileId, params = {}) {
 // `motivo_forzatura`), come in `abbinaRiga`. Con la fattura nasce ABBINATA in
 // un INSERT solo; senza nasce DA_ABBINARE — l'eccezione che si dichiara.
 export function creaRiga(contabileId, payload) {
-  return api.post(`${BASE}/distinte/${contabileId}/righe/`, payload, idem())
+  return api.post(`${BASE}/distinte/${contabileId}/righe/`, payload)
 }
 
 // ⭐ N RATE → N RIGHE in un Salva (D19-d): le rate scelte nel picker diventano
@@ -110,7 +103,7 @@ export function creaRiga(contabileId, payload) {
 // `fields`, `targets`), quindi la capienza che non regge risale «confermabile»
 // PER RIGA e il secondo tempo è un giro nuovo con le sole righe rimaste.
 export function creaRigheDaRate(contabileId, payload) {
-  return api.post(`${BASE}/distinte/${contabileId}/righe/da-rate/`, payload, idem())
+  return api.post(`${BASE}/distinte/${contabileId}/righe/da-rate/`, payload)
 }
 
 // I FATTI della riga (importo, riferimento, date) — non il suo percorso, e
@@ -127,7 +120,7 @@ export function aggiornaRiga(rigaId, payload) {
 // ⚠️ Il metodo dice il verbo: niente `/elimina/` nel path. E' una scrittura,
 // quindi porta l'`Idempotency-Key` come le POST.
 export function eliminaRiga(rigaId) {
-  return api.delete(`${BASE}/righe/${rigaId}/`, idem())
+  return api.delete(`${BASE}/righe/${rigaId}/`)
 }
 
 // Il PERCORSO della riga. ⚠️ `motivo_sospeso` è ammesso qui perché sospendere
@@ -135,7 +128,7 @@ export function eliminaRiga(rigaId) {
 export function cambiaStatoRiga(rigaId, nuovoStato, motivoSospeso = null) {
   const payload = { nuovo_stato: nuovoStato }
   if (motivoSospeso) payload.motivo_sospeso = motivoSospeso
-  return api.post(`${BASE}/righe/${rigaId}/stato/`, payload, idem())
+  return api.post(`${BASE}/righe/${rigaId}/stato/`, payload)
 }
 
 // Scopo: Il SECONDO TEMPO della capienza, cioe' cio' che si aggiunge al
@@ -157,8 +150,8 @@ export function forzaturaConMotivo(motivo) {
 // resta SCRITTO sulla riga ed è ciò che l'elenco delle rate fuori capienza
 // legge. Forzare senza che nessuno l'abbia chiesto nasconde invece di
 // registrare.
-export function abbinaRiga(rigaId, payload) {
-  return api.post(`${BASE}/righe/${rigaId}/abbina/`, payload, idem())
+export function abbinaRiga(rigaId, payload, config = {}) {
+  return api.post(`${BASE}/righe/${rigaId}/abbina/`, payload, config)
 }
 
 // ⭐ LA REGISTRAZIONE TARDIVA (D20-b): una riga SOSPESA sotto una distinta
@@ -168,8 +161,8 @@ export function abbinaRiga(rigaId, payload) {
 // → `forzata: true` + motivo). Stesso cancello di `registraDistinta`.
 // ⛔ Non è un esito «nulla da postare»: una tardiva che non si può fare è un
 // 409 con la sua frase (`E_RIGA_CONTABILE_TARDIVA_*`).
-export function registraRigaTardiva(rigaId, payload) {
-  return api.post(`${BASE}/righe/${rigaId}/registra/`, payload, idem())
+export function registraRigaTardiva(rigaId, payload, config = {}) {
+  return api.post(`${BASE}/righe/${rigaId}/registra/`, payload, config)
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -187,11 +180,11 @@ export function anteprimaRegistrazione(contabileId) {
 // che l'operatore ha davanti: se il database trova numeri diversi si ferma.
 // ⚠️ Lo ZERO è legittimo (una distinta senza righe registrabili): non si
 // filtrano i valori a 0, o si trasforma un esito vero in un errore falso.
-export function registraDistinta(contabileId, { righeAttese, totaleAtteso } = {}) {
+export function registraDistinta(contabileId, { righeAttese, totaleAtteso } = {}, config = {}) {
   const payload = {}
   if (righeAttese != null) payload.righe_attese = righeAttese
   if (totaleAtteso != null) payload.totale_atteso = totaleAtteso
-  return api.post(`${BASE}/distinte/${contabileId}/registra/`, payload, idem())
+  return api.post(`${BASE}/distinte/${contabileId}/registra/`, payload, config)
 }
 
 // ⭐ LA CORREZIONE GUIDATA (Q-7): da una distinta REGISTRATA nasce una distinta
@@ -210,7 +203,7 @@ export function correggiDistinta(contabileId, { dataContabile, motivo } = {}) {
   const payload = {}
   if (dataContabile) payload.data_contabile = dataContabile
   if (motivo) payload.motivo = motivo
-  return api.post(`${BASE}/distinte/${contabileId}/correggi/`, payload, idem())
+  return api.post(`${BASE}/distinte/${contabileId}/correggi/`, payload)
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -303,7 +296,7 @@ export function listEccedenze(params = {}) {
 // origine, e il payload li rifiuta apposta: «non li sceglie una persona in un
 // modulo, li deriva chi costruisce l'atto».
 export function creaSistemazione(payload) {
-  return api.post(`${BASE}/sistemazioni/`, payload, idem())
+  return api.post(`${BASE}/sistemazioni/`, payload)
 }
 
 // ⚠️ REGISTRARE NON È ESEGUIRE: il controllo dell'eccedenza sta QUI, alla
@@ -311,11 +304,11 @@ export function creaSistemazione(payload) {
 // E il canale del rimborso si chiede adesso: da quale conto esce il bonifico è
 // una decisione del momento in cui si paga.
 export function confermaSistemazione(sistemazioneId, payload = {}) {
-  return api.post(`${BASE}/sistemazioni/${sistemazioneId}/conferma/`, payload, idem())
+  return api.post(`${BASE}/sistemazioni/${sistemazioneId}/conferma/`, payload)
 }
 
 export function annullaSistemazione(sistemazioneId, payload = {}) {
-  return api.post(`${BASE}/sistemazioni/${sistemazioneId}/annulla/`, payload, idem())
+  return api.post(`${BASE}/sistemazioni/${sistemazioneId}/annulla/`, payload)
 }
 
 export function getSistemazione(sistemazioneId) {
@@ -350,7 +343,7 @@ export function listEntiIncasso(params = {}) {
 }
 
 export function creaEnteIncasso(payload) {
-  return api.post(`${BASE}/enti-incasso/`, payload, idem())
+  return api.post(`${BASE}/enti-incasso/`, payload)
 }
 
 export function getEnteIncasso(enteId) {

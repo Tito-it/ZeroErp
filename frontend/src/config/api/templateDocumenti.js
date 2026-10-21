@@ -7,6 +7,8 @@
 //        Configurazione). Endpoint backend Tranche C/E/F:
 //         /api/v1/documenti/templates/                    GET (list) | POST (create)
 //         /api/v1/documenti/templates/<id>/               GET (detail) | PATCH (update)
+//         /api/v1/documenti/templates/<id>/personalizza/  POST
+//         /api/v1/documenti/templates/risoluzione/        GET
 //         /api/v1/documenti/templates/<id>/versioni/      GET (list) | POST (create)
 //         /api/v1/documenti/templates/<id>/versioni/<vid>/ GET | PATCH | DELETE
 //         /api/v1/documenti/templates/<id>/versioni/<vid>/clona/    POST
@@ -37,6 +39,22 @@ export function createTemplateDocumento(payload) {
 //        rifiutati lato BE PRIMA di altre validazioni.
 export function updateTemplateDocumento(id, payload) {
   return api.patch(`${BASE}/${id}/`, payload)
+}
+
+// Scopo: «Personalizza»: la copia di un modello STANDARD per un'azienda, con
+//        la prima versione in bozza che ne dichiara l'origine (la fa il DB).
+//        Payload `{emittente_fiscale_id, is_default?, codice?, codice_interno?,
+//        descrizione?}`: i facoltativi assenti li decide il DB (i nomi dello
+//        standard; predefinita se l'azienda non ne ha gia' una sua).
+export function personalizzaTemplateDocumento(id, payload) {
+  return api.post(`${BASE}/${id}/personalizza/`, payload)
+}
+
+// Scopo: Con che cosa stampa ogni azienda del perimetro, documento per
+//        documento (envelope `results`): l'esito della risoluzione del DB —
+//        EMITTENTE, STANDARD, SENZA_PREDEFINITO, NON_RISOLTO.
+export function listRisoluzioneTemplate(params = {}) {
+  return api.get(`${BASE}/risoluzione/`, { params })
 }
 
 // Scopo: Lista paginata delle versioni di un template.

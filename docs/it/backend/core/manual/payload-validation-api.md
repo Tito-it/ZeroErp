@@ -22,17 +22,26 @@ Campi del body JSON (`payload: dict`, chiave `key`):
 
 Query string (`raw: str | None`):
 
-- `qp_bool`, `qp_bool_optional`, `qp_int`, `qp_int_strict`, `qp_int_optional`,
-  `qp_iso_date_optional`, `qp_str`, `qp_str_upper`
+- `qp_bool_optional`, `qp_int_strict`, `qp_int_optional`,
+  `qp_iso_date_optional`, `qp_str`, `qp_str_upper` (`qp_bool` e `qp_int`, che
+  ripiegavano sul default in silenzio, sono ritirati)
 
 Liste paginate:
 
-- `parse_list_params(qp, *, default_order="descrizione", default_limit=25, max_limit=200)`
+- `pagina_da_query(qp, *, default_limit=DEFAULT_LIMIT, max_limit=MAX_LIMIT)` —
+  `(limit, offset)` di ogni lista: `page`/`page_size` presenti → `ValueError`
+  (`page_non_ammesso_usare_limit_offset` / `page_size_non_ammesso_usare_limit_offset`),
+  valori non interi → `limit_invalid`/`offset_invalid`, limiti da `limiti_pagina`
+  (dal 2026-10-21 il solo dialetto delle liste)
+- `parse_list_params(qp, *, default_order="descrizione", default_limit=DEFAULT_LIMIT, max_limit=MAX_LIMIT)`
+- `envelope_da_offset(results, total_count, *, limit, offset)` — l'envelope
+  paginato da una finestra `limit`/`offset`
+- `pagina_di(offset, limit)` — la pagina (da 1) che la finestra mostra
 - `paginated_envelope(results, total_count, page, page_size)`
 
 ## Output
 - valore coerente oppure `ValueError(f"{key}_invalid")` su input non valido
-  (le varianti `qp_int`, `qp_bool`, `qp_str` non sollevano: ripiegano sul default).
+  (`qp_str` e `qp_str_upper` non sollevano: normalizzano a `None`).
 
 ## Regole
 - Le view non devono parsare tipi a mano: usare validator core.

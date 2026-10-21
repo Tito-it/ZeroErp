@@ -32,7 +32,7 @@ Indice test:
  3) test_in_vigore_al_tiene_le_righe_senza_fine
  4) test_senza_data_nessun_filtro_di_validita
  5) test_valido_al_vuoto_ordina_come_infinito_e_parte_desc
- 6) test_chiave_fuori_whitelist_ripiega_sulla_distinta
+ 6) test_chiave_fuori_whitelist_e_rifiutata
  7) test_pagina_rispetta_il_tetto_e_l_export_lo_alza
  8) test_la_ricerca_nomina_la_lista_della_distinta
  9) test_lettura_completa_e_riga_singola_dalla_vista
@@ -109,13 +109,11 @@ class ComponentiListaTests(unittest.TestCase):
         sql, _, _ = _pagina(order_by="valido_dal", order_dir=None)
         self.assertIn("ORDER BY v.valido_dal DESC", sql)
 
-    # ⚠️ Il verso chiesto vale anche sull'ordine di partenza (regola del BB,
-    #    come per le righe di vendita): fuori whitelist cade la COLONNA, non il
-    #    verso.
-    def test_chiave_fuori_whitelist_ripiega_sulla_distinta(self):
-        sql, _, _ = _pagina(order_by="prezzo; DROP", order_dir="asc")
-        self.assertIn("ORDER BY v.valido_dal ASC", sql)
-        self.assertNotIn("DROP", sql)
+    # ⛔ Una chiave fuori whitelist e' un 400 (`order_by_invalid`), non
+    #    l'ordine della distinta (dal 2026-10-20, brief-be-verifica-documentazione-api §A1).
+    def test_chiave_fuori_whitelist_e_rifiutata(self):
+        with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+            _pagina(order_by="prezzo; DROP", order_dir="asc")
 
     def test_pagina_rispetta_il_tetto_e_l_export_lo_alza(self):
         _, params, _ = _pagina(limit=5000, offset=-3)

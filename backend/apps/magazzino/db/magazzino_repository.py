@@ -45,6 +45,7 @@ from typing import Any, cast
 from django.db import connection
 
 from apps.core.db._helpers import (
+    colonna_ordinamento,
     sql_order_direction_lista,
     predicato_giorno_operativo,
     pattern_contiene,
@@ -569,7 +570,7 @@ class MagazzinoRepository:
         params: list[Any] = [int(inventario_id)]
         add_ricerca_full_condition(conditions, params, search, _RICERCA_PIANO)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        colonna = PIANO_SORT_COLUMNS.get(order_by or "", "articolo_codice")
+        colonna = colonna_ordinamento(order_by, PIANO_SORT_COLUMNS) or "articolo_codice"
         direzione = sql_order_direction_lista(order_by, order_dir, colonne=PIANO_SORT_COLUMNS)
         rows, total = lista_paginata(
             select_sql=f"{_PIANO_SELECT} {where}",
@@ -886,7 +887,7 @@ class MagazzinoRepository:
         add_ricerca_full_condition(conditions, params, search, _RICERCA_DISPONIBILITA)
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        colonna = DISPONIBILITA_SORT_COLUMNS.get(order_by or "", "articolo_codice")
+        colonna = colonna_ordinamento(order_by, DISPONIBILITA_SORT_COLUMNS) or "articolo_codice"
         direzione = sql_order_direction_lista(order_by, order_dir, colonne=DISPONIBILITA_SORT_COLUMNS)
         spareggio = sql_tiebreak_direction(direzione)
         rows, total = lista_paginata(

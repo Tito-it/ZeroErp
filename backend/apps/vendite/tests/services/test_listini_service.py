@@ -347,6 +347,23 @@ class ListiniServiceTests(TestCase):
             fn_change_versione_state(10, 101, {"stato": "CHIUSA"})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
+    # Scopo: ⛔ `dry_run` e' un booleano JSON: la stringa `"true"` e' un 400 sul
+    #        campo, non un `false` muto che eseguiva davvero il cambio stato a
+    #        chi chiedeva l'anteprima (2026-10-21, §B4 del brief-be-verifica-
+    #        documentazione-api).
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_change_versione_state_dry_run_stringa_400(self, mock_repo_cls):
+        from apps.vendite.services.listini_service import fn_change_versione_state
+
+        repo = mock_repo_cls.return_value
+        repo.get_versione.return_value = {
+            "id": 101, "listino_id": 10, "stato": "BOZZA", "attivo": True,
+        }
+        with self.assertRaises(ServiceError) as ctx:
+            fn_change_versione_state(10, 101, {"stato": "ATTIVA", "dry_run": "true"})
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        repo.change_versione_state.assert_not_called()
+
     # Scopo: Verifica che ATTIVA richieda almeno una riga.
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_change_versione_state_requires_rows(self, mock_repo_cls):
@@ -1201,6 +1218,26 @@ class TranslateIntegrityErrorTests(TestCase):
             _translate_integrity_error(exc, function_name="test", entity="bundle")
         self.assertEqual(ctx.exception.code, "E_VENDITE_LISTINO_RIGA_COMP_OVERLAP")
         self.assertIn("sovrappost", (ctx.exception.message or "").lower())
+
+
+class FnSaveBundleRowsTests(TestCase):
+    # Scopo: ⛔ `rows` assente o non lista e' un 400, non «svuota il bundle»:
+    #        il salvataggio sostituisce in blocco, e fino al 2026-10-21 la view
+    #        trasformava l'assenza in `[]` cancellando ogni prezzo con un 200.
+    @patch("apps.vendite.services.listini_service._assert_versione_bozza_for_riga_op")
+    @patch("apps.vendite.services.listini_service._get_versione_or_raise")
+    @patch("apps.vendite.services.listini_service._get_listino_or_raise")
+    @patch("apps.vendite.services.listini_service.ListiniRepository")
+    def test_rows_assente_o_non_lista_e_400(self, repo_cls, _listino, versione, _bozza):
+        from apps.core.services.error_policies import ErrorPolicyRegistry
+        from apps.vendite.services.listini_service import fn_save_bundle
+
+        versione.return_value = {"valido_dal": "2026-01-01", "valido_al": None}
+        for rows in (None, "x", {"a": 1}, [1]):
+            with self.subTest(rows=rows), self.assertRaises(ServiceError) as ctx:
+                fn_save_bundle(10, 101, "abc-uuid", rows)
+            self.assertEqual(ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 400)
+        self.assertEqual(repo_cls.return_value.method_calls, [])
 
 
 class FnDeleteBundleTests(TestCase):

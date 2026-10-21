@@ -37,7 +37,8 @@ Indice test eseguiti:
 import json
 from unittest.mock import ANY, Mock, patch
 
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
@@ -76,7 +77,7 @@ class FlussiApiTests(JwtMockedApiTest):
     # Scopo: Prepara il contesto comune del test.
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     # Scopo: Verifica GET lista flussi per pratica: envelope paginato col
     #        totale del repository (non `len(results)`), default `sequenza`.

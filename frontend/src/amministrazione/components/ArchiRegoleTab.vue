@@ -14,11 +14,11 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
-import { lookupCodici } from '../../core/apiCore'
 import { ESITO_REGOLA } from '../../core/constants'
 import { useArchiCollection } from '../composables/useArchiCollection'
 import { useStepOptions } from '../composables/useStepOptions'
 import CollectionEditorPanel from './CollectionEditorPanel.vue'
+import { fetchLookupCodici } from '../../core/composables/useLookupCodici'
 
 const props = defineProps({
   // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
@@ -51,7 +51,7 @@ const coll = useArchiCollection({
 
 // Catalogo tipi prestazione per il display del tipo destinazione in colonna
 // (nel form lo seleziona LookupSelect, che condivide il fetch via cache).
-const tipi = useLookup(() => lookupCodici('pratiche.tipi_prestazione'), { immediate: true })
+const tipi = useLookup(fetchLookupCodici('pratiche.tipi_prestazione'), { immediate: true })
 const tipoMap = computed(() => new Map(tipi.items.value.map((tp) => [tp.id, tp.descrizione])))
 function tipoLabel(id) {
   return tipoMap.value.get(id) ?? (id != null ? `#${id}` : '—')

@@ -10,7 +10,7 @@ Indice test eseguiti:
 1) CatalogoApiTests.test_list_articoli_ok
 2) CatalogoApiTests.test_list_articoli_requires_jwt
 3) CatalogoApiTests.test_list_articoli_parametri
-4) CatalogoApiTests.test_list_articoli_invalid_limit_fallback
+4) CatalogoApiTests.test_list_articoli_invalid_limit_e_400
 5) CatalogoApiTests.test_list_articoli_search_corta_non_e_un_errore
 6) CatalogoApiTests.test_list_articoli_invalid_tipo_voce_id
 7) CatalogoApiTests.test_get_articolo_ok
@@ -44,7 +44,8 @@ import json
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
@@ -74,7 +75,7 @@ class CatalogoApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
         cache.clear()
-        self.client = Client()
+        self.client = ClientApi()
 
     # Scopo: Lista articoli base -> 200 con envelope paginato.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -113,13 +114,18 @@ class CatalogoApiTests(JwtMockedApiTest):
         self.assertEqual(kwargs["order_by"], "codice")
         self.assertEqual(kwargs["order_dir"], "desc")
 
-    # Scopo: limit/offset non numerici → fallback default (parse_list_params usa qp_int).
+    # Scopo: ⛔ limit/offset non numerici → 400, non il ripiego muto sul
+    #        default (decisione Tid 2026-10-21, BB `pagina_da_query`): il
+    #        ripiego dava la prima pagina a chi ne aveva chiesta un'altra.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.catalogo.api.views.fn_list_articoli")
-    def test_list_articoli_invalid_limit_fallback(self, mocked_list, _mock_auth):
+    def test_list_articoli_invalid_limit_e_400(self, mocked_list, _mock_auth):
         mocked_list.return_value = (_LIST_RESULTS, _LIST_TOTAL)
-        response = self.client.get("/api/v1/catalogo/articoli/?limit=abc")
-        self.assertEqual(response.status_code, 200)
+        for qs in ("limit=abc", "offset=xyz"):
+            with self.subTest(qs=qs):
+                response = self.client.get(f"/api/v1/catalogo/articoli/?{qs}")
+                self.assertEqual(response.status_code, 400)
+        mocked_list.assert_not_called()
 
     # Scopo: search corta -> 200, il termine arriva al repository (sotto la
     #        soglia del catalogo lo ignora il BB). ⛔ Nessun 400 sotto soglia

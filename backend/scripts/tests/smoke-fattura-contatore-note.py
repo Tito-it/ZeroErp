@@ -103,7 +103,7 @@ with transaction.atomic():
         note_id=nota_id, target_id=fattura_id, patch={"visibile": False},
     )
     det3 = get_fattura_dettaglio(fattura_id=fattura_id, auth_user_id=auth_user_id)
-    _, totale_lista = NOTE_REPO_FATTURA.list(fattura_id, page_size=200)
+    _, totale_lista = NOTE_REPO_FATTURA.list(fattura_id, limit=200)
     check("5) nota invisibile: contatore == totale della lista API",
           det3["contatori"]["note"] == totale_lista == base + 1,
           f"contatore={det3['contatori']['note']} lista={totale_lista}")

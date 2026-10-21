@@ -175,7 +175,10 @@ class EmailOutboxService:
     #    repository, dietro, e' RIGIDO (RuntimeError): la regola dell'operatore
     #    si dice qui, prima. `destinatari_cc` va a una colonna `text[]`: lista
     #    di stringhe o null, altrimenti il cast del DB sarebbe un 500.
-    def update_draft(self, outbox_id: int, **kwargs: Any) -> dict[str, Any]:
+    # ⚠️ `outbox_id` e' positional-only: il corpo arriva come `**kwargs`, e un
+    #    corpo `{"outbox_id": 1}` dava `TypeError: multiple values` — un 500 —
+    #    invece del 400 delle chiavi fuori contratto.
+    def update_draft(self, outbox_id: int, /, **kwargs: Any) -> dict[str, Any]:
         outbox = self.get_bozza(outbox_id)
         _richiedi_bozza(outbox)
 
@@ -189,8 +192,10 @@ class EmailOutboxService:
             message="I destinatari in copia devono essere una lista di indirizzi.",
             detail=f"destinatari_cc={cc!r}",
         )
-        if kwargs:
-            self._repo.update_outbox(outbox_id, **kwargs)
+        # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+        #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+        PayloadValidator(validation_code=E_OUTBOX).require_campi_da_aggiornare(kwargs)
+        self._repo.update_outbox(outbox_id, **kwargs)
 
         return self._repo.get_outbox(outbox_id) or {}
 

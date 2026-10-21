@@ -12,16 +12,15 @@
 // filtri dell'utente non devono sopravvivere all'utente successivo sullo stesso
 // browser (memoria feedback_pinia_userscoped).
 //
-// ⚠️ L'endpoint lotti pagina con `page`/`page_size`, non con `limit`/`offset`:
-// la conversione vive in `buildParams`, che e' il confine giusto. Lo store
-// espone limit/offset perche' e' cio' che il BB manipola, e il BE riceve la sua
-// forma: nessuno dei due si adatta all'altro.
+// ⭐ L'endpoint lotti pagina con `limit`/`offset` come le altre liste (dal
+// 2026-10-21, un dialetto solo: fino a quel giorno parlava `page`/`page_size`
+// e `buildParams` traduceva).
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { paramsPagina } from '../../core/utils/listParams'
+import { paramsFinestra } from '../../core/utils/listParams'
 import { listLotti } from '../api/lotti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
@@ -45,7 +44,7 @@ export function paramsPerimetro(f) {
   return {
     ...(f.competenza_mese ? { competenza_mese: f.competenza_mese } : {}),
     ...(f.stato_lotto ? { stato_lotto: f.stato_lotto } : {}),
-    ...(f.annullati ? { annullati: 1 } : {}),
+    ...(f.annullati ? { annullati: true } : {}),
   }
 }
 
@@ -124,15 +123,14 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
       annullatiCount.value = payload.annullati_count ?? 0
     },
     buildParams: (f) => {
-      // limit/offset (lingua del BB) -> page/page_size (lingua dell'endpoint),
-      // via `paramsPagina` (`core/utils/listParams`, estratto il 2026-08-28
-      // alla terza sede: questa era la prima).
+      // La finestra via `paramsFinestra` (`core/utils/listParams`, nato il
+      // 2026-08-28 come `paramsFinestra` alla terza sede: questa era la prima).
       // ⛔ `orderDirDefault: 'asc'` NON e' una svista da uniformare: e' il
       //    ripiego che questo store aveva, diverso da quello degli altri due
       //    consumatori (`desc`). Oggi non scatta — `order_dir` e' sempre
       //    valorizzato nei filtri — ma appianarlo avrebbe cambiato il verso di
       //    questa lista in silenzio il giorno in cui quel ramo si accendesse.
-      return { ...paramsPagina(f, { orderDirDefault: 'asc' }), ...paramsPerimetro(f) }
+      return { ...paramsFinestra(f, { orderDirDefault: 'asc' }), ...paramsPerimetro(f) }
     },
     fetchPage: listLotti,
   })
@@ -142,7 +140,7 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
   // nascita, e come si riportano li' («Pulisci filtri»).
   // ⛔ `annullati: true` NON RESTRINGE, e va dichiarato (2026-09-23): spento
   //    (`false`, il default) i lotti annullati restano fuori — restringe, e
-  //    conta a ragione; acceso il parametro parte (`annullati: 1`) e l'elenco
+  //    conta a ragione; acceso il parametro parte (`annullati: true`) e l'elenco
   //    diventa il piu' largo possibile. Senza questa riga il segno contava un
   //    filtro proprio quando l'operatore aveva tolto la restrizione.
   const { chiaviFiltro, filtriDefault, filtriNeutri, azzeraFiltri } = useContrattoFiltriLista({

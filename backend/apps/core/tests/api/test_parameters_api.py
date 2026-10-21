@@ -367,6 +367,35 @@ class ParameterOverrideViewTests(TestCase):
             value="10",
         )
 
+    # Scopo: ⛔ Un override senza `value` (assente o null) e' un 400 sul campo,
+    #        non un override vuoto scritto con un 200 (2026-10-21, §B6 del
+    #        brief-be-verifica-documentazione-api). `""` esplicito resta un valore.
+    @patch(SVC_PATH)
+    def test_override_senza_value_400(self, mock_svc_cls):
+        import json
+
+        from apps.core.api.views_parameters import ParameterOverrideView
+
+        for corpo in (
+            {"parameter_code": "DEFAULT_IVA_ID"},
+            {"parameter_code": "DEFAULT_IVA_ID", "value": None},
+            # Il valore e' testo: un booleano o un oggetto JSON non si «stringano».
+            {"parameter_code": "DEFAULT_IVA_ID", "value": True},
+            {"parameter_code": "DEFAULT_IVA_ID", "value": {"a": 1}},
+            # Un codice non stringa era un 500 (`.strip()` nel service).
+            {"parameter_code": 5, "value": "10"},
+        ):
+            with self.subTest(corpo=corpo):
+                response = ParameterOverrideView().post(_make_request(user_id=5, data=corpo))
+                self.assertEqual(response.status_code, 400)
+                body = json.loads(response.content)
+                self.assertEqual(body["error"]["code"], "E_PARAMETER_VALIDATION")
+        mock_svc_cls.return_value.upsert_user_override.assert_not_called()
+        ParameterOverrideView().post(
+            _make_request(user_id=5, data={"parameter_code": "DEFAULT_IVA_ID", "value": ""}),
+        )
+        mock_svc_cls.return_value.upsert_user_override.assert_called_once()
+
 
 class ParameterOverrideDeleteViewTests(TestCase):
 

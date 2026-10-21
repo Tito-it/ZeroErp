@@ -20,9 +20,34 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import patch
+from uuid import uuid4
 
-from django.test import SimpleTestCase
+from django.test import Client, SimpleTestCase
+
+
+class ClientApi(Client):
+    """Il client di test che si comporta come il frontend: ogni POST porta
+    un'`Idempotency-Key` nuova, se la chiamata non ne dichiara una sua.
+
+    ⭐ Dal 2026-10-20 una POST che scrive senza key e' un 400 per costruzione
+    (`_ApiViewBase.initial`, brief-be-verifica-documentazione-api §A5), e il
+    frontend la mette su ogni POST nell'interceptor di `api.js`. Un test che
+    chiama l'API deve fare lo stesso, o prova un client che non esiste.
+    ⚠️ Chi vuole provare proprio l'ASSENZA della key usa `Client` semplice.
+    """
+
+    def post(self, path: str, data: Any = None, *args: Any, **extra: Any) -> Any:  # type: ignore[override]
+        headers = dict(extra.pop("headers", None) or {})
+        # I due nomi che il backend accetta (`get_idempotency_key`): una key
+        # dichiarata col nome alternativo resta sua, e una prova di replay non
+        # diventa muta per una key casuale che vince sulla sua.
+        if not {"HTTP_IDEMPOTENCY_KEY", "HTTP_X_IDEMPOTENCY_KEY"} & extra.keys() and not any(
+            k.lower() in ("idempotency-key", "x-idempotency-key") for k in headers
+        ):
+            headers["Idempotency-Key"] = f"test-{uuid4()}"
+        return super().post(path, data, *args, headers=headers, **extra)
 
 
 class JwtMockedApiTest(SimpleTestCase):
@@ -44,7 +69,12 @@ class JwtMockedApiTest(SimpleTestCase):
     I test che vogliono verificare il side effect (es. unit test
     di JwtAuditAuthentication stesso) non devono usare questa base
     class — patchano `_set_gucs` esplicitamente.
+
+    ⭐ `self.client` e' un `ClientApi`: ogni POST porta l'`Idempotency-Key`,
+    come dal frontend (§A5 del brief-be-verifica-documentazione-api).
     """
+
+    client_class = ClientApi
 
     def setUp(self) -> None:
         super().setUp()

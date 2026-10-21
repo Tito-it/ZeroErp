@@ -111,7 +111,7 @@ query sola (pagina + totale). Parametri di query:
 |---|---|---|
 | `search` | string | Ricerca libera sulle colonne accese a catalogo (codice e ragione sociale dell'emittente) |
 | `limit` / `offset` | integer | Paginazione (default 25, massimo 200) |
-| `order_by` | string | Whitelist `USAGE_ORDER_COLS`: `emittente_codice`, `emittente_descrizione`, `emittente_attivo`, `override_attivo`; fuori whitelist = ordine di partenza |
+| `order_by` | string | Whitelist `USAGE_ORDER_COLS`: `emittente_codice`, `emittente_descrizione`, `emittente_attivo`, `override_attivo`; fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
 | `order_dir` | string | `asc` / `desc` (`400` su un valore diverso) |
 
 Senza ordinamento: ragione sociale, poi codice dell'emittente (ASC),

@@ -46,7 +46,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.list_helpers import collezione_completa, validate_order_params
 from apps.core.services.parameter_service import ParameterService
-from apps.core.services.testata_guard import pagina_dopo_testata
+from apps.core.services.testata_guard import o_not_found, pagina_dopo_testata
 from apps.core.services.payload_helpers import (
     MISSING as _MISSING,
     MissingType as _MissingType,
@@ -1811,14 +1811,40 @@ def fn_create_nota_articolo(articolo_id: UUID | str, payload: dict[str, Any]) ->
 
 
 # Scopo: Lista le note di un componente articolo.
-def fn_list_note_componente(componente_id: UUID | str) -> dict[str, Any]:
+def fn_list_note_componente(articolo_id: UUID | str, componente_id: UUID | str) -> dict[str, Any]:
+    _componente_dell_articolo(
+        articolo_id, componente_id, function_name="catalogo.catalogo_service.fn_list_note_componente",
+    )
     repository = CatalogoBomRepository()
     return collezione_completa(repository.list_note_componente(componente_id))
 
 
+# Scopo: ⛔ Il componente dell'URL esiste ED e' dell'articolo dell'URL, o 404.
+#        Prima l'articolo (`_get_articolo_base`, 404 suo), poi il componente
+#        letto CON l'articolo (`get_componente` ha l'ownership nel WHERE).
+#        Fino al 2026-10-21 le note di un componente ignoravano `articolo_id`
+#        del path: un componente di un altro articolo si leggeva e si annotava
+#        dall'URL di questo (brief-be-verifica-documentazione-api §B8; stessa
+#        regola delle righe di vendita, `riga_del_padre_o_not_found`).
+def _componente_dell_articolo(
+    articolo_id: UUID | str, componente_id: UUID | str, *, function_name: str,
+) -> dict[str, Any]:
+    _get_articolo_base(articolo_id)
+    return o_not_found(
+        CatalogoBomRepository().get_componente(articolo_id, componente_id),
+        code="E_CATALOGO_COMPONENTE_NOT_FOUND",
+        message="Componente non trovato.",
+        detail=f"Nessun componente id={componente_id} per articolo id={articolo_id}.",
+        function_name=function_name,
+    )
+
+
 # Scopo: Crea una nota per un componente articolo.
-def fn_create_nota_componente(componente_id: UUID | str, payload: dict[str, Any]) -> dict[str, Any]:
+def fn_create_nota_componente(
+    articolo_id: UUID | str, componente_id: UUID | str, payload: dict[str, Any],
+) -> dict[str, Any]:
     function_name = "catalogo.catalogo_service.fn_create_nota_componente"
+    _componente_dell_articolo(articolo_id, componente_id, function_name=function_name)
     data = _extract_nota_payload(payload, for_update=False, function_name=function_name)
     repository = CatalogoBomRepository()
     try:
@@ -2058,18 +2084,25 @@ def fn_update_uom_tipo(tipo_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     if attivo is not _MISSING:
         data["attivo"] = attivo
 
-    if data:
-        repository = CatalogoRepository()
-        updated = repository.update_uom_tipo(tipo_id, data)
-        ErrorManager.require(
-            updated,
-            code="E_CATALOGO_UOM_TIPO_NOT_FOUND",
-            message="Tipologia UoM non trovata.",
-            detail=f"Nessuna tipologia UoM con id={tipo_id}.",
-            context={"tipo_id": tipo_id},
-            function_name=function_name,
-            log_to_db=False,
-        )
+    # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+    #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+    _V.require_campi_da_aggiornare(
+        data,
+        message="Payload tipologia UoM non valido.",
+        detail="Nessun campo aggiornabile presente nel payload.",
+        function_name=function_name,
+    )
+    repository = CatalogoRepository()
+    updated = repository.update_uom_tipo(tipo_id, data)
+    ErrorManager.require(
+        updated,
+        code="E_CATALOGO_UOM_TIPO_NOT_FOUND",
+        message="Tipologia UoM non trovata.",
+        detail=f"Nessuna tipologia UoM con id={tipo_id}.",
+        context={"tipo_id": tipo_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
     return fn_get_uom_tipo(tipo_id)
 
 
@@ -2167,54 +2200,36 @@ def fn_create_unita_misura(payload: dict[str, Any]) -> dict[str, Any]:
 # Scopo: Aggiorna una unita' di misura.
 def fn_update_unita_misura(uom_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "catalogo.catalogo_service.fn_update_unita_misura"
-    _V.validate_allowed_keys(
-        payload,
-        allowed=UNITA_MISURA_UPDATE_COLUMNS,
-        function_name=function_name,
+    # Il payload per presenza (BB): chiave fuori contratto e PATCH senza campi
+    # sono un 400 (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
+    data = _V.campi_per_presenza(
+        payload, ammesse=UNITA_MISURA_UPDATE_COLUMNS,
+        testi={"descrizione": (False, None), "descrizione_fattura": (True, None)},
+        interi={"tipo_uom_id": False},
+        flag=frozenset({"attivo"}),
         message="Payload UoM non valido.",
+        message_vuoto="Payload UoM non valido.",
+        detail_vuoto="Nessun campo aggiornabile presente nel payload.",
+        function_name=function_name,
     )
-    data: dict[str, Any] = {}
-    descrizione = _extract_string(payload, "descrizione", function_name=function_name, nullable=False)
-    if descrizione is not _MISSING:
-        data["descrizione"] = descrizione
-    descrizione_fattura = _extract_string(payload, "descrizione_fattura", function_name=function_name, nullable=True)
-    if descrizione_fattura is not _MISSING:
-        data["descrizione_fattura"] = descrizione_fattura
-    tipo_uom_id = _extract_nullable_int(payload, "tipo_uom_id", function_name=function_name, message="Payload UoM non valido.")
-    if not isinstance(tipo_uom_id, _MissingType):
-        ErrorManager.require(
-            tipo_uom_id is not None and tipo_uom_id > 0,
-            code="E_CATALOGO_VALIDATION",
-            message="Payload UoM non valido.",
-            detail="tipo_uom_id deve essere un intero positivo.",
-            context={"tipo_uom_id": tipo_uom_id},
+    repository = CatalogoRepository()
+    try:
+        updated = repository.update_unita_misura(uom_id, data)
+    except DatabaseError as exc:
+        _raise_uom_write_error(
+            exc,
             function_name=function_name,
-            log_to_db=True,
+            context={"uom_id": uom_id, "tipo_uom_id": data.get("tipo_uom_id")},
         )
-        data["tipo_uom_id"] = tipo_uom_id
-    attivo = _extract_present_bool(payload, "attivo", function_name=function_name, message="Payload UoM non valido.")
-    if attivo is not _MISSING:
-        data["attivo"] = attivo
-
-    if data:
-        repository = CatalogoRepository()
-        try:
-            updated = repository.update_unita_misura(uom_id, data)
-        except DatabaseError as exc:
-            _raise_uom_write_error(
-                exc,
-                function_name=function_name,
-                context={"uom_id": uom_id, "tipo_uom_id": data.get("tipo_uom_id")},
-            )
-        ErrorManager.require(
-            updated,
-            code="E_CATALOGO_UOM_NOT_FOUND",
-            message="Unita' di misura non trovata.",
-            detail=f"Nessuna unita' di misura con id={uom_id}.",
-            context={"uom_id": uom_id},
-            function_name=function_name,
-            log_to_db=False,
-        )
+    ErrorManager.require(
+        updated,
+        code="E_CATALOGO_UOM_NOT_FOUND",
+        message="Unita' di misura non trovata.",
+        detail=f"Nessuna unita' di misura con id={uom_id}.",
+        context={"uom_id": uom_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
     return fn_get_unita_misura(uom_id)
 
 
@@ -2400,22 +2415,29 @@ def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, An
     if attivo is not _MISSING:
         data["attivo"] = attivo
 
-    if data:
-        repository = CatalogoRepository()
-        try:
-            updated = repository.update_conversione(conv_id, data)
-        except DatabaseError as exc:
-            _translate_conversione_integrity_error(exc, function_name=function_name)
-            raise
-        ErrorManager.require(
-            updated,
-            code="E_CATALOGO_CONV_NOT_FOUND",
-            message="Conversione UoM non trovata.",
-            detail=f"Nessuna conversione con id={conv_id}.",
-            context={"conv_id": conv_id},
-            function_name=function_name,
-            log_to_db=False,
-        )
+    # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+    #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+    _V.require_campi_da_aggiornare(
+        data,
+        message="Payload conversione non valido.",
+        detail="Nessun campo aggiornabile presente nel payload.",
+        function_name=function_name,
+    )
+    repository = CatalogoRepository()
+    try:
+        updated = repository.update_conversione(conv_id, data)
+    except DatabaseError as exc:
+        _translate_conversione_integrity_error(exc, function_name=function_name)
+        raise
+    ErrorManager.require(
+        updated,
+        code="E_CATALOGO_CONV_NOT_FOUND",
+        message="Conversione UoM non trovata.",
+        detail=f"Nessuna conversione con id={conv_id}.",
+        context={"conv_id": conv_id},
+        function_name=function_name,
+        log_to_db=False,
+    )
     return fn_get_conversione(conv_id)
 
 

@@ -178,7 +178,7 @@ log_ok "JWT ottenuto per '$USERNAME'"
 echo ""
 echo "-- 1. Cleanup proattivo contratti smoke residui --"
 if [[ -n "${SMOKE_BA_ID:-}" && -n "${SMOKE_ISTANZA_UTILITY_ID:-}" && -n "${SMOKE_UTILITY_ID:-}" ]]; then
-    # Nota: il BE usa `limit` come query param, non `page_size`
+    # Nota: il BE usa `limit` come query param; `page_size` e' un 400
     # (cf. parse_list_params in apps/core/api/payload_validators.py).
     do_curl GET "/api/v1/vendite/contratti/?billing_account_id=${SMOKE_BA_ID}&limit=200"
     if [[ "$LAST_STATUS" == "200" ]]; then
@@ -237,7 +237,7 @@ fi
 # ================================================================
 echo ""
 echo "-- 2. Lista contratti (read-only) --"
-do_curl GET "/api/v1/vendite/contratti/?page=1&page_size=5"
+do_curl GET "/api/v1/vendite/contratti/?limit=5"
 check_status "GET lista contratti" 200 ".data.count" || true
 log_info "contratti totali: ${EXTRACTED:-?}"
 

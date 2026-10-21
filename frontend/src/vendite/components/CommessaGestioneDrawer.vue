@@ -151,10 +151,10 @@ const filtroTipoMovimento = ref(null)
 // ⚠️ Il totale e' il `count` FILTRATO della risposta, non
 //    `stato.total_attivita` (contatore di testata, sempre su TUTTE le righe):
 //    con un filtro attivo il paginatore direbbe 4 righe mostrandone 1.
-const lista = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
+const lista = useListaDrawerPaginata(({ limit, offset, sortBy, sortDir }) =>
   listCommessaAttivita(props.commessaId, {
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
+    limit,
+    offset,
     ...(sortBy ? { order_by: sortBy, order_dir: sortDir } : {}),
     ...(filtroStatoEmissione.value ? { stato_emissione: filtroStatoEmissione.value } : {}),
     ...(filtroTipoMovimento.value ? { tipo_movimento: filtroTipoMovimento.value } : {}),
@@ -577,7 +577,8 @@ const sbloccaMotivo = ref('')
 //        in sola lettura e su riga già fatturata, dove tutte le azioni prezzo
 //        sono legittimamente spente. Guardare un documento non è un'azione di
 //        governo.
-//        Le tre colonne che le alimentano (`sorgente_area`,
+//        Le tre colonne che le alimentano (dal 2026-10-21 `sorgente_apribile`
+//        + `sorgente_codice_interno`, prima `sorgente_area`,
 //        `sorgente_documento_id`, `fattura_id`) arrivano dalla lista dal
 //        2026-08-16 (changeSet 20260816-04): prima si fermavano al database.
 // ─────────────────────────────────────────────────────────────────────────
@@ -611,8 +612,12 @@ function buildRowNavActions(row) {
     // nullo, che copre due casi diversi e ugualmente corretti: la voce
     // manuale (nessun documento a monte) e il documento non visibile a chi
     // guarda (RLS) — in entrambi non c'è nulla da aprire.
+    // ⭐ Il tipo è il codice IMMUTABILE della sorgente, e vale solo se il DB
+    //    dice che il documento ha una pagina (`sorgente_apribile`, fattura e
+    //    reso compresi): brief-db-grammatica-unica-documenti §13.6, 2026-10-21.
+    //    Fino al 2026-10-20 era il plurale `sorgente_area`, ritirato.
     buildApriDocumentoAction({
-      area: row.sorgente_area,
+      area: row.sorgente_apribile ? row.sorgente_codice_interno : null,
       documentoId: row.sorgente_documento_id,
       label: t('vendite.commesse.azione_apri_sorgente'),
       onApri: apriDocumentoDrawer,
@@ -1241,7 +1246,7 @@ const fotoOnere = useFotografiaDialog(() => ({ ...onereForm.value }), { visibile
     </AppDialog>
 
     <!-- Host del drawer documento aperto dal kebab di riga: documento di
-         ORIGINE (tipo dal registry via `sorgente_area`) o FATTURA in cui la
+         ORIGINE (tipo dal registry via `sorgente_codice_interno`) o FATTURA in cui la
          riga è finita. Stesso BB dei drill-down dei cruscotti. -->
     <DocumentoDrawerHost
       :visible="docDrawerVisible"

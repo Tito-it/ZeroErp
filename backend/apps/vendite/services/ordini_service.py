@@ -30,8 +30,7 @@ from apps.config.sorgenti import (
     SORGENTE_PREVENTIVO,
 )
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-from apps.core.api.payload_validators import paginated_envelope
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
@@ -245,40 +244,6 @@ def list_ordini_rows(
         order_dir=order_dir,
         max_limit=max_limit,
     )
-
-
-# Scopo: Lista ordini paginata (envelope standard).
-def list_ordini(
-    *,
-    stato_codice: str | None = None,
-    billing_account_id: int | None = None,
-    utility_id: int | None = None,
-    data_da: date | None = None,
-    data_al: date | None = None,
-    search: str | None = None,
-    auth_user_id: int | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
-    order_by: str = "data",
-    order_dir: str = "desc",
-) -> dict[str, Any]:
-    safe_page = max(1, int(page))
-    safe_size = max(1, min(int(page_size), MAX_LIMIT))
-    offset = (safe_page - 1) * safe_size
-    rows, total = list_ordini_rows(
-        stato_codice=stato_codice,
-        billing_account_id=billing_account_id,
-        utility_id=utility_id,
-        data_da=data_da,
-        data_al=data_al,
-        search=search,
-        auth_user_id=auth_user_id,
-        limit=safe_size,
-        offset=offset,
-        order_by=order_by,
-        order_dir=order_dir,
-    )
-    return paginated_envelope(rows, total, page=safe_page, page_size=safe_size)
 
 
 # Scopo: Etichette leggibili dei filtri applicati per il metadato del file

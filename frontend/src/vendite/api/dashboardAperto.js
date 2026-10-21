@@ -9,7 +9,7 @@ export function getDashboardAperto() {
   return api.get('/vendite/dashboard-aperto/')
 }
 
-// GET /vendite/dashboard-aperto/documenti/?area=&fase=&ritardo_giorni=&order_by=&order_dir=&page=&page_size=
+// GET /vendite/dashboard-aperto/documenti/?area=&fase=&ritardo_giorni=&order_by=&order_dir=&limit=&offset=
 // Drill-down paginato; ordinamento server-side (order_by/order_dir, whitelist
 // BE), default "aperto da" DESC (i piu' in essere da prima).
 export function listDashboardApertoDocumenti(params) {

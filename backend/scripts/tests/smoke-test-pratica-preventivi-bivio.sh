@@ -155,7 +155,7 @@ smoke_cliente_dal_lookup
 PREV_PAYLOAD=""
 [[ -n "$BA_ID" ]] && PREV_PAYLOAD="{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID}, \"istanza_utility_id\": ${ISTANZA_ID}}"
 [[ -z "$PREV_PAYLOAD" ]] && PREV_PAYLOAD=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/vendite/preventivi/?page_size=1" 2>/dev/null | python3 -c "
+    "${BASE_URL}/api/v1/vendite/preventivi/?limit=1" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -173,7 +173,7 @@ log_info "articolo merce = $ARTICOLO_ID"
 
 SERV_CODICE="SMOKE-SERV-UT"
 SERV_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?search=${SERV_CODICE}&page_size=5" 2>/dev/null | python3 -c "
+    "${BASE_URL}/api/v1/catalogo/articoli/?search=${SERV_CODICE}&limit=5" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -228,12 +228,12 @@ run_scenario() {
     check "POST collega-pratica (ROOT)" 200 || true
     if [[ "$CON_MERCE" == "1" ]]; then
         do_curl POST "/api/v1/vendite/preventivi/${PREV_ID}/righe/" \
-            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"2\", \"prezzo_unitario\": \"100.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"2\", \"prezzo_unitario\": \"100.00\"}"
         check "POST riga merce" 200 || true
     fi
     if [[ "$CON_SERV" == "1" ]]; then
         do_curl POST "/api/v1/vendite/preventivi/${PREV_ID}/righe/" \
-            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"50.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$SERV_ID\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"50.00\"}"
         check "POST riga servizio" 200 || true
     fi
     # EMESSO via multipart (prereq documentale template/emittente)

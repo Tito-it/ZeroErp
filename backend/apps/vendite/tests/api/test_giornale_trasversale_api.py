@@ -84,7 +84,7 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
         resp = self.client.get(_URL, {
             "gravita": "error, warn", "registro": "event_log,task_run",
             "entity_type": "lotto", "data_da": "2026-09-01", "data_a": "2026-09-19",
-            "filo": _FILO, "solo_vive": "0", "limit": "10", "offset": "20",
+            "filo": _FILO, "solo_vive": "false", "limit": "10", "offset": "20",
         })
         self.assertEqual(resp.status_code, 200, resp.content)
         repo_cls.return_value.list_giornale_trasversale.assert_called_once_with(
@@ -160,5 +160,5 @@ class GiornaleTrasversaleApiTests(JwtMockedApiTest):
         self.assertNotIn("payload", data["results"][0])
         self.assertNotIn("context", data["results"][0])
         # Con le ritirate incluse il totale le conta e il contatore tace.
-        data = self.client.get(_URL, {"solo_vive": "0"}).json()["data"]
+        data = self.client.get(_URL, {"solo_vive": "false"}).json()["data"]
         self.assertEqual((data["count"], data["ritirate_count"]), (7, 0))

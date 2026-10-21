@@ -15,7 +15,6 @@
 #       lo stesso rigore (bool e NaN rifiutati), per tutti.
 # ------------------------------------------------------------
 
-from typing import Any
 
 # Codice di validazione del payload di questo dominio. ⭐ Seminato dal team DB
 # il 2026-08-25 su richiesta del backend: fino ad allora si usava il generico
@@ -36,16 +35,3 @@ E_FATTURA_NON_TROVATA = "E_FATTURA_NON_TROVATA"
 # dal 2026-09-17 la solleva anche «righe da rate» (`pagamenti_service`), e una
 # stringa ripetuta e' gia' divergente il giorno in cui una delle copie cambia.
 E_RATA_NON_TROVATA = "E_RATA_NON_TROVATA"
-
-
-# Scopo: L'involucro paginato, uguale per tutte le liste del dominio.
-def risposta_paginata(
-    results: list[Any], total: int, page: int, page_size: int
-) -> dict[str, Any]:
-    return {
-        "count": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": (total + page_size - 1) // page_size if page_size else 0,
-        "results": results,
-    }

@@ -120,6 +120,14 @@ class CreaRegimeTests(SimpleTestCase):
         self.assertEqual("regime_fiscale_rf", ctx.exception.context.get("field"))
         repo.crea_emittente_fiscale.assert_not_called()
 
+    # ⛔ Una chiave fuori contratto e' un 400, come nella PATCH: fino al
+    #    2026-10-21 la creazione la scartava (brief-be-verifica-documentazione-api §B2).
+    def test_chiave_fuori_contratto_400_prima_di_scrivere(self, mock_repo_cls):
+        svc, repo = self._svc(mock_repo_cls)
+        with self.assertRaises(ServiceError):
+            svc.crea_emittente({"soggetto_id": _SOGGETTO, "codice": "AB", "descrizione": "x"})
+        repo.crea_emittente_fiscale.assert_not_called()
+
 
 # Le colonne della conferma non si scrivono da Python: le deriva il trigger, e
 # il guard DB rifiuta chi le scrive. Il BB di scrittura le ferma PRIMA di aprire

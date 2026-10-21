@@ -469,6 +469,8 @@
       "area": "Area",
       "arrotondamento_decimali": "Rounding decimals",
       "arrotondamento_metodo": "Rounding method",
+      "arrotondamento_importi_dec": "Amount decimals",
+      "metodo_arrotondamento_importi": "Amount rounding",
       "assoggettamento_id": "VAT liability",
       "attende_sorgente_tipo_id": "Waits for source document of type",
       "attivo": "Active",
@@ -622,7 +624,8 @@
     "back_home": "Back to Home",
     "lookup_load_failed": "Could not load the list. Retry or contact the administrator.",
     "bersaglio_apri_senza_id": "Open {entita}",
-    "http_413_file_troppo_grande": "The file is too large: it exceeds the maximum size the server accepts. Use a smaller file."
+    "http_413_file_troppo_grande": "The file is too large: it exceeds the maximum size the server accepts. Use a smaller file.",
+    "soluzione_riprova_fra_poco": "Wait a few seconds and try again: the operation will not be performed twice."
   },
   "placeholder": {
     "wip_title": "Under construction",
@@ -5714,6 +5717,32 @@
       "col_sorgente": "Source",
       "col_emittente": "Issuer",
       "col_is_default": "Default",
+      "col_standard": "Standard",
+      "col_stato_scarto": "Alignment with the standard",
+      "standard_hint": "Standard system template: used by the companies that have no template of their own for this document. It cannot be changed from the application: to change it, customize it for a company.",
+      "scarto": {
+        "ALLINEATA": "Aligned",
+        "ALLINEATA_hint": "The copy starts from the version the standard template prints with today.",
+        "STANDARD_AVANTI": "Standard ahead",
+        "STANDARD_AVANTI_hint": "The standard template has published a new version: the copy works, but lacks its changes.",
+        "CONTESTO_SUPERATO": "Data shape outdated",
+        "CONTESTO_SUPERATO_hint": "The copy reads an older data shape than the standard template: printing will stop. Start again from the standard or update it.",
+        "ORIGINE_NON_DICHIARATA": "Origin not declared",
+        "ORIGINE_NON_DICHIARATA_hint": "The template does not declare which standard version it derives from: only the data shape is compared."
+      },
+      "personalizza": {
+        "action": "Customize",
+        "title": "Customize for a company",
+        "hint": "Creates the company's template from the version the standard prints with today. The first version is a draft: until you publish it, the company keeps printing with the standard.",
+        "nomi_hint": "Empty code, internal code and description: those of the standard template.",
+        "predefinito_auto": "Let the system decide (yes, unless the company already has one)",
+        "done": "Customized template created: publish its first version to use it."
+      },
+      "risoluzione": {
+        "titolo_standard": "Printing with the standard template:",
+        "SENZA_PREDEFINITO": "{azienda}: has its own templates for {documento}, but none is the default. Printing of this document stops: mark one of its templates as default.",
+        "NON_RISOLTO": "{azienda}: no template prints {documento}, not even the standard one. Reactivate the standard template or publish a valid version of it."
+      },
       "field_codice": "Code",
       "field_codice_interno": "Internal code",
       "field_descrizione": "Description",

@@ -39,7 +39,7 @@ dominio va in `core`» — il prossimo (pratiche) lo sposta.
 | `solo_vive` | bool, default `true` | esclude le segnalazioni **ritirate**; `ritirate_count` dice quante. Strict (`qp_bool_optional`): un token non riconosciuto è un 400 |
 | `order_by` | `quando` (default, DESC) \| `gravita` | `gravita` ordina il rango e, dentro, il tempo dal più recente (`_giornale_order_clause`, come sulla Storia). Fuori whitelist → **400** `E_VENDITE_VALIDATION` (un ripiego muto sulla gravità ordinerebbe la lista diversamente da come è stata chiesta) |
 | `order_dir` | `asc` \| `desc` | assente ⇒ `desc` |
-| `limit` / `offset` | int | paginazione offset-based, default `25` / `0`. Fuori limiti non è un `400`: `limit` riportato in `[1, 200]`, `offset` a `≥ 0` (`parse_list_params`) |
+| `limit` / `offset` | int | paginazione offset-based, default `25` / `0`. Fuori limiti è un `400 E_VALIDATION_INPUT` (`limit` fuori da 1..200, `offset` negativo; `parse_list_params` → `pagina_da_query`, dal 2026-10-21: prima si riportava nei limiti) |
 
 ### `GET /api/v1/vendite/giornale/export/?formato=csv|xlsx`
 

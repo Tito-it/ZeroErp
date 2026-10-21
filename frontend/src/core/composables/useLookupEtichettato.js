@@ -31,7 +31,7 @@ import { labelOrCode } from '../utils/i18nLabel'
  * Lookup del catalogo con l'etichetta dichiarata dal DB.
  *
  * @param {Object} sorgente - UNA delle due forme:
- *   - `{ rel, includiObsoleti?, pageSize? }` → il lookup GENERICO di quel
+ *   - `{ rel, includiObsoleti?, limit? }` → il lookup GENERICO di quel
  *     `rel`, chiave e fetch composte da `useLookupCodici` (stessa entry di
  *     un `<LookupSelect rel>` sullo stesso insieme, per costruzione);
  *   - `{ chiave, fetcher, transform? }` → un lookup DEDICATO (es.
@@ -62,7 +62,7 @@ export function useLookupEtichettato(sorgente, {
   const lookup = sorgente?.rel
     ? useLookupCodici(sorgente.rel, {
         includiObsoleti: sorgente.includiObsoleti,
-        pageSize: sorgente.pageSize,
+        limit: sorgente.limit,
         immediate,
       })
     : useGlobalLookup(sorgente.chiave, sorgente.fetcher, {

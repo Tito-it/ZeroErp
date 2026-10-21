@@ -78,13 +78,13 @@ operatore disattivato resta in elenco col tipo `OPERATORE` e `veste_attiva = fal
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `search` | string | no | Ricerca libera sulle colonne che il catalogo della lista `anagrafiche.operatori` accende per l'operatore (le decide il catalogo, non il codice: `ricerca_full` nella configurazione della lista). Sotto 3 caratteri non filtra (nessun 400). Ogni riga porta anche `soggetto_ragione_sociale` (ragione sociale completa del soggetto, `null` senza soggetto) |
-| `is_super_admin` | bool | no | Filtra sul binding SUPER_ADMIN (`1`/`true`/`yes`/`on` = vero, ogni altro valore = falso) |
+| `is_super_admin` | bool | no | Filtra sul binding SUPER_ADMIN: `true`/`false`; ogni altro valore è un 400 `E_VALIDATION_INPUT` (dal 2026-10-20: prima `1`/`yes`/`on` = vero e tutto il resto falso, in silenzio) |
 | `unita_organizzativa_id` | int | no | Filtra per unita' organizzativa |
 | `is_active` | bool | no | Filtra per stato attivo della credenziale (stessa lettura di `is_super_admin`) |
 | `includi_di_prova` | bool | no | `true` mostra anche gli utenti di prova (etichetta del provisioning di sviluppo); assente o `false` li nasconde. Booleano rigoroso: un valore non booleano e' un 400 sul campo |
 | `limit` | int | no | Numero massimo risultati (default 25, max 200) |
 | `offset` | int | no | Offset per paginazione (default 0) |
-| `order_by` | string | no | Colonna di ordinamento: `last_name`, `soggetto_cognome`, `username`, `is_super_admin`, `ruolo_applicativo`, `is_active`, `unita_organizzativa_nome`, `override_count`, `valido_dal`, `valido_al` (NULL = senza scadenza, ordinata come infinito). Fuori whitelist ripiega sull'ordine di default (`soggetto_cognome`, poi `username`, ASC) |
+| `order_by` | string | no | Colonna di ordinamento: `last_name`, `soggetto_cognome`, `username`, `is_super_admin`, `ruolo_applicativo`, `is_active`, `unita_organizzativa_nome`, `override_count`, `valido_dal`, `valido_al` (NULL = senza scadenza, ordinata come infinito). Senza `order_by`: `soggetto_cognome`, poi `username`, ASC. Fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
 | `order_dir` | string | no | `ASC` o `DESC` (altro valore: 400). Senza `order_dir` le colonne data (`valido_dal`, `valido_al`) partono DESC, le altre ASC |
 
 **Risposta:**
@@ -378,6 +378,9 @@ flag sono ortogonali, e nessuno dei due si traduce in `ruolo_sistema`:
 **Regole:**
 
 - Il payload con `ruolo_sistema` viene rifiutato con `E_AMM_VALIDAZIONE` (HTTP 400).
+- Una chiave fuori dalla tabella sopra e un corpo senza campi → 400
+  `E_AMM_VALIDAZIONE` (dal 2026-10-20: prima la chiave si scartava e il corpo
+  vuoto rispondeva 200 senza scrivere).
 - `attivo` e `is_super_admin` vogliono un booleano JSON: `"true"`, `"false"`,
   `1`, `0` sono un 400 `E_AMM_VALIDAZIONE` col campo (2026-10-20: prima un
   valore non booleano passava in silenzio e il PATCH rispondeva 200 senza
@@ -1165,7 +1168,7 @@ di configurazione (lista a catalogo `amm.reparti`, contratto di lista standard).
 |---|---|---|
 | `search` | string | Ricerca libera su `descrizione`/`codice` (colonne accese a catalogo, soglia 1 carattere) |
 | `limit` / `offset` | integer | Paginazione (default 25, massimo 200) |
-| `order_by` | string | `descrizione` (default), `codice`, `profilo_aree_count`, `operatori_count`; fuori whitelist = default |
+| `order_by` | string | `descrizione` (default), `codice`, `profilo_aree_count`, `operatori_count`; fuori whitelist → **400** `E_VALIDATION_INPUT` (dal 2026-10-20) |
 | `order_dir` | string | `asc` / `desc` |
 
 Solo i reparti attivi (`attivo = true`).
@@ -1292,6 +1295,11 @@ replace). Invalida la cache permessi di **tutti gli operatori** del reparto.
 
 **Regole:**
 
+- `aree` e `azioni` sono **obbligatorie** (la lista vuota esplicita svuota quella
+  parte del profilo); assenti, o con una voce che non è un oggetto o senza un suo
+  campo → 400 `E_AMM_VALIDAZIONE` col campo, prima di scrivere (dal 2026-10-21:
+  prima una lista assente diventava vuota e svuotava il profilo con un 200, e una
+  chiave mancante era un 500).
 - `uo_id` inesistente → 400 `E_AMM_VALIDAZIONE` («Reparto inesistente»).
 - Il profilo (tipo `REPARTO`, codice `REPARTO_<codice_interno>`) si scrive con
   `config.fn_scrivi_profilo_accesso` e si lega al reparto con

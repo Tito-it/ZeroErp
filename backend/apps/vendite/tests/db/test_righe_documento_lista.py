@@ -28,7 +28,7 @@ Indice test:
  1) test_pagina_parte_dall_ordine_del_documento
  2) test_pagina_filtra_documento_e_righe_attive
  3) test_data_senza_direzione_parte_desc
- 4) test_chiave_fuori_whitelist_ripiega_sull_ordine_del_documento
+ 4) test_chiave_fuori_whitelist_e_rifiutata
  5) test_pagina_rispetta_il_tetto_e_l_export_lo_alza
  6) test_lettura_completa_dalla_vista_attive_in_ordine
  7) test_riga_singola_dalla_vista_solo_attiva
@@ -125,14 +125,13 @@ class RigheDocumentoListaTests(unittest.TestCase):
                     sql, _, _ = _pagina(repo, order_by=colonna, order_dir=None)
                     self.assertIn(f"ORDER BY {repo._righe_ordinamento[colonna]} DESC", sql)
 
-    # Scopo: una chiave che la lista non ordina ripiega sull'ordine del
-    #        documento, invece di finire nel SQL.
-    def test_chiave_fuori_whitelist_ripiega_sull_ordine_del_documento(self):
-        for repo, _, _, ordine, _, _ in _DOCUMENTI:
-            with self.subTest(repo=repo.__name__):
-                sql, _, _ = _pagina(repo, order_by="ragione_sociale_completa; DROP", order_dir="desc")
-                self.assertIn(f"ORDER BY v.{ordine} DESC", sql)
-                self.assertNotIn("DROP", sql)
+    # Scopo: una chiave che la lista non ordina e' un 400 (`order_by_invalid`):
+    #        non finisce nel SQL e non diventa l'ordine del documento in
+    #        silenzio (dal 2026-10-20, brief-be-verifica-documentazione-api §A1).
+    def test_chiave_fuori_whitelist_e_rifiutata(self):
+        for repo, _, _, _ordine, _, _ in _DOCUMENTI:
+            with self.subTest(repo=repo.__name__), self.assertRaisesRegex(ValueError, "order_by_invalid"):
+                _pagina(repo, order_by="ragione_sociale_completa; DROP", order_dir="desc")
 
     # Scopo: la lista resta al cap standard per pagina; l'export alza il tetto
     #        col suo `max_limit` per accorgersi di un file troncato.

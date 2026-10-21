@@ -1,8 +1,8 @@
 # Brief DB — Una sola grammatica per i tipi di documento
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-20
+## ⏭️ Chi riparte — aggiornato al 2026-10-21
 
-**Riparte: il team DB** col §13.6, poi la sessione BE/FE per il solo FE dell'apertura dalla commessa (6-octies-i). Il giro BE/FE del §13.4 è chiuso e **da committare** (Tid). Il giro DB 2c-2e è
+**Riparte: Tid**, col commit del giro BE/FE del §13.6 (6-octies-i) e le prove a video; poi il **lotto 3** (note) col suo via, e il lotto 4. Il §13.6 è chiuso su DB (`20261021-18` … `-20`, commit `2ada3f6d1`) e su BE/FE. Il giro BE/FE del §13.4 è committato (`42c0d29ea`, PR #1913). Il giro DB 2c-2e è
 chiuso e mergiato su `Tito-dev` (PR #1910): `20261020-32` … `-98` applicati su dbdev, pgTAP come app verdi dopo
 l'adeguamento del §13.5-ter, SQL una tantum
 [sql-una-tantum-2e-chiavi-e-registri.sql](sql-una-tantum-2e-chiavi-e-registri.sql) eseguito su dbdev (2026-10-20). Le prove a video Tid le fa tutte alla fine. Il 2a e
@@ -44,12 +44,12 @@ il 2b sono chiusi su DB e BE/FE; i lotti 0 e 1 pure.
 | 6-octies-f-bis | ✅ team DB | La corsa come app ha dato 16 rossi nuovi: test col vocabolario ritirato. Adeguati, più sette file dal censimento (2026-10-20) | §13.5-ter | 6-octies-f |
 | 6-octies-f-ter | ✅ **Tid** | Nuova corsa dei pgTAP come app sui 23 file adeguati: verdi (2026-10-20) | §13.5-ter | 6-octies-f-bis |
 | 6-octies-g | ✅ sessione BE/FE | Il giro BE/FE dei sotto-giri 2c-2e, chiamata reale su dbdev (2026-10-20): mixin indirizzi su un codice solo; dashboard sui codici delle sorgenti e `documento_apribile` (BE e FE); lista attività di commessa su `sorgente_apribile` (BE); famiglie create da una sorgente (endpoint `famiglie/sorgenti/`, drawer, policy rigenerate, ripiego del codice nuovo); chiavi del push e registri (commenti, test, smoke). Suite Django intera col DB vero verde; **da committare** | §13.4 | 6-octies-f |
-| 6-octies-h | team DB | `fn_list_commessa_attivita` col `codice_interno` della sorgente (`sorgente_codice_interno`), whitelist d'ordinamento e `lista_colonna.csv`; `famiglie_documento.codice` a `varchar(50)` | §13.6 | — |
-| 6-octies-i | sessione BE/FE | Il FE dell'apertura del documento d'origine dalla commessa, fattura e reso compresi | §13.6 | 6-octies-h |
+| 6-octies-h | ✅ team DB | `fn_list_commessa_attivita` con `sorgente_codice_interno` e in più `sorgente_etichetta` (lista e ordinamento sull'etichetta); `famiglie_documento.codice` a `varchar(50)`; `20261021-18` … `-20` applicati su dbdev (2026-10-21) | §13.6.1 | — |
+| 6-octies-i | ✅ sessione BE/FE | Colonne e whitelist d'ordinamento del repository, apertura del documento d'origine dalla commessa (fattura e reso compresi) col BB `buildApriDocumentoAction`, test, chiamata reale su dbdev (2026-10-21); **da committare** | §13.6.2 | 6-octies-h |
 | 6-sexies | team DB, poi sessione BE/FE | Sotto-giri 2c, 2d, 2e insieme (un apply; con lo SQL una tantum delle chiavi su dbdev, G-8), poi un giro BE/FE; lotto 3 anticipabile; censimento su `pg_get_functiondef`, non su `prosrc` (§12.3) | §10, §10.4, §5 G-4 | 6-octies-b |
 | 7 | chi chiude | Lotto 4: presidio, ritiro del ponte di `fn_articolo_riga_contesto` (se non già nel 2), riga di PROJECT_CONTEXT, archiviazione | §5 G-4 | 6-sexies |
 
-**Decisioni aperte di Tid:** nessuna sul giro 2c-2e (L2e-2 = (a), L2c-1 = (a) in questo giro, 2026-10-20); il giro DB 2c-2e è committato (PR #1910); il giro BE/FE del §13.4 è **da committare** a fine giro; il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
+**Decisioni aperte di Tid:** nessuna sul giro 2c-2e (L2e-2 = (a), L2c-1 = (a) in questo giro, 2026-10-20); il giro DB 2c-2e è committato (PR #1910); il giro BE/FE del §13.4 è committato (PR #1913), quello del §13.6 è **da committare**; il blocco «origine» della stampa della fattura, che non si vede mai (§12.9, in fondo). Il giro DB dei
 §12.8 e §12.9 (§12.10) è committato (PR #1904); il giro BE del §12.10.6 è committato (`323c96a5c`, PR #1907). Verificato su dbdev il 2026-10-20: lo standard e le
 copie degli emittenti 32 e 44 stampano l'ordine in forma 3, e nessuno legge più `origine.tipo`. Lo SQL una tantum
 di L2b-2 resta accanto al brief fino all'archiviazione. Il §12.8 è partito il 2026-10-19 sera, insieme al
@@ -1746,3 +1746,37 @@ errore generico. Oggi il codice più lungo fra le sorgenti di documento è `OFFE
 motivo per cui non si vede, non una ragione per tenerlo. Per G-3 («il vincolo si adegua al nome») la proposta è
 `famiglie_documento.codice` a `varchar(50)`, con i dipendenti che lo leggono. Il frontend si adegua nello stesso
 giro (`FIELD_LENGTH.FAMIGLIA_CODICE_OPERATORE_MAX`).
+
+#### 13.6.1 La consegna del team DB (commit `2ada3f6d1`, applicata su dbdev il 2026-10-21)
+
+Ricostruita dalla sessione BE/FE sul repo e sul catalogo vivo, perché il brief non la registrava.
+
+| ChangeSet | Che cosa | Rispetto alla richiesta |
+| --- | --- | --- |
+| `20261021-18` | `famiglie_documento.codice` a `varchar(50)` | come chiesto |
+| `20261021-19` | `vw_famiglie_documento_lista` ricreata sul codice a 50 | il dipendente |
+| `20261021-20` | `fn_list_commessa_attivita`: esce `sorgente_codice` (`s.codice`), entra `sorgente_codice_interno` (`s.codice_interno`) nella stessa posizione | come chiesto |
+| idem | entra `sorgente_etichetta` (`s.etichetta`), ultima colonna; l'ordinamento è su `sorgente_etichetta` | **in più**: la lista mostra e ordina il nome a video («Ordine»), il codice immutabile resta per aprire il documento |
+| `lista_colonna.csv` riga 488 | «Tipo origine» legge `sorgente_etichetta` | diverso dalla richiesta (`sorgente_codice_interno`), ed è meglio: a video va il nome, non il codice |
+
+⚠️ Fra l'apply e il giro BE la lista attività di commessa su dbdev andava in errore (il backend chiedeva
+`sorgente_codice`): è il costo di un apply che cambia una `RETURNS TABLE` prima del suo consumatore.
+
+#### 13.6.2 Il giro BE/FE (sessione BE/FE, 2026-10-21)
+
+* **Backend.** `commesse_repository.py`: `_ATTIVITA_COLS` con `sorgente_codice_interno` e `sorgente_etichetta` in
+  coda; `ATTIVITA_SORT_COLUMNS` con `sorgente_etichetta` al posto di `sorgente_codice` (specchio della whitelist
+  della funzione, lo presidia `test_liste_configurabili_seed`). Test del repository sulla riga nuova. Chiamata
+  reale su dbdev: la lista risponde (`ORDINE_VENDITA`, «Ordine», apribile).
+* **Frontend.** Il BB `buildApriDocumentoAction` (`vendite/dashboardAree.js`) apre anche un documento che non è
+  un'area del cruscotto, se il codice è una sorgente con drawer iscritto (la fattura); la voce del cruscotto, quando
+  c'è, vince (la commessa apre la gestione). `CommessaGestioneDrawer` gli passa `sorgente_codice_interno` quando
+  `sorgente_apribile` è vero. Spec nuovo `dashboardAree.spec.js` (4); i test FE di vendite, core e amministrazione
+  verdi.
+* **Doc.** `api_commessa_attivita.md`, catalogo BB frontend.
+* ⚠️ **Fuori da questo brief, trovato nella stessa corsa:** `test_liste_configurabili_seed` è rosso su
+  `documenti.template_documenti`: il commit DB `2ada3f6d1` (brief-db-modelli-documento-standard) ha una colonna
+  ordinabile `standard` che la whitelist del repository dei template non ha. È del cantiere dei modelli di
+  documento. ✅ Corretto su richiesta di Tid (2026-10-21): `"standard": "t.standard"` in
+  `TEMPLATES_ORDER_COLUMNS` (`apps/documenti/db/documenti_repository.py`); seed e test di `apps.documenti` verdi,
+  ordinamento provato su dbdev nei due versi. Annotato anche in brief-db-modelli-documento-standard.

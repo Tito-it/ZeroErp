@@ -53,7 +53,7 @@ class CercaBillingAccountTool(AITool):
                         "type": "boolean",
                         "description": "Se true (default), restituisce solo BA validi alla data odierna. Mettere false per includere BA scaduti.",
                     },
-                    "page_size": {
+                    "limit": {
                         "type": "integer",
                         "description": "Numero risultati (default 10, max 50).",
                     },
@@ -85,7 +85,7 @@ class CercaBillingAccountTool(AITool):
             utility_id=params.get("utility_id"),
             solo_validi=solo_validi,
             valid_at=valid_at,
-            limit=self.safe_page_size(params),
+            limit=self.safe_limit(params),
         )
 
         items = response.get("results", []) if isinstance(response, dict) else []

@@ -7,11 +7,10 @@
 #        documento_generati_file, evento, lookup tipo file). Mocka
 #        `connection.cursor` per non richiedere DB reale (regola CI).
 #        Verifica:
-#         - risolvi_template_applicabile: chiama
-#           `documenti.fn_risolvi_template_applicabile` coi tre argomenti (il
-#           tipo assente arriva NULL), zero righe = invariante rotta;
-#         - get_versione_pubblicata_attiva: filtra `stato='PUBBLICATA'`,
-#           `attivo=true`, `validita @> %s::date`, ORDER BY versione DESC;
+#         - risolvi_template_applicabile: chiama la porta unica
+#           `documenti.fn_risolvi_template_applicabile` coi quattro argomenti
+#           (tipo e modello indicato assenti arrivano NULL), zero righe =
+#           invariante rotta;
 #         - next_progressivo_sorgente: COALESCE MAX+1 con branching
 #           IS NULL vs `=` su `sorgente_riga`;
 #         - create_documento_generato: INSERT solo colonne whitelisted in
@@ -26,8 +25,7 @@
 #   0. risolvi_template_applicabile_chiama_la_funzione_db
 #   1. risolvi_template_applicabile_con_tipo_output
 #   2. risolvi_template_applicabile_zero_righe_invariante
-#   4. get_versione_pubblicata_attiva_filtra_stato_attivo_validita
-#   5. get_versione_pubblicata_attiva_returns_none_when_no_match
+#   3. risolvi_template_applicabile_col_modello_indicato
 #   6. next_progressivo_sorgente_riga_null_branch
 #   7. next_progressivo_sorgente_riga_valorizzata_branch
 #   8. create_documento_generato_inserts_whitelisted_returns_id_and_uid
@@ -41,7 +39,6 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -98,8 +95,8 @@ def _columns(*names: str) -> list[Any]:
 class RisolviTemplateApplicabileTests(TestCase):
     """Test risolvi_template_applicabile: la regola e' della funzione DB."""
 
-    # 0. chiama la funzione DB coi tre argomenti, ritorna id, livello e la
-    #    versione che stampa (P-2).
+    # 0. chiama la porta coi quattro argomenti, ritorna id, livello e la
+    #    versione che stampa.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_risolvi_template_applicabile_chiama_la_funzione_db(
         self, mocked_factory
@@ -123,9 +120,10 @@ class RisolviTemplateApplicabileTests(TestCase):
         )
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("template_versione_id", sql)
-        self.assertIn("documenti.fn_risolvi_template_applicabile(%s, %s, %s)", sql)
+        self.assertIn("documenti.fn_risolvi_template_applicabile(%s, %s, %s, %s)", sql)
         # Il tipo assente arriva NULL: lo deduce il DB, non un ORDER BY qui.
-        self.assertEqual(params, [10, 11, None])
+        # Nessun modello indicato: quarto argomento NULL, i due livelli.
+        self.assertEqual(params, [10, 11, None, None])
         self.assertNotIn("LIMIT", sql)
 
     # 1. tipo_documento_output_id passato -> terzo argomento.
@@ -146,7 +144,7 @@ class RisolviTemplateApplicabileTests(TestCase):
             tipo_documento_output_id=5,
         )
         _sql, params = cursor.execute.call_args_list[0].args
-        self.assertEqual(params, [10, 11, 5])
+        self.assertEqual(params, [10, 11, 5, None])
 
     # 2. zero righe senza errore: la funzione non lo fa mai, e' un'invariante
     #    rotta -> RuntimeError, non un None che il service leggerebbe come 404.
@@ -169,55 +167,32 @@ class RisolviTemplateApplicabileTests(TestCase):
             )
 
 
-class GetVersionePubblicataAttivaTests(TestCase):
-    """Test get_versione_pubblicata_attiva: stato + validita."""
+class RisolviTemplateIndicatoTests(TestCase):
+    """Il modello indicato passa dalla stessa porta (K-2), quarto argomento."""
 
-    # 4. WHERE filtra stato='PUBBLICATA', attivo=true, validita @> today::date.
+    # 3. template_documento_id -> quarto argomento; il DB lo verifica e
+    #    risponde col livello INDICATO e la versione con cui stampa oggi.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
-    def test_get_versione_pubblicata_attiva_filtra_stato_attivo_validita(
+    def test_risolvi_template_applicabile_col_modello_indicato(
         self, mocked_factory
     ) -> None:
         cursor = _mk_cursor(
             fetchone_results=[None],
-            descriptions=[_columns("id", "versione", "stato")],
-            fetchall_results=[[(99, 3, "PUBBLICATA")]],
+            descriptions=[_columns("template_documento_id", "livello", "template_versione_id")],
+            fetchall_results=[[(42, "INDICATO", 99)]],
         )
         mocked_factory.return_value = cursor
 
-        today = date(2026, 5, 4)
-        row = DocumentiRepository().get_versione_pubblicata_attiva(
-            42, today=today,
+        row = DocumentiRepository().risolvi_template_applicabile(
+            sorgente_tipo_id=10,
+            emittente_fiscale_id=11,
+            tipo_documento_output_id=5,
+            template_documento_id=42,
         )
-
-        self.assertEqual(
-            row, {"id": 99, "versione": 3, "stato": "PUBBLICATA"},
-        )
-        sql, params = cursor.execute.call_args_list[0].args
-        self.assertIn("v.template_documento_id = %s", sql)
-        self.assertIn("v.stato = 'PUBBLICATA'", sql)
-        self.assertIn("v.attivo = true", sql)
-        self.assertIn("v.validita @> %s::date", sql)
-        self.assertIn("ORDER BY v.versione DESC", sql)
-        self.assertIn("LIMIT 1", sql)
-        self.assertEqual(params, [42, today])
-
-    # 5. nessun match -> None.
-    @patch("apps.documenti.db.documenti_repository.connection.cursor")
-    def test_get_versione_pubblicata_attiva_returns_none_when_no_match(
-        self, mocked_factory
-    ) -> None:
-        cursor = _mk_cursor(
-            fetchone_results=[None],
-            descriptions=[_columns("id")],
-            fetchall_results=[[]],
-        )
-        mocked_factory.return_value = cursor
-
-        self.assertIsNone(
-            DocumentiRepository().get_versione_pubblicata_attiva(
-                42, today=date(2026, 5, 4),
-            )
-        )
+        self.assertEqual(row["livello"], "INDICATO")
+        self.assertEqual(row["template_versione_id"], 99)
+        _sql, params = cursor.execute.call_args_list[0].args
+        self.assertEqual(params, [10, 11, 5, 42])
 
 
 class NextProgressivoSorgenteTests(TestCase):

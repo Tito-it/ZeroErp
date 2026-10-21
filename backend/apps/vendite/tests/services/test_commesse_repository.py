@@ -645,6 +645,7 @@ class CommesseRepositoryUnitTests(TestCase):
             "ART001", "Articolo di prova",       # articolo_codice, _descrizione
             "ORD0000227",                        # sorgente_documento_numero
             "ORDINE_VENDITA:019fc716-7386-7b0d-9c26-0a4d30f3a022",  # gruppo_key
+            "Ordine",                            # sorgente_etichetta (20261021-20)
         )
         # Due execute: 1) COUNT → fetchone, 2) data → fetchall.
         mock_cursor_factory.return_value = _mock_cursor(
@@ -685,6 +686,11 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertEqual(row["fattura_stato"], "DEFINITIVA")
         self.assertIs(row["sorgente_apribile"], True)
         self.assertEqual(row["sorgente_documento_id"], 100)
+        # §13.6 (20261021-20): il codice IMMUTABILE della sorgente, e l'etichetta
+        # in coda — posizionale, come le altre.
+        self.assertEqual(row["sorgente_codice_interno"], "PREVENTIVO")
+        self.assertNotIn("sorgente_codice", row)
+        self.assertEqual(row["sorgente_etichetta"], "Ordine")
         # Seconda execute (data query) contiene fn_list_commessa_attivita.
         sql = mock_cursor_factory.return_value.execute.call_args[0][0]
         self.assertIn("fn_list_commessa_attivita", sql)

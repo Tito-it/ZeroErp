@@ -33,8 +33,11 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
     precedente a `competenza_mese`. Richiede `competenza_mese` (senza → `400`
     `E_VENDITE_VALIDATION`, `context.field = "competenza_mese"`). Stesso parametro
     su `lotti/export/`
-  - `page` (int) — numero pagina, default `1`
-  - `page_size` (int) — righe per pagina, default `25`, max `200`
+  - `limit` (int) — righe per pagina, default `25`, max `200`; fuori da 1..200 → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_200`)
+  - `offset` (int) — righe da saltare, default `0`; negativo → 400 (`offset_negativo`)
+  - ⛔ `page`/`page_size` sono un **400** `E_VALIDATION_INPUT` (dal 2026-10-21:
+    fino a quel giorno erano il contratto di questa lista). La risposta porta
+    ancora `page`/`page_size`, ricavati da `limit`/`offset`
   - `order_by` (string) — colonna di ordinamento, da **whitelist**
     (`VenditeRepository.LOTTI_SORT_COLUMNS`); la chiave è il `campo_sorgente` del
     catalogo liste, non il `codice` logico
@@ -87,9 +90,12 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 }
 ```
 - `400`:
-  - `E_VENDITE_VALIDATION` — `page`/`page_size` fuori limiti, `stato_lotto` fuori
-    vocabolario, `recuperi_mese` senza `competenza_mese`
-  - `E_VALIDATION_INPUT` — un intero o una data non leggibili (`page=abc`)
+  - `E_VENDITE_VALIDATION` — `stato_lotto` fuori vocabolario, `recuperi_mese`
+    senza `competenza_mese`
+  - `E_VALIDATION_INPUT` — un intero o una data non leggibili (`limit=abc`:
+    `limit_invalid`), `limit` fuori da 1..200, `offset` negativo,
+    `page`/`page_size` presenti
+    (`page_non_ammesso_usare_limit_offset`)
   - `E_SEARCH_VALIDATION` — `order_by` fuori whitelist o `order_dir` non ammessa
 - `401`: JWT mancante o non valido
 
@@ -111,13 +117,15 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
   perimetro suo, l'anno — nello **stesso frammento** `_LOTTI_COND_NON_ABORTITO`
   con la stessa `JOIN` su `sdf`. Non spariscono in silenzio: `annullati_count`
   è «quante righe **questo** filtro lascia fuori» (BB `conta_con_perimetro`,
-  stato compreso — pattern `archiviate_count` delle code), e `?annullati=1` li
+  stato compreso — pattern `archiviate_count` delle code), e `?annullati=true` li
   rimette dentro ovunque. Presidio:
   `apps/vendite/tests/services/test_lotti_annullati_fuori_perimetro.py`
   (i tre valori sotto `EXPLAIN` sul DB provvisto, e la quadratura mostrati +
   nascosti = tutti).
 - Tutti i filtri sono opzionali; assenza o valore vuoto equivale a nessun filtro.
-- `page` deve essere >= 1; `page_size` deve essere compreso tra 1 e 200.
+- Finestra `limit`/`offset` letta da `pagina_da_query`: non intera o fuori
+  limiti è un 400 `E_VALIDATION_INPUT` (dal 2026-10-21; prima si riportava nei
+  limiti in silenzio).
 - Ordinamento: **`data_insert DESC, id DESC` è il DEFAULT**, non un vincolo — la
   lista accetta `order_by`/`order_dir` su whitelist, con tiebreak deterministico.
   ⚠️ La riga precedente diceva «ordinamento fisso»: era falsa, corretta il
@@ -176,6 +184,9 @@ Endpoint di sola lettura che interroga direttamente `vendite.fatturazione_lotti`
 
 - Query raw nel repository (`VenditeRepository.list_lotti`); nessuna funzione SQL dedicata.
 - Due query per request: `COUNT(*)` + dati con `LIMIT/OFFSET` (pattern offset pagination).
+- 2026-10-21: la finestra passa da `page`/`page_size` a `limit`/`offset`
+  (`pagina_da_query`, un dialetto solo per tutte le liste); `page`/`page_size`
+  in query diventano un 400. Envelope di risposta invariato.
 - ⛔ **Il payload lo compone `_LOTTO_SELECT_COLS`, non una vista**: `vendite.lotti`
   è l'unica delle liste documento **senza `vista_sql`**. Chi aggiunge una colonna
   al catalogo (`ui.lista_colonna`) deve quindi aggiungerla **prima** qui, o la
@@ -261,7 +272,7 @@ colonna nuova); le sotto-risorse restano endpoint separati (`fatture/`,
 
 ## Conteggio lotti per mese
 
-- `GET /api/v1/vendite/lotti/mensile/?anno=YYYY[&annullati=1]`
+- `GET /api/v1/vendite/lotti/mensile/?anno=YYYY[&annullati=true]`
 - `anno` default l'anno corrente; ammesso `2000`–`2100`, fuori → `400`
   `E_VENDITE_VALIDATION`.
 - Nessun filtro stato; gli annullati restano fuori come nella lista.

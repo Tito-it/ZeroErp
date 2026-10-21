@@ -195,15 +195,17 @@ class FamiglieDocumentoService:
                 message="Il codice della famiglia non può essere vuoto.",
                 context={"field": "codice"},
             )
+        # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+        #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+        self._v.require_campi_da_aggiornare(dati)
         try:
             with transaction.atomic():
                 toccate = self.repo.update_famiglia(famiglia_id, dati)
         except IntegrityError as exc:
             self._traduci(exc, dati, in_modifica=True)
-        # ⚠️ `toccate == 0` ha due cause — la famiglia non esiste, oppure il
-        #    payload non portava nessuna colonna scrivibile — e a distinguerle
-        #    e' la rilettura, che nel primo caso solleva 404 ed e' anche cio'
-        #    che si deve restituire nel secondo.
+        # ⚠️ `toccate == 0` vuol dire che la famiglia non esiste (il payload
+        #    vuoto e' gia' un 400, qui sopra): lo dice la rilettura, che
+        #    solleva 404.
         logger.debug("update_famiglia id=%s righe=%s", famiglia_id, toccate)
         return self.get_famiglia(famiglia_id)
 

@@ -13,12 +13,10 @@
 // (es. via useGlobalLookup) e' un'evoluzione successiva quando emergeranno
 // hot path.
 //
-// Idempotency-Key: generata via core/utils/idempotency.generateIdempotencyKey()
-// (wrapper su crypto.randomUUID con fallback per non-secure context).
+// Idempotency-Key: l'`Idempotency-Key` la mette l'interceptor di `core/api.js` (§A5, 2026-10-20).
 
 import { ref, computed } from 'vue'
 import { useApiHandler } from './useApiHandler'
-import { generateIdempotencyKey } from '../utils/idempotency'
 import {
   getListaConfig,
   getListaCatalogo,
@@ -133,8 +131,7 @@ export function useListaConfig(codice, opzioni = {}) {
     dirty.value = true
   }
 
-  // Scopo: Salva la preferenza corrente. Genera Idempotency-Key per la
-  //        request. Dopo successo, ricarica la config dal server (per
+  // Scopo: Salva la preferenza corrente. Dopo successo, ricarica la config dal server (per
   //        riprendere `colonne_nuove=0` e altri side effect).
   //
   // Nota sul reload post-save: se il PUT va a buon fine ma il GET di
@@ -155,9 +152,8 @@ export function useListaConfig(codice, opzioni = {}) {
     // il PUT le invierebbe ma il PayloadValidator BE le rifiuterebbe
     // con E_UI_PREFERENZA_VALIDAZIONE: errore parlante, no danni.
     const payload = _extractWritablePayload(config.value)
-    const idempotencyKey = generateIdempotencyKey()
     const result = await execute(
-      () => putListaPreferenza(codice, payload, idempotencyKey),
+      () => putListaPreferenza(codice, payload),
     )
     if (result !== null) {
       // Reload per riallineare lo snapshot con la versione canonica BE.
@@ -192,12 +188,10 @@ export function useListaConfig(codice, opzioni = {}) {
 
   // Scopo: DEF-2 — "Ignora" banner preset aggiornato. POST tombstone +
   //        reload per riallineare `config.value.preset_aggiornato` a false.
-  //        Idempotency-Key generata per request (handle_post_json strong
-  //        mode lato BE). Toast/error gestito da useApiHandler.
+  //        La Idempotency-Key la mette l'interceptor di `core/api.js`. Toast/error gestito da useApiHandler.
   async function ignorePresetUpdate() {
-    const idempotencyKey = generateIdempotencyKey()
     const result = await execute(
-      () => apiIgnorePresetUpdate(codice, idempotencyKey),
+      () => apiIgnorePresetUpdate(codice),
     )
     if (result !== null) {
       await load()

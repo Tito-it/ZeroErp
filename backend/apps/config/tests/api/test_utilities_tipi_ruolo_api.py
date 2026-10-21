@@ -31,7 +31,8 @@ Indice test eseguiti:
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 from apps.core.services.service_errors import ServiceError
@@ -48,7 +49,7 @@ class TestUtilitiesTipiRuoloGet(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)
@@ -120,7 +121,7 @@ class TestUtilitiesTipiRuoloPost(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)
@@ -199,7 +200,7 @@ class TestUtilitiesTipiRuoloPatch(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)
@@ -258,7 +259,7 @@ class TestUtilitiesTipiRuoloUsage(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=True)
@@ -306,7 +307,7 @@ class TestUtilitiesTipiRuoloAdminRequired(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM, return_value=False)

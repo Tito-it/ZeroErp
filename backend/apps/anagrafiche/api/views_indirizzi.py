@@ -96,6 +96,9 @@ class IndirizziCheckDuplicatoView(DomainAPIView):
     """POST check duplicato indirizzo. Due flussi:
     A) stradario_id diretto, B) stradario_generale_id + comune_id."""
     area_funzionale = "anagrafiche"
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=inline_serializer(name="IndirizzoCheckDupReq", fields={

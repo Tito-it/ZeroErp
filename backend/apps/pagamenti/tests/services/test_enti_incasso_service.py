@@ -21,7 +21,7 @@ Indice test eseguiti:
 8)  CreaEnteTests.test_tipo_normalizzato_maiuscolo
 9)  CreaEnteTests.test_codice_e_descrizione_obbligatori
 10) PatchTests.test_codice_interno_non_e_aggiornabile
-11) PatchTests.test_patch_vuoto_non_scrive
+11) PatchTests.test_patch_vuoto_rifiutato
 12) PatchTests.test_canale_inesistente_404
 13) ListaTests.test_tipo_fuori_vocabolario_rifiutato
 14) ListaTests.test_ordinamento_fuori_whitelist_rifiutato
@@ -147,8 +147,10 @@ class PatchTests(_Base):
             enti_incasso_service.aggiorna_ente_incasso(4, {"codice_interno": "X"})
         self.repo.update_ente_incasso.assert_not_called()
 
-    def test_patch_vuoto_non_scrive(self):
-        enti_incasso_service.aggiorna_ente_incasso(4, {})
+    # ⛔ Un PATCH senza campi e' un 400 (Tid, 2026-10-20, §A2), e non scrive.
+    def test_patch_vuoto_rifiutato(self):
+        with self.assertRaises(ServiceError):
+            enti_incasso_service.aggiorna_ente_incasso(4, {})
         self.repo.update_ente_incasso.assert_not_called()
 
     # Scopo: un canale inesistente risponde 404, e lo si verifica sullo STATO

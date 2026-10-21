@@ -124,19 +124,21 @@ class GiornaleEntitaApiTests(JwtMockedApiTest):
                 self.assertEqual(resp.status_code, 400, resp.content)
 
     # 7. ⚠️ Il vecchio contratto non ha piu' effetto: la lista manda `order_by`
-    #    e `limit`, e una view che leggesse ancora `sort_by`/`page_size`
-    #    ordinerebbe e paginerebbe diversamente da come la lista chiede.
+    #    e `limit`; `sort_by` si ignora, `page_size` e' un 400 (§A3).
     @_AUTH
     @patch(_REPO)
     def test_vecchio_contratto_non_letto(self, repo_cls, _auth) -> None:
         repo = repo_cls.return_value
         repo.get_lotto.return_value = {"id": 6260}
         repo.list_giornale_lotto.return_value = ([], 0, 0, 0)
-        resp = self.client.get(_URL_LOTTO, {"sort_by": "gravita", "page_size": "3"})
+        resp = self.client.get(_URL_LOTTO, {"sort_by": "gravita"})
         self.assertEqual(resp.status_code, 200, resp.content)
         chiamata = repo.list_giornale_lotto.call_args.kwargs
         self.assertEqual(chiamata["sort_by"], "quando")
-        self.assertNotEqual(chiamata["limit"], 3)
+        # ⛔ Dal 2026-10-20 `page_size` su una lista a `limit`/`offset` e' un
+        #    400, non un parametro ignorato (brief-be-verifica-documentazione-api §A3).
+        resp = self.client.get(_URL_LOTTO, {"page_size": "3"})
+        self.assertEqual(resp.status_code, 400, resp.content)
 
     # 8. ⭐ Il cancello (`initial()`) legge l'emittente dalla query col nome che
     #    la view dichiara: e' cio' che non sbarra (422) chi vede piu' emittenti

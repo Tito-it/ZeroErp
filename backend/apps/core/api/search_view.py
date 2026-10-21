@@ -14,9 +14,10 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
+from apps.core.api.openapi_params import parametri_finestra
 from apps.core.api.base_views import DomainAPIView
 
-from apps.core.api.payload_validators import paginated_envelope, qp_int_optional, qp_int_strict, qp_str
+from apps.core.api.payload_validators import envelope_da_offset, pagina_da_query, qp_int_optional, qp_str
 from apps.core.api.search_validators import require_min_search_length, validate_order_params
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
@@ -28,7 +29,6 @@ from apps.core.services.service_errors import ServiceError
 
 
 # Limiti paginazione per la ricerca
-_PAGE_SIZE_MIN = 1
 _PAGE_SIZE_MAX = 100
 _PAGE_SIZE_DEFAULT = 25
 
@@ -119,20 +119,7 @@ class SearchUniversaleView(DomainAPIView):
                 required=True,
                 description="ID tipo ruolo (obbligatorio). Solo tipi con ricerca_visibile=true: gli altri 404 E_TIPO_RUOLO_NON_RICERCABILE.",
             ),
-            OpenApiParameter(
-                name="page",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Numero pagina (default 1).",
-            ),
-            OpenApiParameter(
-                name="page_size",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Dimensione pagina (default 25, max 100).",
-            ),
+            *parametri_finestra(default_limit=_PAGE_SIZE_DEFAULT, max_limit=_PAGE_SIZE_MAX),
             OpenApiParameter(
                 name="order_by",
                 type=str,
@@ -185,24 +172,12 @@ class SearchUniversaleView(DomainAPIView):
 
         tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params)
 
-        page = qp_int_strict(request.query_params.get("page"), "page", 1)
-        page_size = qp_int_strict(
-            request.query_params.get("page_size"), "page_size", _PAGE_SIZE_DEFAULT
+        # La finestra dal BB: dal 2026-10-21 un dialetto solo, `limit`/`offset`
+        # (`page`/`page_size` sono un 400). Oltre il massimo della ricerca la
+        # finestra si riporta nei limiti, come ogni lista.
+        limit, offset = pagina_da_query(
+            request.query_params, default_limit=_PAGE_SIZE_DEFAULT, max_limit=_PAGE_SIZE_MAX,
         )
-
-        # Validazione range paginazione
-        if page < 1:
-            raise ServiceError(
-                code="E_SEARCH_VALIDATION",
-                message="Parametri paginazione non validi.",
-                detail="page deve essere >= 1.",
-            )
-        if not (_PAGE_SIZE_MIN <= page_size <= _PAGE_SIZE_MAX):
-            raise ServiceError(
-                code="E_SEARCH_VALIDATION",
-                message="Parametri paginazione non validi.",
-                detail=f"page_size deve essere compreso tra {_PAGE_SIZE_MIN} e {_PAGE_SIZE_MAX}.",
-            )
 
         # Ordinamento opzionale
         order_by, order_dir = validate_order_params(
@@ -210,17 +185,16 @@ class SearchUniversaleView(DomainAPIView):
             qp_str(request.query_params.get("order_dir")),
         )
 
-        offset = (page - 1) * page_size
         results, total_count = SearchRepository().search_soggetti(
             search_term=q,
             tipo_ruolo_id=tipo_ruolo_id,
-            limit=page_size,
+            limit=limit,
             offset=offset,
             order_by=order_by,
             order_dir=order_dir,
         )
 
-        data = paginated_envelope(results, total_count, page, page_size)
+        data = envelope_da_offset(results, total_count, limit=limit, offset=offset)
         return success_response(data)
 
 

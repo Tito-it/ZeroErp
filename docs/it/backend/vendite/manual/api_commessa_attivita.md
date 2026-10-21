@@ -29,9 +29,9 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
   - `stato_approvazione` (string) — vocabolario chiuso `BOZZA` | `APPROVATA` | `RIFIUTATA`
   - `competenza_mese` (date `YYYY-MM-DD`) — filtro mese di competenza (normalizzato al primo del mese dal DB)
   - `tipo_movimento` (string) — `NORMALE` | `RETTIFICA` | `ONERE` (spazi/maiuscole tollerati); assente o vuoto = tutti
-  - `limit` (int) — righe per pagina (default 25 `DEFAULT_LIMIT`, range 1-200)
-  - `offset` (int) — offset paginazione (default 0)
-  - `order_by` (string) — whitelist chiusa `ATTIVITA_SORT_COLUMNS`: `id`, `data_attivita`, `competenza_mese`, `segment_key`, `quantita`, `prezzo_snapshot`, `stato_approvazione`, `stato_emissione`, `fatturata_il`, `fattura_numero`, `tipo_movimento`, `articolo_codice`, `articolo_descrizione`, `sorgente_codice`, `sorgente_documento_numero`, `gruppo_key`. Assente = ordine storico per `id`
+  - `limit` (int) — righe per pagina (default 25 `DEFAULT_LIMIT`, range 1-200; fuori → 400 `E_VALIDATION_INPUT`)
+  - `offset` (int) — offset paginazione (default 0; negativo → 400 `E_VALIDATION_INPUT`)
+  - `order_by` (string) — whitelist chiusa `ATTIVITA_SORT_COLUMNS`: `id`, `data_attivita`, `competenza_mese`, `segment_key`, `quantita`, `prezzo_snapshot`, `stato_approvazione`, `stato_emissione`, `fatturata_il`, `fattura_numero`, `tipo_movimento`, `articolo_codice`, `articolo_descrizione`, `sorgente_etichetta`, `sorgente_documento_numero`, `gruppo_key`. Assente = ordine storico per `id`
   - `order_dir` (string) — `asc` | `desc` (default `asc` per qualunque colonna, date comprese: il service passa `asc` alla fn)
 
 ## Output
@@ -66,7 +66,7 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
         "stato_approvazione": "APPROVATA",
         "stato_emissione": "NON_EMESSA",
         "sorgente_tipo_id": 1,
-        "sorgente_codice": "PREVENTIVO",
+        "sorgente_codice_interno": "PREVENTIVO",
         "meta": {},
         "data_update": "2026-02-26T10:00:00+00:00",
         "fatturata": false,
@@ -89,7 +89,7 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 }
 ```
 
-- `400`: parametri non validi (`E_COMMESSA_VALIDATION`) — `commessa_id` ≤ 0, `limit` fuori range 1-200, `order_by` fuori whitelist, `order_dir` diverso da asc/desc, `tipo_movimento`, `stato_emissione` o `stato_approvazione` fuori vocabolario (questi ultimi due col campo; fino al 2026-10-20 un valore sbagliato rispondeva lista vuota)
+- `400`: parametri non validi (`E_COMMESSA_VALIDATION`) — `commessa_id` ≤ 0, `order_by` fuori whitelist, `order_dir` diverso da asc/desc, `tipo_movimento`, `stato_emissione` o `stato_approvazione` fuori vocabolario (questi ultimi due col campo; fino al 2026-10-20 un valore sbagliato rispondeva lista vuota)
 - `422`: `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` — cancello perimetro emittente (`lista_codice = "vendite.commesse_attivita"`)
 - Commessa inesistente o fuori perimetro: **nessun 404**, `200` con `count: 0` e `results: []`
 
@@ -98,11 +98,12 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 - Endpoint read-only, nessuna `Idempotency-Key` richiesta.
 - Endpoint v1 richiede JWT.
 - `commessa_id` deve essere > 0, altrimenti errore di validazione.
-- `limit` validato nel service: deve essere compreso tra 1 e 200.
+- La finestra la valida la view (`pagina_da_query`): `limit`/`offset` non interi, `limit` fuori da 1..200 o `offset` negativo → 400 `E_VALIDATION_INPUT`. Dal 2026-10-21 il service non ripete il controllo (prima `E_COMMESSA_VALIDATION`).
 - `competenza_mese` parsata via `optional_iso_date` e passata come `date` al repository.
 - La funzione DB normalizza `competenza_mese` al primo del mese (`date_trunc`).
-- JOIN su `config.sorgenti` per risolvere `sorgente_codice` (evita N+1 lato client).
-- `sorgente_apribile` (dal 2026-10-20, al posto di `sorgente_area`, il plurale ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-in-progress/brief-db-grammatica-unica-documenti.md)): vero quando il documento d'origine ha una sua pagina (`config.sorgenti.apribile`), fattura e reso compresi; `null` sulle righe senza sorgente. ⚠️ `sorgente_codice` oggi è `config.sorgenti.codice` (il nome modificabile): diventa `sorgente_codice_interno` col §13.6 del brief, ed è da quello che il frontend aprirà il documento.
+- JOIN su `config.sorgenti` per risolvere `sorgente_codice_interno` e `sorgente_etichetta` (evita N+1 lato client).
+- `sorgente_apribile` (dal 2026-10-20, al posto di `sorgente_area`, il plurale ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-in-progress/brief-db-grammatica-unica-documenti.md)): vero quando il documento d'origine ha una sua pagina (`config.sorgenti.apribile`), fattura e reso compresi; `null` sulle righe senza sorgente.
+- `sorgente_codice_interno` e `sorgente_etichetta` (dal 2026-10-21, changeSet `20261021-20`, §13.6 del brief): il tipo del documento d'origine col codice **immutabile** della sorgente, da cui il frontend apre il documento, e il suo nome a video («Ordine»), che la colonna «Tipo origine» mostra e su cui si ordina. Prima c'era `sorgente_codice`, che era `config.sorgenti.codice`, il nome modificabile.
 - `count` è il **totale filtrato** (stessi filtri della lista, senza `LIMIT/OFFSET`), non le righe della pagina.
 - Ordinamento server-side (dal 2026-08-03, 7° lotto liste configurabili): `order_by`/`order_dir` sono validati nel service contro `ATTIVITA_SORT_COLUMNS` (specchio della whitelist chiusa dentro la fn DB, changeset `20260802-26`) e passati a `p_order_by`/`p_order_dir`. Ordine e paginazione vivono **dentro** la funzione: ordinare a valle ordinerebbe la sola pagina estratta. `order_by` assente = ordine storico `ca.id`; tiebreak `ca.id` sempre presente. La fn solleva `E_PARAMETRO_INVALIDO` su nome fuori whitelist (difesa in profondità, il service intercetta prima).
 - Funzione DB STABLE (read-only).
@@ -111,7 +112,7 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 
 - `vendite.fn_list_commessa_attivita(p_commessa_id, p_stato_emissione, p_stato_approvazione, p_competenza_mese, p_limit, p_offset, p_order_by, p_order_dir, p_tipo_movimento)` — funzione principale (colonne lette: `CommesseRepository._ATTIVITA_COLS`)
 - `vendite.commesse_attivita` — tabella dati
-- `config.sorgenti` — JOIN per `sorgente_codice`
+- `config.sorgenti` — JOIN per `sorgente_codice_interno`, `sorgente_etichetta`, `sorgente_apribile`
 
 ---
 

@@ -19,6 +19,7 @@ import {
   createTemplateDocumento,
   getTemplateDocumento,
   listTemplateDocumenti,
+  personalizzaTemplateDocumento,
   updateTemplateDocumento,
 } from '../api/templateDocumenti'
 
@@ -30,6 +31,9 @@ export const useTemplateDocumentiStore = createCrudStore('config-template-docume
     update: updateTemplateDocumento,
   },
   tabEntity: TAB_ENTITIES.TEMPLATE_DOCUMENTI,
+  // «Personalizza» (id dello standard, payload): la copia per un'azienda. Nello
+  // stesso giro di scrittura di create/update: le altre tab ricaricano.
+  extraActions: { personalizza: personalizzaTemplateDocumento },
   orderBy: 'codice',
   orderDir: 'asc',
   startsEmpty: false,
@@ -38,5 +42,8 @@ export const useTemplateDocumentiStore = createCrudStore('config-template-docume
     tipo_documento_output_id: null,
     sorgente_tipo_id: null,
     emittente_fiscale_id: null,
+    // «Standard»: solo i modelli di sistema (true) o solo quelli delle
+    // aziende (false); null = tutti.
+    standard: null,
   },
 })

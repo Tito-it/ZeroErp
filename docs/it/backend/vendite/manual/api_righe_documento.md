@@ -110,7 +110,7 @@ ed export dal factory, permesso `("vendite", "offerta_commerciale")`.
   **Assente**, l'ordine del documento (tabella sopra), poi la chiave di riga
   (`id`; `riga_key` su fattura e contratto) — lo schema OpenAPI lo legge dal
   repository (`righe_ordine_di_partenza`). Una colonna
-  fuori whitelist ripiega sull'ordine del documento. Le date di consegna
+  fuori whitelist è un **400** `E_VALIDATION_INPUT` (dal 2026-10-20). Le date di consegna
   partono DESC quando la direzione manca;
 - `limit` / `offset` — pagina (tetto `MAX_LIMIT` di `apps.core.api.constants`).
 

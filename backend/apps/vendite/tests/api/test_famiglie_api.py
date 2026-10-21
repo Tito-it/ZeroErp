@@ -27,7 +27,8 @@ Indice test eseguiti:
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 from django.urls import reverse
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -66,7 +67,7 @@ class FamiglieRotteTests(JwtMockedApiTest):
 class FamiglieCrudApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM_ADMIN, return_value=True)
@@ -176,7 +177,7 @@ class FamiglieCancelloTests(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     # 9. Il CRUD e' per il solo amministratore (D6, Tid 2026-09-01).
     @patch(_AUTH, return_value=(Mock(), None))

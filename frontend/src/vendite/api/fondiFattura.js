@@ -12,9 +12,8 @@
 // cancellare un atto che non ha mai mosso denaro non e' «sanare», e' togliere
 // una proposta che nessuno ha accettato. E lo chiede una persona, ogni volta.
 import api from '../../core/api'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 
-// GET /vendite/fondi-fattura/da-decidere/?motivo=&order_by=&order_dir=&page=&page_size=
+// GET /vendite/fondi-fattura/da-decidere/?motivo=&order_by=&order_dir=&limit=&offset=
 // Elenco paginato. `motivo` e' un vocabolario CHIUSO (PROPOSTA_SENZA_ATTO |
 // UTILITY_NON_ATTRIBUIBILE | IMPORTO_NON_CORRISPONDENTE | NON_PIU_CAPIENTE):
 // un valore fuori elenco torna 400, non una lista vuota — su un vocabolario
@@ -54,10 +53,13 @@ export function exportFondiFatturaDaDecidere(params = {}) {
 // popolazione: il fondo `AUTOMATICA` non piu' capiente, che nessuno trattiene.
 //
 // ⚠️ `Idempotency-Key` obbligatoria (il backend dichiara
-// `require_idempotency_key`): il gesto e' IRREVERSIBILE, e senza la chiave un
-// doppio invio riceverebbe un errore per un'operazione riuscita.
-export function cancellaFondoFattura(fondoSourceId) {
-  return api.delete(`/vendite/fondi-fattura/${fondoSourceId}/`, {
-    headers: { 'Idempotency-Key': generateIdempotencyKey() },
-  })
+// `require_idempotency_key`): il gesto e' IRREVERSIBILE. ⛔ La key che mette
+// l'interceptor (`applicaIdempotencyKey`) e' una per CHIAMATA: da sola NON fa
+// rispondere il doppio invio come il primo — un secondo clic e' una chiamata
+// nuova, e dopo una cancellazione riuscita riceverebbe un errore. Il replay
+// c'e' solo se il chiamante passa in `config` la key del GESTO
+// (`useChiaveGesto`), come fa `FondiFatturaDaDecidereTab`, e il backend e' in
+// modalita' forte (`DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1`).
+export function cancellaFondoFattura(fondoSourceId, config = {}) {
+  return api.delete(`/vendite/fondi-fattura/${fondoSourceId}/`, config)
 }

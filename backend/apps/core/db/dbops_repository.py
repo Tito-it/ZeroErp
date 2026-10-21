@@ -292,7 +292,6 @@ class DbopsRepository:
         ordinamento = sql_order_clause(
             order_col, order_dir,
             colonne=order_map, default="t.descrizione", tiebreak="t.id",
-            rifiuta_fuori_whitelist=True,
         )
 
         codice_interno_sql = (
@@ -410,7 +409,7 @@ class DbopsRepository:
         ordinamento = sql_order_clause(
             order_col, order_dir,
             colonne=colonne_identita(*LOOKUP_ORDER_COLONNE),
-            default="descrizione", tiebreak="id", rifiuta_fuori_whitelist=True,
+            default="descrizione", tiebreak="id",
         )
         # ⭐ Un frammento (CTE + WHERE) per la pagina e per il conteggio di
         #    ripiego: il perimetro del totale e' quello della lista.

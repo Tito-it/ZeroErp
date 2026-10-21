@@ -605,12 +605,11 @@ class TitoliSoggettoPaginazioneTests(TestCase):
         sql, _ = self._sql_di()
         self.assertIn("COALESCE(t.valido_al, 'infinity'::date) DESC", sql)
 
-    # Scopo: una colonna fuori whitelist non e' un errore, e' un ritorno al
-    #        default — ma NON deve finire nell'SQL.
-    def test_order_by_fuori_whitelist_non_entra_nel_sql(self) -> None:
-        sql, _ = self._sql_di(order_by="drop_table; --")
-        self.assertNotIn("drop_table", sql)
-        self.assertIn("COALESCE(t.valido_al, 'infinity'::date) DESC", sql)
+    # Scopo: ⛔ una colonna fuori whitelist e' un 400 (`order_by_invalid`), e
+    #        non arriva all'SQL (dal 2026-10-20, brief-be-verifica-documentazione-api §A1).
+    def test_order_by_fuori_whitelist_e_rifiutato(self) -> None:
+        with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+            self._sql_di(order_by="drop_table; --")
 
     # Scopo: `residuo` si ordina per ALIAS, non per l'espressione riscritta:
     #        e' un CASE che vale NULL sui tipi senza tetto, e una riscrittura

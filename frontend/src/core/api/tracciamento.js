@@ -3,7 +3,6 @@
 // brief-be-fe-gestione-code-lavori-stampa. Le liste sono offset-based
 // ({count, results}); le azioni richiedono Idempotency-Key.
 import api from '../api'
-import { generateIdempotencyKey } from '../utils/idempotency'
 
 // GET conteggi per il badge top bar: job vivi (PENDING/IN_CORSO) delle due
 // code, scoped all'operatore, + liveness dei worker drainer. Pollato a 60s.
@@ -29,7 +28,6 @@ export function annullaCodaLavoro(jobId) {
   return api.post(
     `/core/tracciamento/coda-lavori/${jobId}/annulla/`,
     {},
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -40,7 +38,6 @@ export function requeueCodaLavoro(jobId, extraTentativi = null) {
   return api.post(
     `/core/tracciamento/coda-lavori/${jobId}/requeue/`,
     body,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -70,7 +67,6 @@ function postArchiviazione(url, ids) {
   return api.post(
     url,
     { ids },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 

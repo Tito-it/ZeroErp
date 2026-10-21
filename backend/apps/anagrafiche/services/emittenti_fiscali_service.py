@@ -57,6 +57,12 @@ _EMITTENTE_NON_EDITABLE_GAPS: tuple[str, ...] = ("codice", "soggetto_id")
 #    2026-09-26 una PATCH che lo portava veniva accettata e il campo ignorato;
 #    ora e' un 400 che lo nomina.
 _UPDATE_EMITTENTE_KEYS: frozenset[str] = EMITTENTE_UPDATE_ALLOWED
+# Le chiavi della CREAZIONE: quelle che `crea_emittente` legge (il drawer manda
+# solo queste, verificato il 2026-10-21).
+_CREA_EMITTENTE_KEYS: frozenset[str] = frozenset({
+    "soggetto_id", "codice", "valuta_id", "attivo", "bollo_auto",
+    "regime_fiscale_rf", "rounding_policy", "bollo_soglia",
+})
 _UPDATE_UTILITY_KEYS: frozenset[str] = UTILITIES_UPDATE_ALLOWED
 
 # Validator stateless del dominio (solo il codice errore): condivisibile.
@@ -153,6 +159,12 @@ class EmittentiFiscaliService:
     #        Nota: il primo emittente creato attiva il trigger default_bootstrap che
     #        popola automaticamente il default mapping in emittenti_fiscali_billing_account.
     def crea_emittente(self, payload: dict[str, Any]) -> dict[str, Any]:
+        # ⛔ Una chiave fuori contratto e' un 400, come nella PATCH: fino al
+        #    2026-10-21 la creazione la scartava in silenzio
+        #    (brief-be-verifica-documentazione-api §B2, regola di api.md).
+        _V.validate_allowed_keys(
+            payload, allowed=_CREA_EMITTENTE_KEYS, message="Payload emittente fiscale non valido.",
+        )
         soggetto_id = optional_uuid(payload, "soggetto_id")
         ErrorManager.require(
             soggetto_id is not None,

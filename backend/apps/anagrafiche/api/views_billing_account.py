@@ -19,7 +19,7 @@ from rest_framework.request import Request
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.anagrafiche.services.billing_account_service import BillingAccountService
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.payload_validators import qp_bool, qp_int_strict
+from apps.core.api.payload_validators import qp_bool_optional, qp_int_strict
 from apps.core.api.request_parsers import parse_iso_date
 from apps.core.api.success_responses import success_response
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -92,7 +92,7 @@ class BillingAccountLookupView(DomainAPIView):
         if raw_utility is not None and raw_utility != "":
             utility_id = qp_int_strict(raw_utility, "utility_id", 0)
 
-        solo_validi = qp_bool(request.query_params.get("solo_validi"), default=True)
+        solo_validi = qp_bool_optional(request.query_params.get("solo_validi"), "solo_validi", default=True)
 
         raw_limit = request.query_params.get("limit")
         limit_kwargs: dict = {}

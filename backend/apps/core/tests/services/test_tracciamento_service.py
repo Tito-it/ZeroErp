@@ -10,7 +10,7 @@ Indice test eseguiti:
 1) TestListAuditLogs.test_list_audit_logs_ok — risultati paginati
 2) TestListAuditLogs.test_list_audit_logs_empty — nessun risultato
 3) TestListAuditLogs.test_list_audit_logs_invalid_status — solleva ServiceError
-4) TestListAuditLogs.test_list_audit_logs_invalid_page — solleva ServiceError
+4) TestListAuditLogs.test_list_audit_logs_finestra_limit_offset — limit/offset al repository
 5) TestListDominiTask.test_list_domini_task_ok — risultati paginati
 6) TestListDominiTask.test_list_domini_task_empty — nessun risultato
 7) TestListTaskRegistry.test_list_task_registry_ok — risultati con dominio
@@ -38,7 +38,7 @@ class TestListAuditLogs(TestCase):
             [{"id": 1, "function_name": "test", "status": "SUCCESS"}],
             1,
         )
-        result = fn_list_audit_logs(page=1, page_size=50)
+        result = fn_list_audit_logs(limit=50, offset=0)
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["page"], 1)
         self.assertEqual(len(result["results"]), 1)
@@ -51,7 +51,7 @@ class TestListAuditLogs(TestCase):
 
         mock_repo = MockRepo.return_value
         mock_repo.list_audit_logs.return_value = ([], 0)
-        result = fn_list_audit_logs(page=1, page_size=50)
+        result = fn_list_audit_logs(limit=50, offset=0)
         self.assertEqual(result["count"], 0)
         self.assertEqual(result["results"], [])
 
@@ -63,13 +63,18 @@ class TestListAuditLogs(TestCase):
             fn_list_audit_logs(status="INVALIDO")
         self.assertEqual(ctx.exception.code, "E_CORE_VALIDATION")
 
-    # Scopo: Page < 1 solleva ServiceError.
-    def test_list_audit_logs_invalid_page(self):
+    # Scopo: la finestra arriva al repository come `limit`/`offset` e
+    #        l'envelope ne ricava la pagina (dal 2026-10-21 un dialetto solo:
+    #        la finestra la valida `pagina_da_query`, nella view).
+    @patch("apps.core.services.tracciamento_service.DbopsRepository")
+    def test_list_audit_logs_finestra_limit_offset(self, MockRepo):
         from apps.core.services.tracciamento_service import fn_list_audit_logs
 
-        with self.assertRaises(ServiceError) as ctx:
-            fn_list_audit_logs(page=0)
-        self.assertEqual(ctx.exception.code, "E_CORE_VALIDATION")
+        MockRepo.return_value.list_audit_logs.return_value = ([], 120)
+        result = fn_list_audit_logs(limit=50, offset=100)
+        kwargs = MockRepo.return_value.list_audit_logs.call_args.kwargs
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (50, 100))
+        self.assertEqual((result["page"], result["page_size"], result["total_pages"]), (3, 50, 3))
 
 
 class TestListDominiTask(TestCase):
@@ -84,7 +89,7 @@ class TestListDominiTask(TestCase):
             [{"id": 1, "codice": "FATTURAZIONE", "descrizione": "Pipeline fatturazione", "attivo": True}],
             1,
         )
-        result = fn_list_domini_task(page=1, page_size=50)
+        result = fn_list_domini_task(limit=50, offset=0)
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["results"][0]["codice"], "FATTURAZIONE")
 
@@ -95,7 +100,7 @@ class TestListDominiTask(TestCase):
 
         mock_repo = MockRepo.return_value
         mock_repo.list_domini_task.return_value = ([], 0)
-        result = fn_list_domini_task(page=1, page_size=50)
+        result = fn_list_domini_task(limit=50, offset=0)
         self.assertEqual(result["count"], 0)
 
 
@@ -112,7 +117,7 @@ class TestListTaskRegistry(TestCase):
               "task_code": "select_attivita", "descrizione": "Seleziona attivita", "attivo": True}],
             1,
         )
-        result = fn_list_task_registry(dominio_codice="FATTURAZIONE", page=1, page_size=100)
+        result = fn_list_task_registry(dominio_codice="FATTURAZIONE", limit=100, offset=0)
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["results"][0]["task_code"], "select_attivita")
 
@@ -131,7 +136,7 @@ class TestListTaskImplementations(TestCase):
               "is_default": True, "attivo": True}],
             1,
         )
-        result = fn_list_task_implementations(task_code="select_attivita", page=1, page_size=100)
+        result = fn_list_task_implementations(task_code="select_attivita", limit=100, offset=0)
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["results"][0]["handler_code"], "select_attivita_default")
 
@@ -149,7 +154,7 @@ class TestListJobRuns(TestCase):
               "started_at": "2026-03-01T10:00:00+00:00"}],
             1,
         )
-        result = fn_list_job_runs(page=1, page_size=50)
+        result = fn_list_job_runs(limit=50, offset=0)
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["results"][0]["jobname"], "apply_storicizza_weekly")
 
@@ -160,7 +165,7 @@ class TestListJobRuns(TestCase):
 
         mock_repo = MockRepo.return_value
         mock_repo.list_job_runs.return_value = ([], 0)
-        result = fn_list_job_runs(page=1, page_size=50)
+        result = fn_list_job_runs(limit=50, offset=0)
         self.assertEqual(result["count"], 0)
 
 
@@ -182,6 +187,6 @@ class TestListJobSummary(TestCase):
               }}],
             1,
         )
-        result = fn_list_job_summary(page=1, page_size=50)
+        result = fn_list_job_summary(limit=50, offset=0)
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["results"][0]["total_runs"], 10)

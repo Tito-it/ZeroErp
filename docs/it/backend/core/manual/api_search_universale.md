@@ -23,10 +23,14 @@ con stato, ecc.). Il backend delega la logica alle funzioni DB
 |---|---|---|---|---|
 | `q` | string | Si | — | Termine di ricerca (min 3 caratteri). Cerca su `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`, `codice` soggetto e codice entita' dinamico |
 | `tipo_ruolo_id` | int | Si | — | ID tipo ruolo. Solo tipi con `ricerca_visibile = true` in `config.tipi_ruoli`: gli altri 404 `E_TIPO_RUOLO_NON_RICERCABILE`, un id inesistente 404 `E_TIPO_RUOLO_NON_TROVATO` (lo decide il DB, anche per la lista) |
-| `page` | int | No | 1 | Numero pagina |
-| `page_size` | int | No | 25 | Dimensione pagina (min 1, max 100) |
+| `limit` | int | No | 25 | Righe per pagina, max 100: fuori da 1..100 → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_100`) |
+| `offset` | int | No | 0 | Righe da saltare; negativo → 400 (`offset_negativo`) |
 | `order_by` | string | No | `ragione_sociale_completa` | Colonna di ordinamento. Valori ammessi: `ragione_sociale_completa`, `soggetto_codice`, `id_fiscale_univoco`. ⛔ `utility_list` ed `emittente_ragione_sociale` non sono ordinabili: sono aggregati calcolati per le sole righe della pagina (400 `E_SEARCH_VALIDATION`) |
 | `order_dir` | string | No | `ASC` | Direzione ordinamento: `ASC` o `DESC` |
+
+⛔ `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` dal 2026-10-21
+(prima erano il contratto di questa ricerca). La risposta porta ancora `page` e
+`page_size`, ricavati dall'offset.
 
 **Nota**: il parametro `comune_id` e' stato rimosso. Il filtro per comune nel livello 1
 era impraticabile (risoluzione indirizzo row-level su migliaia di righe). Indirizzo e
@@ -222,11 +226,11 @@ Risposta: stessa forma, `{"data": {"results": [...]}}`.
 
 | Codice | HTTP | Causa |
 |---|---|---|
-| `E_SEARCH_VALIDATION` | 400 | Parametro mancante, troppo corto (< 3 caratteri), paginazione fuori range |
+| `E_SEARCH_VALIDATION` | 400 | Parametro mancante, troppo corto (< 3 caratteri) |
 | `E_TIPO_RUOLO_NON_RICERCABILE` | 404 | Lista e dettaglio: il tipo ruolo ha `ricerca_visibile = false` (dal DB; fino al 2026-10-10 era `E_SEARCH_VALIDATION` 400 dal backend) |
 | `E_TIPO_RUOLO_NON_TROVATO` | 404 | Lista e dettaglio: il tipo ruolo non esiste (la lista prima rispondeva zero righe) |
 | `E_SEARCH_NOT_FOUND` | 404 | Dettaglio: soggetto inesistente, senza quel ruolo, o senza righe visibili della sua entita' |
-| `E_VALIDATION_INPUT` | 400 | Parametro numerico non valido: `page`/`page_size`, `tipo_ruolo_id`, `utility_id` non numerici o fuori tetto |
+| `E_VALIDATION_INPUT` | 400 | Parametro numerico non valido: `limit`/`offset` non interi o fuori limiti, `tipo_ruolo_id`, `utility_id` non numerici o fuori tetto; `page`/`page_size` presenti |
 
 ## Dipendenze DB
 
@@ -262,3 +266,6 @@ Risposta: stessa forma, `{"data": {"results": [...]}}`.
 - `p_emittente_ids` e' **uscito dalle due firme il 2026-10-10** (R-5 del brief-db-codici-non-trovato-email-e-permessi): il perimetro lo fa la RLS. Il repository chiama per nome e non lo passava gia' dal 2026-10-09
 - Lo smoke test sezione 14 gestisce gracefully il caso in cui la funzione DB non sia
   ancora disponibile
+- 2026-10-21: la finestra passa da `page`/`page_size` a `limit`/`offset`
+  (`pagina_da_query`, default 25, max 100); `page`/`page_size` in query
+  diventano un 400. Envelope invariato

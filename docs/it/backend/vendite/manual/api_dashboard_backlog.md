@@ -81,7 +81,11 @@ Nessun parametro.
   (a parità di valore, in DESC viene prima il documento più recente), mentre
   `area` resta ASC perché raggruppa. L'univocità — e quindi la paginazione
   deterministica — non cambia.
-- `page` / `page_size` (opzionali): paginazione standard (default 1/25, max 200).
+- `limit` / `offset` (opzionali): paginazione standard (`pagina_da_query`:
+  `limit` default 25, max 200; `offset` default 0; non interi, `limit` fuori
+  da 1..200 o `offset` negativo → 400 `E_VALIDATION_INPUT`). ⛔ `page`/`page_size` sono
+  un 400 `E_VALIDATION_INPUT` dal 2026-10-21 (prima erano il contratto di
+  questa lista).
 
 ## Output
 
@@ -178,6 +182,9 @@ classe ha una data nota (età sconosciuta ≠ 0 giorni).
 
 ## Note di migrazione
 
+- 2026-10-21: la lista documenti legge la finestra come `limit`/`offset`
+  (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope
+  invariato.
 - Substrato DB applicato con migrations `20260706-01..15` (pgTAP
   `test-vw-dash-backlog-v1.sql` plan 14 verde).
 - Test: `apps/vendite/tests/api/test_dashboard_backlog_api.py` (8 casi) +

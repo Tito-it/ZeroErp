@@ -313,8 +313,10 @@ eccezioni OVERRIDE/ESCLUSIONE attive risponde 422
 Il service non ha piu' controlli suoi: `E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE` ed
 `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` sono ritirati.
 
-**Gate L2 sulla variazione globale** (refactor §3-bis-E): se il PATCH tocca
-`valore_variazione_globale`, si applica il gate L2 (cascata user →
+**Gate L2 sulla variazione globale** (refactor §3-bis-E): se il PATCH **o la
+creazione** (`POST /contratti/`, dal 2026-10-21: prima la sola PATCH) porta
+`valore_variazione_globale`, si applica il gate L2 sul cliente che il contratto
+avrà — quello del payload, o quello che ha (cascata user →
 categoria_cliente → group → emittente). Sconto/maggiorazione oltre soglia →
 403 retryable con `E_PRICING_SCONTO_ECCESSIVO`/`E_PRICING_MAGGIORAZIONE_ECCESSIVA`.
 Il tipo ammesso è solo `PERCENTUALE`: `VALORE_FISSO` è rifiutato prima (400

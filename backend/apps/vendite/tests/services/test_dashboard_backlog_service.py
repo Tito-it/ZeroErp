@@ -260,11 +260,13 @@ class DashBacklogDocumentiServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         mock_repo.assert_not_called()
 
-    # Scopo: Paginazione invalida -> E_VENDITE_VALIDATION (validate_pagination).
-    def test_documenti_page_invalida(self):
-        with self.assertRaises(ServiceError) as ctx:
-            fn_dash_backlog_documenti(page=0)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+    # Scopo: la finestra arriva al repository come `limit`/`offset` (dal
+    #        2026-10-21 un dialetto solo: la valida `pagina_da_query`, nella view).
+    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_documenti", return_value=([], 0))
+    def test_documenti_page_invalida(self, mock_repo):
+        fn_dash_backlog_documenti(limit=10, offset=30)
+        kwargs = mock_repo.call_args.kwargs
+        self.assertEqual((kwargs["limit"], kwargs["offset"]), (10, 30))
 
     # Scopo: order_by/order_dir (whitelist) inoltrati al repository per
     #        l'ordinamento server-side su tutte le pagine.

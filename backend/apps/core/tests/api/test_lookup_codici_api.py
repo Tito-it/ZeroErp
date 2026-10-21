@@ -123,31 +123,34 @@ class CoreLookupCodiciApiTests(JwtMockedApiTest):
         kwargs = mocked_list.call_args.kwargs
         self.assertFalse(kwargs["attivo_only"])
 
-    # Scopo: Verifica il caso `test_lookup_paginazione_parametri`: page/page_size passati correttamente.
+    # Scopo: Verifica il caso `test_lookup_paginazione_parametri`: la finestra
+    #        arriva come `limit`/`offset` (dal 2026-10-21 un dialetto solo).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.core.api.views.fn_list_lookup_codici")
     def test_lookup_paginazione_parametri(self, mocked_list, _mock_auth):
         mocked_list.return_value = {**_LIST_RESPONSE, "page": 2, "page_size": 10}
-        self.client.get(_URL + "?rel=config.stati_sdi&page=2&page_size=10")
+        self.client.get(_URL + "?rel=config.stati_sdi&limit=10&offset=10")
         kwargs = mocked_list.call_args.kwargs
-        self.assertEqual(kwargs["page"], 2)
-        self.assertEqual(kwargs["page_size"], 10)
+        self.assertEqual(kwargs["limit"], 10)
+        self.assertEqual(kwargs["offset"], 10)
 
-    # Scopo: Verifica il caso `test_lookup_page_size_invalido`: page_size > 200 → 400.
+    # Scopo: Verifica il caso `test_lookup_page_size_invalido`: `page_size` non e'
+    #        piu' un parametro della lookup (dal 2026-10-21): 400.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_lookup_page_size_invalido(self, _mock_auth):
-        response = self.client.get(_URL + "?rel=config.stati_sdi&page_size=999")
+        response = self.client.get(_URL + "?rel=config.stati_sdi&page_size=10")
         self.assertEqual(response.status_code, 400)
         body = response.json()["error"]
-        self.assertEqual(body["code"], "E_CORE_VALIDATION")
+        self.assertEqual(body["code"], "E_VALIDATION_INPUT")
 
-    # Scopo: Verifica il caso `test_lookup_page_invalida`: page=0 → 400.
+    # Scopo: Verifica il caso `test_lookup_page_invalida`: `page` non e' piu' un
+    #        parametro della lookup (dal 2026-10-21): 400.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_lookup_page_invalida(self, _mock_auth):
-        response = self.client.get(_URL + "?rel=config.stati_sdi&page=0")
+        response = self.client.get(_URL + "?rel=config.stati_sdi&page=2")
         self.assertEqual(response.status_code, 400)
         body = response.json()["error"]
-        self.assertEqual(body["code"], "E_CORE_VALIDATION")
+        self.assertEqual(body["code"], "E_VALIDATION_INPUT")
 
     # Scopo: Verifica il caso `test_lookup_order_col_invalido`: order_col non ammesso → 400.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

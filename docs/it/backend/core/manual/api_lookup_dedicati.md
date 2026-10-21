@@ -176,8 +176,12 @@ throttle di ricerca).
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `search` | string | No | Contiene, maiuscole indifferenti, sulla denominazione |
-| `limit` | int | No | Default 20, fra 1 e 100. Non numerico → default |
-| `offset` | int | No | Default 0. Non numerico o negativo → 0 |
+| `limit` | int | No | Default 20, fra 1 e 100. Non intero o fuori da 1..100 → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_100`) |
+| `offset` | int | No | Default 0. Non intero o negativo → 400 `E_VALIDATION_INPUT` |
+
+La finestra la legge `parse_list_params` → `pagina_da_query`: dal 2026-10-21
+`page`/`page_size` e i valori fuori limite sono un 400 (prima un valore non
+numerico ripiegava sul default e uno negativo valeva 0).
 
 Risposta:
 
@@ -194,7 +198,7 @@ Risposta:
 
 | Codice | HTTP | Quando |
 |---|---|---|
-| `E_VALIDATION_INPUT` | 400 | `tipo` dei conti contabili fuori da `A`/`V`; `tipo_soggetto_dettaglio_id` non numerico (per i comuni `limit`/`offset` non numerici ripiegano sul default) |
+| `E_VALIDATION_INPUT` | 400 | `tipo` dei conti contabili fuori da `A`/`V`; `tipo_soggetto_dettaglio_id` non numerico ; per i comuni `limit`/`offset` non interi o fuori limiti, `page`/`page_size` presenti |
 | `E_AUTHENTICATION_FAILED` | 401 | token assente o scaduto |
 
 ## Dipendenze DB

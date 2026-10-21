@@ -141,7 +141,7 @@ log_ok "Permessi catalogo validi (livello=$CATALOGO_LEVEL)"
 # --- 2. Lista articoli ---
 echo ""
 echo "-- 2. Lista articoli --"
-do_curl GET "/api/v1/catalogo/articoli/?page=1&page_size=5"
+do_curl GET "/api/v1/catalogo/articoli/?limit=5"
 check "Lista articoli" "200" ".data.count"
 ARTICOLI_COUNT="$EXTRACTED"
 log_info "Totale articoli: $ARTICOLI_COUNT"
@@ -154,7 +154,7 @@ FIRST_ART_SEARCH=$(echo "$FIRST_ART_CODICE" | cut -c1-3)
 echo ""
 echo "-- 3. Lista articoli con search/ordinamento --"
 if [[ -n "$FIRST_ART_SEARCH" ]]; then
-    do_curl GET "/api/v1/catalogo/articoli/?search=${FIRST_ART_SEARCH}&order_by=codice&order_dir=asc&page_size=5"
+    do_curl GET "/api/v1/catalogo/articoli/?search=${FIRST_ART_SEARCH}&order_by=codice&order_dir=asc&limit=5"
     check "Lista articoli con search='${FIRST_ART_SEARCH}'" "200"
 else
     log_info "Skipped (nessun articolo disponibile per costruire la search)"

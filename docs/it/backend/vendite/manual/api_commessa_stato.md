@@ -255,7 +255,8 @@ Query:
 
 - `commessa_attivita_id` (int, facoltativo) — restringe a una riga; assente = tutta la commessa;
 - `limit` (int, default 100 `DEFAULT_LIMIT_EVENTI`, 1..`MAX_LIMIT`), `offset` (int ≥ 0, default 0);
-  fuori intervallo o non interi → `400 E_COMMESSA_VALIDATION`.
+  fuori intervallo o non interi → `400 E_VALIDATION_INPUT` (`pagina_da_query`, nella view;
+  fino al 2026-10-21 `E_COMMESSA_VALIDATION` dal service).
 
 Ordine fisso: `data_insert DESC, id DESC`. Il vocabolario degli eventi è del DB
 e aperto: nessun filtro per evento.

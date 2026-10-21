@@ -24,7 +24,7 @@ from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
     parse_list_params,
-    qp_bool,
+    qp_bool_optional,
     qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
@@ -38,7 +38,8 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ordini_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
-from apps.vendite.db.ordini_repository import OrdiniRepository
+from apps.core.api.openapi_params import descrizione_order_by
+from apps.vendite.db.ordini_repository import _ORDER_COLS_ORDINI, OrdiniRepository
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.vendite.api._componenti_schema import (
     COMPONENTE_PATCH_REQUEST,
@@ -184,11 +185,10 @@ class ApiOrdiniList(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
+            # La frase si LEGGE dalla whitelist (api.md): scritta a mano
+            # elencava 8 colonne su 17 (§B10 del brief-be-verifica-documentazione-api).
             OpenApiParameter(name="order_by", type=str, required=False,
-                             description="campo_sorgente catalogo 'vendite.ordini' "
-                                         "(numero | data | ragione_sociale_completa | "
-                                         "ba_codice | utility_codice | totale_doc | "
-                                         "fatturazione_trigger | stato_descrizione)."),
+                             description=descrizione_order_by(_ORDER_COLS_ORDINI)),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={200: inline_serializer(
@@ -244,7 +244,8 @@ class ApiOrdiniExportView(DomainAPIView):
             OpenApiParameter(name="utility_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
+            OpenApiParameter(name="order_by", type=str, required=False,
+                             description=descrizione_order_by(_ORDER_COLS_ORDINI)),
             OpenApiParameter(name="order_dir", type=str, required=False),
         ],
         responses={
@@ -554,6 +555,9 @@ class ApiOrdineRigaPreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "ordine")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -589,7 +593,7 @@ class ApiOrdineRigaComponentiList(DomainAPIView):
         responses={200: COMPONENTI_LIST_RESPONSE},
     )
     def get(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
-        solo_attivi = qp_bool(request.query_params.get("solo_attivi"), default=True)
+        solo_attivi = qp_bool_optional(request.query_params.get("solo_attivi"), "solo_attivi", default=True)
         return success_response(
             ordini_service.list_componenti_riga(
                 int(ordine_id), int(riga_id), solo_attivi=solo_attivi,

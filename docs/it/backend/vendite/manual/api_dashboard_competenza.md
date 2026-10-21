@@ -43,8 +43,13 @@ perimetro emittente può rispondere `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`.
 **Ordinamento comune** a tutte le liste: con `order_by` e senza `order_dir` le
 colonne data (per nome: `data_*`, `*_dal/_al`, `*_at`, `competenza_mese`)
 partono DESC, le altre ASC; il vuoto vale come minimo (`ASC NULLS FIRST` /
-`DESC NULLS LAST`, `sql_order_direction`). Paginazione: `page` default 1,
-`page_size` default 25, max 200.
+`DESC NULLS LAST`, `sql_order_direction`). Paginazione `limit`/`offset`
+(`pagina_da_query`): `limit` default 25, max 200, `offset` default 0; non
+interi, `limit` fuori da 1..200 o `offset` negativo → 400 `E_VALIDATION_INPUT`
+(il fuori limite dal 2026-10-21: prima si riportava nei limiti in silenzio). ⛔
+`page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` dal 2026-10-21
+(prima erano il contratto di queste liste); la risposta porta ancora `page` e
+`page_size`, ricavati dall'offset.
 
 Catena: view (`views_dashboard_competenza.py`) →
 `vendite_service.fn_dash_competenza_{mensile,attivita,commesse,errori}` →
@@ -86,14 +91,14 @@ emittente è DB-side via GUC nella vista): `commesse/` fa `GROUP BY commessa_id`
   perché la lista è paginata: ordine corretto su **tutte** le pagine. Colonna
   fuori whitelist o direzione ≠ asc/desc → 400 (`E_VENDITE_VALIDATION`). Tiebreak
   stabile `(commessa_codice, commessa_attivita_id)`.
-- `page` / `page_size` (opzionali): paginazione standard (default 1/25, max 200).
+- `limit` / `offset` (opzionali): paginazione standard (default 25/0, max 200).
 - ⚠️ `registro_id` / `registro_non_risolvibile` **non** esistono qui: il filtro
   sezionale è solo di `gruppi/`.
 
 ### `GET /dashboard-competenza/commesse/`
 
 Stesso perimetro e stessi filtri di `attivita/` (`competenza_mese` obbligatorio,
-`stadio`, `solo_ritardo`, `page`/`page_size`), ma **aggregato per commessa**.
+`stadio`, `solo_ritardo`, `limit`/`offset`), ma **aggregato per commessa**.
 
 - `order_by` / `order_dir` (opzionali): whitelist **aggregata** —
   `commessa_codice` | `cliente_display` | `n_attivita` | `valore_tot` (default,
@@ -134,7 +139,7 @@ Elenco dei **gruppi fatturabili** (emissione mirata, 2026-07-27).
   `ultimo_esito` | `ultimo_errore_codice` | `ultimo_errore_quando` |
   `ultimo_lotto_codice`; fuori whitelist → 400 `E_VENDITE_VALIDATION`;
   tiebreak stabile `gruppo_key ASC, stadio`.
-- `page` / `page_size` (opzionali): paginazione standard.
+- `limit` / `offset` (opzionali): paginazione standard.
 
 ### `GET /dashboard-competenza/residui/`
 
@@ -149,7 +154,7 @@ cui agisce il verbo «Riporta da emettere».
   `lotto_provenienza_codice`). Senza `order_by`: `competenza_mese`, che ora
   segue la regola delle date (DESC senza `order_dir`); la colonna è comunque
   costante sul mese, e l'ordine visibile lo decide il tiebreak.
-- `page` / `page_size` (opzionali): paginazione standard.
+- `limit` / `offset` (opzionali): paginazione standard.
 
 ⛔ **Non esiste un parametro per scegliere il motivo**, ed è deliberato. Lo
 stadio `EMESSA_NON_FATTURATA` contiene **quattro** situazioni e solo `RESIDUO`
@@ -196,7 +201,7 @@ catalogo `vendite.dash_competenza_residui`. Hard cap 10.000 righe.
   ⚠️ NULL come minimo (`ASC NULLS FIRST` / `DESC NULLS LAST`): metà della
   union non ha i campi di documento (un errore di task non ha fattura, una
   fattura critical non ha task), e in DESC finiscono in coda.
-- `page` / `page_size` (opzionali): paginazione standard.
+- `limit` / `offset` (opzionali): paginazione standard.
 
 ## Output
 
@@ -725,3 +730,6 @@ tecnica in `meta.context.dettaglio_tecnico` della riga di log.
 - **Emissione mirata (2026-07-27)**: aggiunto `gruppi/` sopra le viste
   `20260727-18/19`. Additivo: i quattro endpoint preesistenti sono invariati.
   Brief: `dev/work-done/brief-be-fe-emissione-fattura-mirata.md`.
+- 2026-10-21: le cinque liste (`attivita/`, `commesse/`, `gruppi/`, `residui/`,
+  `errori/`) leggono la finestra come `limit`/`offset` (`pagina_da_query`);
+  `page`/`page_size` in query diventano un 400. Envelope invariato.

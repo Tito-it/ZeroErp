@@ -65,7 +65,7 @@ const { notes, total, loading: listLoading, loadAll, remove } = useNote({
 })
 
 // Pagine default lista. 200 e' il cap BE (apps.core.api.partitioned_note_views
-// clamp page_size a [1, 200]); chiediamo subito il massimo perche' tipicamente
+// clamp `limit` a [1, 200]); chiediamo subito il massimo perche' tipicamente
 // le note per documento sono poche decine — niente paginazione UX nella v1.
 const PAGE_SIZE_DEFAULT = 200
 
@@ -144,7 +144,7 @@ watch(
     if (!visible) return
     chiudiForm()
     form.value = defaultForm()
-    await loadAll({ page_size: PAGE_SIZE_DEFAULT })
+    await loadAll({ limit: PAGE_SIZE_DEFAULT })
   },
   { immediate: true },
 )
@@ -226,7 +226,7 @@ async function onSaveForm() {
   if (result === null) return
   chiudiForm()
   form.value = defaultForm()
-  await loadAll({ page_size: PAGE_SIZE_DEFAULT })
+  await loadAll({ limit: PAGE_SIZE_DEFAULT })
   // `total` è già aggiornato dal loadAll qui sopra.
   emit('saved', total.value)
 }
@@ -235,7 +235,7 @@ async function onSaveForm() {
 async function onDelete(n) {
   const ok = await remove(n.id)
   if (ok) {
-    await loadAll({ page_size: PAGE_SIZE_DEFAULT })
+    await loadAll({ limit: PAGE_SIZE_DEFAULT })
     emit('saved', total.value)
   }
 }

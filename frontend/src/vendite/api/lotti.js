@@ -4,7 +4,6 @@
 // write con Idempotency-Key. Nessuna logica: la macchina step/gate vive nel
 // motore DB/BE, il drawer diagnostico rende ed esercita.
 import api from '../../core/api'
-import { generateIdempotencyKey } from '../../core/utils/idempotency'
 import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 const BASE = '/vendite/lotti'
@@ -28,7 +27,7 @@ export function exportLotti(params = {}) {
 // ⭐ `annullati`: come la lista, i lotti annullati restano fuori dal conteggio
 //    a meno che l'operatore non li chieda (2026-09-12).
 export function listLottiMensile(anno, { annullati = false } = {}) {
-  return api.get(`${BASE}/mensile/`, { params: { anno, ...(annullati ? { annullati: 1 } : {}) } })
+  return api.get(`${BASE}/mensile/`, { params: { anno, ...(annullati ? { annullati: true } : {}) } })
 }
 
 // GET dettaglio testata lotto (B-1). 404 su lotto fuori scope/inesistente.
@@ -61,9 +60,9 @@ export function listLottoFatture(lottoId, params = {}) {
 // tentati (esito vuoto).
 // `statoEsecuzione` assente = tutti, compresi i mai tentati.
 export function listLottoGruppi(
-  lottoId, { page = 1, pageSize = misuraDefault(USO_MISURA.PAGINA), orderBy = null, orderDir = null, statoEsecuzione = null } = {},
+  lottoId, { limit = misuraDefault(USO_MISURA.PAGINA), offset = 0, orderBy = null, orderDir = null, statoEsecuzione = null } = {},
 ) {
-  const params = { page, page_size: pageSize }
+  const params = { limit, offset }
   if (orderBy) params.order_by = orderBy
   // ⚠️ Il verso si manda SOLO insieme alla colonna: senza colonna il backend ha
   // un ordine di default suo — i falliti in cima — e un `asc` spedito a vuoto
@@ -107,7 +106,6 @@ export function escludiDocumentiDaGiro(lottoId, { gruppoKeys, motivo }) {
   return api.post(
     `${BASE}/${lottoId}/documenti/escludi/`,
     { gruppo_keys: gruppoKeys, motivo },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -122,9 +120,11 @@ export function escludiDocumentiDaGiro(lottoId, { gruppoKeys, motivo }) {
 //    stato che non conosce non aggiunge e non toglie nulla.
 export function listLottoTaskRuns(
   lottoId,
-  { page = 1, pageSize = misuraDefault(USO_MISURA.PAGINA), orderBy = null, orderDir = 'desc', taskStato = null, soloGiroCorrente = false } = {},
+  { limit = misuraDefault(USO_MISURA.PAGINA), offset = 0, orderBy = null, orderDir = 'desc', taskStato = null, soloGiroCorrente = false } = {},
 ) {
-  const params = { page_size: pageSize, offset: (page - 1) * pageSize, order_dir: orderDir }
+  // `limit`/`offset` come ogni lista (Tid 2026-10-21, un dialetto solo): fino a
+  // quel giorno qui viaggiava `page_size` accanto a `offset`.
+  const params = { limit, offset, order_dir: orderDir }
   if (orderBy) params.order_by = orderBy
   if (taskStato?.length) params.task_stato = taskStato.join(',')
   if (soloGiroCorrente) params.solo_giro_corrente = true
@@ -175,9 +175,9 @@ export function getLottoSegnalazioni(lottoId) {
 // corsa di pipeline. Senza quel numero un elenco filtrato e uno vuoto si
 // leggono uguali.
 export function listLottoSegnalazioni(
-  lottoId, { livello = null, page = 1, pageSize = misuraDefault(USO_MISURA.PAGINA), orderBy = null, orderDir = 'desc' } = {},
+  lottoId, { livello = null, limit = misuraDefault(USO_MISURA.PAGINA), offset = 0, orderBy = null, orderDir = 'desc' } = {},
 ) {
-  const params = { page, page_size: pageSize, order_dir: orderDir }
+  const params = { limit, offset, order_dir: orderDir }
   if (livello) params.livello = livello
   if (orderBy) params.order_by = orderBy
   return api.get(`${BASE}/${lottoId}/segnalazioni/rows/`, { params })
@@ -186,13 +186,13 @@ export function listLottoSegnalazioni(
 // POST avanza pipeline lotto di UN step (com'è il motore). Riusata anche per il
 // rerun su ERRORE: stesso endpoint, stesso lotto. `lock_batch_id` opzionale per
 // correlare gli eventi del giro.
-export function runLottoPipeline(lottoId, { lockBatchId = null } = {}) {
+export function runLottoPipeline(lottoId, { lockBatchId = null } = {}, config = {}) {
   const payload = { lotto_id: lottoId }
   if (lockBatchId) payload.lock_batch_id = lockBatchId
   return api.post(
     '/vendite/pipeline/run/',
     payload,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+    config,
   )
 }
 
@@ -203,12 +203,12 @@ export function runLottoPipeline(lottoId, { lockBatchId = null } = {}) {
 // l'atto. Riscrive la data delle fatture non ancora numerate del lotto e ne
 // RIGENERA i piani rate, prima di numerare. Assente/null = nessuna
 // dichiarazione: i documenti tengono la data che hanno.
-export function numeraLotto(lottoId, { dataDocumento = null } = {}) {
+export function numeraLotto(lottoId, { dataDocumento = null } = {}, config = {}) {
   const payload = dataDocumento ? { data_documento: dataDocumento } : {}
   return api.post(
     `/vendite/fatturazione/lotti/${lottoId}/numera/`,
     payload,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+    config,
   )
 }
 
@@ -254,11 +254,11 @@ export function getFinestraNumerazione({ lottoId = null, competenzaMese = null, 
 // riga per fattura non esclusa; il worker draina_coda_stampa le renderizza
 // (async). Ritorna { lotto_id, accodate }. Re-stampa, mai numerazione (gate BE
 // DEFINITIVA). Accodamento sincrono (non un job con polling).
-export function ristampaLotto(lottoId) {
+export function ristampaLotto(lottoId, config = {}) {
   return api.post(
     `/vendite/fatturazione/lotti/${lottoId}/ristampa/`,
     {},
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+    config,
   )
 }
 
@@ -291,14 +291,14 @@ export function getFatturazioneEsiti(competenzaMese = null) {
 // `dataDocumento` (facoltativa): la data dichiarata per i lotti che il giro
 // creera'. Assente = la decide la POLITICA del registro (`OGGI` /
 // `FINE_MESE_COMPETENZA`) — che non e' un sinonimo di «oggi».
-export function runFatturazione(competenzaMese, { gruppi = null, dataDocumento = null } = {}) {
+export function runFatturazione(competenzaMese, { gruppi = null, dataDocumento = null } = {}, config = {}) {
   const payload = { competenza_mese: competenzaMese }
   if (gruppi && gruppi.length) payload.gruppi = gruppi
   if (dataDocumento) payload.data_documento = dataDocumento
   return api.post(
     '/vendite/fatturazione/run/',
     payload,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+    config,
   )
 }
 
@@ -312,14 +312,14 @@ export function runFatturazione(competenzaMese, { gruppi = null, dataDocumento =
 //    competenza (atto di mese). ⛔ Una lista VUOTA non si manda: il backend la
 //    rifiuta con un 400, e fa bene — «numera niente» e «numera tutto» non si
 //    indovinano su un atto fiscale. Chi non ha spuntato nulla non deve premere.
-export function runNumerazione(competenzaMese, { dataDocumento = null, lotti = null } = {}) {
+export function runNumerazione(competenzaMese, { dataDocumento = null, lotti = null } = {}, config = {}) {
   const payload = { competenza_mese: competenzaMese }
   if (dataDocumento) payload.data_documento = dataDocumento
   if (lotti?.length) payload.lotti = lotti
   return api.post(
     '/vendite/fatturazione/numera/',
     payload,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+    config,
   )
 }
 
@@ -331,11 +331,11 @@ export function getFatturazioneRun(jobId) {
 
 // POST reset del lotto a bozza (DEMOLIZIONE pre-fiscale): cancella le fatture
 // non numerate; le attività tornano libere per un lotto nuovo. Azione forte.
-export function resetLottoDraft(lottoId) {
+export function resetLottoDraft(lottoId, config = {}) {
   return api.post(
     `${BASE}/${lottoId}/reset-draft/`,
     {},
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+    config,
   )
 }
 
@@ -344,11 +344,11 @@ export function resetLottoDraft(lottoId) {
 // lavorazione perché si possa correggere a monte e rifare il giro. Le fatture
 // si cancellano comunque — è un rollback, non una riapertura — ma il rilancio
 // le rigenera, e le righe di commessa tornano «da emettere».
-export function riportaLottoADraft(lottoId) {
+export function riportaLottoADraft(lottoId, config = {}) {
   return api.post(
     `${BASE}/${lottoId}/riporta-a-draft/`,
     {},
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+    config,
   )
 }
 
@@ -369,7 +369,6 @@ export function eliminaFatturaDaLotto(lottoId, fatturaId) {
   return api.post(
     `${BASE}/${lottoId}/fatture/${fatturaId}/reset-draft/`,
     {},
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 

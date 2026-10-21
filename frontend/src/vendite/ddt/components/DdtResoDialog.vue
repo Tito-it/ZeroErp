@@ -32,14 +32,13 @@ import Select from 'primevue/select'
 import AppDialog from '../../../core/components/AppDialog.vue'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
-import { useGlobalLookup } from '../../../core/composables/useGlobalLookup'
 import { useNotify } from '../../../core/composables/useNotify'
-import { lookupCodici } from '../../../core/apiCore'
 import { formatNumber } from '../../../core/utils/format'
 import { useRigheSelezioneQta } from '../../_shared/righe/useRigheSelezioneQta'
 import { getRigheDdtPerReso } from '../../resi/api/resiApi'
 import { useResiStore } from '../../resi/stores/resi'
 import { TIPO_RESO } from '../../resi/constants'
+import { useLookupCodici } from '../../../core/composables/useLookupCodici'
 
 const { t } = useI18n()
 const resiStore = useResiStore()
@@ -62,10 +61,7 @@ const motivoMap = ref({})
 
 // Tipi reso dal lookup generico (cache modulo-level condivisa, stessa chiave
 // del LookupSelect rel="config.tipi_reso": transform envelope di default).
-const { items: tipiReso, load: loadTipiReso } = useGlobalLookup(
-  'config.tipi_reso',
-  () => lookupCodici('config.tipi_reso'),
-)
+const { items: tipiReso, load: loadTipiReso } = useLookupCodici('config.tipi_reso')
 // Default: A_CREDITO se presente, altrimenti il primo tipo attivo del lookup
 // (fail-soft: un rename del codice_interno non deve lasciare le righe senza
 // tipo e far fallire la creazione in modo muto).

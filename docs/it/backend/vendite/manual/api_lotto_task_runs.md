@@ -19,9 +19,11 @@ View in `apps/vendite/api/views.py`: `ApiLottoTaskRuns` (lista),
 - Header sicurezza: `Authorization: Bearer <access_token>`
 - Path params: `lotto_id` (int)
 - Query params (tutti opzionali):
-  - `page_size` (int): righe per pagina, default `100`, max `500`. `limit` è
-    accettato come sinonimo (letto solo se `page_size` manca)
-  - `offset` (int): default `0`, non negativo
+  - `limit` (int): righe per pagina, default `100`, max `500`; fuori da 1..500
+    → 400 `E_VALIDATION_INPUT` (`limit_fuori_limiti_1_500`)
+  - `offset` (int): default `0`; negativo → 400 (`offset_negativo`)
+  - ⛔ `page`/`page_size` sono un **400** (dal 2026-10-21: fino a quel giorno si
+    leggeva `page_size`, con `limit` come sinonimo)
   - `order_by` (string): passato intatto alla funzione DB
     `vendite.fn_list_lotto_task_runs`, che possiede la whitelist
   - `order_dir` (`asc` | `desc`, default `desc`; maiuscole e spazi ammessi)
@@ -73,9 +75,10 @@ View in `apps/vendite/api/views.py`: `ApiLottoTaskRuns` (lista),
   `esclusi_count` = quante righe i filtri (`task_stato`, `solo_giro_corrente`)
   lasciano fuori. `task_runs` è un alias di `results` tenuto per il consumatore
   storico del drawer.
-- `400 E_PIPELINE_VALIDATION`: `lotto_id` ≤ 0, `page_size` fuori 1–500, `offset`
-  negativo, `order_dir` non ammessa (un intero non leggibile →
-  `E_VALIDATION_INPUT`)
+- `400 E_PIPELINE_VALIDATION`: `lotto_id` ≤ 0, `order_dir` non ammessa
+- `400 E_VALIDATION_INPUT`: `limit`/`offset` non interi o fuori limiti,
+  `page`/`page_size` presenti (dal 2026-10-21 il service non ripete il
+  controllo della finestra con `E_PIPELINE_VALIDATION`)
 - `404 E_LOTTO_NON_TROVATO`: lotto inesistente o fuori perimetro — la testata si
   legge prima dell'elenco. ⚠️ 2026-10-20: prima `200` con zero righe
 

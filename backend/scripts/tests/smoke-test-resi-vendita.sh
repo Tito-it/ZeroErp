@@ -116,7 +116,7 @@ smoke_cliente_dal_lookup   # BB _smoke_cliente.sh: BA_ID, UTILITY_ID, ISTANZA_ID
 if [[ -z "$BA_ID" || -z "$UTILITY_ID" ]]; then
 log_info "lookup BA vuoto; provo a riusare un ordine esistente"
 PAIR=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/vendite/ordini/?page_size=1" 2>/dev/null | python3 -c "
+    "${BASE_URL}/api/v1/vendite/ordini/?limit=1" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -209,7 +209,7 @@ build_ddt_consegnato() {
     local i
     for ((i=1; i<=nrighe; i++)); do
         do_curl POST "/api/v1/vendite/ordini/${oid}/righe/" \
-            "{\"articolo_id\": \"$ARTICOLO_ID\", \"descrizione\": \"Riga $i smoke reso\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"80.00\", \"iva_id\": ${IVA_ID}}"
+            "{\"articolo_id\": \"$ARTICOLO_ID\", \"descrizione\": \"Riga $i smoke reso\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"80.00\"}"
         check "[$label] add riga $i" 200 || return 1
     done
     do_curl POST "/api/v1/vendite/ordini/${oid}/conferma/" '{}'

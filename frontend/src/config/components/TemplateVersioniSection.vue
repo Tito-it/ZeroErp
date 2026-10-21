@@ -31,6 +31,7 @@ import { useTemplateVersioniStore } from '../stores/templateVersioni'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
+import { PADRE_SENZA_EMITTENTE } from '../../core/composables/useListaStoreCore'
 // `useConfirmAction` espone `confirmAction` (signature object con
 // `onAccept` callback). Memoria feedback_useconfirmaction_destructuring:
 // usare destructured + nome callback `onAccept` (non `accept`) per
@@ -50,16 +51,23 @@ import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const props = defineProps({
   templateId: { type: Number, required: true },
-  // L'emittente del template (PK `emittenti_fiscali`, NOT NULL a modello):
-  // la lista lo gira al cancello di perimetro, perche' il super admin su
-  // «Tutti» non debba scegliere l'emittente del template che ha gia' aperto.
+  // L'emittente del template (PK `emittenti_fiscali`): la lista lo gira al
+  // cancello di perimetro, perche' il super admin su «Tutti» non debba
+  // scegliere l'emittente del template che ha gia' aperto.
   emittenteFiscaleId: { type: [Number, null], default: null },
+  // Il template e' uno STANDARD (senza emittente): `true`/`false` dal
+  // dettaglio, `null` finche' non e' letto. Vedi il padre, sotto.
+  standard: { type: [Boolean, null], default: null },
   // La forma dei dati che il builder del template produce oggi
   // (`versione_contesto_builder` del dettaglio). `null` = builder non
   // registrato, o dettaglio non ancora letto.
   versioneContestoBuilder: { type: [Number, null], default: null },
   readonly: { type: Boolean, default: false },
 })
+// ⭐ `pubblicata`: pubblicare la prima versione cambia la RISOLUZIONE (la
+//    copia dell'emittente prende il posto dello standard): chi mostra lo
+//    scarto e il pannello della risoluzione deve rileggersi.
+const emit = defineEmits(['pubblicata'])
 
 const { t } = useI18n()
 const store = useTemplateVersioniStore()
@@ -88,9 +96,14 @@ const {
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato, reloadAll,
 } = useDrawerTabLista(store, {
   // Il padre composto: il template e il suo emittente (vedi lo store).
+  // ⭐ Lo STANDARD non ha emittente (brief-db-modelli-documento-standard §11
+  //    B-6/F-4): la parte dell'emittente e' `PADRE_SENZA_EMITTENTE`, la lista
+  //    legge senza il parametro, e il cancello decide come per una lista senza
+  //    emittente suo. ⛔ Fino al 2026-10-21 aspettava un emittente che non
+  //    arriva: drawer dello standard senza versioni, in caricamento per sempre.
   parentId: {
     templateId: () => props.templateId,
-    emittenteId: () => props.emittenteFiscaleId,
+    emittenteId: () => (props.standard === true ? PADRE_SENZA_EMITTENTE : props.emittenteFiscaleId),
   },
   searchTableOptions: { defaultSortField: 'versione', defaultSortOrder: 'desc' },
   extraActions: () => [{
@@ -211,6 +224,7 @@ async function confirmPubblica() {
   if (result !== null) {
     pubblicaDialog.value = false
     await reload()
+    emit('pubblicata')
   }
 }
 

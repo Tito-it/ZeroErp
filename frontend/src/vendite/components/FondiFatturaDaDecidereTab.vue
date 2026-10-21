@@ -41,6 +41,8 @@ import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
+import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useChiaveGesto } from '../../core/composables/useChiaveGesto'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useNotify } from '../../core/composables/useNotify'
@@ -70,6 +72,12 @@ const MOTIVI = [
 
 const { t, te } = useI18n()
 const notify = useNotify()
+const { execute } = useApiHandler()
+// ⭐ La key del GESTO (`useChiaveGesto`): la conferma si chiude al clic, quindi
+//    un «Cancella» ripremuto dopo un timeout passa da una conferma nuova — e
+//    deve rimandare la stessa key, o una cancellazione riuscita lato server
+//    risponderebbe al secondo clic con un errore. Il payload e' il fondo.
+const gestoCancella = useChiaveGesto()
 const { confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
 const store = useFondiFatturaDaDecidereStore()
@@ -86,8 +94,7 @@ const {
   getExportParams: (fmt) => {
     const p = { formato: fmt }
     if (store.filters.motivo) p.motivo = store.filters.motivo
-    // Stessa forma della fetch (`paramsOrdinamento`, ripiego `desc` come
-    // `paramsPagina` nello store).
+    // Stessa forma della fetch dello store (`paramsOrdinamento`, ripiego `desc`).
     return { ...p, ...paramsOrdinamento(store.filters) }
   },
   // Nessun "Nuovo": una riga di questo elenco non si crea, si risolve.
@@ -209,19 +216,25 @@ function chiediCancellazione(data) {
   })
 }
 
-// Scopo: chiama il DELETE e ricarica. ⚠️ `try/catch` e non `useApiHandler`:
-//        qui si chiama direttamente il client axios e serve il messaggio del
-//        database — `extractApiError` porta a video il codice tradotto
-//        (`E_FONDO_NON_CANCELLABILE`, `E_FONDO_TRATTENUTO_DA_SISTEMAZIONE`, …)
-//        con la sua soluzione, che è l'unica cosa utile in caso di rifiuto.
+// Scopo: chiama il DELETE e ricarica.
+// ⭐ Via `useApiHandler` (2026-10-21): il rifiuto del database
+//    (`E_FONDO_NON_CANCELLABILE`, `E_FONDO_TRATTENUTO_DA_SISTEMAZIONE`, …)
+//    arriva a video col messaggio, la SOLUZIONE e il gesto verso il bersaglio.
+//    Fino a quel giorno qui c'era un `try/catch` con `extractApiError`, che
+//    del rifiuto mostrava il solo messaggio — e il commento prometteva anche
+//    la soluzione.
 async function eseguiCancellazione(data) {
-  cancellazioneInCorso.value = data.fondo_source_id
+  const fondoId = data.fondo_source_id
+  cancellazioneInCorso.value = fondoId
   try {
-    await cancellaFondoFattura(data.fondo_source_id)
-    notify.success(t('vendite.fondi_fattura_da_decidere.cancellato'))
-    await load()
-  } catch (err) {
-    notify.error(extractApiError(err, t('common.error')))
+    const esito = await execute(
+      () => gestoCancella.invia(
+        { fondoId },
+        (config) => cancellaFondoFattura(fondoId, config),
+      ),
+      { successMessage: t('vendite.fondi_fattura_da_decidere.cancellato') },
+    )
+    if (esito !== null) await load()
   } finally {
     cancellazioneInCorso.value = null
   }

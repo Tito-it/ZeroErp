@@ -16,9 +16,8 @@ import api from '../../core/api'
 //   - E_ATTIVAZIONE_SHOP_CROSS 400: ruolo non CLIENTE_PORTALE, GUC vuota,
 //     identita esistente collegata ad altro auth_user (anti-tampering).
 //
-// `Idempotency-Key`: l'operazione e' gia' idempotente lato BE; non
-// generiamo header dedicato per evitare l'overhead non necessario su
-// un'azione user-driven (il bottone e' disabilitato durante `loading`).
+// `Idempotency-Key`: la mette l'interceptor di `core/api.js`, come su ogni
+// POST che scrive.
 export function attivaAccessoShop() {
   return api.post('/portale/profile/activate-shop/')
 }

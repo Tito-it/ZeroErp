@@ -152,7 +152,6 @@ class ListiniRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=LISTINI_ORDER_COLUMNS, default="l.codice", tiebreak="l.id",
-            rifiuta_fuori_whitelist=True,
         )
 
         conditions: list[str] = []
@@ -704,7 +703,7 @@ class ListiniRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=RIGHE_ORDER_COLUMNS, default="articolo_descrizione",
-            tiebreak="row_key", rifiuta_fuori_whitelist=True,
+            tiebreak="row_key",
         )
 
         conditions: list[str] = ["r.listino_versione_id = %s"]
@@ -1010,10 +1009,16 @@ class ListiniRepository:
 
     # Scopo: Restituisce versioni ATTIVE in scadenza entro N giorni senza successore.
     #        Filtro temporale isolato per facilitare futura migrazione daterange (N1).
+    # ⛔ La scadenza e' `valido_al` (incluso), NON `upper(validita)`:
+    #    `validita` e' `daterange(valido_dal, valido_al, '[]')`, che PostgreSQL
+    #    normalizza in `[)`, quindi `upper()` vale `valido_al + 1`. Fino al
+    #    2026-10-21 la query leggeva `upper()` e sbagliava di un giorno la
+    #    scadenza, i giorni rimanenti e il successore contiguo
+    #    (brief-be-verifica-documentazione-api §C1).
     def _filter_versioni_in_scadenza(self) -> str:
         return (
-            "upper(v.validita) IS NOT NULL "
-            "AND upper(v.validita) <= (SELECT script.fn_data_operativa()) + %(giorni)s * INTERVAL '1 day'"
+            "v.valido_al IS NOT NULL "
+            "AND v.valido_al <= (SELECT script.fn_data_operativa()) + %(giorni)s * INTERVAL '1 day'"
         )
 
     # Scopo: Lista versioni operativamente ATTIVE oggi che scadono entro `giorni`
@@ -1036,8 +1041,8 @@ class ListiniRepository:
                     v.id AS versione_id,
                     v.codice_versione,
                     v.valido_dal,
-                    upper(v.validita) AS valido_al,
-                    upper(v.validita) - (SELECT script.fn_data_operativa()) AS giorni_rimanenti
+                    v.valido_al,
+                    v.valido_al - (SELECT script.fn_data_operativa()) AS giorni_rimanenti
                   FROM vendite.listini_versioni v
                   JOIN vendite.listini l ON l.id = v.listino_id
                   LEFT JOIN config.utilities u ON u.id = l.utility_id
@@ -1052,10 +1057,12 @@ class ListiniRepository:
                         WHERE succ.listino_id = v.listino_id
                           AND succ.id != v.id
                           AND succ.attivo IS TRUE
-                          AND succ.valido_dal > upper(v.validita)
+                          -- Il successore CONTIGUO nasce il giorno dopo la
+                          -- scadenza: `valido_dal = valido_al + 1`, cioe' `>`.
+                          AND succ.valido_dal > v.valido_al
                           AND (
                               succ.stato = 'BOZZA'
-                              OR succ.validita && daterange(upper(v.validita), NULL, '[)')
+                              OR succ.validita && daterange(v.valido_al + 1, NULL, '[)')
                           )
                    )
                  ORDER BY v.valido_al ASC, l.codice

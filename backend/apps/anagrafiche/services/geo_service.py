@@ -12,14 +12,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from apps.core.api.payload_validators import optional_bool, optional_int
+from apps.core.api.payload_validators import optional_int
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import PayloadValidator
 from apps.anagrafiche.db.geo_repository import GeoRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import (
     create_with_dedup as _create_with_dedup,
-    optional_str as _optional_str,
     require_str as _require_str,
     update_with_dedup as _update_with_dedup,
 )
@@ -49,6 +49,24 @@ def richiedi_via(payload: dict) -> None:
                          code=E_ANAG_VALIDAZIONE, message="Comune obbligatorio per via nuova.")
     ErrorManager.require(codice_postale_id is not None and codice_postale_id > 0,
                          code=E_ANAG_VALIDAZIONE, message="CAP obbligatorio per via nuova.")
+
+
+_V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
+
+
+# Scopo: i campi delle PATCH di geo si leggono per PRESENZA col BB
+#        `PayloadValidator.campi_per_presenza`: una chiave presente si scrive
+#        (anche `null`, che svuota un campo nullable), una chiave assente non
+#        si tocca; chiavi fuori contratto e PATCH senza campi sono un 400.
+# ⛔ Fino al 2026-10-20 le sei PATCH di geo passavano tutto da `dynamic_update`
+#    (None = «non toccare»): il drawer manda `null` per un campo svuotato, e
+#    svuotare l'ISO2 di uno stato o la palazzina di un indirizzo rispondeva
+#    «salvato» senza scrivere; una chiave ignota si scartava; un PATCH vuoto
+#    rispondeva 404 su un record che esiste; `{"attivo": null}` spegneva
+#    l'indirizzo (brief-be-verifica-documentazione-api §A2, §B2, §B3).
+#    `max_len` dei testi e' la lunghezza della colonna (doc dbzero): oltre, il
+#    DB rispondeva 22001, cioe' un 500.
+_CAMPI_NON_MODIFICABILI = "Campi non modificabili."
 
 
 class GeoService:
@@ -83,10 +101,12 @@ class GeoService:
 
     # Scopo: Aggiorna tipo strada con validazione e dedup.
     def update_toponomastica(self, pk: int, payload: dict) -> dict:
-        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
-        attivo = optional_bool(payload, "attivo", default=True) if "attivo" in payload else None
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={"descrizione": (False, 100)}, flag=frozenset({"attivo"}),
+        )
         return _update_with_dedup(
-            lambda: self._geo.update_toponomastica(pk, descrizione=descrizione, attivo=attivo),
+            lambda: self._geo.update_toponomastica(pk, campi),
             "Tipo strada gia' esistente.",
             "Tipo strada non trovato.",
         )
@@ -135,10 +155,12 @@ class GeoService:
 
     # Scopo: Aggiorna codice postale.
     def update_codice_postale(self, pk: int, payload: dict) -> dict:
-        codice = _optional_str(payload, "codice", "Codice CAP non puo' essere vuoto.")
-        comune_id = optional_int(payload, "comune_id")
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={"codice": (False, 50)}, interi={"comune_id": False},
+        )
         return _update_with_dedup(
-            lambda: self._geo.update_codice_postale(pk, codice=codice, comune_id=comune_id),
+            lambda: self._geo.update_codice_postale(pk, campi),
             "Codice postale gia' esistente.",
             "Codice postale non trovato.",
         )
@@ -173,10 +195,13 @@ class GeoService:
 
     # Scopo: Aggiorna provincia con validazione e dedup.
     def update_provincia(self, pk: int, payload: dict) -> dict:
-        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
-        sigla = _optional_str(payload, "sigla", "Sigla non puo' essere vuota.")
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={"descrizione": (False, 80), "sigla": (False, 10)},
+            maiuscoli=frozenset({"sigla"}), interi={"regione_id": True},
+        )
         return _update_with_dedup(
-            lambda: self._geo.update_provincia(pk, descrizione=descrizione, sigla=sigla, regione_id=optional_int(payload, "regione_id")),
+            lambda: self._geo.update_provincia(pk, campi),
             "Sigla provincia gia' esistente.",
             "Provincia non trovata.",
         )
@@ -210,9 +235,12 @@ class GeoService:
 
     # Scopo: Aggiorna regione con validazione e dedup.
     def update_regione(self, pk: int, payload: dict) -> dict:
-        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={"descrizione": (False, None)}, interi={"stato_id": False},
+        )
         return _update_with_dedup(
-            lambda: self._geo.update_regione(pk, descrizione=descrizione, stato_id=optional_int(payload, "stato_id")),
+            lambda: self._geo.update_regione(pk, campi),
             "Regione gia' esistente.",
             "Regione non trovata.",
         )
@@ -253,16 +281,16 @@ class GeoService:
 
     # Scopo: Aggiorna stato con validazione e dedup.
     def update_stato(self, pk: int, payload: dict) -> dict:
-        descrizione = _optional_str(payload, "descrizione", "Descrizione non puo' essere vuota.")
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={
+                "descrizione": (False, 100), "codice_iso2": (True, 2), "codice_iso3": (True, 3),
+                "sigla_stato": (True, 10), "codice_telefonico": (True, 10), "continente": (True, 50),
+            },
+            maiuscoli=frozenset({"codice_iso2", "codice_iso3", "sigla_stato"}),
+        )
         return _update_with_dedup(
-            lambda: self._geo.update_stato(
-                pk, descrizione=descrizione,
-                codice_iso2=payload.get("codice_iso2"),
-                codice_iso3=payload.get("codice_iso3"),
-                sigla_stato=payload.get("sigla_stato"),
-                codice_telefonico=payload.get("codice_telefonico"),
-                continente=payload.get("continente"),
-            ),
+            lambda: self._geo.update_stato(pk, campi),
             "Stato gia' esistente.",
             "Stato non trovato.",
         )
@@ -360,20 +388,16 @@ class GeoService:
 
     # Scopo: Aggiorna dettagli civico indirizzo.
     def update_indirizzo(self, pk: int, payload: dict) -> dict:
-        def _strip_or_none(key: str):
-            v = payload.get(key)
-            return v.strip() if isinstance(v, str) else v
-
-        updated = self._ind.update_indirizzo_dettaglio(
-            pk,
-            civico=optional_int(payload, "civico"),
-            estensione_civico=_strip_or_none("estensione_civico"),
-            palazzina=_strip_or_none("palazzina"),
-            scala=_strip_or_none("scala"),
-            piano=_strip_or_none("piano"),
-            interno=_strip_or_none("interno"),
-            attivo=optional_bool(payload, "attivo") if "attivo" in payload else None,
+        campi = _V.campi_per_presenza(
+            payload, message=_CAMPI_NON_MODIFICABILI,
+            testi={
+                "estensione_civico": (True, 10), "palazzina": (True, 50), "scala": (True, 10),
+                "piano": (True, 10), "interno": (True, 10),
+            },
+            interi={"civico": True},
+            flag=frozenset({"attivo"}),
         )
+        updated = self._ind.update_indirizzo_dettaglio(pk, campi)
         ErrorManager.require(updated, code=E_ANAG_NOT_FOUND, message="Indirizzo non trovato.")
         return {"updated": True}
 

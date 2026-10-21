@@ -167,6 +167,19 @@ _RICERCA_FLUSSI = RicercaFull("pratiche.flussi", {
 })
 
 
+
+# Scopo: i campi di una PATCH di pratica e il loro frammento di SET. La legge
+#        anche il service (`aggiorna_pratica`), che rifiuta con un 400 una
+#        chiave che non sta qui (brief-be-verifica-documentazione-api §B2).
+PRATICA_UPDATE_SET: dict[str, str] = {
+    "descrizione": "descrizione = %s",
+    "data_scadenza": "data_scadenza = %s",
+    "soggetto_id": "soggetto_id = %s",
+    "risorsa_umana_id": "risorsa_umana_id = %s",
+    "unita_organizzativa_id": "unita_organizzativa_id = %s",
+    "meta": "meta = %s::jsonb",
+}
+
 class PraticheRepository:
 
     # -- SQL comuni pratiche (JOIN display fields) --
@@ -398,18 +411,9 @@ class PraticheRepository:
     # Scopo: Aggiorna i campi modificabili di una pratica esistente.
     def update_pratica(self, pratica_id: int, data: dict[str, Any]) -> None:
         # Costruzione SET dinamica con whitelist campi aggiornabili.
-        allowed_fields: dict[str, str] = {
-            "descrizione": "descrizione = %s",
-            "data_scadenza": "data_scadenza = %s",
-            "soggetto_id": "soggetto_id = %s",
-            "risorsa_umana_id": "risorsa_umana_id = %s",
-            "unita_organizzativa_id": "unita_organizzativa_id = %s",
-            "meta": "meta = %s::jsonb",
-        }
-
         set_parts: list[str] = []
         params: list[Any] = []
-        for field_name, sql_fragment in allowed_fields.items():
+        for field_name, sql_fragment in PRATICA_UPDATE_SET.items():
             if field_name in data:
                 set_parts.append(sql_fragment)
                 if field_name == "meta":

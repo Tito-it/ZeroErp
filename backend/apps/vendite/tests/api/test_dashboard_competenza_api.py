@@ -222,12 +222,12 @@ class DashboardCompetenzaAttivitaApiTests(JwtMockedApiTest):
     def test_attivita_solo_ritardo_e_paginazione(self, mocked_fn, _mock_auth):
         mocked_fn.return_value = _ATTIVITA_RESPONSE
         self.client.get(
-            f"{self._URL}?competenza_mese=2026-05-01&solo_ritardo=true&page=2&page_size=10"
+            f"{self._URL}?competenza_mese=2026-05-01&solo_ritardo=true&limit=10&offset=10"
         )
         kwargs = mocked_fn.call_args.kwargs
         self.assertTrue(kwargs["solo_ritardo"])
-        self.assertEqual(kwargs["page"], 2)
-        self.assertEqual(kwargs["page_size"], 10)
+        self.assertEqual(kwargs["limit"], 10)
+        self.assertEqual(kwargs["offset"], 10)
 
     # Scopo: order_by/order_dir (ordinamento colonne) inoltrati al service;
     #        whitelist/validazione = definizione unica del service.

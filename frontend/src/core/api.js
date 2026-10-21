@@ -6,6 +6,7 @@ import { getAccessToken, rinnovaCoordinato } from './sessione'
 import { redirectToLogin } from './uscitaSessione'
 import i18n from './i18n'
 import { extractApiErrorCode } from './utils/apiError'
+import { generateIdempotencyKey } from './utils/idempotency'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -36,8 +37,37 @@ api.interceptors.request.use(config => {
   if (locale) {
     config.headers['Accept-Language'] = locale
   }
+  applicaIdempotencyKey(config)
   return config
 })
+
+// Scopo: ⭐ L'`Idempotency-Key` su ogni chiamata che scrive, in un punto solo
+//        (decisione di Tid del 2026-10-20, brief-be-verifica-documentazione-api
+//        §A5). Il backend la pretende su ogni POST che scrive
+//        (`_ApiViewBase.initial`), e alcuni endpoint anche su PATCH/PUT/DELETE:
+//        la si mette su tutti e quattro i metodi, dove non serve e' ignorata.
+// Note: ⛔ Una key per CHIAMATA, la stessa granularita' delle 69 copie di
+//       `generateIdempotencyKey()` che sostituisce (regola del 2, ok di Tid): il
+//       rinnovo dopo un 401 rimanda la stessa `config`, quindi la stessa key.
+//       ⚠️ Una key gia' presente vince: chi la genera di proposito (una per
+//       GESTO, riusata nei reinvii) la passa negli header e resta sua — e' il
+//       mestiere di `useChiaveGesto`, per i gesti irreversibili che un
+//       timeout non deve far eseguire due volte.
+const METODI_CHE_SCRIVONO = new Set(['post', 'put', 'patch', 'delete'])
+
+export function applicaIdempotencyKey(config) {
+  if (!METODI_CHE_SCRIVONO.has((config.method || 'get').toLowerCase())) return config
+  const headers = config.headers || {}
+  const presente = typeof headers.has === 'function'
+    ? headers.has('Idempotency-Key')
+    : Object.keys(headers).some(k => k.toLowerCase() === 'idempotency-key')
+  if (!presente) {
+    if (typeof headers.set === 'function') headers.set('Idempotency-Key', generateIdempotencyKey())
+    else headers['Idempotency-Key'] = generateIdempotencyKey()
+  }
+  config.headers = headers
+  return config
+}
 
 // Scopo: rinnova l'access dal cookie HttpOnly del refresh (brief sicurezza
 //        §2, dal 2026-09-28). Il corpo è vuoto: il browser manda il cookie da

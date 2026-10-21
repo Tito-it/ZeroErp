@@ -17,8 +17,6 @@ import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
-import { lookupCodici } from '../../core/apiCore'
 import { MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../core/constants'
 import { PRICING_ACTIONS } from '../constants'
 import { statoVersioneListinoSeverity, statoVersioneVisibile } from '../../core/utils/severity'
@@ -48,6 +46,7 @@ import ChiudiVersioneDialog from './ChiudiVersioneDialog.vue'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { buildAttivoOptions } from '../../core/utils/options'
+import { useLookupCodici } from '../../core/composables/useLookupCodici'
 
 const emit = defineEmits([
   'new',
@@ -94,11 +93,7 @@ const { value: attivoFilter, onChange: onAttivoChange } = bindSelect('attivo')
 // Lookup tipologie listino per il filtro (non filtrato per utility: lista
 // completa delle tipologie attive). Cache globale condivisa: ogni re-mount
 // del componente (cambio tab, split-view) riusa la stessa fetch.
-const tipologiaLookup = useGlobalLookup(
-  'config.listini_tipologie',
-  () => lookupCodici('config.listini_tipologie'),
-  { immediate: true }
-)
+const tipologiaLookup = useLookupCodici('config.listini_tipologie', { immediate: true })
 
 // ⭐ Dal BB (regola del 2, ok Tid 2026-09-23): la terna era scritta a mano qui
 //    con le chiavi di `amministrazione`, cioe' un componente di `vendite` che

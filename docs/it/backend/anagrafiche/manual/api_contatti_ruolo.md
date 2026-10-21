@@ -127,7 +127,8 @@ Ownership check su `soggetto_ruolo_id`.
 
 Chiavi ammesse nel corpo: `nominativo`, `email`, `telefono`, `cellulare`, `pec`,
 `tipo_contatto_id`, `unita_organizzativa_id`, `note`. Una chiave fuori elenco
-(compreso `istanza_utility_id`) → `400 E_ANAG_VALIDAZIONE`.
+(compreso `istanza_utility_id`) → `400 E_ANAG_VALIDAZIONE`; un corpo vuoto pure
+(dal 2026-10-20: prima 404).
 
 Risposta (200): `{"data": {"updated": true}}`. Contatto inesistente o di un
 altro ruolo → `404 E_ANAG_NOT_FOUND`.

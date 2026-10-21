@@ -40,7 +40,8 @@ from unittest.mock import Mock, patch
 
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -68,7 +69,7 @@ class _BaseApiTest(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
         cache.clear()
-        self.client = Client()
+        self.client = ClientApi()
 
 
 class TestList(_BaseApiTest):

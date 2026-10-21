@@ -27,6 +27,7 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_translator import ErrorTranslator
@@ -35,7 +36,6 @@ from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.list_helpers import (
     validate_enum_param,
     validate_order_params,
-    validate_pagination,
 )
 from apps.core.services.payload_helpers import (
     PayloadValidator,
@@ -45,7 +45,6 @@ from apps.pagamenti.services._helpers import (
     E_FATTURA_NON_TROVATA,
     E_RATA_NON_TROVATA,
     E_VALIDAZIONE,
-    risposta_paginata as _risposta_paginata,
 )
 from apps.pagamenti.db.pagamenti_repository import (
     DISTINTA_RIGHE_SORT_COLUMNS,
@@ -391,8 +390,8 @@ def list_distinte(
     search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     order_by, order_dir = validate_order_params(
         order_by or "data_contabile",
@@ -400,9 +399,6 @@ def list_distinte(
         allowed_columns=frozenset(DISTINTE_SORT_COLUMNS),
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_distinte",
-    )
-    offset = validate_pagination(
-        page, page_size, error_code=E_VALIDAZIONE, function_name=f"{_FN}.list_distinte"
     )
     # ⛔ I due filtri nel loro vocabolario, o un 400 sul campo — come la doc
     #    promette («un 400, mai una lista vuota»): fino al 2026-10-20 andavano
@@ -428,10 +424,10 @@ def list_distinte(
         search=search,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
-    return _risposta_paginata(results, total, page, page_size)
+    return envelope_da_offset(results, total, limit=limit, offset=offset)
 
 
 # Scopo: Le transizioni che una PERSONA puo' chiedere, stato per stato, lette
@@ -642,9 +638,11 @@ def aggiorna_distinta(contabile_id: int, payload: dict[str, Any]) -> dict[str, A
             "meta": lambda p: _meta_json(p),
         },
     )
-    if campi:
-        with _db_errors("aggiorna_distinta"):
-            repository.update_distinta(contabile_id, campi)
+    # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+    #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+    _PAYLOAD.require_campi_da_aggiornare(campi)
+    with _db_errors("aggiorna_distinta"):
+        repository.update_distinta(contabile_id, campi)
     return get_distinta(contabile_id)
 
 
@@ -1053,14 +1051,16 @@ def aggiorna_riga(riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
             ),
         },
     )
+    # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+    #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+    _PAYLOAD.require_campi_da_aggiornare(campi)
     _guard_motivo_con_forzatura(
         campi.get("forzata", False),
         campi.get("motivo_forzatura"),
         function_name=f"{_FN}.aggiorna_riga",
     )
-    if campi:
-        with _db_errors("aggiorna_riga"):
-            repository.update_riga(riga_id, campi)
+    with _db_errors("aggiorna_riga"):
+        repository.update_riga(riga_id, campi)
     return {"riga": _riga_o_404(repository, riga_id)}
 
 
@@ -1211,8 +1211,8 @@ def list_coda_righe(
     search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     chiave = (coda or "TUTTE").upper()
     ErrorManager.require(
@@ -1230,10 +1230,6 @@ def list_coda_righe(
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_coda_righe",
     )
-    offset = validate_pagination(
-        page, page_size, error_code=E_VALIDAZIONE,
-        function_name=f"{_FN}.list_coda_righe",
-    )
 
     repository = PagamentiRepository()
     results, total = repository.list_righe_coda(
@@ -1244,7 +1240,7 @@ def list_coda_righe(
         search=search,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
     # ⭐ Il catalogo degli stati di riga e le uscite richiedibili DA OGNI STATO
@@ -1256,7 +1252,7 @@ def list_coda_righe(
     #    registro lotti).
     _grafo_distinta, grafo_riga = repository.list_transizioni()
     return {
-        **_risposta_paginata(results, total, page, page_size),
+        **envelope_da_offset(results, total, limit=limit, offset=offset),
         "stati_riga": repository.list_stati_riga(),
         "transizioni_riga": _transizioni_richiedibili(grafo_riga, STATI_RIGA_RICHIEDIBILI),
     }
@@ -1273,8 +1269,8 @@ def list_rate_fuori_capienza(
     search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     # Fail-fast sul vocabolario chiuso: un motivo inventato darebbe una lista
     # vuota, che su due soli valori possibili e' indistinguibile da «non c'e'
@@ -1294,10 +1290,6 @@ def list_rate_fuori_capienza(
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_rate_fuori_capienza",
     )
-    offset = validate_pagination(
-        page, page_size, error_code=E_VALIDAZIONE,
-        function_name=f"{_FN}.list_rate_fuori_capienza",
-    )
 
     repository = PagamentiRepository()
     results, total = repository.list_rate_fuori_capienza(
@@ -1306,10 +1298,10 @@ def list_rate_fuori_capienza(
         search=search,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
-    return _risposta_paginata(results, total, page, page_size)
+    return envelope_da_offset(results, total, limit=limit, offset=offset)
 
 
 # ══════════════════════════════════════════════════════════════════

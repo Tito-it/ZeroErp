@@ -32,7 +32,10 @@ Indice test eseguiti:
 
 from unittest.mock import ANY, Mock, patch
 
-from django.test import Client
+from django.test import SimpleTestCase
+
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -56,7 +59,7 @@ class TestDdtApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     def test_list_richiede_jwt(self) -> None:
         resp = self.client.get(_BASE)
@@ -297,7 +300,7 @@ class TestOrdineGeneraDdtApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.crea_ddt_da_ordine")
@@ -327,3 +330,12 @@ class TestOrdineGeneraDdtApi(JwtMockedApiTest):
         mock_gen.assert_called_once_with(
             7, [{"ordine_riga_id": 11, "qta_da_evadere": "2"}],
         )
+
+
+class DdtEmettiPermessoTests(SimpleTestCase):
+    # Scopo: l'emissione chiede l'azione di processo che il verbo DB applica
+    #        (`emetti_ddt`), come il preventivo chiede la sua (2026-10-20, §A5).
+    def test_emetti_dichiara_emetti_ddt(self) -> None:
+        from apps.vendite.api.ddt_documenti_views import ApiDdtEmetti
+
+        self.assertEqual(ApiDdtEmetti.post_permission, "emetti_ddt")

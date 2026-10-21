@@ -113,7 +113,10 @@ ATTIVITA_SORT_COLUMNS: frozenset[str] = frozenset({
     "tipo_movimento",
     "articolo_codice",
     "articolo_descrizione",
-    "sorgente_codice",
+    # ⭐ Dal 2026-10-21 (20261021-20, brief-db-grammatica-unica-documenti §13.6)
+    # si ordina per ETICHETTA, quella che la colonna «Tipo origine» mostra: era
+    # `sorgente_codice` (`config.sorgenti.codice`, il nome modificabile), uscito.
+    "sorgente_etichetta",
     "sorgente_documento_numero",
     "gruppo_key",
 })
@@ -1638,7 +1641,12 @@ class CommesseRepository(EventLogRepositoryMixin):
         "competenza_mese", "competenza_dal", "competenza_al",
         "prezzo_snapshot", "prezzo_bloccato", "prezzo_da_riallineare",
         "stato_approvazione", "stato_emissione", "sorgente_tipo_id",
-        "sorgente_codice", "meta", "data_update",
+        # ⭐ `sorgente_codice_interno` dal 2026-10-21 (20261021-20, brief-db-
+        # grammatica-unica-documenti §13.6), al posto di `sorgente_codice`, che
+        # era `config.sorgenti.codice`, il nome MODIFICABILE: il tipo del
+        # documento d'origine e' quello immutabile (G-1), ed e' da qui che il
+        # frontend apre il documento.
+        "sorgente_codice_interno", "meta", "data_update",
         # In coda alla RETURNS TABLE (changeset 20260724-07): EXISTS di un'AF
         # con fattura_riga_id valorizzato = specchio esatto del guard BE
         # `_assert_non_fatturata`. Il FE lo usa per nascondere le azioni prezzo
@@ -1688,6 +1696,9 @@ class CommesseRepository(EventLogRepositoryMixin):
         "tipo_movimento",
         "articolo_codice", "articolo_descrizione",
         "sorgente_documento_numero", "gruppo_key",
+        # In coda alla RETURNS TABLE (20261021-20): il nome del tipo a video
+        # («Ordine», non `ORDINE_VENDITA`), che la lista mostra e ordina.
+        "sorgente_etichetta",
     )
     # Type mapping per serializzazione colonne attivita.
     _ATTIVITA_DATE_COLS = frozenset({

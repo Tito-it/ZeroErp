@@ -10,7 +10,6 @@
 
 import api from '../../../core/api'
 import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
-import { generateIdempotencyKey } from '../../../core/utils/idempotency'
 
 const BASE = '/vendite/resi'
 
@@ -169,7 +168,6 @@ export function accreditaRighe(resiRigaIds) {
   return api.post(
     `${BASE}/accrediti/`,
     { resi_riga_ids: resiRigaIds },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -181,7 +179,6 @@ export function annullaAccredito(resoId, rigaId, motivo) {
   return api.post(
     `${BASE}/${resoId}/righe/${rigaId}/annulla-accredito/`,
     { motivo },
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 

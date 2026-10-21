@@ -47,6 +47,7 @@ import ExportDialog from '../../core/components/ExportDialog.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useChiaveGesto } from '../../core/composables/useChiaveGesto'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { aspettoAzione } from '../../core/aspettoAzioni'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
@@ -87,6 +88,11 @@ const onClose = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { execute, loading: salvando, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
+// ⭐ La key del GESTO «Registra» (`useChiaveGesto`): la conferma si chiude al
+//    clic, quindi il reinvio dopo un timeout passa da una conferma nuova — e
+//    deve rimandare la stessa key, perche' il posting non si rifa'. Il payload
+//    e' il documento: cambiare documento e' un gesto nuovo.
+const gestoRegistra = useChiaveGesto()
 const notify = useNotify()
 const { statoDocumento } = useEtichetteMagazzino()
 const parentReadonly = useInjectReadonly()
@@ -252,7 +258,11 @@ function onRegistra() {
     acceptIcon: NAV_ICONS.MOVIMENTI,
     danger: true,
     onAccept: async () => {
-      const esito = await execute(() => store.registra(props.documentoId))
+      const documentoId = props.documentoId
+      const esito = await execute(() => gestoRegistra.invia(
+        { famiglia: f.codice, documentoId },
+        (config) => store.registra(documentoId, config),
+      ))
       if (esito !== null) {
         notify.success(t('magazzino.documenti_interni.registra.fatto', { n: esito.n_movimenti ?? 0 }))
         ricarica()

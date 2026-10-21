@@ -11,7 +11,7 @@
 import { MANAGE_ICONS } from '../core/constants'
 import { NAV_ICONS } from '../core/navigation'
 import { labelOrCode } from '../core/utils/i18nLabel'
-import { DOCUMENTO_DRAWER_TIPI } from '../core/drawerEntita'
+import { DOCUMENTO_DRAWER_TIPI, drawerEntita } from '../core/drawerEntita'
 import {
   statoCommessaSeverity,
   statoContrattoSeverity,
@@ -117,9 +117,17 @@ export function dashMotivoLabel(t, te, motivo) {
 //        (cambio rotta). Nascosta se l'area non ha un drawer o la riga non ha
 //        id di dominio. `onApri(drawerTipo, documentoId)` lo passa il caller:
 //        tipicamente `apri` di useDocumentoDrawer.
+// ⭐ `area` e' il codice della SORGENTE (dal 2026-10-20, brief-db-grammatica-
+//    unica-documenti 2d), quindi un documento che non e' un'area del cruscotto
+//    — la FATTURA d'origine di una riga di commessa — si apre lo stesso dal
+//    registro dei drawer, se il suo tipo e' una sorgente iscritta. La voce del
+//    cruscotto, quando c'e', vince: la COMMESSA dal cruscotto apre il drawer di
+//    GESTIONE, non quello leggero. Il caller passa `area` null quando il DB dice
+//    che il documento non ha una pagina (`*_apribile`).
 export function buildApriDocumentoAction({ area, documentoId, label, onApri }) {
   const config = DASH_AREA_CONFIG[area]
-  const drawerTipo = config?.drawerTipo ?? null
+  const drawerTipo = config?.drawerTipo
+    ?? (drawerEntita(area)?.sorgente === true ? area : null)
   return {
     key: 'apri',
     label,
