@@ -2762,6 +2762,19 @@ Precedenti: `brief-db-liste-documento-lineage-lenta` (la prima),
 `fn_ddt_push_diagnosi` → `fn_partite_merce` (la seconda),
 `fn_scope_ef_perimetro` (la terza).
 
+⛔ **La terza forma arriva anche per la strada della RLS.** Una `fn_check_*`
+`SECURITY INVOKER` che legge tabelle sotto policy, chiamata in `LATERAL` su una
+lista, ricalcola il perimetro **a ogni chiamata**: ogni sua istruzione interna è
+un'istruzione a sé, con i suoi `InitPlan`. §10.3 resta rispettata alla lettera, e
+il perimetro torna lo stesso a essere calcolato per riga. Nessun presidio sulle
+policy lo vede. **Cura**: lettura e giudizio in due metà. La metà di giudizio
+riceve ciò che la lista ha già letto (la riga della testata, `p_x schema.tabella`)
+e non legge niente sotto perimetro. La firma per id legge sotto RLS, tiene il 404
+no-leak e delega: la usano il guard e il dettaglio, mentre la lista chiama la
+metà. Le regole restano in un posto solo. Precedente:
+[`fn_check_riga_contabile_eliminabile_su_distinta`](/dbzero/script/manual/fn_check_riga_contabile_eliminabile_su_distinta)
+(`20261021-62/-63`, nota del BE del 2026-10-21).
+
 ### 13.3 ⛔ Un cast o una funzione nel join verso una tabella sotto policy
 
 Sotto RLS una condizione di join entra nell'indice solo se è **leakproof**
