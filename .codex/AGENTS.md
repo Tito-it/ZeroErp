@@ -122,6 +122,25 @@ Chi lo apre deve sapere **a chi tocca** senza leggerlo tutto.
 Esempio:
 [brief-db-indirizzi-documento-seguono-il-cliente](../docs/it/dev/work-done/brief-db-indirizzi-documento-seguono-il-cliente.md).
 
+## ⛔ Un tema, un brief — prima di aprirne uno si cercano i vicini
+
+Vale per DB, backend e frontend (Tid, 2026-10-21). Due brief aperti sullo stesso tema, o sugli
+stessi oggetti, si pestano i piedi: riscrivono la stessa funzione per ragioni diverse, a pochi
+giorni di distanza, e ognuno lascia all'altro un pezzo da rifare.
+
+* **Prima di aprire un brief** si cercano in `docs/it/dev/work-in-progress/` (brief, piani,
+  analisi) quelli che toccano **lo stesso tema** o **gli stessi oggetti** (tabelle, funzioni,
+  documenti, endpoint), anche se il titolo parla d'altro.
+* Se uno copre il tema, o un lavoro **complementare** sugli stessi oggetti, il lavoro nuovo va
+  **lì**, come sezione o giro in più, e non in un brief nuovo. Se i due vanno fusi, lo decide Tid.
+* Un brief nuovo dichiara in testata **«Brief vicini verificati»**: quelli trovati e perché non
+  bastano, oppure «nessuno».
+* Un tema che tocca **tutti i documenti di una famiglia** (tutti i documenti di vendita, tutti
+  quelli di magazzino…) non si apre senza l'ok esplicito di Tid.
+* Prima di proporre un cambio di **modello**, si cerca la decisione esistente (brief in
+  `work-done/`, guide, `git log -S`): la proposta dice se è nuova, se completa una decisione
+  presa o se ne **revoca** una, citandola con la data.
+
 ## Dove sta cosa
 
 AGENTS.md tiene solo le regole **trasversali**. Il dettaglio di ogni materia sta

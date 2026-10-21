@@ -173,6 +173,15 @@ def nome_metodo(self, ...):
 > Lo stato reale sta nei documenti di `docs/it/dev/work-in-progress/` e nel repo; qui solo
 > le decisioni di rotta e una riga per cantiere aperto.
 
+### ⛔ Fermo dei temi trasversali sui documenti di vendita (Tid, 2026-10-21)
+
+Finché il modello del documento di vendita non è scritto
+(`work-in-progress/brief-modello-documento-vendita.md`), **nessun tema nuovo che tocca tutti i
+documenti di vendita** (preventivo, offerta, contratto, ordine, DDT, reso, commessa, fattura,
+listino). Si correggono i difetti; i brief già in esecuzione arrivano in fondo; i temi trasversali
+in coda aspettano il modello. Il perché, con i fatti datati, sta nel §1 di quel brief. La regola
+generale «un tema, un brief» è in `.codex/AGENTS.md`.
+
 ### 🔵 Il cantiere principale — `acquisti` e `magazzino` (decisione di Tid, 2026-09-11)
 
 Le due app sono il cantiere in corso (voce D11 di

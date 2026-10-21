@@ -49,6 +49,14 @@ fixture, e la sua copertura vale **zero**, non «parziale».
 | **Nessun contesto** (CI, installazione nuova, o il file chiama questa funzione per prima) | costruisce azienda + operatore, apre il contesto su di lui, poi crea il cliente |
 | **Contesto già aperto** (macchina di sviluppo, o la riga del template chiamata prima) | **riusa l'azienda di chi agisce** e le aggiunge un cliente |
 
+⭐ **«L'azienda di chi agisce» la dice la regola di produzione** (rev 2026-10-21):
+`script.fn_resolve_emittente_for_user`, la stessa che usa il trigger quando lega il cliente.
+È l'azienda **scelta in alto** (`app.current_emittente_id`), se l'utente la può usare,
+altrimenti quella assegnata all'utente. Così anche un **super admin** che ha scelto l'azienda
+ha il suo mondo: è il caso dell'utente degli smoke Python (`dev.smoke`), che sceglie l'azienda
+di prova come la sceglie l'operatore in alto. Prima il builder leggeva solo l'azienda
+assegnata, e rifiutava il super admin a cui il trigger il cliente l'avrebbe legato.
+
 ⚠️ Riusare l'azienda non serve a risparmiare tempo: serve a non sbagliare. Costruendone
 una nuova, il cliente resterebbe legato a quella **vecchia** — perché il legame lo scrive
 il trigger guardando chi agisce — e sotto le regole di visibilità per riga quel cliente
@@ -60,9 +68,10 @@ non si vedrebbe più.
 * chiedere una **sigla** con il contesto già aperto è rifiutato: lì l'azienda non si
   sceglie, è quella di chi agisce. Per una **seconda** azienda si chiamano i builder
   atomici, prima del contesto;
-* un contesto aperto su un utente **senza azienda assegnata** è rifiutato: quella fixture
-  non potrebbe scrivere niente, e il file morirebbe venti righe più in là su una regola di
-  visibilità invece che sulla sua causa.
+* un contesto aperto su un utente **senza un'azienda su cui scrivere** è rifiutato:
+  l'operatore senza azienda assegnata, o il super admin che non ne ha scelta una. Quella
+  fixture non potrebbe scrivere niente, e il file morirebbe venti righe più in là su una
+  regola di visibilità invece che sulla sua causa.
 
 ---
 ### 🚫 Cosa NON comprende, e il criterio è uno
