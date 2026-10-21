@@ -84,6 +84,7 @@ search:
 - [fn_check_registro_serie_ammessa](funzioni/fn_check_registro_serie_ammessa.md)
 - [fn_check_reso_merce](funzioni/fn_check_reso_merce.md)
 - [fn_check_riga_contabile_eliminabile](funzioni/fn_check_riga_contabile_eliminabile.md) — (scritta il 14-09-2026, rev 30-09-2026)
+- [fn_check_riga_contabile_eliminabile_su_distinta](funzioni/fn_check_riga_contabile_eliminabile_su_distinta.md) — (scritta il 21-10-2026)
 - [fn_check_riga_documento_su_contesto](funzioni/fn_check_riga_documento_su_contesto.md)
 - [fn_check_riga_erogazione](funzioni/fn_check_riga_erogazione.md)
 - [fn_check_riga_magazzino](funzioni/fn_check_riga_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)

@@ -70,6 +70,7 @@ search:
 - [fn_check_prezzi_in_attesa](manual/fn_check_prezzi_in_attesa.md) — (nata il 2026-09-24 — `20260924-33`)
 - [fn_check_registro_forma_modificabile](manual/fn_check_registro_forma_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_riga_contabile_eliminabile](manual/fn_check_riga_contabile_eliminabile.md) — (scritta il 14-09-2026, rev 30-09-2026)
+- [fn_check_riga_contabile_eliminabile_su_distinta](manual/fn_check_riga_contabile_eliminabile_su_distinta.md) — (scritta il 21-10-2026)
 - [fn_check_riga_magazzino](manual/fn_check_riga_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_rinuncia_reversibile](manual/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
 - [fn_check_scadenza_di_fattura](manual/fn_check_scadenza_di_fattura.md) — (rev 2026-08-22)
