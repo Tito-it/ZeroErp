@@ -47,6 +47,8 @@
 --   smistatori delle note che lo ricevono (fn_scope_note_*ef_perimetro): la
 --   stessa forma, il perimetro come primo argomento in una sottoquery. Lo
 --   dice la regex _perimetro qui sotto, una per tutti i test.
+--   Rev 2026-10-21 (giro 4, 20261021-38): e gli smistatori delle note di
+--   cliente e shop (fn_scope_note_cliente_perimetro, fn_scope_note_shop_perimetro).
 --   Rev 2026-10-21 (20261021-29..-32, giro 2): anche fn_scope_sr_perimetro, la
 --   forma delle vesti di CONTROPARTE (cliente, shop, fornitore): il perimetro
 --   e' il soggetto dell'identita' (fn_get_identita_sr_perimetro), per riga il
@@ -86,7 +88,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(6);
 
 -- La funzione di scope col perimetro, in tutte le sue forme (vedi testata).
-CREATE TEMP TABLE _re AS SELECT 'fn_scope_((note_|note_magazzino_)?ef|sr)_perimetro\('::text AS perimetro;
+CREATE TEMP TABLE _re AS SELECT 'fn_scope_((note_|note_magazzino_)?ef|sr|note_cliente|note_shop)_perimetro\('::text AS perimetro;
 
 -- ⚠️ Il DEBITO di controparte (test 6): le funzioni di scope che calcolano
 --   ancora il perimetro dell'identita' per riga, curate dai giri successivi
@@ -94,11 +96,10 @@ CREATE TEMP TABLE _re AS SELECT 'fn_scope_((note_|note_magazzino_)?ef|sr)_perime
 --   da qui.
 CREATE TEMP TABLE _debito_controparte (nome text);
 INSERT INTO _debito_controparte VALUES
-  ('fn_scope_cliente_ownership'), ('fn_scope_cliente_ownership_via_ordine'),
-  ('fn_scope_cliente_ownership_via_ordine_riga'),
-  ('fn_scope_shop_via_ordine'), ('fn_scope_shop_via_ordine_riga'), ('fn_scope_shop_via_ba'),
-  ('fn_scope_fornitore_ownership'), ('fn_scope_email_ambito'),
-  ('fn_scope_note_cliente'), ('fn_scope_note_shop');
+  -- Rev 2026-10-21: uscite le tre fn_scope_cliente_ownership* (giro 3,
+  --   20261021-35), le tre fn_scope_shop_via_* e gli smistatori delle note di
+  --   cliente e shop (giro 4, 20261021-39).
+  ('fn_scope_fornitore_ownership'), ('fn_scope_email_ambito');
 
 -- Le policy, con il testo di USING e WITH CHECK insieme.
 CREATE TEMP TABLE _pol AS
@@ -200,7 +201,9 @@ SELECT is(
 --    chi ne cura una la toglie anche da qui; una policy nuova che ne chiama
 --    una fuori elenco fa rosso. La famiglia del cliente portale
 --    (fn_scope_ba_ownership, _via_fattura, _via_fattura_sdi) e' uscita col
---    giro 2 (20261021-32).
+--    giro 2 (20261021-32), quella del cliente (fn_scope_cliente_ownership,
+--    _via_ordine, _via_ordine_riga) col giro 3 (20261021-35), lo shop e le
+--    note di cliente e shop col giro 4 (20261021-39).
 -- ============================================================
 SELECT is(
   (SELECT coalesce(string_agg(DISTINCT m[1], ', ' ORDER BY m[1]), '')

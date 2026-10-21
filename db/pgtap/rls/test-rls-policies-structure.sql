@@ -178,11 +178,12 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'vendite' AND tablename = 'ordini'
-        AND policyname = 'rls_ordini_cliente_ownership') ~ 'fn_scope_cliente_ownership'
+        AND policyname = 'rls_ordini_cliente_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*, soggetto_ruolo_id\)'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'vendite' AND tablename = 'ordini'
             AND policyname = 'rls_ordini_cliente_ownership') ~ 'CLIENTE_PORTALE',
-    '12. rls_ordini_cliente_ownership: USING chiama fn_scope_cliente_ownership + gate CLIENTE_PORTALE'
+    -- Rev 2026-10-21 (20261021-35): la forma col perimetro; l'ordine porta il suo cliente.
+    '12. rls_ordini_cliente_ownership: USING perimetro del cliente + soggetto dell''ordine, gate CLIENTE_PORTALE'
 );
 
 -- =========================================================
