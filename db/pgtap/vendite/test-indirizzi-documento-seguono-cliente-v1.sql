@@ -184,9 +184,14 @@ SELECT is(
         AND p.proname NOT IN ('fn_check_indirizzi_documento_cliente', 'fn_doc_indirizzo_default')),
     'script.fn_available_actions_contratto, script.fn_available_actions_offerta, '
     'script.fn_check_ddt_emittibile, script.fn_check_preventivo_emettibile, '
-    'vendite.fn_create_contratto, vendite.trgfn_contratti_guard_transizione_stato, '
+    -- ⭐ rev 2026-10-21: + vendite.fn_genera_ordine_da_offerta (20261021-61,
+    --   brief-db-offerta-emissione-ed-erogazione §I.2, I-D2), il verbo che prende
+    --   il posto di ordini_service.crea_ordine_da_offerta: riempie l'indirizzo di
+    --   default dell'ordine nuovo come faceva il backend.
+    'vendite.fn_create_contratto, vendite.fn_genera_ordine_da_offerta, '
+    'vendite.trgfn_contratti_guard_transizione_stato, '
     'vendite.trgfn_doc_indirizzi_seguono_cliente, vendite.trgfn_offerte_commerciali_guard_transizione',
-    '3) i gate leggono la check, fn_create_contratto e il cambio di cliente il building block');
+    '3) i gate leggono la check, fn_create_contratto, il verbo dell''ordine dall''offerta e il cambio di cliente il building block');
 
 -- ============================================================
 -- IL PREDICATO

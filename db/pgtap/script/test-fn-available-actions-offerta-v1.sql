@@ -3,6 +3,10 @@
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   l'ordine nato dall'offerta porta documento_origine_tipo = OFFERTA_COMMERCIALE, il
 --   codice della sorgente (era OFFERTA: ora la FK verso config.sorgenti lo rifiuta).
+-- ⚠️ rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §H.3 H-R3, 20261021-58):
+--   da ACCETTATA si esce anche annullando (transizione ACCETTATA->ANNULLATA). I test 8
+--   e 12 non vedono piu' available_actions=[]: c'e' «annulla», SPENTA col motivo
+--   DOCUMENTI_VIVI perche' l'offerta vive nel contratto o nell'ordine generato.
 -- pgTAP test per Zero ERP
 -- Test: script.fn_available_actions_offerta — capability layer offerte commerciali
 -- ------------------------------------------------------------
@@ -16,14 +20,16 @@
 --  7) ACCETTATA senza contratto ne' ordine: can_push_contratto=true, push_contratto presente
 --  8) ACCETTATA con contratto generato (mutua esclusivita'): can_push_contratto=false
 --     E can_genera_ordine=false, entrambi reason='OFFERTA_CONTRATTO_GIA_GENERATO',
---     push_contratto E genera_ordine assenti -> available_actions=[]
+--     push_contratto E genera_ordine assenti; available_actions = [annulla SPENTA,
+--     reason DOCUMENTI_VIVI] (rev 2026-10-21)
 --  9) Terminale (RIFIUTATA): available_actions=[], can_edit_testata=false,
 --     can_push_contratto=false, non_editable_fields lista lunga
 -- 10) Tutte le label_key in available_actions iniziano per 'vendite.offerte.'
 -- 11) ACCETTATA senza ordine ne' contratto: can_genera_ordine=true, reason null, genera_ordine presente
 -- 12) ACCETTATA con ordine generato (mutua esclusivita'): can_genera_ordine=false
 --     E can_push_contratto=false, entrambi reason='OFFERTA_ORDINE_GIA_GENERATO',
---     genera_ordine E push_contratto assenti -> available_actions=[]
+--     genera_ordine E push_contratto assenti; available_actions = [annulla SPENTA,
+--     reason DOCUMENTI_VIVI] (rev 2026-10-21)
 -- 13) non ACCETTATA (BOZZA): can_genera_ordine=false, reason='OFFERTA_NON_ACCETTATA'
 -- 14) Indice: secondo ordine ('OFFERTA_COMMERCIALE', X) viola uq_ordini_v_documento_origine_offerta
 -- 15) Indice: due ordini ('PREVENTIVO', Y) consentiti (indice non li vincola)
@@ -357,8 +363,9 @@ SELECT ok(
 -- TEST 8) ACCETTATA con contratto generato (mutua esclusivita'):
 --         contratto presente, NESSUN ordine. push_contratto bloccato dal proprio
 --         contratto; genera_ordine ANCHE bloccato (own-doc first -> reason del
---         contratto). Entrambe le azioni speciali assenti e ACCETTATA non ha
---         transizioni manuali -> available_actions=[].
+--         contratto). Entrambe le azioni speciali assenti; l'unica transizione
+--         manuale da ACCETTATA (annulla, rev 2026-10-21) e' SPENTA col motivo
+--         DOCUMENTI_VIVI: l'offerta vive nel contratto.
 -- ============================================================
 SELECT ok(
     (SELECT
@@ -370,13 +377,14 @@ SELECT ok(
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_genera_ordine')::boolean IS FALSE
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_genera_ordine_reason')
              = 'OFFERTA_CONTRATTO_GIA_GENERATO'
-         -- entrambe le azioni speciali assenti -> available_actions vuoto
-         AND jsonb_array_length(
-                 script.fn_available_actions_offerta(o.offerta_id)->'available_actions'
-             ) = 0
+         -- entrambe le azioni speciali assenti: resta solo annulla, SPENTA
+         AND (SELECT jsonb_agg(jsonb_build_array(a->>'key', a->>'enabled', a->>'reason'))
+                FROM jsonb_array_elements(
+                         script.fn_available_actions_offerta(o.offerta_id)->'available_actions') a)
+             = '[["annulla", "false", "DOCUMENTI_VIVI"]]'::jsonb
        FROM tmp_aa_ids o WHERE o.slot = 'ACCT-2'
     ),
-    '8) ACCETTATA con contratto (mutua esclusivita): push E ordine bloccati, reason=OFFERTA_CONTRATTO_GIA_GENERATO, available_actions=[]'
+    '8) ACCETTATA con contratto (mutua esclusivita): push E ordine bloccati, reason=OFFERTA_CONTRATTO_GIA_GENERATO, resta solo annulla spenta (DOCUMENTI_VIVI)'
 );
 
 -- ============================================================
@@ -440,8 +448,9 @@ SELECT ok(
 -- TEST 12) ACCETTATA con ordine generato (mutua esclusivita'):
 --          ordine presente, NESSUN contratto. genera_ordine bloccato dal proprio
 --          ordine; push_contratto ANCHE bloccato (own-doc first -> reason
---          dell'ordine). Entrambe le azioni speciali assenti e ACCETTATA non ha
---          transizioni manuali -> available_actions=[].
+--          dell'ordine). Entrambe le azioni speciali assenti; l'unica transizione
+--          manuale da ACCETTATA (annulla, rev 2026-10-21) e' SPENTA col motivo
+--          DOCUMENTI_VIVI: l'offerta vive nell'ordine.
 -- ============================================================
 SELECT ok(
     (SELECT
@@ -453,13 +462,14 @@ SELECT ok(
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_push_contratto')::boolean IS FALSE
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_push_contratto_reason')
              = 'OFFERTA_ORDINE_GIA_GENERATO'
-         -- entrambe le azioni speciali assenti -> available_actions vuoto
-         AND jsonb_array_length(
-                 script.fn_available_actions_offerta(o.offerta_id)->'available_actions'
-             ) = 0
+         -- entrambe le azioni speciali assenti: resta solo annulla, SPENTA
+         AND (SELECT jsonb_agg(jsonb_build_array(a->>'key', a->>'enabled', a->>'reason'))
+                FROM jsonb_array_elements(
+                         script.fn_available_actions_offerta(o.offerta_id)->'available_actions') a)
+             = '[["annulla", "false", "DOCUMENTI_VIVI"]]'::jsonb
        FROM tmp_aa_ids o WHERE o.slot = 'ACCT-ORD'
     ),
-    '12) ACCETTATA con ordine (mutua esclusivita): ordine E push bloccati, reason=OFFERTA_ORDINE_GIA_GENERATO, available_actions=[]'
+    '12) ACCETTATA con ordine (mutua esclusivita): ordine E push bloccati, reason=OFFERTA_ORDINE_GIA_GENERATO, resta solo annulla spenta (DOCUMENTI_VIVI)'
 );
 
 -- ============================================================

@@ -3,9 +3,8 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: la quantita' di una riga di contratto o di offerta la porta la sua FONTE.
---       Solo FISSA (la quantita' della riga) e DERIVATA_COMPONENTI (la scrive il DB
---       dai componenti) hanno quantita e qta_operativa; con una fonte a valle
---       (MANUALE, LETTURE, TIMESHEET) restano vuote.
+--       Solo FISSA (la quantita' della riga) ha quantita e qta_operativa; con una
+--       fonte a valle (MANUALE, LETTURE, TIMESHEET) restano vuote.
 --       Brief brief-db-offerta-emissione-ed-erogazione §D.4 punto 2, §E (decisione di
 --       Tid del 2026-10-07: «DB, rifiuto»), changeSet 20261007-28 … -30.
 --       Terzo giro (§F.1, decisione di Tid del 2026-10-08, changeSet 20261008-10 … -12):
@@ -13,13 +12,18 @@
 --       (trgfn_qta_from_operativa); il rifiuto resta sull'input, qta_operativa.
 --       Prima la regola la applicava solo il backend, solo sul contratto, azzerando
 --       in silenzio (`_apply_fonte_quantita_logic`).
+--       ⚠️ rev 2026-10-21 (§I.1, I-D1 di Tid; changeSet 20261021-44 … -51):
+--       DERIVATA_COMPONENTI ritirata. Diceva «la quantita' la scrive il DB dai
+--       componenti», ma i componenti seguono la quantita' del padre e nessuno la
+--       calcolava. Il test 5 prova il composito con la FISSA, il 13 che la DERIVATA
+--       e' fuori dal perimetro, il 10 che CHECK e funzione dicono la sola FISSA.
 --
 -- ⭐ TUTTO COSTRUITO: cliente sulla prima utility, contratto DRAFT senza listino,
 --   offerta in BOZZA su un listino costruito, articoli senza tipologia (decide la
 --   natura):
 --     M  MERCE                 UNA_TANTUM/FISSA*, UNA_TANTUM/MANUALE
 --     R  SERVIZIO_RICORRENTE   CANONE/FISSA*, CONSUMO/MANUALE
---     K  MERCE, composito      + UNA_TANTUM/DERIVATA_COMPONENTI
+--     K  MERCE, composito      come M (dal 2026-10-21 niente DERIVATA_COMPONENTI)
 --     N  MERCE                 come M (una riga sola per articolo: uq AGGIUNTA)
 -- ⚠️ I codici si leggono dai canali dell'eccezione (CONSTRAINT = codice, COLUMN =
 --   campo), non dalla frase. Il test 12 legge il catalogo dei codici: rosso nella
@@ -31,7 +35,7 @@
 --    2) fonte a valle con la sola quantita: ammessa, quantita la svuota il DB (F-1.2)
 --    3) fonte a valle senza quantita': ammessa
 --    4) FISSA con la quantita': ammessa
---    5) DERIVATA_COMPONENTI con la quantita': ammessa
+--    5) il composito con la FISSA e la quantita': ammessa (i componenti la seguono)
 --    6) l'offerta, stessa regola (il push copia le righe 1:1)
 --   L'UPDATE
 --    7) cambia l'erogazione e un altro trigger riallinea la fonte a MANUALE: la
@@ -46,7 +50,7 @@
 --       il perimetro
 --   12) il codice a catalogo, DATO_ERRATO
 --   Il terzo giro (§F.1)
---   13) DERIVATA_COMPONENTI → MANUALE senza toccare quantita': ammessa, quantita NULL
+--   13) DERIVATA_COMPONENTI e' ritirata: la riga che la chiede e' fuori perimetro
 --   14) l'offerta: FISSA → MANUALE con la sola qta_operativa = NULL, quantita NULL
 --   15) MANUALE con qta_operativa sull'UPDATE: rifiutata col campo qta_operativa
 -- ------------------------------------------------------------
@@ -154,8 +158,8 @@ SELECT is(pg_temp.canali(pg_temp.agg('N', 'UNA_TANTUM', 'MANUALE', NULL)), 'NESS
 SELECT is(pg_temp.canali(pg_temp.agg('R', 'CANONE', 'FISSA', 2)), 'NESSUN ERRORE',
     '4) FISSA con la quantita'': ammessa');
 
-SELECT is(pg_temp.canali(pg_temp.agg('K', 'UNA_TANTUM', 'DERIVATA_COMPONENTI', 1)), 'NESSUN ERRORE',
-    '5) DERIVATA_COMPONENTI con la quantita'': ammessa (la scrive il DB dai componenti)');
+SELECT is(pg_temp.canali(pg_temp.agg('K', 'UNA_TANTUM', 'FISSA', 1)), 'NESSUN ERRORE',
+    '5) il composito con la FISSA e la quantita'': ammessa (i componenti la seguono)');
 
 -- L'offerta: stessa regola, perche' fn_push_offerta_a_contratto copia le righe 1:1.
 CREATE TEMP TABLE tmp_qpf_cli2 AS
@@ -264,7 +268,7 @@ SELECT is(
                  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
                 WHERE n.nspname = 'script'
                   AND p.proname IN ('trgfn_righe_guard_quantita_per_fonte', 'trgfn_qta_from_operativa')),
-    'DERIVATA_COMPONENTI,FISSA #2 trgfn_qta_from_operativa=true trgfn_righe_guard_quantita_per_fonte=true',
+    'FISSA #2 trgfn_qta_from_operativa=true trgfn_righe_guard_quantita_per_fonte=true',
     '10) i due CHECK (validati) dicono le fonti di fn_fonte_porta_quantita; guard e calcolo la chiamano');
 
 -- tgtype: bit 1 ROW, bit 2 BEFORE, bit 4 INSERT, bit 16 UPDATE; tgattr vuoto = nessun OF.
@@ -290,22 +294,20 @@ SELECT is(
 -- ============================================================
 -- 13-15) Il terzo giro (§F.1): quantita e' calcolata
 -- ============================================================
--- K e' DERIVATA_COMPONENTI con qta_operativa 1 (test 5). Il caso del brief: la
--- riga composita senza qta_operativa ma con quantita (la tiene: DERIVATA la porta).
-UPDATE vendite.contratti_righe SET qta_operativa = NULL
- WHERE contratto_id = (SELECT id FROM tmp_qpf_ctr) AND articolo_id = pg_temp.art('K');
-
+-- K e' il composito FISSA con qta_operativa 1 (test 5). Fino al 2026-10-21 il
+-- composito ammetteva in piu' DERIVATA_COMPONENTI (B-D5); ritirata (§I.1), la
+-- riga che la chiede e' fuori dal perimetro dell'articolo, e resta com'era.
 CREATE TEMP TABLE tmp_qpf_13 AS
 SELECT pg_temp.riga('K') AS prima,
        pg_temp.canali(format(
-           $$UPDATE vendite.contratti_righe SET fonte_quantita_attesa = 'MANUALE'
+           $$UPDATE vendite.contratti_righe SET fonte_quantita_attesa = 'DERIVATA_COMPONENTI'
               WHERE contratto_id = %s AND articolo_id = %L$$,
            (SELECT id FROM tmp_qpf_ctr), pg_temp.art('K'))) AS esito;
 
 SELECT is(
     (SELECT prima || ' | ' || esito FROM tmp_qpf_13) || ' | ' || pg_temp.riga('K'),
-    'UNA_TANTUM/DERIVATA_COMPONENTI/-/1.000000 | NESSUN ERRORE | UNA_TANTUM/MANUALE/-/-',
-    '13) DERIVATA_COMPONENTI → MANUALE senza toccare quantita'': ammessa, la quantita'' la svuota il DB');
+    'UNA_TANTUM/FISSA/1.000000/1.000000 | E_RIGA_EROGAZIONE_FUORI_PERIMETRO / fonte_quantita_attesa | UNA_TANTUM/FISSA/1.000000/1.000000',
+    '13) DERIVATA_COMPONENTI e'' ritirata: la riga che la chiede e'' fuori perimetro, e resta FISSA');
 
 -- L'offerta: stessa regola. M nasce FISSA con la quantita', poi passa a MANUALE
 -- mandando la sola qta_operativa = NULL, come il form.

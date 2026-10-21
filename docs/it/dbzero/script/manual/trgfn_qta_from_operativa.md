@@ -51,7 +51,7 @@ Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a 
 **Precondizioni**
 
 * `NEW.articolo_id` non `NULL`.
-* `NEW.qta_operativa` **deve** essere valorizzata, **a meno che** `TG_ARGV[3]` sia fornito e il valore della colonna fonte risulti diverso da `'FISSA'` (per `contratti_righe`: `LETTURE`, `MANUALE`, `TIMESHEET`, `DERIVATA_COMPONENTI`). In quel caso `qta_operativa NULL` è ammessa e il trigger ritorna `NEW` senza ricalcolo (la quantità arriverà da fonte esterna). Se `fonte = 'FISSA'` e `qta_operativa IS NULL` → errore `E_QTA_MISSING` come di consueto.
+* `NEW.qta_operativa` **deve** essere valorizzata, **a meno che** `TG_ARGV[1]` (la colonna della fonte) sia fornito e la fonte sia **a valle** (`script.fn_fonte_porta_quantita` = false: `LETTURE`, `MANUALE`, `TIMESHEET`). In quel caso il trigger porta `quantita` a `NULL` e ritorna `NEW` (la quantità arriverà da fonte esterna). Con la `FISSA` (o senza colonna della fonte) e `qta_operativa IS NULL` → errore `E_QTA_MISSING`. Dal 2026-10-21 non c'è più l'eccezione per `DERIVATA_COMPONENTI`, ritirata (`brief-db-offerta-emissione-ed-erogazione` §I.1).
 * `NEW.uom_operativa_id` può essere `NULL`: in tal caso viene **derivata** dalla UoM base dell’articolo (`catalogo.articoli.uom_id`). Se resta `NULL` → errore `E_UOM_MISSING`.
 
 **Postcondizioni**

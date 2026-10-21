@@ -77,7 +77,7 @@ di `contratti_righe`:
 
 - `tipo_erogazione` — `CANONE | UNA_TANTUM | ORARIO | CONSUMO` (CHECK
   `chk_offerte_eccezioni_tipo_erog`).
-- `fonte_quantita_attesa` — `FISSA | MANUALE | TIMESHEET | LETTURE | DERIVATA_COMPONENTI`
+- `fonte_quantita_attesa` — `FISSA | MANUALE | TIMESHEET | LETTURE` (le combinazioni di `config.erogazioni_fonti`; `DERIVATA_COMPONENTI` ritirata il 2026-10-21, e sul composito solo la `FISSA`: `brief-db-offerta-emissione-ed-erogazione` §I.1)
   (CHECK `chk_offerte_eccezioni_fonte_qta`), NOT NULL.
 - CHECK `chk_offerte_eccezioni_coerenza_canone` — se `tipo_erogazione = 'CANONE'`,
   `generazione_canone` deve essere in `('INIZIO_PERIODO', 'FINE_PERIODO', 'PRORATA')`.

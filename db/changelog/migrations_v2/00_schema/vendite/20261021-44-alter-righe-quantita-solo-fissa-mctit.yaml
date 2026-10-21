@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DI DERIVATA_COMPONENTI — i due CHECK della quantita' per fonte
+#   Brief: brief-db-offerta-emissione-ed-erogazione §I.1, decisione I-D1 di Tid
+#   (2026-10-21).
+#
+#   La fonte DERIVATA_COMPONENTI si ritira: i componenti di un composito
+#   prendono SEMPRE la quantita' dal padre (coeff_qta x quantita' del padre,
+#   negli init e in trgfn_componenti_propaga_qta), mai il contrario. Da oggi la
+#   sola fonte che porta quantita e qta_operativa sulla riga e' FISSA.
+#
+#   DROP + ADD dei due CHECK gemelli (20261007-28) con l'elenco ridotto a FISSA,
+#   e COMMENT riscritti: dicevano «DERIVATA_COMPONENTI (la scrive il DB dai
+#   componenti)», che era falso (brief §F.4.3). Nello stesso giro i COMMENT che
+#   elencano le fonti: la tabella config.erogazioni_fonti e le due colonne
+#   fonte_quantita_attesa (quella d'offerta diceva anche «NOT NULL», non vero dal
+#   giorno dell'ESCLUSIONE vuota).
+#
+#   preCondition HALT: nessuna riga che il CHECK nuovo rifiuterebbe. Sono righe
+#   di documento, non seed: su dbdev si correggono a mano prima dell'apply
+#   (brief §I.4 punto 1, decisione I-D5).
+#
+# Ritorno indietro: i due CHECK nella forma di 20261007-28.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261021-44-alter-righe-quantita-solo-fissa-mctit.yaml
+
+  - changeSet:
+      id: 20261021-44-alter-righe-quantita-solo-fissa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK chk_contrighe_quantita_per_fonte e chk_offerte_eccezioni_quantita_per_fonte: solo la
+        fonte FISSA porta quantita e qta_operativa (ritiro di DERIVATA_COMPONENTI, brief §I.1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT (SELECT count(*) FROM vendite.contratti_righe
+                       WHERE fonte_quantita_attesa IS NOT NULL
+                         AND fonte_quantita_attesa <> 'FISSA'
+                         AND (quantita IS NOT NULL OR qta_operativa IS NOT NULL))
+                   + (SELECT count(*) FROM vendite.offerte_commerciali_eccezioni
+                       WHERE fonte_quantita_attesa IS NOT NULL
+                         AND fonte_quantita_attesa <> 'FISSA'
+                         AND (quantita IS NOT NULL OR qta_operativa IS NOT NULL));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT chk_contrighe_quantita_per_fonte;
+
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT chk_contrighe_quantita_per_fonte
+                  CHECK (fonte_quantita_attesa IS NULL
+                         OR fonte_quantita_attesa = 'FISSA'
+                         OR (quantita IS NULL AND qta_operativa IS NULL));
+
+              COMMENT ON CONSTRAINT chk_contrighe_quantita_per_fonte ON vendite.contratti_righe IS
+                  'La quantita'' di una riga la porta la sua fonte: solo FISSA (la quantita'' della '
+                  'riga) ha quantita e qta_operativa; con ogni altra fonte (MANUALE, LETTURE, '
+                  'TIMESHEET) la quantita'' arriva a valle e sulla riga restano vuote. Senza fonte '
+                  '(ESCLUSIONE) decide chk_contrighe_esclusione_senza_dati. A parlare all''operatore '
+                  'e'' il guard script.trgfn_righe_guard_quantita_per_fonte '
+                  '(E_RIGA_QUANTITA_CON_FONTE_A_VALLE, col campo): il CHECK e'' la rete, e tiene lo '
+                  'stesso elenco di script.fn_fonte_porta_quantita (un pgTAP li confronta). Gemello di '
+                  'chk_offerte_eccezioni_quantita_per_fonte, perche'' fn_push_offerta_a_contratto '
+                  'copia le righe 1:1. Rev 2026-10-21: DERIVATA_COMPONENTI ritirata (i componenti '
+                  'seguono la quantita'' del padre). Brief: brief-db-offerta-emissione-ed-erogazione '
+                  '§D.4 punto 2, §I.1.';
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT chk_offerte_eccezioni_quantita_per_fonte;
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_quantita_per_fonte
+                  CHECK (fonte_quantita_attesa IS NULL
+                         OR fonte_quantita_attesa = 'FISSA'
+                         OR (quantita IS NULL AND qta_operativa IS NULL));
+
+              COMMENT ON CONSTRAINT chk_offerte_eccezioni_quantita_per_fonte ON vendite.offerte_commerciali_eccezioni IS
+                  'Mirror di chk_contrighe_quantita_per_fonte: solo la fonte FISSA porta quantita e '
+                  'qta_operativa; con le altre restano vuote. Senza, fn_push_offerta_a_contratto '
+                  'farebbe nascere un contratto rifiutato dal suo CHECK. A parlare all''operatore e'' '
+                  'il guard script.trgfn_righe_guard_quantita_per_fonte. Rev 2026-10-21: '
+                  'DERIVATA_COMPONENTI ritirata. Brief: brief-db-offerta-emissione-ed-erogazione '
+                  '§D.4 punto 2, §I.1.';
+
+              COMMENT ON COLUMN vendite.contratti_righe.fonte_quantita_attesa IS
+                  'Da dove viene la quantita'' che si fattura: FISSA (la quantita'' della riga) | '
+                  'MANUALE | TIMESHEET | LETTURE (arriva a valle, periodo per periodo). Le '
+                  'combinazioni con tipo_erogazione sono quelle di config.erogazioni_fonti (FK '
+                  'composta); quelle di un articolo le dice vendite.fn_articolo_erogazioni. NULL '
+                  'solo sull''ESCLUSIONE. Rev 2026-10-21: DERIVATA_COMPONENTI ritirata '
+                  '(brief-db-offerta-emissione-ed-erogazione §I.1).';
+
+              COMMENT ON COLUMN vendite.offerte_commerciali_eccezioni.fonte_quantita_attesa IS
+                  'Gemella di vendite.contratti_righe.fonte_quantita_attesa (il push la copia): '
+                  'FISSA | MANUALE | TIMESHEET | LETTURE, combinazioni di config.erogazioni_fonti. '
+                  'NULL solo sull''ESCLUSIONE. Se non la si indica la riempie il DB dall''articolo '
+                  '(script.trgfn_righe_default_erogazione_da_articolo). Rev 2026-10-21: '
+                  'DERIVATA_COMPONENTI ritirata (brief-db-offerta-emissione-ed-erogazione §I.1).';
+
+              COMMENT ON TABLE config.erogazioni_fonti IS
+                  'Le combinazioni coerenti di tipo_erogazione (come si fattura una riga: CANONE, '
+                  'UNA_TANTUM, ORARIO, CONSUMO) e fonte_quantita_attesa (da dove viene la quantità: '
+                  'FISSA, MANUALE, TIMESHEET, LETTURE). Una riga per combinazione ammessa; e_default '
+                  'marca la fonte che una riga prende quando nessuno la indica (al più una per '
+                  'erogazione). Le righe di vendite.contratti_righe e '
+                  'vendite.offerte_commerciali_eccezioni vi si legano con una FK composta, che ha '
+                  'preso il posto dei CHECK chk_*_tipo_erog, chk_*_fonte_qta e '
+                  'chk_*_coerenza_fonte_erogazione (20261007-54). La legge '
+                  'script.trgfn_righe_default_fonte_qta. Niente attivo: è ciò che il modello '
+                  'ammette, non una configurazione. Seed: 80_data/sql/config/erogazioni_fonti.csv. '
+                  'Brief: brief-db-offerta-emissione-ed-erogazione §C.7 (B1). Rev 2026-10-21 '
+                  '(§I.1, 20261021-51): DERIVATA_COMPONENTI ritirata.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT chk_contrighe_quantita_per_fonte;
+
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT chk_contrighe_quantita_per_fonte
+                  CHECK (fonte_quantita_attesa IS NULL
+                         OR fonte_quantita_attesa IN ('FISSA', 'DERIVATA_COMPONENTI')
+                         OR (quantita IS NULL AND qta_operativa IS NULL));
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT chk_offerte_eccezioni_quantita_per_fonte;
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_quantita_per_fonte
+                  CHECK (fonte_quantita_attesa IS NULL
+                         OR fonte_quantita_attesa IN ('FISSA', 'DERIVATA_COMPONENTI')
+                         OR (quantita IS NULL AND qta_operativa IS NULL));
+
+              COMMENT ON COLUMN vendite.contratti_righe.fonte_quantita_attesa IS
+                  'FISSA|MANUALE|TIMESHEET|LETTURE|DERIVATA_COMPONENTI';
+
+              COMMENT ON COLUMN vendite.offerte_commerciali_eccezioni.fonte_quantita_attesa IS
+                  'FISSA | MANUALE | TIMESHEET | LETTURE | DERIVATA_COMPONENTI. NOT NULL. Il trigger default (Step 4) imposta il valore su INSERT coerente con tipo_erogazione.';
+
+              COMMENT ON TABLE config.erogazioni_fonti IS
+                  'Le combinazioni coerenti di tipo_erogazione (come si fattura una riga: CANONE, UNA_TANTUM, ORARIO, CONSUMO) e fonte_quantita_attesa (da dove viene la quantità: FISSA, MANUALE, TIMESHEET, LETTURE, DERIVATA_COMPONENTI). Una riga per combinazione ammessa; e_default marca la fonte che una riga prende quando nessuno la indica (al più una per erogazione). Le righe di vendite.contratti_righe e vendite.offerte_commerciali_eccezioni vi si legano con una FK composta, che ha preso il posto dei CHECK chk_*_tipo_erog, chk_*_fonte_qta e chk_*_coerenza_fonte_erogazione (20261007-54). La legge script.trgfn_righe_default_fonte_qta. Niente attivo: è ciò che il modello ammette, non una configurazione. Seed: 80_data/sql/config/erogazioni_fonti.csv. Brief: brief-db-offerta-emissione-ed-erogazione §C.7 (B1).';

@@ -50,8 +50,8 @@ DECLARE
   --       Nome colonna della fonte della quantita' (fonte_quantita_attesa,
   --       su contratti_righe e offerte_commerciali_eccezioni), letta via
   --       to_jsonb(NEW). Con una fonte a valle (fn_fonte_porta_quantita =
-  --       false) quantita := NULL, sempre. Con qta_operativa NULL e una fonte
-  --       diversa da 'FISSA' (cioe' DERIVATA_COMPONENTI) -> RETURN NEW senza raise.
+  --       false) quantita := NULL, sempre. Con la fonte che la porta
+  --       (FISSA) qta_operativa e' obbligatoria (E_QTA_MISSING).
   --
   -- rev 2026-08-04 (bonifica riferimenti morti, F5) — tolti due rami morti
   --   e i due parametri che li governavano:
@@ -83,8 +83,8 @@ DECLARE
   -- Con una fonte che non porta la quantita' (script.fn_fonte_porta_quantita:
   -- MANUALE, LETTURE, TIMESHEET) la quantita' arriva a valle: il DB porta
   -- quantita a NULL a ogni INSERT e a ogni UPDATE, anche quando gli input
-  -- operativi non cambiano (DERIVATA_COMPONENTI -> MANUALE: qta_operativa era
-  -- gia' vuota, e il short-circuit qui sotto la lasciava). qta_operativa e'
+  -- operativi non cambiano (un cambio di sola fonte con qta_operativa gia'
+  -- vuota: il short-circuit qui sotto la lascerebbe). qta_operativa e'
   -- l'input: se e' valorizzata la rifiuta il guard
   -- trgfn_righe_guard_quantita_per_fonte, che gira prima di questo trigger.
   --------------------------------------------------------------------
@@ -105,13 +105,13 @@ DECLARE
     RETURN NEW;
   END IF;
 
-  -- Verifica qta_operativa: NULL consentito se la fonte non e' 'FISSA'.
-  -- Le fonti a valle sono gia' uscite sopra: qui arriva solo una fonte che
-  -- porta la quantita' senza che la scriva l'operatore (DERIVATA_COMPONENTI).
+  -- Verifica qta_operativa: obbligatoria. Le fonti a valle sono gia' uscite
+  -- sopra; qui arrivano la FISSA e le tabelle senza fonte.
+  -- Rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §I.1, I-D1):
+  -- tolta l'eccezione per DERIVATA_COMPONENTI, ritirata. Era la sola fonte
+  -- che portava la quantita' senza che la scrivesse l'operatore, e nessuno
+  -- la calcolava: i componenti seguono la quantita' del padre.
   IF NEW.qta_operativa IS NULL THEN
-    IF v_fonte_val IS NOT NULL AND v_fonte_val <> 'FISSA' THEN
-      RETURN NEW;
-    END IF;
     PERFORM script.fn_log_and_raise_error(
       'application',
       'script.trgfn_qta_from_operativa',
@@ -224,7 +224,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_qta_from_operativa()
-IS 'Calcola quantita (UoM base) da qta_operativa * fattore: quantita è una colonna CALCOLATA, la scrive solo questo trigger. TG_ARGV[0] = fill_factor_to_base (snapshot del fattore in factor_to_base se NULL); TG_ARGV[1] = colonna della fonte della quantità (fonte_quantita_attesa, su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni). Con una fonte a valle (script.fn_fonte_porta_quantita = false: MANUALE, LETTURE, TIMESHEET) porta quantita a NULL a ogni INSERT e UPDATE, anche se gli input operativi non cambiano; qta_operativa valorizzata la rifiuta prima il guard script.trgfn_righe_guard_quantita_per_fonte. Con qta_operativa NULL: E_QTA_MISSING, salvo una fonte diversa da FISSA (DERIVATA_COMPONENTI). Short-circuit su UPDATE senza variazioni agli input operativi; su INSERT calcola sempre. Rev 2026-05-27 (short-circuit), 2026-08-04 (rami morti), 2026-10-08 (fonte a valle: brief-db-offerta-emissione-ed-erogazione §F.1, F-1.1).';
+IS 'Calcola quantita (UoM base) da qta_operativa * fattore: quantita è una colonna CALCOLATA, la scrive solo questo trigger. TG_ARGV[0] = fill_factor_to_base (snapshot del fattore in factor_to_base se NULL); TG_ARGV[1] = colonna della fonte della quantità (fonte_quantita_attesa, su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni). Con una fonte a valle (script.fn_fonte_porta_quantita = false: MANUALE, LETTURE, TIMESHEET) porta quantita a NULL a ogni INSERT e UPDATE, anche se gli input operativi non cambiano; qta_operativa valorizzata la rifiuta prima il guard script.trgfn_righe_guard_quantita_per_fonte. Con qta_operativa NULL: E_QTA_MISSING. Short-circuit su UPDATE senza variazioni agli input operativi; su INSERT calcola sempre. Rev 2026-05-27 (short-circuit), 2026-08-04 (rami morti), 2026-10-08 (fonte a valle: brief-db-offerta-emissione-ed-erogazione §F.1, F-1.1), 2026-10-21 (20261021-46, §I.1: ritirata DERIVATA_COMPONENTI, che era l''eccezione a E_QTA_MISSING).';
 ```
 
 </div>

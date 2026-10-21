@@ -1,6 +1,6 @@
 # Guida — Gestione Offerte commerciali
 
-> **Ultimo aggiornamento**: 14 ottobre 2026
+> **Ultimo aggiornamento**: 21 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -14,6 +14,8 @@
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [vendite.fn_push_offerta_a_contratto](/dbzero/vendite/funzioni/fn_push_offerta_a_contratto) — genera il contratto DRAFT dall'offerta ACCETTATA
+> * [vendite.fn_genera_ordine_da_offerta](/dbzero/vendite/funzioni/fn_genera_ordine_da_offerta) — genera l'ordine DRAFT dall'offerta ACCETTATA
+> * [script.fn_check_righe_documento](/dbzero/script/funzioni/fn_check_righe_documento) — le righe che un'offerta o un contratto non ammette più
 > * [vendite.fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta) — crea una nuova revisione da EMESSA
 > * [vendite.trgfn_offerte_commerciali_guard_transizione](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_guard_transizione) — guard sulle transizioni di stato
 > * [vendite.trgfn_offerte_commerciali_revisione](/dbzero/vendite/funzioni/trgfn_offerte_commerciali_revisione) — porta la rev padre a SUPERATA
@@ -209,20 +211,27 @@ Gli stati sono governati da `config.stati_doc_offerte` e le transizioni ammesse 
 | ----------- | ------------------------------------------------------ | ------------------------------- | ---------- |
 | `BOZZA`     | In preparazione                                        | Sì: testata, eccezioni, utility | No         |
 | `EMESSA`    | Inviata al cliente, in attesa di risposta              | No                              | No         |
-| `ACCETTATA` | Accettata dal cliente — pronta per il push a contratto | No                              | No         |
+| `ACCETTATA` | Accettata dal cliente — da trasformare in contratto o in ordine | No                     | No         |
 | `RIFIUTATA` | Rifiutata dal cliente (il "no" del cliente)            | No                              | Sì         |
-| `ANNULLATA` | Ritirata da noi prima dell'emissione                   | No                              | Sì         |
+| `ANNULLATA` | Ritirata da noi: prima dell'emissione, o accettata e non trasformabile | No              | Sì         |
 | `SUPERATA`  | Sostituita da una revisione successiva                 | No                              | Sì         |
 
 Le transizioni permesse:
 
 ```text
-BOZZA   → EMESSA       (emetti)    guard: listino_versione_id valorizzato + versione ATTIVA
-BOZZA   → ANNULLATA    (annulla)   richiede motivazione_rifiuto
-EMESSA  → ACCETTATA    (accetta)
-EMESSA  → RIFIUTATA    (rifiuta)   richiede motivazione_rifiuto
-EMESSA  → SUPERATA     (automatica) quando nasce la revisione successiva
+BOZZA     → EMESSA     (emetti)    controlli dell'emissione: §3.2
+BOZZA     → ANNULLATA  (annulla)   richiede motivazione_rifiuto
+EMESSA    → ACCETTATA  (accetta)
+EMESSA    → RIFIUTATA  (rifiuta)   richiede motivazione_rifiuto
+EMESSA    → SUPERATA   (automatica) quando nasce la revisione successiva
+ACCETTATA → ANNULLATA  (annulla)   richiede motivazione_rifiuto; solo senza contratto o ordine vivo
 ```
+
+Da **ACCETTATA** si esce trasformando l'offerta (contratto *o* ordine, §8 e §8.bis) oppure,
+se non si può trasformare, **annullandola**. L'annullo è ammesso solo se dall'offerta non vive
+un contratto o un ordine non annullato (`E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`): prima si annulla
+quel documento, che non consuma più l'offerta. Il «sì» del cliente non si ricontrolla, e
+un'offerta accettata non si rivede: per riproporla si annulla e se ne crea una nuova.
 
 Due transizioni sono **volutamente vietate** per non confondere la semantica:
 
@@ -232,18 +241,25 @@ Due transizioni sono **volutamente vietate** per non confondere la semantica:
   (che porta la precedente a SUPERATA), non con un annullamento.
 
 La distinzione **RIFIUTATA vs ANNULLATA** è quindi semantica: rifiuto = no del
-cliente; annullamento = ritiro nostro prima dell'invio.
+cliente; annullamento = ritiro nostro, prima dell'invio o dopo un «sì» che non si può
+trasformare.
 
 ### 3.2 La guard sull'emissione (BOZZA → EMESSA)
 
 Il trigger `trgfn_offerte_commerciali_guard_transizione` interviene sul cambio di
-stato e, per l'emissione, verifica che:
+stato e, per l'emissione, controlla nell'ordine:
 
-1. `listino_versione_id` sia **valorizzato** — altrimenti
-   `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`. Un'offerta si emette solo dopo aver
-   fissato la versione del listino su cui sono calcolate le condizioni.
-2. quella versione del listino sia in stato **ATTIVA** — altrimenti
-   `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`.
+1. il **listino**: l'offerta vive sulla versione in vigore e la **congela** all'emissione.
+   Senza una versione in vigore `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`; con una
+   versione fissata non ATTIVA `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`;
+2. i **prezzi**: nessun prezzo in attesa di autorizzazione o rifiutato;
+3. gli **indirizzi**: ogni indirizzo preso dall'anagrafica è del cliente dell'offerta;
+4. le **righe**: ogni riga è ancora ammessa (`E_DOC_RIGA_NON_AMMESSA`, che nomina
+   l'articolo). Quali articoli, erogazioni e fonti della quantità una riga può avere
+   dipende da dati che stanno fuori dalla riga (il listino in vigore, la tipologia o la
+   natura dell'articolo): una riga scritta quando era ammessa può non esserlo più.
+
+Il pulsante «Emetti» è spento con lo **stesso** motivo, letto dagli stessi controlli.
 
 Ogni transizione non prevista in configurazione viene respinta con
 `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`.
@@ -390,9 +406,14 @@ motivazione; l'icona la sceglie l'interfaccia dalla chiave dell'azione) e una se
 | `can_edit_testata`                                                        | almeno una colonna della testata si cambia nello stato (in BOZZA tutte; EMESSA e ACCETTATA le note): lo legge il database dal suo blocco di testata |
 | `can_edit_eccezioni` / `can_edit_utility` / `can_edit_indirizzi`         | l'offerta è in BOZZA (eccezioni, fornitura e indirizzi): lo legge il database dal blocco «solo in bozza» che li protegge |
 | `can_create_revisione`                                                    | l'offerta è EMESSA                                                                                            |
-| `can_push_contratto`                                                      | l'offerta è ACCETTATA **e** non esiste già né un contratto né un ordine generati dall'offerta (XOR)           |
-| `can_genera_ordine`                                                       | l'offerta è ACCETTATA **e** non esiste già né un contratto né un ordine generati dall'offerta (XOR)           |
-| `can_push_contratto_reason` / `can_genera_ordine_reason` (+`_reason_key`) | (se l'azione non è possibile) il motivo, es. `OFFERTA_CONTRATTO_GIA_GENERATO` o `OFFERTA_ORDINE_GIA_GENERATO` |
+| `can_push_contratto`                                                      | l'offerta è ACCETTATA, non esiste già né un contratto né un ordine generati dall'offerta (XOR) **e** ogni riga può andare nel contratto |
+| `can_genera_ordine`                                                       | l'offerta è ACCETTATA, non esiste già né un contratto né un ordine generati dall'offerta (XOR) **e** ogni riga può andare in un ordine (solo merce) |
+| `can_push_contratto_reason` / `can_genera_ordine_reason` (+`_reason_key`) | (se l'azione non è possibile) il motivo, es. `OFFERTA_CONTRATTO_GIA_GENERATO`, `OFFERTA_ORDINE_GIA_GENERATO` o `RIGA_NON_AMMESSA` |
+
+Quando l'offerta è trasformabile ma una riga non può andare nel documento da generare,
+«Genera contratto» o «Genera ordine» restano **proposti e spenti**, col motivo. L'azione
+`annulla` da ACCETTATA è spenta col motivo `DOCUMENTI_VIVI` finché dall'offerta vive un
+contratto o un ordine.
 
 ---
 
@@ -436,16 +457,24 @@ l'offerta in un **ordine di vendita** one-shot (vendita puntuale).
 
 ### Regole
 
-1. l'offerta deve essere in **ACCETTATA**;
+1. l'offerta deve essere in **ACCETTATA**, altrimenti `E_ORD_ORIGINE_NON_CONVERTIBILE`;
 2. vale la **mutua esclusività XOR**: l'azione è disponibile solo se dall'offerta
-   non è ancora stato generato né un contratto né un ordine. La prima generazione
-   (contratto *o* ordine) disabilita **permanentemente** l'altra;
+   non vive già né un contratto né un ordine. La prima generazione (contratto *o*
+   ordine) disabilita l'altra, finché quel documento non viene annullato;
 3. la generazione ordine è **idempotente 1:1**: un secondo tentativo sulla stessa
    offerta è rifiutato con `E_ORD_OFFERTA_GIA_CONVERTITA` (rete di sicurezza:
    vincolo di unicità `uq_ordini_v_documento_origine_offerta`);
 4. se l'offerta ha già generato un contratto, la generazione ordine è bloccata con
    `E_OFFERTA_CONTRATTO_GIA_GENERATO` (e, specularmente, il push a contratto su
-   un'offerta che ha già un ordine è bloccato con `E_OFFERTA_ORDINE_GIA_GENERATO`).
+   un'offerta che ha già un ordine è bloccato con `E_OFFERTA_ORDINE_GIA_GENERATO`);
+5. ogni riga dell'offerta deve poter stare in un ordine — un ordine contiene **solo
+   merce** — altrimenti il pulsante è spento e la generazione è rifiutata con
+   `E_DOC_RIGA_NON_AMMESSA`, che nomina l'articolo. Un'offerta di servizi si
+   trasforma in un contratto.
+
+La generazione la fa il database in un passo solo (`vendite.fn_genera_ordine_da_offerta`,
+gemello del push a contratto): i controlli prima di scrivere, poi la testata, l'indirizzo
+di default del cliente e le righe.
 
 ### Cosa viene copiato
 
@@ -545,6 +574,14 @@ gestore → valuta predefinita del gestore*. Se nessuna valuta è risolvibile, s
 1. Offerta ancora in BOZZA → "Annulla" con motivazione
 2. Stato → ANNULLATA (terminale). Per ripartire si crea una nuova offerta
 
+### 11.6 Offerta accettata che non si può trasformare
+
+1. L'offerta è ACCETTATA, ma «Genera contratto» e «Genera ordine» sono spenti con il
+   motivo (per esempio una riga che non è più ammessa)
+2. "Annulla" con motivazione: l'offerta va in ANNULLATA. Se dall'offerta vive già un
+   contratto o un ordine, prima si annulla quello
+3. Per riproporre l'offerta al cliente se ne crea una nuova
+
 ---
 
 ## 12. Errori principali
@@ -561,6 +598,9 @@ Codici sollevati dal dominio offerte (registrati in `config.messaggi_errore`):
 | `E_OFFERTA_CONTRATTO_GIA_GENERATO`                | Push a contratto già generato (idempotenza) **oppure** tentativo di generare un ordine quando l'offerta ha già un contratto (mutua esclusività XOR) |
 | `E_OFFERTA_ORDINE_GIA_GENERATO`                   | Push a contratto quando l'offerta ha già generato un ordine (mutua esclusività XOR)                                                                 |
 | `E_ORD_OFFERTA_GIA_CONVERTITA`                    | Secondo tentativo di generare un ordine dalla stessa offerta (univocità 1:1 offerta→ordine)                                                         |
+| `E_ORD_ORIGINE_NON_CONVERTIBILE`                  | Genera ordine da un'offerta che non è ACCETTATA                                                                                                     |
+| `E_DOC_RIGA_NON_AMMESSA`                          | Emissione, genera ordine (o attivazione del contratto) con una riga che non è più ammessa: nomina l'articolo                                        |
+| `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`            | Annullo di un'offerta accettata da cui vive ancora un contratto o un ordine                                                                         |
 | `E_DOC_COMPOSITO_BOM_VUOTA`                       | Articolo composito senza componenti validi alla data                                                                                                |
 | `E_CONFIG_MANCANTE`                               | Configurazione mancante (valuta non risolvibile, stato/sorgente assenti)                                                                            |
 
