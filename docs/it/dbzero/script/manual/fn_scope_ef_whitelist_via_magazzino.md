@@ -9,7 +9,7 @@
 [script.fn_scope_ef_whitelist](/dbzero/script/funzioni/fn_scope_ef_whitelist) (la canonica, a cui tutte delegano)
 > [script.fn_scope_ef_whitelist_via_magazzino](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_magazzino) (l'ancora del dominio)
 > [script.fn_scope_ef_whitelist_via_asset](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_asset) (la seconda ancora)
-> [script.fn_scope_note_magazzino_ef_whitelist](/dbzero/script/funzioni/fn_scope_note_magazzino_ef_whitelist) (lo smistatore delle note)
+> [script.fn_scope_note_magazzino_ef_perimetro](/dbzero/script/manual/fn_scope_note_magazzino_ef_perimetro) (lo smistatore delle note)
 >
 **Tabelle correlate:**
 >

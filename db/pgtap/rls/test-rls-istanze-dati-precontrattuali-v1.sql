@@ -19,10 +19,13 @@
 --  7) ⛔ senza veste non vede NIENTE — fail-closed
 --  8) il presidio del perimetro RLS non la elenca piu'
 --
--- ⭐ La regola e' quella del BA: la policy delega a
---   script.fn_scope_ef_whitelist_via_coppia, che delega alla scope del BA.
---   Per questo il FORCE va acceso anche su anagrafiche.billing_account: la
---   sottoquery sul BA deve subire la sua RLS come la subisce l'applicazione.
+-- ⭐ La regola e' quella del BA: la policy chiede il perimetro dell'operatore
+--   (una volta per istruzione) e l'emittente del BA della coppia, trovato da
+--   script.fn_get_ba_id_da_coppia (rev 2026-10-21, 20261021-26: prima
+--   script.fn_scope_ef_whitelist_via_coppia leggeva il BA sotto la sua RLS).
+--   Il FORCE su anagrafiche.billing_account resta: il risolutore e' DEFINER
+--   del proprietario e la scavalca, ed e' cio' che si prova qui — con la RLS
+--   del BA accesa, A vede ancora il proprio cliente (4) e non quello di B (5).
 -- ⛔ LA FIXTURE SI COSTRUISCE: due aziende (dbops.fn_pgtap_crea_emittente_operatore)
 --   e tre clienti col BA legato esplicitamente all'azienda del loro lato.
 -- ------------------------------------------------------------

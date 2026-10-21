@@ -123,6 +123,8 @@ SELECT is(
 -- ============================================================
 -- ⛔ Il perimetro non e' un elenco mio: e' il CHECK della tabella. Se qualcuno
 --   aggiunge un target_tipo e non tocca lo smistatore, qui diventa rosso.
+-- Rev 2026-10-21 (20261021-25): lo smistatore e' script.fn_scope_note_ef_perimetro,
+--   che riceve il perimetro dalla policy (prima fn_scope_note_ef_whitelist).
 SELECT is(
     (SELECT count(*)::int
        FROM (
@@ -133,11 +135,12 @@ SELECT is(
             WHERE c.conrelid = 'vendite.note'::regclass
               AND c.conname  = 'chk_note_target_tipo'
        ) v
+      -- coalesce: uno smistatore che manca e' rosso, non verde per sottrazione.
       WHERE position('WHEN ''' || v.tipo || '''' IN
-                     (SELECT p.prosrc FROM pg_proc p
-                        JOIN pg_namespace n ON n.oid = p.pronamespace
-                       WHERE n.nspname = 'script'
-                         AND p.proname = 'fn_scope_note_ef_whitelist')) = 0),
+                     coalesce((SELECT p.prosrc FROM pg_proc p
+                                 JOIN pg_namespace n ON n.oid = p.pronamespace
+                                WHERE n.nspname = 'script'
+                                  AND p.proname = 'fn_scope_note_ef_perimetro'), '')) = 0),
     0,
     '4. PRESIDIO: ogni target_tipo ammesso dal CHECK ha un ramo nello smistatore'
 );

@@ -59,13 +59,18 @@ scaduta, ma ancora accesa, continuava a vedere i suoi dati.
 
 ---
 
-### Regole implementative
+### Come è fatta (dal 21-10-2026)
 
-* `LANGUAGE sql`, `STABLE`.
-* `%TYPE` su firma per allineamento alle colonne sorgente.
-* 4 filtri AND nel WHERE, tutti su colonne indicizzate (PK + FK con indice di policy).
-* Single `EXISTS` su singola tabella (`identita_digitali`): lookup index-only
-  possibile, query a latenza minima.
+La regola è scritta **una volta**, nei building block delle policy di controparte, e
+questa funzione li compone per la domanda su **una** riga:
+[`fn_get_identita_sr_perimetro`](fn_get_identita_sr_perimetro.md) nella veste
+`FORNITORE_PORTALE` (il soggetto dell'identità, se utilizzabile oggi) confrontato con
+`p_fornitore_sr_id` da `fn_scope_sr_perimetro`.
+
+⭐ **Le policy di `acquisti.ordini` e `acquisti.ddt` non passano più di qui**
+(`20261021-43`): chiamano i building block direttamente, col perimetro calcolato una
+volta per istruzione (linee-guida-sql §10.3). Questa funzione resta come funzione della
+regola `FORNITORE_OWNERSHIP` nel catalogo `config.scope_policy`.
 
 ---
 

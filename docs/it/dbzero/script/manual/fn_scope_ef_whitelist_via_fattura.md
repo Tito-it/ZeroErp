@@ -8,7 +8,7 @@
 >
 [script.fn_scope_ef_whitelist_via_sr](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_sr) (adapter SR)
 > [script.fn_scope_ef_whitelist](/dbzero/script/funzioni/fn_scope_ef_whitelist) (adapter PK / entry-point)
-> [script.fn_scope_ba_ownership_via_fattura](/dbzero/script/funzioni/fn_scope_ba_ownership_via_fattura) (speculare per lo scope BA)
+> [script.fn_resolve_controparte_sr_id](/dbzero/script/manual/fn_resolve_controparte_sr_id) (lo scope BA: il cliente della fattura, modo `fattura`)
 >
 **Tabelle correlate:**
 >
@@ -24,8 +24,9 @@ di `vendite.fatture` che non hanno una colonna emittente propria (es.
 `vendite.fatture_scadenze`), risolve l'emittente **attraverso la fattura
 collegata** e delega all'adapter SR.
 
-È lo speculare di `fn_scope_ba_ownership_via_fattura` (stesso pattern per lo
-scope BA cliente/portale).
+Per lo scope del cliente portale la stessa domanda la fa il modo `fattura` di
+`fn_resolve_controparte_sr_id` (dal 21-10-2026; `fn_scope_ba_ownership_via_fattura`
+è ritirata).
 
 ---
 

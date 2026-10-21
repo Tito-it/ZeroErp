@@ -41,7 +41,7 @@
 --   10) CLIENTE_PORTALE vede zero su tutte e 13 (il magazzino e' interno)
 --   11) senza veste: zero su tutte e 13 (fail-closed)
 --   Lo smistatore:
---   12) i rami di fn_scope_note_magazzino_ef_whitelist sono esattamente i valori di chk_note_target_tipo
+--   12) i rami di fn_scope_note_magazzino_ef_perimetro (rev 2026-10-21, 20261021-25) sono esattamente i valori di chk_note_target_tipo
 -- ------------------------------------------------------------
 BEGIN;
 SET CONSTRAINTS ALL IMMEDIATE;
@@ -307,7 +307,7 @@ SELECT is((SELECT valore FROM _esiti WHERE chiave = 'senza_veste'), '0',
 SELECT is(
     (WITH rami AS (
         SELECT (regexp_matches(p.prosrc, 'WHEN ''([A-Z_]+)''', 'g'))[1] AS v
-          FROM pg_proc p WHERE p.pronamespace = 'script'::regnamespace AND p.proname = 'fn_scope_note_magazzino_ef_whitelist'
+          FROM pg_proc p WHERE p.pronamespace = 'script'::regnamespace AND p.proname = 'fn_scope_note_magazzino_ef_perimetro'
      ), chk AS (
         SELECT (regexp_matches(pg_get_constraintdef(c.oid), '''([A-Z_]+)''', 'g'))[1] AS v
           FROM pg_constraint c WHERE c.conrelid = 'magazzino.note'::regclass AND c.conname = 'chk_note_target_tipo'

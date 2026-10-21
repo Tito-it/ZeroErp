@@ -63,46 +63,25 @@ scaduta, ma ancora accesa, continuava a vedere i suoi dati.
 
 ---
 
-### Regole implementative
+### Come è fatta (dal 21-10-2026)
 
-* `LANGUAGE sql`, `STABLE`.
-* `%TYPE` su firma per allineamento alle colonne sorgente.
-* Gate `script.fn_veste_utilizzabile(id.id)` nel WHERE per defense-in-depth (era `id.attivo = true` fino al 07-10-2026).
-* Single `EXISTS`: short-circuit alla prima corrispondenza.
+La regola `BA_OWNERSHIP` è scritta **una volta**, nei building block delle policy
+di controparte, e questa funzione li compone per la domanda su **una** riga:
 
----
+* [`fn_get_identita_sr_perimetro`](fn_get_identita_sr_perimetro.md) — il soggetto
+  dell'identità, se è in veste di cliente (`CLIENTE_PORTALE` o `SHOP_CUSTOMER`) e
+  utilizzabile oggi;
+* [`fn_resolve_controparte_sr_id`](fn_resolve_controparte_sr_id.md) — il cliente
+  della riga (modo `billing_account`), letto `SECURITY DEFINER` senza rieseguire la policy del padre;
+* `fn_scope_sr_perimetro` — il confronto.
 
-### Catena JOIN
-
-```
-identita_digitali.soggetto_ruolo_id
-    = billing_account.soggetto_ruolo_id  (join diretto)
-AND identita_digitali.id = p_identita_id
-AND script.fn_veste_utilizzabile(identita_digitali.id)
-AND identita_digitali.ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
-AND billing_account.id = p_billing_account_id
-```
-
-`billing_account` ha FK diretta a `soggetti_ruoli` (colonna
-`soggetto_ruolo_id`), quindi non serve passare da `anagrafiche.clienti`.
-
----
-
-### Uso tipico
-
-Policy RLS su tabelle figlie di `billing_account` (fatture, ordini, scadenze,
-ecc.) oppure sulla tabella `billing_account` stessa:
-
-```sql
-CREATE POLICY rls_fatture_ba_ownership ON vendite.fatture
-    FOR SELECT
-    USING (
-        script.fn_scope_ba_ownership(
-            NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
-            billing_account_id
-        )
-    );
-```
+⭐ **Le policy del portale non passano più di qui** (`20261021-32`): chiamano i
+building block direttamente, con il perimetro calcolato **una volta per
+istruzione** invece che a ogni riga (linee-guida-sql §10.3). Questa funzione resta
+per chi chiede di una riga sola: è la funzione della regola nel catalogo
+`config.scope_policy`. Le sorelle `_via_fattura` e `_via_fattura_sdi`, e gli
+adattatori dello shop che la chiamavano, sono ritirati dal `20261021-40`: al loro
+posto i modi `fattura`, `fattura_sdi` e `billing_account_shop` del risolutore.
 
 ---
 

@@ -494,8 +494,10 @@ CREATE POLICY rls_ordini_shop_silo ON vendite.ordini
     USING (
         current_setting('app.ruolo_applicativo', true) = 'SHOP_CUSTOMER'
         AND canale_origine = 'SHOP'
-        AND script.fn_scope_cliente_ownership(
-                NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+        AND script.fn_scope_sr_perimetro(
+                (SELECT script.fn_get_identita_sr_perimetro(
+                    NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                    ARRAY['SHOP_CUSTOMER'::config.ruolo_applicativo])),
                 soggetto_ruolo_id
             )
     );

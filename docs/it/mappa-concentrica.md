@@ -699,9 +699,9 @@ operativo può prenderle al posto di una persona.
   policy ef_whitelist (`fn_scope_ef_perimetro`, linee-guida-sql §10.3), con
   l'emittente della riga dal risolutore DEFINER; il `tx_id` sulla connessione di
   log persistente invece di una connessione per transazione. Brief archiviato.
-  ⬜ Resta **D36**: le famiglie di policy che calcolano ancora il perimetro per
-  riga (cliente, shop, fornitore, email, note, tre dell'operatore —
-  [brief](dev/work-in-progress/brief-db-perimetro-una-volta-famiglie-residue.md)).
+  ✅ **D36 chiuso il 21-10**: anche le policy di cliente, shop, fornitore, email
+  e note calcolano chi guarda una volta per istruzione
+  ([brief](dev/work-done/brief-db-perimetro-una-volta-famiglie-residue.md)).
   ✅ **Le statistiche delle tabelle** (**D15** in [migliorie-generali](dev/work-in-progress/migliorie-generali-da-test-valutazione.md)):
   **chiusa il 15-10**: job notturno `analyze_statistiche` con autoverifica, applicato e provato su dbdev ([brief](dev/work-done/brief-db-statistiche-tabelle-job-notturno.md)). Fatto datato 14-10 su dbdev, prima del job: mai analizzate
   69 tabelle su 89 in `vendite`, 25 su 25 in `magazzino`, 9 su 9 in `acquisti`;

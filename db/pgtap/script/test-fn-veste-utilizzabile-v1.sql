@@ -38,8 +38,9 @@
 --   18) ...spenta anche la cliente: la credenziale si spegne
 --   19) fn_get_user_profile col rapporto chiuso: E_UTENTE_DISABILITATO
 --   20) fn_get_user_profile con la veste non ancora valida: E_UTENTE_DISABILITATO
---   21a/b) fn_scope_cliente_ownership: vera sulla veste cliente valida,
---       falsa quando scade
+--   21a/b) il perimetro del cliente (fn_get_identita_sr_perimetro): il suo
+--       soggetto sulla veste valida, NULL quando scade (rev 2026-10-21:
+--       fn_scope_cliente_ownership ritirata da 20261021-40)
 --   22a/b) fn_scope_identita_processo: vera sull'identita' tecnica valida,
 --       falsa quando scade
 --   23) fn_is_super_admin_account: un SUPER_ADMIN col rapporto chiuso non lo e'
@@ -244,13 +245,15 @@ SELECT is(
     '20) profilo con la veste non ancora valida: E_UTENTE_DISABILITATO');
 SELECT pg_temp.ripristina_op();
 
-SELECT is(script.fn_scope_cliente_ownership((SELECT identita_id FROM _cl),
-                                            (SELECT soggetto_ruolo_id FROM _cl)),
-    true, '21a) fn_scope_cliente_ownership: vera sulla veste cliente valida');
+SELECT is(script.fn_get_identita_sr_perimetro((SELECT identita_id FROM _cl),
+                                              ARRAY['CLIENTE_PORTALE', 'SHOP_CUSTOMER']::config.ruolo_applicativo[]),
+    (SELECT soggetto_ruolo_id FROM _cl),
+    '21a) il perimetro del cliente: il suo soggetto, sulla veste valida');
 UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT identita_id FROM _cl);
-SELECT is(script.fn_scope_cliente_ownership((SELECT identita_id FROM _cl),
-                                            (SELECT soggetto_ruolo_id FROM _cl)),
-    false, '21b) ...falsa quando la veste scade (prima guardava solo attivo)');
+SELECT is(script.fn_get_identita_sr_perimetro((SELECT identita_id FROM _cl),
+                                              ARRAY['CLIENTE_PORTALE', 'SHOP_CUSTOMER']::config.ruolo_applicativo[]),
+    NULL::bigint,
+    '21b) ...NULL, cioe'' nessuna riga, quando la veste scade');
 UPDATE anagrafiche.identita_digitali SET valido_al = NULL WHERE id = (SELECT identita_id FROM _cl);
 
 SELECT is(script.fn_scope_identita_processo((SELECT auth_user_id FROM _tec), 'chiusura_scadenze_daily'),
@@ -327,8 +330,12 @@ SELECT set_eq(
              ('script.fn_get_profili_accesso_applicabili'), ('script.fn_get_setup_status'),
              ('anagrafiche.fn_sync_auth_user_is_active'),
              ('anagrafiche.fn_sync_auth_user_expired'), ('script.fn_get_user_profile'),
-             ('script.fn_scope_cliente_ownership'), ('script.fn_scope_fornitore_ownership'),
-             ('script.fn_scope_ba_ownership'), ('script.fn_scope_ba_ownership_via_fattura'),
+             -- Rev 2026-10-21 (20261021-29, -31, -34, -42): le regole BA_OWNERSHIP,
+             --   del cliente e FORNITORE_OWNERSHIP la leggono attraverso
+             --   script.fn_get_identita_sr_perimetro, qui al posto di
+             --   fn_scope_ba_ownership, _via_fattura, fn_scope_cliente_ownership e
+             --   fn_scope_fornitore_ownership.
+             ('script.fn_get_identita_sr_perimetro'),
              ('script.fn_scope_identita_processo')$$,
     '26) le sedi del brief leggono script.fn_veste_utilizzabile (le check dell''anti-lockout attraverso fn_identita_super_admin_senza_scadenza)');
 

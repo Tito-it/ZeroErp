@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE TRE POLICY OPERATORE RIMASTE PER RIGA
+#   vendite.note.rls_note_ef_whitelist, magazzino.note.rls_note_ef_whitelist,
+#   anagrafiche.istanze_dati_precontrattuali.rls_istanze_dati_precontrattuali_ef_whitelist
+#   Brief: brief-db-perimetro-una-volta-famiglie-residue §4, P-1 e P-3 (Tid, 2026-10-21).
+#
+# Come 20261018-33 e -50: il perimetro una volta per istruzione, in UNA
+# sottoquery non correlata (InitPlan); per riga solo la risoluzione.
+#   - i due padri delle note: lo smistatore nuovo (-25) riceve il perimetro
+#     (convenzione PK, fn_get_emittenti_scope_pk_ids);
+#   - istanze_dati_precontrattuali: la forma del billing account (-50),
+#     convenzione soggetto_ruolo, col BA della coppia da
+#     script.fn_get_ba_id_da_coppia (-24), DEFINER: niente piu' policy del BA
+#     rieseguita per riga.
+# ⭐ Stesse risposte, sul contratto: per la veste OPERATORE l'unica policy di
+#   SELECT di billing_account e' rls_billing_account_ef_whitelist, che chiede
+#   fn_scope_ef_perimetro(sr_ids, fn_get_ba_emittente_sr_id(id)): il BA della
+#   coppia era visibile esattamente quando via_efba rispondeva true. Il BA
+#   della coppia esiste sempre (FK fk_idp_billing_account_coppia, NOT NULL).
+# Gate della veste OPERATORE, USING e WITH CHECK, comando, ruoli: invariati.
+# Rollback: i testi di prima (dbdev, 2026-10-21).
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261021-26-alter-policy-note-padri-e-coppia-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261021-26-alter-policy-note-padri-e-coppia-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le policy operatore dei padri vendite.note e magazzino.note e di anagrafiche.istanze_dati_precontrattuali calcolano il perimetro una volta per istruzione. P-1 e P-3 di brief-db-perimetro-una-volta-famiglie-residue.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE coalesce(qual, '') || coalesce(with_check, '') ~ '(fn_scope_note_ef_whitelist|fn_scope_note_magazzino_ef_whitelist|fn_scope_ef_whitelist_via_coppia)\('
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('script.fn_scope_note_ef_perimetro(bigint[],character varying,bigint)'),
+                             to_regprocedure('script.fn_scope_note_magazzino_ef_perimetro(bigint[],character varying,bigint)'),
+                             to_regprocedure('script.fn_get_ba_id_da_coppia(bigint,integer)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER POLICY rls_note_ef_whitelist ON vendite.note
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)));
+
+              ALTER POLICY rls_note_ef_whitelist ON magazzino.note
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_magazzino_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_magazzino_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), target_tipo, target_id)));
+
+              ALTER POLICY rls_istanze_dati_precontrattuali_ef_whitelist ON anagrafiche.istanze_dati_precontrattuali
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), script.fn_get_ba_emittente_sr_id(script.fn_get_ba_id_da_coppia(istanza_utility_id, utility_id)))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), script.fn_get_ba_emittente_sr_id(script.fn_get_ba_id_da_coppia(istanza_utility_id, utility_id)))));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER POLICY rls_note_ef_whitelist ON vendite.note
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, target_tipo, target_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, target_tipo, target_id)));
+
+              ALTER POLICY rls_note_ef_whitelist ON magazzino.note
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_magazzino_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, target_tipo, target_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_note_magazzino_ef_whitelist((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, target_tipo, target_id)));
+
+              ALTER POLICY rls_istanze_dati_precontrattuali_ef_whitelist ON anagrafiche.istanze_dati_precontrattuali
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist_via_coppia((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, istanza_utility_id, utility_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_ef_whitelist_via_coppia((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, istanza_utility_id, utility_id)));

@@ -531,7 +531,7 @@ errore.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D16, D24, D31, D32, D34, D36.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D16, D24, D31, D32, D34.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -942,18 +942,6 @@ per conto suo: per la vista quel sito non esiste.
 * **Come si chiude:** quando la vista vede il sito, la riga di `_ESENZIONI` va rossa da sola (verso
   di ritiro del presidio) e il BE la toglie.
 
-### 🟡 D36 — Il perimetro una volta per istruzione: le famiglie che restano
-
-Ereditato il 2026-10-18 dalla chiusura di D26-2 (`work-done/brief-db-plancache-funzioni-con-query-incorporate`,
-D-3b-2): le policy ef_whitelist dell'operatore calcolano il perimetro una volta per istruzione; restano
-per riga le famiglie del cliente portale, cliente, shop, fornitore, email e note, più tre policy
-dell'operatore (`fn_scope_note_ef_whitelist`, `fn_scope_note_magazzino_ef_whitelist`, che il presidio
-non vede, e `via_coppia`, dichiarata).
-
-Dettaglio, censimento e decisioni P-1…P-3 nel brief
-[brief-db-perimetro-una-volta-famiglie-residue.md](brief-db-perimetro-una-volta-famiglie-residue.md).
-Aperto, non iniziato.
-
 ### 🟠 D31 — Le righe di contratto CANONE, ORARIO e CONSUMO non hanno la loro generazione
 
 Trovato il 2026-10-13 dalla segnalazione BE del push batch CONTRATTO (un contratto senza scadenza
@@ -1218,9 +1206,8 @@ D6 e il registro dei rossi in CI.
       `brief-db-dati-societari-in-creazione` (aperto il 2026-10-14, non iniziato; decisione E-1).
 * [x] **D35** — `zeroerp_log` nella fase `ruoli`: brief
       `work-done/brief-db-zeroerp-log-nella-fase-ruoli` — aperto e chiuso il 2026-10-15.
-* [ ] **D36** — il perimetro una volta per istruzione, le famiglie che restano: brief
-      `brief-db-perimetro-una-volta-famiglie-residue` (aperto il 2026-10-18, non iniziato; decisioni P-1…P-3).
-
+* [x] **D36** — il perimetro una volta per istruzione, le famiglie che restano: brief
+      `work-done/brief-db-perimetro-una-volta-famiglie-residue` — aperto il 2026-10-18, chiuso il 2026-10-21.
 ---
 
 ## 7. Attività svolte — cosa è stato chiuso, e con che cosa
@@ -1785,6 +1772,19 @@ avanti verso la commessa sta tutto nel DB; il link documento → commessa resta 
 commessa aperta per documento, e il lineage dice quando il legame e' ritirato (`is_legame_ritirato`).
 Brief `work-done/brief-db-annullo-a-valle-riapre-a-monte.md`; il residuo (la commessa vuota del push
 batch) e' in PROJECT_CONTEXT § «Aperto — Media priorità».
+
+### ✅ D36 — Il perimetro una volta per istruzione: le famiglie che restano — chiuso il 2026-10-21
+
+Ereditato il 2026-10-18 dalla chiusura di D26-2: dopo la cura delle policy ef_whitelist dell'operatore
+restavano per riga le famiglie del cliente portale, cliente, shop, fornitore, email e note, più tre
+policy dell'operatore. Chiuso in cinque giri (`20261021-24…-43`), tutti applicati e verdi: nessuna policy
+calcola più per riga ciò che dipende solo da chi guarda. Per l'operatore la forma già pronta (smistatori
+delle note col perimetro, il BA di una coppia da `fn_get_ba_id_da_coppia`); per le vesti di controparte
+tre building block nuovi (`fn_get_identita_sr_perimetro`, `fn_resolve_controparte_sr_id` coi suoi modi,
+`fn_scope_sr_perimetro`); per le email la regola dell'ambito resa pura, con chi guarda in quattro
+sottoquery. Ritirate tredici funzioni per riga. Il presidio
+`script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` non ammette più eccezioni; regola in
+linee-guida-sql §10.3. Brief `work-done/brief-db-perimetro-una-volta-famiglie-residue.md`.
 
 ### ✅ D35 — `zeroerp_log` nasce con gli altri ruoli di sistema — chiuso il 2026-10-15
 
