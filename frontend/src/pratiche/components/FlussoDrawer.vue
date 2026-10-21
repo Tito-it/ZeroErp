@@ -8,8 +8,6 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
-import { lookupCodici } from '../../core/apiCore'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { useInjectTechnicalMode } from '../../core/composables/useTechnicalMode'
 import { getUiActivity } from '../uiActivityRegistry'
 import { getCompletionDialog } from '../flussoCompletionRegistry'
@@ -24,6 +22,7 @@ import FlussoAssegnaDialog from './FlussoAssegnaDialog.vue'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
+import { useLookupCodici } from '../../core/composables/useLookupCodici'
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
@@ -68,10 +67,7 @@ const tecnico = useInjectTechnicalMode()
 // (require_esito_selezionabile_operatore) resta la difesa in profondita'.
 // value = codice_interno (inviato al BE), label = descrizione umana. Cache
 // modulo-level condivisa (useGlobalLookup), caricata all'apertura del drawer.
-const { items: esitiCatalogo, load: loadEsiti, loading: esitiLoading } = useGlobalLookup(
-  'config.esiti_flussi_pratiche',
-  () => lookupCodici('config.esiti_flussi_pratiche'),
-)
+const { items: esitiCatalogo, load: loadEsiti, loading: esitiLoading } = useLookupCodici('config.esiti_flussi_pratiche')
 const esitiOptions = computed(() => {
   const base = esitiCatalogo.value
     .filter(e => e.selezionabile_operatore)

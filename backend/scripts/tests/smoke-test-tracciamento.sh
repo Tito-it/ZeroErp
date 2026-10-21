@@ -7,7 +7,7 @@
 #  0) Autenticazione JWT
 #  1) Audit log — lista completa
 #  2) Audit log — filtro status SUCCESS / FAILED
-#  3) Audit log — paginazione (page_size=5)
+#  3) Audit log — paginazione (limit=5)
 #  4) Audit log — search ILIKE
 #  5) Domini task — lista con dettaglio
 #  6) Task registry — lista completa
@@ -17,7 +17,7 @@
 # 10) Job runs — filtro ok=true / ok=false
 # 11) Job runs — search ILIKE
 # 12) Job summary — riepilogo con dettaglio
-# 13) Validazione — status invalido (400), page_size capped (200)
+# 13) Validazione — status invalido (400), limit oltre il massimo (400)
 # 14) Accesso senza token valido (401)
 # ------------------------------------------------------------
 set -euo pipefail
@@ -125,8 +125,8 @@ log_info "audit FAILED: $EXTRACTED"
 echo ""
 echo "-- 3. Audit log paginazione --"
 
-do_curl GET "/api/v1/core/tracciamento/audit-log/?page=1&page_size=5"
-check "GET audit-log page=1 size=5" 200 ".data.page_size"
+do_curl GET "/api/v1/core/tracciamento/audit-log/?limit=5"
+check "GET audit-log limit=5" 200 ".data.page_size"
 log_info "page_size restituito: $EXTRACTED"
 
 # Con ricerca
@@ -279,10 +279,9 @@ echo "-- 13. Test errori validazione --"
 do_curl GET "/api/v1/core/tracciamento/audit-log/?status=INVALIDO"
 check "GET audit-log status=INVALIDO → 400" 400
 
-# Paginazione con page_size grande (capped a 200)
-do_curl GET "/api/v1/core/tracciamento/audit-log/?page_size=500"
-check "GET audit-log page_size=500 (capped)" 200 ".data.page_size"
-log_info "page_size restituito (dovrebbe essere 200): $EXTRACTED"
+# Un limit oltre il massimo (200) e' un 400 dal 2026-10-21, non una riduzione muta
+do_curl GET "/api/v1/core/tracciamento/audit-log/?limit=500"
+check "GET audit-log limit=500 → 400" 400
 
 # ================================================================
 # SENZA TOKEN (401 atteso)

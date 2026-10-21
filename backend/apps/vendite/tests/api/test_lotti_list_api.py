@@ -149,26 +149,29 @@ class VenditeLottiListApiTests(JwtMockedApiTest):
     @patch("apps.vendite.api.views.fn_list_lotti")
     def test_list_lotti_paginazione_parametri(self, mocked_list, _mock_auth):
         mocked_list.return_value = {**_LIST_RESPONSE, "page": 2, "page_size": 10}
-        self.client.get("/api/v1/vendite/lotti/?page=2&page_size=10")
+        self.client.get("/api/v1/vendite/lotti/?limit=10&offset=10")
         kwargs = mocked_list.call_args.kwargs
-        self.assertEqual(kwargs["page"], 2)
-        self.assertEqual(kwargs["page_size"], 10)
+        self.assertEqual(kwargs["limit"], 10)
+        self.assertEqual(kwargs["offset"], 10)
 
     # Scopo: Verifica il caso `test_list_lotti_page_size_invalido`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_list_lotti_page_size_invalido(self, _mock_auth):
-        response = self.client.get("/api/v1/vendite/lotti/?page_size=999")
+        # Dal 2026-10-21 la lista pagina con `limit`/`offset`: `page_size` e' un 400.
+        response = self.client.get("/api/v1/vendite/lotti/?page_size=10")
         self.assertEqual(response.status_code, 400)
         body = response.json()["error"]
-        self.assertEqual(body["code"], "E_VENDITE_VALIDATION")
+        self.assertEqual(body["code"], "E_VALIDATION_INPUT")
 
     # Scopo: Verifica il caso `test_list_lotti_page_invalida`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     def test_list_lotti_page_invalida(self, _mock_auth):
-        response = self.client.get("/api/v1/vendite/lotti/?page=0")
-        self.assertEqual(response.status_code, 400)
-        body = response.json()["error"]
-        self.assertEqual(body["code"], "E_VENDITE_VALIDATION")
+        # `page` non e' piu' un parametro, e un `limit` illeggibile e' un 400.
+        for qs in ("page=2", "limit=abc"):
+            with self.subTest(qs=qs):
+                response = self.client.get(f"/api/v1/vendite/lotti/?{qs}")
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json()["error"]["code"], "E_VALIDATION_INPUT")
 
     # Scopo: Verifica il caso `test_list_lotti_senza_filtri_lista_vuota_ok`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

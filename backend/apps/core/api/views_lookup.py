@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 from django.http import JsonResponse
+from apps.core.api.openapi_params import risposta_lookup
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -18,7 +19,7 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import (
     optional_int,
     parse_list_params,
-    qp_int,
+    qp_int_strict,
     qp_str,
 )
 from apps.core.api.success_responses import success_response
@@ -30,10 +31,7 @@ class LookupTipiSoggettoDettaglioView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
-        responses={200: inline_serializer(
-            name="TipiSoggettoDettaglioResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("TipiSoggettoDettaglioResponse")},
     )
     # Scopo: Restituisce i tipi soggetto dettaglio con natura, CF/PIVA/dati societari policy.
     # Il frontend usa questi dati per guidare la visibilita' dei campi nel SoggettoForm.
@@ -51,10 +49,7 @@ class LookupTipiRuoliPerNaturaView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="natura_soggetto", type=str, required=False),
         ],
-        responses={200: inline_serializer(
-            name="TipiRuoliPerNaturaResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("TipiRuoliPerNaturaResponse")},
     )
     # Scopo: Restituisce tipi ruolo ammessi per la natura, filtrati dalla matrice.
     def get(self, request: Request) -> JsonResponse:
@@ -72,10 +67,7 @@ class LookupFormeGiuridicheView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="tipo_soggetto_dettaglio_id", type=int, required=False),
         ],
-        responses={200: inline_serializer(
-            name="FormeGiuridicheResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("FormeGiuridicheResponse")},
     )
     # Scopo: Restituisce forme giuridiche con policy, opzionalmente filtrate per tipo soggetto.
     def get(self, request: Request) -> JsonResponse:
@@ -90,10 +82,7 @@ class LookupMatriceIndirizziView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
-        responses={200: inline_serializer(
-            name="MatriceIndirizziResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("MatriceIndirizziResponse")},
     )
     # Scopo: Restituisce la matrice tipi indirizzo ammessi/obbligatori per un tipo
     # soggetto dettaglio. Il frontend usa questi dati per mostrare i form indirizzo
@@ -109,10 +98,7 @@ class LookupMatriceIndirizziRuoloView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
-        responses={200: inline_serializer(
-            name="MatriceIndirizziRuoloResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("MatriceIndirizziRuoloResponse")},
     )
     def get(self, request: Request, tipo_ruolo_codice: str) -> JsonResponse:
         repo = LookupRepository()
@@ -130,10 +116,7 @@ class LookupUtilitiesPerRuoloView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
-        responses={200: inline_serializer(
-            name="UtilitiesPerRuoloResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("UtilitiesPerRuoloResponse")},
     )
     # Scopo: Restituisce le utility ammesse per il tipo ruolo passato in path,
     # con filtro strict basato sulla matrice config.utilities_tipi_ruolo.
@@ -179,10 +162,7 @@ class LookupUtilitiesPerEmittenteView(DomainAPIView):
                 required=False,
             ),
         ],
-        responses={200: inline_serializer(
-            name="UtilitiesPerEmittenteResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("UtilitiesPerEmittenteResponse")},
     )
     # Scopo: Restituisce le utility ammesse per il ruolo EF; se `ruolo` e'
     #        fornito, intersecate con quelle ammesse per il ruolo del soggetto.
@@ -212,10 +192,7 @@ class LookupContiContabiliView(DomainAPIView):
                 required=False,
             ),
         ],
-        responses={200: inline_serializer(
-            name="ContiContabiliLookupResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("ContiContabiliLookupResponse")},
     )
     # Scopo: Lista conti contabili filtrati per tipo (A/V) per le combo articolo.
     def get(self, request: Request) -> JsonResponse:
@@ -241,20 +218,14 @@ class LookupTipiEntitaView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
-        responses={200: inline_serializer(
-            name="TipiEntitaLookupResponse",
-            fields={"data": inline_serializer(
-                name="TipiEntitaLookupData",
-                fields={"results": serializers.ListField(child=inline_serializer(
-                    name="TipoEntitaLookupRow",
-                    fields={
-                        "codice": serializers.CharField(),
-                        "etichetta_key": serializers.CharField(),
-                        "key_selector": serializers.CharField(),
-                    },
-                ))},
-            )},
-        )},
+        responses={200: risposta_lookup("TipiEntitaLookupResponse", riga=inline_serializer(
+            name="TipoEntitaLookupRow",
+            fields={
+                "codice": serializers.CharField(),
+                "etichetta_key": serializers.CharField(),
+                "key_selector": serializers.CharField(),
+            },
+        ))},
     )
     # Scopo: Restituisce i tipi di entita' vivi, con l'indirizzo i18n dichiarato dal DB.
     def get(self, request: Request) -> JsonResponse:
@@ -352,10 +323,7 @@ class SearchStradarioView(DomainAPIView):
             OpenApiParameter(name="limit", type=int, required=False,
                              description="Righe massime (default 30, max 100)."),
         ],
-        responses={200: inline_serializer(
-            name="StradarioSearchResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("StradarioSearchResponse")},
     )
     # Scopo: Ricerca vie per autocomplete. Chiama script.fn_search_stradario.
     # Il frontend usa questo endpoint dopo che l'utente ha selezionato un comune.
@@ -364,7 +332,7 @@ class SearchStradarioView(DomainAPIView):
         qp = request.query_params
         comune_id = optional_int(qp, "comune_id")
         search = qp_str(qp.get("search"))
-        limit = min(qp_int(qp.get("limit"), 30), 100)
+        limit = min(qp_int_strict(qp.get("limit"), "limit", 30), 100)
 
         repo = LookupRepository()
         results = repo.search_stradario(
@@ -387,10 +355,7 @@ class SearchStradarioGeneraleView(DomainAPIView):
             OpenApiParameter(name="limit", type=int, required=False,
                              description="Righe massime (default 30, max 100)."),
         ],
-        responses={200: inline_serializer(
-            name="StradarioGeneraleSearchResponse",
-            fields={"data": serializers.ListField(child=serializers.DictField())},
-        )},
+        responses={200: risposta_lookup("StradarioGeneraleSearchResponse")},
     )
     # Scopo: Ricerca vie su stradario_generale per autocomplete via nuova.
     # L'utente cerca una via in tutta Italia, poi sceglie comune e CAP separatamente.
@@ -398,7 +363,7 @@ class SearchStradarioGeneraleView(DomainAPIView):
         qp = request.query_params
         search = qp_str(qp.get("search"))
         toponomastica_id = optional_int(qp, "toponomastica_id")
-        limit = min(qp_int(qp.get("limit"), 30), 100)
+        limit = min(qp_int_strict(qp.get("limit"), "limit", 30), 100)
 
         repo = LookupRepository()
         results = repo.search_stradario_generale(

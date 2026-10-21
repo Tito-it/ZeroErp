@@ -9,7 +9,7 @@ Per ridurre duplicazioni tra app dominio usare helper core:
 - `apps/core/api/request_parsers.py`
 - `apps/core/api/error_responses.py`
 - Template di partenza: `apps/core/api/examples/domain_post_example.py`
-- Esempio search (throttling + min length): `apps/core/api/examples/domain_search_example.py`
+- Esempio search (throttling + min length): `SearchUniversaleView` in `apps/core/api/search_view.py` (l'esempio `domain_search_example.py` è stato rimosso il 2026-10-21)
 
 ## Input
 - `Request` DRF con body JSON
@@ -64,4 +64,4 @@ Per ridurre duplicazioni tra app dominio usare helper core:
 4. **Errori**: usare `ErrorManager.require(...)` / `ErrorManager.raise_error(...)` nel service.
 5. **Test**: aggiungere test API (status/envelope) e test service (regole dominio).
 6. **Doc**: aggiornare manuale area dominio e indice con endpoint, input/output e regole.
-7. **Liste/Search**: applicare policy paginazione/ricerca e usare helper DRF core (`pagination.py`, `search_validators.py`).
+7. **Liste/Search**: applicare policy paginazione/ricerca e usare gli helper core (`pagina_da_query` in `payload_validators.py`, `search_validators.py`).

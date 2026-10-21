@@ -111,7 +111,7 @@ do_curl GET "/api/v1/core/lookup/codici/?rel=pratiche.handler_flussi"
 HANDLER_ID="$(extract "d['data']['results'][0]['id']")"; log_info "handler_id=$HANDLER_ID"
 do_curl GET "/api/v1/core/lookup/codici/?rel=config.unita_organizzative"
 UNITA_ID="$(extract "d['data']['results'][0]['id']")"; log_info "unita_id=$UNITA_ID"
-do_curl GET "/api/v1/amm-software/operatori/?page_size=200"
+do_curl GET "/api/v1/amm-software/operatori/?limit=200"
 RISORSA_ID="$(extract "next((o['risorsa_umana_id'] for o in d['data']['results'] if o.get('risorsa_umana_id')), '')")"
 log_info "risorsa_umana_id=$RISORSA_ID"
 

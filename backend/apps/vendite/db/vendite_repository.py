@@ -28,6 +28,7 @@ from apps.config.sorgenti import (
 )
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
+    colonna_ordinamento,
     sql_order_direction_lista,
     limiti_pagina,
     RicercaFull,
@@ -179,7 +180,7 @@ GIORNALE_GRAVITA: tuple[str, ...] = ("ERROR", "WARN", "INFO")
 #    non solleva niente.
 def _giornale_order_clause(sort_by: str | None, sort_dir: str | None) -> str:
     direzione = sql_order_direction(sort_dir, default_desc=True)
-    colonna = GIORNALE_SORT_COLUMNS.get(sort_by or "") or GIORNALE_SORT_COLUMNS[GIORNALE_ORDINE_DEFAULT]
+    colonna = colonna_ordinamento(sort_by, GIORNALE_SORT_COLUMNS) or GIORNALE_SORT_COLUMNS[GIORNALE_ORDINE_DEFAULT]
     if colonna == "rango":
         # ⚠️ Dentro la stessa gravita' ordina il TEMPO, sempre dal piu' recente,
         #    e NON segue il verso scelto: «i piu' gravi, e fra quelli i piu'
@@ -1134,7 +1135,7 @@ class VenditeRepository:
         # order_by assente o non ammesso -> ordine storico (il piu' recente
         # prima), cioe' esattamente il comportamento precedente: la lista non
         # cambia aspetto finche' l'utente non tocca un'intestazione.
-        sort_col = self.LOTTI_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.LOTTI_SORT_COLUMNS)
         # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): il ramo storico la
         #    ignora, e un `order_dir` estraneo passava muto (il service non la
         #    valida). Il BB la rifiuta anche quando poi non la si usa.
@@ -1437,7 +1438,7 @@ class VenditeRepository:
         # ASC/DESC, con tiebreak stabile (area, documento_id) per paginazione
         # deterministica. order_by assente/non ammesso -> ordine storico
         # "in essere da" (i piu' vecchi prima).
-        sort_col = self.DASH_APERTO_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_APERTO_SORT_COLUMNS)
         if sort_col is not None:
             direction = sql_order_direction_lista(order_by, order_dir, colonne=self.DASH_APERTO_SORT_COLUMNS)
             tiebreak_dir = sql_tiebreak_direction(direction)
@@ -1752,7 +1753,7 @@ class VenditeRepository:
         # whitelist + direzione ASC/DESC, tiebreak stabile (commessa,
         # commessa_attivita_id). order_by assente/non ammesso -> default storico
         # (valore DESC).
-        sort_col = self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS)
         # Direzione risolta PRIMA del ramo: il default (valore DESC) deve
         # avere il tiebreak coerente quanto la colonna scelta dall'utente.
         # `commessa_codice` raggruppa (resta ASC), `commessa_attivita_id` e' la
@@ -1903,7 +1904,7 @@ class VenditeRepository:
         params: list[Any] = [competenza_mese, MOTIVO_NON_FATTURATA_RESIDUO]
         where_clause = "WHERE " + " AND ".join(conditions)
 
-        sort_col = self.DASH_COMPETENZA_RESIDUI_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_COMPETENZA_RESIDUI_SORT_COLUMNS)
         # ⚠️ Senza `order_dir` le colonne data partono DESC (regola «date DESC»,
         #    inferita dal nome con `e_chiave_data`, 2026-10-20), le altre ASC; la
         #    stessa direzione vale per il TIEBREAK — altrimenti la primaria
@@ -2039,7 +2040,7 @@ class VenditeRepository:
         # colonna dalla whitelist + direzione, tiebreak stabile su commessa.
         # Assente/non ammesso -> default valore_tot DESC (le commesse piu' pesanti
         # prima), coerente col default a grana attivita'.
-        sort_col = self.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_COMPETENZA_COMMESSE_SORT_COLUMNS)
         # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST':
         # NON aggiungere un secondo NULLS (errore di sintassi PG). Direzione
         # risolta prima del ramo cosi' anche il default DESC ha il tiebreak
@@ -2373,7 +2374,7 @@ class VenditeRepository:
         # gruppo_key l'ordine fra quelle righe sarebbe indefinito e la
         # paginazione non deterministica (frontend-standards §Paginazione
         # deterministica): righe ripetute o saltate cambiando pagina.
-        sort_col = self.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS)
         # sql_order_direction ritorna gia' 'ASC NULLS FIRST'/'DESC NULLS LAST'.
         # Direzione prima del ramo: vale anche per il default DESC.
         direction = sql_order_direction_lista(
@@ -2964,7 +2965,7 @@ class VenditeRepository:
         _tiebreak = """tipo_evento ASC,
                      lotto_id ASC NULLS LAST, fattura_id ASC NULLS LAST,
                      task_code ASC NULLS LAST"""
-        sort_col = self.DASH_COMPETENZA_ERRORI_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_COMPETENZA_ERRORI_SORT_COLUMNS)
         if sort_col is not None:
             direction = sql_order_direction_lista(order_by, order_dir, colonne=self.DASH_COMPETENZA_ERRORI_SORT_COLUMNS)
             # Il tiebreak qui e' una catena di chiavi NATURALI (la union non ha
@@ -3203,7 +3204,7 @@ class VenditeRepository:
         # whitelist DASH_BACKLOG_SORT_COLUMNS + direzione ASC/DESC, tiebreak
         # stabile (area, documento_id). order_by assente/non ammesso -> ordine
         # storico "fermo da" (i piu' vecchi prima).
-        sort_col = self.DASH_BACKLOG_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.DASH_BACKLOG_SORT_COLUMNS)
         if sort_col is not None:
             direction = sql_order_direction_lista(order_by, order_dir, colonne=self.DASH_BACKLOG_SORT_COLUMNS)
             tiebreak_dir = sql_tiebreak_direction(direction)
@@ -3446,7 +3447,7 @@ class VenditeRepository:
         # sorgente puo' portare piu' di un atto vivo (l'indice parziale
         # `uq_fondi_source_atto_vivo_automatico` presidia i soli AUTOMATICI).
         # `COALESCE(..., 0)` perche' negli altri tre rami l'atto non esiste.
-        sort_col = self.FONDI_DA_DECIDERE_SORT_COLUMNS.get(order_by or "")
+        sort_col = colonna_ordinamento(order_by, self.FONDI_DA_DECIDERE_SORT_COLUMNS)
         direction = sql_order_direction(order_dir, default_desc=True)
         tiebreak_dir = sql_tiebreak_direction(direction)
         order_clause = (
@@ -3527,8 +3528,8 @@ class VenditeRepository:
         lotto_id: int,
         stato_esecuzione: str | None,
         auth_user_id: int | None = None,
-        sort_by: str,
-        sort_dir: str | None,
+        order_by: str | None = None,
+        order_dir: str | None = None,
         limit: int,
         offset: int,
         max_rows: int | None = None,
@@ -3545,7 +3546,7 @@ class VenditeRepository:
         # `sql_order_clause` (NULL come valore minimo; tiebreak `fattura_id`
         # allineato alla direzione, e omesso quando e' gia' la colonna scelta).
         order_clause = sql_order_clause(
-            sort_by, sort_dir,
+            order_by, order_dir,
             colonne=LOTTO_FATTURE_SORT_COLUMNS, default="fllf.fattura_id",
             colonne_desc=LOTTO_FATTURE_SORT_COLONNE_DATA, tiebreak="fllf.fattura_id",
         )
@@ -3877,7 +3878,7 @@ class VenditeRepository:
             params.append(stato_esecuzione)
 
         # Ordinamento: solo valori dalla whitelist entrano nella query.
-        sort_col = LOTTO_GRUPPI_SORT_COLUMNS.get(sort_by or "")
+        sort_col = colonna_ordinamento(sort_by, LOTTO_GRUPPI_SORT_COLUMNS)
         order_params: list[Any] = []
         if sort_col is not None:
             # Direzione dal BB `sql_order_direction` (NULL come valore minimo).

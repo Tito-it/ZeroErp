@@ -61,15 +61,15 @@ Le API richiedono JWT (`Authorization: Bearer <token>`) e usano l'envelope stand
 | `utility_id` | int | No | Filtro per utility (FK `config.utilities`) |
 | `tipologia_id` | int | No | Filtro per tipologia listino (FK `config.listini_tipologie`) |
 | `attivo` | bool | No | Filtro attivo/disattivo; parsing rigoroso |
-| `limit` | int | No | Righe per pagina, default `25`, max `200` (fuori limiti riportato nei limiti) |
-| `offset` | int | No | Scostamento, default `0`; la `page` della risposta si ricava da qui |
+| `limit` | int | No | Righe per pagina, default `25`, max `200`; fuori da 1..200 → 400 `E_VALIDATION_INPUT` |
+| `offset` | int | No | Scostamento, default `0` (negativo → 400); la `page` della risposta si ricava da qui |
 | `order_by` | string | No | `codice` (default), `descrizione`, `utility_descrizione`, `tipologia_descrizione`, `attivo`, `data_insert`, `data_update` |
 | `order_dir` | string | No | `asc` oppure `desc` |
 
 `utility_id` e `tipologia_id`: stringa vuota equivale a parametro assente;
 non numerici → `400 E_VALIDATION_INPUT`, ≤ 0 → `400 E_VENDITE_VALIDATION`.
 Permesso modello `("vendite", "listino")` su tutte le rotte di questa pagina.
-⚠️ `page`/`page_size` non sono letti: la paginazione è `limit`/`offset`.
+⚠️ La paginazione è `limit`/`offset`: `page`/`page_size` sono un 400 `E_VALIDATION_INPUT` (dal 2026-10-20; prima erano ignorati).
 
 #### Risposta (200)
 
@@ -669,7 +669,7 @@ Mostra la BoM corrente del padre composito + i prezzi bundle gia' definiti (LEFT
 | --- | --- |
 | **Metodo** | `POST` |
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/bundle/{padre_id}/` |
-| **Idempotency-Key** | non obbligatoria (`handle_post_json` senza `require_idempotency_key`) |
+| **Idempotency-Key** | obbligatoria (dal 2026-10-20 ogni POST che scrive la porta: `_ApiViewBase`, api.md §Idempotency-Key) |
 
 #### Body JSON salva bundle
 
@@ -822,6 +822,13 @@ listini a rischio "buco di copertura" in produzione.
   futura migrazione a `daterange` nativo PostgreSQL (N1).
 - Solo versioni operative oggi (`validita @> fn_data_operativa()`); `giorni`
   fuori 1-365 o non intero → `400`.
+- `valido_al` è l'ultimo giorno di validità (incluso) e `giorni_rimanenti` si
+  conta da lì; una versione con un successore — BOZZA, o operativa dopo la
+  scadenza — **anche contiguo** (`valido_dal = valido_al + 1`) non è in alert.
+  ⚠️ Fino al 2026-10-21 la query leggeva `upper(validita)` (che per un intervallo
+  chiuso è `valido_al + 1`): scadenza e giorni uscivano con un giorno in più, e il
+  successore contiguo non contava (presidio sul DB vero:
+  `vendite/tests/db/test_listini_in_scadenza_db.py`).
 - Frontend: widget `AlertScadenzeWidget.vue` con badge nella toolbar listini.
 
 ---
@@ -956,7 +963,7 @@ Caso d'uso: errore di battitura su riga non ancora usata da nessuna commessa.
 - Tutti gli endpoint richiedono JWT.
 - Le `POST` usano il pattern core `handle_post_json(...)`, le `PATCH` `corpo_oggetto` + `success_response`.
 - Gli endpoint `PATCH` accettano solo payload JSON.
-- Non e` richiesto `Idempotency-Key` su nessuna rotta di listini (bundle compreso).
+- Dal 2026-10-20 ogni POST che scrive porta l'`Idempotency-Key` (400 `E_IDEMPOTENCY_KEY_REQUIRED` senza), bundle compreso; PATCH, PUT e DELETE non la chiedono (api.md §Idempotency-Key). Prima nessuna rotta di listini la chiedeva.
 - I booleani del corpo (`attivo`, `dry_run`…) sono booleani JSON.
 - I codici errore applicativi sono centralizzati in `error_policies.py`:
   - `E_VENDITE_LISTINO_NOT_FOUND` (404)

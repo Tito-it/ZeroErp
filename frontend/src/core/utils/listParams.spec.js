@@ -4,7 +4,7 @@
 // Doc: JavaScript
 // ------------------------------------------------------------
 // Scopo: presidio di `core/utils/listParams` — `paramsOrdinamento`
-//        (2026-09-18, estratto alla dodicesima copia) e `paramsPagina`, che
+//        (2026-09-18, estratto alla dodicesima copia) e `paramsPagina` (dal 2026-10-21 `paramsFinestra`), che
 //        da quel giorno lo consuma. I casi sono quelli che le copie avevano
 //        scritto in modo diverso: il ripiego del verso, e l'assenza di
 //        ordinamento che NON deve mandare niente.
@@ -15,8 +15,9 @@
 //  3. il ripiego di default e' desc
 //  4. il ripiego e' un parametro (asc per gli store di useListaStoreCore)
 //  5. filtri assenti: oggetto vuoto, non un errore
-//  6. paramsPagina porta pagina e ordinamento nella stessa forma
-//  7. paramsPagina: order_by assente => nessuna chiave di ordinamento
+//  6. paramsFinestra porta limit/offset e ordinamento nella stessa forma
+//  7. paramsFinestra: order_by assente => nessuna chiave di ordinamento;
+//     limit/offset non validi => il ripiego, mai uno 0 o un negativo
 //  8. paramsRicerca: vuoto o sotto soglia non manda niente, sopra manda trimmato
 //  9. paramsRicerca: la soglia e' un parametro (liste da un carattere)
 // 10. termineCorto: vuoto NON e' corto (sono due stati diversi)
@@ -24,7 +25,7 @@
 // 12. soglia `null` (configurazione non ancora arrivata) = soglia di progetto
 import { describe, expect, it } from 'vitest'
 import { RICERCA } from '../constants'
-import { paramsOrdinamento, paramsPagina, paramsRicerca, termineCorto } from './listParams'
+import { paramsOrdinamento, paramsFinestra, paramsRicerca, termineCorto } from './listParams'
 
 describe('paramsOrdinamento', () => {
   it('senza order_by non manda niente, nemmeno order_dir', () => {
@@ -57,18 +58,26 @@ describe('paramsOrdinamento', () => {
   })
 })
 
-describe('paramsPagina', () => {
-  it('porta pagina e ordinamento nella stessa forma di paramsOrdinamento', () => {
-    expect(paramsPagina({ limit: 25, offset: 50, order_by: 'codice', order_dir: null }))
-      .toEqual({ page: 3, page_size: 25, order_by: 'codice', order_dir: 'desc' })
-    expect(paramsPagina(
+describe('paramsFinestra', () => {
+  it('porta limit/offset e ordinamento nella stessa forma di paramsOrdinamento', () => {
+    expect(paramsFinestra({ limit: 25, offset: 50, order_by: 'codice', order_dir: null }))
+      .toEqual({ limit: 25, offset: 50, order_by: 'codice', order_dir: 'desc' })
+    expect(paramsFinestra(
       { limit: 10, offset: 0, order_by: 'codice' }, { orderDirDefault: 'asc' },
-    )).toEqual({ page: 1, page_size: 10, order_by: 'codice', order_dir: 'asc' })
+    )).toEqual({ limit: 10, offset: 0, order_by: 'codice', order_dir: 'asc' })
   })
 
   it('senza order_by non ha nessuna chiave di ordinamento', () => {
-    const p = paramsPagina({ limit: 25, offset: 0, order_by: null, order_dir: 'desc' })
-    expect(p).toEqual({ page: 1, page_size: 25 })
+    const p = paramsFinestra({ limit: 25, offset: 0, order_by: null, order_dir: 'desc' })
+    expect(p).toEqual({ limit: 25, offset: 0 })
+  })
+
+  // ⛔ Un dialetto solo (2026-10-21): `page`/`page_size` il backend li rifiuta.
+  it('non manda mai page/page_size, e ripiega su limit/offset non validi', () => {
+    const p = paramsFinestra({ limit: 0, offset: -5 }, { limitDefault: 20 })
+    expect(p).toEqual({ limit: 20, offset: 0 })
+    expect(p).not.toHaveProperty('page')
+    expect(p).not.toHaveProperty('page_size')
   })
 })
 

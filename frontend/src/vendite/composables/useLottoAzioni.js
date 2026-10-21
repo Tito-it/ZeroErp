@@ -21,6 +21,7 @@
 import { ref, unref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { useChiaveGesto } from '../../core/composables/useChiaveGesto'
 import { useAuthStore } from '../../stores/auth'
 import { estraiBersagli } from '../../core/bersagli'
 import { azioniDaBersagli } from '../../core/bersaglioGesto'
@@ -105,12 +106,25 @@ export function useLottoAzioni({ onDone } = {}) {
   const auth = useAuthStore()
   const notify = useNotify()
   const { confirmAction } = useConfirmAction()
+  // ⭐ La key del GESTO (`useChiaveGesto`): numerare, annullare, riportare in
+  //    bozza non si rifanno due volte perche' un clic e' andato in timeout. Il
+  //    reinvio dello stesso verbo sullo stesso lotto con gli stessi dati
+  //    rimanda la stessa key, e il backend risponde con l'esito del primo.
+  // ⚠️ UNA per composable, non una per verbo: il verbo sta nel payload, quindi
+  //    due verbi hanno due key; e il successo di QUALUNQUE verbo la azzera —
+  //    dopo «Riporta in lavorazione» riuscito, una «Rendi definitive» rimasta
+  //    in sospeso non deve diventare il replay di una numerazione vecchia.
+  // ⭐ La numerazione passa dal dialog della data, che resta aperto fino
+  //    all'esito: il reinvio avviene dentro, aprirlo azzera la key. I verbi a
+  //    conferma secca si fanno una volta sola (annulla, riporta in bozza): un
+  //    reinvio identico e' lo stesso gesto, e li' il limite resta la durata.
+  const gesto = useChiaveGesto()
 
   // Un verbo = chiamata + testi di conferma + esito. `danger` porta con sé la
   // conferma forte (rosso + label esplicita) sui due distruttivi.
   const VERBI = {
     avanza_step: {
-      api: (id) => runLottoPipeline(id),
+      api: (id, _opzioni, config) => runLottoPipeline(id, {}, config),
       title: 'vendite.lotti.avanza_header',
       message: 'vendite.lotti.avanza_conferma',
       esito: () => t('vendite.lotti.avanza_esito'),
@@ -119,13 +133,13 @@ export function useLottoAzioni({ onDone } = {}) {
     // chiamata RIFA' lo step corrente e il lotto resta in DRAFT — annunciare
     // «Pipeline avanzata» sarebbe falso (collaudo NC resi, 2026-08-22).
     rigenera_bozza: {
-      api: (id) => runLottoPipeline(id),
+      api: (id, _opzioni, config) => runLottoPipeline(id, {}, config),
       title: 'vendite.lotti.rigenera_header',
       message: 'vendite.lotti.rigenera_conferma',
       esito: () => t('vendite.lotti.rigenera_esito'),
     },
     rilancia_step: {
-      api: (id) => runLottoPipeline(id),
+      api: (id, _opzioni, config) => runLottoPipeline(id, {}, config),
       title: 'vendite.lotti.rerun_header',
       message: 'vendite.lotti.rerun_conferma',
       esito: () => t('vendite.lotti.avanza_esito'),
@@ -134,7 +148,7 @@ export function useLottoAzioni({ onDone } = {}) {
       // ⭐ La data documento dichiarata nel dialog arriva fin qui: riscrive la
       // data delle fatture non ancora numerate del lotto e ne RIGENERA i piani
       // rate, prima di numerare. `null` = nessuna dichiarazione.
-      api: (id, { dataDocumento = null } = {}) => numeraLotto(id, { dataDocumento }),
+      api: (id, { dataDocumento = null } = {}, config) => numeraLotto(id, { dataDocumento }, config),
       title: 'vendite.lotti.numera_header',
       message: 'vendite.lotti.numera_conferma',
       esito: () => t('vendite.lotti.numera_lotto_esito'),
@@ -143,7 +157,7 @@ export function useLottoAzioni({ onDone } = {}) {
       chiedeData: true,
     },
     ristampa: {
-      api: (id) => ristampaLotto(id),
+      api: (id, _opzioni, config) => ristampaLotto(id, config),
       title: 'vendite.lotti.ristampa_header',
       message: 'vendite.lotti.ristampa_conferma',
       esito: (res) => t('vendite.lotti.ristampa_esito', { n: res?.accodate ?? 0 }),
@@ -151,7 +165,7 @@ export function useLottoAzioni({ onDone } = {}) {
       skipDone: true,
     },
     annulla: {
-      api: (id) => resetLottoDraft(id),
+      api: (id, _opzioni, config) => resetLottoDraft(id, config),
       title: 'vendite.lotti.reset_header',
       message: 'vendite.lotti.reset_conferma',
       avviso: 'vendite.lotti.reset_avviso_accrediti',
@@ -163,7 +177,7 @@ export function useLottoAzioni({ onDone } = {}) {
       }),
     },
     riporta_a_draft: {
-      api: (id) => riportaLottoADraft(id),
+      api: (id, _opzioni, config) => riportaLottoADraft(id, config),
       title: 'vendite.lotti.riporta_draft_header',
       message: 'vendite.lotti.riporta_draft_conferma',
       avviso: 'vendite.lotti.reset_avviso_accrediti',
@@ -231,11 +245,15 @@ function verdettoRunner(res) {
   //   arrivano sono DUE: la conferma secca (tutti gli altri verbi) e il dialog
   //   della data (`numera`). Una copia per percorso avrebbe fatto divergere
   //   proprio la lettura dell'esito, che e' la parte delicata (§ MOTIVI_STOP_OK).
-  async function _corri(lottoId, verbo, opzioni = {}) {
-    const res = await execute(() => verbo.api(lottoId, opzioni))
+  async function _corri(lottoId, chiaveVerbo, opzioni = {}) {
+    const verbo = VERBI[chiaveVerbo]
+    const res = await execute(() => gesto.invia(
+      { verbo: chiaveVerbo, lottoId, ...opzioni },
+      (config) => verbo.api(lottoId, opzioni, config),
+    ))
     // `!== null` e non `if (res)`: un esito vuoto è comunque un successo
     // (memoria feedback_drawer_result_check).
-    if (res === null) return
+    if (res === null) return false
     const verdetto = verdettoRunner(res)
     if (!verdetto.ok) {
       // ⚠️ Si ricarica LO STESSO: la catena può essersi fermata DOPO aver
@@ -245,18 +263,21 @@ function verdettoRunner(res) {
         azioniDaBersagli(verdetto.bersagli, auth),
       )
       if (!verbo.skipDone) await onDone?.()
-      return
+      // La chiamata e' andata (il runner ha risposto): il gesto e' chiuso,
+      // anche se la catena si e' fermata — riprovare e' un gesto nuovo.
+      return true
     }
     notify.success(verbo.esito(res))
     if (!verbo.skipDone) await onDone?.()
+    return true
   }
 
-  // Scopo: conferma la numerazione con la data scelta nel dialog.
+  // Scopo: conferma la numerazione con la data scelta nel dialog. Risponde
+  //   `true` se la chiamata e' andata: il dialog si chiude solo allora.
   async function confermaNumera(dataDocumento) {
     const lottoId = numeraDialog.value.lottoId
-    numeraDialog.value = { visible: false, lottoId: null }
-    if (lottoId == null) return
-    await _corri(lottoId, VERBI.numera, { dataDocumento })
+    if (lottoId == null) return true
+    return _corri(lottoId, 'numera', { dataDocumento })
   }
 
   // Scopo: esegue un verbo su un lotto — conferma, chiamata, toast, refresh.
@@ -268,6 +289,9 @@ function verdettoRunner(res) {
     // ⭐ La numerazione non chiede «sei sicuro?»: chiede CON QUALE DATA. Il
     //   dialog e' la conferma, e porta con se' il pavimento del sezionale.
     if (verbo.chiedeData) {
+      // Aprire il dialog e' un gesto nuovo: la key si azzera qui, e il dialog
+      // resta aperto fino all'esito (vedi `NumerazioneDataDialog`).
+      gesto.azzera()
       numeraDialog.value = { visible: true, lottoId }
       return
     }
@@ -282,7 +306,7 @@ function verdettoRunner(res) {
       ...(verbo.danger ? { danger: true, acceptLabel: t(verbo.acceptLabel) } : {}),
       // Il gesto se c'è, il toast di prima se non c'è: `errorConAzioni` ricade
       // da sé su `error` con un array vuoto (dentro `_corri`).
-      onAccept: () => _corri(lottoId, verbo),
+      onAccept: () => _corri(lottoId, key),
     })
   }
 

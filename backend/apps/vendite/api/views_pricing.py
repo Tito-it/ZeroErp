@@ -157,6 +157,9 @@ class PricingResolveView(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=_RESOLVE_REQUEST,
@@ -258,6 +261,9 @@ class PricingDiagnoseView(DomainAPIView):
     """
 
     area_funzionale = "vendite"
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=_DIAGNOSE_REQUEST,

@@ -1394,8 +1394,11 @@ def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[st
         log_to_db=True,
     )
     assert isinstance(nuovo_stato, str)
-    # dry_run strict: accetta solo bool True esplicito (no stringhe truthy)
-    dry_run = payload.get("dry_run", False) is True
+    # ⛔ Un flag del corpo e' un booleano JSON (api.md, tre regole del corpo):
+    #    `"true"` e' un 400 sul campo, non un `false` muto che eseguiva davvero
+    #    il cambio stato a chi chiedeva l'anteprima (brief-be-verifica-
+    #    documentazione-api §B4, 2026-10-21). Gemello di `applica_variazione`.
+    dry_run = _V.optional_bool(payload, "dry_run") is True
     _validate_versione_state_transition(versione, nuovo_stato, function_name=function_name)
 
     repository = ListiniRepository()
@@ -2012,7 +2015,7 @@ def fn_save_bundle(
     listino_id: int,
     versione_id: int,
     articolo_padre_id: str,
-    rows: list[dict[str, Any]],
+    rows: Any,  # grezzo dal corpo: la forma la giudica il BB `voci` qui sotto
 ) -> dict[str, int]:
     function_name = "vendite.listini_service.fn_save_bundle"
     _get_listino_or_raise(listino_id, function_name=function_name)
@@ -2026,12 +2029,9 @@ def fn_save_bundle(
         message="articolo_padre_id obbligatorio.",
         function_name=function_name,
     )
-    ErrorManager.require(
-        isinstance(rows, list),
-        code="E_VENDITE_VALIDATION",
-        message="rows deve essere una lista.",
-        function_name=function_name,
-    )
+    # Una lista di voci, ogni voce un oggetto (BB): una voce che non e' un
+    # oggetto era un `AttributeError` nel repository (`r.get`), cioe' un 500.
+    rows = _V.voci(rows, lambda voce, _indice: dict(voce), campo="rows", function_name=function_name)
 
     # Validita default = validita versione listino (semplifica UX; la
     # temporal FK PG18 `fk_listrighe_comp_articoli_comp_temporal` blocca

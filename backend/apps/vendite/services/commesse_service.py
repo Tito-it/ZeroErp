@@ -35,7 +35,7 @@ from apps.config.sorgenti import (
     SORGENTE_ORDINE_VENDITA,
     SORGENTE_PREVENTIVO,
 )
-from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
 from apps.core.db._helpers import (
     colonne_identita,
     sql_order_direction_lista,
@@ -45,7 +45,6 @@ from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_enum_param, validate_order_params
 from apps.core.services.payload_helpers import (
-    MissingType as _MissingType,
     PayloadValidator,
     translate_db_errors,
 )
@@ -519,7 +518,7 @@ def fn_get_commessa_stato(*, commessa_id: int) -> dict:
 _TESTATA_KEYS: frozenset[str] = frozenset({
     "descrizione", "responsabile_risorsa_umana_id",
 })
-_DESCRIZIONE_MAX = 255  # varchar(255) a DB: anticipato con messaggio parlante.
+_DESCRIZIONE_MAX = 255  # varchar(255) a DB: anticipato col tetto del BB (400 col campo).
 _V_TESTATA = PayloadValidator(validation_code="E_COMMESSA_VALIDATION", log_to_db=True)
 # Il vincolo DB che nomina il responsabile: tradotto col campo, cosi' l'input
 # si accende (`campiErrati`) invece di un «FK violata» anonimo.
@@ -547,55 +546,36 @@ _TESTATA_FK_CONSTRAINTS: dict[str, tuple] = {
 def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict:
     function_name = "vendite.commesse_service.aggiorna_commessa_testata"
     _guard_commessa_id(commessa_id, function_name=function_name)
-    _V_TESTATA.validate_allowed_keys(
-        payload, allowed=_TESTATA_KEYS,
-        message="Payload commessa non valido.", function_name=function_name,
+    # Il payload per presenza (BB): chiave fuori contratto e PATCH senza campi
+    # sono un 400; `null` sul responsabile lo toglie.
+    dati = _V_TESTATA.campi_per_presenza(
+        payload, ammesse=_TESTATA_KEYS,
+        testi={"descrizione": (True, _DESCRIZIONE_MAX)},
+        interi={"responsabile_risorsa_umana_id": True},
+        message="Payload commessa non valido.",
+        message_vuoto="Nessun campo aggiornabile nel payload commessa.",
+        context_vuoto={"commessa_id": commessa_id, "allowed_keys": sorted(_TESTATA_KEYS)},
+        function_name=function_name,
     )
-    dati: dict[str, Any] = {}
 
-    descrizione = _V_TESTATA.extract_optional_string(
-        payload, "descrizione", nullable=True, function_name=function_name,
-    )
-    if not isinstance(descrizione, _MissingType):
+    responsabile_id = dati.get("responsabile_risorsa_umana_id")
+    if responsabile_id is not None:
+        persona = AnagraficheService().get_risorsa_umana_lookup(responsabile_id)
         ErrorManager.require(
-            descrizione is None or len(descrizione) <= _DESCRIZIONE_MAX,
+            persona is not None and bool(persona.get("attivo")),
             code="E_COMMESSA_VALIDATION",
-            message=f"La descrizione non puo' superare {_DESCRIZIONE_MAX} caratteri.",
-            context={"field": "descrizione", "commessa_id": commessa_id},
+            message=(
+                "Il responsabile deve essere una risorsa umana attiva."
+                if persona is not None else "Responsabile non trovato."
+            ),
+            context={
+                "field": "responsabile_risorsa_umana_id",
+                "commessa_id": commessa_id,
+                "responsabile_risorsa_umana_id": responsabile_id,
+            },
             function_name=function_name,
             log_to_db=True,
         )
-        dati["descrizione"] = descrizione
-
-    if "responsabile_risorsa_umana_id" in payload:
-        responsabile_id = _V_TESTATA.optional_positive_int(
-            payload, "responsabile_risorsa_umana_id", function_name=function_name,
-        )
-        if responsabile_id is not None:
-            persona = AnagraficheService().get_risorsa_umana_lookup(responsabile_id)
-            ErrorManager.require(
-                persona is not None and bool(persona.get("attivo")),
-                code="E_COMMESSA_VALIDATION",
-                message=(
-                    "Il responsabile deve essere una risorsa umana attiva."
-                    if persona is not None else "Responsabile non trovato."
-                ),
-                context={
-                    "field": "responsabile_risorsa_umana_id",
-                    "commessa_id": commessa_id,
-                    "responsabile_risorsa_umana_id": responsabile_id,
-                },
-                function_name=function_name,
-                log_to_db=True,
-            )
-        dati["responsabile_risorsa_umana_id"] = responsabile_id
-
-    _V_TESTATA.require_campi_da_aggiornare(
-        dati,
-        message="Nessun campo aggiornabile nel payload commessa.",
-        context={"commessa_id": commessa_id, "allowed_keys": sorted(_TESTATA_KEYS)},
-        function_name=function_name,
-    )
 
     repo = CommesseRepository()
     with translate_db_errors(
@@ -1068,18 +1048,9 @@ def fn_list_commessa_attivita(
     tetto di pagina qui sotto), fino al tetto della fn DB.
     """
     _guard_commessa_id(commessa_id, function_name="vendite.commesse_service.fn_list_commessa_attivita")
-    # ⚠️ Il tetto di PAGINA vale solo sul percorso paginato: l'export chiede di
-    # proposito piu' righe di una pagina, e la sua misura la governa
-    # `build_export_response` col `count` esatto.
-    ErrorManager.require(
-        max_rows is not None or 1 <= int(limit) <= MAX_LIMIT,
-        code="E_COMMESSA_VALIDATION",
-        message="Parametri non validi.",
-        detail=f"limit deve essere compreso tra 1 e {MAX_LIMIT}",
-        context={"commessa_id": commessa_id, "limit": limit},
-        function_name="vendite.commesse_service.fn_list_commessa_attivita",
-        log_to_db=True,
-    )
+    # ⛔ La finestra (`limit` fra 1 e il tetto, `offset` non negativo) la
+    #    valida la view con `pagina_da_query`, che dal 2026-10-21 risponde 400
+    #    sul fuori limite (Tid): qui era una seconda copia, irraggiungibile.
     # Ordinamento validato PRIMA di toccare il DB (un parametro sbagliato non
     # deve costare un round-trip): whitelist ATTIVITA_SORT_COLUMNS, specchio
     # della mappa chiusa dentro la fn. None = ordine storico ca.id.
@@ -1653,11 +1624,6 @@ def _assert_annullabile(
     )
 
 
-# Tetto di pagina del registro. ⚠️ Non e' il tetto della query (500, nel
-# repository): questo risponde 400 e DICE il limite, quello clampa in silenzio
-# — due regole diverse, e la seconda esiste solo perche' un chiamante interno
-# non possa chiedere tutto il log di una commessa grande.
-_REGISTRO_MAX_LIMIT = MAX_LIMIT
 
 
 # Scopo: Il REGISTRO di una commessa — gli eventi scritti dal database sulle sue
@@ -1680,22 +1646,9 @@ def fn_commessa_registro(
     limit: int = DEFAULT_LIMIT_EVENTI,
     offset: int = 0,
 ) -> dict[str, Any]:
-    ErrorManager.require(
-        1 <= int(limit) <= _REGISTRO_MAX_LIMIT,
-        code="E_COMMESSA_VALIDATION",
-        message="Parametro limit non valido.",
-        detail=f"limit deve essere fra 1 e {_REGISTRO_MAX_LIMIT}.",
-        context={"limit": limit},
-        function_name="vendite.commesse_service.fn_commessa_registro",
-    )
-    ErrorManager.require(
-        int(offset) >= 0,
-        code="E_COMMESSA_VALIDATION",
-        message="Parametro offset non valido.",
-        detail="offset deve essere >= 0.",
-        context={"offset": offset},
-        function_name="vendite.commesse_service.fn_commessa_registro",
-    )
+    # ⛔ La finestra (`limit` fra 1 e il tetto, `offset` non negativo) la
+    #    valida la view con `pagina_da_query`, che dal 2026-10-21 risponde 400
+    #    sul fuori limite (Tid): qui era una seconda copia, irraggiungibile.
     rows, total = CommesseRepository().list_registro_attivita(
         commessa_id,
         commessa_attivita_id=commessa_attivita_id,

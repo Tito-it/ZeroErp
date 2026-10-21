@@ -31,7 +31,7 @@ from apps.core.api.payload_validators import (
     optional_bool,
     paginated_envelope,
     parse_list_params,
-    qp_bool,
+    qp_bool_optional,
     qp_int_optional,
     qp_str,
 )
@@ -186,7 +186,7 @@ class ApiOfferteList(DomainAPIView):
             listino_id=qp_int_optional(qp.get("listino_id"), "listino_id"),
             validita_dal_min=qp_str(qp.get("validita_dal_min")),
             validita_dal_max=qp_str(qp.get("validita_dal_max")),
-            solo_ultima_revisione=qp_bool(qp.get("solo_ultima_revisione"), default=True),
+            solo_ultima_revisione=qp_bool_optional(qp.get("solo_ultima_revisione"), "solo_ultima_revisione", default=True),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
@@ -262,7 +262,7 @@ class ApiOfferteExportView(DomainAPIView):
         listino_id = qp_int_optional(qp.get("listino_id"), "listino_id")
         validita_dal_min = qp_str(qp.get("validita_dal_min"))
         validita_dal_max = qp_str(qp.get("validita_dal_max"))
-        solo_ultima_revisione = qp_bool(qp.get("solo_ultima_revisione"), default=True)
+        solo_ultima_revisione = qp_bool_optional(qp.get("solo_ultima_revisione"), "solo_ultima_revisione", default=True)
 
         svc = OfferteService()
         results, total = svc.list_offerte(
@@ -753,6 +753,9 @@ class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "offerta_commerciale")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -794,8 +797,8 @@ class ApiOffertaEccezioneComponentiList(DomainAPIView):
     def get(
         self, request: Request, offerta_id: int, eccezione_id: int,
     ) -> JsonResponse:
-        solo_attivi_raw = request.query_params.get("solo_attivi", "true")
-        solo_attivi = str(solo_attivi_raw).lower() not in ("false", "0", "no", "off")
+        # Il BB dei flag di trasporto (§A6), come i gemelli DDT e ordini.
+        solo_attivi = qp_bool_optional(request.query_params.get("solo_attivi"), "solo_attivi", default=True)
         return success_response(
             OfferteService().list_componenti_eccezione(
                 offerta_id, eccezione_id, solo_attivi=solo_attivi,

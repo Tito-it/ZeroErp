@@ -29,7 +29,7 @@ vi.mock('./useGlobalLookup', () => ({
   },
 }))
 
-const { useLookupCodici, chiaveLookupCodici, fetchLookupCodici, LOOKUP_CODICI_PAGE_SIZE } =
+const { useLookupCodici, chiaveLookupCodici, fetchLookupCodici, LOOKUP_CODICI_LIMIT } =
   await import('./useLookupCodici')
 
 describe('useLookupCodici', () => {
@@ -46,12 +46,12 @@ describe('useLookupCodici', () => {
 
   it('la fetch: cap di pagina, e `includi_obsoleti` solo quando e\' false', async () => {
     await fetchLookupCodici('config.iva')()
-    await fetchLookupCodici('config.iva', { includiObsoleti: false, pageSize: 50 })()
+    await fetchLookupCodici('config.iva', { includiObsoleti: false, limit: 50 })()
     expect(chiamate).toEqual([
-      { rel: 'config.iva', params: { page_size: LOOKUP_CODICI_PAGE_SIZE } },
-      { rel: 'config.iva', params: { page_size: 50, includi_obsoleti: false } },
+      { rel: 'config.iva', params: { limit: LOOKUP_CODICI_LIMIT } },
+      { rel: 'config.iva', params: { limit: 50, includi_obsoleti: false } },
     ])
-    expect(LOOKUP_CODICI_PAGE_SIZE).toBe(200)
+    expect(LOOKUP_CODICI_LIMIT).toBe(200)
   })
 
   it('il composable registra su useGlobalLookup chiave, fetch e opzioni', async () => {
@@ -66,11 +66,33 @@ describe('useLookupCodici', () => {
     await registrate[0].fetchFn()
     expect(chiamate[0]).toEqual({
       rel: 'pratiche.tipi_prestazione',
-      params: { page_size: 200, includi_obsoleti: false },
+      params: { limit: 200, includi_obsoleti: false },
     })
     // `transform` passa solo se dato: il default resta quello di useGlobalLookup.
     const transform = (r) => r
     useLookupCodici('config.iva', { transform })
     expect(registrate[2].opzioni).toEqual({ immediate: false, transform })
+  })
+})
+
+// ⛔ Una tendina che legge un `rel` senza `limit` prende la finestra di default
+//    del backend (25) e si tronca in silenzio oltre quella (trovato il
+//    2026-10-21: sette siti, decisione Tid di correggerli). Il presidio legge
+//    il CODICE: la tendina passa dal BB, che manda `LOOKUP_CODICI_LIMIT`.
+//    Una chiamata con un oggetto di parametri (es. la ricerca di un codice)
+//    resta ammessa: e' una scelta dichiarata, non un default subito.
+const sorgenti = import.meta.glob(
+  ['../../**/*.vue', '../../**/*.js', '!../../**/*.spec.js'],
+  { query: '?raw', import: 'default', eager: true },
+)
+
+describe('nessuna tendina legge un rel senza limit', () => {
+  it('niente `lookupCodici(rel)` con il solo rel', () => {
+    const trovate = Object.entries(sorgenti)
+      .filter(([, testo]) => /\blookupCodici\(\s*['"`][^'"`]+['"`]\s*\)/.test(
+        testo.replace(/\/\/[^\n]*/g, ''),
+      ))
+      .map(([file]) => file)
+    expect(trovate).toEqual([])
   })
 })

@@ -17,7 +17,8 @@ Indice test eseguiti:
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 from apps.pratiche.tests.api.test_flussi_api import _mock_flusso_row
@@ -31,7 +32,7 @@ class CampiObbligatoriCorpoApiTests(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_VIEWS}.PraticheRepository")

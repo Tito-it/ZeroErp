@@ -11,20 +11,13 @@
 from datetime import date
 
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.core.api.payload_validators import paginated_envelope
+from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS, DbopsRepository
 from apps.core.db.maintenance_repository import MaintenanceRepository
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_order_params, validate_pagination
+from apps.core.services.list_helpers import validate_order_params
 
 _STATUS_VALIDI: frozenset[str] = frozenset({"SUCCESS", "FAILED", "WARNING"})
-
-
-def _validate_pagination(page: int, page_size: int, fn_name: str) -> int:
-    # Scopo: Valida la paginazione page-based e ritorna l'offset. Delega al BB core.
-    return validate_pagination(
-        page, page_size, error_code="E_CORE_VALIDATION", function_name=fn_name,
-    )
 
 
 # ------------------------------------------------------------------
@@ -41,11 +34,10 @@ def fn_list_audit_logs(
     date_from: date | None = None,
     date_to: date | None = None,
     search: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict:
     fn = "core.tracciamento_service.fn_list_audit_logs"
-    offset = _validate_pagination(page, page_size, fn)
 
     if status is not None:
         ErrorManager.require(
@@ -65,10 +57,10 @@ def fn_list_audit_logs(
         date_from=date_from,
         date_to=date_to,
         search=search,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
-    return paginated_envelope(results, total_count, page, page_size)
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 
 # ------------------------------------------------------------------
@@ -128,8 +120,7 @@ def fn_list_error_logs(
         order_by=order_by,
         order_dir=order_dir,
     )
-    page = int(offset) // int(limit) + 1
-    return paginated_envelope(results, total_count, page, int(limit))
+    return envelope_da_offset(results, total_count, limit=int(limit), offset=int(offset))
 
 
 # ------------------------------------------------------------------
@@ -141,16 +132,14 @@ def fn_list_domini_task(
     *,
     attivo_only: bool = True,
     search: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict:
-    fn = "core.tracciamento_service.fn_list_domini_task"
-    offset = _validate_pagination(page, page_size, fn)
     repo = DbopsRepository()
     results, total_count = repo.list_domini_task(
-        attivo_only=attivo_only, search=search, limit=page_size, offset=offset,
+        attivo_only=attivo_only, search=search, limit=limit, offset=offset,
     )
-    return paginated_envelope(results, total_count, page, page_size)
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 
 # Scopo: Restituisce la lista paginata dei task registrati, con filtro dominio opzionale.
@@ -159,17 +148,15 @@ def fn_list_task_registry(
     dominio_codice: str | None = None,
     attivo_only: bool = True,
     search: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict:
-    fn = "core.tracciamento_service.fn_list_task_registry"
-    offset = _validate_pagination(page, page_size, fn)
     repo = DbopsRepository()
     results, total_count = repo.list_task_registry(
         dominio_codice=dominio_codice, attivo_only=attivo_only,
-        search=search, limit=page_size, offset=offset,
+        search=search, limit=limit, offset=offset,
     )
-    return paginated_envelope(results, total_count, page, page_size)
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 
 # Scopo: Restituisce le implementazioni dei task con filtro su task_code e dominio.
@@ -178,17 +165,15 @@ def fn_list_task_implementations(
     task_code: str | None = None,
     dominio_codice: str | None = None,
     attivo_only: bool = True,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict:
-    fn = "core.tracciamento_service.fn_list_task_implementations"
-    offset = _validate_pagination(page, page_size, fn)
     repo = DbopsRepository()
     results, total_count = repo.list_task_implementations(
         task_code=task_code, dominio_codice=dominio_codice,
-        attivo_only=attivo_only, limit=page_size, offset=offset,
+        attivo_only=attivo_only, limit=limit, offset=offset,
     )
-    return paginated_envelope(results, total_count, page, page_size)
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 
 # ------------------------------------------------------------------
@@ -203,29 +188,25 @@ def fn_list_job_runs(
     date_from: date | None = None,
     date_to: date | None = None,
     search: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict:
-    fn = "core.tracciamento_service.fn_list_job_runs"
-    offset = _validate_pagination(page, page_size, fn)
     repo = MaintenanceRepository()
     results, total_count = repo.list_job_runs(
         jobname=jobname, ok=ok, date_from=date_from, date_to=date_to,
-        search=search, limit=page_size, offset=offset,
+        search=search, limit=limit, offset=offset,
     )
-    return paginated_envelope(results, total_count, page, page_size)
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 
 # Scopo: Restituisce il riepilogo dei job con conteggi esecuzioni e ultimo esito.
 def fn_list_job_summary(
     *,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict:
-    fn = "core.tracciamento_service.fn_list_job_summary"
-    offset = _validate_pagination(page, page_size, fn)
     repo = MaintenanceRepository()
     results, total_count = repo.list_job_summary(
-        limit=page_size, offset=offset,
+        limit=limit, offset=offset,
     )
-    return paginated_envelope(results, total_count, page, page_size)
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)

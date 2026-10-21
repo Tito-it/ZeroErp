@@ -5,7 +5,6 @@
 import api from '../../../core/api'
 import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
 import { makeDateConsegnaApi } from '../../_shared/dateConsegna/dateConsegnaApi'
-import { generateIdempotencyKey } from '../../../core/utils/idempotency'
 import { makeComponentiBomApi } from '../../../core/api/componentiBom'
 
 const BASE = '/vendite/preventivi'
@@ -173,7 +172,6 @@ export function pushCommessa(preventivoId, righeIds = null) {
   return api.post(
     `${BASE}/${preventivoId}/push-commessa/`,
     body,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -198,7 +196,6 @@ export function completaSmistamento(preventivoId) {
   return api.post(
     `${BASE}/${preventivoId}/completa-smistamento/`,
     {},
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 
@@ -208,7 +205,6 @@ export function generaPratica(preventivoId, payload) {
   return api.post(
     `${BASE}/${preventivoId}/genera-pratica/`,
     payload,
-    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
   )
 }
 

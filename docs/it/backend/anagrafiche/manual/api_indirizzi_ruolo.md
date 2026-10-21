@@ -221,8 +221,8 @@ forma dell'indirizzo libero la giudica il trigger della tabella. Stringhe vuote 
 
 | Codice | HTTP | Causa |
 |---|---|---|
-| `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori dall'elenco sopra |
-| `E_ANAG_NOT_FOUND` | 404 | Indirizzo inesistente o di un altro ruolo; corpo vuoto |
+| `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori dall'elenco sopra; corpo vuoto (dal 2026-10-20: prima 404) |
+| `E_ANAG_NOT_FOUND` | 404 | Indirizzo inesistente o di un altro ruolo |
 
 ### Regole
 

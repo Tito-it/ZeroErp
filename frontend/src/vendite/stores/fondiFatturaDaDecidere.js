@@ -19,25 +19,24 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { paramsPagina } from '../../core/utils/listParams'
+import { paramsOrdinamento } from '../../core/utils/listParams'
 import { listFondiFatturaDaDecidere } from '../api/fondiFattura'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 // Scopo: mappa i filtri dello store nei query param dell'endpoint.
 //
-// ⚠️ L'endpoint e' PAGE-BASED (`page`/`page_size`), mentre `useSearchTable`
-// governa `limit`/`offset`: la conversione sta nel BB `paramsPagina`
-// (`core/utils/listParams`), estratto il 2026-08-28 alla terza sede — questa
-// era la seconda. Il guard sul limit e il ripiego di `order_dir` sono i
-// medesimi di prima: l'estrazione non cambia il comportamento.
+// ⭐ `limit`/`offset` come la lista li tiene, senza conversione: dal 2026-10-20
+//    l'endpoint pagina come le altre liste (decisione Tid, brief-be-verifica-
+//    documentazione-api §A4). Fino a quel giorno era PAGE-BASED e passava dal
+//    BB `paramsPagina` (oggi `paramsFinestra`).
 //
 // ⚠️ La `search` NON si inoltra: questo endpoint non ha ricerca testuale.
 // Passarla sarebbe un parametro ignorato in silenzio — l'operatore digiterebbe
 // e vedrebbe la lista intera, convinto di aver cercato. Il campo di ricerca
 // infatti non e' montato nella pagina.
 function buildParams(f) {
-  const p = paramsPagina(f)
+  const p = { limit: f.limit, offset: f.offset, ...paramsOrdinamento(f) }
   if (f.motivo) p.motivo = f.motivo
   return p
 }

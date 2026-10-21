@@ -27,6 +27,7 @@ from typing import Any, cast
 from django.db import connection
 
 from apps.core.db._helpers import (
+    colonna_ordinamento,
     RicercaFull,
     add_ricerca_full_condition,
     conta_con_perimetro,
@@ -2104,7 +2105,7 @@ class PagamentiRepository:
         add_ricerca_full_condition(conditions, params, search, _RICERCA_ECCEDENZE)
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        sort_col = ECCEDENZE_SORT_COLUMNS.get(order_by, "eccedenza_cliente")
+        sort_col = colonna_ordinamento(order_by, ECCEDENZE_SORT_COLUMNS) or "eccedenza_cliente"
         direction = sql_order_direction(order_dir, default_desc=True)
         tiebreak = sql_tiebreak_direction(direction)
 

@@ -130,8 +130,8 @@ offerta sono speculari (cambiano tabella riga e codice not-found,
 - Throttling: `is_search_endpoint = True`
 - Cancello perimetro emittente (`lista_codice = "vendite.approvazioni_prezzo"`): può rispondere `422 E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`
 - Query params:
-  - `limit` (int, default 25 `DEFAULT_LIMIT`, max 200 `MAX_LIMIT`, clamp `limiti_pagina`)
-  - `offset` (int, default 0)
+  - `limit` (int, default 25 `DEFAULT_LIMIT`, max 200 `MAX_LIMIT`; fuori da 1..200 → 400 `E_VALIDATION_INPUT`, dal 2026-10-21)
+  - `offset` (int, default 0; negativo → 400 `E_VALIDATION_INPUT`)
   - `order_by` (whitelist pratiche `PRATICHE_ORDER_COLS`: `id`, `codice`, `descrizione`, `data_apertura`, `data_scadenza`, `data_insert`, `tipo_prestazione_descrizione`, `stato_descrizione`, `priorita_descrizione`, `soggetto_display`, `risorsa_umana_display`; default `data_insert`)
   - `order_dir` (`asc`/`desc`, default `desc` per qualunque colonna)
 - Output `200`:

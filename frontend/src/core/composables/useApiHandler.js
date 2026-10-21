@@ -163,7 +163,7 @@ export function useApiHandler() {
       //    catalogo ma il testo che PostgreSQL scrive per lo sviluppatore.
       //    Ri-decidere qui sarebbe una seconda sede della stessa regola, e le
       //    due divergerebbero al primo codice nuovo.
-      soluzione.value = estraiSoluzione(errore)
+      soluzione.value = estraiSoluzione(errore) ?? await soluzioneDiRipiego(azioneUi.value)
       // ⭐ Il chiamante puo' dichiarare di gestire da se' UNA CLASSE di
       // comportamento (`ui_action`), e allora il toast non parte: il caso e' il
       // rifiuto CONFERMABILE (`confirm_and_retry`), che non e' un fallimento ma
@@ -246,6 +246,29 @@ const MESSAGGI_STATO_PROXY = {
 //    composable — anche un test senza DOM — lo pagherebbe senza usarlo.
 async function messaggioStatoProxy(err) {
   const chiave = MESSAGGI_STATO_PROXY[err.response?.status]
+  if (!chiave) return null
+  const { default: i18n } = await import('../i18n')
+  return i18n.global.t(chiave)
+}
+
+// ⭐ La SOLUZIONE di ripiego di un COMPORTAMENTO (`ui_action`), quando
+//    l'envelope non ne porta una (2026-10-21). Il caso e' `show_retry_dialog`:
+//    il backend lo dichiara su un conflitto momentaneo (`E_DATABASE_RETRYABLE`)
+//    e su una richiesta con la stessa key ancora in corso
+//    (`E_IDEMPOTENCY_IN_PROGRESS`, il reinvio di un gesto: `useChiaveGesto`),
+//    e in entrambi la cosa da fare e' la stessa — aspettare e riprovare, senza
+//    paura di raddoppiare: la transazione e' stata annullata, oppure la key
+//    restituira' l'esito della prima.
+// ⚠️ Vince sempre l'`hint` del backend: questo copre solo il suo silenzio, e
+//    si dichiara il COMPORTAMENTO, mai un codice (il frontend resta cieco ai
+//    codici, come per `azioniGestite`).
+const SOLUZIONI_AZIONE_UI = {
+  show_retry_dialog: 'errors.soluzione_riprova_fra_poco',
+}
+
+async function soluzioneDiRipiego(azione) {
+  // `hasOwn`: `MAPPA[azione]` erediterebbe dal prototipo (`toString`).
+  const chiave = azione && Object.hasOwn(SOLUZIONI_AZIONE_UI, azione) ? SOLUZIONI_AZIONE_UI[azione] : null
   if (!chiave) return null
   const { default: i18n } = await import('../i18n')
   return i18n.global.t(chiave)

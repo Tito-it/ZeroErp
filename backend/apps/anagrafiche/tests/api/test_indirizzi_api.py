@@ -166,18 +166,21 @@ class TestUpdateIndirizzoDettaglio(TestCase):
         from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 
         updated = IndirizziRepository().update_indirizzo_dettaglio(
-            1, civico=20, scala="C",
+            1, {"civico": 20, "scala": "C", "palazzina": None},
         )
         self.assertTrue(updated)
         sql = mc.execute.call_args[0][0]
         self.assertIn("civico = %s", sql)
         self.assertIn("scala = %s", sql)
+        # ⛔ Un `None` SVUOTA il campo (2026-10-20): fino a quel giorno valeva
+        #    «non toccare», e svuotare la palazzina dal drawer non scriveva.
+        self.assertIn("palazzina = %s", sql)
 
     def test_update_indirizzo_no_fields(self):
-        """Nessun campo fornito — nessun UPDATE, ritorna False."""
+        """Nessun campo fornito — nessun UPDATE, ritorna False (il 400 lo da' il service)."""
         from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 
-        updated = IndirizziRepository().update_indirizzo_dettaglio(1)
+        updated = IndirizziRepository().update_indirizzo_dettaglio(1, {})
         self.assertFalse(updated)
 
 

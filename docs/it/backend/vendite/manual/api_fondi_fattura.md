@@ -7,7 +7,7 @@ fermato**, e la decisione resta a un operatore.
 
 ```text
 GET /api/v1/vendite/fondi-fattura/da-decidere/
-      ?motivo=&order_by=&order_dir=&page=&page_size=
+      ?motivo=&order_by=&order_dir=&limit=&offset=
 GET /api/v1/vendite/fondi-fattura/da-decidere/export/
       ?formato=csv|xlsx&motivo=&order_by=&order_dir=
 ```
@@ -39,8 +39,12 @@ creare un fondo, tanto meno a cancellarlo*.
 | `motivo` | enum | tutti | Whitelist **chiusa** dei quattro motivi (sotto). Fuori vocabolario → **400** `E_VENDITE_VALIDATION` |
 | `order_by` | enum | `data` | `data`, `motivo`, `anno`, `numero`, `totale_a_pagare`, `importo_proposto`, `capienza_attuale`, `stato_atto`. Fuori whitelist → **400**. ⚠️ `stato_atto` (aggiunto il 2026-08-22) è valorizzato sul solo ramo `NON_PIU_CAPIENTE`: ordinarlo **separa i casi con un atto vivo da quelli senza**, e i vuoti vanno in coda su `desc` (`sql_order_direction`, che emette sempre i `NULLS` espliciti) |
 | `order_dir` | `asc`/`desc` | `desc` | Le fatture più recenti prima. Altro valore → **400** |
-| `page` | int | 1 | |
-| `page_size` | int | 25 | max 200 |
+| `limit` | int | 25 | max 200; fuori da 1..200 → 400 `E_VALIDATION_INPUT` |
+| `offset` | int | 0 | negativo → 400 `E_VALIDATION_INPUT` |
+
+⚠️ Dal 2026-10-20 la lista pagina con `limit`/`offset` come ogni altra lista
+(brief-be-verifica-documentazione-api §A4): `page`/`page_size` sono un **400**
+`E_VALIDATION_INPUT`. L'envelope non cambia (`page` si ricava dall'offset).
 
 ### I quattro motivi
 

@@ -2023,9 +2023,10 @@ class TestPreventiviService(unittest.TestCase):
     def test_list_preventivi_paginazione_invalida(self):
         from apps.vendite.services.preventivi_service import list_preventivi
 
-        with self.assertRaises(ServiceError) as ctx:
-            list_preventivi(page=0, page_size=50)
-        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        for finestra in ({"limit": 0}, {"limit": 201}, {"offset": -1}):
+            with self.subTest(**finestra), self.assertRaises(ServiceError) as ctx:
+                list_preventivi(**finestra)
+            self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
     # ── Sprint 2: wiring pricing v5 + L1 override ──
 
@@ -2563,7 +2564,7 @@ class TestPreventiviService(unittest.TestCase):
 
         self.mock_repo.list_preventivi.return_value = ([], 0)
 
-        list_preventivi(page=1, page_size=10)
+        list_preventivi(limit=10)
 
         kwargs = self.mock_repo.list_preventivi.call_args.kwargs
         self.assertTrue(kwargs["solo_ultima_revisione"])
@@ -2575,7 +2576,7 @@ class TestPreventiviService(unittest.TestCase):
 
         self.mock_repo.list_preventivi.return_value = ([], 0)
 
-        list_preventivi(page=1, page_size=10, solo_ultima_revisione=False)
+        list_preventivi(limit=10, solo_ultima_revisione=False)
 
         kwargs = self.mock_repo.list_preventivi.call_args.kwargs
         self.assertFalse(kwargs["solo_ultima_revisione"])

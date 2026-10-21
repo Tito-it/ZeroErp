@@ -128,7 +128,7 @@ il `404` nasce da `pratiche.pratiche`, che ha la RLS; la vista, che
 ## Regole
 
 - GET: se la pratica non esiste → `E_PRATICA_NOT_FOUND` (404).
-- PATCH: solo i campi nella whitelist sono aggiornabili; campi non riconosciuti vengono ignorati.
+- PATCH: solo i campi nella whitelist sono aggiornabili (`descrizione`, `data_scadenza`, `soggetto_id`, `risorsa_umana_id`, `unita_organizzativa_id`, `meta`). Dal 2026-10-20 una chiave fuori whitelist e un corpo vuoto sono un 400 `E_PRATICA_VALIDATION`: prima la chiave si ignorava e il corpo vuoto rispondeva 200 senza scrivere.
 - PATCH: `pratica_id` deve essere > 0, altrimenti → `E_INVALID_ID` (400).
 - PATCH: verifica esistenza pratica prima dell'update.
 - PATCH: wrappato in `@transaction.atomic()`.

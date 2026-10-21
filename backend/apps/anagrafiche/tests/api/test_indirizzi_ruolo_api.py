@@ -24,7 +24,8 @@ Indice test eseguiti:
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _AUTH = "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate"
@@ -39,7 +40,7 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     # Il POST passa dal service dal 2026-10-19 (R-DB-16b): l'indirizzo arriva
     # alla madre del DB `fn_crea_indirizzo_ruolo` come un oggetto, codice del

@@ -110,7 +110,7 @@ smoke_emittente_attivo() {
     local coppia
     if [[ -n "${EMITTENTE_ID:-}" ]]; then
         coppia=$(curl -s -H "Authorization: Bearer $TOKEN" \
-            "${BASE_URL}/api/v1/anagrafiche/emittenti-fiscali/?page_size=200" 2>/dev/null | python3 -c "
+            "${BASE_URL}/api/v1/anagrafiche/emittenti-fiscali/?limit=200" 2>/dev/null | python3 -c "
 import sys, json
 try:
     rows = (json.load(sys.stdin).get('data') or {}).get('results') or []

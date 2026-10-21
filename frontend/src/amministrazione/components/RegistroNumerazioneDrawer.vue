@@ -130,7 +130,9 @@ async function caricaRegistriEsistenti() {
   if (isEdit.value || !store.emittenteSoggettoRuoloId) return
   const res = await listRegistri({
     emittente_soggetto_ruolo_id: store.emittenteSoggettoRuoloId,
-    limit: 500,
+    // ⛔ 200, il massimo della lista: dal 2026-10-21 oltre il massimo e' un 400
+    //    (fino a quel giorno il `500` di qui veniva ridotto a 200 in silenzio).
+    limit: 200,
     offset: 0,
   })
   registriEsistenti.value = res.data.data.results || []

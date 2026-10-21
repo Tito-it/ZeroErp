@@ -120,7 +120,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 - Auth: JWT, `skip_area_check = True`
 - Body JSON:
   - `parameter_code` (string, **obbligatorio**) — codice parametro da sovrascrivere
-  - `value` (string) — nuovo valore dell'override. ⚠️ Dichiarato obbligatorio, ma il codice non lo verifica: assente o `null` → override con stringa vuota, risposta 200 (difetto noto)
+  - `value` (string) — nuovo valore dell'override, **obbligatorio**: assente o `null` → 400 `E_PARAMETER_VALIDATION` (campo `value`), niente scritto (dal 2026-10-21: prima diventava un override con stringa vuota e risposta 200). `""` esplicito resta un valore
   - `scope` (string, opzionale, default `"user"`) — uno fra:
     - `"user"` — override personale (default, qualunque utente)
     - `"emittente"` — override per emittente fiscale (admin-only; EF derivato dal profilo utente)
@@ -145,7 +145,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
   - Se l'override esiste gia' sullo stesso ambito, aggiorna il valore e `data_update` e lo **riattiva** (`attivo = true`): impostare un override vuol dire volerlo in vigore. L'upsert e' un `INSERT … ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE` (unicita' `NULLS NOT DISTINCT`): due richieste concorrenti sullo stesso ambito non creano un doppione e non rispondono errore, la seconda aggiorna (dal 2026-10-07; prima il vincolo v4 non scattava e il doppione era possibile). Fino al 2026-09-28 una riga spenta (`attivo` false o NULL) veniva aggiornata e restava spenta — risposta con l'id, ma override ignorato dalla risoluzione e assente dalla lista, che leggono solo `attivo = true`
   - Se il `parameter_code` non esiste in `config.parameters` → **404 `E_PARAMETER_NOT_FOUND`**, niente scritto (dal 2026-09-28, E-9: prima `E_DATABASE` 400 dalla violazione del NOT NULL)
 - Errori:
-  - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto, `scope` non ammesso, `categoria_cliente_id` mancante/non-positivo per scope categoria, emittente non risolvibile per scope emittente
+  - `E_PARAMETER_VALIDATION` (400) — codice parametro vuoto, `value` assente o `null`, `scope` non ammesso, `categoria_cliente_id` mancante/non-positivo per scope categoria, emittente non risolvibile per scope emittente
   - `E_PERMISSION_DENIED` (403) — scope `emittente` o `categoria_cliente` da non-admin
   - `E_PARAMETER_NOT_FOUND` (404) — `parameter_code` inesistente
 

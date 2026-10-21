@@ -107,29 +107,44 @@ _EMITTENTE_NON_EDITABLE_FIELDS: tuple[str, ...] = ("codice", "soggetto_id")
 #    mancante era un KeyError, una voce che non e' un oggetto un AttributeError
 #    — cioe' un 500 `E_GENERICO` per un errore di chi chiama.
 def _voci_override(
-    items: Any, leggi: Callable[[dict[str, Any]], dict[str, Any]],
+    items: Any, leggi: Callable[[dict[str, Any], int], dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    ErrorManager.require(
-        isinstance(items, list), code=E_AMM_VALIDAZIONE,
-        message="'items' deve essere una lista.", context={"field": "items"},
-    )
-    voci: list[dict[str, Any]] = []
-    for item in items:
-        ErrorManager.require(
-            isinstance(item, dict), code=E_AMM_VALIDAZIONE,
-            message="Ogni voce di 'items' deve essere un oggetto.", context={"field": "items"},
-        )
-        voci.append({
-            **item,
-            "motivo": _V_AMM.optional_string(item, "motivo"),
-            "valido_dal": _V_AMM.optional_date(item, "valido_dal"),
-            "valido_al": _V_AMM.optional_date(item, "valido_al"),
-            **leggi(item),
-        })
-    return voci
+    return _V_AMM.voci(items, lambda item, indice: {
+        **item,
+        "motivo": _V_AMM.optional_string(item, "motivo"),
+        "valido_dal": _V_AMM.optional_date(item, "valido_dal"),
+        "valido_al": _V_AMM.optional_date(item, "valido_al"),
+        **leggi(item, indice),
+    }, campo="items")
+
+
+# Scopo: i campi di una voce d'AREA e di una voce d'AZIONE, gli stessi negli
+#        override dell'operatore e nel profilo del reparto. Lettori del BB
+#        `PayloadValidator.voci`: la lista e la forma della voce le giudica lui
+#        (una lista assente e' un 400, mai «vuota»: chi la riceve sostituisce in
+#        blocco); qui i campi, col BB (400 col campo).
+def _voce_area(voce: dict[str, Any], _indice: int) -> dict[str, Any]:
+    return {
+        "area_id": _V_AMM.require_positive_int(voce, "area_id"),
+        "livello": _V_AMM.require_string(voce, "livello"),
+    }
+
+
+def _voce_azione(voce: dict[str, Any], _indice: int) -> dict[str, Any]:
+    return {
+        "azione_id": _V_AMM.require_positive_int(voce, "azione_id"),
+        "abilitata": _V_AMM.require_bool(voce, "abilitata"),
+    }
 
 
 _V_AMM = PayloadValidator(validation_code=E_AMM_VALIDAZIONE)
+
+# Scopo: le chiavi della PATCH di un operatore (`update_operatore`): quelle che
+#        il drawer manda (`OperatoreDrawer.onSave`, verificato il 2026-10-20).
+_UPDATE_OPERATORE_KEYS = frozenset({
+    "email", "first_name", "last_name", "is_super_admin", "attivo",
+    "unita_organizzativa_id", "valido_al",
+})
 
 
 # Scopo: Cast best-effort di un valore parameter (sempre str per BE) a bool.
@@ -351,6 +366,16 @@ class AmmSoftwareService:
             message="Campo 'ruolo_sistema' non ammesso: usa is_super_admin + attivo.",
         )
         operatore = self.get_operatore(auth_user_id)  # verifica esistenza
+        # ⛔ Una chiave fuori contratto e' un 400, e un PATCH senza campi pure
+        #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2/§B2):
+        #    fino a quel giorno le chiavi ignote si scartavano e il PATCH vuoto
+        #    rispondeva 200 senza scrivere.
+        _V_AMM.validate_allowed_keys(
+            payload, allowed=_UPDATE_OPERATORE_KEYS, message="Campi dell'operatore non modificabili.",
+        )
+        _V_AMM.require_campi_da_aggiornare(
+            {k: payload[k] for k in _UPDATE_OPERATORE_KEYS if k in payload},
+        )
         veste_attiva = operatore.get("veste_attiva") is True
         # I due flag dal BB: un non-booleano e' un 400 sul campo. Prima i
         # confronti `is True`/`is False` lasciavano cadere una stringa in
@@ -492,16 +517,15 @@ class AmmSoftwareService:
     # =================================================================
 
     # Scopo: Salva override aree e invalida cache.
-    def put_override_aree(self, auth_user_id: int, items: list) -> list:
+    # `items` e' il valore GREZZO del corpo: che sia una lista lo giudica
+    # `_voci_override` (400 sul campo), non l'annotazione.
+    def put_override_aree(self, auth_user_id: int, items: Any) -> list:
         # ⛔ Prima la guardia di `get_operatore`: l'id dev'essere un OPERATORE.
         #    Senza, un id di macchina o di cliente del portale riceveva override
         #    (PUT) o una lista vuota (GET) invece del 404 delle altre rotte
         #    `operatori/{id}/`.
         self.get_operatore(auth_user_id)
-        items = _voci_override(items, lambda it: {
-            "area_id": _V_AMM.require_positive_int(it, "area_id"),
-            "livello": _V_AMM.require_string(it, "livello"),
-        })
+        items = _voci_override(items, _voce_area)
         # Cio' che solo il DB sa giudicare — un `livello` fuori dall'enum, un
         # `area_id` inesistente, la stessa area due volte — e' un 400, non il
         # 500 di un errore DB nudo (come `put_override_oggetti`).
@@ -521,12 +545,9 @@ class AmmSoftwareService:
         return self._repo.get_override_aree(auth_user_id)
 
     # Scopo: Salva override azioni e invalida cache.
-    def put_override_azioni(self, auth_user_id: int, items: list) -> list:
+    def put_override_azioni(self, auth_user_id: int, items: Any) -> list:
         self.get_operatore(auth_user_id)  # vedi `put_override_aree`
-        items = _voci_override(items, lambda it: {
-            "azione_id": _V_AMM.require_positive_int(it, "azione_id"),
-            "abilitata": _V_AMM.require_bool(it, "abilitata"),
-        })
+        items = _voci_override(items, _voce_azione)
         with translate_db_errors(  # vedi `put_override_aree`
             context={"op": "amm_software.put_override_azioni"},
             fallback_code=E_AMM_VALIDAZIONE,
@@ -629,10 +650,10 @@ class AmmSoftwareService:
     #    anche per una scrittura che non passa da qui. Se il catalogo cambia fra
     #    la lettura e la scrittura, la FK risponde col suo 23503: tradotto nello
     #    stesso `E_AMM_VALIDAZIONE`, non un 500.
-    def put_override_oggetti(self, auth_user_id: int, items: list) -> list:
+    def put_override_oggetti(self, auth_user_id: int, items: Any) -> list:
         self.get_operatore(auth_user_id)  # vedi `put_override_aree`
         # `app_label`/`model_name` li giudica il catalogo qui sotto.
-        items = _voci_override(items, lambda it: {
+        items = _voci_override(items, lambda it, _indice: {
             "livello": _V_AMM.require_string(it, "livello"),
         })
         if items:
@@ -820,15 +841,40 @@ class AmmSoftwareService:
     # Scopo: Salva profilo reparto e invalida cache di tutti gli operatori del reparto.
     #        `richiede_secondo_fattore` letto dal corpo: assente = invariato; se
     #        c'e' dev'essere un booleano (brief sicurezza §3.4-bis, T-3).
+    # ⛔ `aree`/`azioni` sono i valori GREZZI del corpo: le voci le valida
+    #    `PayloadValidator.voci` (400 sul campo), e una lista assente e' un 400 — il repository
+    #    sostituisce il profilo in blocco, e fino al 2026-10-21 la view la
+    #    trasformava in `[]` e un corpo `{}` svuotava il profilo con un 200.
     def put_profilo_reparto(
-        self, uo_id: int, aree: list, azioni: list, *, payload: dict[str, Any] | None = None,
+        self, uo_id: int, aree: Any, azioni: Any, *, payload: dict[str, Any] | None = None,
     ) -> dict:
+        aree = _V_AMM.voci(aree, _voce_area, campo="aree")
+        azioni = _V_AMM.voci(azioni, _voce_azione, campo="azioni")
         richiede_secondo_fattore = _V_AMM.optional_bool(
             payload or {}, "richiede_secondo_fattore",
         )
-        self._repo.put_profilo_reparto(
-            uo_id, aree, azioni, richiede_secondo_fattore=richiede_secondo_fattore,
-        )
+        # Come gli override dell'operatore: cio' che solo il DB giudica (enum
+        # del livello, FK, la stessa voce due volte) e' un 400, non un 500.
+        with translate_db_errors(
+            context={"op": "amm_software.put_profilo_reparto"},
+            fallback_code=E_AMM_VALIDAZIONE,
+            fallback_message="Profilo del reparto non salvato.",
+            unique_constraints={
+                "uq_profili_accesso_aree_profilo_area": (
+                    E_AMM_VALIDAZIONE, "La stessa area compare due volte.", "aree",
+                ),
+                "uq_profili_accesso_azioni_profilo_azione": (
+                    E_AMM_VALIDAZIONE, "La stessa azione compare due volte.", "azioni",
+                ),
+            },
+            fk_constraints={
+                "fk_profili_accesso_aree_area": (E_AMM_VALIDAZIONE, "Area inesistente.", "aree"),
+                "fk_profili_accesso_azioni_azione": (E_AMM_VALIDAZIONE, "Azione inesistente.", "azioni"),
+            },
+        ):
+            self._repo.put_profilo_reparto(
+                uo_id, aree, azioni, richiede_secondo_fattore=richiede_secondo_fattore,
+            )
         invalidate_department(uo_id)
         return self._repo.get_profilo_reparto(uo_id)
 

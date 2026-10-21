@@ -18,6 +18,7 @@ from django.db import connection
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.core.db._helpers import (
+    colonna_ordinamento,
     sql_order_direction_lista,
     RicercaFull,
     add_ricerca_full_condition,
@@ -354,8 +355,9 @@ class EmittentiFiscaliBillingAccountRepository:
         order_by: str = "billing_account_codice",
         order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        order_col = self._ORDER_COLS.get(
-            order_by, self._ORDER_COLS["billing_account_codice"]
+        order_col = (
+            colonna_ordinamento(order_by, self._ORDER_COLS)
+            or self._ORDER_COLS["billing_account_codice"]
         )
         direction = sql_order_direction_lista(
             order_by, order_dir, colonne=self._ORDER_COLS, default=order_col,

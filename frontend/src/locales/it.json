@@ -624,7 +624,8 @@
     "back_home": "Torna alla Home",
     "lookup_load_failed": "Caricamento elenco non riuscito. Riprova oppure contatta l'amministratore.",
     "bersaglio_apri_senza_id": "Apri {entita}",
-    "http_413_file_troppo_grande": "Il file è troppo grande: supera la dimensione massima che il server accetta. Usa un file più piccolo."
+    "http_413_file_troppo_grande": "Il file è troppo grande: supera la dimensione massima che il server accetta. Usa un file più piccolo.",
+    "soluzione_riprova_fra_poco": "Attendi qualche secondo e riprova: l'operazione non verrà eseguita due volte."
   },
   "placeholder": {
     "wip_title": "Area in costruzione",

@@ -128,7 +128,7 @@ class ListaResiduiTests(unittest.TestCase):
     @patch.object(vs.VenditeRepository, "list_dash_competenza_residui")
     def test_lista_residui_filtra_e_pagina(self, mock_list):
         mock_list.return_value = ([], 0)
-        vs.fn_dash_competenza_residui(competenza_mese=date(2026, 7, 18), page=2, page_size=25)
+        vs.fn_dash_competenza_residui(competenza_mese=date(2026, 7, 18), limit=25, offset=25)
         kwargs = mock_list.call_args.kwargs
         self.assertEqual(kwargs["competenza_mese"], date(2026, 7, 1))
         self.assertEqual(kwargs["limit"], 25)

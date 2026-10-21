@@ -17,6 +17,7 @@ from typing import Any, ClassVar, cast
 from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import (
+    colonna_ordinamento,
     sql_order_direction_lista,
     predicato_giorno_operativo,
     limiti_pagina,
@@ -194,14 +195,10 @@ class AmmSoftwareRepository:
         order_by: str | None = None,
         order_dir: str | None = None,
     ) -> tuple[list[OperatoreRow], int]:
-        # Validazione ordinamento: la COLONNA fuori whitelist ripiega sull'ordine
-        # di default (contratto di questa lista). ⛔ La DIREZIONE no: la giudica
-        # `sql_order_direction` qui sotto. Fino al 2026-09-26 qui c'era una
-        # copia a mano (`order_dir.upper() not in ("ASC", "DESC")` -> None) che
-        # trasformava un valore estraneo nel default PRIMA che il BB lo vedesse:
-        # il rifiuto scritto piu' in basso non scattava mai.
-        if order_by and order_by not in ALLOWED_ORDER_COLUMNS:
-            order_by = None
+        # ⛔ Un `order_by` fuori whitelist e' un 400 (`colonna_ordinamento`, qui
+        #    sotto), non il default: fino al 2026-10-20 la colonna estranea
+        #    ripiegava qui sull'ordine di default, in silenzio
+        #    (brief-be-verifica-documentazione-api §A1).
 
         conditions: list[str] = [_CATEGORIA_OPERATORE.format(au="au.id")]
         params: list[Any] = []
@@ -236,7 +233,7 @@ class AmmSoftwareRepository:
 
         # Ordinamento sicuro (whitelist): la mappa traduce il campo inviato dal
         # client nell'espressione SQL, in un passaggio solo.
-        order_column = ALLOWED_ORDER_COLUMNS.get(order_by or "")
+        order_column = colonna_ordinamento(order_by, ALLOWED_ORDER_COLUMNS)
         # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): senza colonna il
         #    ramo di default la ignora, e un `order_dir` estraneo passava muto.
         #    Il BB la rifiuta anche quando poi non la si usa.
@@ -1384,7 +1381,7 @@ class AmmSoftwareRepository:
 
         # Ordinamento sicuro: la whitelist traduce il nome di risultato nel nome
         # colonna in un passaggio solo (vedi `AUDIT_ORDER_COLUMNS`).
-        order_column = AUDIT_ORDER_COLUMNS.get(order_by or "")
+        order_column = colonna_ordinamento(order_by, AUDIT_ORDER_COLUMNS)
         # ⛔ Direzione risolta PRIMA del ramo (2026-09-26): il ramo di default
         #    la ignora, e un `order_dir` estraneo passava muto.
         direction = sql_order_direction(order_dir, default_desc=True)

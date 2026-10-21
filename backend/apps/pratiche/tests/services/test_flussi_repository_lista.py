@@ -55,7 +55,7 @@ class ListaFlussiRepositoryTests(TestCase):
         self.assertEqual(opzioni["offset"], 25)
         self.assertIn("ORDER BY uo.descrizione ASC", sql)
 
-    def test_order_by_fuori_whitelist_prende_il_default(self) -> None:
-        sql, _, _ = self._esegui(order_by="f.id; DROP TABLE x")
-        self.assertIn("ORDER BY f.sequenza ASC", sql)
-        self.assertNotIn("DROP", sql)
+    # ⛔ Fuori whitelist: 400 (`order_by_invalid`), dal 2026-10-20 (brief-be-verifica-documentazione-api §A1).
+    def test_order_by_fuori_whitelist_e_rifiutato(self) -> None:
+        with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+            self._esegui(order_by="f.id; DROP TABLE x")

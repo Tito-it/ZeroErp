@@ -635,7 +635,7 @@ class CodaLavoriRepository:
             sort_by, sort_dir,
             colonne=ELENCA_SORT_SQL, default="data_insert", default_desc=True,
             colonne_desc=ELENCA_SORT_COLONNE_DATA,
-            tiebreak="id", rifiuta_fuori_whitelist=True,
+            tiebreak="id",
         )
         data_sql = f"""
             SELECT id, job_type, stato, priorita, tentativi, max_tentativi,

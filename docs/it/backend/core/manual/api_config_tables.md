@@ -85,8 +85,13 @@ Lista paginata dei record.
 | `order_col` | `descrizione` | validato contro whitelist |
 | `order_dir` | `asc` | `asc` / `desc` |
 | `attivo_only` | `false` | `true` filtra `attivo IS TRUE` (solo se la colonna esiste) |
-| `page` | 1 | |
-| `page_size` | 25 | max 200 |
+| `limit` | 25 | max 200; fuori da 1..200 → 400 `E_VALIDATION_INPUT` |
+| `offset` | 0 | negativo → 400 `E_VALIDATION_INPUT` |
+
+`limit`/`offset` li legge `pagina_da_query`: non interi → 400
+`E_VALIDATION_INPUT`. ⛔ `page`/`page_size` in query sono un 400
+`E_VALIDATION_INPUT` dal 2026-10-21 (prima erano il contratto di questa
+lista); la risposta porta ancora `page`/`page_size`, ricavati dall'offset.
 
 ⚠️ Endpoint dichiarato `is_search_endpoint = True`: vale il throttling di
 ricerca. Un client che cicla su piu' tabelle prende 429 se non respira.

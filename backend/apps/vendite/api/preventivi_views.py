@@ -22,7 +22,7 @@ from apps.core.api.payload_validators import (
     optional_iso_date,
     paginated_envelope,
     parse_list_params,
-    qp_bool,
+    qp_bool_optional,
     qp_str,
 )
 from apps.core.api.success_responses import success_response
@@ -147,7 +147,7 @@ class ApiPreventiviList(DomainAPIView):
     #        l'unico outlier del dominio). order_dir assente -> il default 'desc'
     #        di dominio, scritto qui. Usa direttamente
     #        list_preventivi_rows + paginated_envelope (mirror views_ordini); il
-    #        wrapper list_preventivi(page/page_size) resta per AI tool + test.
+    #        wrapper list_preventivi(limit/offset, envelope) resta per AI tool + test.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         auth_user_id = get_scope_user_id(request)
@@ -162,7 +162,7 @@ class ApiPreventiviList(DomainAPIView):
             search=qp_str(qp.get("search")),
             # Default true: lista pulita senza storico revisioni. Il FE
             # passa "false" esplicito col toggle "Mostra storico".
-            solo_ultima_revisione=qp_bool(qp.get("solo_ultima_revisione"), default=True),
+            solo_ultima_revisione=qp_bool_optional(qp.get("solo_ultima_revisione"), "solo_ultima_revisione", default=True),
             auth_user_id=auth_user_id,
             limit=p["limit"],
             offset=p["offset"],
@@ -245,7 +245,7 @@ class ApiPreventiviExportView(DomainAPIView):
         data_da = optional_iso_date({"v": qp.get("data_da")}, "v")
         data_al = optional_iso_date({"v": qp.get("data_al")}, "v")
         search = qp_str(qp.get("search"))
-        solo_ultima_revisione = qp_bool(qp.get("solo_ultima_revisione"), default=True)
+        solo_ultima_revisione = qp_bool_optional(qp.get("solo_ultima_revisione"), "solo_ultima_revisione", default=True)
 
         results, total = preventivi_service.list_preventivi_rows(
             stato_codice=stato_codice,
@@ -799,6 +799,9 @@ class ApiPreventivoRigaPreviewComponenti(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "preventivo")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=PREVIEW_COMPONENTI_REQUEST,
@@ -845,11 +848,8 @@ class ApiPreventivoRigaComponentiList(DomainAPIView):
     def get(
         self, request: Request, preventivo_id: int, riga_id: int,
     ) -> JsonResponse:
-        # Parsing query param: stringhe "false"/"0"/"no" → False, altrimenti True.
-        solo_attivi_raw = request.query_params.get("solo_attivi", "true")
-        solo_attivi = str(solo_attivi_raw).strip().lower() not in (
-            "false", "0", "no", "off",
-        )
+        # Il BB dei flag di trasporto (§A6), come i gemelli DDT e ordini.
+        solo_attivi = qp_bool_optional(request.query_params.get("solo_attivi"), "solo_attivi", default=True)
         result = preventivi_service.list_componenti_riga(
             preventivo_id, riga_id, solo_attivi=solo_attivi,
         )
@@ -944,6 +944,9 @@ class ApiPreventivoRigaSuggerisciPrezzo(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "preventivo")
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(
         request=inline_serializer(

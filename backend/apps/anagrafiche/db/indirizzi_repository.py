@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from apps.core.api.constants import DEFAULT_LIMIT
@@ -15,13 +16,13 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     colonne_identita,
-    dynamic_update,
     sql_order_clause,
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
 )
 
+from apps.core.db.sql_write_helpers import execute_dynamic_update
 from django.db import connection
 
 
@@ -148,22 +149,15 @@ class IndirizziRepository:
             return row_to_dict(cursor)
 
     # Scopo: Aggiorna dettagli civico (stradario_id non modificabile).
-    def update_indirizzo_dettaglio(
-        self,
-        indirizzo_dettaglio_id: int,
-        *,
-        civico: int | None = None,
-        estensione_civico: str | None = None,
-        palazzina: str | None = None,
-        scala: str | None = None,
-        piano: str | None = None,
-        interno: str | None = None,
-        attivo: bool | None = None,
-    ) -> bool:
-        return dynamic_update("anagrafiche.indirizzi_dettaglio", indirizzo_dettaglio_id,
-                              civico=civico, estensione_civico=estensione_civico,
-                              palazzina=palazzina, scala=scala, piano=piano,
-                              interno=interno, attivo=attivo)
+    # ⚠️ `campi` li legge il service per PRESENZA (`campi_per_presenza`): un
+    #    `None` qui svuota il campo. Fino al 2026-10-20 None voleva dire «non
+    #    toccare», e svuotare la palazzina dal drawer non scriveva niente.
+    def update_indirizzo_dettaglio(self, indirizzo_dettaglio_id: int, campi: Mapping[str, Any]) -> bool:
+        return execute_dynamic_update(
+            "anagrafiche.indirizzi_dettaglio", indirizzo_dettaglio_id, campi,
+            allowed=("civico", "estensione_civico", "palazzina", "scala", "piano",
+                     "interno", "attivo"),
+        )
 
     # =================================================================
     # Stradario — supporto creazione via nuova

@@ -40,7 +40,8 @@ from apps.vendite.db._event_log_repo_mixin import EventLogRepositoryMixin
 from apps.vendite.db.commesse_repository import (
     TIPO_MOVIMENTO_NORMALE,
 )
-from apps.core.services.value_normalizer import as_bool, empty_to_none
+from apps.core.api.payload_validators import optional_bool
+from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db._data_documento_sql import (
     SQL_DATA_DOCUMENTO_CORRENTE,
     costruisci_perimetro_lotti_numerabili,
@@ -1805,7 +1806,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     ) -> None:
         assert context is not None
         # Normalizza i parametri JSON prima della chiamata alla funzione SQL.
-        lock = as_bool(params.get("lock"), default=False)
+        lock = optional_bool(params, "lock", default=False)
         data_fatturazione = empty_to_none(params.get("data_fatturazione"))
         valuta_id = empty_to_none(params.get("valuta_id"))
         # Emittente: fonte primaria e` il lotto persistito (context); i params JSON non lo sovrascrivono.
@@ -2987,7 +2988,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             sort_by, sort_dir,
             colonne=CODA_STAMPA_SORT_SQL, default="c.data_insert",
             default_desc=True, colonne_desc=CODA_STAMPA_SORT_COLONNE_DATA,
-            tiebreak="c.id", rifiuta_fuori_whitelist=True,
+            tiebreak="c.id",
         )
         from_join = """
               FROM vendite.fatture_stampa_coda c

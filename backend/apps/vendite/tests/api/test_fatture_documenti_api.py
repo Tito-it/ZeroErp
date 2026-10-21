@@ -20,7 +20,8 @@
 
 from unittest.mock import Mock, patch
 
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -41,7 +42,7 @@ class TestFattureDocumentiApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     # 0. Senza JWT: 401.
     def test_genera_richiede_jwt(self) -> None:

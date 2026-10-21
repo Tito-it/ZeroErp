@@ -43,7 +43,7 @@ class CercaSoggettiTool(AITool):
                         "enum": ["PF", "PG", "ENTE"],
                         "description": "Tipo soggetto: PF (persona fisica), PG (persona giuridica), ENTE",
                     },
-                    "page_size": {
+                    "limit": {
                         "type": "integer",
                         "description": "Numero risultati (default 10, max 50)",
                     },
@@ -66,7 +66,7 @@ class CercaSoggettiTool(AITool):
 
         items, total = svc.list_soggetti(
             search=self.termine_ricerca(params),
-            limit=self.safe_page_size(params),
+            limit=self.safe_limit(params),
             offset=0,
             order_by="ragione_sociale_completa",
             order_dir="asc",

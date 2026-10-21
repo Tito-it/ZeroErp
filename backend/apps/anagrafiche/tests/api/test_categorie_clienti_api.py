@@ -24,7 +24,8 @@ Indice test eseguiti:
 import json
 from unittest.mock import Mock, patch
 
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -42,7 +43,7 @@ class _BaseApiTest(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
 
 class TestCategorieClientiGet(_BaseApiTest):
@@ -229,7 +230,7 @@ class TestCategorieClientiBoolFilterParsing(_BaseApiTest):
     def test_filter_attivo_vuoto_passa_come_none(self, mock_svc_cls, _perm, _auth):
         # Contratto STRICT di apps.core.api.payload_validators.qp_bool_optional:
         # - chiave assente o valore vuoto ("") -> None (filtro non applicato)
-        # - token riconosciuti (1/true/yes/on, 0/false/no/off) -> bool
+        # - `true`/`false` -> bool (dal 2026-10-20 il solo vocabolario: §A6)
         # - valore non riconosciuto -> ValueError -> 400 (no coercion silenziosa)
         mock_svc_cls.return_value.list_categorie.return_value = ([], 0)
         resp = self.client.get(_BASE + "?attivo=")

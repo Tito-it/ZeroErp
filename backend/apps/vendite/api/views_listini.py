@@ -652,17 +652,13 @@ class ApiListinoVersioneBundleDetail(DomainAPIView):
     def post(
         self, request: Request, listino_id: int, ver_id: int, padre_id: str,
     ) -> JsonResponse:
+        # ⛔ `rows` passa GREZZO: la forma la giudica il BB `voci` nel service
+        #    (assente o non lista = 400). Fino al 2026-10-21 qui un corpo senza
+        #    `rows` diventava `[]`, e il salvataggio — che sostituisce il bundle
+        #    in blocco — cancellava ogni prezzo rispondendo 200. Una lista
+        #    vuota ESPLICITA resta il modo di svuotarlo.
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            rows_raw = payload.get("rows") or []
-            if not isinstance(rows_raw, list):
-                from apps.core.services.error_manager import ErrorManager
-
-                ErrorManager.raise_error(
-                    code="E_VENDITE_VALIDATION",
-                    message="Campo 'rows' deve essere una lista.",
-                    function_name="vendite.api.ApiListinoVersioneBundleDetail.post",
-                )
-            return fn_save_bundle(listino_id, ver_id, padre_id, rows_raw)
+            return fn_save_bundle(listino_id, ver_id, padre_id, payload.get("rows"))
 
         return handle_post_json(request, handler=_handler)
 

@@ -176,6 +176,12 @@ class UpdateDraftTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_OUTBOX")
         self.assertIn("stato", ctx.exception.detail)
         repo.update_outbox.assert_not_called()
+        # Anche `outbox_id` nel corpo e' una chiave estranea: prima era un
+        # `TypeError` (500), perche' collideva col parametro del metodo.
+        with self.assertRaises(ServiceError) as ctx:
+            EmailOutboxService().update_draft(10, outbox_id=11)
+        self.assertEqual(ctx.exception.code, "E_OUTBOX")
+        repo.update_outbox.assert_not_called()
 
     # Scopo: `destinatari_cc` non lista di stringhe: 400, non il 500 del cast
     #        `text[]` sul DB.

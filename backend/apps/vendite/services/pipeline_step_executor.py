@@ -16,7 +16,7 @@ from apps.core.services.db_error_fields import db_error_code, diagnostica_db
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import FanOutRunLogger, messaggio_eccezione, run_fan_out
 from apps.core.services.service_errors import ServiceError
-from apps.core.services.value_normalizer import as_bool
+from apps.core.api.payload_validators import optional_bool
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import LottoContext, VenditePipelineRepository
 # Il vocabolario dell'esito di esecuzione dentro un lotto — specchio del CHECK
@@ -1108,7 +1108,7 @@ class PipelineStepExecutor:
     ) -> None:
         # Preparazione dataset SDI e apertura tentativi per le fatture del lotto.
         stato_sdi_codice_interno = str(params.get("stato_sdi_codice_interno") or "DA_INVIARE")
-        force_new_tentativo = as_bool(params.get("force_new_tentativo"), default=False)
+        force_new_tentativo = optional_bool(params, "force_new_tentativo", default=False)
         self._run_validated_task(
             task=task,
             fn_name=fn_name,

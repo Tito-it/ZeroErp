@@ -90,7 +90,11 @@ Nessun parametro.
   quella visibile. Colonna fuori whitelist o direzione ≠ asc/desc → 400
   (`E_VENDITE_VALIDATION`, whitelist definita una volta nel service). Tiebreak
   stabile `(area, documento_id)` per paginazione deterministica.
-- `page` / `page_size` (opzionali): paginazione standard (default 1/25, max 200).
+- `limit` / `offset` (opzionali): paginazione standard (`pagina_da_query`:
+  `limit` default 25, max 200; `offset` default 0; non interi, `limit` fuori
+  da 1..200 o `offset` negativo → 400 `E_VALIDATION_INPUT`). ⛔ `page`/`page_size` sono
+  un 400 `E_VALIDATION_INPUT` dal 2026-10-21 (prima erano il contratto di
+  questa lista).
 
 ## Output
 
@@ -196,6 +200,9 @@ invece ASC perché raggruppa, non spareggia. La paginazione deterministica non
 
 ## Note di migrazione
 
+- 2026-10-21: la lista documenti legge la finestra come `limit`/`offset`
+  (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope
+  invariato.
 - **v2 (serbatoio pre-commessa)** su v1: eliminato il concetto *transitato*
   (in una vista senza asse temporale totalizzava dalla notte dei tempi roba
   già passata, non azionabile). Rimossi dagli endpoint il toggle `solo_aperti`

@@ -30,14 +30,13 @@ from apps.config.sorgenti import (
 from apps.core.db._helpers import richiedi_codice_a_vocabolario
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-from apps.core.api.payload_validators import paginated_envelope
+from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.services.payload_helpers import translate_db_errors
 from apps.core.services.capability_blob import capabilities_o_vuoto
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import (
     validate_enum_param,
     validate_order_params,
-    validate_pagination,
 )
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.partitioned_note_service import PartitionedNoteService
@@ -91,14 +90,6 @@ logger = logging.getLogger(__name__)
 _SORT_BY_VALIDI: tuple[str, ...] = tuple(LOTTO_FATTURE_SORT_COLUMNS)
 
 
-# Scopo: Valida page/page_size con E_VENDITE_VALIDATION e restituisce l'offset calcolato.
-# Riutilizzabile da tutte le funzioni di lista dello schema vendite.
-def _validate_pagination(page: int, page_size: int, function_name: str) -> int:
-    return validate_pagination(
-        page, page_size, error_code="E_VENDITE_VALIDATION", function_name=function_name,
-    )
-
-
 # Scopo: Risolve (limit, offset) per le liste dei cruscotti, distinguendo il
 #        giro PAGINATO da quello di EXPORT.
 #
@@ -110,9 +101,12 @@ def _validate_pagination(page: int, page_size: int, function_name: str) -> int:
 #        tutte le liste del progetto. Il tetto dell'export e' un altro
 #        (`EXPORT_MAX_ROWS`) e lo presidia il building block di export.
 #
-#        Senza `max_rows` il comportamento e' identico a prima.
+#        Senza `max_rows` la finestra e' quella chiesta: dal 2026-10-21 le
+#        liste parlano `limit`/`offset` (la view li legge con `pagina_da_query`,
+#        che li riporta nei limiti), e la traduzione da `page`/`page_size` che
+#        stava qui non c'e' piu'.
 def _paging_o_export(
-    *, page: int, page_size: int, max_rows: int | None, function_name: str,
+    *, limit: int, offset: int, max_rows: int | None, function_name: str,
 ) -> tuple[int, int]:
     if max_rows is not None:
         ErrorManager.require(
@@ -124,7 +118,7 @@ def _paging_o_export(
             function_name=function_name,
         )
         return max_rows, 0
-    return page_size, _validate_pagination(page, page_size, function_name)
+    return limit, offset
 
 
 # Scopo: wrapper di dominio su `validate_order_params` — riempie l'`error_code`
@@ -232,33 +226,22 @@ def _valida_ritardo_giorni(
     )
 
 
-# Scopo: Costruisce l'envelope di risposta paginata standard.
-# Riutilizzabile da tutte le funzioni di lista dello schema vendite.
-def _build_list_response(
-    results: list,
-    total_count: int,
-    page: int,
-    page_size: int,
+# Scopo: L'envelope di una lista dei cruscotti, con la pagina EFFETTIVAMENTE
+#        servita: il repository (`_query_paged_view`) riporta un offset oltre
+#        la fine all'ultima pagina (rientro da pagina stantia, in una sola
+#        valutazione della union), e l'envelope deve dichiarare quella — il FE
+#        la adotta (`usePagedDashFetch` sincronizza la pagina dalla risposta).
+# ⚠️ Solo per le liste il cui repository riporta l'offset; le altre usano
+#    `envelope_da_offset` diretto.
+def _envelope_pagina_effettiva(
+    results: list, total_count: int, *, limit: int, offset: int,
 ) -> dict[str, Any]:
-    total_pages = math.ceil(total_count / page_size) if page_size > 0 else 0
-    return {
-        "count": total_count,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "results": results,
-    }
-
-
-# Scopo: Pagina effettivamente servita dopo il clamp SQL dell'offset
-#        all'ultima pagina (_query_paged_view, rientro da pagina stantia in
-#        una sola valutazione della union): l'envelope deve dichiarare la
-#        pagina reale, che il FE adotta (usePagedDashFetch sincronizza
-#        page dalla risposta).
-def _pagina_effettiva(page: int, page_size: int, total_count: int) -> int:
-    if total_count <= 0 or page_size <= 0:
-        return 1
-    return min(page, math.ceil(total_count / page_size))
+    envelope = envelope_da_offset(results, total_count, limit=limit, offset=offset)
+    if total_count > 0 and limit > 0:
+        envelope["page"] = min(envelope["page"], math.ceil(total_count / limit))
+    else:
+        envelope["page"] = 1
+    return envelope
 
 
 # Scopo: I filtri della lista lotti che la query non sa rifiutare, validati in
@@ -304,12 +287,11 @@ def fn_list_lotti(
     auth_user_id: int | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     solo_recuperi_mese: bool = False,
     includi_annullati: bool = False,
 ) -> dict[str, Any]:
-    offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotti")
     _valida_filtri_lotti(
         stato_lotto=stato_lotto,
         competenza_mese=competenza_mese,
@@ -328,12 +310,12 @@ def fn_list_lotti(
         auth_user_id=auth_user_id,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
         solo_recuperi_mese=solo_recuperi_mese,
         includi_annullati=includi_annullati,
     )
-    risposta = _build_list_response(results, total_count, page, page_size)
+    risposta = envelope_da_offset(results, total_count, limit=limit, offset=offset)
     # ⭐ La ripartizione per stato viaggia NELLA STESSA risposta della lista, e
     #    non su un endpoint suo: cosi' i pulsanti-filtro e le righe sotto
     #    vengono dalla stessa valutazione del perimetro e non possono
@@ -380,8 +362,8 @@ def fn_list_lotti(
 #        stesso ordinamento della lista a video — così il file rispecchia ciò
 #        che l'operatore stava guardando.
 #
-#        Perché non passa da `fn_list_lotti`: quella valida `page_size` con
-#        `validate_pagination`, che impone il tetto di 200 righe della lista.
+#        Perché non passa da `fn_list_lotti`: quella riceve la finestra della
+#        lista, che la view riporta al tetto di 200 righe (`pagina_da_query`).
 #        L'export ne ha bisogno di più, e chiede `EXPORT_MAX_ROWS + 1` di
 #        proposito: la riga in eccesso serve a **rilevare** il superamento del
 #        limite (`build_export_response` solleva `E_UI_EXPORT_LIMIT_EXCEEDED`)
@@ -527,17 +509,17 @@ def fn_list_lotto_fatture(
     lotto_id: int,
     stato_esecuzione: str | None = None,
     auth_user_id: int | None = None,
-    sort_by: str = "fattura_id",
-    sort_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    order_by: str | None = None,
+    order_dir: str | None = None,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     max_rows: int | None = None,
 ) -> dict[str, Any]:
     # ⭐ L'helper condiviso, non un `if` scritto qui: l'export SALTA la
     # paginazione invece di violarne il tetto, ed e' la stessa regola di tutte
     # le altre liste esportabili del modulo.
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_list_lotto_fatture",
     )
     # ⛔ Colonna e direzione col BB `validate_order_params` (2026-09-26), non
@@ -547,9 +529,9 @@ def fn_list_lotto_fatture(
     # `nullable`: una direzione assente resta None, e il verso lo decide il BB
     # del repository (`sql_order_clause`: date DESC). Fino al 2026-10-20 il
     # default era `"asc"` e la regola non arrivava mai alla query (§6.1).
-    sort_by, sort_dir = validate_order_params(
-        sort_by,
-        sort_dir,
+    order_by, order_dir = validate_order_params(
+        order_by,
+        order_dir,
         allowed_columns=_SORT_BY_VALIDI,
         error_code="E_VENDITE_VALIDATION",
         function_name="vendite.vendite_service.fn_list_lotto_fatture",
@@ -574,13 +556,13 @@ def fn_list_lotto_fatture(
         lotto_id=lotto_id,
         stato_esecuzione=stato_esecuzione,
         auth_user_id=auth_user_id,
-        sort_by=sort_by,
-        sort_dir=sort_dir,
+        order_by=order_by,
+        order_dir=order_dir,
         limit=limit,
         offset=offset,
         max_rows=max_rows,
     )
-    return _build_list_response(results, total_count, page, page_size)
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 
 # Scopo: I DOCUMENTI CHE UN LOTTO HA PRESO IN CARICO, con l'esito di ciascuno.
@@ -599,8 +581,8 @@ def fn_list_lotto_gruppi(
     stato_esecuzione: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     max_rows: int | None = None,
 ) -> dict[str, Any]:
     # ⚠️ Il vocabolario del DOCUMENTO, non quello comune: questa lista legge
@@ -620,7 +602,7 @@ def fn_list_lotto_gruppi(
         function_name="vendite.vendite_service.fn_list_lotto_gruppi",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_list_lotto_gruppi",
     )
     # ⛔ Il cancello di perimetro PRIMA dell'elenco (vedi `_lotto_perimetro`).
@@ -652,7 +634,7 @@ def fn_list_lotto_gruppi(
     # ⚠️ Tolto e non lasciato «per compatibilita'»: un campo che non discrimina
     #    piu' niente e' peggio di un campo assente, perche' chi lo legge crede
     #    che discrimini.
-    return _build_list_response(results, total_count, page, page_size)
+    return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 
 # Range anni ammesso per i cruscotti fatturazione (Lente 1: anno libero
@@ -763,8 +745,8 @@ def fn_dash_aperto_documenti(
     ritardo_giorni: int | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -802,7 +784,7 @@ def fn_dash_aperto_documenti(
         function_name="vendite.vendite_service.fn_dash_aperto_documenti",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_aperto_documenti",
     )
     repository = VenditeRepository()
@@ -816,8 +798,8 @@ def fn_dash_aperto_documenti(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -1192,8 +1174,8 @@ def fn_dash_competenza_attivita(
     solo_ritardo: bool = False,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     _validate_enum(
         stadio,
@@ -1209,9 +1191,6 @@ def fn_dash_competenza_attivita(
         whitelist=VenditeRepository.DASH_COMPETENZA_ATTIVITA_SORT_COLUMNS,
         function_name="vendite.vendite_service.fn_dash_competenza_attivita",
     )
-    offset = _validate_pagination(
-        page, page_size, "vendite.vendite_service.fn_dash_competenza_attivita"
-    )
     repository = VenditeRepository()
     results: list[DashCompetenzaAttivitaRow]
     results, total_count = repository.list_dash_competenza_attivita(
@@ -1220,15 +1199,15 @@ def fn_dash_competenza_attivita(
         solo_ritardo=solo_ritardo,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
     # Pagina EFFETTIVA, non quella richiesta: il repository clampa l'offset
     # all'ultima pagina reale, quindi l'envelope deve dichiarare la pagina che
     # le righe rappresentano davvero. Era l'ultimo dei sei endpoint dei
     # cruscotti a non farlo.
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -1246,8 +1225,8 @@ def fn_dash_competenza_commesse(
     solo_ritardo: bool = False,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1264,7 +1243,7 @@ def fn_dash_competenza_commesse(
         function_name="vendite.vendite_service.fn_dash_competenza_commesse",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_competenza_commesse",
     )
     repository = VenditeRepository()
@@ -1278,8 +1257,8 @@ def fn_dash_competenza_commesse(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -1396,8 +1375,8 @@ def fn_dash_competenza_residui(
     competenza_mese: date,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`), come le liste sorelle.
     max_rows: int | None = None,
 ) -> dict[str, Any]:
@@ -1410,7 +1389,7 @@ def fn_dash_competenza_residui(
         function_name="vendite.vendite_service.fn_dash_competenza_residui",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_competenza_residui",
     )
     repository = VenditeRepository()
@@ -1422,8 +1401,8 @@ def fn_dash_competenza_residui(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -1502,8 +1481,8 @@ def fn_dash_competenza_gruppi(
     search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1529,7 +1508,7 @@ def fn_dash_competenza_gruppi(
     #    Il gate che stava qui era una seconda sede dello stesso 3
     #    (`SEARCH_MIN_LEN`, ritirato col passaggio al BB).
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_competenza_gruppi",
     )
     repository = VenditeRepository()
@@ -1550,8 +1529,8 @@ def fn_dash_competenza_gruppi(
         offset=offset,
     )
     _marca_gruppi_multi_registro(results)
-    payload = _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    payload = _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
     # ⭐ EXPORT: si fermano qui. Riepilogo e facet servono all'INTERFACCIA — i
     #    totali sopra la lista e le tre tendine — e `build_dash_export_response`
@@ -1691,8 +1670,8 @@ def fn_dash_backlog_documenti(
     ritardo_giorni: int | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1719,7 +1698,7 @@ def fn_dash_backlog_documenti(
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
     repository = VenditeRepository()
@@ -1733,8 +1712,8 @@ def fn_dash_backlog_documenti(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -1749,8 +1728,8 @@ def fn_dash_competenza_errori(
     competenza_mese: date | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
@@ -1764,7 +1743,7 @@ def fn_dash_competenza_errori(
         function_name="vendite.vendite_service.fn_dash_competenza_errori",
     )
     limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
+        limit=limit, offset=offset, max_rows=max_rows,
         function_name="vendite.vendite_service.fn_dash_competenza_errori",
     )
     repository = VenditeRepository()
@@ -1778,8 +1757,8 @@ def fn_dash_competenza_errori(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
+    return _envelope_pagina_effettiva(
+        results, total_count, limit=limit, offset=offset,
     )
 
 
@@ -2137,8 +2116,9 @@ def _envelope_giornale(
     offset: int,
     ritirate_nascoste: int,
 ) -> dict[str, Any]:
-    page = int(offset) // int(limit) + 1
-    envelope = paginated_envelope(righe, max(0, int(total_count)), page, int(limit))
+    envelope = envelope_da_offset(
+        righe, max(0, int(total_count)), limit=int(limit), offset=int(offset),
+    )
     envelope["ritirate_count"] = ritirate_nascoste
     return envelope
 
@@ -2444,8 +2424,11 @@ def fn_fondi_fattura_da_decidere(
     auth_user_id: int | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    # ⛔ `limit`/`offset` come ogni lista (decisione Tid 2026-10-20,
+    #    brief-be-verifica-documentazione-api §A4): fino a quel giorno questa
+    #    paginava con `page`/`page_size`. Il clamp lo fa `parse_list_params`.
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     # Export: valorizzato = perimetro intero in una volta, paginazione saltata
     # (BB `_paging_o_export`). Assente = la lista paginata di sempre.
     max_rows: int | None = None,
@@ -2469,10 +2452,11 @@ def fn_fondi_fattura_da_decidere(
         error_code="E_VENDITE_VALIDATION",
         function_name=_FN_FONDI_DA_DECIDERE,
     )
-    limit, offset = _paging_o_export(
-        page=page, page_size=page_size, max_rows=max_rows,
-        function_name=_FN_FONDI_DA_DECIDERE,
-    )
+    if max_rows is not None:
+        limit, offset = _paging_o_export(
+            limit=limit, offset=offset, max_rows=max_rows,
+            function_name=_FN_FONDI_DA_DECIDERE,
+        )
 
     repository = VenditeRepository()
     results: list[FondoFatturaDaDecidereRow]
@@ -2484,9 +2468,7 @@ def fn_fondi_fattura_da_decidere(
         limit=limit,
         offset=offset,
     )
-    return _build_list_response(
-        results, total_count, _pagina_effettiva(page, page_size, total_count), page_size
-    )
+    return _envelope_pagina_effettiva(results, total_count, limit=limit, offset=offset)
 
 
 _FN_CANCELLA_FONDO = "vendite.vendite_service.fn_cancella_fondo_fattura"

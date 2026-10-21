@@ -78,9 +78,9 @@ class MagazziniServiceTests(SimpleTestCase):
             # Un boolean a `null` in un PATCH non e' un valore.
             e = _rifiuto(lambda: svc.aggiorna_magazzino(3, {"attivo": None}))
             self.assertEqual((e.code, e.context.get("field")), (svc.E_VALIDAZIONE, "attivo"))
-            # Payload vuoto: nessuna scrittura, si rilegge e basta.
+            # Payload vuoto: 400, nessuna scrittura (Tid, 2026-10-20, §A2).
             repo.return_value.update_magazzino.reset_mock()
-            svc.aggiorna_magazzino(3, {})
+            self.assertEqual(_rifiuto(lambda: svc.aggiorna_magazzino(3, {})).code, svc.E_VALIDAZIONE)
             repo.return_value.update_magazzino.assert_not_called()
 
     # 4.

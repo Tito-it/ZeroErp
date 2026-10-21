@@ -22,7 +22,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.utils import OpenApiParameter, inline_serializer
+from rest_framework import serializers
 
 
 # Scopo: la frase «Whitelist (nome FISICO): …» di un `order_by`, dalla
@@ -65,3 +66,51 @@ def param_ricerca_full() -> OpenApiParameter:
             "il termine non filtra."
         ),
     )
+
+
+# Scopo: ⭐ Lo schema della risposta di un LOOKUP, in un punto solo:
+#        `{"data": {"results": [...]}, "meta": {...}}` (api.md §«L'envelope di un
+#        lookup»). `nome` e' il nome del componente OpenAPI; `riga` lo schema di
+#        una riga, se lo si vuole dichiarare (default: oggetto libero).
+# ⛔ Regola del 2 (2026-10-21, brief-be-verifica-documentazione-api §B10): dieci
+#    lookup di `core/api/views_lookup.py` dichiaravano `data` come LISTA NUDA,
+#    mentre rispondono `{results}`. Chi genera il client dallo schema leggeva una
+#    lista che non arriva mai. Scritto a mano, lo schema diverge dalla risposta.
+def risposta_lookup(nome: str, riga: serializers.Field | None = None) -> serializers.Serializer:
+    return inline_serializer(
+        name=nome,
+        fields={
+            "data": inline_serializer(
+                name=f"{nome}Data",
+                fields={"results": serializers.ListField(child=riga or serializers.DictField())},
+            ),
+            "meta": serializers.DictField(required=False),
+        },
+    )
+
+
+# Scopo: ⭐ I parametri OpenAPI della finestra di una lista, `limit` e `offset`,
+#        in un punto solo: da usare con `*parametri_finestra()` dentro
+#        `parameters=[...]`. Dal 2026-10-21 tutte le liste paginano cosi'
+#        (`pagina_da_query`); `page`/`page_size` sono un 400.
+#        `default_limit`/`max_limit` quelli della lista, se non sono gli standard
+#        (gli stessi passati a `pagina_da_query`).
+def parametri_finestra(
+    *, default_limit: int | None = None, max_limit: int | None = None,
+) -> list[OpenApiParameter]:
+    from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+
+    return [
+        OpenApiParameter(
+            name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
+            description=(
+                f"Righe per pagina (default {default_limit or DEFAULT_LIMIT}, "
+                f"max {max_limit or MAX_LIMIT})."
+            ),
+        ),
+        OpenApiParameter(
+            name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
+            description="Righe da saltare (default 0). `page`/`page_size` sono un 400.",
+        ),
+    ]
+

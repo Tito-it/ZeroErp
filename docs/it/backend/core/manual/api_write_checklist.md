@@ -5,7 +5,7 @@ Fornire una checklist operativa pronta per nuovi endpoint write (`POST/PUT/PATCH
 
 ## Checklist ready-to-use
 1. **View**: usare `handle_post_json(request, handler=..., require_idempotency_key=True)`.
-2. **Header**: verificare presenza `Idempotency-Key` (gestito dal core helper).
+2. **Header**: ogni POST che scrive porta `Idempotency-Key` per costruzione (`_ApiViewBase.initial`, dal 2026-10-20); una POST che legge dichiara `post_accesso = "view"`.
 3. **Service**: tenere logica business nel service, non nella view.
 4. **Errori**: usare `ErrorManager` + codici dominio (`ServiceError`).
 5. **Test API**:
@@ -24,6 +24,6 @@ Fornire una checklist operativa pronta per nuovi endpoint write (`POST/PUT/PATCH
 ## Note
 - Per endpoint read-only (`GET` senza side effect), non richiedere `Idempotency-Key`.
 - Se serve eccezione temporanea, motivarla in doc e aprire task di riallineamento.
-- Per endpoint lista/search, seguire `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` e gli helper di `docs/it/dev/api.md` §«Paginazione» (`validate_pagination`, `parse_list_params`, `fetch_paged_with_total`).
+- Per endpoint lista/search, seguire `docs/it/dev/Policy-ricerca-e-paginazione(API-DB).md` e gli helper di `docs/it/dev/api.md` §«Paginazione» (`pagina_da_query`, `parse_list_params`, `envelope_da_offset`, `fetch_paged_with_total`; `validate_pagination` è ritirato dal 2026-10-21).
 - Se endpoint search, impostare `is_search_endpoint = True` per attivare throttling DRF.
 - In idempotenza forte, `request_id` e `tx_id` sono entrambi UUID (consigliato mantenere formato UUID anche lato tracing).

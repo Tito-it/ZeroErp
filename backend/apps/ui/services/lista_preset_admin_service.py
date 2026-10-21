@@ -304,18 +304,13 @@ class ListaPresetAdminService:
             allowed=frozenset({"colonne"}),
             message="Payload composizione preset non valido.",
         )
-        colonne_raw = payload.get("colonne")
-        ErrorManager.require(
-            isinstance(colonne_raw, list),
-            code=E_PRESET_VALIDATION,
-            message="Il campo 'colonne' deve essere una lista.",
+        # Una lista di voci, ogni voce un oggetto (BB): assente e' un 400, mai
+        # «vuota» — la composizione si sostituisce in blocco.
+        normalized = self._v.voci(
+            payload.get("colonne"), self._validate_colonna_row, campo="colonne",
         )
-        assert isinstance(colonne_raw, list)
-
-        normalized: list[dict[str, Any]] = []
         seen_colonne: set[int] = set()
-        for idx, raw in enumerate(colonne_raw):
-            row = self._validate_colonna_row(raw, idx)
+        for idx, row in enumerate(normalized):
             if row["colonna_id"] in seen_colonne:
                 ErrorManager.raise_error(
                     code=E_PRESET_VALIDATION,
@@ -323,7 +318,6 @@ class ListaPresetAdminService:
                     detail=f"colonne[{idx}] colonna_id={row['colonna_id']} ripetuta",
                 )
             seen_colonne.add(row["colonna_id"])
-            normalized.append(row)
 
         try:
             inserted = self._repo.replace_preset_colonne(
@@ -475,15 +469,8 @@ class ListaPresetAdminService:
 
     # Scopo: Valida una singola riga di composizione preset.
     def _validate_colonna_row(
-        self, raw: Any, idx: int,
+        self, raw: dict[str, Any], idx: int,
     ) -> dict[str, Any]:
-        ErrorManager.require(
-            isinstance(raw, dict),
-            code=E_PRESET_VALIDATION,
-            message="Composizione preset non valida.",
-            detail=f"colonne[{idx}] deve essere un oggetto.",
-        )
-        assert isinstance(raw, dict)
         self._v.validate_allowed_keys(
             raw,
             allowed=frozenset({

@@ -55,6 +55,7 @@ import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfe
 import { displayDate } from '../../core/utils/date'
 import { MANAGE_ICONS } from '../../core/constants'
 import { abbinaRiga, forzaturaConMotivo, registraRigaTardiva } from '../api/pagamenti'
+import { useChiaveGesto } from '../../core/composables/useChiaveGesto'
 import { formatCurrency } from '../../core/utils/format'
 import { MODO_ABBINA } from '../composables/useAzioniRigaContabile'
 import RataSelect from './RataSelect.vue'
@@ -70,6 +71,8 @@ const emit = defineEmits(['update:visible', 'abbinata'])
 
 const { t } = useI18n()
 const { esegui, conferma, annulla, richiestaConferma, loading } = useForzaturaConfermata()
+// La key del gesto: vive finche' il dialog resta aperto (`reset` la azzera).
+const gesto = useChiaveGesto()
 
 const registra = computed(() => props.modo === MODO_ABBINA.REGISTRA)
 
@@ -134,6 +137,7 @@ function reset() {
   scadenzaId.value = sc
   motivoForzatura.value = ''
   annulla()
+  gesto.azzera()
 }
 watch(() => props.visible, (v) => { if (v) reset() })
 
@@ -149,9 +153,19 @@ async function onAbbina() {
   // ⭐ Il verbo lo sceglie il MODO: stesso payload, due endpoint. La tardiva
   //    dice nel toast QUANTO ha registrato: «fatto» senza il numero non dice
   //    se il movimento e' di sessanta o di seicento.
-  const chiamata = registra.value
-    ? (extra) => registraRigaTardiva(props.riga.id, { ...base, ...extra })
-    : (extra) => abbinaRiga(props.riga.id, { ...base, ...extra })
+  // ⭐ La key del GESTO (`useChiaveGesto`): la tardiva e' irreversibile, e un
+  //    reinvio dopo un timeout deve ricevere l'esito del primo, non scrivere
+  //    un secondo movimento. ⚠️ Il secondo tempo (`forzata` + motivo) e' un
+  //    payload diverso, quindi una key nuova: il primo era stato rifiutato.
+  const modo = registra.value ? 'registra' : 'abbina'
+  const verbo = registra.value ? registraRigaTardiva : abbinaRiga
+  const chiamata = (extra) => {
+    const payload = { ...base, ...extra }
+    return gesto.invia(
+      { modo, rigaId: props.riga.id, ...payload },
+      (config) => verbo(props.riga.id, payload, config),
+    )
+  }
   const esito = await esegui(chiamata, {
     successMessage: registra.value
       ? t('pagamenti.abbina.registrata', { importo: formatCurrency(props.riga.importo) })

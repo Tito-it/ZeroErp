@@ -173,15 +173,10 @@ class DashboardPreferenzaService:
         # widget: lista di oggetti normalizzati
         widget_raw = payload.get("widget")
         if widget_raw is not None:
+            # Il tetto PRIMA di leggere le voci: un elenco smisurato non si
+            # scorre. La forma (lista, ogni voce un oggetto) la giudica il BB.
             ErrorManager.require(
-                isinstance(widget_raw, list),
-                code=E_UI_PREFERENZA_VALIDAZIONE,
-                message="Preferenza dashboard non valida.",
-                detail="Il campo 'widget' deve essere una lista.",
-            )
-            assert isinstance(widget_raw, list)
-            ErrorManager.require(
-                len(widget_raw) <= _MAX_WIDGET_PAYLOAD,
+                not isinstance(widget_raw, list) or len(widget_raw) <= _MAX_WIDGET_PAYLOAD,
                 code=E_UI_PREFERENZA_VALIDAZIONE,
                 message="Preferenza dashboard non valida.",
                 detail=(
@@ -189,10 +184,10 @@ class DashboardPreferenzaService:
                     f"{_MAX_WIDGET_PAYLOAD}."
                 ),
             )
-            widget = [
-                self._validate_widget(w, idx)
-                for idx, w in enumerate(widget_raw)
-            ]
+            widget = self._validator.voci(
+                widget_raw, self._validate_widget, campo="widget",
+                message="Preferenza dashboard non valida.",
+            )
             # Codice duplicato = layout ambiguo: la fn DB fa JOIN sul
             # codice e produrrebbe la stessa card due volte.
             codici = [w["codice"] for w in widget]
@@ -225,15 +220,7 @@ class DashboardPreferenzaService:
 
     # Scopo: Valida un singolo widget della preferenza. Whitelist chiavi,
     #        codice obbligatorio, ordine int positivo, visibile bool.
-    def _validate_widget(self, raw: Any, idx: int) -> dict[str, Any]:
-        ErrorManager.require(
-            isinstance(raw, dict),
-            code=E_UI_PREFERENZA_VALIDAZIONE,
-            message="Preferenza dashboard non valida.",
-            detail=f"widget[{idx}] deve essere un oggetto.",
-        )
-        assert isinstance(raw, dict)
-
+    def _validate_widget(self, raw: dict[str, Any], idx: int) -> dict[str, Any]:
         self._validator.validate_allowed_keys(
             raw, allowed=_WIDGET_KEYS,
             message=f"widget[{idx}]: campi non supportati.",

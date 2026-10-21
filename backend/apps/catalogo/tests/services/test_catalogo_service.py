@@ -731,8 +731,9 @@ class CatalogoServiceTests(TestCase):
 
     # Scopo: create nota componente con target_riga_id -> anchor_tipo/posizione
     # default RIGA/AFTER applicati dal service.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
-    def test_fn_create_nota_componente_default_riga_after(self, mock_bom_repo_cls):
+    def test_fn_create_nota_componente_default_riga_after(self, mock_bom_repo_cls, _mock_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_nota_componente
 
         bom_repo = mock_bom_repo_cls.return_value
@@ -741,7 +742,7 @@ class CatalogoServiceTests(TestCase):
 
         riga_uuid = "019bbee2-5f6a-704f-bbd0-34ed84db252d"
         fn_create_nota_componente(
-            "comp-1",
+            "art-1", "comp-1",
             {"id_stile": 1, "testo_md": "Demo", "target_riga_id": riga_uuid},
         )
 
@@ -750,6 +751,31 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(data_arg["anchor_tipo"], "RIGA")
         self.assertEqual(data_arg["posizione"], "AFTER")
         self.assertEqual(str(data_arg["target_riga_id"]), riga_uuid)
+
+    # Scopo: ⛔ un componente che non e' dell'articolo dell'URL e' un 404, e le
+    #        note non si leggono ne' si scrivono (2026-10-21, §B8 del
+    #        brief-be-verifica-documentazione-api): prima `articolo_id` del path
+    #        era ignorato.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    def test_note_componente_di_un_altro_articolo_404(self, mock_bom_repo_cls, _mock_repo_cls):
+        from apps.catalogo.services.catalogo_service import (
+            fn_create_nota_componente,
+            fn_list_note_componente,
+        )
+
+        bom_repo = mock_bom_repo_cls.return_value
+        bom_repo.get_componente.return_value = None
+        for chiamata in (
+            lambda: fn_list_note_componente("art-1", "comp-di-altro"),
+            lambda: fn_create_nota_componente("art-1", "comp-di-altro", {"id_stile": 1, "testo_md": "x"}),
+        ):
+            with self.subTest(), self.assertRaises(ServiceError) as ctx:
+                chiamata()
+            self.assertEqual(ctx.exception.code, "E_CATALOGO_COMPONENTE_NOT_FOUND")
+        bom_repo.get_componente.assert_called_with("art-1", "comp-di-altro")
+        bom_repo.list_note_componente.assert_not_called()
+        bom_repo.create_nota.assert_not_called()
 
     # Scopo: create nota con coppia incoerente anchor_tipo='DOCUMENTO' +
     # target_riga_id valorizzato -> errore E_CATALOGO_VALIDATION (guard

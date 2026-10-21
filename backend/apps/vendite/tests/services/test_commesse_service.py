@@ -14,7 +14,7 @@ Indice test eseguiti:
 5) CommesseServiceTests.test_fn_get_commessa_stato_ok
 6) CommesseServiceTests.test_fn_get_commessa_stato_not_found
 7) CommesseServiceTests.test_fn_list_commessa_attivita_ok
-8) CommesseServiceTests.test_fn_list_commessa_attivita_invalid_limit
+8) (ritirato 2026-10-21: la finestra la valida la view, vedi test_commesse_api)
 8a) CommesseServiceTests.test_fn_list_commessa_attivita_order_by_ok
 8b) CommesseServiceTests.test_fn_list_commessa_attivita_order_by_fuori_whitelist
 8c) CommesseServiceTests.test_fn_list_commessa_attivita_order_dir_invalido
@@ -894,14 +894,6 @@ class CommesseServiceTests(TestCase):
         self.assertEqual(result["commessa_id"], 1)
         self.assertEqual(result["count"], 0)
 
-    # Scopo: limit fuori range → ServiceError validazione.
-    def test_fn_list_commessa_attivita_invalid_limit(self):
-        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_list_commessa_attivita(commessa_id=1, limit=500, offset=0)
-        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
-
     # Scopo: order_by in whitelist → normalizzato e propagato al repository.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_fn_list_commessa_attivita_order_by_ok(self, mock_repo_cls):
@@ -988,15 +980,6 @@ class CommesseServiceTests(TestCase):
     # Scopo: ⚠️ E il tetto di pagina resta vivo sul percorso PAGINATO: senza
     #        `max_rows` un limit fuori range e' ancora un 400 parlante, non una
     #        pagina da diecimila righe.
-    @patch("apps.vendite.services.commesse_service.CommesseRepository")
-    def test_fn_list_commessa_attivita_limit_fuori_range_resta_400(self, mock_repo_cls):
-        from apps.vendite.services.commesse_service import fn_list_commessa_attivita
-
-        with self.assertRaises(ServiceError) as ctx:
-            fn_list_commessa_attivita(commessa_id=1, limit=5000)
-        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
-        mock_repo_cls.return_value.list_commessa_attivita.assert_not_called()
-
     # Scopo: order_by fuori whitelist → ServiceError, repo mai chiamato.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_fn_list_commessa_attivita_order_by_fuori_whitelist(self, mock_repo_cls):

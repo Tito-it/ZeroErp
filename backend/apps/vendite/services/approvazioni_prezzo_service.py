@@ -680,7 +680,15 @@ def _user_can_approve_or_reject(user) -> bool:
 # Scopo: helper Fase 5.B1. Calcola capability di riga + reason i18n key.
 #        Reason possibili (codici stabili esportati come costanti modulo,
 #        traduzione lato FE):
-#          - PERMESSO_MANCANTE  → utente senza azione approva_prezzo_override
+#          - PERMESSO_MANCANTE  → utente senza azione approva_prezzo_override.
+#            ⚠️ Dall'endpoint della coda NON arriva: la view chiede la stessa
+#            azione (`get_permission`), e chi non ce l'ha riceve 403 prima di
+#            vedere una riga. Il ramo resta perche' la capability si calcola dal
+#            permesso, non dalla porta da cui si e' entrati: `lista_coda` e' un
+#            service, e un chiamante che non passa da quella view (o una coda
+#            aperta un giorno anche a chi legge soltanto) deve ricevere bottoni
+#            spenti col motivo, non accesi (brief-be-verifica-documentazione-api
+#            §B11, 2026-10-21).
 #          - RIGA_NON_LINKATA   → META_KEY_RIGA_PREVENTIVO_ID assente nel meta
 #            (pratica legacy o crash post-create_riga)
 #          - None               → can_approve/can_reject = True

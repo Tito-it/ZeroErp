@@ -38,7 +38,7 @@ class CercaArticoliTool(AITool):
                 "PRIMI `count` di un insieme piu' grande, non tutti quelli che "
                 "esistono. In quel caso non dire mai un totale: di' che sono i "
                 "primi N e invita a restringere la ricerca o ad alzare "
-                "`page_size` (max 50)."
+                "`limit` (max 50)."
             ),
             input_schema={
                 "type": "object",
@@ -51,7 +51,7 @@ class CercaArticoliTool(AITool):
                         "type": "boolean",
                         "description": "Se true (default), restituisce solo articoli attivi.",
                     },
-                    "page_size": {
+                    "limit": {
                         "type": "integer",
                         "description": "Numero risultati (default 10, max 50).",
                     },
@@ -76,12 +76,12 @@ class CercaArticoliTool(AITool):
         response = catalogo_service.fn_lookup_articoli(
             search=params.get("search"),
             attivo=attivo,
-            limit=self.safe_page_size(params),
+            limit=self.safe_limit(params),
         )
 
         # `catalogo_service._lookup_response` -> {"count": N, "results": [...], "troncato": bool}
         # 🔴 `troncato` si propaga, e su questo tool conta piu' che altrove
-        #    (2026-09-10). `safe_page_size` chiede 10 righe di default: senza
+        #    (2026-09-10). `safe_limit` chiede 10 righe di default: senza
         #    quel campo il modello legge `count: 10` e dice a una persona «ho
         #    trovato 10 articoli» — anche quando a catalogo ce ne sono centinaia.
         #    ⇒ Non e' un numero impreciso: e' una frase falsa, detta con

@@ -296,6 +296,9 @@ class EmailAccountDetailView(AdminAPIView):
         if "codice" in update_fields and update_fields["codice"]:
             update_fields["codice"] = update_fields["codice"].upper()
 
+        # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+        #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+        _V_EMAIL.require_campi_da_aggiornare(update_fields)
         repo.update_account(account_id, **update_fields)
         result = repo.get_account(account_id)
         return success_response(_enrich_account_with_capability(result) if result else {})
@@ -461,6 +464,9 @@ class EmailTemplateDetailView(AdminAPIView):
         if "codice" in update_fields and update_fields["codice"]:
             update_fields["codice"] = update_fields["codice"].upper()
 
+        # ⛔ Un PATCH senza campi e' un 400, non un 200 che non scrive (Tid,
+        #    2026-10-20, brief-be-verifica-documentazione-api §A2).
+        _V_EMAIL.require_campi_da_aggiornare(update_fields)
         repo.update_template(template_id, **update_fields)
         return success_response(repo.get_template(template_id) or {})
 
@@ -482,6 +488,10 @@ class EmailTemplatePreviewView(AdminAPIView):
     quindi rendere il payload come "trusted preview" dentro un iframe
     sandbox (defense-in-depth — Fase 6 amm-software).
     """
+
+    # Una LETTURA che viaggia in POST: permesso di lettura e niente
+    # `Idempotency-Key` (brief-be-verifica-documentazione-api §A5).
+    post_accesso = "view"
 
     @extend_schema(request=_PREVIEW_REQUEST, responses={200: dict})
     # Scopo: Renderizza un template con variabili di esempio e sanifica

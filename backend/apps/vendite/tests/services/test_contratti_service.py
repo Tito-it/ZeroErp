@@ -264,6 +264,30 @@ class ContrattiServiceTests(TestCase):
         # il service non lo chiede una seconda volta (R-BE-1).
         repo.riempi_indirizzo_default.assert_not_called()
 
+    # ⛔ Il gate L2 sulla variazione globale vale anche alla NASCITA, col
+    #    cliente del payload (2026-10-21, §B9 del brief-be-verifica-
+    #    documentazione-api): prima lo applicava la sola PATCH. Se il gate
+    #    rifiuta, il contratto non nasce.
+    @patch("apps.vendite.services.contratti_service.check_limite_variazione_globale")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_create_contratto_applica_il_gate_l2(self, repo_cls, gate):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        payload = {
+            "billing_account_id": 10, "istanza_utility_id": 20, "utility_id": 3,
+            "valido_dal": "2026-01-01", "listino_id": 100,
+            "tipo_variazione_globale": "percentuale", "valore_variazione_globale": "-40",
+        }
+        gate.side_effect = ServiceError(code="E_VENDITE_VALIDATION", message="oltre soglia")
+        with self.assertRaises(ServiceError):
+            ContrattiService().create_contratto(payload, auth_user_id=7)
+        kwargs = gate.call_args.kwargs
+        self.assertEqual(
+            (kwargs["auth_user_id"], kwargs["tipo_variazione"], kwargs["ba_id"]),
+            (7, "PERCENTUALE", 10),
+        )
+        repo_cls.return_value.create_contratto_atomico.assert_not_called()
+
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_contratto_modalita_C_ok(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
@@ -1070,6 +1094,41 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_PRICING_SCONTO_ECCESSIVO")
         self.assertTrue(ctx.exception.retryable)
         repo.update_contratto.assert_not_called()
+
+    # Scopo: ⛔ il gate L2 scatta quando cambia UNO QUALUNQUE dei suoi ingressi
+    #        (valore, tipo, cliente), e misura i valori che il contratto AVRA':
+    #        spostare su un altro cliente un contratto a -20% lo rimisura.
+    #        Fino al 2026-10-21 guardava il solo valore.
+    @patch("apps.vendite.services.contratti_service.check_limite_variazione_globale")
+    def test_gate_l2_scatta_su_ogni_ingresso(self, gate):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        existing = {
+            "tipo_variazione_globale": "PERCENTUALE",
+            "valore_variazione_globale": Decimal("-20"),
+            "billing_account_id": 1,
+        }
+        svc = ContrattiService()
+        svc._check_limite_variazione_globale(
+            existing=existing, data={"billing_account_id": 2}, auth_user_id=42,
+        )
+        kwargs = gate.call_args.kwargs
+        self.assertEqual(kwargs["ba_id"], 2)
+        self.assertEqual(kwargs["valore_variazione"], Decimal("-20"))
+        self.assertEqual(kwargs["tipo_variazione"], "PERCENTUALE")
+
+        svc._check_limite_variazione_globale(
+            existing={**existing, "tipo_variazione_globale": "VALORE_FISSO"},
+            data={"tipo_variazione_globale": "PERCENTUALE"}, auth_user_id=42,
+        )
+        self.assertEqual(gate.call_args.kwargs["tipo_variazione"], "PERCENTUALE")
+        self.assertEqual(gate.call_args.kwargs["ba_id"], 1)
+
+        gate.reset_mock()
+        svc._check_limite_variazione_globale(
+            existing=existing, data={"note": "x"}, auth_user_id=42,
+        )
+        gate.assert_not_called()
 
     # Scopo: il listino sotto le righe lo giudica il DB, per contratto e
     #        offerta (`script.trgfn_doc_guard_listino_con_righe`,

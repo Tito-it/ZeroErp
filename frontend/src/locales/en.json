@@ -624,7 +624,8 @@
     "back_home": "Back to Home",
     "lookup_load_failed": "Could not load the list. Retry or contact the administrator.",
     "bersaglio_apri_senza_id": "Open {entita}",
-    "http_413_file_troppo_grande": "The file is too large: it exceeds the maximum size the server accepts. Use a smaller file."
+    "http_413_file_troppo_grande": "The file is too large: it exceeds the maximum size the server accepts. Use a smaller file.",
+    "soluzione_riprova_fra_poco": "Wait a few seconds and try again: the operation will not be performed twice."
   },
   "placeholder": {
     "wip_title": "Under construction",

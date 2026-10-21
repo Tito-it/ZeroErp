@@ -27,17 +27,16 @@ Indice test:
  4) test_ordine_cronologico_inverso                    — l'ultimo fatto in cima
  5) test_nessun_evento_e_nominato_nella_query          — vocabolario aperto
  6) test_jsonb_stringa_non_diventa_caratteri           — il ramo difensivo
- 7) test_limite_di_pagina_rifiutato                    — guard del service
- 8) test_offset_negativo_rifiutato                     — idem
+(La finestra `limit`/`offset` la valida la view con `pagina_da_query`, dal
+ 2026-10-21: i due guard del service sono ritirati e il 400 lo presidia
+ `test_commesse_api.test_finestra_fuori_limite_e_400`.)
 """
 
 import json
 import unittest
 from unittest.mock import patch
 
-from apps.core.services.service_errors import ServiceError
 from apps.vendite.db.commesse_repository import CommesseRepository
-from apps.vendite.services.commesse_service import fn_commessa_registro
 from apps.vendite.tests._helpers.mock_cursor import mock_cursor as _mock_cursor
 
 _RIGA = (
@@ -107,18 +106,3 @@ class RegistroCommessaScopeTests(unittest.TestCase):
             righe, _tot = CommesseRepository().list_registro_attivita(113)
         self.assertIsInstance(righe[0]["dettaglio"], dict)
         self.assertEqual(righe[0]["dettaglio"]["stato_precedente"], "EMESSA")
-
-
-class RegistroCommessaGuardTests(unittest.TestCase):
-
-    # Scopo: il tetto di pagina risponde 400 e DICE il limite.
-    def test_limite_di_pagina_rifiutato(self):
-        for cattivo in (0, 201, -5):
-            with self.subTest(limit=cattivo), self.assertRaises(ServiceError) as exc:
-                fn_commessa_registro(commessa_id=113, limit=cattivo)
-            self.assertEqual(exc.exception.code, "E_COMMESSA_VALIDATION")
-
-    # Scopo: offset negativo rifiutato.
-    def test_offset_negativo_rifiutato(self):
-        with self.assertRaises(ServiceError):
-            fn_commessa_registro(commessa_id=113, offset=-1)

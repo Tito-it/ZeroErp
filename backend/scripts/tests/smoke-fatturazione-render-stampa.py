@@ -198,15 +198,14 @@ def template_della_fattura(fid):
     # passi, la funzione DB e la rilettura della riga). Con lo standard nel
     # seed, una mancata risoluzione non e' «materia assente» ma un difetto: il
     # service solleva ServiceError col codice del DB, e lo smoke si ferma rosso.
-    # La versione e' quella che la risoluzione ha scelto (P-2), riletta per id
-    # come la rilegge la stampa.
+    # La versione e' quella che la risoluzione ha scelto (P-2): il service la
+    # restituisce gia' letta, come la usa la stampa.
     svc = DocumentGenerationService()
-    tpl, versione_id = svc._resolve_template(
+    tpl, ver = svc._resolve_template(
         None, scope=None, emittente_fiscale_id=ef_id,
         sorgente_tipo_id=sorgente_fattura_id,
         tipo_documento_output_id=None, template_documento_id=None,
     )
-    ver = svc._resolve_versione_pubblicata(tpl["id"], versione_id)
     return ef_id, tpl, ver
 
 

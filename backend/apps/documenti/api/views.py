@@ -82,8 +82,8 @@ class ApiTemplateList(DomainAPIView):
                 name="standard", type=bool, location=OpenApiParameter.QUERY, required=False,
                 description="Solo i modelli standard (true) o solo quelli delle aziende (false).",
             ),
-            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
         ],
@@ -140,7 +140,7 @@ class ApiTemplateList(DomainAPIView):
             },
         ),
         responses={
-            201: inline_serializer(
+            200: inline_serializer(
                 name="DocumentiTemplateCreateResponse",
                 fields={
                     "data": serializers.DictField(),
@@ -693,8 +693,8 @@ class ApiAssetList(DomainAPIView):
                     "false = solo gli altri; assente = tutti."
                 ),
             ),
-            OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
         ],
@@ -800,8 +800,18 @@ class ApiAssetList(DomainAPIView):
                     metadati[int_key] = int(metadati[int_key])
                 except (TypeError, ValueError):
                     pass  # lascia stringa: il service rifiutera' con messaggio parlante
+        # ⭐ Il flag del multipart dal BB unico dei booleani del trasporto
+        #    (`qp_bool_optional`, decisione A6 di Tid, brief-be-verifica-
+        #    documentazione-api): solo `true`/`false`, ogni altro valore e' un
+        #    400 col campo. ⛔ Fino al 2026-10-21 un valore fuori vocabolario
+        #    valeva `false` in silenzio (e anche `""`: l'asset nasceva spento).
+        #    Vuoto = assente: decide il default del service.
         if "attivo" in metadati and isinstance(metadati["attivo"], str):
-            metadati["attivo"] = metadati["attivo"].strip().lower() in ("1", "true", "yes", "on")
+            attivo = qp_bool_optional(metadati["attivo"], "attivo")
+            if attivo is None:
+                del metadati["attivo"]
+            else:
+                metadati["attivo"] = attivo
         return metadati
 
 

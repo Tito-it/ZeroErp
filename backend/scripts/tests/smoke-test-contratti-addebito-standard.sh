@@ -104,7 +104,7 @@ if [[ -z "$BA_ID" || -z "$ISTANZA_ID" ]]; then
     log_info "lookup BA vuoto/scope; provo a riusare un documento esistente (preventivi/ordini/contratti)"
     for SRC in preventivi ordini contratti; do
         PAIR=$(curl -s -H "Authorization: Bearer $TOKEN" \
-            "${BASE_URL}/api/v1/vendite/${SRC}/?page_size=20" 2>/dev/null | python3 -c "
+            "${BASE_URL}/api/v1/vendite/${SRC}/?limit=20" 2>/dev/null | python3 -c "
 import sys, json
 try:
     rows = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -133,7 +133,7 @@ fi
 log_info "billing_account_id=$BA_ID utility_id=$UTILITY_ID istanza_utility_id=$ISTANZA_ID"
 
 ARTICOLO_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?page_size=1" 2>/dev/null | python3 -c "
+    "${BASE_URL}/api/v1/catalogo/articoli/?limit=1" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -246,7 +246,7 @@ trova_attivita() {
     local uid="$1"; shift
     for cid in "$@"; do
         [[ -z "$cid" || "$cid" == "None" ]] && continue
-        do_curl GET "/api/v1/vendite/commesse/${cid}/attivita/?page_size=200"
+        do_curl GET "/api/v1/vendite/commesse/${cid}/attivita/?limit=200"
         local found
         found=$(echo "$LAST_BODY" | python3 -c "
 import sys, json
@@ -328,7 +328,7 @@ except Exception: pass
     echo ""; echo "-- 8. Re-push CONTRATTO (attesa: nessun doppione, upsert segment_key) --"
     if [[ -n "$COMMESSA_ID" ]]; then
         # conteggio attività col nostro segment_key PRIMA
-        do_curl GET "/api/v1/vendite/commesse/${COMMESSA_ID}/attivita/?page_size=200"
+        do_curl GET "/api/v1/vendite/commesse/${COMMESSA_ID}/attivita/?limit=200"
         N_PRE=$(echo "$LAST_BODY" | python3 -c "
 import sys, json
 sk='$SEG'
@@ -339,7 +339,7 @@ except Exception: print(0)
         do_curl POST "/api/v1/vendite/commesse/push/run/" \
             '{"source_types": ["CONTRATTO"]}' "Idempotency-Key: smoke-contr-repush-$(date +%s%N)"
         check "POST re-push CONTRATTO" 200 || true
-        do_curl GET "/api/v1/vendite/commesse/${COMMESSA_ID}/attivita/?page_size=200"
+        do_curl GET "/api/v1/vendite/commesse/${COMMESSA_ID}/attivita/?limit=200"
         N_POST=$(echo "$LAST_BODY" | python3 -c "
 import sys, json
 sk='$SEG'

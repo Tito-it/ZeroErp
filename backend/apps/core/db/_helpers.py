@@ -690,6 +690,40 @@ def e_chiave_data(chiave: str) -> bool:
     return bool(_CHIAVE_DATA.match(chiave))
 
 
+def colonna_ordinamento(order_by: str | None, colonne: Mapping[str, str]) -> str | None:
+    """La COLONNA di una lista per la chiave `order_by` chiesta dal client.
+
+    - assente (None, vuota, soli spazi) → `None`: l'ordine lo decide il
+      default di chi ordina;
+    - chiave della whitelist → la sua espressione SQL;
+    - ogni altro valore → `ValueError("order_by_invalid")`, cioe' il 400
+      `E_VALIDATION_INPUT` di `ApiExceptionMiddleware` (lo stesso di
+      `order_dir_invalid`).
+
+    ⛔ **Un `order_by` indicato e fuori whitelist e' un 400 in ogni lista**
+    (decisione Tid 2026-10-20, brief-be-verifica-documentazione-api §A1). Fino a
+    quel giorno meta' delle liste ripiegava in silenzio sul default — la lista
+    rispondeva 200 ordinata in un altro modo, e nessuno lo vedeva — e l'altra
+    meta' rispondeva 400 (o 500, col flag `rifiuta_fuori_whitelist`). E' la
+    stessa regola dei filtri a vocabolario e della direzione.
+
+    ⭐ Sede UNICA della risoluzione «chiave → colonna» (regola del 2): la
+    usano `sql_order_clause`, `sql_order_direction_lista` e i repository che
+    compongono l'`ORDER BY` a mano, dove il ripiego era scritto come
+    `COLS.get(order_by, default)` una ventina di volte.
+
+    ⚠️ Il default dichiarato dalla view (`parse_list_params(default_order=…)`)
+    arriva qui come se il client l'avesse chiesto: dev'essere una chiave della
+    whitelist, oppure `""` per lasciare il default al repository.
+    """
+    chiave = (order_by or "").strip()
+    if not chiave:
+        return None
+    if chiave not in colonne:
+        raise ValueError("order_by_invalid")
+    return colonne[chiave]
+
+
 def sql_order_direction_lista(
     order_by: str | None,
     order_dir: str | None,
@@ -707,18 +741,16 @@ def sql_order_direction_lista(
 
     Senza `order_dir`, il verso si decide cosi':
 
-    - `order_by` assente o fuori `colonne` → `default_desc` (il ramo di
-      default della lista);
+    - `order_by` assente → `default_desc` (il ramo di default della lista);
     - `order_by` che nomina la colonna di DEFAULT (per espressione o per
       chiave) → `default_desc`: la scelta della lista, che per una coda puo'
       essere crescente apposta;
     - ogni altra colonna → DESC se e' una data (`colonne_desc`, o per NOME con
       `e_chiave_data`), altrimenti ASC.
 
-    ⛔ **L'inferenza guarda solo una chiave DENTRO la whitelist.** Una chiave
-    fuori `colonne` ripiega sulla colonna di default, e la direzione deve
-    essere quella del default, non quella del nome chiesto: `?order_by=data_x`
-    su una lista che ripiega su un codice partiva DESC.
+    ⛔ **Una chiave fuori `colonne` e' `ValueError` (400)**, da
+    `colonna_ordinamento`: dal 2026-10-20 nessuna lista ripiega in silenzio sul
+    default (decisione Tid, brief-be-verifica-documentazione-api §A1).
 
     ⭐ **Regola del 2 (ok Tid 2026-10-20).** La riga
     `sql_order_direction(order_dir, default_desc=e_chiave_data(order_by))` era
@@ -727,9 +759,11 @@ def sql_order_direction_lista(
     guardavano la chiave chiesta e non la colonna risolta, e ignoravano la
     precedenza del default. `sql_order_clause` ora passa di qui.
     """
-    if not order_by or order_by not in colonne:
+    colonna = colonna_ordinamento(order_by, colonne)
+    if colonna is None:
         return sql_order_direction(order_dir, default_desc=default_desc)
-    colonna = colonne[order_by]
+    assert order_by is not None
+    order_by = order_by.strip()
     # Il default si riconosce dall'espressione O dalla chiave: un `default`
     # scritto come chiave (`"data_scadenza"`) con una colonna qualificata
     # (`"v.data_scadenza"`) perderebbe in silenzio il verso della coda.
@@ -750,7 +784,6 @@ def sql_order_clause(
     default_clause: str | None = None,
     default_desc: bool = False,
     colonne_desc: Collection[str] = (),
-    rifiuta_fuori_whitelist: bool = False,
 ) -> str:
     """Il corpo di un `ORDER BY` di lista: colonna, direzione e spareggio.
 
@@ -809,31 +842,15 @@ def sql_order_clause(
     sbaglia il risultato, ma e' una clausola che dice due volte la stessa cosa
     e nasconde alla lettura qual e' l'ordinamento vero.
 
-    ⛔ **`rifiuta_fuori_whitelist=True`: un valore INDICATO e sbagliato e'
-    `RuntimeError`, non il default** (estensione 2026-09-26, regola del 2 — il
-    blocco «whitelist + raise + direzione» era ricopiato in coda lavori e coda
-    stampa, e scritto a mano in listini). Per i repository il cui service ha
-    GIA' validato `order_by`/`order_dir`: li' un valore fuori lista e' un
-    errore di programmazione, e ripiegare sul default lo nasconderebbe dietro
-    una lista ordinata in un altro modo. Un `order_by` NON indicato (None o
-    vuoto) prende ancora il default. Default False: i consumatori storici
-    ripiegano sul default come prima. ⚠️ `RuntimeError` (500 col traceback),
-    non `ValueError` (400 senza stack): vedi `sql_tiebreak_direction`. Verificato
-    il 2026-09-26 che ogni consumatore del flag valida la colonna a monte con
-    lo stesso insieme della mappa: il 500 non puo' nascere da un input.
-
-    ⭐ **Dal 2026-09-26 il parametro riguarda la sola COLONNA.** La direzione
-    la rifiuta sempre `sql_order_direction`, su qualunque ramo e con qualunque
-    valore del flag: una direzione estranea non ha un «ripiego» legittimo.
-    La colonna invece si': un `order_by` fuori whitelist che prende il default
-    e' il contratto di molte liste i cui service non validano la colonna
-    (`parse_list_params` ha un suo `default_order`, che non e' detto stia
-    nella whitelist del repository), e renderlo errore ovunque cambierebbe
-    quel contratto. Il flag resta quindi
-    la scelta PER LISTA fra «ripiega» e «rifiuta» sulla colonna.
+    ⛔ **Un `order_by` INDICATO e fuori whitelist e' un 400, in ogni lista**
+    (`colonna_ordinamento`, decisione Tid 2026-10-20, brief-be-verifica-
+    documentazione-api §A1). Fino a quel giorno il flag
+    `rifiuta_fuori_whitelist` sceglieva per lista fra «ripiega sul default» e
+    «rifiuta» (con un 500): il ripiego era il contratto di molte liste, che
+    rispondevano 200 ordinate in un altro modo da quello chiesto. Il flag e'
+    ritirato con la scelta. Un `order_by` NON indicato (None o vuoto) prende
+    il default, come sempre; la direzione la rifiuta `sql_order_direction`.
     """
-    if rifiuta_fuori_whitelist and order_by and order_by not in colonne:
-        raise RuntimeError(f"order_by non in whitelist: {order_by!r}")
     if (default is None) == (default_clause is None):
         raise RuntimeError(
             "sql_order_clause: si passa `default` (una colonna) OPPURE "
@@ -845,7 +862,8 @@ def sql_order_clause(
         order_by, order_dir, colonne=colonne, default=default,
         default_desc=default_desc, colonne_desc=colonne_desc,
     )
-    if not order_by or order_by not in colonne:
+    risolta = colonna_ordinamento(order_by, colonne)
+    if risolta is None:
         # ⚠️ La clausola completa NON prende direzione: ce l'ha gia' dentro, e
         #    aggiungerne una produrrebbe `DESC DESC`.
         if default_clause is not None:
@@ -855,7 +873,7 @@ def sql_order_clause(
         assert default is not None
         colonna = default
     else:
-        colonna = colonne[order_by]
+        colonna = risolta
     # ⚠️ Confronto sul TESTO dell'espressione, che e' l'unica cosa che abbiamo:
     #    e' esatto sul caso che conta (il default che vale gia' il tiebreak) e
     #    al massimo scrive uno spareggio in piu' su una colonna che il tiebreak

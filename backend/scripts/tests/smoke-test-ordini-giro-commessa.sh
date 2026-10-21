@@ -128,7 +128,7 @@ smoke_cliente_dal_lookup   # BB _smoke_cliente.sh: BA_ID, UTILITY_ID, ISTANZA_ID
 if [[ -z "$BA_ID" || -z "$UTILITY_ID" ]]; then
     log_info "lookup BA vuoto/scope; provo a riusare un ordine esistente"
     PAIR=$(curl -s -H "Authorization: Bearer $TOKEN" \
-        "${BASE_URL}/api/v1/vendite/ordini/?page_size=1" 2>/dev/null | python3 -c "
+        "${BASE_URL}/api/v1/vendite/ordini/?limit=1" 2>/dev/null | python3 -c "
 import sys, json
 try:
     r = json.load(sys.stdin).get('data',{}).get('results',[])
@@ -163,7 +163,7 @@ echo ""; echo "-- 2. Crea ordine BOZZA (fatturazione_trigger=CONFERMATO) --"
 EMITTENTE_JSON=""
 [[ -n "${EMITTENTE_ID:-}" ]] && EMITTENTE_JSON=", \"emittente_fiscale_id\": ${EMITTENTE_ID}"
 do_curl POST "/api/v1/vendite/ordini/" \
-    "{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID}${EMITTENTE_JSON}, \"fatturazione_trigger\": \"CONFERMATO\"}"
+    "{\"billing_account_id\": ${BA_ID}${EMITTENTE_JSON}, \"fatturazione_trigger\": \"CONFERMATO\"}"
 if ! check "POST crea ordine" 200 "data.id"; then
     echo -e "${RED}Setup fallito: impossibile creare ordine. Stop.${NC}"; exit 1
 fi
@@ -183,7 +183,7 @@ STATO=$(json_get "$LAST_BODY" "data.stato_codice_interno")
 # --- 3. Riga merce ---
 echo ""; echo "-- 3. Aggiungi riga merce --"
 do_curl POST "/api/v1/vendite/ordini/${ORDINE_ID}/righe/" \
-    "{\"articolo_id\": \"$ARTICOLO_ID\", \"descrizione\": \"Riga merce smoke giro commessa\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"80.00\", \"iva_id\": 16}"
+    "{\"articolo_id\": \"$ARTICOLO_ID\", \"descrizione\": \"Riga merce smoke giro commessa\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"80.00\"}"
 check "POST aggiungi riga" 200 "data.riga_id" || true
 RIGA_ID="$EXTRACTED"; log_info "riga_id = $RIGA_ID"
 

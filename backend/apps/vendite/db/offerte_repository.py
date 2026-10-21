@@ -449,13 +449,13 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         #    DESC anche ordinando ASC. Ora: direzione estranea = `ValueError`,
         #    NULL come valore minimo, spareggio allineato al verso. Il service
         #    ha gia' validato colonna e direzione col codice di dominio
-        #    (`validate_order_by`), quindi un `order_by` fuori whitelist qui e'
-        #    un errore di programmazione: `rifiuta_fuori_whitelist`.
+        #    (`validate_order_by`); il BB rifiuta comunque un `order_by` fuori
+        #    whitelist (`colonna_ordinamento`).
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=_ORDER_COLS_OFFERTE, default="v.data_insert",
             default_desc=True, colonne_desc=_ORDER_COLS_OFFERTE_DATA,
-            tiebreak="v.id", rifiuta_fuori_whitelist=True,
+            tiebreak="v.id",
         )
         where_clause, params = self._build_offerte_filters(
             billing_account_id=billing_account_id,

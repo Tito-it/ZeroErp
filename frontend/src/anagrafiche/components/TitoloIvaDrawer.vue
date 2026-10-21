@@ -27,8 +27,7 @@ import { labelOrCode } from '../../core/utils/i18nLabel'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
-import { useGlobalLookup, invalidateLookup } from '../../core/composables/useGlobalLookup'
-import { lookupCodici } from '../../core/apiCore'
+import { invalidateLookup } from '../../core/composables/useGlobalLookup'
 import {
   getSoggettoTitoloIva,
   createSoggettoTitoloIva,
@@ -63,6 +62,7 @@ import Button from 'primevue/button'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
+import { useLookupCodici } from '../../core/composables/useLookupCodici'
 
 const { t, te } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
@@ -120,11 +120,7 @@ const livelloOptions = computed(() => [
 // 📌 La colonna e' esposta dal lookup perche' `config.tipi_titolo_iva` e' stata
 //   registrata fra le lookup SPECIALIZZATE lato BE: e' il meccanismo che esiste
 //   apposta per «il contratto generico piu' UNA colonna».
-const { items: tipiTitolo } = useGlobalLookup(
-  'config.tipi_titolo_iva',
-  () => lookupCodici('config.tipi_titolo_iva'),
-  { immediate: true },
-)
+const { items: tipiTitolo } = useLookupCodici('config.tipi_titolo_iva', { immediate: true })
 // ⭐ Le OPZIONI del tipo sono quelle che la natura del soggetto ammette (parte
 //   D di brief-db-dati-fiscali-e-societari-del-soggetto): un privato vede la
 //   sola agevolazione 104, una societa' l'intento e l'uso industriale. E' una

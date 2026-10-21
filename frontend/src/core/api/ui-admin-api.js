@@ -32,14 +32,12 @@ export function listAdminPresetByLista(listaId) {
   return api.get(`${BASE}/liste/${encodeURIComponent(listaId)}/preset/`)
 }
 
-// Scopo: Crea preset (testata). Idempotency-Key obbligatoria, generata
-//        dal caller via core/utils/idempotency.generateIdempotencyKey()
-//        (wrapper su crypto.randomUUID con fallback per non-secure context).
-export function createAdminPreset(listaId, payload, idempotencyKey) {
+// Scopo: Crea preset (testata). Idempotency-Key obbligatoria:
+//        l'`Idempotency-Key` la mette l'interceptor di `core/api.js` (§A5, 2026-10-20).
+export function createAdminPreset(listaId, payload) {
   return api.post(
     `${BASE}/liste/${encodeURIComponent(listaId)}/preset/`,
     payload,
-    { headers: { 'Idempotency-Key': idempotencyKey } },
   )
 }
 
@@ -75,11 +73,10 @@ export function listAdminPermessiByLista(listaId) {
 
 // Scopo: UPSERT permesso colonna su (colonna_id, profilo_accesso_id).
 //        Idempotency-Key obbligatoria.
-export function upsertAdminPermesso(payload, idempotencyKey) {
+export function upsertAdminPermesso(payload) {
   return api.post(
     `${BASE}/permessi/`,
     payload,
-    { headers: { 'Idempotency-Key': idempotencyKey } },
   )
 }
 
@@ -102,11 +99,10 @@ export function listAdminDefinizioniAdmin() {
 
 // Scopo: Crea una nuova definizione lista. Idempotency-Key obbligatoria
 //        (UNIQUE codice mappato lato service).
-export function createAdminDefinizione(payload, idempotencyKey) {
+export function createAdminDefinizione(payload) {
   return api.post(
     `${BASE}/definizioni/`,
     payload,
-    { headers: { 'Idempotency-Key': idempotencyKey } },
   )
 }
 
@@ -143,11 +139,10 @@ export function listAdminColonneAdmin(listaId) {
 }
 
 // Scopo: Crea colonna nella lista indicata. Idempotency-Key obbligatoria.
-export function createAdminColonna(listaId, payload, idempotencyKey) {
+export function createAdminColonna(listaId, payload) {
   return api.post(
     `${BASE}/definizioni/${encodeURIComponent(listaId)}/colonne/`,
     payload,
-    { headers: { 'Idempotency-Key': idempotencyKey } },
   )
 }
 

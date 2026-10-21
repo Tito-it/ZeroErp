@@ -54,7 +54,7 @@ class ListaUsageRepositoryTests(TestCase):
         self.assertEqual(opzioni["fallback_params"], [7, "EF"])
         self.assertEqual(opzioni["offset"], 50)
 
-    def test_order_by_fuori_whitelist_prende_il_default(self) -> None:
-        sql, _, _ = self._esegui(order_by="1; DROP TABLE x")
-        self.assertIn("ORDER BY s_ef.ragione_sociale_completa ASC", sql)
-        self.assertNotIn("DROP", sql)
+    # ⛔ Fuori whitelist: 400 (`order_by_invalid`), dal 2026-10-20 (brief-be-verifica-documentazione-api §A1).
+    def test_order_by_fuori_whitelist_e_rifiutato(self) -> None:
+        with self.assertRaisesRegex(ValueError, "order_by_invalid"):
+            self._esegui(order_by="1; DROP TABLE x")

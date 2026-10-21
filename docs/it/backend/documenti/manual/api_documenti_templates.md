@@ -96,7 +96,8 @@ stata verificata alla stampa. Brief:
     `data_insert`/`data_update` che partono `desc` (dal 2026-10-20)
 
   ⚠️ Dal 2026-09-27 la paginazione è `limit`/`offset` con default 25: `page` e
-  `page_size` in query non sono letti (prima `page_size` valeva 50). Lo schema
+  `page_size` in query sono un 400 `E_VALIDATION_INPUT` (dal 2026-10-20; prima
+  non erano letti, e prima ancora `page_size` valeva 50). Lo schema
   OpenAPI della view dichiara ancora `page`/`page_size`.
 
 #### Output

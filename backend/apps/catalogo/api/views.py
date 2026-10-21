@@ -63,7 +63,6 @@ from apps.core.api.payload_validators import (
     optional_uuid,
     paginated_envelope,
     parse_list_params,
-    qp_bool,
     qp_bool_optional,
     qp_int_optional,
     qp_int_strict,
@@ -649,8 +648,8 @@ class ApiComponenteNoteList(DomainAPIView):
     )
     # Scopo: Lista le note di un componente articolo.
     def get(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        del request, articolo_id
-        return success_response(fn_list_note_componente(comp_id))
+        del request
+        return success_response(fn_list_note_componente(articolo_id, comp_id))
 
     @extend_schema(
         request=_NOTA_CREATE_REQUEST,
@@ -661,8 +660,9 @@ class ApiComponenteNoteList(DomainAPIView):
     )
     # Scopo: Crea una nota per un componente articolo.
     def post(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        del articolo_id
-        return handle_post_json(request, handler=lambda payload: fn_create_nota_componente(comp_id, payload))
+        return handle_post_json(
+            request, handler=lambda payload: fn_create_nota_componente(articolo_id, comp_id, payload),
+        )
 
 
 # I filtri della ricerca LIBERA (consultazioni): con `documento` non si
@@ -791,12 +791,12 @@ class ApiArticoliLookup(DomainAPIView):
 
         data = fn_lookup_articoli(
             search=search,
-            attivo=qp_bool(qp.get("attivo"), True),
+            attivo=qp_bool_optional(qp.get("attivo"), "attivo", default=True),
             is_composito=qp_bool_optional(qp.get("is_composito"), "is_composito"),
             gestito_a_magazzino=qp_bool_optional(qp.get("gestito_a_magazzino"), "gestito_a_magazzino"),
             # Gli articoli-onere sono pochi (uno per causale) e si presentano
             # come tendina, non come autocomplete: il filtro vive senza `search`.
-            solo_oneri=qp_bool(qp.get("solo_oneri"), False),
+            solo_oneri=qp_bool_optional(qp.get("solo_oneri"), "solo_oneri", default=False),
             limit=limit,
         )
         return success_response(data)

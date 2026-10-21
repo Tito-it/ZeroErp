@@ -74,7 +74,7 @@ Tutte le risposte usano l'envelope standard:
 | `order_by` | string | No | `codice`, `descrizione` (default), `uom_codice`, `attivo`, `data_insert`, `data_update` |
 | `order_dir` | string | No | `asc` oppure `desc`. Assente: `asc`, salvo le colonne data (`data_insert`, `data_update`) che partono `desc` |
 
-⚠️ La paginazione è `limit`/`offset`: `page`/`page_size` in query non sono letti. In risposta `page` e `page_size` sono calcolati da `limit`/`offset`.
+⚠️ La paginazione è `limit`/`offset`: `page`/`page_size` in query sono un 400 `E_VALIDATION_INPUT` (dal 2026-10-20; prima erano ignorati). In risposta `page` e `page_size` sono calcolati da `limit`/`offset`.
 
 #### Risposta (200)
 
@@ -766,6 +766,12 @@ Stesse note del §5, ancorate pero' alla **riga di distinta** invece che
 all'articolo: il `comp_id` in URL fa da `target_riga_id`, che quindi **non** va
 messo nel body. Il resto del contratto — campi, stile, visibilita' — e' quello
 del §5.2.
+
+⛔ Il componente dev'essere **dell'articolo dell'URL**: articolo inesistente →
+404 `E_CATALOGO_ARTICOLO_NOT_FOUND`; componente inesistente o di un altro articolo
+→ 404 `E_CATALOGO_COMPONENTE_NOT_FOUND`, prima di leggere o scrivere le note (dal
+2026-10-21: prima `articolo_id` era ignorato, e le note di un componente altrui si
+leggevano e si scrivevano dall'URL di questo).
 
 
 ## 6. Conversioni UoM

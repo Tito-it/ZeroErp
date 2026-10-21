@@ -11,9 +11,9 @@
 #        `build_export_response`.
 #
 #        ⚠️ La modalita' export si chiede con `max_rows`, NON con un
-#        `page_size` gigante: il tetto di `MAX_LIMIT` righe PER PAGINA e' un guard di
+#        `limit` gigante: il tetto di `MAX_LIMIT` righe PER PAGINA e' un guard di
 #        interfaccia condiviso da tutte le liste del progetto
-#        (`validate_pagination`), e chiedere 10.001 righe di pagina lo viola —
+#        (`pagina_da_query`), e chiedere 10.001 righe di pagina lo viola —
 #        difetto misurato al primo download reale (2026-08-15). Con `max_rows`
 #        la paginazione e' saltata e il perimetro esce intero; il tetto che
 #        vale per l'export e' un altro, `EXPORT_MAX_ROWS`, presidiato dal

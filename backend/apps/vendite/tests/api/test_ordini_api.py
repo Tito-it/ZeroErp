@@ -27,7 +27,8 @@ Indice test eseguiti:
 from unittest.mock import ANY, Mock, patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
@@ -51,7 +52,7 @@ class TestOrdiniApi(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     def test_list_richiede_jwt(self) -> None:
         resp = self.client.get(_BASE)
@@ -188,7 +189,7 @@ class TestOrdineEmissione(JwtMockedApiTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = Client()
+        self.client = ClientApi()
 
     # Scopo: smoke test route emissione (multipart). Verifica che la route
     # `emetti/` sia registrata e accetti un payload multipart vuoto.

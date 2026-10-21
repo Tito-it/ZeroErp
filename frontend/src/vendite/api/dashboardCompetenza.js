@@ -9,7 +9,7 @@ export function getDashboardCompetenza(anno) {
   return api.get('/vendite/dashboard-competenza/', { params: { anno } })
 }
 
-// GET /vendite/dashboard-competenza/attivita/?competenza_mese=&stadio=&solo_ritardo=&order_by=&order_dir=&page=&page_size=
+// GET /vendite/dashboard-competenza/attivita/?competenza_mese=&stadio=&solo_ritardo=&order_by=&order_dir=&limit=&offset=
 // Drill-down paginato delle attivita' del mese (filtro stadio/ritardo opzionale);
 // ordinamento server-side (order_by/order_dir, whitelist BE), default
 // "data attivita'" DESC.
@@ -17,7 +17,7 @@ export function listDashboardCompetenzaAttivita(params = {}) {
   return api.get('/vendite/dashboard-competenza/attivita/', { params })
 }
 
-// GET /vendite/dashboard-competenza/commesse/?competenza_mese=&stadio=&solo_ritardo=&order_by=&order_dir=&page=&page_size=
+// GET /vendite/dashboard-competenza/commesse/?competenza_mese=&stadio=&solo_ritardo=&order_by=&order_dir=&limit=&offset=
 // Drill-down AGGREGATO per commessa (DEC-4): una riga per commessa nel perimetro
 // (mese + stadio), con n attivita', totali valore/fatturato ed estremi data. Il
 // dettaglio a grana attivita' resta nel drawer di gestione. Ordinamento
@@ -26,7 +26,7 @@ export function listDashboardCompetenzaCommesse(params = {}) {
   return api.get('/vendite/dashboard-competenza/commesse/', { params })
 }
 
-// GET /vendite/dashboard-competenza/gruppi/?competenza_mese=&stadio=&order_by=&order_dir=&page=&page_size=
+// GET /vendite/dashboard-competenza/gruppi/?competenza_mese=&stadio=&order_by=&order_dir=&limit=&offset=
 // Elenco dei GRUPPI FATTURABILI: l'unita' su cui l'operatore decide nella card
 // «Da emettere» — un documento sorgente (PRV-0012, CTR-0007…) oppure gli oneri
 // di una commessa, che documento non hanno e senza questa lista resterebbero
@@ -40,7 +40,7 @@ export function listDashboardCompetenzaGruppi(params = {}) {
   return api.get('/vendite/dashboard-competenza/gruppi/', { params })
 }
 
-// GET /vendite/dashboard-competenza/residui/?competenza_mese=&order_by=&order_dir=&page=&page_size=
+// GET /vendite/dashboard-competenza/residui/?competenza_mese=&order_by=&order_dir=&limit=&offset=
 // I RESIDUI del mese: le attivita' che una fattura non ce l'hanno piu' e che
 // nessun giro riprendera' da solo. E' l'elenco su cui agisce «Riporta da
 // emettere», ed e' una lista SUA e non un filtro di `attivita/`.
@@ -51,7 +51,7 @@ export function listDashboardCompetenzaResidui(params = {}) {
   return api.get('/vendite/dashboard-competenza/residui/', { params })
 }
 
-// GET /vendite/dashboard-competenza/errori/?competenza_mese=&page=&page_size=
+// GET /vendite/dashboard-competenza/errori/?competenza_mese=&limit=&offset=
 // Errori vivi fatturazione (task run in ERRORE + fatture critical), blocco 4.
 export function listDashboardCompetenzaErrori(params = {}) {
   return api.get('/vendite/dashboard-competenza/errori/', { params })

@@ -10,14 +10,14 @@ Indice test eseguiti:
 1)  VenditeLottoFattureListApiTests.test_list_fatture_ok
 2)  VenditeLottoFattureListApiTests.test_list_fatture_v1_requires_jwt
 3)  VenditeLottoFattureListApiTests.test_list_fatture_filtro_stato_esecuzione
-4)  VenditeLottoFattureListApiTests.test_list_fatture_sort_by_nominativo
-5)  VenditeLottoFattureListApiTests.test_list_fatture_sort_by_totale_doc
-6)  VenditeLottoFattureListApiTests.test_list_fatture_sort_dir_desc
+4)  VenditeLottoFattureListApiTests.test_list_fatture_order_by_ragione_sociale
+5)  VenditeLottoFattureListApiTests.test_list_fatture_order_by_totale_doc
+6)  VenditeLottoFattureListApiTests.test_list_fatture_order_dir_desc
 7)  VenditeLottoFattureListApiTests.test_list_fatture_paginazione_parametri
 8)  VenditeLottoFattureListApiTests.test_list_fatture_page_size_invalido
 9)  VenditeLottoFattureListApiTests.test_list_fatture_page_invalida
-12) VenditeLottoFattureListApiTests.test_list_fatture_sort_by_invalido
-13) VenditeLottoFattureListApiTests.test_list_fatture_sort_dir_invalido
+12) VenditeLottoFattureListApiTests.test_list_fatture_order_by_invalido
+13) VenditeLottoFattureListApiTests.test_list_fatture_order_dir_invalido
 14) VenditeLottoFattureListApiTests.test_list_fatture_senza_filtri_lista_vuota_ok
 15) VenditeLottoFattureListApiTests.test_list_fatture_scope_emittente_non_superuser
 16) VenditeLottoFattureListApiTests.test_list_fatture_scope_emittente_superuser
@@ -96,42 +96,42 @@ class VenditeLottoFattureListApiTests(JwtMockedApiTest):
         mocked_list.assert_called_once()
         self.assertEqual(mocked_list.call_args.kwargs["stato_esecuzione"], "ERRORE")
 
-    # Scopo: Verifica sort_by=nominativo passato correttamente.
+    # Scopo: Verifica order_by (una colonna della whitelist) passato correttamente.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.fn_list_lotto_fatture")
-    def test_list_fatture_sort_by_nominativo(self, mocked_list, _mock_auth):
+    def test_list_fatture_order_by_ragione_sociale(self, mocked_list, _mock_auth):
         mocked_list.return_value = _LIST_RESPONSE
-        self.client.get(self.url, {"sort_by": "nominativo"})
+        self.client.get(self.url, {"order_by": "ragione_sociale_completa"})
         mocked_list.assert_called_once()
-        self.assertEqual(mocked_list.call_args.kwargs["sort_by"], "nominativo")
+        self.assertEqual(mocked_list.call_args.kwargs["order_by"], "ragione_sociale_completa")
 
-    # Scopo: Verifica sort_by=totale_doc passato correttamente.
+    # Scopo: Verifica order_by=totale_doc passato correttamente.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.fn_list_lotto_fatture")
-    def test_list_fatture_sort_by_totale_doc(self, mocked_list, _mock_auth):
+    def test_list_fatture_order_by_totale_doc(self, mocked_list, _mock_auth):
         mocked_list.return_value = _LIST_RESPONSE
-        self.client.get(self.url, {"sort_by": "totale_doc"})
+        self.client.get(self.url, {"order_by": "totale_doc"})
         mocked_list.assert_called_once()
-        self.assertEqual(mocked_list.call_args.kwargs["sort_by"], "totale_doc")
+        self.assertEqual(mocked_list.call_args.kwargs["order_by"], "totale_doc")
 
-    # Scopo: Verifica sort_dir=desc passato correttamente.
+    # Scopo: Verifica order_dir=desc passato correttamente.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.fn_list_lotto_fatture")
-    def test_list_fatture_sort_dir_desc(self, mocked_list, _mock_auth):
+    def test_list_fatture_order_dir_desc(self, mocked_list, _mock_auth):
         mocked_list.return_value = _LIST_RESPONSE
-        self.client.get(self.url, {"sort_dir": "desc"})
+        self.client.get(self.url, {"order_dir": "desc"})
         mocked_list.assert_called_once()
-        self.assertEqual(mocked_list.call_args.kwargs["sort_dir"], "desc")
+        self.assertEqual(mocked_list.call_args.kwargs["order_dir"], "desc")
 
     # Scopo: Verifica parametri paginazione passati correttamente.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
     @patch("apps.vendite.api.views.fn_list_lotto_fatture")
     def test_list_fatture_paginazione_parametri(self, mocked_list, _mock_auth):
         mocked_list.return_value = _LIST_RESPONSE
-        self.client.get(self.url, {"page": "3", "page_size": "25"})
+        self.client.get(self.url, {"limit": "25", "offset": "50"})
         mocked_list.assert_called_once()
-        self.assertEqual(mocked_list.call_args.kwargs["page"], 3)
-        self.assertEqual(mocked_list.call_args.kwargs["page_size"], 25)
+        self.assertEqual(mocked_list.call_args.kwargs["limit"], 25)
+        self.assertEqual(mocked_list.call_args.kwargs["offset"], 50)
 
     # Scopo: Verifica che page_size non valido restituisca 400.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
@@ -145,16 +145,16 @@ class VenditeLottoFattureListApiTests(JwtMockedApiTest):
         response = self.client.get(self.url, {"page": "0"})
         self.assertEqual(response.status_code, 400)
 
-    # Scopo: Verifica che sort_by non valido restituisca 400.
+    # Scopo: Verifica che order_by non valido restituisca 400.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_list_fatture_sort_by_invalido(self, _mock_auth):
-        response = self.client.get(self.url, {"sort_by": "colonna_inesistente"})
+    def test_list_fatture_order_by_invalido(self, _mock_auth):
+        response = self.client.get(self.url, {"order_by": "colonna_inesistente"})
         self.assertEqual(response.status_code, 400)
 
-    # Scopo: Verifica che sort_dir non valido restituisca 400.
+    # Scopo: Verifica che order_dir non valido restituisca 400.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
-    def test_list_fatture_sort_dir_invalido(self, _mock_auth):
-        response = self.client.get(self.url, {"sort_dir": "sideways"})
+    def test_list_fatture_order_dir_invalido(self, _mock_auth):
+        response = self.client.get(self.url, {"order_dir": "sideways"})
         self.assertEqual(response.status_code, 400)
 
     # Scopo: Verifica che senza filtri opzionali il service riceva None per i filtri.
@@ -175,10 +175,12 @@ class VenditeLottoFattureListApiTests(JwtMockedApiTest):
         self.assertIsNone(kwargs["stato_esecuzione"])
         self.assertNotIn("esclusa", kwargs)
         self.assertEqual(kwargs["lotto_id"], _LOTTO_ID)
-        self.assertEqual(kwargs["sort_by"], "fattura_id")
+        # Assente resta assente: la colonna di default la mette il repository
+        # (`fattura_id`), come in ogni lista (dal 2026-10-20).
+        self.assertIsNone(kwargs["order_by"])
         # La direzione assente resta assente: il verso lo decide il BB della
         # lista (date DESC), non un `"asc"` scritto nella view (2026-10-20, §6.1).
-        self.assertIsNone(kwargs["sort_dir"])
+        self.assertIsNone(kwargs["order_dir"])
 
     # Scopo: Utente non superuser passa auth_user_id al service.
     @patch("apps.core.api.permissions.ZeroERPPermission.has_permission", return_value=True)

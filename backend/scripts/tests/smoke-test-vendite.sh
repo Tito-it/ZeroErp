@@ -193,12 +193,13 @@ fi
 echo ""
 echo "-- 6. Lista lotti con filtri --"
 
-do_curl GET "/api/v1/vendite/lotti/?stato_lotto=COMPLETATO&page=1&page_size=5"
+do_curl GET "/api/v1/vendite/lotti/?stato_lotto=COMPLETATO&limit=5"
 check "GET lotti filtro COMPLETATO" 200
 
+# Un filtro a vocabolario chiuso con un valore ignoto e' un 400, non una lista
+# vuota (api.md §«Un filtro a vocabolario chiuso»).
 do_curl GET "/api/v1/vendite/lotti/?stato_lotto=INESISTENTE"
-check "GET lotti filtro stato inesistente" 200 ".data.count"
-log_info "count con stato inesistente: $EXTRACTED"
+check "GET lotti filtro stato inesistente" 400
 
 # ================================================================
 # COMMESSE

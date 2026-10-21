@@ -166,15 +166,16 @@ class DistinteListApiTests(JwtMockedApiTest):
         self.client.get(
             "/api/v1/pagamenti/distinte/"
             "?centro_riscossione_id=39&ente_incasso_id=4"
-            "&data_da=2026-08-01&data_a=2026-08-31&page=2&page_size=25"
+            "&data_da=2026-08-01&data_a=2026-08-31&limit=25&offset=25"
         )
         kwargs = mocked.call_args.kwargs
         self.assertEqual(kwargs["centro_riscossione_id"], 39)
         self.assertEqual(kwargs["ente_incasso_id"], 4)
         self.assertEqual(kwargs["data_da"], date(2026, 8, 1))
         self.assertEqual(kwargs["data_a"], date(2026, 8, 31))
-        self.assertEqual(kwargs["page"], 2)
-        self.assertEqual(kwargs["page_size"], 25)
+        # La finestra arriva come `limit`/`offset` (dal 2026-10-21 un dialetto solo).
+        self.assertEqual(kwargs["limit"], 25)
+        self.assertEqual(kwargs["offset"], 25)
 
     # Scopo: I due vocabolari chiusi si confrontano in maiuscolo: `manuale` e
     #        `MANUALE` sono la stessa richiesta, e chiedere all'operatore di

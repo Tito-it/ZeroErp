@@ -25,10 +25,10 @@ from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_int,
     optional_uuid,
+    pagina_da_query,
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
-    qp_int,
     qp_iso_date_optional,
     qp_str,
     qp_str_upper,
@@ -44,15 +44,6 @@ from apps.core.services.processi_service import ProcessiService
 from apps.core.services.tracciamento_service import fn_list_error_logs
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
-
-
-# Scopo: Decodifica query param a bool opzionale. Valori True: 1|true|yes|on
-# (case-insensitive). Valori False: qualsiasi altra stringa non vuota. None
-# se il param non e' presente. Usato per filtri di lista.
-def _parse_optional_bool(raw: str | None) -> bool | None:
-    if raw is None:
-        return None
-    return raw.lower() in ("1", "true", "yes", "on")
 
 
 # ================================================================== #
@@ -87,8 +78,9 @@ class OperatoriListView(AdminAPIView):
     # Scopo: Lista paginata operatori con filtri.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
-        is_active = _parse_optional_bool(qp.get("is_active"))
-        is_super_admin = _parse_optional_bool(qp.get("is_super_admin"))
+        limit, offset = pagina_da_query(qp)  # clamp e 400 nel BB
+        is_active = qp_bool_optional(qp.get("is_active"), "is_active")
+        is_super_admin = qp_bool_optional(qp.get("is_super_admin"), "is_super_admin")
         # ⛔ Strict: `?includi_di_prova=banana` e' un 400, non un «no» in silenzio.
         #    Assente = gli utenti di prova restano nascosti (il default del tab).
         includi_di_prova = qp_bool_optional(qp.get("includi_di_prova"), "includi_di_prova")
@@ -100,8 +92,8 @@ class OperatoriListView(AdminAPIView):
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             is_active=is_active,
             includi_di_prova=includi_di_prova is True,
-            limit=optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT,  # clamp nel repository
-            offset=optional_int({"v": qp.get("offset")}, "v") or 0,
+            limit=limit,
+            offset=offset,
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
         )
@@ -426,7 +418,7 @@ class RepartoProfiloView(AdminAPIView):
     def put(self, request: Request, uo_id: int) -> JsonResponse:
         corpo = corpo_oggetto(request)
         result = AmmSoftwareService().put_profilo_reparto(
-            uo_id, corpo.get("aree", []), corpo.get("azioni", []),
+            uo_id, corpo.get("aree"), corpo.get("azioni"),
             payload=corpo,
         )
         return success_response(result)
@@ -467,13 +459,14 @@ class ProcessiListView(AdminAPIView):
     # Scopo: Elenco paginato dei processi automatici con filtri di pannello.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         return success_response(ProcessiService().list_processi(
             classe=qp_str_upper(qp.get("classe")),
             canale=qp_str_upper(qp.get("canale")),
             attivo=qp_bool_optional(qp.get("attivo"), "attivo"),
             search=qp_str(qp.get("search")),
-            limit=qp_int(qp.get("limit"), DEFAULT_LIMIT),
-            offset=qp_int(qp.get("offset"), 0),
+            limit=limit,
+            offset=offset,
             order_by=qp_str(qp.get("order_by")),
             order_dir=qp_str(qp.get("order_dir")),
         ))
@@ -572,12 +565,8 @@ class ProcessiRunView(AdminAPIView):
     )
     # Scopo: Storia recente delle corse di un processo.
     def get(self, request: Request, codice: str) -> JsonResponse:
-        qp = request.query_params
-        return success_response(ProcessiService().list_run(
-            codice,
-            limit=qp_int(qp.get("limit"), DEFAULT_LIMIT),
-            offset=qp_int(qp.get("offset"), 0),
-        ))
+        limit, offset = pagina_da_query(request.query_params)
+        return success_response(ProcessiService().list_run(codice, limit=limit, offset=offset))
 
 
 # Scopo: il pezzo comune ai due verbi sull'utente tecnico (crea / riattiva):
@@ -748,14 +737,15 @@ class AuditLogView(AdminAPIView):
     # Scopo: Timeline globale eventi audit permessi.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
+        limit, offset = pagina_da_query(qp)
         events, total_count = AmmSoftwareService().list_audit_log(
             data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
             data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             tabella=qp.get("tabella") or None,
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
-            limit=optional_int({"v": qp.get("limit")}, "v") or DEFAULT_LIMIT,  # clamp nel repository
-            offset=optional_int({"v": qp.get("offset")}, "v") or 0,
+            limit=limit,
+            offset=offset,
         )
         return success_response({"count": total_count, "results": events})
 

@@ -38,18 +38,20 @@ export function useNote({ apiClient }) {
   // Stato reattivo della lista corrente.
   const notes = ref([])
   const total = ref(0)
-  const page = ref(1)
-  const pageSize = ref(50)
+  const limit = ref(50)
+  const offset = ref(0)
 
   // Carica le note del documento padre. `params` ammette
-  //   { target_riga_id?, include_invisible?, page?, page_size? }.
+  //   { target_riga_id?, include_invisible?, limit?, offset? }.
+  // ⭐ `limit`/`offset` come ogni lista (2026-10-21, un dialetto solo): fino a
+  //    quel giorno `page`/`page_size`, che il backend ora rifiuta con un 400.
   // Aggiorna lo stato reattivo; ritorna i risultati anche al chiamante.
   async function loadAll(params = {}) {
-    if (params.page !== undefined) page.value = params.page
-    if (params.page_size !== undefined) pageSize.value = params.page_size
+    if (params.limit !== undefined) limit.value = params.limit
+    if (params.offset !== undefined) offset.value = params.offset
     const queryParams = {
-      page: page.value,
-      page_size: pageSize.value,
+      limit: limit.value,
+      offset: offset.value,
       ...params,
     }
     const data = await execute(() => _client(apiClient).listNote(queryParams))
@@ -94,8 +96,8 @@ export function useNote({ apiClient }) {
     // Stato
     notes,
     total,
-    page,
-    pageSize,
+    limit,
+    offset,
     loading,
     // Comandi
     loadAll,

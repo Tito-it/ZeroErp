@@ -28,7 +28,34 @@ for ((_i = 1; _i < ${DJANGO_TRUSTED_PROXY_COUNT:-1}; _i++)); do _smoke_xff+=", 1
 SMOKE_X_FORWARDED_FOR="$_smoke_xff"
 unset _smoke_xff _i
 
+# ⭐ Dal 2026-10-20 una POST che scrive senza `Idempotency-Key` e' un 400
+#    (brief-be-verifica-documentazione-api §A5): la chiave la mette questa
+#    funzione, una per chiamata, come l'interceptor del frontend. Solo sulle
+#    POST — la regola del backend — e solo se la chiamata non ne porta una sua
+#    (gli smoke che provano il replay la passano apposta). Una POST la si
+#    riconosce da `-X POST`/`--request POST`, o da un corpo senza `-X`, che per
+#    curl vuol dire POST.
+_smoke_e_post_senza_chiave() {
+  local metodo="" corpo=0 prec=""
+  for a in "$@"; do
+    case "$prec" in
+      -X|--request) metodo="$a" ;;
+      -H|--header) [[ "${a,,}" == idempotency-key:* ]] && return 1 ;;
+    esac
+    case "$a" in
+      -d|--data|--data-raw|--data-binary|--data-urlencode|-F|--form|--json) corpo=1 ;;
+      --data=*|--data-raw=*|--data-binary=*|--json=*) corpo=1 ;;
+    esac
+    prec="$a"
+  done
+  [[ "${metodo^^}" == POST || ( -z "$metodo" && $corpo -eq 1 ) ]]
+}
+
 curl() {
+  local chiave=()
+  if _smoke_e_post_senza_chiave "$@"; then
+    chiave=(-H "Idempotency-Key: smoke-$(date +%s%N)-${RANDOM}")
+  fi
   command curl -H "X-Forwarded-Proto: https" \
-               -H "X-Forwarded-For: ${SMOKE_X_FORWARDED_FOR}" "$@"
+               -H "X-Forwarded-For: ${SMOKE_X_FORWARDED_FOR}" "${chiave[@]}" "$@"
 }

@@ -21,6 +21,8 @@ const fields = [
     labelKey: 'geo.col_stato',
     lookupFn: lookupStati,
     placeholderKey: 'geo.select_stato',
+    // NOT NULL a DB: svuotarlo e' un 400 della PATCH, non un «non toccare».
+    required: true,
   },
 ]
 </script>

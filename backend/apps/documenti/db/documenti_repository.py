@@ -533,12 +533,11 @@ class DocumentiRepository:
         #    "ASC"` trasformava in ASC, in silenzio, qualunque valore estraneo.
         #    Ora `?order_dir=giu` e' un 400, e i NULL stanno dove starebbe lo
         #    zero come in ogni altra lista. La colonna e' gia' stata verificata
-        #    sopra col codice di dominio: `rifiuta_fuori_whitelist` lo dichiara,
-        #    e `default` e' il `default_order` della view.
+        #    sopra col codice di dominio, e `default` e' il `default_order` della
+        #    view.
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=TEMPLATES_ORDER_COLUMNS, default="t.codice", tiebreak="t.id",
-            rifiuta_fuori_whitelist=True,
         )
 
         conditions: list[str] = []
@@ -1035,7 +1034,6 @@ class DocumentiRepository:
         ordinamento = sql_order_clause(
             order_by, order_dir,
             colonne=ASSET_ORDER_COLUMNS, default="a.codice", tiebreak="a.id",
-            rifiuta_fuori_whitelist=True,
         )
 
         conditions: list[str] = []

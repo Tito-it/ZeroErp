@@ -368,7 +368,7 @@ I parametri del payload si estraggono con i validator di `apps.core.api.payload_
   è `True` (creava un SUPER_ADMIN e chiudeva un contratto nella successione).
   `optional_bool` delega a `PayloadValidator.optional_bool`: `"false"`, `"1"`, `0` sono
   un 400 col campo. Query string e multipart sono stringhe per natura e hanno i loro
-  helper (`qp_bool`, …), non questo.
+  helper (`qp_bool_optional`), non questo.
 * **Una chiave fuori contratto è un 400**, non uno scarto silenzioso:
   `validate_allowed_keys` prima di filtrare il payload, in creazione come in modifica
   (le chiavi gestite a parte — `componenti_overrides`, `richiesta_approvazione` — si
@@ -382,11 +382,34 @@ I parametri del payload si estraggono con i validator di `apps.core.api.payload_
 | Regola          | Dettaglio                                                                               |
 | --------------- | --------------------------------------------------------------------------------------- |
 | Header          | `Idempotency-Key` (stringa libera, tipicamente UUID)                                    |
-| Obbligatorieta` | `require_idempotency_key=True` su tutti gli endpoint che modificano stato               |
+| Obbligatorieta` | **ogni POST che scrive**, per costruzione (`_ApiViewBase.initial`, vedi sotto)          |
 | Strong mode     | Attivabile con `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1`                                |
 | Store           | Tabella `dbops.idempotency_keys`                                                        |
 | Replay          | Key gia` completata: restituisce risposta cached con header `X-Idempotency-Replayed: 1` |
 | In-progress     | Key gia` in elaborazione: `409` con codice `E_IDEMPOTENCY_IN_PROGRESS`                  |
+
+⛔ **Una POST che scrive porta la key, e lo garantisce la classe base** (decisione
+di Tid del 2026-10-20, brief-be-verifica-documentazione-api §A5). Le quattro
+porte (`DomainAPIView`, `AdminAPIView`, `PortaleAPIView`, `ShopAPIView`) ereditano
+da `_ApiViewBase`, il cui `initial()` — dopo autenticazione e permessi — risponde
+**400 `E_IDEMPOTENCY_KEY_REQUIRED`** a ogni POST senza header. Il criterio è la
+semantica HTTP: una POST di creazione o di azione non è idempotente. **PATCH, PUT e
+DELETE** lo sono, e restano senza obbligo (alcuni endpoint la chiedono ancora con
+`handle_post_json(require_idempotency_key=True)`).
+
+- **Una POST che LEGGE lo dichiara**: `post_accesso = "view"` (anteprime, preview dei
+  componenti, risoluzione di prezzo e IVA, verifiche). Lo stesso attributo abbassa
+  il permesso alla lettura: senza, la POST chiederebbe la key e il livello di scrittura.
+- `handle_post_json(require_idempotency_key=True)` resta per la **modalità forte**
+  (claim/replay), che il solo controllo di presenza non fa.
+- **Frontend**: la key la mette l'interceptor di `core/api.js` (`applicaIdempotencyKey`)
+  su ogni POST/PUT/PATCH/DELETE che non ne porta una, una per chiamata. ⛔ Non si
+  genera più a mano nelle funzioni API: le 69 copie sono state ritirate.
+- **Test**: `ClientApi` (`apps/core/tests/_helpers/jwt_mock.py`, il `client_class` di
+  `JwtMockedApiTest`) fa lo stesso. Chi prova l'assenza usa `Client` semplice.
+- **Smoke bash**: la funzione `curl()` di `_smoke_https.sh` la mette sulle POST.
+- ⚠️ Fino a quel giorno la key era una scelta della singola view: 82 scritture su
+  457 la chiedevano, senza un criterio (fatto datato).
 
 ---
 
@@ -404,17 +427,14 @@ class ApiLottiList(APIView):
             {"competenza_mese": request.query_params.get("competenza_mese")},
             "competenza_mese",
         )
-        page = optional_int({"page": request.query_params.get("page", "1")}, "page")
-        page_size = optional_int(
-            {"page_size": request.query_params.get("page_size", "50")}, "page_size"
-        )
+        limit, offset = pagina_da_query(request.query_params)  # la finestra, dal BB
         auth_user_id = get_scope_user_id(request)       # None per superuser
 
         data = fn_list_lotti(
             competenza_mese=competenza_mese,
             auth_user_id=auth_user_id,
-            page=page,
-            page_size=page_size,
+            limit=limit,
+            offset=offset,
         )
         return success_response(data)
 ```
@@ -428,13 +448,13 @@ I filtri opzionali da query string si normalizzano con gli helper di
 | Funzione                                                            | Scopo                                                                                                   |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `qp_str(raw)`                                                       | stringa o `None` se assente/vuota (strip)                                                               |
-| `qp_int(raw, default)`                                              | int con default; fallback silenzioso al default se non numerico                                         |
 | `qp_int_strict(raw, name, default)`                                 | int con default; **400** se presente ma non numerico o fuori da `bigint`                                |
 | `qp_int_optional(raw, name, *, min_val, max_val)`                   | int **opzionale strict**: `None` se assente/vuoto, **400** se non numerico o fuori range (default `bigint`) |
-| `qp_bool(raw, default=True)`                                        | bool con default (False solo su `0/false/no/n/off`)                                                     |
-| `qp_bool_optional(raw, name)`                                       | bool **opzionale strict**: `None` se assente/vuoto, `True/False` sui token, **400** se non riconosciuto |
+| `qp_bool_optional(raw, name, default=None)`                         | il **flag** di query string e multipart: `true`/`false` (maiuscole ammesse), assente/vuoto = `default`, **ogni altro valore 400** |
 | `qp_iso_date_optional(raw, name)`                                   | `date` **opzionale strict**: `None` se assente/vuoto, **400** se malformata                             |
-| `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir/page` per liste **offset-based**                         |
+| `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir/page` di una lista                                        |
+| `pagina_da_query(qp, *, default_limit, max_limit)`                  | `(limit, offset)` di **ogni** lista: `page`/`page_size` e valori illeggibili sono un **400**, limiti da `limiti_pagina`. Lo usa `parse_list_params` |
+| `envelope_da_offset(results, total_count, *, limit, offset)`        | l'envelope paginato (`count`/`page`/`page_size`/`total_pages`/`results`) da una finestra `limit`/`offset`; `page` la ricava `pagina_di(offset, limit)` |
 
 ⚠️ **Il tetto di un intero è il tipo DOVE ARRIVA** (dal 2026-10-08): un confronto
 `col = %s` regge qualunque intero, un **parametro di funzione** `integer` o un cast
@@ -500,9 +520,12 @@ client sia uno solo non la rende vera.
 Forma (decisione di Tid, 2026-09-23, `GET /pagamenti/rate/`):
 
 * la **view** resta sull'helper *strict* (`qp_bool_optional`): `?x=banana` deve
-  restare un **400**, non diventare `True` in silenzio. ⚠️ Per questo non si usa
-  `qp_bool(raw, default=True)`, che è indulgente — è la forma già in uso su
-  `solo_ultima_revisione`, e lì quel `banana` passa;
+  restare un **400**, non diventare `True` in silenzio. ⭐ Dal 2026-10-20 è
+  l'**unico** lettore dei flag di trasporto, col solo vocabolario `true`/`false`
+  (Tid, brief-be-verifica-documentazione-api §A6): `qp_bool` (indulgente: tutto
+  ciò che non era `0/false/no/n/off` valeva vero), `as_bool` e
+  `_parse_optional_bool` (tutto ciò che non era `1/true/yes/on` valeva falso) sono
+  ritirati. `1`, `0`, `yes` sono un 400;
 * il **service** traduce l'assenza: `True if x is None else bool(x)`, con il
   perché accanto. ⛔ Mai `bool(x)` secco, che mappa `None` su `False`;
 * il **repository** dichiara `x: bool = True`, così anche un chiamante interno
@@ -516,18 +539,39 @@ attivi lo conta — l'operatore legge «1 filtro attivo» e nel pannello non tro
 niente da toccare. *`filterDefaults` risponde a due domande — «cosa mando» e
 «cosa conto come filtro» — e per un perimetro le due risposte divergono.*
 
-> **Paginazione page-based** (`page`/`page_size`, alternativa a `limit`/`offset`):
-> validala nel service con
-> `validate_pagination(page, page_size, *, error_code, function_name)`
-> (`apps.core.services.list_helpers`), che valida e ritorna l'offset. Per
-> l'ordinamento: `validate_order_params(order_by, order_dir, *, allowed_columns, error_code, function_name)`.
+> **Ordinamento** nel service: `validate_order_params(order_by, order_dir, *, allowed_columns, error_code, function_name)`
+> (`apps.core.services.list_helpers`). ⛔ `validate_pagination` (la
+> paginazione page-based) è **ritirata** dal 2026-10-21: c'è un dialetto solo.
 
 ### Paginazione
 
-| Parametro                | Default                | Max                 |
-| ------------------------ | ---------------------- | ------------------- |
-| `page`                   | 1                      | —                   |
-| `page_size` / `limit`    | `DEFAULT_LIMIT` (25)   | `MAX_LIMIT` (200)   |
+| Parametro | Default                | Max                 |
+| --------- | ---------------------- | ------------------- |
+| `limit`   | `DEFAULT_LIMIT` (25)   | `MAX_LIMIT` (200)   |
+| `offset`  | 0                      | —                   |
+
+⛔ **Un dialetto solo: `limit`/`offset`** (decisione di Tid del 2026-10-21).
+Ogni lista legge la finestra **solo** da `pagina_da_query` (anche via
+`parse_list_params`), che rifiuta `page`/`page_size` con un **400**. La storia:
+il 2026-10-20 (brief-be-verifica-documentazione-api §A3) le liste offset-based
+smisero di ignorarli in silenzio — chi li mandava riceveva la prima pagina di
+25 righe senza errore; il 2026-10-21 anche la ventina di liste che parlava
+`page`/`page_size` (dashboard, tracciamento, note, pagamenti, lotti, ricerca
+globale, lookup codici, tabelle di configurazione, audit dei permessi) è passata
+a `limit`/`offset`, e il frontend non traduce più (`paramsFinestra`).
+⛔ Anche `?limit=abc` e `?offset=xyz` sono un **400**: il ripiego muto sul
+default (`qp_int`, ritirato) dava la prima pagina a chi ne aveva chiesta
+un'altra. ⛔ E così il **fuori limite** (Tid, 2026-10-21): `limit` fuori da
+1..tetto della lista è `limit_fuori_limiti_1_<tetto>`, un `offset` negativo è
+`offset_negativo`. Fino a quel giorno `limit=500` diventava 200 in silenzio, e
+chi chiedeva «tutto» riceveva una parte credendola il tutto. Il clamp di
+`limiti_pagina` resta la difesa interna dei repository, non la risposta
+all'utente; i service non ripetono il controllo (ritirati quel giorno i guard
+di `pipeline_service` e `commesse_service`, irraggiungibili via HTTP). I presidi: `core/tests/api/test_paginazione_dialetto.py` (letture a
+mano di `limit`/`offset`, letture di `page`/`page_size`) e, lato frontend,
+`src/core/paginazioneDialetto.spec.js` (nessuna chiamata manda
+`page`/`page_size`). Nello schema OpenAPI i due parametri li dichiara
+`parametri_finestra(default_limit=…, max_limit=…)` (`apps.core.api.openapi_params`).
 
 ⭐ **Una sede sola: `apps.core.api.constants`** (2026-09-28). Il default e'
 quello che l'operatore vede a video (la misura `PAGINA` del catalogo
@@ -545,7 +589,9 @@ repository (dal 2026-10-04): `limit: int = DEFAULT_LIMIT`, mai un numero —
 una lista aveva il suo default nella view e un altro, diverso, nella firma; il
 presidio le guarda, con le eccezioni (lookup, batch) in `_FIRME_AMMESSE`.
 
-Risposta paginata:
+Risposta paginata (l'**envelope** conserva `page`/`page_size`: li ricava
+dalla finestra `envelope_da_offset`, e servono al paginatore per leggere dove
+il backend ha riportato una pagina stantia):
 
 ```json
 {
@@ -560,7 +606,8 @@ Risposta paginata:
 }
 ```
 
-Pattern alternativo (per endpoint che usano `limit`/`offset`):
+Forma ridotta (le liste che non dichiarano la pagina: solo il totale e le righe;
+la finestra in ingresso è comunque `limit`/`offset`):
 
 ```json
 {
@@ -652,6 +699,24 @@ catalogo e listini, allineati lo stesso giorno).
 (`"descrizione"` se non lo si passa) che per molte liste non è una colonna. Lì
 `order_by` si legge ancora grezzo (`qp_str(qp.get("order_by"))`), per quel
 motivo e non per la direzione.
+
+#### ⛔ Un `order_by` fuori whitelist è un 400, in ogni lista (dal 2026-10-20)
+
+Decisione di Tid (brief-be-verifica-documentazione-api §A1). Una chiave di
+ordinamento **indicata** e assente dalla whitelist della lista risponde **400
+`E_VALIDATION_INPUT`** (`order_by_invalid`), o il 400 del dominio dove il service
+la valida prima. Una chiave **non indicata** prende il default della lista.
+
+Fino a quel giorno metà delle liste (anagrafiche, vendite, amm-software…)
+ripiegava in silenzio sul default: rispondeva 200, ordinata diversamente da come
+era stato chiesto, e nessuno lo vedeva. La sede della regola è il BB
+`colonna_ordinamento` (catalogo BB §Ordinamento SQL), letto da `sql_order_clause`,
+da `sql_order_direction_lista` e dai repository che compongono l'`ORDER BY` a mano.
+⛔ Mai più `COLS.get(order_by, default)`.
+
+⚠️ Il `default_order` di `parse_list_params` arriva al repository come se il client
+l'avesse chiesto: dev'essere una **chiave della whitelist**, o `""` per lasciare il
+default al repository.
 
 #### La whitelist di ordinamento si chiava sul `campo_sorgente` FISICO
 
@@ -850,6 +915,25 @@ nessun errore. Le chiavi di primo livello si leggono dal
 ## Endpoint PATCH (aggiornamento parziale)
 
 Usato quando un'entita` ammette modifica di campi specifici senza che questo costituisca un'azione di dominio distinta (es. aggiornare descrizione o scadenza di una pratica).
+
+⛔ **Una PATCH senza campi è un 400, in ogni dominio** (decisione di Tid del
+2026-10-20, brief-be-verifica-documentazione-api §A2). Il service la rifiuta col
+BB `PayloadValidator.require_campi_da_aggiornare` sui campi **già estratti** (dopo
+whitelist e normalizzazione), prima di scrivere. Fino a quel giorno lo stesso
+corpo `{}` rispondeva in tre modi: 400 in alcuni domini, **404 su un record che
+esiste** in anagrafiche (l'UPDATE vuoto tocca zero righe), **200 senza scrivere**
+altrove — un «salvato» che non ha salvato. Presidio trasversale:
+`apps/core/tests/test_patch_vuota_e_400.py`.
+
+⭐ **In PATCH una chiave presente si scrive, anche `null`; una chiave assente non
+si tocca.** `null` su un campo nullable lo svuota; su un campo NOT NULL (un flag,
+una descrizione obbligatoria) è un 400, mai un «spegni» o un «lascia com'è».
+⛔ Niente `dynamic_update` (None = «non toccare») per una PATCH che riceve il
+`null` dal client: è il difetto che rendeva impossibile svuotare un campo in geo
+(2026-10-20). La lettura per presenza ha un BB, **`PayloadValidator.campi_per_presenza`**
+(testi nullable/NOT NULL con `max_len`, maiuscoli, id nullable/obbligatori, flag
+NOT NULL, lettori di dominio per le altre forme; chiave fuori contratto e PATCH
+vuota sono 400 dentro il BB): non si riscrive a mano.
 
 ```python
 class ApiPraticaDetail(APIView):

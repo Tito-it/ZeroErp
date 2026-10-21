@@ -42,7 +42,7 @@ class CercaOperatoriTool(AITool):
                         "type": "boolean",
                         "description": "Se true, restituisce solo operatori attivi (default true)",
                     },
-                    "page_size": {
+                    "limit": {
                         "type": "integer",
                         "description": "Numero risultati (default 10, max 50)",
                     },
@@ -73,7 +73,7 @@ class CercaOperatoriTool(AITool):
             search=self.termine_ricerca(params),
             is_super_admin=params.get("is_super_admin"),
             is_active=True if solo_attivi else None,
-            limit=self.safe_page_size(params),
+            limit=self.safe_limit(params),
             offset=0,
         )
 

@@ -18,9 +18,10 @@ import json
 import logging
 from typing import Any
 
+from apps.core.api.payload_validators import envelope_da_offset
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.list_helpers import validate_order_params, validate_pagination
+from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     make_db_errors_translator,
@@ -32,7 +33,6 @@ from apps.pagamenti.db.pagamenti_repository import (
 from apps.pagamenti.services._helpers import (
     E_FATTURA_NON_TROVATA,
     E_VALIDAZIONE,
-    risposta_paginata,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,8 +97,8 @@ def list_eccedenze(
     search: str | None = None,
     order_by: str | None = None,
     order_dir: str | None = None,
-    page: int = 1,
-    page_size: int = DEFAULT_LIMIT,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     ErrorManager.require(
         chi_e_in_credito is None or chi_e_in_credito in CHI_E_IN_CREDITO,
@@ -115,9 +115,6 @@ def list_eccedenze(
         error_code=E_VALIDAZIONE,
         function_name=f"{_FN}.list_eccedenze",
     )
-    offset = validate_pagination(
-        page, page_size, error_code=E_VALIDAZIONE, function_name=f"{_FN}.list_eccedenze"
-    )
 
     repository = PagamentiRepository()
     results, total = repository.list_eccedenze(
@@ -126,10 +123,10 @@ def list_eccedenze(
         search=search,
         order_by=order_by,
         order_dir=order_dir,
-        limit=page_size,
+        limit=limit,
         offset=offset,
     )
-    return risposta_paginata(results, total, page, page_size)
+    return envelope_da_offset(results, total, limit=limit, offset=offset)
 
 
 # ══════════════════════════════════════════════════════════════════

@@ -28,8 +28,8 @@
 // commessa: «una tabella vuota per errore non deve sembrare "nessuna riga"».
 //
 // USO:
-//   const doc = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
-//     listaFatture(lottoId, { page, page_size: pageSize, sort_by: sortBy, sort_dir: sortDir }))
+//   const doc = useListaDrawerPaginata(({ limit, offset, sortBy, sortDir }) =>
+//     listaFatture(lottoId, { limit, offset, order_by: sortBy, order_dir: sortDir }))
 //   ...
 //   <ListaConfigurabile :rows="doc.righe.value" :total="doc.totale.value" ... />
 import { computed, ref } from 'vue'
@@ -39,9 +39,12 @@ import { extractApiError } from '../utils/apiError'
 import { useNotify } from './useNotify'
 
 /**
- * @param {Function} fetcher - riceve `{page, pageSize, sortBy, sortDir}` e
+ * @param {Function} fetcher - riceve `{limit, offset, sortBy, sortDir}` e
  *   ritorna la RESPONSE axios della lista. Il composable non sa nulla
  *   dell'endpoint: sa solo che la risposta ha la forma dell'envelope lista.
+ *   ⭐ `limit`/`offset` e non `page`/`pageSize` (2026-10-21, un dialetto
+ *   solo): la pagina e' lo stato del PAGINATORE, la finestra e' cio' che il
+ *   backend legge — la traduzione sta QUI, una volta.
  * @param {Object} opzioni
  * @param {string|null} opzioni.sortBy - ordinamento iniziale (default: nessuno,
  *   cioè l'ordine storico dell'endpoint).
@@ -70,8 +73,8 @@ export function useListaDrawerPaginata(fetcher, { sortBy = null, sortDir = 1 } =
     loading.value = true
     try {
       const res = await fetcher({
-        page: page.value,
-        pageSize: pageSize.value,
+        limit: pageSize.value,
+        offset: (page.value - 1) * pageSize.value,
         sortBy: sortField.value,
         // ⚠️ Il BE parla `asc`/`desc`, il DataTable 1/-1: la traduzione sta
         // QUI, una volta, invece che in ogni chiamante.

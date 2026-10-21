@@ -21,14 +21,14 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { useListaEmptyStateFetch } from '../../core/composables/useListaEmptyStateFetch'
-import { paramsPagina, paramsRicerca } from '../../core/utils/listParams'
+import { paramsFinestra, paramsRicerca } from '../../core/utils/listParams'
 import { CODE } from '../vocabolari'
 import { listCodaRighe } from '../api/pagamenti'
 import { useContrattoFiltriLista } from '../../core/composables/useContrattoFiltriLista'
 import { USO_MISURA, misuraDefault } from '../../core/misurePagina'
 
 function buildParams(f, _termine, ricerca) {
-  const p = paramsPagina(f)
+  const p = paramsFinestra(f)
   // La ricerca libera con la regola comune (`paramsRicerca`: trim, soglia della
   // lista — `ricerca` = `{ minCaratteri }`, passato dal BB di stato).
   Object.assign(p, paramsRicerca(f, ricerca))

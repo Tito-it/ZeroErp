@@ -193,7 +193,7 @@ def build_documenti_sorgente_views(
                     "tipo_documento_output_id": serializers.IntegerField(required=False, allow_null=True),
                 },
             ),
-            responses={201: inline_serializer(
+            responses={200: inline_serializer(
                 name=f"{schema_prefix}DocumentoGeneraResponse",
                 fields={"data": serializers.DictField()},
             )},
@@ -234,6 +234,14 @@ def build_documenti_sorgente_views(
     DocumentoGenera.__doc__ = f"`POST .../documenti/genera/` — {schema_prefix}."
 
     class DocumentoAnteprima(DomainAPIView):
+        # ⭐ Una POST che LEGGE (decisione A5 di Tid, brief-be-verifica-
+        #    documentazione-api): l'anteprima non scrive niente — nessun
+        #    record, nessun file, nessun evento — ed e' POST solo perche'
+        #    porta un corpo. `post_accesso = "view"` le chiede il permesso di
+        #    lettura e la esenta dall'Idempotency-Key, che vale per le POST
+        #    che scrivono (`_ApiViewBase.initial`).
+        post_accesso = "view"
+
         @extend_schema(
             request=inline_serializer(
                 name=f"{schema_prefix}DocumentoAnteprimaRequest",

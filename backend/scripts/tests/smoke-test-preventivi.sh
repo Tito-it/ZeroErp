@@ -121,7 +121,7 @@ log_ok "Login JWT OK"
 # --- 1. Lista preventivi ---
 echo ""
 echo "-- 1. Lista preventivi --"
-do_curl GET "/api/v1/vendite/preventivi/?page=1&page_size=5"
+do_curl GET "/api/v1/vendite/preventivi/?limit=5"
 check "GET lista preventivi" 200
 
 # --- 2. Crea preventivo ---
@@ -167,7 +167,7 @@ echo "-- 5. Aggiungi riga --"
 # Query per trovare il primo articolo attivo
 ARTICOLO_ID=$(curl -s \
     -H "Authorization: Bearer $TOKEN" \
-    "${BASE_URL}/api/v1/catalogo/articoli/?page_size=1" 2>/dev/null | \
+    "${BASE_URL}/api/v1/catalogo/articoli/?limit=1" 2>/dev/null | \
     python3 -c "
 import sys, json
 try:
@@ -183,7 +183,7 @@ if [[ -z "$ARTICOLO_ID" ]]; then
 else
     log_info "articolo_id = $ARTICOLO_ID"
     do_curl POST "/api/v1/vendite/preventivi/${PREV_ID}/righe/" \
-        "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"10\", \"prezzo_unitario\": \"100.00\", \"iva_id\": 16}"
+        "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"10\", \"prezzo_unitario\": \"100.00\"}"
     check "POST aggiungi riga" 200 "data.id"
     RIGA_ID="$EXTRACTED"
     log_info "riga_id = $RIGA_ID"
@@ -293,7 +293,7 @@ if [[ "$LAST_STATUS" == "200" ]]; then
     PREV2_ID=$(json_get "$LAST_BODY" "data.id")
     if [[ -n "$ARTICOLO_ID" && -n "$PREV2_ID" ]]; then
         do_curl POST "/api/v1/vendite/preventivi/${PREV2_ID}/righe/" \
-            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"50.00\", \"iva_id\": 16}"
+            "{\"articolo_id\": \"$ARTICOLO_ID\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"50.00\"}"
         RIGA2_ID=$(json_get "$LAST_BODY" "data.id")
         if [[ -n "$RIGA2_ID" ]]; then
             do_curl DELETE "/api/v1/vendite/preventivi/${PREV2_ID}/righe/${RIGA2_ID}/"

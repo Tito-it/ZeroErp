@@ -38,7 +38,8 @@ import json
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 
@@ -85,7 +86,7 @@ class VenditeListiniApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
         cache.clear()
-        self.client = Client()
+        self.client = ClientApi()
 
     # Scopo: Serializza payload JSON per richieste POST/PATCH.
     def _json(self, payload: dict) -> str:

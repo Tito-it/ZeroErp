@@ -20,7 +20,6 @@
 
 import { ref, computed } from 'vue'
 import { useApiHandler } from './useApiHandler'
-import { generateIdempotencyKey } from '../utils/idempotency'
 import {
   getDashboardConfig,
   getDashboardContatori,
@@ -119,9 +118,8 @@ export function useDashboardConfig(codice) {
   async function save() {
     if (!config.value) return null
     const payload = _extractWritablePayload(config.value)
-    const idempotencyKey = generateIdempotencyKey()
     const result = await execute(
-      () => putDashboardPreferenza(codice, payload, idempotencyKey),
+      () => putDashboardPreferenza(codice, payload),
     )
     if (result !== null) {
       await loadAll()
@@ -142,9 +140,8 @@ export function useDashboardConfig(codice) {
 
   // Scopo: "Ignora" banner preset aggiornato + reload per riallineare.
   async function ignorePresetUpdate() {
-    const idempotencyKey = generateIdempotencyKey()
     const result = await execute(
-      () => apiIgnorePresetUpdate(codice, idempotencyKey),
+      () => apiIgnorePresetUpdate(codice),
     )
     if (result !== null) {
       await load()

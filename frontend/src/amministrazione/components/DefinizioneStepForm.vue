@@ -21,13 +21,13 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookup } from '../../core/composables/useLookup'
-import { lookupCodici } from '../../core/apiCore'
 import {
   STEP_DIREZIONE,
   STEP_MODALITA_ESITO,
   STEP_MODALITA_CON_ESITO_DEFAULT,
 } from '../../core/constants'
 import { createStep, updateStep } from '../api/definizioniWorkflow'
+import { fetchLookupCodici } from '../../core/composables/useLookupCodici'
 
 const props = defineProps({
   definizioneId: { type: Number, required: true },
@@ -75,7 +75,7 @@ const modalitaOptions = computed(() =>
 )
 
 // Catalogo esiti (config.esiti_flussi_pratiche): value = codice_interno.
-const esiti = useLookup(() => lookupCodici('config.esiti_flussi_pratiche'), { immediate: true })
+const esiti = useLookup(fetchLookupCodici('config.esiti_flussi_pratiche'), { immediate: true })
 
 const esitoObbligatorio = computed(() => STEP_MODALITA_CON_ESITO_DEFAULT.includes(form.modalita_esito))
 const mostraEsitoDefault = computed(() => form.modalita_esito !== 'DOMINIO')

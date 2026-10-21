@@ -42,8 +42,8 @@ stessa tabella). Il rifiuto resta al database.
 **Parametri della lista** (e dell'export, senza paginazione): `attivo` (bool;
 assente = **tutte**, spente comprese — sono quelle che spiegano un rifiuto in
 creazione), `gestisce_serie` (bool, derivato da `colonna_serie IS NOT NULL`),
-`search`, `order_by` (whitelist; fuori whitelist → ordine di default
-`codice_interno`), `order_dir` (`asc` default | `desc`), `limit` (default `25`,
+`search`, `order_by` (whitelist, default `codice_interno`; fuori whitelist →
+**400** `E_VALIDATION_INPUT`, dal 2026-10-20), `order_dir` (`asc` default | `desc`), `limit` (default `25`,
 max `200`) / `offset`. Un booleano non riconosciuto è un `400`. Risposta:
 envelope paginato standard (`count`, `page`, `page_size`, `total_pages`,
 `results`).

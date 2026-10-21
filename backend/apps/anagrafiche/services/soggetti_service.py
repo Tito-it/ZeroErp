@@ -293,9 +293,10 @@ class SoggettiService:
             payload, allowed=_UPDATE_SOGGETTO_KEYS, message="Payload soggetto non valido.",
         )
         dati = self._normalizza_flag_fiscali(payload)
+        ds_raw = dati.pop(_CHIAVE_DATI_SOCIETARI, None)
         dati_societari = (
-            self._valida_dati_societari(dati.pop(_CHIAVE_DATI_SOCIETARI))
-            if _CHIAVE_DATI_SOCIETARI in dati else None
+            self._valida_dati_societari(ds_raw)
+            if _CHIAVE_DATI_SOCIETARI in payload else None
         )
         # La stessa forma della creazione: «x» e' «X», non un rifiuto del CHECK.
         if "sesso" in dati:
@@ -305,6 +306,15 @@ class SoggettiService:
             dati["tipo_soggetto_dettaglio_id"] = _V.require_positive_int(
                 dati, "tipo_soggetto_dettaglio_id",
             )
+        # ⛔ Un PATCH senza campi e' un 400, non il 404 che dava l'UPDATE vuoto
+        #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2). I dati
+        #    societari contano come campo: `{"dati_societari": {}}` no.
+        # ⛔ Al BB va la sezione GREZZA: quella validata ha sempre le dieci
+        #    chiavi (a `None`), e il verbo e' a STATO INTERO — `{}` azzerava
+        #    forma giuridica, REA, PEC e SDI rispondendo 200.
+        _V.require_campi_da_aggiornare(
+            dati, sotto_oggetti={_CHIAVE_DATI_SOCIETARI: ds_raw},
+        )
         with transaction.atomic():
             # ⚠️ Con i soli dati societari non c'e' niente da scrivere sul
             #    soggetto: l'UPDATE vuoto risponderebbe «non trovato». Il
@@ -437,6 +447,9 @@ class SoggettiService:
         _V.validate_allowed_keys(
             payload, allowed=_UPDATE_CONTATTO_KEYS, message="Payload contatto non valido.",
         )
+        # ⛔ Un PATCH senza campi e' un 400, non il 404 che dava l'UPDATE vuoto
+        #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
+        _V.require_campi_da_aggiornare(payload)
         updated = self._repo.update_contatto(contatto_id, payload, soggetto_id=soggetto_id)
         ErrorManager.require(updated, code=E_ANAG_NOT_FOUND,
                              message="Contatto non trovato.")
@@ -452,6 +465,9 @@ class SoggettiService:
         _V.validate_allowed_keys(
             payload, allowed=_UPDATE_CONTATTO_KEYS, message="Payload contatto non valido.",
         )
+        # ⛔ Un PATCH senza campi e' un 400, non il 404 che dava l'UPDATE vuoto
+        #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
+        _V.require_campi_da_aggiornare(payload)
         updated = self._repo.update_contatto(
             contatto_id, payload, soggetto_ruolo_id=soggetto_ruolo_id,
         )
@@ -469,6 +485,9 @@ class SoggettiService:
             payload, allowed=_UPDATE_INDIRIZZO_RUOLO_KEYS,
             message="Payload indirizzo non valido.",
         )
+        # ⛔ Un PATCH senza campi e' un 400, non il 404 che dava l'UPDATE vuoto
+        #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
+        _V.require_campi_da_aggiornare(payload)
         updated = self._repo.update_indirizzo_ruolo(indirizzo_id, soggetto_ruolo_id, payload)
         ErrorManager.require(
             updated, code=E_ANAG_NOT_FOUND,

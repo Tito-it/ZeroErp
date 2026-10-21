@@ -151,10 +151,10 @@ const filtroTipoMovimento = ref(null)
 // ⚠️ Il totale e' il `count` FILTRATO della risposta, non
 //    `stato.total_attivita` (contatore di testata, sempre su TUTTE le righe):
 //    con un filtro attivo il paginatore direbbe 4 righe mostrandone 1.
-const lista = useListaDrawerPaginata(({ page, pageSize, sortBy, sortDir }) =>
+const lista = useListaDrawerPaginata(({ limit, offset, sortBy, sortDir }) =>
   listCommessaAttivita(props.commessaId, {
-    limit: pageSize,
-    offset: (page - 1) * pageSize,
+    limit,
+    offset,
     ...(sortBy ? { order_by: sortBy, order_dir: sortDir } : {}),
     ...(filtroStatoEmissione.value ? { stato_emissione: filtroStatoEmissione.value } : {}),
     ...(filtroTipoMovimento.value ? { tipo_movimento: filtroTipoMovimento.value } : {}),

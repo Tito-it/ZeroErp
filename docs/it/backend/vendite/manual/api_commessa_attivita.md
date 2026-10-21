@@ -29,8 +29,8 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
   - `stato_approvazione` (string) — vocabolario chiuso `BOZZA` | `APPROVATA` | `RIFIUTATA`
   - `competenza_mese` (date `YYYY-MM-DD`) — filtro mese di competenza (normalizzato al primo del mese dal DB)
   - `tipo_movimento` (string) — `NORMALE` | `RETTIFICA` | `ONERE` (spazi/maiuscole tollerati); assente o vuoto = tutti
-  - `limit` (int) — righe per pagina (default 25 `DEFAULT_LIMIT`, range 1-200)
-  - `offset` (int) — offset paginazione (default 0)
+  - `limit` (int) — righe per pagina (default 25 `DEFAULT_LIMIT`, range 1-200; fuori → 400 `E_VALIDATION_INPUT`)
+  - `offset` (int) — offset paginazione (default 0; negativo → 400 `E_VALIDATION_INPUT`)
   - `order_by` (string) — whitelist chiusa `ATTIVITA_SORT_COLUMNS`: `id`, `data_attivita`, `competenza_mese`, `segment_key`, `quantita`, `prezzo_snapshot`, `stato_approvazione`, `stato_emissione`, `fatturata_il`, `fattura_numero`, `tipo_movimento`, `articolo_codice`, `articolo_descrizione`, `sorgente_etichetta`, `sorgente_documento_numero`, `gruppo_key`. Assente = ordine storico per `id`
   - `order_dir` (string) — `asc` | `desc` (default `asc` per qualunque colonna, date comprese: il service passa `asc` alla fn)
 
@@ -89,7 +89,7 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 }
 ```
 
-- `400`: parametri non validi (`E_COMMESSA_VALIDATION`) — `commessa_id` ≤ 0, `limit` fuori range 1-200, `order_by` fuori whitelist, `order_dir` diverso da asc/desc, `tipo_movimento`, `stato_emissione` o `stato_approvazione` fuori vocabolario (questi ultimi due col campo; fino al 2026-10-20 un valore sbagliato rispondeva lista vuota)
+- `400`: parametri non validi (`E_COMMESSA_VALIDATION`) — `commessa_id` ≤ 0, `order_by` fuori whitelist, `order_dir` diverso da asc/desc, `tipo_movimento`, `stato_emissione` o `stato_approvazione` fuori vocabolario (questi ultimi due col campo; fino al 2026-10-20 un valore sbagliato rispondeva lista vuota)
 - `422`: `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` — cancello perimetro emittente (`lista_codice = "vendite.commesse_attivita"`)
 - Commessa inesistente o fuori perimetro: **nessun 404**, `200` con `count: 0` e `results: []`
 
@@ -98,7 +98,7 @@ View: `ApiCommessaAttivita` `ApiCommessaAttivita` (`apps.vendite.api.views`).
 - Endpoint read-only, nessuna `Idempotency-Key` richiesta.
 - Endpoint v1 richiede JWT.
 - `commessa_id` deve essere > 0, altrimenti errore di validazione.
-- `limit` validato nel service: deve essere compreso tra 1 e 200.
+- La finestra la valida la view (`pagina_da_query`): `limit`/`offset` non interi, `limit` fuori da 1..200 o `offset` negativo → 400 `E_VALIDATION_INPUT`. Dal 2026-10-21 il service non ripete il controllo (prima `E_COMMESSA_VALIDATION`).
 - `competenza_mese` parsata via `optional_iso_date` e passata come `date` al repository.
 - La funzione DB normalizza `competenza_mese` al primo del mese (`date_trunc`).
 - JOIN su `config.sorgenti` per risolvere `sorgente_codice_interno` e `sorgente_etichetta` (evita N+1 lato client).

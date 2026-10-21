@@ -104,6 +104,11 @@ class ChangePasswordTokenVesteTests(SimpleTestCase):
         savepoint = patch(f"{_FRENO}.transaction")
         savepoint.start()
         self.addCleanup(savepoint.stop)
+        # La richiesta non passa dal middleware che legge l'header: la key la
+        # porta il contesto, come per ogni POST che scrive (§A5).
+        chiave = patch("apps.core.api.base_views.get_idempotency_key", return_value="k")
+        chiave.start()
+        self.addCleanup(chiave.stop)
 
     def _chiama(self, *, identita_id=7, old_password=_VECCHIA, new_password="nuova-Pw-22"):
         corpo = {"new_password": new_password, "new_password_confirm": new_password}

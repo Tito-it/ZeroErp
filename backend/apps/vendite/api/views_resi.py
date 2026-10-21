@@ -575,6 +575,12 @@ class ApiResoConferma(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "reso")
+    # ⛔ L'azione di processo del verbo DB (`fn_conferma_reso`/`fn_annulla_reso`
+    #    la applicano con `fn_guard_azione`), dichiarata anche qui come sul
+    #    gemello preventivo (`cambia_stato_preventivi`): chi non ce l'ha riceve
+    #    il 403 del backend, non il rifiuto del DB dopo il livello d'area
+    #    (brief-be-verifica-documentazione-api §A5, 2026-10-20).
+    post_permission = "conferma_reso"
 
     @extend_schema(
         request=None,
@@ -594,6 +600,12 @@ class ApiResoAnnulla(DomainAPIView):
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "reso")
+    # ⛔ L'azione di processo del verbo DB (`fn_conferma_reso`/`fn_annulla_reso`
+    #    la applicano con `fn_guard_azione`), dichiarata anche qui come sul
+    #    gemello preventivo (`cambia_stato_preventivi`): chi non ce l'ha riceve
+    #    il 403 del backend, non il rifiuto del DB dopo il livello d'area
+    #    (brief-be-verifica-documentazione-api §A5, 2026-10-20).
+    post_permission = "conferma_reso"
 
     @extend_schema(
         request=None,

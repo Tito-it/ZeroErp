@@ -48,7 +48,8 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 
 from django.core.cache import cache
-from django.test import Client
+
+from apps.core.tests._helpers.jwt_mock import ClientApi
 
 from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -85,7 +86,7 @@ class ScrittureAttoreApiTests(JwtMockedApiTest):
     def setUp(self) -> None:
         super().setUp()
         cache.clear()
-        self.client = Client()
+        self.client = ClientApi()
 
     def _send(self, method: str, url: str, body: dict) -> None:
         resp = getattr(self.client, method)(
