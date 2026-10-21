@@ -111,7 +111,7 @@ WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_idp);
 
 -- 1.1: utility_id -> config.utilities: FK, letta dal CATALOGO
 -- ⛔ Non per INSERT (rev 2026-10-08). Sotto RLS il WITH CHECK della policy
---   (script.fn_scope_ef_whitelist_via_coppia) vede la coppia solo attraverso
+--   (il BA da script.fn_get_ba_id_da_coppia, 20261021-26) vede la coppia solo attraverso
 --   il suo BA, e PostgreSQL lo valuta all'INSERT PRIMA della FK: una utility
 --   inesistente non ha BA, quindi col runner app la riga esce 42501 e la FK
 --   non si raggiunge mai (come owner darebbe 23503). Era il rosso

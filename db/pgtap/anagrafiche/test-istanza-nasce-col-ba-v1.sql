@@ -169,7 +169,7 @@ SELECT lives_ok(
 -- 5) Dati precontrattuali su una coppia senza BA -> FK composta
 -- ============================================================
 -- ⛔ Sulla STRUTTURA, non per INSERT. La tabella ha RLS, e il WITH CHECK
---   della policy (script.fn_scope_ef_whitelist_via_coppia) vede la coppia
+--   della policy (il BA da script.fn_get_ba_id_da_coppia, 20261021-26) vede la coppia
 --   solo attraverso un suo BA: PostgreSQL valuta il WITH CHECK all'INSERT,
 --   PRIMA della FK, quindi col runner una coppia senza BA esce 42501 e la
 --   FK non si raggiunge mai (come owner, senza RLS, darebbe 23503). Pinnare
