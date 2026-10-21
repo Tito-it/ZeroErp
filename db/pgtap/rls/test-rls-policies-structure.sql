@@ -253,11 +253,12 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'acquisti' AND tablename = 'ordini'
-        AND policyname = 'rls_acquisti_ordini_fornitore_ownership') ~ 'fn_scope_fornitore_ownership'
+        AND policyname = 'rls_acquisti_ordini_fornitore_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*, soggetto_ruolo_id\)'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'acquisti' AND tablename = 'ordini'
             AND policyname = 'rls_acquisti_ordini_fornitore_ownership') ~ 'FORNITORE_PORTALE',
-    '20. rls_acquisti_ordini_fornitore_ownership: USING chiama fn_scope_fornitore_ownership + gate FORNITORE_PORTALE'
+    -- Rev 2026-10-21 (20261021-43): la forma col perimetro; schema facoltativo (come app non si stampa).
+    '20. rls_acquisti_ordini_fornitore_ownership: USING perimetro del fornitore + soggetto dell''ordine, gate FORNITORE_PORTALE'
 );
 
 -- =========================================================
@@ -291,14 +292,15 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'acquisti' AND tablename = 'ddt'
-        AND policyname = 'rls_acquisti_ddt_fornitore_ownership') ~ 'fn_scope_fornitore_ownership'
+        AND policyname = 'rls_acquisti_ddt_fornitore_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*, mittente_soggetto_ruolo_id\)'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'acquisti' AND tablename = 'ddt'
             AND policyname = 'rls_acquisti_ddt_fornitore_ownership') ~ 'FORNITORE_PORTALE'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'acquisti' AND tablename = 'ddt'
             AND policyname = 'rls_acquisti_ddt_fornitore_ownership') ~ 'mittente_soggetto_ruolo_id',
-    '24. rls_acquisti_ddt_fornitore_ownership: USING contiene fn_scope_fornitore_ownership + gate + colonna mittente'
+    -- Rev 2026-10-21 (20261021-43): la forma col perimetro.
+    '24. rls_acquisti_ddt_fornitore_ownership: USING perimetro del fornitore + gate + colonna mittente'
 );
 
 -- =========================================================

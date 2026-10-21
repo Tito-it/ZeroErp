@@ -863,6 +863,14 @@ Quelli con `CONTRATTO`, `PREVENTIVO`, `COMMESSA`, `FATTURA` non cambiano e non s
 | numeratori (`p_famiglia_documento => 'DDT'`, `'ORDINE'`, `'RESO'`) | | **2c** (G-5) |
 | ambito degli indirizzi (`fn_indirizzi_obbligatori_mancanti('DDT', …)`, `a.ambito = 'DDT'`, la quinta colonna di `fn_doc_indirizzi_sede`, `trgfn_tipi_indirizzi_only_allowed`), `area` delle viste `vw_dash_*` | | **2d** (G-6) |
 | note (`trgfn_note_validate_generic`, `fn_scope_note_*`) | | **lotto 3** |
+
+⚠️ **Nota del 2026-10-21 per il lotto 3** (da [brief-db-perimetro-una-volta-famiglie-residue](../work-done/brief-db-perimetro-una-volta-famiglie-residue.md),
+giro 1): gli smistatori dell'operatore cambiano nome e corpo. `fn_scope_note_ef_whitelist` e
+`fn_scope_note_magazzino_ef_whitelist` sono ritirate dal `20261021-27`; al loro posto
+`fn_scope_note_ef_perimetro` e `fn_scope_note_magazzino_ef_perimetro` (`20261021-25`), che ricevono il
+perimetro e smistano sul **modo** del risolutore. Il lotto 3 riparte dal loro corpo nella doc
+auto-generata, non dagli YAML del 2026-09. `fn_scope_note_cliente` e `fn_scope_note_shop` le tocca
+lo stesso brief in un giro successivo: chi arriva per secondo riparte dal corpo vivo.
 | il testo dei messaggi per l'operatore (`'DDT'` come parola nei guard di bolla e reso) | | resta: non è un codice |
 
 ### 11.4 Richiesta al backend (stesso apply)

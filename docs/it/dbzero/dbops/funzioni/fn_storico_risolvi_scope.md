@@ -99,14 +99,15 @@ BEGIN
             -- «<istanza>,<utility>», sono la chiave di
             -- anagrafiche.billing_account (istanza_utility_id,
             -- utility_id). Il BA della coppia, poi il suo emittente come
-            -- nel modo BA: la strada della policy via_coppia
-            -- (script.fn_scope_ef_whitelist_via_coppia). Una colonna
-            -- vuota, o una coppia senza BA: NULL, fail-closed (rev
-            -- 2026-10-09, brief-db-istanza-nasce-col-ba).
-            SELECT ba.id INTO v_ba_id
-              FROM anagrafiche.billing_account ba
-             WHERE ba.istanza_utility_id = NULLIF(p_riga ->> split_part(v_mappa.colonna, ',', 1), '')::bigint
-               AND ba.utility_id         = NULLIF(p_riga ->> split_part(v_mappa.colonna, ',', 2), '')::integer;
+            -- nel modo BA. Una colonna vuota, o una coppia senza BA:
+            -- NULL, fail-closed (rev 2026-10-09, brief-db-istanza-nasce-col-ba).
+            -- ⭐ Rev 2026-10-21 (20261021-28): il BA lo dice
+            --   script.fn_get_ba_id_da_coppia, la stessa domanda della
+            --   policy di anagrafiche.istanze_dati_precontrattuali (regola
+            --   del 2: era scritta qui e in via_coppia, ritirata dal -27).
+            v_ba_id := script.fn_get_ba_id_da_coppia(
+                           NULLIF(p_riga ->> split_part(v_mappa.colonna, ',', 1), '')::bigint,
+                           NULLIF(p_riga ->> split_part(v_mappa.colonna, ',', 2), '')::integer);
             IF v_ba_id IS NULL THEN
                 RETURN NULL;
             END IF;
@@ -201,7 +202,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_storico_risolvi_scope(p_schema text, p_tabella text, p_riga jsonb, p_profondita integer)
-IS 'Risolve l''emittenti_fiscali.id a cui appartiene la riga (to_jsonb) di una madre storicizzata, seguendo la strada dichiarata in dbops.storico_scope_policy: EF (copia), SR (converte 1:1), BA (l''unico emittente del billing account), PADRE (carica la riga del padre per id — o, se il padre non è più vivo, la sua ULTIMA VERSIONE nello storico: normale in un DELETE a cascata, dove il padre sparisce prima che il figlio scriva — e si richiama, ricorsivamente), NESSUNO (NULL). La chiama il trigger di storico per congelare lo scope nella shadow. ⚠️ SECURITY DEFINER del PROPRIETARIO, non di un superuser: catturare lo scope è un atto di sistema e deve vedere il padre anche quando chi scrive non lo vedrebbe sotto RLS; attraversa la RLS perché chi migra possiede le tabelle (ENABLE senza FORCE), e il pgTAP lo asserisce. Non solleva mai — madre non mappata, colonna vuota, padre sparito danno NULL, fail-closed sulla shadow — tranne su una catena che non termina (E_STORICO_SCOPE_CATENA_CICLICA). Brief: brief-db-rls-storico-scope-congelato §4b. rev 2026-10-09 (brief-db-istanza-nasce-col-ba, decisione di Tid): modo COPPIA — la colonna dichiara due nomi, «<istanza>,<utility>», la chiave di anagrafiche.billing_account (istanza_utility_id, utility_id); il resolver trova il BA della coppia e ne prende l''emittente come nel modo BA, la strada della policy via_coppia. Coppia senza BA o colonna vuota: NULL. Primo adottante: anagrafiche.istanze_dati_precontrattuali (RLS accesa in 28d9beeb6).';
+IS 'Risolve l''emittenti_fiscali.id a cui appartiene la riga (to_jsonb) di una madre storicizzata, seguendo la strada dichiarata in dbops.storico_scope_policy: EF (copia), SR (converte 1:1), BA (l''unico emittente del billing account), PADRE (carica la riga del padre per id — o, se il padre non è più vivo, la sua ULTIMA VERSIONE nello storico: normale in un DELETE a cascata, dove il padre sparisce prima che il figlio scriva — e si richiama, ricorsivamente), NESSUNO (NULL). La chiama il trigger di storico per congelare lo scope nella shadow. ⚠️ SECURITY DEFINER del PROPRIETARIO, non di un superuser: catturare lo scope è un atto di sistema e deve vedere il padre anche quando chi scrive non lo vedrebbe sotto RLS; attraversa la RLS perché chi migra possiede le tabelle (ENABLE senza FORCE), e il pgTAP lo asserisce. Non solleva mai — madre non mappata, colonna vuota, padre sparito danno NULL, fail-closed sulla shadow — tranne su una catena che non termina (E_STORICO_SCOPE_CATENA_CICLICA). Brief: brief-db-rls-storico-scope-congelato §4b. rev 2026-10-09 (brief-db-istanza-nasce-col-ba, decisione di Tid): modo COPPIA — la colonna dichiara due nomi, «<istanza>,<utility>», la chiave di anagrafiche.billing_account (istanza_utility_id, utility_id); il resolver trova il BA della coppia con script.fn_get_ba_id_da_coppia (la stessa domanda della policy di istanze_dati_precontrattuali) e ne prende l''emittente come nel modo BA. Coppia senza BA o colonna vuota: NULL. Primo adottante: anagrafiche.istanze_dati_precontrattuali (RLS accesa in 28d9beeb6). Rev 2026-10-21 (20261021-28): il BA della coppia da script.fn_get_ba_id_da_coppia.';
 ```
 
 </div>

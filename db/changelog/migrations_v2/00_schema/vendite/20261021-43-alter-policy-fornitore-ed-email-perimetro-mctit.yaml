@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE ULTIME 4 POLICY: FORNITORE ED EMAIL CALCOLANO CHI GUARDA UNA VOLTA
+#   Brief: brief-db-perimetro-una-volta-famiglie-residue §9 (giro 5).
+#
+# - acquisti.ordini e acquisti.ddt (FORNITORE_PORTALE): la forma di
+#   controparte, fn_scope_sr_perimetro((SELECT perimetro FORNITORE_PORTALE),
+#   <soggetto della riga>); la riga porta gia' il suo fornitore;
+# - config.email_outbox e config.email_log (OPERATORE), USING e WITH CHECK:
+#   fn_scope_email_ambito_perimetro (-41) con le quattro risposte su chi
+#   guarda in quattro sottoquery non correlate (super admin, reparto,
+#   processo, perimetro emittenti), una volta per istruzione. Il processo:
+#   'send_pending_emails' per il log, false per l'outbox (nessun processo la
+#   apre), come prima.
+# ⭐ Stesse risposte nel percorso reale; il fornitore, come cliente e shop,
+#   pretende la veste del GATE (era gia' cosi': FORNITORE_PORTALE).
+# Gate, comando, ruoli: invariati. Generato dal testo vivo di dbdev
+# (2026-10-21). Rollback: i testi di prima.
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261021-43-alter-policy-fornitore-ed-email-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261021-43-alter-policy-fornitore-ed-email-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le policy di fornitore (acquisti.ordini, acquisti.ddt) ed email (config.email_outbox, config.email_log) calcolano chi guarda una volta per istruzione. Giro 5 di brief-db-perimetro-una-volta-famiglie-residue.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(*) FROM pg_policies
+               WHERE coalesce(qual, '') || coalesce(with_check, '') ~ 'fn_scope_(fornitore_ownership|email_ambito)\('
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE pronamespace = 'script'::regnamespace AND proname = 'fn_scope_email_ambito_perimetro'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER POLICY rls_acquisti_ddt_fornitore_ownership ON acquisti.ddt
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'FORNITORE_PORTALE'::text) AND script.fn_scope_sr_perimetro((SELECT script.fn_get_identita_sr_perimetro((NULLIF(current_setting('app.current_identita_id'::text, true), ''::text))::bigint, ARRAY['FORNITORE_PORTALE'::config.ruolo_applicativo])), mittente_soggetto_ruolo_id)));
+
+              ALTER POLICY rls_acquisti_ordini_fornitore_ownership ON acquisti.ordini
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'FORNITORE_PORTALE'::text) AND script.fn_scope_sr_perimetro((SELECT script.fn_get_identita_sr_perimetro((NULLIF(current_setting('app.current_identita_id'::text, true), ''::text))::bigint, ARRAY['FORNITORE_PORTALE'::config.ruolo_applicativo])), soggetto_ruolo_id)));
+
+              ALTER POLICY rls_email_log_ambito ON config.email_log
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro((SELECT script.fn_is_super_admin((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), (SELECT script.fn_get_uo_id_for_user((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), (SELECT script.fn_scope_identita_processo((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, 'send_pending_emails'::text)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro((SELECT script.fn_is_super_admin((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), (SELECT script.fn_get_uo_id_for_user((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), (SELECT script.fn_scope_identita_processo((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, 'send_pending_emails'::text)), (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)));
+
+              ALTER POLICY rls_email_outbox_ambito ON config.email_outbox
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro((SELECT script.fn_is_super_admin((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), (SELECT script.fn_get_uo_id_for_user((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), false, (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito_perimetro((SELECT script.fn_is_super_admin((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), (SELECT script.fn_get_uo_id_for_user((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), false, (SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), (NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER POLICY rls_acquisti_ddt_fornitore_ownership ON acquisti.ddt
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'FORNITORE_PORTALE'::text) AND script.fn_scope_fornitore_ownership((NULLIF(current_setting('app.current_identita_id'::text, true), ''::text))::bigint, mittente_soggetto_ruolo_id)));
+
+              ALTER POLICY rls_acquisti_ordini_fornitore_ownership ON acquisti.ordini
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'FORNITORE_PORTALE'::text) AND script.fn_scope_fornitore_ownership((NULLIF(current_setting('app.current_identita_id'::text, true), ''::text))::bigint, soggetto_ruolo_id)));
+
+              ALTER POLICY rls_email_log_ambito ON config.email_log
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id, 'send_pending_emails'::text)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id, 'send_pending_emails'::text)));
+
+              ALTER POLICY rls_email_outbox_ambito ON config.email_outbox
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND script.fn_scope_email_ambito((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, ambito, emittente_fiscale_id, unita_organizzativa_id, creato_da_user_id)));

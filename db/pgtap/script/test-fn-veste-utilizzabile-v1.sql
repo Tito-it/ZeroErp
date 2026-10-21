@@ -330,12 +330,11 @@ SELECT set_eq(
              ('script.fn_get_profili_accesso_applicabili'), ('script.fn_get_setup_status'),
              ('anagrafiche.fn_sync_auth_user_is_active'),
              ('anagrafiche.fn_sync_auth_user_expired'), ('script.fn_get_user_profile'),
-             -- Rev 2026-10-21 (20261021-34): fn_scope_cliente_ownership la legge
-             --   attraverso script.fn_get_identita_sr_perimetro.
-             ('script.fn_scope_fornitore_ownership'),
-             -- Rev 2026-10-21 (20261021-29, -31): la regola BA_OWNERSHIP la legge
-             --   attraverso script.fn_get_identita_sr_perimetro, qui al posto di
-             --   fn_scope_ba_ownership e _via_fattura.
+             -- Rev 2026-10-21 (20261021-29, -31, -34, -42): le regole BA_OWNERSHIP,
+             --   del cliente e FORNITORE_OWNERSHIP la leggono attraverso
+             --   script.fn_get_identita_sr_perimetro, qui al posto di
+             --   fn_scope_ba_ownership, _via_fattura, fn_scope_cliente_ownership e
+             --   fn_scope_fornitore_ownership.
              ('script.fn_get_identita_sr_perimetro'),
              ('script.fn_scope_identita_processo')$$,
     '26) le sedi del brief leggono script.fn_veste_utilizzabile (le check dell''anti-lockout attraverso fn_identita_super_admin_senza_scadenza)');

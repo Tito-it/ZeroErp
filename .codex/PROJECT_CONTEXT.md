@@ -334,7 +334,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`fn_scope_ef_perimetro` + `fn_get_emittenti_scope_pk_ids` in una sottoquery, emittente della riga da
   `fn_resolve_emittente_fiscale_id` DEFINER; `20261018-16…-33`, `-48…-51`; regola in linee-guida-sql
   §10.3) e il `tx_id` sulla connessione di log persistente (`20261018-52`, 12 → 1,3 ms a transazione).
-  Residuo in D36, sotto.
+  Residuo D36 chiuso il 2026-10-21 (sotto).
 - ✅ **I ruoli di sistema: chiuso il 2026-10-15** (`work-done/brief-db-ruoli-di-sistema.md`): nomi fissi
   (`zeroerp_owner` proprietario di tutto, `zeroerp_job` per pgAgent, `zeroerp_app`, `zeroerp_log`),
   password senza default, un provisioning solo (`scripts/sql/provision_zeroerp.sql`, fasi `ruoli`/`pre`/`post`)
@@ -465,10 +465,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   colonne `character(n)` a lunghezza variabile portate a `varchar` (`20261010-26…-40`), sigla di provincia con la
   sua regola, `destinatario_fe` diventato il canale FE (P/C) che pretende il suo recapito; BE/FE e collaudo a video
   superati. Regola nuova: §7e di `linee-guida-sql.md`, presidio `test-character-n-v1`. BB FE `InputMaiuscolo`.
-- 📝 **Il perimetro una volta per istruzione: le famiglie che restano** (`work-in-progress/brief-db-perimetro-una-volta-famiglie-residue.md`,
-  D36 del registro DB, 2026-10-18, residuo di D26-2): restano per riga le policy del cliente portale,
-  cliente, shop, fornitore, email e note, e tre dell'operatore (`fn_scope_note_ef_whitelist`,
-  `fn_scope_note_magazzino_ef_whitelist`, `via_coppia`). Aperto, non iniziato; attende P-1…P-3 di Tid.
+- ✅ **Il perimetro una volta per istruzione: chiuso il 2026-10-21** (`work-done/brief-db-perimetro-una-volta-famiglie-residue.md`,
+  D36): nessuna policy calcola più per riga ciò che dipende solo da chi guarda. Vesti di controparte
+  (cliente portale, shop, fornitore) con `fn_get_identita_sr_perimetro` + `fn_resolve_controparte_sr_id` +
+  `fn_scope_sr_perimetro`; email con `fn_scope_email_ambito_perimetro`; note e coppia dell'operatore nella
+  forma già pronta. `20261021-24…-43`; regola in linee-guida-sql §10.3; presidio senza eccezioni.
 - 📝 **Dati societari in creazione** (`work-in-progress/brief-db-dati-societari-in-creazione.md`, D34 del registro
   DB, 2026-10-14): la creazione non scrive tutta la sezione. Una società perde la data di costituzione
   (`fn_crea_soggetto_pg` passa `NULL` al verbo), e una ditta individuale perde **tutta** la sezione

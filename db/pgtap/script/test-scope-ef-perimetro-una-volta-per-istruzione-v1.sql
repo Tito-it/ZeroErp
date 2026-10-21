@@ -47,6 +47,8 @@
 --   smistatori delle note che lo ricevono (fn_scope_note_*ef_perimetro): la
 --   stessa forma, il perimetro come primo argomento in una sottoquery. Lo
 --   dice la regex _perimetro qui sotto, una per tutti i test.
+--   Rev 2026-10-21 (giro 5, 20261021-41): e fn_scope_email_ambito_perimetro, a
+--   cui la policy passa in sottoquery le quattro risposte su chi guarda.
 --   Rev 2026-10-21 (giro 4, 20261021-38): e gli smistatori delle note di
 --   cliente e shop (fn_scope_note_cliente_perimetro, fn_scope_note_shop_perimetro).
 --   Rev 2026-10-21 (20261021-29..-32, giro 2): anche fn_scope_sr_perimetro, la
@@ -88,18 +90,19 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(6);
 
 -- La funzione di scope col perimetro, in tutte le sue forme (vedi testata).
-CREATE TEMP TABLE _re AS SELECT 'fn_scope_((note_|note_magazzino_)?ef|sr|note_cliente|note_shop)_perimetro\('::text AS perimetro;
+CREATE TEMP TABLE _re AS SELECT 'fn_scope_((note_|note_magazzino_)?ef|sr|note_cliente|note_shop|email_ambito)_perimetro\('::text AS perimetro;
 
 -- ⚠️ Il DEBITO di controparte (test 6): le funzioni di scope che calcolano
 --   ancora il perimetro dell'identita' per riga, curate dai giri successivi
 --   del brief. Un elenco solo, letto dai test 4 e 6: chi ne cura una la toglie
 --   da qui.
 CREATE TEMP TABLE _debito_controparte (nome text);
-INSERT INTO _debito_controparte VALUES
   -- Rev 2026-10-21: uscite le tre fn_scope_cliente_ownership* (giro 3,
   --   20261021-35), le tre fn_scope_shop_via_* e gli smistatori delle note di
-  --   cliente e shop (giro 4, 20261021-39).
-  ('fn_scope_fornitore_ownership'), ('fn_scope_email_ambito');
+  --   cliente e shop (giro 4, 20261021-39), fn_scope_fornitore_ownership e
+  --   fn_scope_email_ambito (giro 5, 20261021-43). ⭐ Il debito e' a ZERO: la
+  --   tabella resta, VUOTA, perche' i test 4 e 6 non ammettano piu' nessuno.
+  --   Chi ne aggiunge uno lo fa con un INSERT qui, e con la sua ragione.
 
 -- Le policy, con il testo di USING e WITH CHECK insieme.
 CREATE TEMP TABLE _pol AS

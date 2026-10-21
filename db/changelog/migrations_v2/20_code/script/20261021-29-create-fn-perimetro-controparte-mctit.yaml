@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PERIMETRO DI CHI GUARDA DA CONTROPARTE, E IL SUO CONFRONTO
+#   script.fn_get_identita_sr_perimetro(bigint, config.ruolo_applicativo[])
+#   script.fn_scope_sr_perimetro(bigint, bigint)
+#   Brief: brief-db-perimetro-una-volta-famiglie-residue §6 (giro 2).
+#
+# Le vesti di controparte (CLIENTE_PORTALE, SHOP_CUSTOMER, FORNITORE_PORTALE)
+# vedono le righe del PROPRIO soggetto_ruolo. Le loro funzioni di scope
+# (fn_scope_ba_ownership e sorelle) chiedevano per OGNI riga se l'identita'
+# esiste, e' in quella veste ed e' utilizzabile oggi
+# (script.fn_veste_utilizzabile: quattro tabelle): una domanda che non
+# dipende dalla riga.
+# Qui la si fa una volta: fn_get_identita_sr_perimetro restituisce il
+# soggetto_ruolo dell'identita', o NULL se non e' in una delle vesti date o
+# non e' utilizzabile. La policy lo passa in UNA sottoquery non correlata
+# (InitPlan), e per riga resta fn_scope_sr_perimetro, pura e incorporata:
+# `COALESCE(soggetto della riga = perimetro, false)`. Come fn_scope_ef_perimetro
+# per l'operatore (linee-guida-sql §10.3).
+# ⚠️ Convenzione diversa dall'operatore, e voluta: qui NULL = NESSUNO (una
+#   controparte non ha mai «tutto»), la' NULL = tutti (il super admin).
+# Firme %TYPE dove c'e' una colonna; COST 5000 sul perimetro (legge tabelle),
+# nessun COST sul confronto (incorporato: misurato fra le economiche di
+# script/test-policy-funzioni-cost-v1).
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261021-29-create-fn-perimetro-controparte-mctit.yaml
+
+  - changeSet:
+      id: 20261021-29-create-fn-perimetro-controparte
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_identita_sr_perimetro (il soggetto dell'identita' in una veste di controparte utilizzabile, una volta per istruzione) e script.fn_scope_sr_perimetro (il confronto per riga, puro). Giro 2 di brief-db-perimetro-una-volta-famiglie-residue.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE pronamespace = 'script'::regnamespace
+                 AND proname IN ('fn_get_identita_sr_perimetro', 'fn_scope_sr_perimetro')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_identita_sr_perimetro(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE,
+                  -- ⚠️ array esplicito: `colonna%TYPE[]` non esiste in PostgreSQL.
+                  p_vesti       config.ruolo_applicativo[])
+               RETURNS anagrafiche.identita_digitali.soggetto_ruolo_id%TYPE
+               LANGUAGE sql
+               STABLE SECURITY INVOKER COST 5000
+              AS $function$
+                  -- Scopo: il perimetro di chi guarda da CONTROPARTE: il soggetto_ruolo
+                  --   dell'identita', se e' in una delle vesti date ed e' utilizzabile
+                  --   oggi. NULL altrimenti: nessuna riga.
+                  -- Non dipende dalla riga: la policy lo chiama in UNA sottoquery non
+                  --   correlata, e PostgreSQL lo valuta una volta per istruzione:
+                  --     script.fn_scope_sr_perimetro(
+                  --         (SELECT script.fn_get_identita_sr_perimetro(<identita>, ARRAY['<veste>'])),
+                  --         <soggetto della riga>)
+                  -- ⭐ La policy passa la SUA veste: l'identita' deve essere quella della
+                  --   sessione (il middleware imposta app.ruolo_applicativo dalla stessa
+                  --   riga di identita_digitali).
+                  -- «Utilizzabile» lo decide script.fn_veste_utilizzabile, non una copia.
+                  SELECT idg.soggetto_ruolo_id
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.id = p_identita_id
+                     AND idg.ruolo_applicativo = ANY (p_vesti)
+                     AND script.fn_veste_utilizzabile(idg.id)
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_identita_sr_perimetro(
+                  anagrafiche.identita_digitali.id%TYPE,
+                  config.ruolo_applicativo[]) IS
+              'Il perimetro di chi guarda da controparte (CLIENTE_PORTALE, SHOP_CUSTOMER, FORNITORE_PORTALE): il soggetto_ruolo dell''identita'', se e'' in una delle vesti date ed e'' utilizzabile oggi (script.fn_veste_utilizzabile); NULL altrimenti, cioe'' nessuna riga. Non dipende dalla riga: la policy lo passa a script.fn_scope_sr_perimetro in UNA sottoquery non correlata, valutata una volta per istruzione (linee-guida-sql §10.3). La policy passa la propria veste. ⚠️ NULL = nessuno, al contrario del perimetro dell''operatore (NULL = tutti). Rev 2026-10-21 (20261021-29, giro 2 di brief-db-perimetro-una-volta-famiglie-residue).';
+
+              CREATE OR REPLACE FUNCTION script.fn_scope_sr_perimetro(
+                  p_perimetro         anagrafiche.identita_digitali.soggetto_ruolo_id%TYPE,
+                  p_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               IMMUTABLE
+               -- ⚠️ Nessun COST: la funzione e' pura e il pianificatore la INCORPORA (ogni
+               --    parametro compare una volta sola), quindi nel piano resta il suo corpo.
+               --    Elencata fra le economiche di script/test-policy-funzioni-cost-v1.
+              AS $function$
+                  -- Scopo: il soggetto della riga e' quello di chi guarda? La funzione di
+                  --   scope delle policy di controparte (linee-guida-sql §10.3). Il
+                  --   perimetro glielo passa la policy, gia' calcolato da
+                  --   script.fn_get_identita_sr_perimetro.
+                  -- COALESCE: perimetro NULL (nessuno) o soggetto NULL -> false, non NULL.
+                  SELECT coalesce(p_soggetto_ruolo_id = p_perimetro, false)
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_sr_perimetro(
+                  anagrafiche.identita_digitali.soggetto_ruolo_id%TYPE,
+                  anagrafiche.soggetti_ruoli.id%TYPE) IS
+              'Funzione di scope delle policy di controparte (linee-guida-sql §10.3): il soggetto_ruolo della riga e'' quello di chi guarda? Il perimetro lo passa la policy, calcolato una volta per istruzione da script.fn_get_identita_sr_perimetro in una sottoquery non correlata. Pura e incorporata dal pianificatore: per riga resta COALESCE(soggetto = perimetro, false). Perimetro NULL (nessuno) o soggetto NULL -> false. Rev 2026-10-21 (20261021-29, giro 2 di brief-db-perimetro-una-volta-famiglie-residue).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION script.fn_scope_sr_perimetro(
+                  anagrafiche.identita_digitali.soggetto_ruolo_id%TYPE,
+                  anagrafiche.soggetti_ruoli.id%TYPE);
+              DROP FUNCTION script.fn_get_identita_sr_perimetro(
+                  anagrafiche.identita_digitali.id%TYPE,
+                  config.ruolo_applicativo[]);

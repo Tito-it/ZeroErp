@@ -122,6 +122,7 @@ search:
 - [fn_get_auth_user_stato](funzioni/fn_get_auth_user_stato.md) — Dire, per un utente dell'anagrafica di Django, **come si chiama** e **se è attivo**. Nient'altro.
 - [fn_get_ba_emittente_sr_id](funzioni/fn_get_ba_emittente_sr_id.md) — (latest review 13-09-26)
 - [fn_get_ba_emittente_sr_id_installazione](funzioni/fn_get_ba_emittente_sr_id_installazione.md) — (latest review 10-10-26)
+- [fn_get_ba_id_da_coppia](funzioni/fn_get_ba_id_da_coppia.md) — (nata il 2026-10-21, `20261021-24`)
 - [fn_get_catasto_source_by_istanza](funzioni/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 - [fn_get_cliente_testata_documento](funzioni/fn_get_cliente_testata_documento.md)
 - [fn_get_contatti](funzioni/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
@@ -133,6 +134,7 @@ search:
 - [fn_get_emittenti_scope_sr_ids](funzioni/fn_get_emittenti_scope_sr_ids.md) — (latest review 02-05-2026 — wrapper su `_pk_ids`)
 - [fn_get_entita_ruolo_detail](funzioni/fn_get_entita_ruolo_detail.md) — * **Dati entita' per ruolo**: dato un `soggetto_ruolo_id`, recupera automaticamente il tipo ruolo e interroga la tabella/vista configurata in `tipi_ruoli.entita_tabella`.
 - [fn_get_fattura_intestazione](funzioni/fn_get_fattura_intestazione.md) — (rev 2026-08-22)
+- [fn_get_identita_sr_perimetro](funzioni/fn_get_identita_sr_perimetro.md) — (nata il 2026-10-21, `20261021-29`)
 - [fn_get_indirizzi_by_ruolo](funzioni/fn_get_indirizzi_by_ruolo.md) — (latest review 25-03-26) Restituisce gli **indirizzi** associati a uno specifico `soggetto_ruolo`, con filtro opzionale per **istanza utility**, producendo per ciascuno:
 - [fn_get_indirizzi_by_soggetto](funzioni/fn_get_indirizzi_by_soggetto.md) — (latest review 15-02-26) Restituisce tutti gli **indirizzi** associati direttamente a un **soggetto** (`anagrafiche.indirizzi_soggetti`), utilizzando come sorgente la vista `anagrafiche.vw_indirizzi_resolved_soggetto` per ottenere un output **uniforme e human-readable**.
 - [fn_get_indirizzo](funzioni/fn_get_indirizzo.md) — *(latest review 25-03-26)* La funzione **`script.fn_get_indirizzo`** restituisce **uno o più indirizzi tecnici** associati a un determinato **`soggetto_ruolo`**, filtrando per **tipo di indirizzo** identificato dal **codice interno** (`config.tipi_indirizzi.codice_interno`) e opzionalmente per **istanza utility** (`anagrafiche.istanze_utilities.id`).
@@ -215,6 +217,7 @@ search:
 - [fn_regime_fiscale_documento](funzioni/fn_regime_fiscale_documento.md)
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md) — (riscritta il 25-09-2026)
 - [fn_resolve_codice_postale](funzioni/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).
+- [fn_resolve_controparte_sr_id](funzioni/fn_resolve_controparte_sr_id.md) — (nata il 2026-10-21, `20261021-30`)
 - [fn_resolve_emittente_fiscale_id](funzioni/fn_resolve_emittente_fiscale_id.md) — (rev 2026-08-22)
 - [fn_resolve_emittente_for_user](funzioni/fn_resolve_emittente_for_user.md)
 - [fn_resolve_emittente_sr_id](funzioni/fn_resolve_emittente_sr_id.md)
@@ -225,11 +228,6 @@ search:
 - [fn_ricalcola_prezzo_padre_da_componenti](funzioni/fn_ricalcola_prezzo_padre_da_componenti.md)
 - [fn_sblocca_credenziale](funzioni/fn_sblocca_credenziale.md) — (scritta il 25-09-2026)
 - [fn_scope_ba_ownership](funzioni/fn_scope_ba_ownership.md) — (latest review 20-04-2026 — ruolo-aware)
-- [fn_scope_ba_ownership_via_fattura](funzioni/fn_scope_ba_ownership_via_fattura.md) — (latest review 19-04-2026)
-- [fn_scope_ba_ownership_via_fattura_sdi](funzioni/fn_scope_ba_ownership_via_fattura_sdi.md)
-- [fn_scope_cliente_ownership](funzioni/fn_scope_cliente_ownership.md) — (latest review 19-04-2026)
-- [fn_scope_cliente_ownership_via_ordine](funzioni/fn_scope_cliente_ownership_via_ordine.md)
-- [fn_scope_cliente_ownership_via_ordine_riga](funzioni/fn_scope_cliente_ownership_via_ordine_riga.md)
 - [fn_scope_ef_perimetro](funzioni/fn_scope_ef_perimetro.md) — (nata il 2026-10-18; firma attuale da `20261018-24`)
 - [fn_scope_ef_whitelist](funzioni/fn_scope_ef_whitelist.md) — (rev 2026-06-01 — refactor RLS: delega alla canonica)
 - [fn_scope_ef_whitelist_via_asset](funzioni/fn_scope_ef_whitelist_via_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
@@ -239,7 +237,6 @@ search:
 - [fn_scope_ef_whitelist_via_contabile](funzioni/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22, corretta il 2026-09-15)
 - [fn_scope_ef_whitelist_via_contratto](funzioni/fn_scope_ef_whitelist_via_contratto.md)
 - [fn_scope_ef_whitelist_via_contratto_riga](funzioni/fn_scope_ef_whitelist_via_contratto_riga.md)
-- [fn_scope_ef_whitelist_via_coppia](funzioni/fn_scope_ef_whitelist_via_coppia.md) — (rev 2026-10-08)
 - [fn_scope_ef_whitelist_via_ddt](funzioni/fn_scope_ef_whitelist_via_ddt.md)
 - [fn_scope_ef_whitelist_via_ddt_riga](funzioni/fn_scope_ef_whitelist_via_ddt_riga.md)
 - [fn_scope_ef_whitelist_via_documento_generato](funzioni/fn_scope_ef_whitelist_via_documento_generato.md)
@@ -267,15 +264,14 @@ search:
 - [fn_scope_ef_whitelist_via_sr](funzioni/fn_scope_ef_whitelist_via_sr.md) — (rev 2026-06-01)
 - [fn_scope_ef_whitelist_via_trasferimento](funzioni/fn_scope_ef_whitelist_via_trasferimento.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_email_ambito](funzioni/fn_scope_email_ambito.md)
+- [fn_scope_email_ambito_perimetro](funzioni/fn_scope_email_ambito_perimetro.md) — (nata il 2026-10-21, `20261021-41`)
 - [fn_scope_fornitore_ownership](funzioni/fn_scope_fornitore_ownership.md) — (latest review 18-04-2026)
 - [fn_scope_identita_processo](funzioni/fn_scope_identita_processo.md) — (latest review 05-09-2026)
-- [fn_scope_note_cliente](funzioni/fn_scope_note_cliente.md)
-- [fn_scope_note_ef_whitelist](funzioni/fn_scope_note_ef_whitelist.md)
-- [fn_scope_note_magazzino_ef_whitelist](funzioni/fn_scope_note_magazzino_ef_whitelist.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
-- [fn_scope_note_shop](funzioni/fn_scope_note_shop.md)
-- [fn_scope_shop_via_ba](funzioni/fn_scope_shop_via_ba.md)
-- [fn_scope_shop_via_ordine](funzioni/fn_scope_shop_via_ordine.md)
-- [fn_scope_shop_via_ordine_riga](funzioni/fn_scope_shop_via_ordine_riga.md)
+- [fn_scope_note_cliente_perimetro](funzioni/fn_scope_note_cliente_perimetro.md)
+- [fn_scope_note_ef_perimetro](funzioni/fn_scope_note_ef_perimetro.md)
+- [fn_scope_note_magazzino_ef_perimetro](funzioni/fn_scope_note_magazzino_ef_perimetro.md) — (rev 2026-10-21, `20261021-25`)
+- [fn_scope_note_shop_perimetro](funzioni/fn_scope_note_shop_perimetro.md)
+- [fn_scope_sr_perimetro](funzioni/fn_scope_sr_perimetro.md)
 - [fn_scrivi_riga_da_jsonb](funzioni/fn_scrivi_riga_da_jsonb.md)
 - [fn_search_soggetti_universale](funzioni/fn_search_soggetti_universale.md) — * **Ricerca per tipo ruolo**: il parametro `p_tipo_ruolo_id` e' obbligatorio. Il dropdown frontend mostra solo i ruoli accessibili all'utente corrente.
 - [fn_search_stradario](funzioni/fn_search_stradario.md) — (latest review 13-03-2026) Ricerca vie (stradario) per autocomplete frontend. L'utente seleziona un comune e cerca una via nel comune selezionato.

@@ -97,6 +97,10 @@ CREATE TEMP TABLE _economiche (sch text, nome text, misura text);
 INSERT INTO _economiche VALUES
   ('script', 'fn_get_uo_id_for_user',           '~0,010 ms/chiamata, dbdev come app, 2026-10-10'),
   ('script', 'fn_is_super_admin_account',       '~0,010 ms/chiamata, dbdev come app, 2026-10-10'),
+  -- ⭐ L'involucro di fn_is_super_admin_account (la veste di sessione, poi l'account).
+  --   Nominato dalle policy delle email (20261021-43) in una sottoquery non
+  --   correlata: una chiamata per istruzione, non per riga.
+  ('script', 'fn_is_super_admin',               '~0,011 ms/chiamata, 20.000 in 223 ms, scratch come owner, 2026-10-21'),
   ('script', 'fn_scope_identita_processo',      '~0,008 ms/chiamata, dbdev come app, 2026-10-10'),
   ('script', 'fn_resolve_emittente_fiscale_id', '~0,007 ms/chiamata, dbdev come app, 2026-10-10 (DEFINER: niente RLS sotto)'),
   -- ⭐ Pura: confronta l'emittente col perimetro che la policy le passa gia'
@@ -106,7 +110,10 @@ INSERT INTO _economiche VALUES
   ('script', 'fn_scope_ef_perimetro',           '~0,0015 ms/chiamata, 20.000 righe in 26-32 ms, dbdev come app, 2026-10-18 (non legge tabelle)'),
   -- ⭐ Pura e INCORPORATA: la sorella di controparte di fn_scope_ef_perimetro
   --   (20261021-29). Nel piano resta COALESCE(soggetto = (InitPlan), false).
-  ('script', 'fn_scope_sr_perimetro',           'incorporata: 20.000 righe in 1,9 ms come un filtro vuoto, scratch come owner, 2026-10-21 (non legge tabelle)');
+  ('script', 'fn_scope_sr_perimetro',           'incorporata: 20.000 righe in 1,9 ms come un filtro vuoto, scratch come owner, 2026-10-21 (non legge tabelle)'),
+  -- ⭐ Pura: la regola dell'ambito delle email, con chi guarda gia' calcolato
+  --   dalla policy (20261021-41). Non legge tabelle.
+  ('script', 'fn_scope_email_ambito_perimetro', '~0,0044 ms/chiamata, 20.000 righe in 92 ms (filtro vuoto 3 ms), scratch come owner, 2026-10-21 (non legge tabelle)');
 
 SELECT is(
   (SELECT coalesce(string_agg(funzione || ' = ' || procost, ', ' ORDER BY funzione), '')

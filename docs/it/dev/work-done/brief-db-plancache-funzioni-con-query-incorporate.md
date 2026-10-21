@@ -4,7 +4,7 @@
 
 **Nessuno: chiuso e archiviato il 2026-10-18.** D-1…D-6 e D-3b (D-3b-1, D-3b-2, D-3b-3) applicate,
 pgTAP verdi, misurate. Il debito residuo vive in
-[brief-db-perimetro-una-volta-famiglie-residue](../work-in-progress/brief-db-perimetro-una-volta-famiglie-residue.md)
+[brief-db-perimetro-una-volta-famiglie-residue](brief-db-perimetro-una-volta-famiglie-residue.md)
 (D36). Fuori dal brief, a Tid: ricostruire lo scratch `zeroerp_ruoli` (le fixture committate
 dall'incidente del 2026-10-18, §5quinquies) prima della prossima baseline. Lavoro del 2026-10-18
 **da committare** (changeSet `20261018-15`…`-29`, `-31`…`-33`, `-48`…`-52`, pgTAP, pagine `manual/`,
@@ -944,7 +944,7 @@ Chiuso tutto ciò che il brief aveva aperto:
   sottoquery e non due, il risolutore DEFINER, il billing account in convenzione SR) e §10.9.
   Presidio nuovo `script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` (testo e piano).
 
-**Residuo → brief nuovo** [brief-db-perimetro-una-volta-famiglie-residue](../work-in-progress/brief-db-perimetro-una-volta-famiglie-residue.md)
+**Residuo → brief nuovo** [brief-db-perimetro-una-volta-famiglie-residue](brief-db-perimetro-una-volta-famiglie-residue.md)
 (D36 nel registro): le famiglie che restano per riga (cliente portale, cliente, shop, fornitore,
 email, note) e tre policy dell'operatore — `fn_scope_note_ef_whitelist` e
 `fn_scope_note_magazzino_ef_whitelist`, che il test 5 del presidio non vede (non sono `via_*`), e

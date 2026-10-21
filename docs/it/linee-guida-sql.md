@@ -1401,9 +1401,50 @@ Il billing account ha un emittente che **non** è un fatto della riga
 sessione, altrimenti il default): lì il perimetro va in convenzione soggetto_ruolo,
 `fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_sr_ids(…)), script.fn_get_ba_emittente_sr_id(billing_account_id))`
 (ondata 2, `20261018-48…-51`).
+Una riga che nomina il BA con una **coppia** di colonne (istanza, utility) lo
+trova con `script.fn_get_ba_id_da_coppia`, `SECURITY DEFINER` come il risolutore,
+e poi segue la forma del BA (rev 2026-10-21, `20261021-24…-26`).
+Il padre partizionato delle note, che non eredita le policy delle partizioni,
+smista su `target_tipo` con una funzione di scope che riceve lo stesso perimetro
+come primo argomento: [`fn_scope_note_ef_perimetro`](/dbzero/script/funzioni/fn_scope_note_ef_perimetro)
+e [`fn_scope_note_magazzino_ef_perimetro`](/dbzero/script/manual/fn_scope_note_magazzino_ef_perimetro).
 ⚠️ Gli adattatori `fn_scope_ef_whitelist_via_*` restano per la domanda su **un**
-emittente (verbi, guard, backend), non nelle policy. Unico rimasto in una policy:
-`via_coppia` (chiave a due colonne), debito dichiarato nel presidio (test 5).
+emittente (verbi, guard, backend), non nelle policy: il presidio (test 5) non ne
+ammette nessuno, e nemmeno uno smistatore che li chiami.
+
+⭐ **La stessa forma per le vesti di controparte** (cliente portale, shop, fornitore;
+rev 2026-10-21, `20261021-29…-32`). Il perimetro è il soggetto dell'identità, se è
+nella veste della policy ed è utilizzabile oggi; per riga, il soggetto della riga:
+
+```sql
+USING ((current_setting('app.ruolo_applicativo', true) = 'CLIENTE_PORTALE')
+       AND script.fn_scope_sr_perimetro(
+               (SELECT script.fn_get_identita_sr_perimetro(
+                   NULLIF(current_setting('app.current_identita_id', true), '')::bigint,
+                   ARRAY['CLIENTE_PORTALE'::config.ruolo_applicativo])),
+               script.fn_resolve_controparte_sr_id('fattura', fattura_id)))
+```
+
+Il soggetto lo dà `script.fn_resolve_controparte_sr_id('<modo>', chiave)`,
+`SECURITY DEFINER` come il risolutore dell'emittente; se la riga lo porta già (il
+billing account), si passa la colonna. ⚠️ Qui il perimetro `NULL` vuol dire
+**nessuno**, non tutti. Pagine:
+[`fn_get_identita_sr_perimetro`](/dbzero/script/manual/fn_get_identita_sr_perimetro),
+[`fn_resolve_controparte_sr_id`](/dbzero/script/manual/fn_resolve_controparte_sr_id).
+
+⭐ **Quando chi guarda è più di un perimetro** (rev 2026-10-21, `20261021-41…-43`).
+La regola delle email dipende dall'ambito della riga e chiede quattro cose di chi
+guarda: super admin, reparto, identità di processo, perimetro emittenti. Si passano
+in **quattro** sottoquery non correlate, una per domanda, a una funzione pura che
+decide per riga
+([`fn_scope_email_ambito_perimetro`](/dbzero/script/manual/fn_scope_email_ambito_perimetro)).
+Non contraddice «una sottoquery, non due»: quella regola vieta di calcolare due volte
+la **stessa** cosa.
+
+⛔ Dal 2026-10-21 nessuna policy calcola per riga ciò che dipende solo da chi guarda.
+Il presidio `script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` non ammette
+eccezioni: il suo elenco del debito (test 4 e 6) è vuoto, e chi ci aggiunge una voce
+la scrive con la sua ragione.
 
 #### 10.4 Input: sempre dai GUC `app.*`
 
