@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-21
 
-**Riparte: il BE, con la riprova dello spegnimento di un listino (11-quater, §9.6), poi il passaggio unico del [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §11 e T-7b. Lato DB non resta niente: `20261021-21` … `-23` applicati su scratch e dbdev, pgTAP verdi (Tid, 2026-10-21). T-7a è fatto (§9.4).** Il collaudo T-5 è fatto (2026-10-18, §9): provisioning, `env.sh` e login con
+**Riparte: il BE, con la riprova dello spegnimento di un listino (11-quater, §9.6), poi il passaggio unico del [brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md) §11 e T-7b. Lato DB non resta niente: `20261021-21` … `-23` applicati su scratch e dbdev, pgTAP verdi (Tid, 2026-10-21). T-7a è fatto (§9.4).** Il collaudo T-5 è fatto (2026-10-18, §9): provisioning, `env.sh` e login con
 `dev.smoke` funzionano, `smoke` è disattivato; il giro degli smoke ha trovato un emittente di prova che non sa
 emettere (nessun modello di documento) e smoke che vivevano dei dati di `EMITEST`.
 
@@ -21,7 +21,7 @@ utenti dei portali non hanno un PF loro (la veste sta sul ruolo del cliente o de
 | 7 | ✅ **BE** | T-1 … T-4 (2026-10-18, §8) e la 2b-2: il backend crea dalle madri del DB e le sue copie sono ritirate (brief DB §6.10) | §8; brief DB §6.10 | — |
 | 8 | ✅ **Tid + BE** | Collaudo T-5: command su dbdev, `env.sh` a `dev.smoke`, giro degli smoke, `smoke` disattivato (2026-10-18). Esito e correzioni in §9 | §9 | — |
 | 9 | ✅ **FE** | T-6: il filtro e il badge nella lista Operatori (2026-10-18) | §8 | — |
-| 10 | ✅ **Tid → team DB** | I modelli di documento standard: un emittente nuovo emette dal primo giorno. Lato DB chiuso e applicato (2026-10-20); il seguito è il passaggio unico BE/FE di quel brief | [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §11 | — |
+| 10 | ✅ **Tid → team DB** | I modelli di documento standard: un emittente nuovo emette dal primo giorno. Lato DB chiuso e applicato (2026-10-20); il seguito è il passaggio unico BE/FE di quel brief | [brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md) §11 | — |
 | 11 | ✅ **BE** | T-7a (2026-10-18): preventivi-componenti e guida-inversione si costruiscono la materia; trovato il listino che non si spegne | §9.4 | — |
 | 11-bis | ✅ **team DB** | Il guard di disattivazione del listino punta a una tabella eliminata: 500 a ogni spegnimento (R-1, Q-1). Il generatore ritira gli orfani (`20261021-21` … `-23`), provato sullo scratch e su dbdev in transazione | §9.6 | — |
 | 11-ter | ✅ **Tid** | Apply di `20261021-21` … `-23` su scratch e dbdev, pgTAP verdi (2026-10-21). Verificato: changeSet `EXECUTED`, generatore agganciato, zero orfani, il trigger su `listini_associazioni` non c'è più | §9.6 | 11-bis |
@@ -278,7 +278,7 @@ baseline, in tre gruppi.
 ### 9.3 Da fare: T-7
 
 **Il difetto di fondo non è degli smoke.** Un emittente nuovo non sa emettere: è il
-[brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md), e risolve da solo gli
+[brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md), e risolve da solo gli
 smoke che si fermano sul modello. Il resto è materia che ogni smoke si deve costruire da sé, a partire
 dalle radici di prova (§1: il verbo dà identità stabili, non dati di lavoro).
 

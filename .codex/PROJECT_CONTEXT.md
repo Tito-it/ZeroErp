@@ -495,6 +495,18 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   delle fatture che nasce con l'emittente (R-BE-14), profilo SUPER_ADMIN da un lettore (R-BE-11), l'istanza di
   indirizzi, contatti e conti del ruolo è del soggetto del ruolo e il soggetto di un ruolo non cambia (R-BE-15).
   Fuori da qui: i template di default dell'emittente, in `brief-db-modelli-documento-standard`.
+- ✅ **I modelli di documento standard: un emittente nuovo emette dal primo giorno — chiuso il 2026-10-21**
+  (`work-done/brief-db-modelli-documento-standard.md`): un modello standard per tipo di documento, di
+  sistema (emittente NULL, flag `standard`, scritto solo dai changeSet), usato come ripiego quando
+  l'azienda non ha modelli suoi che stampano (strada B). Una porta sola per «con che modello e che
+  versione si stampa», anche col modello indicato (`documenti.fn_risolvi_template_applicabile`), «può
+  stampare» in una vista sola (`vw_template_versioni_stampabili`), «personalizza» e la copia di una
+  versione come funzioni del DB, lo scarto delle copie dallo standard da cui derivano. Nello stesso
+  brief: i parametri d'importo per utility con un valore di sistema (`config.utilities`) e una
+  catena sola per riga e totale (`fn_parametri_importo_riga`), la sede legale del cedente pretesa
+  all'uscita dalla bozza. BE/FE in `7385889b9`: la lista Modelli documento dice con che cosa stampa
+  ogni azienda, lo standard si apre in sola lettura e si personalizza. Collaudo di Tid superato. I
+  residui sono in § «Aperto — Media priorità».
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato
@@ -507,6 +519,19 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **Residui di `work-done/brief-db-modelli-documento-standard.md`** (ereditati il 2026-10-21 dalla
+  chiusura, §11.5.4 e riga 10):
+  - **il giro degli smoke su `dev.smoke`** (§7, B-11): DEVA emette con lo standard e chiude una
+    fattura. Non fatto: il brief si è chiuso col collaudo a video. BE;
+  - **B-8, la matrice utility dell'emittente**: mostra solo l'override grezzo. Mettere nei suoi campi
+    i parametri di sistema li farebbe leggere come override; la forma proposta sono due campi
+    «effettivo» da `anagrafiche.fn_parametri_importo_utility` e una colonna FE accanto. Da decidere,
+    di Tid;
+  - **la numerazione della versione nuova** di un template: la versione scritta da zero la numera il
+    BE (`next_versione_num`, MAX+1), la copia la numera il DB (`fn_crea_bozza_da_versione`). Due sedi
+    dello stesso numero; si chiude con un verbo DB per la versione nuova. Brief nuovo se Tid vuole;
+  - **`vendite.fatture.utility_id NOT NULL`** (§10.9, facoltativa): l'unico creatore applicativo la
+    pretende già, molte fixture pgTAP inseriscono fatture senza. Di Tid.
 - **Residui di `work-done/brief-db-presidio-job-run-a-chi-tocca.md`** (ereditati il 2026-10-18 dalla chiusura),
   nessuno bloccante:
   - **errori lato client senza SQLSTATE** (§12): una connessione che cade dentro un command arriva come
