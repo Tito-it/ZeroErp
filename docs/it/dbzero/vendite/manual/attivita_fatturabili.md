@@ -208,7 +208,7 @@ Le 8 colonne snapshot pricing presenti su [`vendite.commesse_attivita`](/dbzero/
 | `tipo_variazione_applicata`      | varchar(16)   | `PERCENTUALE` \| `VALORE_FISSO` \| `PREZZO_FISSO` \| `NESSUNA`                          |
 | `valore_variazione_applicata`    | numeric(10,4) | Valore della variazione effettivamente applicata                                        |
 | `promo_id`                       | bigint        | FK a `vendite.promo_articoli`                                                           |
-| `contratto_id`                   | bigint        | FK a `vendite.contratti`                                                                |
+| `contratto_id`                   | bigint        | FK a `vendite.contratti`; il contratto è del conto di fatturazione della commessa (guard `trgfn_attivita_guard_contratto`) |
 | `categoria_cliente_id_snapshot`  | smallint      | FK a `anagrafiche.categorie_clienti`                                                    |
 | `classe_utenza_id_snapshot`      | integer       | FK a `config.classi_utenze`                                                             |
 

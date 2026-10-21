@@ -76,6 +76,14 @@ versione precedente risulta «diverso» pur essendo venuto dal listino.
   in più tabelle — candidato building block.
 * Il percorso rapido del resolver che legge una versione in `BOZZA` (stesso brief,
   §1) riguarda anche la precompilazione delle righe di documento.
+* Il 2026-10-21 (richiesta BE dello smoke `smoke-group-attivita-contratto`, D-1 di
+  Tid) è nata la regola gemella su `contratto_id`: il contratto citato è del billing
+  account della commessa (`vendite.fn_check_contratto_provenienza` +
+  `vendite.trgfn_attivita_guard_contratto`, `20261021-64…66`), su `commesse_attivita`
+  e `attivita_fatturabili`. Dice che cosa `contratto_id` **può** contenere, come il
+  brief qui sopra per `listino_riga_id`. Se R-1 porta `contratto_id` sulle righe di
+  documento, la stessa regola va montata anche lì; la coerenza fra `origine_prezzo
+  CONTRATTO_*` e `contratto_id` valorizzato resta di R-2.
 
 ## 5. Fuori da questo brief
 

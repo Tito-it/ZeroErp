@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_check_contratto_provenienza(commessa, contratto)
+#   -> il codice del motivo, NULL = coerente
+#   Richiesta BE del 2026-10-21 (smoke-group-attivita-contratto, Q-1);
+#   decisione di Tid D-1, 2026-10-21: la regola si fa, in questo giro.
+#
+# -- LA REGOLA, SUL MODELLO ----------------------------------------------
+#   contratto_id su commesse_attivita e attivita_fatturabili e' la
+#   provenienza del prezzo (origine CONTRATTO_OVERRIDE / CONTRATTO_LISTINO).
+#   Il prezzo il contratto lo prende da vendite.fn_get_contratto_attivo(BA,
+#   utility, data): un contratto di un ALTRO billing account e' un prezzo
+#   che il modello non sa produrre. Fino a oggi c'era la sola FK.
+#   E_ATTIVITA_CONTRATTO_INCOERENTE: il contratto citato non e' del billing
+#   account della commessa della riga.
+#
+# -- PERCHE' BASTA IL BILLING ACCOUNT ------------------------------------
+#   * utility e istanza seguono: fk_contratti_ba_coppia lega il contratto
+#     alla coppia (BA, istanza, utility) del suo BA, e un BA ha una utility;
+#   * l'emittente segue: un BA ha UN emittente, e il contratto e' gia'
+#     confrontato col suo BA (trgfn_doc_guard_emittente_ba).
+#   ⛔ La regola NON si scrive sull'emittente: l'emittente «di» un BA senza
+#     legame dipende da chi agisce (script.fn_get_ba_emittente_sr_id, livello
+#     2), l'uguaglianza dei BA no. Vale anche a sessione finita.
+#   Il BA si legge dalla COMMESSA, per entrambe le tabelle: le due righe la
+#   portano (commessa_id NOT NULL), il prezzo e' stato risolto per il BA della
+#   commessa, e l'emissione copia sull'attivita' fatturabile proprio quel BA
+#   (vendite.fn_emit_attivita_fatturabili_da_commessa). Un predicato solo,
+#   una domanda sola per le due tabelle.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   Gemella di vendite.fn_check_listino_provenienza (20261016-02), che giudica
+#   l'altra meta' della provenienza (versione e riga di listino).
+#   ⚠️ SECURITY DEFINER: contratti e commesse hanno la RLS per emittente.
+#   Letto con la RLS di chi scrive, un contratto di un'altra azienda
+#   tornerebbe a vuoto e la regola giudicherebbe un'assenza invece di un
+#   valore. Ritorna solo un codice: non rivela niente del contratto.
+#   search_path bloccato, nomi qualificati. «check» perche' non solleva
+#   (linee-guida-sql §5): solleva vendite.trgfn_attivita_guard_contratto
+#   (20261021-65).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261021-64-create-fn-check-contratto-provenienza-mctit.yaml
+
+  - changeSet:
+      id: 20261021-64-create-fn-check-contratto-provenienza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo predicato vendite.fn_check_contratto_provenienza: il contratto citato per il prezzo da
+        una riga di commessa o da un'attivita' fatturabile e' del billing account della commessa;
+        altrimenti E_ATTIVITA_CONTRATTO_INCOERENTE. NULL = ammesso. SECURITY DEFINER. Decisione di
+        Tid D-1, 2026-10-21.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_check_contratto_provenienza(
+                  p_commessa_id  vendite.commesse.id%TYPE,
+                  p_contratto_id vendite.contratti.id%TYPE)
+              RETURNS config.codici_errore.codice%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_ba_contratto vendite.contratti.billing_account_id%TYPE;
+                  v_ba_commessa  vendite.commesse.billing_account_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   il codice del motivo per cui il contratto citato come
+                  --   provenienza del prezzo da una riga della commessa data
+                  --   non e' ammesso; NULL = ammesso.
+                  --   E_ATTIVITA_CONTRATTO_INCOERENTE: il contratto non e'
+                  --   del billing account della commessa.
+                  -- =========================================================
+                  IF p_contratto_id IS NULL THEN
+                      RETURN NULL;   -- nessun contratto: niente da giudicare
+                  END IF;
+
+                  SELECT k.billing_account_id
+                    INTO v_ba_contratto
+                    FROM vendite.contratti k
+                   WHERE k.id = p_contratto_id;
+
+                  SELECT c.billing_account_id
+                    INTO v_ba_commessa
+                    FROM vendite.commesse c
+                   WHERE c.id = p_commessa_id;
+
+                  -- Un contratto che non c'e' lo rifiuta la FK; qui un NULL
+                  -- da una parte sola e' gia' una differenza.
+                  IF v_ba_contratto IS DISTINCT FROM v_ba_commessa THEN
+                      RETURN 'E_ATTIVITA_CONTRATTO_INCOERENTE';
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_check_contratto_provenienza(vendite.commesse.id%TYPE, vendite.contratti.id%TYPE)
+              IS 'Check (richiesta BE del 2026-10-21, decisione di Tid D-1): il codice del motivo per cui il contratto citato come provenienza del prezzo (contratto_id) da una riga della commessa data non e'' ammesso; NULL = ammesso. E_ATTIVITA_CONTRATTO_INCOERENTE: il contratto non e'' del billing account della commessa. Il prezzo il contratto lo prende da vendite.fn_get_contratto_attivo(BA, utility, data): un contratto di un altro BA e'' un prezzo che il modello non sa produrre. Basta il BA: utility e istanza seguono da fk_contratti_ba_coppia, l''emittente dal legame unico del BA. ⛔ Non si confronta l''emittente: quello di un BA senza legame dipende da chi agisce. Contratto NULL: NULL. SECURITY DEFINER: contratti e commesse hanno la RLS per emittente, e letto con la RLS di chi scrive un contratto di un''altra azienda tornerebbe a vuoto. Ritorna solo un codice. Non solleva: lo fa vendite.trgfn_attivita_guard_contratto. Gemella di vendite.fn_check_listino_provenienza (l''altra meta'' della provenienza).';
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_check_contratto_provenienza(vendite.commesse.id%TYPE, vendite.contratti.id%TYPE) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_check_contratto_provenienza(vendite.commesse.id%TYPE, vendite.contratti.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_check_contratto_provenienza(bigint, bigint);

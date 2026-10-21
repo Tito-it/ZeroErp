@@ -1,34 +1,34 @@
 # Brief BE — La documentazione API confrontata col codice
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-21 (sera)
+## ⏭️ Chi riparte — aggiornato al 2026-10-21 (notte)
 
-**Riparte: team DB** — restano aperte solo piccole cose di database, elencate qui
-sotto (il dettaglio, con le proposte, è in 🔴 D). Il lavoro backend e frontend è
-tutto fatto (quattro giri, 2026-10-20/21); a Tid restano commit e archiviazione.
+**Riparte: Tid**, col via al giro DB di D1, D4, D5, D6, D7 (forma decisa sotto, il 2026-10-21).
+Il lavoro backend e frontend è tutto fatto (quattro giri, 2026-10-20/21). **D2 e D3 escono da
+questo brief**: sono il tema del
+[brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).
 
-### 🟠 Aperto per il team DB (dettaglio in 🔴 D)
+### 🟠 Aperto per il team DB (dettaglio in 🔴 D) — forma decisa con Tid il 2026-10-21
 
-| # | Che cosa | Perché è piccolo | Ricaduta BE/FE dopo l'apply |
+Prima di decidere, la storia di ciascun punto è stata ricostruita (git, brief chiusi, guide):
+nessuno è stato fatto e disfatto né rifiutato; le varianti rispetto al testo di 🔴 D sono dichiarate.
+
+| # | Che cosa | Forma decisa | Ricaduta BE/FE dopo l'apply |
 | --- | --- | --- | --- |
-| D1 | `E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE`: classe da TECNICO (500) a DATO_ERRATO (400) | una riga di `config.messaggi_errore` | rigenerare il ripiego `error_messages_fallback.py` dopo l'apply |
-| D2 | Azioni di processo mancanti fra gemelli: emissione e cambio stato di contratto, offerta, ordine; stato della versione di listino; stato di distinte e righe di pagamenti; stato di inventari e rettifiche | codename nuovi nel catalogo azioni | il backend aggiunge `post_permission` sulle view |
-| D3 | Cambio stato del DDT: quale azione governa ciascuna transizione (oggi `emetti_ddt` vale anche per `EMESSO → ANNULLATO`) | una risposta, o il verbo che dice al backend quale chiedere | `ApiDdtCambiaStato` chiede l'azione giusta |
-| D4 | Testo di `E_IDEMPOTENCY_IN_PROGRESS` per l'operatore: `causa`, `soluzione` e la riga `en` (proposta pronta in D) | righe di `config.messaggi_errore` | ripiego rigenerato dopo l'apply |
-| D5 | `dbops.idempotency_keys` non si pulisce mai: valorizzare `cleanup_at` (ritenzione da `config.parameters`, sopra i 10 minuti del gesto FE) e un processo `dbops` che cancella le scadute | un default di colonna + un processo periodico sul modello esistente | nessuna |
-| D6 | Chiavi rimaste `in_progress` per sempre se il worker muore: soglia (sopra il timeout di gunicorn, in `config.parameters`) oltre la quale contano come `failed` | una regola nel claim o nella pulizia di D5 | ⚠️ prima, la marcatura `completed` nella stessa transazione dell'operazione (`handle_post_json`) |
-| D7 | *Minore.* La key non è legata a utente ed endpoint: replay solo se coincidono | due colonne al claim | `IdempotencyStore` confronta prima del replay |
+| D1 | `E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE` da TECNICO (500) a DATO_ERRATO (400), **un codice solo**, con il campo | Come scritto. La classe sta in `codici_errore.csv` (non `messaggi_errore`). Verificato: anche «la sorgente non dichiara una tabella» è un input dell'amministratore (la tendina offre solo sorgenti con tabella, `list_sorgenti_numerabili`), quindi la divisione in due codici non serve. Il guard deve dire **quale campo** | rigenerare policy e ripiego dopo l'apply |
+| D4 | Testo di `E_IDEMPOTENCY_IN_PROGRESS`: `causa`, `soluzione`, riga `en` | La proposta di 🔴 D4 | ripiego rigenerato dopo l'apply |
+| D5 | `dbops.idempotency_keys` non si pulisce mai | **Variante dichiarata:** non un parametro in `config.parameters` né un processo nuovo, ma il framework che esiste (scope + regola `CLEANUP_AT` + trigger alla nascita + `automations_cleanup`), **TTL 1 giorno**. Era l'intento dal 2026-02-07; su dbdev la tabella era nello scope **a mano**, mai in git. Va dichiarato che cosa dello scope si esclude (lo storico, che copierebbe `response_payload`; il TX_ID, che il BE scrive da sé). **Stesso buco** per `dbops.request_log` (regola 14 da 90 giorni, morta): si chiude nello stesso giro | nessuna |
+| D6 | Chiavi `in_progress` orfane | **Come scritto in 🔴 D6**: soglia di tempo in `config.parameters`, sopra il timeout di gunicorn. Il «lucchetto di riga» proposto in chat è ritirato: contraddice il motivo di D6 (il secondo invio deve ricevere subito 409, non aspettare). `mark_failed` resta fuori dalla transazione che fa rollback (`analisi-fix-transazioni` §7) | ⚠️ prima, `completed` nella stessa transazione dell'operazione (`handle_post_json`) |
+| D7 | La key legata a utente ed endpoint | Mismatch = **400** con un codice suo (DATO_ERRATO); mai il replay della risposta di un altro | `IdempotencyStore` confronta prima del replay |
 
-Ordine suggerito: D1 e D4 (solo catalogo messaggi), poi D5 e D6 insieme (stessa
-tabella, D6 dipende dalla ricaduta BE), D2-D3 quando c'è la risposta sulle azioni,
-D7 per ultimo.
+Ordine: D1 e D4 (catalogo), poi D5, poi D6 e D7 insieme (stessa sede del claim).
 
 ### Per Tid
 
 | # | Che cosa | Aspetta |
 | --- | --- | --- |
-| 1 | Passare la tabella qui sopra al team DB (il dettaglio è 🔴 D) | — |
+| 1 | Il via al giro DB qui sopra | — |
 | 2 | Rivedere e committare secondo, terzo e quarto giro (⚠️ `git add` mirato: il working tree ha anche il lavoro di `documenti` dell'altra sessione) | — |
-| 3 | Archiviare in `work-done/` quando D è chiuso, o spostare D in un brief DB suo | D |
+| 3 | Archiviare in `work-done/` quando D1, D4-D7 sono chiusi | 1 |
 
 Fatti e chiusi: 🔴 A (decisioni A1-A6), B (difetti di codice), C (alert scadenze
 listini), E (`copertura_doc_api`), G (terzo giro), H (quarto giro, dialetto unico
@@ -116,12 +116,12 @@ nella descrizione del tool, non un errore (§H).
 
 1. **`E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE` ha classe TECNICO** (500) per un
    errore di input dell'amministratore: dovrebbe essere DATO_ERRATO. (§3.21)
-2. **Azioni di processo mancanti fra gemelli** (A5, `post_permission`): emissione e
+2. ~~**Azioni di processo mancanti fra gemelli**~~ (A5, `post_permission`): ➡️ *Spostato il 2026-10-21 in [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).* emissione e
    cambio stato di contratto, offerta e ordine; stato della versione di listino;
    stato di distinte e righe di pagamenti; stato di inventari e rettifiche. Il
    preventivo, la commessa, la pratica, il DDT e il reso hanno un'azione di processo,
    questi no. Il backend non la inventa.
-3. **Cambio stato del DDT** (aggiunto il 2026-10-21, ok Tid): l'emissione chiede
+3. ~~**Cambio stato del DDT**~~ (aggiunto il 2026-10-21, ok Tid): ➡️ *Spostato il 2026-10-21 in [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).* l'emissione chiede
    `emetti_ddt` (`post_permission`), `ApiDdtCambiaStato` nessuna azione di processo,
    mentre il verbo DB applica `emetti_ddt` anche a `EMESSO → ANNULLATO`. Un solo
    `post_permission` sulla view non basta: le transizioni hanno permessi diversi. Al
