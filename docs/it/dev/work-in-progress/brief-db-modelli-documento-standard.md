@@ -1,10 +1,10 @@
 # Brief DB — I modelli di documento standard: un emittente nuovo emette dal primo giorno
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-20
+## ⏭️ Chi riparte — aggiornato al 2026-10-21
 
-**Riparte: il BE, con il passaggio unico del §11 (la prima voce è il test che oggi si salta da
-solo), poi il FE sulla lista Modelli documento. Lato DB non resta niente: tutto applicato su scratch
-e dbdev, pgTAP verdi, nessuna regressione (Tid, 2026-10-20).**
+**Riparte: Tid, col collaudo a video della lista e del drawer Modelli documento (§11.5) e la
+decisione sui due residui del §11.5; poi il giro degli smoke (riga 10). Il passaggio unico BE/FE è
+fatto e non committato (sessione BE, 2026-10-21).**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -38,12 +38,15 @@ e dbdev, pgTAP verdi, nessuna regressione (Tid, 2026-10-20).**
 | 9-quaterdecies-quinquies | **team DB** | ✅ R-1 (fixture costruita) e R-5 (sede del cedente, `20261021-13`), provati; ✅ `-13` applicata da Tid | §10.8 | 9-quaterdecies-quater |
 | 9-quaterdecies-sexies | **team DB** | ✅ R-2, R-3, R-4 (`20261021-14` … `-17`), provati | §10.9 | 9-quaterdecies-quinquies |
 | 9-quaterdecies-septies | **Tid** | ✅ Apply di `-13` … `-17` su scratch e dbdev, pgTAP verdi, nessuna regressione (2026-10-20) | §10.8, §10.9 | 9-quaterdecies-sexies |
-| 9-quindecies | **BE** | **Il passaggio unico**: le voci B-1 … B-11 (assorbe 9-bis BE, 9-decies, 9-duodecies) | §11 | 9-quaterdecies-septies |
-| 9-sexdecies | **FE** | La lista e il drawer dei Modelli documento, «personalizza», i testi delle due chiavi i18n: le voci F-1 … F-5 | §11 | 9-quindecies |
+| 9-quindecies | **BE** | ✅ **Il passaggio unico**: B-1 … B-7, B-9, B-10 fatti; B-8 rinviato (§11.5); B-11 è la riga 10 | §11, §11.5 | 9-quaterdecies-septies |
+| 9-sexdecies | **FE** | ✅ F-1 … F-5 fatti (F-2 era già nei locale) | §11, §11.5 | 9-quindecies |
+| 9-septdecies | **Tid** | Collaudo a video (§11.5.3) e i due residui (§11.5.4) | §11.5 | 9-sexdecies |
 | 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard e chiude una fattura) | §7, §11 | 9-quindecies, 9-sexdecies |
 | 11 | **Tid** | Archiviazione in `work-done/` | — | 10 |
 
-**Decisioni aperte di Tid: nessuna** (facoltativa: `fatture.utility_id NOT NULL`, §10.9). D-4 … D-9,
+**Decisioni aperte di Tid:** i due residui del §11.5.4 (B-8, la numerazione della versione nuova);
+facoltativa `fatture.utility_id NOT NULL` (§10.9). **Da committare** anche il passaggio unico BE/FE
+(§11.5, 2026-10-21). D-4 … D-9,
 P-1, P-2 e C-1 … C-3 decise come da proposta (2026-10-20). Committati: tranche 1 e 2 (`560d5d97e`,
 PR #1899), `20261020-26` (`0ff115bf0`, PR #1906), BE (`fad3ad71f`, `323c96a5c`), la coda di stampa
 con P-2 (`20261020-27` … `-31`). **Da committare** (tutto applicato): il giro unico (§10.6), R-1 …
@@ -1539,3 +1542,63 @@ suoi `COALESCE(…, 2)` e `COALESCE(…, 'HALF_UP')` degli importi. I default de
 ### 11.4 Dopo il BE/FE
 
 Il giro degli smoke (§7, B-11), poi l'archiviazione del brief in `work-done/` (Tid).
+
+### 11.5 Il passaggio unico, fatto (sessione BE, 2026-10-21; non committato)
+
+#### 11.5.1 BE
+
+| # | Fatto | Dove |
+| --- | --- | --- |
+| B-1 | La sonda cerca la firma a quattro argomenti: la classe gira (prima si saltava). Tre casi nuovi: il modello indicato (standard ammesso, `NON_COERENTE` 400, `NON_STAMPABILE` 409 coi due motivi), il clone dal DB, la lista (filtro standard, `stato_scarto`, risoluzione per azienda) | `documenti/tests/db/test_template_standard_db.py` (8 casi) |
+| B-2 | Una chiamata sola alla porta, col modello indicato quando c'è; il modello indicato si legge prima **dentro lo scope** (404: il rifiuto del DB nominerebbe il modello di un'azienda che l'operatore non vede, e un id inesistente sarebbe un argomento rotto, 500). Ritirati `_guard_template_coerente`, `_resolve_versione_pubblicata`, `_today`, `get_versione_pubblicata_attiva` | `document_generation_service._resolve_template`, `documenti_repository.risolvi_template_applicabile` |
+| B-3 | «Personalizza» chiama `fn_personalizza_template_standard`; `is_default` solo se indicato (D-6); i rifiuti del DB passano da `translate_db_errors`. Ritirati la transazione del service e `get_ultima_versione_pubblicata` | `template_admin_service.personalizza_template` |
+| B-4 | Il clone chiama `fn_crea_bozza_da_versione`; `dati_bozza_copiata` ritirato | `template_versioni_admin_service.clone_versione` |
+| B-5 | Lista 24: `standard` filtrabile e ordinabile, `stato_scarto` in LEFT JOIN su `vw_template_personalizzati_scarto` (anche nel dettaglio); `GET /documenti/templates/risoluzione/` legge `vw_template_risoluzione_emittente` (solo aziende attive, perimetro del BE). `test_lista_proiezione_campo_sorgente`, rosso su `stato_scarto`, torna verde | `documenti_repository`, `template_service`, `api/views.py` |
+| B-6 | Lato BE niente da cambiare: senza il parametro il cancello decide come per la distinta. Il commento della view lo dice | `ApiTemplateVersioniList` |
+| B-7 | `_GROUP_ATTIVITA_SELECT` legge decimali e metodo dell'importo da `fn_parametri_importo_riga`, con emittente e utility da `fn_resolve_registro_documento` (lo stesso resolver della chiave della testata). Parametri NULL → `E_CONFIG_MANCANTE` invece di `int(None)`. Test DB nuovo, provato per mutazione (col letterale di prima: `2 != 0`) | `pipeline_repository`, `vendite/tests/db/test_group_attivita_parametri_importo_db.py` |
+| B-9 | Policy rigenerate (tre codici, tutti nel CSV committato) e ripieghi senza segnaposto per i tre; il ripiego di `E_FATTURA_NON_EMETTIBILE_INCOMPLETA` nomina la sede legale | `error_policies_generated.py`, `error_messages_fallback.py` |
+| B-10 | Nessun test BE costruiva a mano un'azienda che emette: la suite col DB vero non ha rossi di sede o di utility. Trovato invece il pannello di configurazione: le due colonne nuove di `config.utilities` (K-7) senza etichetta nei locale (`test_config_panel_registro_db`), aggiunte | `locales/*.json` § `config_panel.campi` |
+
+#### 11.5.2 FE
+
+| # | Fatto | Dove |
+| --- | --- | --- |
+| F-1 | Colonna «Standard» (dal catalogo) col filtro; «Allineamento allo standard» come Tag con colore (`STATO_SCARTO_TEMPLATE_MAP`, due consumatori) e significato nel tooltip; sopra la lista il pannello «con che cosa stampa ogni azienda»: un avviso per ogni azienda e documento che si ferma (`SENZA_PREDEFINITO`, `NON_RISOLTO`), una riga informativa per chi stampa con lo standard | `TemplateDocumentiSearchTable`, `TemplateRisoluzionePannello`, `core/utils/severity.js` |
+| F-2 | Già nei locale (committato) | — |
+| F-3 | Standard in sola lettura (form e versioni) con la spiegazione; «Personalizza» nella barra azioni del drawer, dialog con azienda, codici e descrizione facoltativi, predefinito a tre stati («decide il sistema» = D-6); dopo, il drawer passa sulla copia. Sulle copie, lo stato dello scarto in testa | `TemplateDocumentoDrawer`, `ModelliDocumentiTemplatesView` |
+| F-4 | Le versioni dello standard si leggono: il padre composto ha una costante per «senza emittente suo», `PADRE_SENZA_EMITTENTE` (estensione del BB, nel catalogo FE, spec provata per mutazione) | `useListaStoreCore`, `TemplateVersioniSection` |
+| F-5 | Niente da fare: i messaggi dei due codici arrivano dal DB | — |
+
+Prove: test `documenti` 353 verdi col DB vero; suite BE intera col DB vero senza rossi nel
+perimetro di questo brief (i rossi rimasti sono del giro in corso di
+`brief-be-verifica-documentazione-api`, file non toccati da qui); FE vitest 934 verdi, lint, guard,
+build e `check_i18n_keys` verdi.
+
+Statici (2026-10-21): `ruff check backend/apps` pulito; mypy col cricchetto
+(`scripts/check_mypy_baseline.py`) 0 rilievi nuovi — fatto girare dalla sessione di
+`brief-be-verifica-documentazione-api`, perché dalla shell di questa sessione il plugin Django di
+mypy andava in errore interno.
+
+#### 11.5.3 Collaudo a video (Tid)
+
+1. Configurazione → Modelli documento: il pannello sopra la lista dice quali aziende stampano con lo
+   standard; un'azienda con un modello suo non predefinito compare in giallo.
+2. Filtro «Standard»: sì / no. Colonna «Allineamento allo standard» sulle copie.
+3. Aprire uno standard: sola lettura, versioni visibili (prima: in caricamento per sempre), anche da
+   super admin su «Tutti» dopo aver scelto un'azienda.
+4. «Personalizza» per un'azienda senza modello suo: nasce predefinita, il drawer passa sulla copia,
+   la versione 1 è in bozza; pubblicata, il pannello non elenca più quel documento fra gli standard.
+5. Stampa con un modello indicato spento: messaggio del DB («oggi non può stampare: è disattivato»).
+
+#### 11.5.4 Residui, per Tid
+
+* **B-8, rinviato.** La matrice utility dell'emittente è un editor di override: mettere nei suoi
+  campi i parametri di sistema li farebbe leggere come override. La forma giusta sono due campi in
+  più («effettivo», da `anagrafiche.fn_parametri_importo_utility`) e una colonna FE che li mostri
+  accanto: è una scelta di presentazione, da decidere.
+* **La numerazione della versione nuova** (`next_versione_num`, MAX+1 nel BE) è la seconda sede del
+  numero: la copia la numera il DB (`fn_crea_bozza_da_versione`). Per chiuderla serve un verbo DB per
+  la versione scritta da zero: richiesta al team DB, brief nuovo se Tid vuole (§10, regola del
+  passaggio unico).
+* Fuori dal brief, trovato nella suite: `vendite/tests/services/test_promo_articoli_service` (8
+  casi) dà `E_PROMO_RETROATTIVA` dal 2026-10-21: una data scritta nel test che è passata.

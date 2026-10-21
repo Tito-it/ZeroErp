@@ -325,10 +325,19 @@ _GROUP_ATTIVITA_SELECT = """
                     a.competenza_al,
                     a.data_attivita,
                     COALESCE(r.calcolo_qta_padre, 'fissa') AS calcolo_qta_padre,
-                    COALESCE(r.arrotondamento_importi_dec, 2) AS arrotondamento_importi_dec,
+                    -- ⭐ Decimali e metodo dell'IMPORTO dal BB del DB
+                    --    `vendite.fn_parametri_importo_riga` (brief-db-modelli-
+                    --    documento-standard §10.9 R-3): la regola dell'articolo,
+                    --    se no i parametri effettivi dell'emittente per l'utility
+                    --    della fattura — la stessa catena del trigger della riga
+                    --    e del ricalcolo dei totali. ⛔ Fino al 2026-10-21 qui
+                    --    c'erano i letterali `COALESCE(…, 2)` / `'HALF_UP'`: un
+                    --    emittente con parametri suoi raggruppava a 2 decimali e
+                    --    il DB arrotondava la riga coi suoi.
+                    --    Le QUANTITA' restano qui (3 / HALF_UP): e' la copia unica.
+                    pi.arrotondamento_importi_dec,
                     COALESCE(r.arrotondamento_quantita_dec, 3) AS arrotondamento_quantita_dec,
-                    COALESCE(r.metodo_arrotondamento_importi, 'HALF_UP')
-                        AS metodo_arrotondamento_importi,
+                    pi.metodo_arrotondamento_importi,
                     COALESCE(r.metodo_arrotondamento_quantita, 'HALF_UP')
                         AS metodo_arrotondamento_quantita,
                     a.tipo_movimento,
@@ -355,12 +364,36 @@ _GROUP_ATTIVITA_SELECT = """
                 -- una rettifica, cioe' sul caso normale.
                 LEFT JOIN vendite.fatture_righe fr
                   ON fr.id = a.fattura_riga_rettificata_id
+                -- Emittente e utility della FATTURA che l'attivita' produrra':
+                -- dal resolver che usa la chiave della testata
+                -- (`fn_build_fattura_key`), col BA della riga — non ricopiati
+                -- qui. Il tipo di documento non serve per questi due anelli
+                -- (NULL: il resolver non solleva, lascia il registro vuoto).
+                LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(
+                    p_billing_account_id_riga => a.billing_account_id,
+                    p_tipo_doc_fiscale_id     => NULL
+                ) rr ON true
+                LEFT JOIN LATERAL vendite.fn_parametri_importo_riga(
+                    a.articolo_id, rr.emittente_soggetto_ruolo_id, rr.utility_id
+                ) pi ON true
 """
 
 
 # Scopo: Costruisce un `GroupAttivitaInput` da una riga di `_GROUP_ATTIVITA_SELECT`.
 #        Unico mapping: le due letture non possono divergere.
 def _group_attivita_input_da_row(row: tuple[Any, ...]) -> GroupAttivitaInput:
+    # ⚠️ Decimali e metodo dell'importo NULL = il BB non ha da dove prenderli:
+    #    niente regole dell'articolo e nessuna utility risolta (il BA della riga
+    #    non visibile sotto RLS). Come il trigger della riga, non si indovina:
+    #    E_CONFIG_MANCANTE, invece del `int(None)` che sarebbe un 500 muto.
+    ErrorManager.require(
+        row[9] is not None and row[11] is not None,
+        code="E_CONFIG_MANCANTE",
+        message="Parametri di arrotondamento dell'importo non risolti per l'attivita'.",
+        detail=f"attivita_id={row[0]} articolo_id={row[1]}",
+        context={"attivita_id": row[0]},
+        function_name="vendite.pipeline_repository._group_attivita_input_da_row",
+    )
     return GroupAttivitaInput(
         attivita_id=int(row[0]),
         # ⚠️ `str`, non `int`: e' un UUID (catalogo.articoli.id).

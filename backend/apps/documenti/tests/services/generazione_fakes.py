@@ -15,7 +15,8 @@ Estratto il 2026-10-20 (regola del 2) da tre moduli di test dello stesso
 service: `test_document_generation_service`, `..._k` e `test_ristampa_fedele`.
 Le copie erano gia' divergenti (il `_template_row` di `_k` non sapeva
 costruire lo standard, `_versione_row` aveva il CSS in uno solo, l'oggi fisso
-solo in uno), e il giorno della risoluzione a due livelli il mock della
+solo in uno — dal 2026-10-21 l'oggi non serve piu': la versione la dice il
+DB), e il giorno della risoluzione a due livelli il mock della
 risoluzione andava scritto due volte.
 
 ⚠️ Un `MagicMock` senza `spec` accetta qualunque nome: `service_with_mocks`
@@ -25,7 +26,6 @@ La giuntura vera la prova `tests/db/` (e mypy, per le chiamate dirette).
 
 from __future__ import annotations
 
-from datetime import date
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -73,10 +73,10 @@ def template_row(
     }
 
 
-# Scopo: I mock della risoluzione per default, da spargere in
+# Scopo: I mock della porta unica per default, da spargere in
 #        `repo_methods`: il DB risponde con l'id, il livello e la versione
-#        che stampa (P-2), il repository rilegge la riga del modello. La riga
-#        della versione la da' il chiamante, come `get_versione`.
+#        che stampa, il repository rilegge la riga del modello. La riga della
+#        versione la da' il chiamante, come `get_versione`.
 def risolto(
     template: dict[str, Any],
     *,
@@ -93,7 +93,7 @@ def risolto(
     }
 
 
-# Scopo: La versione PUBBLICATA attiva del modello.
+# Scopo: La versione con cui il modello stampa, come la rilegge `get_versione`.
 def versione_row(*, versione_id: int = 12) -> dict[str, Any]:
     return {
         "id": versione_id,
@@ -127,8 +127,6 @@ def service_with_mocks(
     svc = DocumentGenerationService(
         repo=repo, reader=reader, storage=storage,
     )
-    # Hook today() deterministico per i test (idempotente).
-    svc._today = lambda: date(2026, 5, 4)  # type: ignore[method-assign]
     return svc, repo, reader, storage
 
 

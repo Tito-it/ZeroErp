@@ -77,6 +77,16 @@
 //    cambia solo quando cambia davvero — quindi la ragione della chiave (un
 //    oggetto nuovo a ogni lettura rifarebbe la fetch a ogni render) si
 //    scioglie senza separatori da comporre e sciogliere in due sedi.
+// ⭐ IL PADRE CHE UN EMITTENTE SUO NON CE L'HA (2026-10-21, brief-db-modelli-
+//    documento-standard §11 B-6/F-4). Il modello di documento STANDARD non ha
+//    emittente (`template_documenti.emittente_fiscale_id` NULL solo li', per
+//    CHECK): per lui «emittente assente» non vuol dire «non ancora arrivato»,
+//    vuol dire «non esiste». Il chiamante lo dichiara scrivendo nella parte
+//    dell'emittente `PADRE_SENZA_EMITTENTE`: la parte conta come presente (la
+//    lista legge), e il parametro NON viaggia — il cancello del backend decide
+//    allora come per una lista senza emittente suo (la distinta di `catalogo`).
+//    ⛔ Non `null` e non `0`: sarebbero indistinguibili dall'attesa, e la
+//    lista resterebbe in caricamento per sempre — il difetto che chiude.
 // ⚠️ L'emittente NON e' un filtro: non sta in `filterDefaults` (dove «Pulisci
 //    filtri» lo toglierebbe e il segno dei filtri lo conterebbe) e non sta in
 //    `paramsFiltro`. E' contesto come il padre: si scrive, non si filtra.
@@ -86,6 +96,10 @@ import { clonaFiltri } from '../utils/clonaFiltri'
 import { useListaEmptyStateFetch } from './useListaEmptyStateFetch'
 import { USO_MISURA, misuraDefault } from '../misurePagina'
 import { paramsOrdinamento, paramsRicerca } from '../utils/listParams'
+
+// La parte «emittente» di un padre che un emittente suo non ce l'ha (vedi la
+// testata). Un simbolo: non si confonde con nessun id, e non va mai sul filo.
+export const PADRE_SENZA_EMITTENTE = Symbol('PADRE_SENZA_EMITTENTE')
 
 // Params:
 //   - fetchPage: (params) => Promise<response axios>. Con `parentField`, la
@@ -209,7 +223,7 @@ export function useListaStoreCore({
   //        della view (anche la creazione, `templateVersioni.create`): una
   //        seconda sede del nome del parametro divergerebbe da questa.
   function paramsEmittente() {
-    return emittenteParam && emittenteId.value
+    return emittenteParam && emittenteId.value && emittenteId.value !== PADRE_SENZA_EMITTENTE
       ? { [emittenteParam]: emittenteId.value }
       : {}
   }

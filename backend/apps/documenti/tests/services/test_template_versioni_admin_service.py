@@ -372,7 +372,10 @@ class TemplateVersioniAdminServiceDeleteTests(SimpleTestCase):
 
 
 class TemplateVersioniAdminServiceCloneTests(SimpleTestCase):
-    # 9. clone copia source con override + nuovo num versione.
+    # 9. clone: la copia la fa il DB (`fn_crea_bozza_da_versione`, §10.3
+    #    K-6), elenco dei campi e numero suoi. Il BE passa origine, modello e
+    #    le sole sostituzioni date dal payload; le assenti arrivano None (le
+    #    date: senza data, si fissano alla pubblicazione).
     def test_clone_overrides_titolo_and_resets_dates(self) -> None:
         source = {
             **_BOZZA_VERSIONE,
@@ -383,39 +386,39 @@ class TemplateVersioniAdminServiceCloneTests(SimpleTestCase):
             "html_template": "<original/>",
         }
         svc, repo, reader = _service_with_mocks(
-            repo_methods={"next_versione_num": 7, "create_versione": 70},
+            repo_methods={"crea_bozza_da_versione": 70},
             reader_methods={"get_versione": source},
         )
-        # reader.get_versione e' chiamato sia per pre-check (source) sia per
-        # ritorno post-create. Riusiamo lo stesso mock per semplicita': il
-        # primo ritorno e' source, il secondo ritorno e' la nuova versione
-        # (qui ne riusiamo i campi tanto e' un mock).
         result = svc.clone_versione(
             _make_user(), 1, 11, {"titolo": "Titolo clone"}
         )
         self.assertIsNotNone(result)
-        # Verifica il dict passato al repo.
-        data = repo.create_versione.call_args.args[0]
-        self.assertEqual(data["stato"], "BOZZA")
-        self.assertEqual(data["versione"], 7)
-        self.assertEqual(data["titolo"], "Titolo clone")  # override applicato
-        # Date resettate (cloning non porta date originali).
-        self.assertIsNone(data["valido_dal"])
-        self.assertIsNone(data["valido_al"])
-        # html copiato dal source.
-        self.assertEqual(data["html_template"], "<original/>")
+        repo.crea_bozza_da_versione.assert_called_once_with(
+            11, template_documento_id=1, titolo="Titolo clone",
+            valido_dal=None, valido_al=None, attivo=None, meta=None,
+        )
+        repo.create_versione.assert_not_called()
+        repo.next_versione_num.assert_not_called()
+        # La versione restituita e' la nuova, riletta nel suo template.
+        self.assertEqual(reader.get_versione.call_args.args[1:], (1, 70))
 
-    # 17. Il clone copia la forma letta: il corpo e' lo stesso, quindi legge
-    #     le stesse chiavi (una bozza nuova non nasce senza forma).
+    # 17. Le sostituzioni del payload (date, attivo, meta) arrivano al DB; la
+    #     forma dei dati e il corpo li copia lui dall'origine.
     def test_clone_copia_la_forma_dei_dati(self) -> None:
         svc, repo, _ = _service_with_mocks(
-            repo_methods={"next_versione_num": 4, "create_versione": 40},
+            repo_methods={"crea_bozza_da_versione": 40},
             reader_methods={
                 "get_versione": {**_BOZZA_VERSIONE, "versione_contesto": 3},
             },
         )
-        svc.clone_versione(_make_user(), 1, 11, {})
-        self.assertEqual(repo.create_versione.call_args.args[0]["versione_contesto"], 3)
+        svc.clone_versione(_make_user(), 1, 11, {
+            "valido_dal": "2026-11-01", "attivo": False, "meta": {"nota": "x"},
+        })
+        kwargs = repo.crea_bozza_da_versione.call_args.kwargs
+        self.assertEqual(kwargs["valido_dal"], date(2026, 11, 1))
+        self.assertIs(kwargs["attivo"], False)
+        self.assertEqual(kwargs["meta"], {"nota": "x"})
+        self.assertIsNone(kwargs["titolo"])
 
 
 class TemplateVersioniAdminServicePubblicaTests(SimpleTestCase):

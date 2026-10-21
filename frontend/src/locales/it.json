@@ -469,6 +469,8 @@
       "area": "Area",
       "arrotondamento_decimali": "Decimali di arrotondamento",
       "arrotondamento_metodo": "Metodo di arrotondamento",
+      "arrotondamento_importi_dec": "Decimali degli importi",
+      "metodo_arrotondamento_importi": "Arrotondamento degli importi",
       "assoggettamento_id": "Assoggettamento IVA",
       "attende_sorgente_tipo_id": "Attende documento sorgente di tipo",
       "attivo": "Attivo",
@@ -5716,6 +5718,30 @@
       "col_is_default": "Default",
       "col_standard": "Standard",
       "col_stato_scarto": "Allineamento allo standard",
+      "standard_hint": "Modello standard di sistema: lo usano le aziende che per questo documento non hanno un modello loro. Non si modifica dall'applicazione: per cambiarlo, personalizzalo per un'azienda.",
+      "scarto": {
+        "ALLINEATA": "Allineata",
+        "ALLINEATA_hint": "La copia parte dalla versione con cui il modello standard stampa oggi.",
+        "STANDARD_AVANTI": "Standard più avanti",
+        "STANDARD_AVANTI_hint": "Il modello standard ha pubblicato una versione nuova: la copia funziona, ma non ne ha le modifiche.",
+        "CONTESTO_SUPERATO": "Forma dei dati superata",
+        "CONTESTO_SUPERATO_hint": "La copia legge una forma dei dati più vecchia di quella del modello standard: alla stampa si fermerà. Va ripartita dallo standard o aggiornata.",
+        "ORIGINE_NON_DICHIARATA": "Origine non dichiarata",
+        "ORIGINE_NON_DICHIARATA_hint": "Il modello non dichiara da quale versione standard deriva: si confronta solo la forma dei dati."
+      },
+      "personalizza": {
+        "action": "Personalizza",
+        "title": "Personalizza per un'azienda",
+        "hint": "Crea il modello dell'azienda partendo dalla versione con cui lo standard stampa oggi. La prima versione nasce in bozza: finché non la pubblichi, l'azienda continua a stampare con lo standard.",
+        "nomi_hint": "Codice, codice interno e descrizione vuoti: quelli del modello standard.",
+        "predefinito_auto": "Decide il sistema (sì, se l'azienda non ne ha già uno)",
+        "done": "Modello personalizzato creato: pubblica la sua prima versione per usarlo."
+      },
+      "risoluzione": {
+        "titolo_standard": "Stampano con il modello standard:",
+        "SENZA_PREDEFINITO": "{azienda}: ha modelli suoi per {documento}, ma nessuno è predefinito. La stampa di questo documento si ferma: segna come predefinito uno dei suoi modelli.",
+        "NON_RISOLTO": "{azienda}: nessun modello stampa {documento}, nemmeno quello standard. Va riattivato il modello standard o pubblicata una sua versione valida."
+      },
       "field_codice": "Codice",
       "field_codice_interno": "Codice interno",
       "field_descrizione": "Descrizione",

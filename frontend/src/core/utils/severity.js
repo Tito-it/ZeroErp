@@ -830,3 +830,25 @@ export const STATO_VESTE_MAP = {
 export function statoVesteSeverity(codice) {
   return resolveSeverity(STATO_VESTE_MAP, codice)
 }
+
+// --- Mappa dello SCARTO di una copia dal suo modello standard ---
+// `documenti.vw_template_personalizzati_scarto.stato` (brief-db-modelli-
+// documento-standard §4.1 Q-5, K-10): quanto la versione che la copia stampa
+// e' rimasta indietro rispetto allo standard da cui deriva. La leggono la
+// colonna «Allineamento allo standard» della lista Modelli documento e il
+// drawer del modello: due punti, una sede del colore.
+// CONTESTO_SUPERATO e' rosso: la copia legge una forma dei dati piu' vecchia
+// di quella che il sistema produce, e alla stampa si fermera'. STANDARD_AVANTI
+// e' giallo: funziona, ma senza l'evoluzione. ORIGINE_NON_DICHIARATA (un
+// modello scritto da zero, o una copia di prima del 2026-10-20) cade sul
+// ripiego neutro: non c'e' niente da confrontare.
+export const STATO_SCARTO_TEMPLATE_MAP = {
+  ALLINEATA: 'success',
+  STANDARD_AVANTI: 'warn',
+  CONTESTO_SUPERATO: 'danger',
+}
+
+// Scopo: Shortcut per lo stato di allineamento di una copia allo standard.
+export function statoScartoTemplateSeverity(codice) {
+  return resolveSeverity(STATO_SCARTO_TEMPLATE_MAP, codice)
+}

@@ -59,6 +59,7 @@ class TemplateService:
         tipo_documento_output_id: int | None = None,
         sorgente_tipo_id: int | None = None,
         emittente_fiscale_id: int | None = None,
+        standard: bool | None = None,
         search: str | None = None,
         order_by: str = "codice",
         order_dir: str = "asc",
@@ -71,6 +72,7 @@ class TemplateService:
             tipo_documento_output_id=tipo_documento_output_id,
             sorgente_tipo_id=sorgente_tipo_id,
             emittente_fiscale_id=emittente_fiscale_id,
+            standard=standard,
             search=search,
             emittente_ids_scope=emittente_ids_scope,
             order_by=order_by,
@@ -79,6 +81,24 @@ class TemplateService:
             offset=offset,
         )
         return {"results": rows, "total_count": total}
+
+    # Scopo: Con che cosa stampa ogni azienda del perimetro dell'utente (una
+    #        riga per azienda × documento, con l'esito della risoluzione: vedi
+    #        `DocumentiRepository.list_risoluzione_emittenti`). Lo legge il
+    #        pannello sopra la lista Modelli documento: «si usa lo standard»,
+    #        «nessun predefinito». `emittente_fiscale_id` restringe a
+    #        un'azienda (il filtro della lista).
+    def list_risoluzione_emittenti(
+        self,
+        user: AbstractBaseUser | AnonymousUser | None,
+        *,
+        emittente_fiscale_id: int | None = None,
+    ) -> dict[str, Any]:
+        rows = self._repo.list_risoluzione_emittenti(
+            emittente_ids_scope=self._resolve_emittente_scope(user),
+            emittente_fiscale_id=emittente_fiscale_id,
+        )
+        return {"results": rows, "total_count": len(rows)}
 
     # Scopo: Dettaglio template per id, con scope emittente. 404 esplicito
     #        sia per id inesistente sia per scope non autorizzato (no

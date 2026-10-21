@@ -137,9 +137,11 @@ class RistampaFedeleTests(SimpleTestCase):
 
         # La versione caricata e' quella pinnata sul documento.
         repo.get_versione_by_id.assert_called_once_with(12)
-        # NON e' stata chiesta la versione pubblicata di oggi: sarebbe l'errore
-        # che rende la "ristampa" un documento nuovo.
-        repo.get_versione_pubblicata_attiva.assert_not_called()
+        # NON e' stata chiesta la versione che stampa oggi (la porta della
+        # stampa nuova): sarebbe l'errore che rende la "ristampa" un documento
+        # nuovo.
+        repo.risolvi_template_applicabile.assert_not_called()
+        repo.get_versione.assert_not_called()
 
         kwargs = mock_render.call_args.kwargs
         self.assertIs(kwargs["template_versione"], versione)

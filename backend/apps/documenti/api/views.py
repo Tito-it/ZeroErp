@@ -78,6 +78,10 @@ class ApiTemplateList(DomainAPIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
             ),
+            OpenApiParameter(
+                name="standard", type=bool, location=OpenApiParameter.QUERY, required=False,
+                description="Solo i modelli standard (true) o solo quelli delle aziende (false).",
+            ),
             OpenApiParameter(name="page", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="page_size", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
@@ -106,6 +110,7 @@ class ApiTemplateList(DomainAPIView):
             tipo_documento_output_id=qp_int_optional(request.query_params.get("tipo_documento_output_id"), "tipo_documento_output_id"),
             sorgente_tipo_id=qp_int_optional(request.query_params.get("sorgente_tipo_id"), "sorgente_tipo_id"),
             emittente_fiscale_id=qp_int_optional(request.query_params.get("emittente_fiscale_id"), "emittente_fiscale_id"),
+            standard=qp_bool_optional(request.query_params.get("standard"), "standard"),
             search=params["search"],
             order_by=params["order_by"],
             order_dir=params["order_dir"],
@@ -191,6 +196,72 @@ class ApiContextBuilders(DomainAPIView):
         return success_response({"results": builder_registrati()})
 
 
+class ApiTemplateRisoluzione(DomainAPIView):
+    """
+    GET /api/v1/documenti/templates/risoluzione/ — con che cosa stampa ogni
+    azienda del perimetro, per ogni documento.
+    """
+
+    area_funzionale = "documenti"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="emittente_fiscale_id", type=int, location=OpenApiParameter.QUERY,
+                required=False, description="Solo questa azienda (il filtro della lista).",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="DocumentiTemplateRisoluzioneResponse",
+                fields={
+                    "data": inline_serializer(
+                        name="DocumentiTemplateRisoluzioneData",
+                        fields={
+                            "results": serializers.ListField(
+                                child=inline_serializer(
+                                    name="DocumentiTemplateRisoluzioneRiga",
+                                    fields={
+                                        "emittente_fiscale_id": serializers.IntegerField(),
+                                        "emittente_fiscale_codice": serializers.CharField(),
+                                        "emittente_ragione_sociale": serializers.CharField(allow_null=True),
+                                        "tipo_documento_output_id": serializers.IntegerField(),
+                                        "tipo_documento_output_descrizione": serializers.CharField(),
+                                        "sorgente_tipo_id": serializers.IntegerField(),
+                                        "sorgente_tipo_descrizione": serializers.CharField(),
+                                        "esito": serializers.ChoiceField(choices=[
+                                            "EMITTENTE", "STANDARD", "SENZA_PREDEFINITO", "NON_RISOLTO",
+                                        ]),
+                                        "template_documento_id": serializers.IntegerField(allow_null=True),
+                                        "template_codice": serializers.CharField(allow_null=True),
+                                        "template_versione_id": serializers.IntegerField(allow_null=True),
+                                        "modelli_stampabili": serializers.IntegerField(),
+                                    },
+                                )
+                            ),
+                            "total_count": serializers.IntegerField(),
+                        },
+                    ),
+                    "meta": serializers.DictField(required=False),
+                },
+            )
+        },
+    )
+    # Scopo: Il pannello sopra la lista Modelli documento: per ogni azienda,
+    #        quali documenti stampano con lo standard e quali si fermano perche'
+    #        l'azienda ha modelli suoi ma nessun predefinito (brief-db-modelli-
+    #        documento-standard §6). L'esito e' del DB (K-5), la stessa regola
+    #        della stampa; qui il perimetro delle aziende.
+    def get(self, request: Request) -> JsonResponse:
+        result = TemplateService().list_risoluzione_emittenti(
+            request.user,
+            emittente_fiscale_id=qp_int_optional(
+                request.query_params.get("emittente_fiscale_id"), "emittente_fiscale_id",
+            ),
+        )
+        return success_response(result)
+
+
 class ApiTemplateDetail(DomainAPIView):
     """
     GET /api/v1/documenti/templates/<id>/ — dettaglio template.
@@ -261,7 +332,13 @@ class ApiTemplatePersonalizza(DomainAPIView):
             name="DocumentiTemplatePersonalizzaRequest",
             fields={
                 "emittente_fiscale_id": serializers.IntegerField(),
-                "is_default": serializers.BooleanField(required=False),
+                # Assente o null: decide il DB (D-6) — predefinita se l'azienda
+                # non ne ha gia' una sua per il documento.
+                "is_default": serializers.BooleanField(required=False, allow_null=True),
+                # Assenti o null: quelli dello standard.
+                "codice": serializers.CharField(required=False, allow_null=True),
+                "codice_interno": serializers.CharField(required=False, allow_null=True),
+                "descrizione": serializers.CharField(required=False, allow_null=True),
             },
         ),
         responses={
@@ -276,8 +353,8 @@ class ApiTemplatePersonalizza(DomainAPIView):
     )
     # Scopo: Crea il modello dell'emittente dallo standard `template_id`, con
     #        la prima versione in BOZZA che ne dichiara l'origine
-    #        (brief-db-modelli-documento-standard §6, D-2). Ritorna il modello
-    #        nuovo.
+    #        (brief-db-modelli-documento-standard §6, D-2). La copia la fa la
+    #        funzione madre del DB (§10.3 K-6). Ritorna il modello nuovo.
     def post(self, request: Request, template_id: int) -> JsonResponse:
         def _handler(payload: dict) -> dict:
             return TemplateAdminService().personalizza_template(
@@ -297,10 +374,15 @@ class ApiTemplateVersioniList(DomainAPIView):
     is_search_endpoint = True
     lista_codice = "documenti.template_versioni"
     # ⭐ Le versioni si aprono DENTRO il drawer del template, che e' di UN
-    #    emittente (`template_documenti.emittente_fiscale_id` NOT NULL): la
-    #    lista a catalogo non e' certificata multi-emittente (`multi_emittente
-    #    = f`), e senza questa riga il cancello chiederebbe al super admin su
-    #    «Tutti» di scegliere l'emittente del template che ha gia' aperto.
+    #    emittente: la lista a catalogo non e' certificata multi-emittente
+    #    (`multi_emittente = f`), e senza questa riga il cancello chiederebbe al
+    #    super admin su «Tutti» di scegliere l'emittente del template che ha
+    #    gia' aperto.
+    # ⭐ Il modello STANDARD non ha un emittente (brief-db-modelli-documento-
+    #    standard §11.2 B-6): il frontend non manda il parametro, e il cancello
+    #    decide come per una lista senza emittente suo (la distinta di
+    #    `catalogo`): chi vede piu' aziende ne sceglie una. Le versioni non
+    #    hanno RLS e lo standard si legge da tutti: non c'e' altro da fare qui.
     # ⚠️ Il cancello vale per OGNI metodo della view, anche il POST che crea
     #    una versione: il frontend manda il parametro in query su entrambi.
     # ⚠️ Non filtra: le righe le fissa il template nel path (e il service ne
