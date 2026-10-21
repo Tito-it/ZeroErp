@@ -96,14 +96,15 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'vendite' AND tablename = 'fatture'
-        AND policyname = 'rls_fatture_ba_ownership') ~ 'fn_scope_ba_ownership'
+        AND policyname = 'rls_fatture_ba_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*fn_resolve_controparte_sr_id\(''billing_account'''
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'vendite' AND tablename = 'fatture'
             AND policyname = 'rls_fatture_ba_ownership') ~ 'CLIENTE_PORTALE'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'vendite' AND tablename = 'fatture'
             AND policyname = 'rls_fatture_ba_ownership') !~ 'SHOP_CUSTOMER',
-    '4. rls_fatture_ba_ownership: USING chiama fn_scope_ba_ownership + gate solo CLIENTE_PORTALE (no SHOP_CUSTOMER post 20-04-2026)'
+    -- Rev 2026-10-21 (20261021-32): la regola BA_OWNERSHIP nella forma col perimetro.
+    '4. rls_fatture_ba_ownership: USING perimetro del cliente + cliente del BA della riga, gate solo CLIENTE_PORTALE (no SHOP_CUSTOMER post 20-04-2026)'
 );
 
 -- =========================================================
@@ -215,8 +216,9 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'vendite' AND tablename = 'fatture_scadenze'
-        AND policyname = 'rls_fatture_scadenze_ba_ownership') ~ 'fn_scope_ba_ownership_via_fattura',
-    '16. rls_fatture_scadenze_ba_ownership: USING chiama fn_scope_ba_ownership_via_fattura'
+        AND policyname = 'rls_fatture_scadenze_ba_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*fn_resolve_controparte_sr_id\(''fattura''',
+    -- Rev 2026-10-21 (20261021-32): era fn_scope_ba_ownership_via_fattura.
+    '16. rls_fatture_scadenze_ba_ownership: USING perimetro del cliente + cliente della fattura della riga'
 );
 
 -- =========================================================
@@ -332,14 +334,15 @@ SELECT is(
 SELECT ok(
     (SELECT qual FROM pg_policies
       WHERE schemaname = 'anagrafiche' AND tablename = 'billing_account'
-        AND policyname = 'rls_billing_account_self_ownership') ~ 'fn_scope_ba_ownership'
+        AND policyname = 'rls_billing_account_self_ownership') ~ 'fn_scope_sr_perimetro\(\( SELECT (script\.)?fn_get_identita_sr_perimetro\(.*, soggetto_ruolo_id\)'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'anagrafiche' AND tablename = 'billing_account'
             AND policyname = 'rls_billing_account_self_ownership') ~ 'CLIENTE_PORTALE'
     AND (SELECT qual FROM pg_policies
           WHERE schemaname = 'anagrafiche' AND tablename = 'billing_account'
             AND policyname = 'rls_billing_account_self_ownership') !~ 'SHOP_CUSTOMER',
-    '28. rls_billing_account_self_ownership: USING chiama fn_scope_ba_ownership + gate solo CLIENTE_PORTALE (no SHOP_CUSTOMER post 20-04-2026)'
+    -- Rev 2026-10-21 (20261021-32): il BA e' la riga, il suo cliente e' la sua colonna.
+    '28. rls_billing_account_self_ownership: USING perimetro del cliente + soggetto del BA, gate solo CLIENTE_PORTALE (no SHOP_CUSTOMER post 20-04-2026)'
 );
 
 SELECT * FROM finish();

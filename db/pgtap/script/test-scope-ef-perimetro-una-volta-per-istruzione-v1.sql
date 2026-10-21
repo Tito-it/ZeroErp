@@ -47,8 +47,12 @@
 --   smistatori delle note che lo ricevono (fn_scope_note_*ef_perimetro): la
 --   stessa forma, il perimetro come primo argomento in una sottoquery. Lo
 --   dice la regex _perimetro qui sotto, una per tutti i test.
+--   Rev 2026-10-21 (20261021-29..-32, giro 2): anche fn_scope_sr_perimetro, la
+--   forma delle vesti di CONTROPARTE (cliente, shop, fornitore): il perimetro
+--   e' il soggetto dell'identita' (fn_get_identita_sr_perimetro), per riga il
+--   soggetto della riga (fn_resolve_controparte_sr_id).
 --
--- Elenco test (plan 5):
+-- Elenco test (plan 6):
 --  1) la derivazione non e' cieca: ci sono policy che chiamano una funzione
 --     di scope col perimetro
 --  2) ⭐ nessuna policy chiama piu' fn_scope_ef_whitelist( — la forma per riga
@@ -65,6 +69,10 @@
 --     script.fn_get_ba_id_da_coppia (20261021-24..-26). Il debito dichiarato
 --     e' a zero dal 2026-10-21: chi ne aggiunge uno a una policy fa rosso.
 --     ⚠️ Prima le note non le vedeva: il loro nome non era fn_scope_ef_whitelist_via_*.
+--  6) ⭐ le funzioni di scope di CONTROPARTE che calcolano il perimetro per riga
+--     (identita', veste, veste utilizzabile a ogni riga) non stanno in nessuna
+--     policy, salvo quelle DICHIARATE qui per nome: il debito dei giri
+--     successivi del brief, che deve solo calare.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -75,10 +83,22 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: il test gira come gira l'applicazione (OPERATORE + RLS).
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(5);
+SELECT plan(6);
 
 -- La funzione di scope col perimetro, in tutte le sue forme (vedi testata).
-CREATE TEMP TABLE _re AS SELECT 'fn_scope_(note_|note_magazzino_)?ef_perimetro\('::text AS perimetro;
+CREATE TEMP TABLE _re AS SELECT 'fn_scope_((note_|note_magazzino_)?ef|sr)_perimetro\('::text AS perimetro;
+
+-- ⚠️ Il DEBITO di controparte (test 6): le funzioni di scope che calcolano
+--   ancora il perimetro dell'identita' per riga, curate dai giri successivi
+--   del brief. Un elenco solo, letto dai test 4 e 6: chi ne cura una la toglie
+--   da qui.
+CREATE TEMP TABLE _debito_controparte (nome text);
+INSERT INTO _debito_controparte VALUES
+  ('fn_scope_cliente_ownership'), ('fn_scope_cliente_ownership_via_ordine'),
+  ('fn_scope_cliente_ownership_via_ordine_riga'),
+  ('fn_scope_shop_via_ordine'), ('fn_scope_shop_via_ordine_riga'), ('fn_scope_shop_via_ba'),
+  ('fn_scope_fornitore_ownership'), ('fn_scope_email_ambito'),
+  ('fn_scope_note_cliente'), ('fn_scope_note_shop');
 
 -- Le policy, con il testo di USING e WITH CHECK insieme.
 CREATE TEMP TABLE _pol AS
@@ -152,7 +172,12 @@ SELECT is(
      FROM (SELECT tabella AS t FROM _piano
             GROUP BY tabella
            HAVING NOT bool_or(riga ~ 'InitPlan')
-               OR bool_or(riga ~ 'Filter' AND riga ~ 'fn_get_emittenti_scope_pk_ids\(|fn_get_emittenti_scope_sr_ids\(|fn_check_user_emittente_scope\(')) x),
+               OR bool_or(riga ~ 'Filter' AND riga ~ 'fn_get_emittenti_scope_pk_ids\(|fn_get_emittenti_scope_sr_ids\(|fn_check_user_emittente_scope\(')
+               -- La catena di controparte (giro 2), salvo sulle tabelle con una
+               --   policy nel debito dichiarato: li' e' ancora per riga, ed e' detto.
+               OR (bool_or(riga ~ 'Filter' AND riga ~ 'fn_get_identita_sr_perimetro\(|fn_veste_utilizzabile\(')
+                   AND NOT EXISTS (SELECT 1 FROM _pol p, _debito_controparte d
+                                    WHERE p.rel = tabella AND p.testo ~ (d.nome || '\(')))) x),
   '',
   format('4) %s tabelle: il perimetro e'' in InitPlan e nessuna funzione della catena e'' nel Filter per riga',
          (SELECT count(DISTINCT tabella) FROM _piano)));
@@ -168,6 +193,22 @@ SELECT is(
      FROM _pol, regexp_matches(testo, '(fn_scope_ef_whitelist_via_\w+|fn_scope_note_\w*ef_whitelist)\(', 'g') m),
   '',
   '5) nessuna policy chiama un adattatore via_* ne'' uno smistatore delle note per riga');
+
+-- ============================================================
+-- 6) Le funzioni di scope di controparte per riga. ⚠️ L'elenco e' il DEBITO
+--    dei giri successivi (brief-db-perimetro-una-volta-famiglie-residue §2):
+--    chi ne cura una la toglie anche da qui; una policy nuova che ne chiama
+--    una fuori elenco fa rosso. La famiglia del cliente portale
+--    (fn_scope_ba_ownership, _via_fattura, _via_fattura_sdi) e' uscita col
+--    giro 2 (20261021-32).
+-- ============================================================
+SELECT is(
+  (SELECT coalesce(string_agg(DISTINCT m[1], ', ' ORDER BY m[1]), '')
+     FROM _pol, regexp_matches(testo,
+            '(fn_scope_ba_ownership\w*|fn_scope_cliente_ownership\w*|fn_scope_shop_via_\w+|fn_scope_fornitore_ownership|fn_scope_note_cliente|fn_scope_note_shop|fn_scope_email_ambito)\(', 'g') m
+    WHERE m[1] NOT IN (SELECT nome FROM _debito_controparte)),
+  '',
+  '6) nessuna policy chiama una funzione di scope di controparte per riga fuori dal debito dichiarato');
 
 SELECT finish();
 

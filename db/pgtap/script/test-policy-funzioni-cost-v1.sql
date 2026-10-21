@@ -103,7 +103,10 @@ INSERT INTO _economiche VALUES
   --   calcolato (una sottoquery, una volta per istruzione). E' nominata dalle
   --   policy ef_whitelist dirette, per questo vale anche per il test 2
   --   (D-3b-2c, 20261018-24).
-  ('script', 'fn_scope_ef_perimetro',           '~0,0015 ms/chiamata, 20.000 righe in 26-32 ms, dbdev come app, 2026-10-18 (non legge tabelle)');
+  ('script', 'fn_scope_ef_perimetro',           '~0,0015 ms/chiamata, 20.000 righe in 26-32 ms, dbdev come app, 2026-10-18 (non legge tabelle)'),
+  -- ⭐ Pura e INCORPORATA: la sorella di controparte di fn_scope_ef_perimetro
+  --   (20261021-29). Nel piano resta COALESCE(soggetto = (InitPlan), false).
+  ('script', 'fn_scope_sr_perimetro',           'incorporata: 20.000 righe in 1,9 ms come un filtro vuoto, scratch come owner, 2026-10-21 (non legge tabelle)');
 
 SELECT is(
   (SELECT coalesce(string_agg(funzione || ' = ' || procost, ', ' ORDER BY funzione), '')
