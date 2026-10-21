@@ -10,6 +10,11 @@
 --
 -- ⭐ TUTTO COSTRUITO: azienda, cliente, listino con un bundle, articoli, una
 --   tipologia senza erogazioni, contratti e offerta nascono qui.
+-- ⚠️ rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §I, I-D6 di Tid): un
+--   kit si vende solo a quantita' fissa, quindi il bundle P di una tipologia solo
+--   a consumo non ha erogazioni (SENZA_EROGAZIONE parla prima del listino, test
+--   20). Il builder sceglie la prima tipologia della utility, che puo' essere solo
+--   a consumo: il listino passa qui su una che ammette la FISSA.
 --
 -- LA FIXTURE — listino con A, B, F standalone e il bundle P (figlio F; P in
 --   listino solo coi componenti); X fuori listino; S solo componente; N di una
@@ -63,6 +68,25 @@ CREATE TEMP TABLE _listino AS
 SELECT * FROM dbops.fn_pgtap_crea_listino(
     (SELECT utility_id FROM _mondo), 'eccezioni articolo ammesso',
     '2020-01-01'::date, '2020-12-31'::date);
+
+-- La tipologia del listino (rev 2026-10-21, I-D6): una della utility che ammette
+-- la FISSA, perche' il bundle P abbia un'erogazione. Senza, la fixture muore.
+UPDATE _listino
+   SET tipologia_id = (
+       SELECT ltu.tipologia_id
+         FROM config.listini_tipologie_utilities ltu
+        WHERE ltu.utility_id = (SELECT utility_id FROM _mondo)
+          AND ltu.attivo
+          AND EXISTS (SELECT 1 FROM config.listini_tipologie_erogazioni te
+                       WHERE te.tipologia_id = ltu.tipologia_id
+                         AND te.fonte_quantita_attesa = 'FISSA')
+        ORDER BY ltu.tipologia_id
+        LIMIT 1);
+ALTER TABLE _listino ALTER COLUMN tipologia_id SET NOT NULL;
+UPDATE vendite.listini l
+   SET tipologia_id = t.tipologia_id
+  FROM _listino t
+ WHERE l.id = t.listino_id;
 
 CREATE TEMP TABLE _ver AS
 WITH ins AS (

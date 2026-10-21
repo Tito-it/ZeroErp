@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    40,
+    41,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -318,7 +318,14 @@ SELECT is(
     --   della distinta, solleva il primo motivo di script.fn_check_articolo_riga
     --   (documento ARTICOLO). I guard per regola che sostituisce (un livello, IVA)
     --   sollevavano codici letterali e non erano nel conto.
-    'le quaranta funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-10-21: da 40 a 41. Un sito NUOVO nato sull'helper:
+    --   vendite.fn_genera_ordine_da_offerta (20261021-61, brief-db-offerta-
+    --   emissione-ed-erogazione §I.2, I-D2), che solleva il primo motivo di
+    --   script.fn_check_righe_offerta_in_ordine. I due guard di transizione che
+    --   chiamano ora anche script.fn_check_righe_documento e
+    --   script.fn_check_offerta_annullabile (-57, -59) erano gia' nel conto: si
+    --   conta la FUNZIONE, non le chiamate.
+    'le quarantuno funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

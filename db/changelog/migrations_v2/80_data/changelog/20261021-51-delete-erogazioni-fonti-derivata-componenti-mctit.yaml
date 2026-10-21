@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DI DERIVATA_COMPONENTI — il vocabolario config.erogazioni_fonti
+#   Brief: brief-db-offerta-emissione-ed-erogazione §I.1, decisione I-D1 di Tid
+#   (2026-10-21).
+#
+#   Le quattro combinazioni (CANONE | UNA_TANTUM | ORARIO | CONSUMO,
+#   DERIVATA_COMPONENTI), id 3, 6, 10, 13, escono dal CSV
+#   (80_data/sql/config/erogazioni_fonti.csv) e da qui dal database: il mirror
+#   loadUpdateData (20261007-53) aggiorna e inserisce, non cancella. Su un
+#   database costruito da zero il CSV non le crea piu' e questo DELETE non
+#   trova niente.
+#
+#   Le FK composte delle righe (fk_contratti_righe_erogazione_fonte,
+#   fk_offerte_commerciali_eccezioni_erogazione_fonte) e dei due vocabolari
+#   (listini_tipologie_erogazioni, nature_vendita_erogazioni, che la DERIVATA
+#   non l'hanno mai avuta) chiudono la porta: da qui nessuna riga puo' prenderla.
+#
+#   preCondition HALT: nessuna riga di documento con la DERIVATA. Su dbdev si
+#   corregge a mano prima dell'apply (brief §I.4 punto 1, I-D5); altrimenti il
+#   DELETE morirebbe sulla FK con un messaggio che non nomina il motivo.
+#
+# Ritorno indietro: le quattro righe, con i loro id.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261021-51-delete-erogazioni-fonti-derivata-componenti-mctit.yaml
+
+  - changeSet:
+      id: 20261021-51-delete-erogazioni-fonti-derivata-componenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.erogazioni_fonti: via le quattro combinazioni con DERIVATA_COMPONENTI (ritiro della
+        fonte, brief-db-offerta-emissione-ed-erogazione §I.1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT (SELECT count(*) FROM vendite.contratti_righe
+                       WHERE fonte_quantita_attesa = 'DERIVATA_COMPONENTI')
+                   + (SELECT count(*) FROM vendite.offerte_commerciali_eccezioni
+                       WHERE fonte_quantita_attesa = 'DERIVATA_COMPONENTI');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.erogazioni_fonti
+               WHERE fonte_quantita_attesa = 'DERIVATA_COMPONENTI';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              INSERT INTO config.erogazioni_fonti (id, tipo_erogazione, fonte_quantita_attesa, e_default)
+              VALUES (3,  'CANONE',     'DERIVATA_COMPONENTI', false),
+                     (6,  'UNA_TANTUM', 'DERIVATA_COMPONENTI', false),
+                     (10, 'ORARIO',     'DERIVATA_COMPONENTI', false),
+                     (13, 'CONSUMO',    'DERIVATA_COMPONENTI', false)
+              ON CONFLICT (id) DO NOTHING;

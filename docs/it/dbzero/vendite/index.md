@@ -190,6 +190,7 @@ search:
 - [fn_genera_ddt_riconsegna](funzioni/fn_genera_ddt_riconsegna.md) — (rev 2026-08-28)
 - [fn_genera_fondi_fattura_lotto](funzioni/fn_genera_fondi_fattura_lotto.md) — (latest review 15-08-2026)
 - [fn_genera_fondi_fattura_source](funzioni/fn_genera_fondi_fattura_source.md) — (latest review 15-08-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** crea in `fatture_fondi_fattura_source` i fondi delle fatture **«di minimo»**, cioè quelle il cui importo cade dentro la banda configurata per emittente × utility: sono i documenti che **non si incassano da soli** e il cui valore viene riportato sulla fattura successiva.
+- [fn_genera_ordine_da_offerta](funzioni/fn_genera_ordine_da_offerta.md)
 - [fn_genera_pratica_da_preventivo](funzioni/fn_genera_pratica_da_preventivo.md) — (latest review 08-07-2026)
 - [fn_genera_scadenze_fattura](funzioni/fn_genera_scadenze_fattura.md) — (latest review 02-08-2026)
 - [fn_genera_scadenze_lotto](funzioni/fn_genera_scadenze_lotto.md) — (latest review 02-08-2026)

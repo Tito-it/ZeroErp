@@ -1,0 +1,73 @@
+# ⚙️ Funzione `fn_check_riga_documento_su_contesto`
+
+```sql
+CREATE FUNCTION fn_check_riga_documento_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint, p_tipo_erogazione character varying, p_fonte character varying)
+```
+
+**Definizione completa:**
+
+<div data-search-exclude markdown>
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_check_riga_documento_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint, p_tipo_erogazione character varying, p_fonte character varying)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+-- =========================================================
+-- Scopo:
+--   «Questa riga puo' stare in questo documento?», INTERA: l'articolo
+--   (script.fn_check_articolo_riga_su_contesto) e, su offerta e
+--   contratto, erogazione e fonte (script.fn_check_riga_erogazione).
+--   '[]' = ammessa; altrimenti i motivi, il primo e' quello che conta.
+--
+-- ⭐ Perche' esiste (brief-db-offerta-emissione-ed-erogazione §I.2):
+--   sulla riga le due meta' le giudicano due guard distinti, che
+--   scattano su colonne diverse (l'articolo; erogazione e fonte). Ma le
+--   regole dipendono da dati che stanno FUORI dalla riga (il listino
+--   operativo, la tipologia, il vocabolario), e chi rilegge le righe
+--   gia' scritte — l'emissione, il push, l'attivazione, la correzione
+--   di un articolo — deve chiedere la riga intera. Due lettori, una
+--   composizione: questa.
+--
+-- Ordine: prima l'articolo; erogazione e fonte solo se l'articolo e'
+--   ammesso. fn_check_articolo_riga_su_contesto contiene gia' il motivo
+--   1 di fn_check_riga_erogazione (TIPOLOGIA_FUORI_UTILITY, composto
+--   senza erogazione): chiederlo due volte darebbe un motivo doppio.
+--
+-- p_contesto: quello di script.fn_articolo_riga_contesto, mai a mano.
+--   Chi giudica molte righe dello stesso documento lo legge una volta
+--   e cambia solo la chiave tipo_eccezione (che il contesto porta e
+--   basta). Erogazione e fonte NULL: nessun motivo qui (parlano il
+--   guard d'obbligo e i CHECK), come in fn_check_riga_erogazione.
+-- =========================================================
+DECLARE
+    -- Nudo DICHIARATO: l'array dei motivi di una check, nessuna colonna.
+    v_motivi jsonb;
+BEGIN
+    v_motivi := script.fn_check_articolo_riga_su_contesto(
+        p_contesto, p_articolo_id, p_natura_vendita_id);
+
+    IF jsonb_array_length(v_motivi) > 0
+       OR (p_contesto ->> 'documento') NOT IN ('OFFERTA_COMMERCIALE', 'CONTRATTO') THEN
+        RETURN v_motivi;
+    END IF;
+
+    RETURN script.fn_check_riga_erogazione(
+        p_contesto ->> 'documento',
+        (p_contesto ->> 'documento_id')::bigint,
+        p_articolo_id,
+        (p_contesto ->> 'tipo_eccezione')::vendite.tipo_eccezione_contratto,
+        p_tipo_erogazione,
+        p_fonte);
+END;
+$function$
+
+COMMENT ON FUNCTION script.fn_check_riga_documento_su_contesto(p_contesto jsonb, p_articolo_id uuid, p_natura_vendita_id bigint, p_tipo_erogazione character varying, p_fonte character varying)
+IS 'Check pura (fn_check_*): i motivi per cui una riga INTERA non puo'' stare nel documento del contesto (p_contesto da script.fn_articolo_riga_contesto). Prima l''articolo (script.fn_check_articolo_riga_su_contesto, con la natura congelata della riga se c''e''); se l''articolo e'' ammesso e il documento e'' OFFERTA_COMMERCIALE o CONTRATTO, erogazione e fonte (script.fn_check_riga_erogazione, che qui non ripete TIPOLOGIA_FUORI_UTILITY, gia'' nella prima meta''). ''[]'' = ammessa; altrimenti {codice, reason, reason_key, dettaglio, valori}, il primo e'' quello che conta. Lettori: script.fn_check_righe_documento (emissione dell''offerta, push, attivazione del contratto), script.fn_check_righe_offerta_in_ordine (genera ordine) e catalogo.fn_articolo_righe_vive_non_ammesse (la correzione della struttura di un articolo). Sulla riga i due guard (script.trgfn_righe_guard_articolo_ammesso, script.trgfn_righe_guard_erogazione_perimetro) restano distinti: scattano su colonne diverse. STABLE, SECURITY INVOKER. Nasce il 2026-10-21 (20261021-52), brief-db-offerta-emissione-ed-erogazione §I.2.';
+```
+
+</div>
+
+---
+{% include-markdown "signature-core.md" %}

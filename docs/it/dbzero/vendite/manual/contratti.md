@@ -212,6 +212,11 @@ Trigger modalità C rimossi:
 
 * Transizione DRAFT→ATTIVO con `listino_id IS NULL`: richiede almeno una riga AGGIUNTA con `prezzo_unitario NOT NULL`. Errore: `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` (451).
 * Transizione DRAFT→ATTIVO con `listino_id IS NOT NULL`: fissa `listino_versione_id` sulla versione attiva a `CURRENT_DATE`. Se non trovata: attivazione consentita, `listino_versione_id` resta NULL (§4.4).
+* Dal 2026-10-21 il guard di transizione (`vendite.trgfn_contratti_guard_transizione_stato`) rifiuta
+  anche un contratto con una riga che la regola intera (articolo, erogazione, fonte) non ammette
+  più: `script.fn_check_righe_documento`, `E_DOC_RIGA_NON_AMMESSA`; la capability spegne «Attiva»
+  con lo stesso motivo. Le regole di una riga dipendono da dati che stanno fuori dalla riga, e in
+  DRAFT la riga si corregge (`brief-db-offerta-emissione-ed-erogazione` §I.2, H-R4).
 
 **Lock post-attivazione** (dal Step 2.3):
 

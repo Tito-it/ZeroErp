@@ -22,7 +22,8 @@
 -- 13) fn_init guard p_emittente_sr_id NULL → E_PARAMETRO_INVALIDO
 -- 14) fn_init eccezione non trovata → E_OFFERTA_ECCEZIONE_NON_TROVATA
 -- 15) fn_init articolo non composito → 0
--- 16) fn_init quantita NULL → 0 (consumo)
+-- 16) il kit non si vende a consumo: una riga composita con una fonte a valle e'
+--     fuori perimetro (I-D6, rev 2026-10-21; era «fn_init quantita NULL → 0»)
 -- 17) fn_init idempotenza → 0 alla seconda chiamata [skip se no composito]
 -- 18) fn_init happy path: componenti inseriti > 0   [skip se no composito]
 -- 19) fn_init override: prezzo overriddato           [skip se no composito]
@@ -60,8 +61,16 @@ SELECT plan(27);
 --   NASCOSTO in fattura, prezzi dei componenti a listino). Le offerte restano
 --   datate 2082: la versione e' aperta, e lo e' la distinta.
 --   Le erogazioni si scelgono fra quelle che P ammette (la tipologia del listino
---   dipende dalla utility): la COMPOSITA con la fonte DERIVATA_COMPONENTI, la
---   CONSUMO con una fonte a valle (MANUALE o LETTURE). Il semplice eredita.
+--   dipende dalla utility): la COMPOSITA con la fonte FISSA, la CONSUMO con una
+--   fonte a valle (MANUALE o LETTURE). Il semplice eredita.
+--   ⚠️ rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §I.1, I-D1 di Tid):
+--   la COMPOSITA era DERIVATA_COMPONENTI con `quantita` scritta a mano — la FISSA
+--   con un altro nome che il brief ha trovato. DERIVATA ritirata: FISSA, e la
+--   quantita' arriva da qta_operativa come per ogni riga FISSA. E per la I-D6 dello
+--   stesso giorno un kit si vende SOLO a quantita' fissa (i componenti si calcolano
+--   dalla quantita' della riga): il listino passa su una tipologia della utility che
+--   ammette la FISSA e una fonte a valle, perche' il builder sceglie la prima, che
+--   puo' essere solo a consumo; e il test 16 prova il rifiuto del kit a consumo.
 CREATE TEMP TABLE tmp_oce_mondo AS
 SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('offerte eccezioni componenti');
 
@@ -71,6 +80,30 @@ CREATE TEMP TABLE tmp_oce_listino AS
 SELECT * FROM dbops.fn_pgtap_crea_listino(
     (SELECT utility_id FROM tmp_oce_mondo), 'offerte eccezioni componenti',
     '2020-01-01'::date, '2020-12-31'::date);
+
+-- La tipologia del listino (rev 2026-10-21, I-D6): una della utility che ammette la
+-- FISSA (il kit) e una fonte a valle (il rifiuto del test 16). Il listino e' appena
+-- nato, senza righe: la tipologia si sceglie qui. Se la utility non ne ha una, la
+-- fixture muore: NOT NULL, mai uno skip.
+UPDATE tmp_oce_listino t
+   SET tipologia_id = (
+       SELECT ltu.tipologia_id
+         FROM config.listini_tipologie_utilities ltu
+        WHERE ltu.utility_id = (SELECT utility_id FROM tmp_oce_mondo)
+          AND ltu.attivo
+          AND EXISTS (SELECT 1 FROM config.listini_tipologie_erogazioni te
+                       WHERE te.tipologia_id = ltu.tipologia_id
+                         AND te.fonte_quantita_attesa = 'FISSA')
+          AND EXISTS (SELECT 1 FROM config.listini_tipologie_erogazioni te
+                       WHERE te.tipologia_id = ltu.tipologia_id
+                         AND te.fonte_quantita_attesa <> 'FISSA')
+        ORDER BY ltu.tipologia_id
+        LIMIT 1);
+ALTER TABLE tmp_oce_listino ALTER COLUMN tipologia_id SET NOT NULL;
+UPDATE vendite.listini l
+   SET tipologia_id = t.tipologia_id
+  FROM tmp_oce_listino t
+ WHERE l.id = t.listino_id;
 
 CREATE TEMP TABLE tmp_oce_ver AS
 WITH ins AS (
@@ -137,14 +170,17 @@ SELECT
     --   COMPOSITA va in EMESSA e poi ACCETTATA solo prima del push (test 20).
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')     AS stato_bozza_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')    AS stato_emessa_id,
-    -- Le erogazioni di P: la composita con la fonte dei componenti, la consumo
-    --   con una fonte a valle (quantita' vuota).
+    -- Le erogazioni di P: la composita con la FISSA. La consumo e' una
+    --   combinazione della TIPOLOGIA con una fonte a valle: il kit non la ha
+    --   (I-D6), ed e' il rifiuto del test 16.
     (SELECT e.tipo_erogazione FROM vendite.fn_articolo_erogazioni(pg_temp.oce('P')) e
-      WHERE e.fonte_quantita_attesa = 'DERIVATA_COMPONENTI' ORDER BY e.ordine LIMIT 1) AS erog_composita,
-    (SELECT e.tipo_erogazione FROM vendite.fn_articolo_erogazioni(pg_temp.oce('P')) e
-      WHERE e.fonte_quantita_attesa IN ('MANUALE', 'LETTURE') ORDER BY e.ordine LIMIT 1) AS erog_consumo,
-    (SELECT e.fonte_quantita_attesa FROM vendite.fn_articolo_erogazioni(pg_temp.oce('P')) e
-      WHERE e.fonte_quantita_attesa IN ('MANUALE', 'LETTURE') ORDER BY e.ordine LIMIT 1) AS fonte_consumo
+      WHERE e.fonte_quantita_attesa = 'FISSA' ORDER BY e.ordine LIMIT 1) AS erog_composita,
+    (SELECT te.tipo_erogazione FROM config.listini_tipologie_erogazioni te
+      WHERE te.tipologia_id = (SELECT tipologia_id FROM tmp_oce_listino)
+        AND te.fonte_quantita_attesa <> 'FISSA' ORDER BY te.id LIMIT 1) AS erog_consumo,
+    (SELECT te.fonte_quantita_attesa FROM config.listini_tipologie_erogazioni te
+      WHERE te.tipologia_id = (SELECT tipologia_id FROM tmp_oce_listino)
+        AND te.fonte_quantita_attesa <> 'FISSA' ORDER BY te.id LIMIT 1) AS fonte_consumo
   FROM tmp_oce_mondo m;
 
 -- Flag: il bundle c'e' (costruito: sempre).
@@ -197,27 +233,17 @@ BEGIN
     RETURNING id INTO v_ecc_id;
     INSERT INTO tmp_oce_ids VALUES ('SEMPLICE', v_off_id, v_ecc_id);
 
-    -- Eccezione col composito (test 17-19), fonte dei componenti.
+    -- Eccezione col composito (test 17-19), FISSA: 2 pezzi.
     INSERT INTO vendite.offerte_commerciali_eccezioni (
         offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-        prezzo_unitario, quantita, tipo_erogazione)
+        prezzo_unitario, qta_operativa, tipo_erogazione)
     VALUES (v_off_id, v_ctx.articolo_composito_id, 'OVERRIDE',
-            'DERIVATA_COMPONENTI', 0.00, 2, v_ctx.erog_composita)
+            'FISSA', 0.00, 2, v_ctx.erog_composita)
     RETURNING id INTO v_ecc_id;
     INSERT INTO tmp_oce_ids VALUES ('COMPOSITA', v_off_id, v_ecc_id);
 
-    -- Eccezione con quantita' NULL (test 16), su un'offerta sua: una sola
-    --   OVERRIDE/ESCLUSIONE per (offerta, articolo).
-    IF v_ctx.erog_consumo IS NOT NULL THEN
-        v_altra := pg_temp.oce_offerta();
-        INSERT INTO vendite.offerte_commerciali_eccezioni (
-            offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, quantita, tipo_erogazione)
-        VALUES (v_altra, v_ctx.articolo_composito_id, 'OVERRIDE',
-                v_ctx.fonte_consumo, 0.00, NULL, v_ctx.erog_consumo)
-        RETURNING id INTO v_ecc_id;
-        INSERT INTO tmp_oce_ids VALUES ('CONSUMO', v_altra, v_ecc_id);
-    END IF;
+    -- Il kit a consumo (test 16): un'offerta sua, la riga si tenta nel test.
+    INSERT INTO tmp_oce_ids VALUES ('CONSUMO', pg_temp.oce_offerta(), NULL);
 
     -- ESCLUSIONE del composito (test 27): nasce vuota (R1 del 2026-10-04), su
     --   un'offerta sua.
@@ -377,21 +403,42 @@ SELECT CASE
 END;
 
 -- ============================================================
--- TEST 16) fn_init quantita NULL → 0 (consumo)
+-- TEST 16) il kit non si vende a consumo (I-D6, rev 2026-10-21)
 -- ============================================================
-SELECT CASE
-    WHEN (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'CONSUMO') IS NOT NULL
-    THEN is(
-        vendite.fn_offerta_eccezione_componenti_init(
-            (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'CONSUMO'),
-            (SELECT emittente_sr_id FROM tmp_oce_ctx),
-            script.fn_data_operativa()
-        ),
-        0,
-        '16) fn_init su eccezione con quantita NULL → 0 (consumo no-op)'
-    )
-    ELSE skip('16) skip: nessuna eccezione consumo disponibile')
+-- La riga composita con una fonte a valle (la combinazione la ammette la
+-- tipologia, non il kit) e' fuori dal perimetro dell'articolo. Fino al
+-- 2026-10-21 nasceva, con quantita' NULL, senza componenti e con prezzo 0.
+-- Il codice si legge dal canale CONSTRAINT dell'eccezione.
+CREATE OR REPLACE FUNCTION pg_temp.oce_codice(p_sql text)
+RETURNS text LANGUAGE plpgsql AS $fx$
+DECLARE v_cst text;
+BEGIN
+    BEGIN
+        EXECUTE p_sql;
+        RETURN 'NESSUN ERRORE';
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME;
+        RETURN coalesce(nullif(v_cst, ''), '-');
+    END;
 END;
+$fx$;
+
+SELECT is(
+    (SELECT count(*)::int FROM vendite.fn_articolo_erogazioni(pg_temp.oce('P')) e
+      WHERE e.fonte_quantita_attesa <> 'FISSA')
+    || ' ' ||
+    pg_temp.oce_codice(format(
+        $$INSERT INTO vendite.offerte_commerciali_eccezioni (
+              offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
+              prezzo_unitario, tipo_erogazione)
+          VALUES (%s, %L, 'OVERRIDE', %L, 0.00, %L)$$,
+        (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'CONSUMO'),
+        (SELECT articolo_composito_id FROM tmp_oce_ctx),
+        (SELECT fonte_consumo FROM tmp_oce_ctx),
+        (SELECT erog_consumo FROM tmp_oce_ctx))),
+    '0 E_RIGA_EROGAZIONE_FUORI_PERIMETRO',
+    '16) il kit non si vende a consumo: nessuna fonte a valle nel suo perimetro, la riga e'' rifiutata'
+);
 
 -- Setup: prima chiamata fn_init (popola componenti per test 17-19)
 DO $$
@@ -467,10 +514,10 @@ BEGIN
     -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
     INSERT INTO vendite.offerte_commerciali_eccezioni (
         offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-        prezzo_unitario, quantita, tipo_erogazione
+        prezzo_unitario, qta_operativa, tipo_erogazione
     )
     VALUES (v_off_id, (SELECT articolo_composito_id FROM tmp_oce_ctx),
-            'OVERRIDE', 'DERIVATA_COMPONENTI', 0.00, 3, (SELECT erog_composita FROM tmp_oce_ctx))
+            'OVERRIDE', 'FISSA', 0.00, 3, (SELECT erog_composita FROM tmp_oce_ctx))
     RETURNING id INTO v_ovr_ecc_id;
 
     INSERT INTO tmp_oce_ids VALUES ('COMPOSITA-OVR', v_off_id, v_ovr_ecc_id);

@@ -153,7 +153,7 @@ Uniforme tra Parte 1b (sorgente listino) e Parte 2b (sorgente contratto_righe_co
 | `quantita` | Snapshot quantita della riga persistita; valorizzata solo per righe con eccezione (OVERRIDE/ESCLUSIONE/AGGIUNTA), NULL per DA_LISTINO puro |
 | `qta_operativa` | Quantita in UoM operativa; valorizzata solo per righe con eccezione, NULL per DA_LISTINO puro |
 | `tipo_erogazione` | `CANONE` / `UNA_TANTUM` / `ORARIO` / `CONSUMO`; valorizzato solo per righe con eccezione, NULL per DA_LISTINO puro |
-| `fonte_quantita_attesa` | `FISSA` / `MANUALE` / `TIMESHEET` / `LETTURE` / `DERIVATA_COMPONENTI`; valorizzata solo per righe con eccezione, NULL per DA_LISTINO puro |
+| `fonte_quantita_attesa` | `FISSA` / `MANUALE` / `TIMESHEET` / `LETTURE` (`DERIVATA_COMPONENTI` ritirata il 2026-10-21); valorizzata solo per righe con eccezione, NULL per DA_LISTINO puro |
 | `riga_key` / `azioni` / `escludi_blocco_codice` | Chiave di riga, verbi ammessi e motivo per cui «Escludi» è spento: vedi rev 2026-09-28 |
 | `ordine` | `contratti_righe.ordine` della riga persistita; NULL per DA_LISTINO puro |
 | `uom_operativa_id` | `contratti_righe.uom_operativa_id` così com'è scritto (NULL per DA_LISTINO puro, e per una riga senza quantità); è il dato che il form di modifica rimanda al `PATCH` |

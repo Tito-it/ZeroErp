@@ -1,5 +1,23 @@
 # Brief DB — Offerta, dal collaudo del drawer: l'emissione e l'erogazione
 
+## ⏭️ Chi riparte — aggiornato al 2026-10-21 (notte)
+
+**Riparte: la sessione BE/FE** (§I.5.5). Il lato DB è finito: `20261021-44` → `-61` applicati su
+dbdev e scratch, pgTAP verdi (Tid, 2026-10-21, nessuna regressione).
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | ~~Tid~~ | ~~decisioni I-D1…I-D6~~ ✅ 2026-10-21 | §I.3 | — |
+| 2 | ~~team DB~~ | ~~giro unico: ritiro della DERIVATA, kit solo FISSA, riga intera, guard e capability, verbo «genera ordine», annullo da ACCETTATA, seed, doc, pgTAP~~ ✅ 2026-10-21, provato sullo scratch | §I.5 | — |
+| 3 | ~~Tid~~ | ~~query della riga DERIVATA su dbdev, apply su dbdev e scratch, corsa pgTAP~~ ✅ 2026-10-21 | §I.5.4 | — |
+| 4 | sessione BE/FE | genera ordine sul verbo, pulsanti spenti col motivo, annullo da ACCETTATA, codici e chiavi i18n, via la DERIVATA, `quantita` fuori dal payload | §I.5.5, §H.5 | — |
+| 5 | Tid | collaudo a video: §D.5 + §G.4 + §H.5 (`OFC-0001064`) | §D.5, §G.4, §H.5 | 4 |
+| 6 | chi chiude | archiviazione in `work-done/`, riga di PROJECT_CONTEXT (oggi ferma al §G «non committato») | — | 5 |
+
+Decisioni aperte di Tid: nessuna (I-D7, 2026-10-21: le 9 righe fuori perimetro di dbdev restano per
+il collaudo, §I.5.4). Lavoro da committare: i changeSet `20261021-44` → `-61`, i quattro
+CSV, il pgTAP nuovo e i nove pgTAP aggiornati, manual e guide, questo file.
+
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-07. **A chi:** team DB
 > (`dev/db-tid`); poi BE/FE (§A.5, §B.5), che **attende** la consegna DB.
 > **Origine:** il collaudo a video di Tid del drawer dell'offerta
@@ -22,15 +40,7 @@
 > rossi di CI (Tid, 2026-10-08). **⏳ Restano** i tre trovati del §F.4.3 (il primo, la quantità
 > DERIVATA_COMPONENTI, torna al team DB dopo la decisione di Tid; con lui `quantita` nel payload
 > di riga: §G.1), poi il collaudo a video (§D.5 + §G.4, dopo, per scelta di Tid) e l'archiviazione.
-> **⏭️ Chi riparte (2026-10-10).** Il §G è committato (`67a0cac2e`, in `Tito-dev`). Riparte **prima
-> Tid**, poi il **DB**, poi il **BE**:
->
-> 1. **Tid** decide il primo trovato del §F.4.3 (la quantità della riga DERIVATA_COMPONENTI);
-> 2. **DB**: il giro che ne segue (calcolo della quantità, oppure la DERIVATA tolta da
->    `fn_fonte_porta_quantita` e dai due CHECK), più commenti e manual che oggi dicono il falso;
-> 3. **BE**: toglie `quantita` dalle chiavi ammesse del payload di riga (§G.1);
-> 4. **Tid**: collaudo a video (§D.5 + §G.4), poi l'archiviazione.
->
+> Il §G è committato (`67a0cac2e`, in `Tito-dev`); chi riparte lo dice il blocco in cima.
 > Il secondo trovato (FISSA, `quantita` a mano) resta aperto senza richiesta; il terzo (ordine fra
 > guard del listino e lock del contratto attivo) è **passato** a
 > [brief-db-testata-dopo-emissione](../work-done/brief-db-testata-dopo-emissione.md) §5 (§F.4.3).
@@ -564,6 +574,8 @@ tipologia.
 
 * **B-D5** ✅ come da proposta: `DERIVATA_COMPONENTI` è ammessa per ogni articolo composito, con
   ogni erogazione che la tipologia o la natura ammette, se il vocabolario B1 la dichiara coerente.
+  ⛔ **Superata dal §I (I-D1, 2026-10-21)**: la DERIVATA si ritira, i componenti seguono sempre
+  la quantità del padre.
 * **B-D6** ✅ le righe già scritte restano come sono, **senza presidio**: sono solo dati di test.
   Il guard scatta su INSERT e quando cambiano articolo, erogazione o fonte.
   ⛔ **Superata dal §H (2026-10-11)**: il perimetro dipende da dati che stanno fuori dalla riga,
@@ -1492,3 +1504,243 @@ che è il documento gemello, prevede `ACCETTATO → ANNULLATO`
 * Policy e ripieghi per i codici nuovi (`genera_error_policies`, ripiego senza `%s`).
 * Collaudo a video (Tid): `OFC-0001064` mostra «Genera contratto» spento con il motivo, e si
   annulla da ACCETTATA.
+
+
+## I. Analisi del team DB per il giro unico (`dev/db-tid`, 2026-10-21)
+
+> Rilegge il §F.4.3 e il §H sul codice vivo (doc auto-generata del 2026-10-21) e su ciò che è
+> cambiato dopo il 2026-10-11. Siamo in sviluppo, senza produzione: niente bonifiche né
+> compatibilità all'indietro; i dati di dbdev che non tornano si correggono a mano (AGENTS.md,
+> «Bug di dati in sviluppo»).
+
+### I.1 La quantità della riga DERIVATA_COMPONENTI: il modello va in un verso solo
+
+Il nome dice «la quantità del padre viene dai componenti». Il modello fa il contrario, in tre sedi:
+
+* `vendite.fn_offerta_eccezione_componenti_init` e `vendite.fn_contratto_riga_componenti_init`
+  scrivono ogni componente come `coeff_qta × quantità del padre`, e **non creano nessun
+  componente** se il padre non ha quantità («No-op su quantita IS NULL»);
+* `script.trgfn_componenti_propaga_qta` propaga dal padre **ai** figli quando cambia la
+  quantità del padre;
+* sui componenti `quantita` è NOT NULL e non c'è una fonte: un componente non ha una quantità
+  sua da cui il padre possa derivare.
+
+Quindi una riga DERIVATA ha due sole forme possibili, ed entrambe sono sbagliate:
+
+| Forma | Che cosa succede |
+| --- | --- |
+| senza quantità (quella che il form manda: `qta_operativa = null` fuori dalla FISSA) | il composito **non ha componenti**: il contrario di ciò che la fonte promette |
+| con una quantità (mandata dal client o rimasta da una FISSA) | la quantità la scrive qualcuno a mano, e i componenti la seguono: è una FISSA con un altro nome, e il calcolo da `qta_operativa` (F-1) non vale |
+
+Nessun lettore a valle distingue la DERIVATA: `fonte_quantita_attesa` la leggono solo i trigger
+della riga, le letture del form e il push, che la copia. Opzioni:
+
+* **(a) Ritirare DERIVATA_COMPONENTI.** Il composito prende le combinazioni della sua tipologia
+  (o natura) come ogni articolo; la quantità del padre la porta la fonte (FISSA: dall'operatore),
+  e i componenti la seguono. Si tolgono le quattro righe del vocabolario, il ramo «distinta» di
+  `vendite.fn_articolo_erogazioni` (e il suo ordine), il nome in `script.fn_fonte_porta_quantita`
+  e nei due CHECK, il ramo di `trgfn_qta_from_operativa`; il FE toglie la costante e il tag.
+  Le righe di dbdev con DERIVATA si correggono a mano prima dell'apply.
+* **(b) DERIVATA = quantità obbligatoria come la FISSA.** Un doppione della FISSA: due nomi per
+  la stessa regola.
+* **(c) Componenti con una fonte propria** (il padre somma i componenti). È un modello nuovo
+  (fonte ed erogazione sul componente, fatturazione per componente): un cantiere a sé.
+
+Proposta: **(a)**.
+
+### I.2 Il §H dopo il 2026-10-11: che cosa resta da fare
+
+**La causa principale di H-A è chiusa dal lato articolo.** Dal 2026-10-13 (A-10 di
+[brief-db-articoli-ammessi-per-documento](brief-db-articoli-ammessi-per-documento.md)) un
+articolo **usato** non cambia `listino_tipologia_id`, `natura_vendita_id`, `is_composito`
+(`catalogo.trgfn_articoli_guard_struttura_se_usato`). Restano quattro strade per una riga che
+esce dal perimetro dopo essere stata scritta:
+
+1. il **listino operativo** cambia versione (OVERRIDE/ESCLUSIONE fuori listino, A-5);
+2. il **vocabolario** del perimetro cambia (`config.listini_tipologie_erogazioni`,
+   `nature_vendita_erogazioni`, `listini_tipologie_utilities`);
+3. la porta SUPER_ADMIN `catalogo.fn_articolo_correggi_struttura`: confronta le righe vive con
+   `script.fn_check_articolo_riga`, che **non** giudica erogazione e fonte. ⚠️ Una correzione
+   della tipologia può quindi rendere una riga fuori perimetro senza essere fermata: è un buco;
+4. le righe scritte **prima** dei guard (`OFC-0001064`): dati di sviluppo, si correggono a mano.
+
+**H-R1, H-R2 (contratto) e H-R4 sono già decisi.** Sono l'R-6 di quel brief («le righe già
+scritte le intercetta il primo passo che le usa») e la A-5 di Tid («le intercetta
+l'emissione»). Forma proposta, una regola sola:
+
+* **una check di riga composta**: `script.fn_check_articolo_riga` seguita da
+  `script.fn_check_riga_erogazione` con erogazione e fonte della riga. È «questa riga può stare
+  in questo documento», intera;
+* **una lettura per documento**: le righe vive di un'offerta o di un contratto che quella check
+  non ammette, col primo motivo. È la gemella di `catalogo.fn_articolo_righe_vive_non_ammesse`
+  (che legge per articolo), e le due condividono la check composta;
+* la chiamano **il guard e la capability** di BOZZA→EMESSA dell'offerta, `can_push_contratto` e
+  DRAFT→ATTIVO del contratto (guard e capability), come già fanno listino, prezzi e indirizzi;
+* `catalogo.fn_articolo_righe_vive_non_ammesse` passa alla check composta: chiude il buco del
+  punto 3.
+
+**Genera ordine non passa dal DB.** «Genera ordine» dall'offerta è orchestrato in Python
+(`ordini_service.crea_ordine_da_offerta`: crea l'ordine, scrive l'origine, copia le righe
+espanse), mentre il push al contratto è un verbo DB (`vendite.fn_push_offerta_a_contratto`). Le
+righe dell'ordine le giudica il guard dell'ordine (solo merce, solo componente, kit senza
+componenti), non il perimetro d'erogazione: l'ordine non ha erogazione. Da decidere (§I.3).
+
+**H-R3** resta com'è scritto: riga nuova in `config.stati_doc_offerte_transizioni`
+(ACCETTATA → ANNULLATA, motivazione obbligatoria) e il guard di transizione che la ammette solo
+senza documenti vivi (`vendite.fn_offerta_documenti_vivi`).
+
+### I.3 Decisioni di Tid (2026-10-21)
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| I-D1 | La DERIVATA_COMPONENTI (§I.1) | ✅ **(a) si ritira**: il composito prende le combinazioni della tipologia o della natura, i componenti seguono la quantità del padre |
+| I-D2 | «Genera ordine» dall'offerta (§I.2) | ✅ **verbo DB** (`vendite.fn_genera_ordine_da_offerta`, gemello del push al contratto: una transazione, documenti vivi, origine, righe espanse) **e motivo prima del clic**: `can_genera_ordine` spento con la check delle righe dell'ordine, la stessa che il verbo incontra. Il BE ritira `ordini_service.crea_ordine_da_offerta` e chiama il verbo |
+| I-D3 | = H-D1, controllo all'accettazione | ✅ no |
+| I-D4 | = H-D2, revisione da ACCETTATA | ✅ no |
+| I-D5 | = H-D3, righe già scritte fuori perimetro (e righe DERIVATA) | ✅ a mano su dbdev prima dell'apply, con una query preparata dal team DB; nessuna bonifica nei changeSet |
+| I-D6 | (emersa scrivendo, §I.5.2) un kit si vende «a consumo»? | ✅ **no, solo a quantità fissa**: sul composito il perimetro tiene le sole combinazioni FISSA |
+| I-D7 | le 9 righe fuori perimetro di dbdev (§I.5.4) | ✅ **restano per il collaudo** del §H.5; dopo, le offerte si annullano dall'app e i contratti in bozza si correggono o si annullano |
+
+Supera B-D5 (la DERIVATA sul composito) e chiude il primo trovato del §F.4.3. Con I-D1 cade anche
+la riserva del §G.1: `quantita` esce dalle chiavi ammesse del payload di riga.
+
+### I.4 Il giro DB, in ordine
+
+1. **Query per dbdev** (I-D5): righe DERIVATA → FISSA con la loro quantità, o la riga si toglie;
+   righe d'offerta e di contratto fuori perimetro corrette o tolte. La lancia Tid prima dell'apply.
+2. **Ritiro della DERIVATA** (I-D1): vocabolario `config.erogazioni_fonti` (righe 3, 6, 10, 13),
+   ramo «distinta» e ordine di `vendite.fn_articolo_erogazioni`, `script.fn_fonte_porta_quantita`,
+   i due CHECK `chk_*_quantita_per_fonte`, il ramo di `script.trgfn_qta_from_operativa`, commenti
+   e manual che la nominano (`contratti_righe`, `trgfn_qta_from_operativa`, `erogazioni_fonti`).
+3. **La check di riga composta** e la **lettura per documento** (§I.2); passa alla check composta
+   anche `catalogo.fn_articolo_righe_vive_non_ammesse`.
+4. **Guard e capability**: BOZZA→EMESSA dell'offerta, `can_push_contratto`, DRAFT→ATTIVO del
+   contratto (H-R1, H-R2, H-R4).
+5. **Genera ordine** (I-D2): il verbo e `can_genera_ordine`.
+6. **Annullo da ACCETTATA** (H-R3).
+7. Codici d'errore, guide e manual (H-R5), pgTAP (H-R6, più il ritiro della DERIVATA e il verbo).
+
+### I.5 Consegna del giro DB (`dev/db-tid`, 2026-10-21)
+
+#### I.5.1 ChangeSet (`20261021-44` → `-61`, non applicati)
+
+| ChangeSet | Oggetto | Che cosa |
+| --- | --- | --- |
+| `00_schema/vendite/-44` | `chk_contrighe_quantita_per_fonte`, `chk_offerte_eccezioni_quantita_per_fonte` | solo FISSA porta la quantità; COMMENT dei CHECK, delle due colonne `fonte_quantita_attesa` e di `config.erogazioni_fonti`. preCondition HALT sulle righe che il CHECK rifiuterebbe |
+| `20_code/script/-45` | `script.fn_fonte_porta_quantita` | `p_fonte = 'FISSA'` |
+| `20_code/script/-46` | `script.trgfn_qta_from_operativa` | tolto il ramo «NULL ammesso se non FISSA» (era la DERIVATA) |
+| `20_code/script/-47`, `20_code/vendite/-49`, `20_code/script/-50` | `trgfn_righe_guard_quantita_per_fonte`, `fn_documento_riga_erogazioni`, `trgfn_righe_default_erogazione_da_articolo` | solo commenti e COMMENT che nominavano la DERIVATA |
+| `20_code/vendite/-48` | `vendite.fn_articolo_erogazioni` | via il ramo «distinta»; **I-D6**: sul composito le sole combinazioni FISSA, e se il default della base non è FISSA il default del kit è la prima FISSA |
+| `80_data/changelog/-51` + CSV | `config.erogazioni_fonti` | DELETE delle 4 combinazioni DERIVATA (il mirror non cancella); preCondition HALT se una riga di documento la usa ancora |
+| `20_code/script/-52` | `script.fn_check_riga_documento_su_contesto` (nuova) | la riga INTERA: articolo, poi (offerta e contratto) erogazione e fonte |
+| `20_code/script/-53` | `script.fn_check_righe_documento` (nuova) | le righe non ammesse di un'offerta o di un contratto: un motivo `E_DOC_RIGA_NON_AMMESSA` per riga, contesto letto una volta |
+| `20_code/script/-54` | `script.fn_check_righe_offerta_in_ordine` (nuova) | le righe espanse dell'offerta giudicate come righe d'ordine |
+| `20_code/catalogo/-55` | `catalogo.fn_articolo_righe_vive_non_ammesse` | passa alla riga intera: chiude il buco della porta SUPER_ADMIN (§I.2 punto 3) |
+| `20_code/script/-56` | `script.fn_check_offerta_annullabile` (nuova) | `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI` col bersaglio, se dall'offerta vive un contratto o un ordine |
+| `20_code/vendite/-57` | `vendite.trgfn_offerte_commerciali_guard_transizione` | BOZZA→EMESSA: per ultime le righe (H-R1); verso ANNULLATA: `fn_check_offerta_annullabile` (H-R3) |
+| `20_code/script/-58` | `script.fn_available_actions_offerta` | righe verso EMESSA (solo da BOZZA); push e genera ordine **proposti e spenti** col motivo delle righe (H-R2, I-D2); motivo dell'annullo |
+| `20_code/vendite/-59`, `20_code/script/-60` | guard di transizione e capability del contratto | verso ATTIVO, dopo gli indirizzi e prima del sovrapposto, le righe (H-R4) |
+| `20_code/vendite/-61` | `vendite.fn_genera_ordine_da_offerta` (nuova) | il verbo (I-D2): offerta `FOR UPDATE`, stato, documenti vivi, righe, testata con la provenienza, indirizzo di default, righe espanse coi prezzi negoziati e i componenti |
+
+CSV: `stati_doc_offerte_transizioni` (id 7, ACCETTATA → ANNULLATA, come la 2), `erogazioni_fonti`
+(senza le 4 DERIVATA), `codici_errore` e `messaggi_errore` (1381 `E_DOC_RIGA_NON_AMMESSA`, 1382
+`E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`; `E_OFFERTA_NON_TROVATA` non nomina più il contratto, la legge
+anche il verbo dell'ordine; `E_OFFERTA_TRANSIZIONE_NON_AMMESSA` e tre note che citavano la DERIVATA o
+il Python).
+
+Manual e guide: `contratti_righe`, `contratti`, `offerte_commerciali`, `offerte_commerciali_eccezioni`,
+`fn_contratto_righe_preview`, `fn_push_offerta_a_contratto`, `trgfn_qta_from_operativa`;
+`gestione-offerte-commerciali` (§3, §7, §8.bis, §11.6, §12), `gestione-ordini` §2.2.
+
+#### I.5.2 Trovato scrivendo, deciso: il kit «a consumo» (I-D6)
+
+La fixture di `test_offerte_eccezioni_componenti` aveva un kit di una tipologia solo a consumo,
+con le componenti grazie alla DERIVATA e a una quantità scritta a mano. Tolta la DERIVATA, un kit a
+consumo nasce senza quantità, quindi **senza componenti e con prezzo 0** (il prezzo del padre è la
+somma dei componenti): il buco c'era già per i kit con MANUALE o LETTURE. Decisione di Tid: un kit si
+vende solo a quantità fissa (`-48`). Un kit di una tipologia solo a consumo non ha erogazioni, e
+non entra in offerte e contratti (motivo SENZA_EROGAZIONE di `script.fn_check_articolo_riga`).
+
+⚠️ Sui fixture: `dbops.fn_pgtap_crea_listino` sceglie la prima tipologia della utility, che può
+essere solo a consumo. Due pgTAP con un kit nel listino ora scelgono una tipologia con la FISSA
+(`test_offerte_eccezioni_componenti`, `test-righe-eccezioni-articolo-ammesso-v1`).
+
+#### I.5.3 La prova (scratch `zeroerp_ruoli`, 2026-10-21, prima dell'apply)
+
+* SQL estratto di `-44` → `-61` più gli effetti dei CSV, in una transazione annullata: compila, una
+  funzione per nome (nessun overload), `plpgsql_check` senza errori (un avviso STABLE/VOLATILE su
+  `fn_check_righe_documento`, lo stesso delle check esistenti).
+* pgTAP con l'SQL estratto dopo il `BEGIN;`, uno per file: 141 file censiti (oggetti toccati,
+  erogazioni, compositi, transizioni) e 55 presidi trasversali su `pg_proc`. I rossi «dopo» si
+  confrontano coi «prima» degli stessi file: le **regressioni erano 8 file**, tutte attese e corrette.
+  * `test-fn-available-actions-offerta-v1` (8, 12): da ACCETTATA c'è «annulla», spenta con
+    DOCUMENTI_VIVI;
+  * `test-rubinetto-primo-motivo-v1` (5): da 40 a 41, il verbo è un sito nuovo dell'helper;
+  * `test-erogazioni-vocabolario-v1` (1): 9 combinazioni;
+  * `test-righe-quantita-per-fonte-v1` (5, 10, 13): composito FISSA, CHECK e funzione dicono la sola
+    FISSA, la DERIVATA è fuori perimetro;
+  * `test_offerte_eccezioni_componenti` (fixture, 16): il kit FISSA; il 16 prova il rifiuto del kit
+    a consumo (prima si saltava);
+  * `test-righe-erogazione-da-articolo-v1` (3, 14-15, 21, 22): il 14-15 costruiva la riga fuori
+    perimetro con la porta SUPER_ADMIN, che il `-55` chiude: ora ne prova la chiusura;
+  * `test-indirizzi-documento-seguono-cliente-v1` (3): il verbo legge `fn_doc_indirizzo_default`;
+  * `test-righe-eccezioni-articolo-ammesso-v1` (20): fixture, tipologia con la FISSA.
+  Gli altri rossi sono identici prima e dopo (scratch con pochi dati).
+* pgTAP nuovo `vendite/offerte_commerciali/test-righe-ammesse-ai-passi-e-annullo-v1` (runner owner:
+  la fixture toglie una combinazione dal vocabolario della natura): **25/25**. Emissione, push,
+  genera ordine (rifiuto, ordine generato, idempotenza, XOR, stato), annullo da ACCETTATA con e
+  senza documento vivo, attivazione del contratto, lettura per articolo, seed.
+* La query per dbdev (§I.5.4) provata su dbdev in transazione annullata: 1 riga, nessuna DERIVATA
+  residua, trigger riacceso.
+
+#### I.5.4 dbdev, prima dell'apply (Tid)
+
+Una sola riga usa la DERIVATA (2026-10-21): `vendite.contratti_righe` 39, contratto 34 CESSATO,
+articolo «composito». Diventa CANONE/FISSA con `qta_operativa` 1 (nel perimetro dell'articolo anche
+dopo la I-D6); il contratto è chiuso, quindi si spegne il solo lock delle righe fuori bozza, dentro la
+transazione. Come owner: `psql -X -1 -v ON_ERROR_STOP=1 -f <file>`.
+
+```sql
+ALTER TABLE vendite.contratti_righe DISABLE TRIGGER trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt;
+UPDATE vendite.contratti_righe
+   SET fonte_quantita_attesa = 'FISSA', qta_operativa = 1
+ WHERE id = 39 AND fonte_quantita_attesa = 'DERIVATA_COMPONENTI';
+ALTER TABLE vendite.contratti_righe ENABLE TRIGGER trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt;
+```
+
+✅ **Le righe fuori perimetro non si correggono** (I-D7 di Tid, 2026-10-21, che precisa I-D5):
+il 2026-10-21 su dbdev sono 9 righe vive in 2 contratti DRAFT e 3 offerte ACCETTATE, fra cui le tre
+di `OFC-0001064` (id 1070). Non fermano l'apply, e sono il materiale del collaudo del §H.5: «Genera
+contratto» spento col motivo, poi l'annullo da ACCETTATA. Dopo il collaudo si annullano dall'app.
+
+#### I.5.5 Richieste al BE/FE, a apply fatto
+
+* **Genera ordine** (I-D2): `ordini_service.crea_ordine_da_offerta` chiama
+  `vendite.fn_genera_ordine_da_offerta(offerta_id)` (ritorna l'id dell'ordine) e ritira
+  l'orchestrazione Python (stato, documenti vivi, testata, provenienza, righe, componenti) e i
+  suoi specchi. Codici: `E_OFFERTA_NON_TROVATA`, `E_ORD_ORIGINE_NON_CONVERTIBILE`,
+  `E_ORD_OFFERTA_GIA_CONVERTITA` e `E_OFFERTA_CONTRATTO_GIA_GENERATO` (col bersaglio),
+  `E_DOC_RIGA_NON_AMMESSA`.
+* **Pulsanti** (frontend-standards, «stato ⇒ disabilita col motivo»): `push_contratto` e
+  `genera_ordine` ora arrivano anche **spenti**, con `reasons`; «Emetti» e «Attiva» possono avere il
+  motivo `RIGA_NON_AMMESSA`, con l'articolo nei valori e il motivo della riga in
+  `dettaglio.motivo_riga`; «Annulla» da ACCETTATA, spenta con `DOCUMENTI_VIVI`.
+* **Annullo da ACCETTATA** (H-R3): il dialog con la motivazione come da BOZZA; l'endpoint non deve
+  avere un «solo da BOZZA» suo.
+* **Codici nuovi**: policy e ripieghi di `E_DOC_RIGA_NON_AMMESSA` (DATO_ERRATO, campo `articolo_id`,
+  due valori) e `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI` (CONFLITTO_STATO, bersaglio). Chiavi i18n:
+  `common.azione_reason.riga_non_ammessa`, `vendite.offerte.azione_reason.documenti_vivi`
+  (`scripts/check_i18n_keys.py` le vede: rosso finché il FE non le semina).
+* **DERIVATA**: via dal FE (`constants.js`, `erogazioniRiga.js` e il tag «Derivata dai
+  componenti») e dalle pagine `docs/it/backend` (`api_offerte`, `api_contratti`,
+  `modello-contratti`); `quantita` esce dalle chiavi ammesse del payload di riga (§G.1). Il kit nel
+  form propone le sole combinazioni FISSA: arrivano dal DB.
+* Doc del BE: `api_offerte.md` (state machine con ACCETTATA → ANNULLATA, genera ordine come verbo).
+
+#### I.5.6 Chiusura del lato DB (2026-10-21)
+
+La query del §I.5.4 è stata lanciata su dbdev (la riga 39 è CANONE/FISSA; nessuna DERIVATA
+residua). Il primo apply su dbdev si era fermato, come previsto, sulla preCondition del `-44`, che
+aveva trovato quella riga. Dopo la correzione Tid ha applicato `20261021-44` → `-61` su dbdev e
+scratch, e la corsa pgTAP è verde: nessuna regressione, ogni rosso era già noto. Al DB non resta
+niente; riparte il BE/FE (§I.5.5).

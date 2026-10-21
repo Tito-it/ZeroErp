@@ -62,13 +62,16 @@ su INSERT e resetta la fonte se il cambio di `tipo_erogazione` rende la combinaz
 | `MANUALE` | Quantita definita sul documento al momento dell’emissione | No — tag "Definita sul documento" |
 | `TIMESHEET` | Quantita da rendicontazione ore (modulo futuro) | No — tag "Da rendicontazione ore" |
 | `LETTURE` | Quantita da letture utility | No — tag "Da letture utility" |
-| `DERIVATA_COMPONENTI` | Quantita calcolata dai componenti BoM del padre composito | No — tag "Derivata dai componenti" |
 
-⚠️ **Per `DERIVATA_COMPONENTI` questa pagina diceva** che `quantita` la scrive
-`trg_contratti_righe_z90_propaga_qta_componenti_upd` a partire dai componenti. **Non è così**
-(verificato il 2026-10-08): quel trigger propaga la quantità dal padre **ai** componenti. Sulla
-riga DERIVATA nessuno calcola `quantita`: resta quella mandata o rimasta da una FISSA. Domanda
-aperta in `brief-db-offerta-emissione-ed-erogazione` §F.4.3.
+⛔ **`DERIVATA_COMPONENTI` è ritirata** (2026-10-21, decisione I-D1 di Tid,
+`brief-db-offerta-emissione-ed-erogazione` §I.1). Prometteva «la quantità del padre la calcola il DB
+dai componenti», ma i componenti si calcolano **dal** padre (`coeff_qta × quantita`, negli init e in
+`trg_contratti_righe_z90_propaga_qta_componenti_upd`): nessuno la calcolava. Le combinazioni ammesse
+sono quelle di `config.erogazioni_fonti`, e quelle di un articolo le dice `vendite.fn_articolo_erogazioni`.
+
+⭐ **Un kit si vende solo a quantità fissa** (I-D6, 2026-10-21): sull'articolo composito
+`vendite.fn_articolo_erogazioni` tiene le sole combinazioni FISSA, perché senza quantità sulla riga i
+componenti non nascono e il prezzo del padre (la somma dei componenti) resta 0.
 
 ⭐ **`quantita` è calcolata** (dal 2026-10-08): con una fonte a valle (MANUALE, LETTURE,
 TIMESHEET; `script.fn_fonte_porta_quantita` = false) `script.trgfn_qta_from_operativa` la porta a
@@ -78,14 +81,15 @@ NULL a ogni INSERT e UPDATE; il guard `script.trgfn_righe_guard_quantita_per_fon
 
 #### Matrice coerenza (legenda: ✅ default · 🟢 secondaria · 🟡 rara/edge · ❌ vietata)
 
-| tipo_erogazione | FISSA | MANUALE | TIMESHEET | LETTURE | DERIVATA_COMPONENTI |
-| --- | --- | --- | --- | --- | --- |
-| **CANONE** | ✅ | 🟡 | ❌ | ❌ | 🟢 |
-| **UNA_TANTUM** | ✅ | 🟢 | ❌ | ❌ | 🟢 |
-| **ORARIO** | 🟡 | 🟢 | ✅ (futuro) | ❌ | 🟡 |
-| **CONSUMO** | ❌ | 🟢 | ❌ | ✅ | 🟢 |
+| tipo_erogazione | FISSA | MANUALE | TIMESHEET | LETTURE |
+| --- | --- | --- | --- | --- |
+| **CANONE** | ✅ | 🟡 | ❌ | ❌ |
+| **UNA_TANTUM** | ✅ | 🟢 | ❌ | ❌ |
+| **ORARIO** | 🟡 | 🟢 | ✅ (futuro) | ❌ |
+| **CONSUMO** | ❌ | 🟢 | ❌ | ✅ |
 
-Le 7 combinazioni ❌ sono bloccate dal CHECK `chk_contrighe_coerenza_fonte_erogazione`.
+Le combinazioni ❌ non sono in `config.erogazioni_fonti`, e la FK composta delle righe le rifiuta
+(dal 2026-10-07 ha preso il posto del CHECK `chk_contrighe_coerenza_fonte_erogazione`).
 Le combinazioni 🟡 rare sono ammesse e segnalate in UI con tooltip "uso atipico".
 
 #### Default per `tipo_erogazione`

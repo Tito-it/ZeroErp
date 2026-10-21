@@ -147,7 +147,13 @@ tentativo viene rifiutato (`E_ORD_OFFERTA_GIA_CONVERTITA`).
 C'è di più: un'offerta accettata può diventare **o** un contratto (fornitura
 ricorrente) **o** un ordine (vendita una tantum), **mai tutti e due**. È la regola
 di **mutua esclusività** offerta → (contratto XOR ordine): la prima conversione
-"consuma" l'offerta verso una delle due strade.
+"consuma" l'offerta verso una delle due strade, finché quel documento non viene annullato.
+
+La conversione la fa il database in un passo solo
+([vendite.fn_genera_ordine_da_offerta](/dbzero/vendite/funzioni/fn_genera_ordine_da_offerta)),
+e prima di scrivere controlla che ogni riga dell'offerta possa stare in un ordine: un
+ordine contiene **solo merce**, quindi un'offerta di servizi non si converte
+(`E_DOC_RIGA_NON_AMMESSA`, che nomina l'articolo; il pulsante è spento con lo stesso motivo).
 
 ### 2.3 Creazione manuale
 
