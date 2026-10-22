@@ -77,6 +77,9 @@ Vedi sezione *Workflow clone + publish* qui sotto.
   * `ATTIVA`
   * `CHIUSA`
 * `valido_al` maggiore di `valido_dal` se valorizzato;
+* ⭐ una versione **CHIUSA ha sempre `valido_al`** (CHECK `chk_listini_versioni_chiusa_con_fine`,
+  rev 2026-10-22): anche se inserita già chiusa, strada che il guard di transizione (solo
+  UPDATE) non vede. Su quella data poggia la chiusura di un listino con storia;
 * no overlap temporale **tra versioni `stato = 'ATTIVA'`** dello stesso listino
   (`ex_listini_versioni_no_overlap`, fix `20260409-01`). **BOZZE e CHIUSE possono
   coesistere** con un'ATTIVA (e tra loro) anche su intervalli sovrapposti — vedi

@@ -296,7 +296,13 @@ documento è **chiusa**, e un numero che non si può cambiare **e** che non vien
 spiegato sarebbe la forma peggiore.
 
 `ASSENTE` non è un errore: in bozza una riga senza IVA è legittima, e sarà il
-cancello all'emissione a fermarla.
+cancello all'emissione a fermarla. Il cancello c'è su ogni documento che ha un
+riepilogo IVA: DDT, ordine, preventivo e **fattura**. Sulla fattura scatta entrando
+in EMESSA (anche dal giro del lotto) e dice quale riga non ha l'aliquota
+(`E_FATTURA_RIGA_IVA_MANCANTE`, da
+[script.fn_check_fattura_emettibile](/dbzero/script/funzioni/fn_check_fattura_emettibile));
+il riepilogo della bozza, intanto, si calcola lo stesso, con l'aliquota di quella
+riga vuota.
 
 ⚠️ Il vocabolario di `origine` è **aperto**: le etichette dei valori noti stanno in
 `vendite.iva_origine.*`, e un valore nuovo compare a video come **codice grezzo**,

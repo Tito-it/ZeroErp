@@ -25,6 +25,12 @@ tra stati documento sulle fatture, bloccando quelle non ammesse.
 * Verifica la transizione in `config.stati_doc_fiscale_transizioni`.
 * Se lo stato non e` applicabile o la transizione non e` ammessa → errore.
 * Lotto **GIORNALIERO**: vietata retrocessione di stato.
+* ⭐ **Il cancello all'emissione** (rev 2026-10-22): entrando in **EMESSA**, da qualunque stato
+  (anche da uno stato vuoto, come lo scrive la numerazione del lotto), la fattura non deve
+  avere motivi di [script.fn_check_fattura_emettibile](/dbzero/script/manual/fn_check_fattura_emettibile):
+  oggi una riga senza aliquota IVA, `E_FATTURA_RIGA_IVA_MANCANTE`, con la riga nel
+  messaggio. La bozza resta libera: il vincolo è all'emissione, come su DDT, ordini e
+  preventivi.
 
 ---
 

@@ -11,9 +11,12 @@
 --   - l'emittente e' quello che il billing account pretende;
 --   - numero e registro li assegna il dominio, non la fixture;
 --   - lo stato si sceglie alla nascita, e uno inesistente parla;
---   - una seconda chiamata riusa l'azienda di chi agisce, con un cliente nuovo.
+--   - una seconda chiamata riusa l'azienda di chi agisce, con un cliente nuovo;
+--   - il terzo parametro riusa un cliente gia' costruito (il secondo ordine
+--     dello stesso cliente) e RIFIUTA un billing account di un'altra azienda
+--     (rev 2026-10-22, 20261022-10, richiesta BE R-3).
 --
--- Elenco test (plan 7):
+-- Elenco test (plan 9):
 --   1) la funzione esiste con la firma dichiarata
 --   2) la testata esiste, col cliente e il billing account tornati
 --   3) l'emittente e' quello del billing account (il guard emittente/BA)
@@ -21,6 +24,8 @@
 --   5) stato: quello chiesto alla nascita (CONFERMATO, non il default)
 --   6) seconda chiamata: stessa azienda, cliente nuovo
 --   7) guard: uno stato che non esiste parla invece di scrivere NULL
+--   8) terzo parametro: stesso cliente, ordine nuovo
+--   9) terzo parametro: un BA di un'altra azienda parla
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -33,14 +38,20 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   viene chiamata come la chiamera' un file su un database ricostruito: senza
 --   nessuna veste in sessione. Aprirlo prima nasconderebbe meta' del contratto.
 
-SELECT plan(7);
+SELECT plan(9);
 
 -- 1) La firma
 SELECT has_function(
     'dbops', 'fn_pgtap_crea_ordine',
-    ARRAY['text', 'character varying'],
-    'dbops.fn_pgtap_crea_ordine(text, character varying) esiste con la firma dichiarata'
+    ARRAY['text', 'character varying', 'bigint'],
+    'dbops.fn_pgtap_crea_ordine(text, character varying, bigint) esiste con la firma dichiarata'
 );
+
+-- Fixture: un'altra azienda, PRIMA del contesto (una seconda azienda si
+-- costruisce coi builder atomici, prima del contesto). Il suo cliente nasce
+-- sotto il suo contesto, subito prima del test 9.
+CREATE TEMP TABLE t_altrui AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 
 -- Fixture: il primo ordine, dal nulla
 CREATE TEMP TABLE t_o1 AS
@@ -100,6 +111,46 @@ SELECT throws_like($$
 $$,
     '%nessuno stato documento ordine%',
     'guard: uno stato inesistente parla, invece di scrivere un NULL nella testata'
+);
+
+-- 8) Terzo parametro: il secondo ordine dello STESSO cliente
+CREATE TEMP TABLE t_o2 AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine(
+                 'presidio ordine 2', 'DRAFT', (SELECT billing_account_id FROM t_o1));
+
+SELECT is(
+    (SELECT (o2.billing_account_id = o1.billing_account_id)::text
+         || ' ' || (o2.cliente_soggetto_ruolo_id = o1.cliente_soggetto_ruolo_id)::text
+         || ' ' || (o2.ordine_id <> o1.ordine_id)::text
+         || ' ' || (o.billing_account_id = o1.billing_account_id)::text
+       FROM t_o1 o1, t_o2 o2
+       JOIN vendite.ordini o ON o.id = o2.ordine_id),
+    'true true true true',
+    'col terzo parametro: stesso cliente, ordine nuovo, e la testata porta quel billing account'
+);
+
+-- 9) Terzo parametro: un BA di un'altra azienda
+-- Il cliente dell'altra azienda lo crea l'altra azienda (sotto la RLS un BA lo
+-- scrive chi lavora in quell'azienda; il legame lo scrive il trigger z90). Poi
+-- il contesto torna sull'operatore del mondo.
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM t_altrui));
+END $ctx$;
+
+CREATE TEMP TABLE t_ba_altrui AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('presidio ordine altrui');
+
+DO $ctx$
+BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM t_o1));
+END $ctx$;
+
+SELECT throws_like(
+    format($$SELECT dbops.fn_pgtap_crea_ordine('presidio altrui', 'DRAFT', %s)$$,
+           (SELECT billing_account_id FROM t_ba_altrui)),
+    'fn_pgtap_crea_ordine: il billing account % e'' legato all''emittente%',
+    'guard: un billing account di un''altra azienda parla, nominando il builder'
 );
 
 SELECT * FROM finish();

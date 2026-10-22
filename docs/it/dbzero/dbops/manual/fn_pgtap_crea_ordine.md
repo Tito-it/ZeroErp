@@ -22,7 +22,15 @@ CREATE TEMP TABLE tmp_o AS
 SELECT * FROM dbops.fn_pgtap_crea_ordine('rls ordini');
 -- un ordine già confermato:
 SELECT * FROM dbops.fn_pgtap_crea_ordine('consegne', 'CONFERMATO');
+-- il secondo ordine dello STESSO cliente (terzo parametro, rev 2026-10-22):
+SELECT * FROM dbops.fn_pgtap_crea_ordine(
+           'consegne 2', 'DRAFT', (SELECT billing_account_id FROM tmp_o));
 ```
+
+⚠️ **Il terzo parametro** è il billing account di un cliente già costruito: serve a chi
+vuole due ordini dello stesso cliente. Viene **verificato** dal building block
+[dbops.fn_pgtap_cliente_ba_del_mondo](/dbzero/dbops/manual/fn_pgtap_cliente_ba_del_mondo),
+come per fattura e contratto: un billing account di un'altra azienda solleva subito.
 
 ---
 ### 🧭 Perché esiste

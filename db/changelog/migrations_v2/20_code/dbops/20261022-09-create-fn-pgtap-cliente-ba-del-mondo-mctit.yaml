@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: dbops.fn_pgtap_cliente_ba_del_mondo(ba, emittente sr, chiamante)
+#   ⭐ Regola del 2. Il blocco «il billing account chiesto e' dell'azienda di
+#   chi agisce? allora leggine le chiavi» stava in dbops.fn_pgtap_crea_fattura
+#   (20260923-04) e, dal 2026-10-21, in dbops.fn_pgtap_crea_contratto
+#   (20261021-69): due copie della stessa regola. Il terzo consumatore,
+#   dbops.fn_pgtap_crea_ordine col terzo parametro (richiesta BE R-3, §9.11 di
+#   brief-be-utenti-di-sviluppo), la fa estrarre. Le due copie si ritirano nello
+#   stesso giro (20261022-11, -12).
+#
+# -- IL CONTRATTO --------------------------------------------------------
+#   Dato un billing account e l'emittente (soggetto_ruolo) di chi agisce:
+#   * se il BA e' legato a un'altra azienda (o a nessuna), SOLLEVA prima di
+#     costruire, con un messaggio che nomina il builder chiamante: altrimenti la
+#     testata la rifiuterebbe un guard piu' avanti, con un messaggio che non
+#     nomina la fixture;
+#   * se no, torna le chiavi del cliente: BA, istanza, soggetto_ruolo, utility.
+#   ⚠️ Il legame si legge da anagrafiche.emittenti_fiscali_billing_account, che
+#   non e' in RLS: la lettura vale anche come app.
+#   STABLE, SECURITY INVOKER. Il nome del chiamante e' testo libero della
+#   diagnostica: tipo nudo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261022-09-create-fn-pgtap-cliente-ba-del-mondo-mctit.yaml
+
+  - changeSet:
+      id: 20261022-09-create-fn-pgtap-cliente-ba-del-mondo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo building block dbops.fn_pgtap_cliente_ba_del_mondo: verifica che un billing account sia
+        dell'azienda di chi agisce e ne torna le chiavi. Estratto alla terza copia (fattura, contratto,
+        ordine). Richiesta BE R-3, §9.11.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_cliente_ba_del_mondo(
+                  p_billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  p_emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  -- il nome del builder che chiede: testo della diagnostica, tipo nudo.
+                  p_chiamante                   text)
+              RETURNS TABLE(
+                  billing_account_id        anagrafiche.billing_account.id%TYPE,
+                  istanza_utility_id        anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  cliente_soggetto_ruolo_id anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                  utility_id                anagrafiche.billing_account.utility_id%TYPE)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: il cliente di un builder pgTAP chiesto per billing
+              --   account — verificato dell'azienda di chi agisce — con le sue
+              --   chiavi. Building block di fn_pgtap_crea_fattura,
+              --   fn_pgtap_crea_contratto e fn_pgtap_crea_ordine.
+              DECLARE
+                  v_link_sr anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- ⚠️ Il BA chiesto si VERIFICA prima di usarlo: uno di
+                  --   un'altra azienda produrrebbe una testata che il guard
+                  --   emittente/BA rifiuta piu' avanti, con un messaggio che
+                  --   non nomina la fixture.
+                  SELECT efba.emittente_soggetto_ruolo_id INTO v_link_sr
+                    FROM anagrafiche.emittenti_fiscali_billing_account efba
+                   WHERE efba.billing_account_id = p_billing_account_id;
+
+                  IF v_link_sr IS DISTINCT FROM p_emittente_soggetto_ruolo_id THEN
+                      RAISE EXCEPTION
+                          '%: il billing account % e'' legato all''emittente sr = % e non a % (l''azienda di chi agisce): il documento si chiede su un BA costruito dallo stesso mondo',
+                          p_chiamante, p_billing_account_id, v_link_sr, p_emittente_soggetto_ruolo_id;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT ba.id, ba.istanza_utility_id, ba.soggetto_ruolo_id, ba.utility_id
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.id = p_billing_account_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_cliente_ba_del_mondo(anagrafiche.billing_account.id%TYPE, anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE, text)
+              IS 'Fixture pgTAP, building block: il cliente chiesto per billing account da un builder di documento (fn_pgtap_crea_fattura, fn_pgtap_crea_contratto, fn_pgtap_crea_ordine). Verifica che il BA sia legato all''azienda di chi agisce (anagrafiche.emittenti_fiscali_billing_account, non in RLS) e SOLLEVA prima di costruire, nominando il builder chiamante (p_chiamante), se e'' di un''altra azienda o di nessuna; altrimenti torna BA, istanza, soggetto_ruolo e utility. ⭐ Estratto alla terza copia (regola del 2; richiesta BE R-3, §9.11 di brief-be-utenti-di-sviluppo, 2026-10-22). STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_cliente_ba_del_mondo(bigint, bigint, text);

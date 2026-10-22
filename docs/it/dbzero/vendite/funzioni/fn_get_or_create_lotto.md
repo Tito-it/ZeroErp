@@ -27,6 +27,10 @@ DECLARE
     v_tipo_lotto_input    vendite.fatturazione_lotti.tipo_lotto%TYPE;
     v_resolved_utility_id config.utilities.id%TYPE;
     v_resolved_emittente_id vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE;
+    -- L'emittente che il CHIAMANTE ha indicato (esplicito, o dal BA):
+    -- NULL quando non ha detto niente. Solo questo si confronta con
+    -- un lotto esistente (rev 20261022-01).
+    v_emittente_esplicito   vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE;
 BEGIN
     -- Normalizza lotto_id=0 a NULL
     IF p_lotto_id = 0 THEN p_lotto_id := NULL; END IF;
@@ -57,7 +61,15 @@ BEGIN
         );
     END IF;
 
-    -- Risolvi utility/emittente via helper condiviso
+    -- Risolvi utility/emittente via helper condiviso.
+    -- ⭐ rev 2026-10-22 (20261022-01, §9.10 di brief-be-utenti-di-sviluppo):
+    --   senza BA e senza emittente il risolutore ripiega sull'emittente
+    --   PREDEFINITO. Quel ripiego serve a un lotto NUOVO; per un lotto
+    --   ESISTENTE l'emittente e' quello del lotto, e confrontarlo col
+    --   predefinito rifiutava il rilancio per id di ogni lotto di un
+    --   emittente non predefinito. Qui quindi non si controlla «attivo»
+    --   (lo fa il CASO 3, sull'emittente del lotto nuovo), e coi lotti
+    --   esistenti si confronta solo l'emittente che il chiamante ha dato.
     SELECT r.resolved_utility_id, r.resolved_emittente_soggetto_ruolo_id
       INTO v_resolved_utility_id, v_resolved_emittente_id
       FROM vendite.fn_resolve_lotto_utility_emittente(
@@ -66,8 +78,12 @@ BEGIN
           p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id,
           p_scope => 'LOTTO',
           p_caller => 'fn_get_or_create_lotto',
-          p_check_emittente_attivo => TRUE
+          p_check_emittente_attivo => FALSE
       ) r;
+
+    IF p_emittente_soggetto_ruolo_id IS NOT NULL OR p_billing_account_id IS NOT NULL THEN
+        v_emittente_esplicito := v_resolved_emittente_id;
+    END IF;
 
     -- ============================================
     -- CASO 1: lotto_id fornito → validazione coerenza
@@ -108,9 +124,9 @@ BEGIN
                 jsonb_build_object('parametro', 'billing_account_id', 'atteso', v_billing_account_id, 'ricevuto', p_billing_account_id),
                 NULL::uuid, 'billing_account_id', p_lotto_id::text);
         END IF;
-        IF v_resolved_emittente_id IS NOT NULL AND v_resolved_emittente_id <> v_emittente_id THEN
+        IF v_emittente_esplicito IS NOT NULL AND v_emittente_esplicito <> v_emittente_id THEN
             PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
-                jsonb_build_object('parametro', 'emittente', 'atteso', v_emittente_id, 'ricevuto', v_resolved_emittente_id),
+                jsonb_build_object('parametro', 'emittente', 'atteso', v_emittente_id, 'ricevuto', v_emittente_esplicito),
                 NULL::uuid, 'emittente_soggetto_ruolo_id', p_lotto_id::text);
         END IF;
         IF v_tipo_lotto IS NOT NULL AND v_tipo_lotto <> v_tipo_lotto_input THEN
@@ -170,9 +186,9 @@ BEGIN
                     jsonb_build_object('parametro', 'billing_account_id', 'atteso', v_billing_account_id, 'ricevuto', p_billing_account_id),
                     NULL::uuid, 'billing_account_id', v_lotto_id::text);
             END IF;
-            IF v_resolved_emittente_id IS NOT NULL AND v_resolved_emittente_id <> v_emittente_id THEN
+            IF v_emittente_esplicito IS NOT NULL AND v_emittente_esplicito <> v_emittente_id THEN
                 PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
-                    jsonb_build_object('parametro', 'emittente', 'atteso', v_emittente_id, 'ricevuto', v_resolved_emittente_id),
+                    jsonb_build_object('parametro', 'emittente', 'atteso', v_emittente_id, 'ricevuto', v_emittente_esplicito),
                     NULL::uuid, 'emittente_soggetto_ruolo_id', v_lotto_id::text);
             END IF;
             IF v_tipo_lotto IS NOT NULL AND v_tipo_lotto <> v_tipo_lotto_input THEN
@@ -202,6 +218,19 @@ BEGIN
     -- ============================================
     -- CASO 3: creazione nuovo lotto
     -- ============================================
+    -- Solo qui vale il ripiego sul predefinito (lotto nuovo senza BA),
+    -- e solo qui si pretende che l'emittente del lotto sia attivo.
+    SELECT r.resolved_utility_id, r.resolved_emittente_soggetto_ruolo_id
+      INTO v_resolved_utility_id, v_resolved_emittente_id
+      FROM vendite.fn_resolve_lotto_utility_emittente(
+          p_billing_account_id => p_billing_account_id,
+          p_utility_id => p_utility_id,
+          p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id,
+          p_scope => 'LOTTO',
+          p_caller => 'fn_get_or_create_lotto',
+          p_check_emittente_attivo => TRUE
+      ) r;
+
     v_lotto_id := vendite.fn_create_fatturazione_lotto(
         p_competenza_mese => p_competenza_mese,
         p_tipo_doc_fiscale_id => p_tipo_doc_fiscale_id,
@@ -222,7 +251,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_or_create_lotto(p_lotto_id bigint, p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_utility_id integer, p_billing_account_id bigint, p_lock_batch_id uuid, p_meta jsonb, p_tipo_lotto text, p_emittente_soggetto_ruolo_id bigint)
-IS 'Recupera o crea lotto con validazione coerenza dimensionale completa. Helper condiviso per utility/emittente. ⭐ rev 2026-08-24: E_LOTTO_NON_RIUTILIZZABILE porta il BERSAGLIO sul lotto, in entrambi i suoi punti. Qui l''operatore NON e'' sul lotto: sta lanciando un''emissione e si sente dire che ce n''e'' gia'' uno in esecuzione — e senza bersaglio dovrebbe cercarselo. Il lotto e'' appena stato letto, quindi esiste ed e'' visibile: nessuna query in piu'', nessun ramo condizionale. Brief: brief-db-bersaglio-errore.md §6 L6.';
+IS 'Recupera o crea lotto con validazione coerenza dimensionale completa. Helper condiviso per utility/emittente. ⭐ rev 2026-08-24: E_LOTTO_NON_RIUTILIZZABILE porta il BERSAGLIO sul lotto, in entrambi i suoi punti. Qui l''operatore NON e'' sul lotto: sta lanciando un''emissione e si sente dire che ce n''e'' gia'' uno in esecuzione — e senza bersaglio dovrebbe cercarselo. Il lotto e'' appena stato letto, quindi esiste ed e'' visibile: nessuna query in piu'', nessun ramo condizionale. Brief: brief-db-bersaglio-errore.md §6 L6. ⭐ rev 2026-10-22 (20261022-01, §9.10 di brief-be-utenti-di-sviluppo): per un lotto ESISTENTE (per id o ritrovato dal lock_batch_id) l''emittente e'' quello del lotto, e si confronta solo l''emittente che il chiamante ha indicato (esplicito o dal BA): il rilancio col solo lotto_id di un lotto di un emittente non predefinito non solleva piu'' E_LOTTO_PARAMETRO_NON_COERENTE. Il ripiego sul predefinito di vendite.fn_resolve_lotto_utility_emittente e il controllo «emittente attivo» valgono solo per il lotto nuovo.';
 ```
 
 </div>

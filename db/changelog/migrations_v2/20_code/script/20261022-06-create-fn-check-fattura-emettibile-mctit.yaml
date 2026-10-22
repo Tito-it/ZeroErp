@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_check_fattura_emettibile(fattura) -> i motivi
+#   Richiesta BE del 2026-10-21 (§9.9 di brief-be-utenti-di-sviluppo); D-3 di
+#   Tid, 2026-10-22: la fattura come DDT, ordini e preventivi.
+#
+# -- LA STORIA -----------------------------------------------------------
+#   Il 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, R-3/I9) Tid ha
+#   deciso per DDT, ordini e preventivi: la bozza resta libera, il cancello
+#   «riga senza aliquota» sta all'EMISSIONE, e la guardia nel riepilogo entra
+#   INSIEME al cancello. Sulla fattura fu rinviato a I4 («la guardia senza
+#   cancello scambierebbe un errore rumoroso con un numero sbagliato
+#   silenzioso»); I4 si e' chiuso «solo BE» e la meta' DB non l'ha fatta
+#   nessuno. Questo giro la fa: check (qui), cancello (20261022-07), guardia
+#   (20261022-08).
+#
+# -- IL MOTIVO -----------------------------------------------------------
+#   E_FATTURA_RIGA_IVA_MANCANTE: una riga della fattura senza iva_id.
+#   ⭐ IL PREDICATO E' QUELLO DEL CONSUMATORE: vendite.fn_ricalcola_riepilogo_
+#   iva_fattura aggrega TUTTE le righe della fattura, senza filtri; e la
+#   fattura elettronica vuole l'aliquota su ogni linea di dettaglio. Quindi
+#   ogni riga, non solo quelle con un prezzo.
+#   Il caso reale: un articolo senza iva_id (catalogo.articoli.iva_id e'
+#   nullable) su una fornitura senza tipo d'uso, dove lo stadio A2 del
+#   risolutore non vale: origine 'ASSENTE', riga con iva_id NULL.
+#   Nella frase: numero (o id) della fattura, riga_nr, descrizione. Nel
+#   dettaglio anche riga_id e articolo_id, per chi diagnostica e per il FE.
+#   Ordine stabile (riga_nr, id): il messaggio nomina sempre la stessa riga.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   Funzione PURA (fn_check_*): non solleva, non scrive. Ritorna [] se la
+#   fattura e' emettibile, altrimenti l'array ordinato dei motivi
+#   {codice, reason, dettaglio, valori}. Nessun reason_key: oggi nessun bottone
+#   da spegnere la legge (la emissione passa dal giro del lotto).
+#   Consumatore: vendite.trgfn_fatture_guard_stato (20261022-07).
+#   STABLE, SECURITY INVOKER: legge la fattura che chi la emette vede.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261022-06-create-fn-check-fattura-emettibile-mctit.yaml
+
+  - changeSet:
+      id: 20261022-06-create-fn-check-fattura-emettibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova script.fn_check_fattura_emettibile: i motivi che impediscono l'emissione di una
+        fattura; il primo e' E_FATTURA_RIGA_IVA_MANCANTE (una riga senza aliquota IVA). Richiesta BE
+        §9.9; D-3 di Tid (2026-10-22).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_fattura_emettibile(
+                  p_fattura_id vendite.fatture.id%TYPE)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: elencare i motivi che impediscono l'EMISSIONE di una
+              --   fattura. Funzione PURA (fn_check_*): non solleva, non scrive.
+              --   Consumatore: vendite.trgfn_fatture_guard_stato, che solleva
+              --   il primo motivo entrando in EMESSA.
+              --   Gemella di script.fn_check_preventivo_emettibile.
+              -- Ritorna: [] se emettibile; altrimenti array ORDINATO di
+              --   {codice, reason, dettaglio, valori}.
+              DECLARE
+                  v_motivi    jsonb := '[]'::jsonb;
+                  v_numero    vendite.fatture.numero%TYPE;
+                  v_trovata   boolean;
+                  v_riga_id   vendite.fatture_righe.id%TYPE;
+                  v_riga_nr   vendite.fatture_righe.riga_nr%TYPE;
+                  v_riga_des  vendite.fatture_righe.descrizione%TYPE;
+                  v_articolo  vendite.fatture_righe.articolo_id%TYPE;
+              BEGIN
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_check_fattura_emettibile', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'fattura_id', 'valore', p_fattura_id),
+                          NULL::uuid, 'fattura_id obbligatorio (>0)');
+                  END IF;
+
+                  SELECT true, f.numero INTO v_trovata, v_numero
+                    FROM vendite.fatture f
+                   WHERE f.id = p_fattura_id;
+
+                  IF v_trovata IS NULL THEN
+                      RETURN v_motivi;   -- fattura inesistente: decide il chiamante
+                  END IF;
+
+                  -- MOTIVO 1 — ALIQUOTA DELLA RIGA: ogni riga entra nel
+                  --   riepilogo IVA (vendite.fn_ricalcola_riepilogo_iva_fattura
+                  --   aggrega tutte le righe, senza filtri) e nella fattura
+                  --   elettronica, che vuole l'aliquota su ogni linea.
+                  -- ⚠️ ORDER BY prima del LIMIT: il messaggio nomina sempre la
+                  --   stessa riga, la prima per numero.
+                  SELECT r.id, r.riga_nr, r.descrizione, r.articolo_id
+                    INTO v_riga_id, v_riga_nr, v_riga_des, v_articolo
+                    FROM vendite.fatture_righe r
+                   WHERE r.fattura_id = p_fattura_id
+                     AND r.iva_id IS NULL
+                   ORDER BY r.riga_nr, r.id
+                   LIMIT 1;
+
+                  IF v_riga_id IS NOT NULL THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_FATTURA_RIGA_IVA_MANCANTE',
+                          'reason',     'RIGA_SENZA_ALIQUOTA',
+                          'dettaglio',  jsonb_build_object(
+                                            'riga_id',     v_riga_id,
+                                            'riga_nr',     v_riga_nr,
+                                            'articolo_id', v_articolo,
+                                            'descrizione', v_riga_des),
+                          'valori',     jsonb_build_array(
+                                            COALESCE(v_numero::text, p_fattura_id::text),
+                                            v_riga_nr::text,
+                                            COALESCE(v_riga_des::text, 'senza descrizione')));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_fattura_emettibile(vendite.fatture.id%TYPE)
+              IS 'Check PURA: i motivi che impediscono l''EMISSIONE di una fattura; [] = emettibile, altrimenti l''array ordinato {codice, reason, dettaglio, valori}. Motivo 1: E_FATTURA_RIGA_IVA_MANCANTE, una riga senza aliquota IVA (iva_id NULL) — ogni riga, perche'' il riepilogo IVA le aggrega tutte e la fattura elettronica vuole l''aliquota su ogni linea; valori: numero (o id) della fattura, riga_nr, descrizione; dettaglio: riga_id, riga_nr, articolo_id, descrizione. Consumatore: vendite.trgfn_fatture_guard_stato, entrando in EMESSA. Gemella di script.fn_check_preventivo_emettibile: chiude per la fattura la decisione di Tid del 2026-08-29 (bozza libera, cancello all''emissione, guardia nel riepilogo; D-3 del 2026-10-22). Richiesta BE §9.9 di brief-be-utenti-di-sviluppo. STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_fattura_emettibile(bigint);

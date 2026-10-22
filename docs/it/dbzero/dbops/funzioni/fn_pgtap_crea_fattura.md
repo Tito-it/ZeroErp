@@ -41,7 +41,6 @@ DECLARE
     v_valuta_id config.valute.id%TYPE;
     v_registro  vendite.registri_fatturazione.id%TYPE;
     v_fattura   vendite.fatture.id%TYPE;
-    v_link_sr   anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE;
 BEGIN
     -- 1. Il mondo. Senza p_billing_account_id costruisce anche il
     --    cliente; con, riusa quello e prende solo l'azienda di chi
@@ -54,24 +53,15 @@ BEGIN
       FROM dbops.fn_pgtap_crea_mondo_cliente(p_etichetta) m;
 
     IF p_billing_account_id IS NOT NULL THEN
-        -- ⚠️ Il BA chiesto si VERIFICA prima di usarlo: uno di
-        --   un'altra azienda produrrebbe una testata che il guard
-        --   emittente/BA rifiuta piu' avanti, con un messaggio che
-        --   non nomina la fixture.
-        SELECT efba.emittente_soggetto_ruolo_id INTO v_link_sr
-          FROM anagrafiche.emittenti_fiscali_billing_account efba
-         WHERE efba.billing_account_id = p_billing_account_id;
-
-        IF v_link_sr IS DISTINCT FROM v_ef_sr_id THEN
-            RAISE EXCEPTION
-                'fn_pgtap_crea_fattura: il billing account % e'' legato all''emittente sr = % e non a % (l''azienda di chi agisce): la seconda fattura si chiede su un BA costruito dallo stesso mondo',
-                p_billing_account_id, v_link_sr, v_ef_sr_id;
-        END IF;
-
-        SELECT ba.id, ba.istanza_utility_id, ba.soggetto_ruolo_id, ba.utility_id
+        -- ⚠️ Il BA chiesto si VERIFICA prima di usarlo, dal building
+        --   block (rev 20261022, regola del 2): uno di un'altra azienda
+        --   solleva qui, nominando questo builder, invece che sul guard
+        --   emittente/BA della testata piu' avanti.
+        SELECT c.billing_account_id, c.istanza_utility_id,
+               c.cliente_soggetto_ruolo_id, c.utility_id
           INTO v_ba_id, v_ist_id, v_cli_sr_id, v_utility
-          FROM anagrafiche.billing_account ba
-         WHERE ba.id = p_billing_account_id;
+          FROM dbops.fn_pgtap_cliente_ba_del_mondo(
+                   p_billing_account_id, v_ef_sr_id, 'fn_pgtap_crea_fattura') c;
     END IF;
 
     -- 2. La coppia (emittente, utility) NON si scrive piu' (rev
@@ -123,7 +113,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_fattura(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint)
-IS 'Fixture pgTAP: una FATTURA del mondo in una chiamata — azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente), il registro coerente con l''emittente di chi agisce (script.fn_pgtap_registro_fattura) e la testata nello stato scelto. ⭐ Esiste per la CATENA D''ORDINE: cliente legato a chi agisce, registro dell''azienda giusta, valuta risolvibile — tre anelli che su un database ricostruito non esistono e che ogni file riscriveva a mano. ⚠️ Terzo parametro: un billing account gia'' costruito, per la SECONDA fattura dello stesso cliente; viene verificato, e un BA di un''altra azienda solleva. ⛔ NON scrive righe, scadenze, contabili ne'' movimenti: sono il caso del test. ⛔ E non cambia stato: quello si sceglie alla nascita, perche'' vendite.fatture ha un guard di transizione. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2. Rev 2026-10-21 (20261021-17, brief-db-modelli-documento-standard §10.7 R-4): la coppia (emittente, utility) non si scrive piu'': senza la riga valgono i parametri di sistema dell''utility, e la fattura del mondo e'' quella di un emittente nuovo.';
+IS 'Fixture pgTAP: una FATTURA del mondo in una chiamata — azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente), il registro coerente con l''emittente di chi agisce (script.fn_pgtap_registro_fattura) e la testata nello stato scelto. ⭐ Esiste per la CATENA D''ORDINE: cliente legato a chi agisce, registro dell''azienda giusta, valuta risolvibile — tre anelli che su un database ricostruito non esistono e che ogni file riscriveva a mano. ⚠️ Terzo parametro: un billing account gia'' costruito, per la SECONDA fattura dello stesso cliente; viene verificato, e un BA di un''altra azienda solleva. ⛔ NON scrive righe, scadenze, contabili ne'' movimenti: sono il caso del test. ⛔ E non cambia stato: quello si sceglie alla nascita, perche'' vendite.fatture ha un guard di transizione. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper. Brief: brief-db-fixture-che-costruiscono-giro-2. Rev 2026-10-21 (20261021-17, brief-db-modelli-documento-standard §10.7 R-4): la coppia (emittente, utility) non si scrive piu'': senza la riga valgono i parametri di sistema dell''utility, e la fattura del mondo e'' quella di un emittente nuovo. Rev 2026-10-22: il billing account del terzo parametro lo verifica il building block dbops.fn_pgtap_cliente_ba_del_mondo (regola del 2, estratto alla terza copia).';
 ```
 
 </div>

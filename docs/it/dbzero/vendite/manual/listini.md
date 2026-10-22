@@ -75,8 +75,13 @@ validita` temporale e prezzi sono demandati rispettivamente a `listini_versioni`
   `config.listini_tipologie_utilities` con `attivo = true`. Il trigger guard
   `trgfn_listini_guard_tipologia_utility` lo verifica su INSERT e UPDATE.
 * `attivo = true` abilita il listino per associazione e risoluzione prezzi.
-* La disattivazione e` bloccata se esistono versioni o associazioni attive
-  (trigger `trgfn_prevent_deactivate_if_children`).
+* ⭐ **Un listino con storia non si spegne** (rev 2026-10-22): se ha almeno una versione
+  ATTIVA o CHIUSA ([vendite.fn_listino_ha_storia](/dbzero/vendite/manual/fn_listino_ha_storia)),
+  l'interruttore `attivo` è rifiutato con `E_LISTINO_CON_STORIA_NON_SPEGNIBILE`
+  ([vendite.trgfn_listini_guard_spegnimento_storia](/dbzero/vendite/manual/trgfn_listini_guard_spegnimento_storia)).
+  Si chiude con la **fine validità** della versione in vigore.
+* Un listino **senza storia** si spegne; la catena generica «figli prima, padre poi»
+  (`trgfn_prevent_deactivate_if_children`) chiede prima di spegnere le sue bozze.
 
 ---
 

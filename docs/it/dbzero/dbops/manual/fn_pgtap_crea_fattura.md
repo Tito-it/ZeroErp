@@ -52,7 +52,9 @@ SELECT * FROM dbops.fn_pgtap_crea_fattura(
 ```
 
 ⚠️ E viene **verificato**: un billing account di un'altra azienda solleva subito, invece
-di produrre una testata che un guard rifiuterà venti righe più in là.
+di produrre una testata che un guard rifiuterà venti righe più in là. Il controllo è il
+building block [dbops.fn_pgtap_cliente_ba_del_mondo](/dbzero/dbops/manual/fn_pgtap_cliente_ba_del_mondo),
+lo stesso di contratto e ordine.
 
 ---
 ### 🚫 Cosa NON scrive, e il criterio è uno
