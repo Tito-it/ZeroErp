@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGIO: vendite.trgfn_listini_guard_spegnimento_storia (20261022-04) su
+#   vendite.listini.
+#
+#   BEFORE UPDATE OF attivo, FOR EACH ROW, WHEN true -> false.
+#   ⭐ ORDINE: i BEFORE ROW scattano in ordine di NOME. a05 precede tutti gli
+#   a10_*_block_deact della catena generica «figli prima, padre poi»: sul
+#   listino con storia parla questo guard, col rimedio vero.
+#   Trigger scritto a mano, non da ci_apply (linee-guida-sql §11.5).
+#   ⛔ Nome sotto i 63 caratteri (51).
+#   Richiesta BE §9.8 di brief-be-utenti-di-sviluppo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261022-05-create-trigger-listini-guard-spegnimento-storia-mctit.yaml
+
+  - changeSet:
+      id: 20261022-05-create-trigger-listini-guard-spegnimento-storia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta vendite.trgfn_listini_guard_spegnimento_storia su vendite.listini (BEFORE UPDATE OF
+        attivo, a05: prima della catena generica). Richiesta BE §9.8.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+               WHERE t.tgname = 'trg_listini_a05_guard_spegnimento_storia_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_listini_a05_guard_spegnimento_storia_upd
+                  BEFORE UPDATE OF attivo
+                  ON vendite.listini
+                  FOR EACH ROW
+                  WHEN (OLD.attivo IS TRUE AND NEW.attivo IS FALSE)
+                  EXECUTE FUNCTION vendite.trgfn_listini_guard_spegnimento_storia();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_a05_guard_spegnimento_storia_upd
+                  ON vendite.listini;

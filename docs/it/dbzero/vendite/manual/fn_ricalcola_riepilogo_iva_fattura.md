@@ -53,7 +53,12 @@ righe (`fatture_righe`).
   che usa il regime **congelato nello snapshot** dell'intestazione: il passo
   `ricalcola_iva_lotto` della fase EMESSA, l'ultimo prima del congelamento,
   lascia righe e testata sullo stesso regime.
-* Le righe devono avere `iva_id` gia` valorizzato dal processo di generazione.
+* ⭐ **Una riga senza codice IVA non rompe il riepilogo** (rev 2026-10-22): entra nel
+  riepilogo della bozza con l'aliquota vuota, invece di sollevare l'errore tecnico del
+  catalogo. La fattura però **non si emette**: lo ferma
+  [vendite.trgfn_fatture_guard_stato](/dbzero/vendite/manual/trgfn_fatture_guard_stato) con
+  `E_FATTURA_RIGA_IVA_MANCANTE`. La guardia esiste solo insieme al cancello: da sola sarebbe
+  uno zero muto su un documento fiscale.
 * I riepiloghi sono ricreati aggregando per combinazione fiscale.
 
 ---

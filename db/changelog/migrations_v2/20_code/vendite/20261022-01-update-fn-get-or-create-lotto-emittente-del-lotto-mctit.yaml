@@ -1,0 +1,530 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PER UN LOTTO ESISTENTE L'EMITTENTE E' QUELLO DEL LOTTO
+#   vendite.fn_get_or_create_lotto (rev; corpo vivo dalla doc dbzero, uguale al
+#   vivo di dbdev e scratch)
+#   Richiesta BE del 2026-10-21 (§9.10 di brief-be-utenti-di-sviluppo); via di
+#   Tid, 2026-10-22.
+#
+# Il difetto: il FE rilancia un lotto col solo lotto_id («Avanza», rilancio dopo
+#   ERRORE). La funzione chiama vendite.fn_resolve_lotto_utility_emittente col BA
+#   NULL, che ripiega su anagrafiche.fn_get_emittente_fiscale_id(NULL), cioe'
+#   sull'emittente PREDEFINITO; il ramo del lotto esistente lo confronta con
+#   quello del lotto e solleva E_LOTTO_PARAMETRO_NON_COERENTE. Ogni lotto di un
+#   emittente non predefinito non si rilanciava per id. Lo stesso confronto sta
+#   nel ramo del lotto ritrovato dal lock_batch_id (CASO 2), e si corregge
+#   insieme.
+#
+# La correzione:
+#   * l'emittente che si confronta con un lotto esistente e' solo quello che il
+#     CHIAMANTE ha indicato: esplicito (p_emittente_soggetto_ruolo_id) o dal BA;
+#     senza, l'emittente e' quello del lotto e non c'e' niente da confrontare;
+#   * il ripiego sul predefinito e il controllo «emittente attivo» restano, ma
+#     solo nel CASO 3 (lotto nuovo): la prima risoluzione in testa li salta,
+#     una seconda li fa prima della creazione. Prima il controllo «attivo» si
+#     faceva sul predefinito anche quando si rilanciava un lotto esistente;
+#   * il risolutore non cambia (e' il suo unico chiamante, e il ripiego per il
+#     lotto nuovo e' giusto).
+#   Firma e RETURNS ancorati a vendite.fatturazione_lotti (%TYPE; i tipi
+#   risolvono identici: identita' invariata); SECURITY INVOKER esplicito.
+# Verifica: db/pgtap/vendite/test-lotto-rilancio-emittente-del-lotto-v1.sql.
+#
+# Ritorno indietro: il corpo e il COMMENT di 20260824-07 (nel rollback).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261022-01-update-fn-get-or-create-lotto-emittente-del-lotto-mctit.yaml
+
+  - changeSet:
+      id: 20261022-01-update-fn-get-or-create-lotto-emittente-del-lotto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_get_or_create_lotto: per un lotto esistente l'emittente e' quello del lotto; si
+        confronta solo l'emittente che il chiamante ha dato (esplicito o dal BA). Il ripiego sul
+        predefinito e il controllo «emittente attivo» valgono solo per il lotto nuovo. Richiesta BE
+        §9.10 di brief-be-utenti-di-sviluppo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_lotto(
+                   p_lotto_id                    vendite.fatturazione_lotti.id%TYPE DEFAULT NULL,
+                   p_competenza_mese             vendite.fatturazione_lotti.competenza_mese%TYPE DEFAULT NULL,
+                   p_tipo_doc_fiscale_id         vendite.fatturazione_lotti.tipo_doc_fiscale_id%TYPE DEFAULT NULL,
+                   p_utility_id                  vendite.fatturazione_lotti.utility_id%TYPE DEFAULT NULL,
+                   p_billing_account_id          vendite.fatturazione_lotti.billing_account_id%TYPE DEFAULT NULL,
+                   p_lock_batch_id               vendite.fatturazione_lotti.lock_batch_id%TYPE DEFAULT NULL,
+                   p_meta                        vendite.fatturazione_lotti.meta%TYPE DEFAULT NULL,
+                   p_tipo_lotto                  vendite.fatturazione_lotti.tipo_lotto%TYPE DEFAULT 'MASSIVO',
+                   p_emittente_soggetto_ruolo_id vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL)
+               RETURNS vendite.fatturazione_lotti.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_lotto_id            vendite.fatturazione_lotti.id%TYPE;
+                  v_competenza          vendite.fatturazione_lotti.competenza_mese%TYPE;
+                  v_utility_id          config.utilities.id%TYPE;
+                  v_tipo_doc_id         config.tipi_doc_fiscale.id%TYPE;
+                  v_billing_account_id  anagrafiche.billing_account.id%TYPE;
+                  v_emittente_id        vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE;
+                  v_tipo_lotto          vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                  v_stato_lotto         vendite.fatturazione_lotti.stato_lotto%TYPE;
+                  v_stato_operativo     vendite.fatturazione_lotti.stato_operativo%TYPE;
+                  v_tipo_lotto_input    vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                  v_resolved_utility_id config.utilities.id%TYPE;
+                  v_resolved_emittente_id vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE;
+                  -- L'emittente che il CHIAMANTE ha indicato (esplicito, o dal BA):
+                  -- NULL quando non ha detto niente. Solo questo si confronta con
+                  -- un lotto esistente (rev 20261022-01).
+                  v_emittente_esplicito   vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- Normalizza lotto_id=0 a NULL
+                  IF p_lotto_id = 0 THEN p_lotto_id := NULL; END IF;
+
+                  -- Guard: tipo_lotto valido
+                  v_tipo_lotto_input := upper(btrim(COALESCE(p_tipo_lotto, '')));
+                  IF v_tipo_lotto_input IS NULL OR v_tipo_lotto_input = '' OR v_tipo_lotto_input NOT IN ('MASSIVO', 'GIORNALIERO') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_lotto', 'valore', p_tipo_lotto),
+                          NULL::uuid, concat('p_tipo_lotto=', coalesce(p_tipo_lotto, 'NULL'), ' (ammessi: MASSIVO, GIORNALIERO)')
+                      );
+                  END IF;
+
+                  IF p_lotto_id IS NOT NULL AND p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id se fornito deve essere > 0'
+                      );
+                  END IF;
+
+                  IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', p_tipo_doc_fiscale_id),
+                          NULL::uuid, 'p_tipo_doc_fiscale_id se fornito deve essere > 0'
+                      );
+                  END IF;
+
+                  -- Risolvi utility/emittente via helper condiviso.
+                  -- ⭐ rev 2026-10-22 (20261022-01, §9.10 di brief-be-utenti-di-sviluppo):
+                  --   senza BA e senza emittente il risolutore ripiega sull'emittente
+                  --   PREDEFINITO. Quel ripiego serve a un lotto NUOVO; per un lotto
+                  --   ESISTENTE l'emittente e' quello del lotto, e confrontarlo col
+                  --   predefinito rifiutava il rilancio per id di ogni lotto di un
+                  --   emittente non predefinito. Qui quindi non si controlla «attivo»
+                  --   (lo fa il CASO 3, sull'emittente del lotto nuovo), e coi lotti
+                  --   esistenti si confronta solo l'emittente che il chiamante ha dato.
+                  SELECT r.resolved_utility_id, r.resolved_emittente_soggetto_ruolo_id
+                    INTO v_resolved_utility_id, v_resolved_emittente_id
+                    FROM vendite.fn_resolve_lotto_utility_emittente(
+                        p_billing_account_id => p_billing_account_id,
+                        p_utility_id => p_utility_id,
+                        p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id,
+                        p_scope => 'LOTTO',
+                        p_caller => 'fn_get_or_create_lotto',
+                        p_check_emittente_attivo => FALSE
+                    ) r;
+
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL OR p_billing_account_id IS NOT NULL THEN
+                      v_emittente_esplicito := v_resolved_emittente_id;
+                  END IF;
+
+                  -- ============================================
+                  -- CASO 1: lotto_id fornito → validazione coerenza
+                  -- ============================================
+                  IF p_lotto_id IS NOT NULL THEN
+                      SELECT competenza_mese, utility_id, tipo_doc_fiscale_id, billing_account_id,
+                             emittente_soggetto_ruolo_id, tipo_lotto, stato_lotto, stato_operativo
+                        INTO v_competenza, v_utility_id, v_tipo_doc_id, v_billing_account_id,
+                             v_emittente_id, v_tipo_lotto, v_stato_lotto, v_stato_operativo
+                        FROM vendite.fatturazione_lotti WHERE id = p_lotto_id;
+
+                      IF v_competenza IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'fn_get_or_create_lotto', 'E_VALORE_MANCANTE',
+                              jsonb_build_object('lotto_id', p_lotto_id),
+                              NULL::uuid, concat('lotto_id ', p_lotto_id)
+                          );
+                      END IF;
+
+                      -- Guard coerenza dimensionale (pattern ripetuto)
+                      IF p_competenza_mese IS NOT NULL AND date_trunc('month', p_competenza_mese)::DATE <> v_competenza THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'competenza_mese', 'atteso', v_competenza, 'ricevuto', p_competenza_mese),
+                              NULL::uuid, 'competenza_mese', p_lotto_id::text);
+                      END IF;
+                      IF v_resolved_utility_id IS NOT NULL AND v_resolved_utility_id <> v_utility_id THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'utility_id', 'atteso', v_utility_id, 'ricevuto', v_resolved_utility_id),
+                              NULL::uuid, 'utility_id', p_lotto_id::text);
+                      END IF;
+                      IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <> v_tipo_doc_id THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'tipo_doc_fiscale_id', 'atteso', v_tipo_doc_id, 'ricevuto', p_tipo_doc_fiscale_id),
+                              NULL::uuid, 'tipo_doc_fiscale_id', p_lotto_id::text);
+                      END IF;
+                      IF p_billing_account_id IS NOT NULL AND p_billing_account_id <> v_billing_account_id THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'billing_account_id', 'atteso', v_billing_account_id, 'ricevuto', p_billing_account_id),
+                              NULL::uuid, 'billing_account_id', p_lotto_id::text);
+                      END IF;
+                      IF v_emittente_esplicito IS NOT NULL AND v_emittente_esplicito <> v_emittente_id THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'emittente', 'atteso', v_emittente_id, 'ricevuto', v_emittente_esplicito),
+                              NULL::uuid, 'emittente_soggetto_ruolo_id', p_lotto_id::text);
+                      END IF;
+                      IF v_tipo_lotto IS NOT NULL AND v_tipo_lotto <> v_tipo_lotto_input THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'tipo_lotto', 'atteso', v_tipo_lotto, 'ricevuto', v_tipo_lotto_input),
+                              NULL::uuid, 'tipo_lotto', p_lotto_id::text);
+                      END IF;
+
+                      IF v_stato_lotto = 'IN_ESECUZIONE' AND v_stato_operativo = 'CHIUSO' THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_NON_RIUTILIZZABILE',
+                              jsonb_build_object('lotto_id', p_lotto_id, 'stato_operativo', v_stato_operativo,
+                                                 -- ⭐ Il bersaglio: qui l'operatore NON e' sul
+                                                 --    lotto — sta lanciando un'emissione e si
+                                                 --    sente dire che ce n'e' uno in esecuzione.
+                                                 --    Il lotto e' appena stato letto: esiste
+                                                 --    ed e' visibile.
+                                                 'bersaglio', jsonb_build_array(
+                                                     jsonb_build_object('tipo', 'LOTTO',
+                                                                        'id', p_lotto_id::text))),
+                              NULL::uuid, p_lotto_id::text, v_stato_operativo);
+                      END IF;
+
+                      RETURN p_lotto_id;
+                  END IF;
+
+                  -- ============================================
+                  -- CASO 2: lock_batch_id fornito → cerca lotto
+                  -- ============================================
+                  IF p_lock_batch_id IS NOT NULL THEN
+                      SELECT id, competenza_mese, utility_id, tipo_doc_fiscale_id, billing_account_id,
+                             emittente_soggetto_ruolo_id, tipo_lotto, stato_lotto, stato_operativo
+                        INTO v_lotto_id, v_competenza, v_utility_id, v_tipo_doc_id, v_billing_account_id,
+                             v_emittente_id, v_tipo_lotto, v_stato_lotto, v_stato_operativo
+                        FROM vendite.fatturazione_lotti
+                       WHERE lock_batch_id = p_lock_batch_id
+                       ORDER BY id DESC LIMIT 1;
+
+                      IF v_lotto_id IS NOT NULL THEN
+                          -- Stessi guard coerenza del caso 1
+                          IF p_competenza_mese IS NOT NULL AND date_trunc('month', p_competenza_mese)::DATE <> v_competenza THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'competenza_mese', 'atteso', v_competenza, 'ricevuto', p_competenza_mese),
+                                  NULL::uuid, 'competenza_mese', v_lotto_id::text);
+                          END IF;
+                          IF v_resolved_utility_id IS NOT NULL AND v_resolved_utility_id <> v_utility_id THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'utility_id', 'atteso', v_utility_id, 'ricevuto', v_resolved_utility_id),
+                                  NULL::uuid, 'utility_id', v_lotto_id::text);
+                          END IF;
+                          IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <> v_tipo_doc_id THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'tipo_doc_fiscale_id', 'atteso', v_tipo_doc_id, 'ricevuto', p_tipo_doc_fiscale_id),
+                                  NULL::uuid, 'tipo_doc_fiscale_id', v_lotto_id::text);
+                          END IF;
+                          IF p_billing_account_id IS NOT NULL AND p_billing_account_id <> v_billing_account_id THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'billing_account_id', 'atteso', v_billing_account_id, 'ricevuto', p_billing_account_id),
+                                  NULL::uuid, 'billing_account_id', v_lotto_id::text);
+                          END IF;
+                          IF v_emittente_esplicito IS NOT NULL AND v_emittente_esplicito <> v_emittente_id THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'emittente', 'atteso', v_emittente_id, 'ricevuto', v_emittente_esplicito),
+                                  NULL::uuid, 'emittente_soggetto_ruolo_id', v_lotto_id::text);
+                          END IF;
+                          IF v_tipo_lotto IS NOT NULL AND v_tipo_lotto <> v_tipo_lotto_input THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'tipo_lotto', 'atteso', v_tipo_lotto, 'ricevuto', v_tipo_lotto_input),
+                                  NULL::uuid, 'tipo_lotto', v_lotto_id::text);
+                          END IF;
+
+                          IF v_stato_lotto = 'IN_ESECUZIONE' AND v_stato_operativo = 'CHIUSO' THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_NON_RIUTILIZZABILE',
+                                  jsonb_build_object('lotto_id', v_lotto_id, 'stato_operativo', v_stato_operativo,
+                                                 -- ⭐ Il bersaglio: qui l'operatore NON e' sul
+                                                 --    lotto — sta lanciando un'emissione e si
+                                                 --    sente dire che ce n'e' uno in esecuzione.
+                                                 --    Il lotto e' appena stato letto: esiste
+                                                 --    ed e' visibile.
+                                                 'bersaglio', jsonb_build_array(
+                                                     jsonb_build_object('tipo', 'LOTTO',
+                                                                        'id', v_lotto_id::text))),
+                                  NULL::uuid, v_lotto_id::text, v_stato_operativo);
+                          END IF;
+
+                          RETURN v_lotto_id;
+                      END IF;
+                  END IF;
+
+                  -- ============================================
+                  -- CASO 3: creazione nuovo lotto
+                  -- ============================================
+                  -- Solo qui vale il ripiego sul predefinito (lotto nuovo senza BA),
+                  -- e solo qui si pretende che l'emittente del lotto sia attivo.
+                  SELECT r.resolved_utility_id, r.resolved_emittente_soggetto_ruolo_id
+                    INTO v_resolved_utility_id, v_resolved_emittente_id
+                    FROM vendite.fn_resolve_lotto_utility_emittente(
+                        p_billing_account_id => p_billing_account_id,
+                        p_utility_id => p_utility_id,
+                        p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id,
+                        p_scope => 'LOTTO',
+                        p_caller => 'fn_get_or_create_lotto',
+                        p_check_emittente_attivo => TRUE
+                    ) r;
+
+                  v_lotto_id := vendite.fn_create_fatturazione_lotto(
+                      p_competenza_mese => p_competenza_mese,
+                      p_tipo_doc_fiscale_id => p_tipo_doc_fiscale_id,
+                      p_utility_id => COALESCE(v_resolved_utility_id, p_utility_id),
+                      p_billing_account_id => p_billing_account_id,
+                      p_lock_batch_id => p_lock_batch_id,
+                      p_meta => p_meta,
+                      p_emittente_soggetto_ruolo_id => v_resolved_emittente_id
+                  );
+
+                  UPDATE vendite.fatturazione_lotti
+                     SET tipo_lotto = v_tipo_lotto_input,
+                         data_update = now(), user_update = current_user
+                   WHERE id = v_lotto_id;
+
+                  RETURN v_lotto_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_or_create_lotto(bigint, date, bigint, integer, bigint, uuid, jsonb, text, bigint)
+              IS 'Recupera o crea lotto con validazione coerenza dimensionale completa. Helper condiviso per utility/emittente. ⭐ rev 2026-08-24: E_LOTTO_NON_RIUTILIZZABILE porta il BERSAGLIO sul lotto, in entrambi i suoi punti. Qui l''operatore NON e'' sul lotto: sta lanciando un''emissione e si sente dire che ce n''e'' gia'' uno in esecuzione — e senza bersaglio dovrebbe cercarselo. Il lotto e'' appena stato letto, quindi esiste ed e'' visibile: nessuna query in piu'', nessun ramo condizionale. Brief: brief-db-bersaglio-errore.md §6 L6. ⭐ rev 2026-10-22 (20261022-01, §9.10 di brief-be-utenti-di-sviluppo): per un lotto ESISTENTE (per id o ritrovato dal lock_batch_id) l''emittente e'' quello del lotto, e si confronta solo l''emittente che il chiamante ha indicato (esplicito o dal BA): il rilancio col solo lotto_id di un lotto di un emittente non predefinito non solleva piu'' E_LOTTO_PARAMETRO_NON_COERENTE. Il ripiego sul predefinito di vendite.fn_resolve_lotto_utility_emittente e il controllo «emittente attivo» valgono solo per il lotto nuovo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_or_create_lotto(p_lotto_id bigint DEFAULT NULL::bigint, p_competenza_mese date DEFAULT NULL::date, p_tipo_doc_fiscale_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_billing_account_id bigint DEFAULT NULL::bigint, p_lock_batch_id uuid DEFAULT NULL::uuid, p_meta jsonb DEFAULT NULL::jsonb, p_tipo_lotto text DEFAULT 'MASSIVO'::text, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_lotto_id            vendite.fatturazione_lotti.id%TYPE;
+                  v_competenza          vendite.fatturazione_lotti.competenza_mese%TYPE;
+                  v_utility_id          config.utilities.id%TYPE;
+                  v_tipo_doc_id         config.tipi_doc_fiscale.id%TYPE;
+                  v_billing_account_id  anagrafiche.billing_account.id%TYPE;
+                  v_emittente_id        vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE;
+                  v_tipo_lotto          vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                  v_stato_lotto         vendite.fatturazione_lotti.stato_lotto%TYPE;
+                  v_stato_operativo     vendite.fatturazione_lotti.stato_operativo%TYPE;
+                  v_tipo_lotto_input    vendite.fatturazione_lotti.tipo_lotto%TYPE;
+                  v_resolved_utility_id config.utilities.id%TYPE;
+                  v_resolved_emittente_id vendite.fatturazione_lotti.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- Normalizza lotto_id=0 a NULL
+                  IF p_lotto_id = 0 THEN p_lotto_id := NULL; END IF;
+
+                  -- Guard: tipo_lotto valido
+                  v_tipo_lotto_input := upper(btrim(COALESCE(p_tipo_lotto, '')));
+                  IF v_tipo_lotto_input IS NULL OR v_tipo_lotto_input = '' OR v_tipo_lotto_input NOT IN ('MASSIVO', 'GIORNALIERO') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_lotto', 'valore', p_tipo_lotto),
+                          NULL::uuid, concat('p_tipo_lotto=', coalesce(p_tipo_lotto, 'NULL'), ' (ammessi: MASSIVO, GIORNALIERO)')
+                      );
+                  END IF;
+
+                  IF p_lotto_id IS NOT NULL AND p_lotto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_lotto_id', 'valore', p_lotto_id),
+                          NULL::uuid, 'p_lotto_id se fornito deve essere > 0'
+                      );
+                  END IF;
+
+                  IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_get_or_create_lotto', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_doc_fiscale_id', 'valore', p_tipo_doc_fiscale_id),
+                          NULL::uuid, 'p_tipo_doc_fiscale_id se fornito deve essere > 0'
+                      );
+                  END IF;
+
+                  -- Risolvi utility/emittente via helper condiviso
+                  SELECT r.resolved_utility_id, r.resolved_emittente_soggetto_ruolo_id
+                    INTO v_resolved_utility_id, v_resolved_emittente_id
+                    FROM vendite.fn_resolve_lotto_utility_emittente(
+                        p_billing_account_id => p_billing_account_id,
+                        p_utility_id => p_utility_id,
+                        p_emittente_soggetto_ruolo_id => p_emittente_soggetto_ruolo_id,
+                        p_scope => 'LOTTO',
+                        p_caller => 'fn_get_or_create_lotto',
+                        p_check_emittente_attivo => TRUE
+                    ) r;
+
+                  -- ============================================
+                  -- CASO 1: lotto_id fornito → validazione coerenza
+                  -- ============================================
+                  IF p_lotto_id IS NOT NULL THEN
+                      SELECT competenza_mese, utility_id, tipo_doc_fiscale_id, billing_account_id,
+                             emittente_soggetto_ruolo_id, tipo_lotto, stato_lotto, stato_operativo
+                        INTO v_competenza, v_utility_id, v_tipo_doc_id, v_billing_account_id,
+                             v_emittente_id, v_tipo_lotto, v_stato_lotto, v_stato_operativo
+                        FROM vendite.fatturazione_lotti WHERE id = p_lotto_id;
+
+                      IF v_competenza IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', 'fn_get_or_create_lotto', 'E_VALORE_MANCANTE',
+                              jsonb_build_object('lotto_id', p_lotto_id),
+                              NULL::uuid, concat('lotto_id ', p_lotto_id)
+                          );
+                      END IF;
+
+                      -- Guard coerenza dimensionale (pattern ripetuto)
+                      IF p_competenza_mese IS NOT NULL AND date_trunc('month', p_competenza_mese)::DATE <> v_competenza THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'competenza_mese', 'atteso', v_competenza, 'ricevuto', p_competenza_mese),
+                              NULL::uuid, 'competenza_mese', p_lotto_id::text);
+                      END IF;
+                      IF v_resolved_utility_id IS NOT NULL AND v_resolved_utility_id <> v_utility_id THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'utility_id', 'atteso', v_utility_id, 'ricevuto', v_resolved_utility_id),
+                              NULL::uuid, 'utility_id', p_lotto_id::text);
+                      END IF;
+                      IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <> v_tipo_doc_id THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'tipo_doc_fiscale_id', 'atteso', v_tipo_doc_id, 'ricevuto', p_tipo_doc_fiscale_id),
+                              NULL::uuid, 'tipo_doc_fiscale_id', p_lotto_id::text);
+                      END IF;
+                      IF p_billing_account_id IS NOT NULL AND p_billing_account_id <> v_billing_account_id THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'billing_account_id', 'atteso', v_billing_account_id, 'ricevuto', p_billing_account_id),
+                              NULL::uuid, 'billing_account_id', p_lotto_id::text);
+                      END IF;
+                      IF v_resolved_emittente_id IS NOT NULL AND v_resolved_emittente_id <> v_emittente_id THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'emittente', 'atteso', v_emittente_id, 'ricevuto', v_resolved_emittente_id),
+                              NULL::uuid, 'emittente_soggetto_ruolo_id', p_lotto_id::text);
+                      END IF;
+                      IF v_tipo_lotto IS NOT NULL AND v_tipo_lotto <> v_tipo_lotto_input THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                              jsonb_build_object('parametro', 'tipo_lotto', 'atteso', v_tipo_lotto, 'ricevuto', v_tipo_lotto_input),
+                              NULL::uuid, 'tipo_lotto', p_lotto_id::text);
+                      END IF;
+
+                      IF v_stato_lotto = 'IN_ESECUZIONE' AND v_stato_operativo = 'CHIUSO' THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_NON_RIUTILIZZABILE',
+                              jsonb_build_object('lotto_id', p_lotto_id, 'stato_operativo', v_stato_operativo,
+                                                 -- ⭐ Il bersaglio: qui l'operatore NON e' sul
+                                                 --    lotto — sta lanciando un'emissione e si
+                                                 --    sente dire che ce n'e' uno in esecuzione.
+                                                 --    Il lotto e' appena stato letto: esiste
+                                                 --    ed e' visibile.
+                                                 'bersaglio', jsonb_build_array(
+                                                     jsonb_build_object('tipo', 'LOTTO',
+                                                                        'id', p_lotto_id::text))),
+                              NULL::uuid, p_lotto_id::text, v_stato_operativo);
+                      END IF;
+
+                      RETURN p_lotto_id;
+                  END IF;
+
+                  -- ============================================
+                  -- CASO 2: lock_batch_id fornito → cerca lotto
+                  -- ============================================
+                  IF p_lock_batch_id IS NOT NULL THEN
+                      SELECT id, competenza_mese, utility_id, tipo_doc_fiscale_id, billing_account_id,
+                             emittente_soggetto_ruolo_id, tipo_lotto, stato_lotto, stato_operativo
+                        INTO v_lotto_id, v_competenza, v_utility_id, v_tipo_doc_id, v_billing_account_id,
+                             v_emittente_id, v_tipo_lotto, v_stato_lotto, v_stato_operativo
+                        FROM vendite.fatturazione_lotti
+                       WHERE lock_batch_id = p_lock_batch_id
+                       ORDER BY id DESC LIMIT 1;
+
+                      IF v_lotto_id IS NOT NULL THEN
+                          -- Stessi guard coerenza del caso 1
+                          IF p_competenza_mese IS NOT NULL AND date_trunc('month', p_competenza_mese)::DATE <> v_competenza THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'competenza_mese', 'atteso', v_competenza, 'ricevuto', p_competenza_mese),
+                                  NULL::uuid, 'competenza_mese', v_lotto_id::text);
+                          END IF;
+                          IF v_resolved_utility_id IS NOT NULL AND v_resolved_utility_id <> v_utility_id THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'utility_id', 'atteso', v_utility_id, 'ricevuto', v_resolved_utility_id),
+                                  NULL::uuid, 'utility_id', v_lotto_id::text);
+                          END IF;
+                          IF p_tipo_doc_fiscale_id IS NOT NULL AND p_tipo_doc_fiscale_id <> v_tipo_doc_id THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'tipo_doc_fiscale_id', 'atteso', v_tipo_doc_id, 'ricevuto', p_tipo_doc_fiscale_id),
+                                  NULL::uuid, 'tipo_doc_fiscale_id', v_lotto_id::text);
+                          END IF;
+                          IF p_billing_account_id IS NOT NULL AND p_billing_account_id <> v_billing_account_id THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'billing_account_id', 'atteso', v_billing_account_id, 'ricevuto', p_billing_account_id),
+                                  NULL::uuid, 'billing_account_id', v_lotto_id::text);
+                          END IF;
+                          IF v_resolved_emittente_id IS NOT NULL AND v_resolved_emittente_id <> v_emittente_id THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'emittente', 'atteso', v_emittente_id, 'ricevuto', v_resolved_emittente_id),
+                                  NULL::uuid, 'emittente_soggetto_ruolo_id', v_lotto_id::text);
+                          END IF;
+                          IF v_tipo_lotto IS NOT NULL AND v_tipo_lotto <> v_tipo_lotto_input THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                                  jsonb_build_object('parametro', 'tipo_lotto', 'atteso', v_tipo_lotto, 'ricevuto', v_tipo_lotto_input),
+                                  NULL::uuid, 'tipo_lotto', v_lotto_id::text);
+                          END IF;
+
+                          IF v_stato_lotto = 'IN_ESECUZIONE' AND v_stato_operativo = 'CHIUSO' THEN
+                              PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_NON_RIUTILIZZABILE',
+                                  jsonb_build_object('lotto_id', v_lotto_id, 'stato_operativo', v_stato_operativo,
+                                                 -- ⭐ Il bersaglio: qui l'operatore NON e' sul
+                                                 --    lotto — sta lanciando un'emissione e si
+                                                 --    sente dire che ce n'e' uno in esecuzione.
+                                                 --    Il lotto e' appena stato letto: esiste
+                                                 --    ed e' visibile.
+                                                 'bersaglio', jsonb_build_array(
+                                                     jsonb_build_object('tipo', 'LOTTO',
+                                                                        'id', v_lotto_id::text))),
+                                  NULL::uuid, v_lotto_id::text, v_stato_operativo);
+                          END IF;
+
+                          RETURN v_lotto_id;
+                      END IF;
+                  END IF;
+
+                  -- ============================================
+                  -- CASO 3: creazione nuovo lotto
+                  -- ============================================
+                  v_lotto_id := vendite.fn_create_fatturazione_lotto(
+                      p_competenza_mese => p_competenza_mese,
+                      p_tipo_doc_fiscale_id => p_tipo_doc_fiscale_id,
+                      p_utility_id => COALESCE(v_resolved_utility_id, p_utility_id),
+                      p_billing_account_id => p_billing_account_id,
+                      p_lock_batch_id => p_lock_batch_id,
+                      p_meta => p_meta,
+                      p_emittente_soggetto_ruolo_id => v_resolved_emittente_id
+                  );
+
+                  UPDATE vendite.fatturazione_lotti
+                     SET tipo_lotto = v_tipo_lotto_input,
+                         data_update = now(), user_update = current_user
+                   WHERE id = v_lotto_id;
+
+                  RETURN v_lotto_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_or_create_lotto(bigint, date, bigint, integer, bigint, uuid, jsonb, text, bigint)
+              IS 'Recupera o crea lotto con validazione coerenza dimensionale completa. Helper condiviso per utility/emittente. ⭐ rev 2026-08-24: E_LOTTO_NON_RIUTILIZZABILE porta il BERSAGLIO sul lotto, in entrambi i suoi punti. Qui l''operatore NON e'' sul lotto: sta lanciando un''emissione e si sente dire che ce n''e'' gia'' uno in esecuzione — e senza bersaglio dovrebbe cercarselo. Il lotto e'' appena stato letto, quindi esiste ed e'' visibile: nessuna query in piu'', nessun ramo condizionale. Brief: brief-db-bersaglio-errore.md §6 L6.';

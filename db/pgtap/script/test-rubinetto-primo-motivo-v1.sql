@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    41,
+    42,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -325,7 +325,12 @@ SELECT is(
     --   chiamano ora anche script.fn_check_righe_documento e
     --   script.fn_check_offerta_annullabile (-57, -59) erano gia' nel conto: si
     --   conta la FUNZIONE, non le chiamate.
-    'le quarantuno funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-10-22: da 41 a 42. Un sito NUOVO nato sull'helper:
+    --   vendite.trgfn_fatture_guard_stato (20261022-07) solleva, entrando in
+    --   EMESSA, il primo motivo di script.fn_check_fattura_emettibile
+    --   (20261022-06): il cancello IVA della fattura (D-3 di Tid, §9.9 di
+    --   brief-be-utenti-di-sviluppo).
+    'le quarantadue funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

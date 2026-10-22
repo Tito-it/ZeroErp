@@ -53,6 +53,7 @@ search:
 - [fn_check_famiglia_documento_disattivabile](manual/fn_check_famiglia_documento_disattivabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_famiglia_documento_struttura_modificabile](manual/fn_check_famiglia_documento_struttura_modificabile.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_check_fattura_eliminabile_da_lotto](manual/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
+- [fn_check_fattura_emettibile](manual/fn_check_fattura_emettibile.md) — (rev 2026-10-22, D-3 di Tid)
 - [fn_check_fatture_con_plafond_consumato](manual/fn_check_fatture_con_plafond_consumato.md) — (funzione nata il 2026-10-04, `20261004-07`)
 - [fn_check_indirizzo_duplicato](manual/fn_check_indirizzo_duplicato.md)
 - [fn_check_listino_cambiabile](manual/fn_check_listino_cambiabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4 e D-11 di Tid)

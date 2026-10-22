@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_pgtap_crea_ordine`
 
 ```sql
-CREATE FUNCTION fn_pgtap_crea_ordine(p_etichetta text, p_stato_codice_interno character varying)
+CREATE FUNCTION fn_pgtap_crea_ordine(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint)
 ```
 
 **Definizione completa:**
@@ -10,7 +10,7 @@ CREATE FUNCTION fn_pgtap_crea_ordine(p_etichetta text, p_stato_codice_interno ch
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ordine(p_etichetta text DEFAULT 'pgTAP'::text, p_stato_codice_interno character varying DEFAULT 'DRAFT'::character varying)
+CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ordine(p_etichetta text DEFAULT 'pgTAP'::text, p_stato_codice_interno character varying DEFAULT 'DRAFT'::character varying, p_billing_account_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(ordine_id bigint, ordine_uid uuid, emittente_fiscale_id bigint, emittente_soggetto_ruolo_id bigint, auth_user_id integer, billing_account_id bigint, istanza_utility_id bigint, cliente_soggetto_ruolo_id bigint, utility_id integer, stato_doc_ordine_id bigint, valuta_id integer)
  LANGUAGE plpgsql
 AS $function$
@@ -19,6 +19,10 @@ AS $function$
 -- Uso:
 --   CREATE TEMP TABLE tmp_o AS
 --   SELECT * FROM dbops.fn_pgtap_crea_ordine('rls ordini');
+--   -- il secondo ordine dello STESSO cliente (rev 20261022-10):
+--   SELECT * FROM dbops.fn_pgtap_crea_ordine(
+--              'rls ordini 2', 'DRAFT',
+--              (SELECT billing_account_id FROM tmp_o));
 -- ⛔ Le righe NON le scrive: sono il caso del test.
 -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
 --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
@@ -54,6 +58,17 @@ BEGIN
            v_cli_sr_id, v_utility
       FROM dbops.fn_pgtap_crea_mondo_cliente(p_etichetta) m;
 
+    -- Il terzo parametro (rev 20261022-10): il cliente di un mondo gia'
+    -- costruito, per il secondo ordine dello stesso cliente. Il building
+    -- block lo verifica dell'azienda di chi agisce e ne torna le chiavi.
+    IF p_billing_account_id IS NOT NULL THEN
+        SELECT c.billing_account_id, c.istanza_utility_id,
+               c.cliente_soggetto_ruolo_id, c.utility_id
+          INTO v_ba_id, v_ist_id, v_cli_sr_id, v_utility
+          FROM dbops.fn_pgtap_cliente_ba_del_mondo(
+                   p_billing_account_id, v_ef_sr_id, 'fn_pgtap_crea_ordine') c;
+    END IF;
+
     SELECT v.id INTO v_valuta_id
       FROM config.valute v ORDER BY v.id LIMIT 1;
 
@@ -75,8 +90,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION dbops.fn_pgtap_crea_ordine(p_etichetta text, p_stato_codice_interno character varying)
-IS 'Fixture pgTAP: un ORDINE di vendita del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata nello stato scelto alla nascita, con l''emittente del mondo, il suo billing account, la sua utility e la prima valuta del catalogo. Numero, anno, registro e fatturazione_trigger li assegnano i trigger del dominio, come in produzione. ⛔ NON scrive righe: sono il caso del test. ⛔ Non cambia stato: vendite.ordini ha un guard di transizione, lo stato si sceglie col secondo parametro. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti.';
+COMMENT ON FUNCTION dbops.fn_pgtap_crea_ordine(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint)
+IS 'Fixture pgTAP: un ORDINE di vendita del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata nello stato scelto alla nascita, con l''emittente del mondo, il suo billing account, la sua utility e la prima valuta del catalogo. Numero, anno, registro e fatturazione_trigger li assegnano i trigger del dominio, come in produzione. ⛔ NON scrive righe: sono il caso del test. ⛔ Non cambia stato: vendite.ordini ha un guard di transizione, lo stato si sceglie col secondo parametro. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti. ⚠️ Terzo parametro (rev 2026-10-22, 20261022-10, richiesta BE R-3): il billing account di un cliente gia'' costruito, per il secondo ordine dello stesso cliente; verificato dell''azienda di chi agisce da dbops.fn_pgtap_cliente_ba_del_mondo, e un BA di un''altra azienda solleva.';
 ```
 
 </div>

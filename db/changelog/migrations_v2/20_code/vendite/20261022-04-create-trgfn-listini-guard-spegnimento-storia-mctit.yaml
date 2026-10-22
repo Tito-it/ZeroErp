@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.trgfn_listini_guard_spegnimento_storia()
+#   Un listino con storia non si spegne con l'interruttore: si chiude con la
+#   fine validita' della versione (decisione di Tid del 2026-10-21; storia: D-1
+#   del 2026-10-22). Richiesta BE §9.8 di brief-be-utenti-di-sviluppo.
+#
+# -- IL DIFETTO ----------------------------------------------------------
+#   Spegnere un listino con storia passava dalla catena generica «figli prima,
+#   padre poi» (dbops.trgfn_prevent_deactivate_if_children): usciva
+#   E_ATTIVO_BLOCK_CHILDREN_ACTIVE col rimedio «disattivare le righe», che non
+#   si puo' eseguire — versioni attivate e righe propagate non si toccano. Un
+#   rifiuto con un rimedio impossibile.
+#
+# -- LA REGOLA -----------------------------------------------------------
+#   attivo true -> false su un listino con storia (vendite.fn_listino_ha_storia,
+#   20261022-03): E_LISTINO_CON_STORIA_NON_SPEGNIBILE, CONFLITTO_STATO, col
+#   rimedio vero: la fine validita' alla versione in vigore. Un listino senza
+#   storia (nessuna versione, o solo bozze) passa e trova la catena generica.
+#
+# -- QUANDO --------------------------------------------------------------
+#   BEFORE UPDATE OF attivo, montato come a05 (20261022-05): scatta PRIMA dei
+#   guard generici a10_*_block_deact, e il rifiuto che arriva e' il suo. Il
+#   filtro true -> false sta nella WHEN del trigger e, per difesa, nel corpo.
+#   Campo: attivo (e' la richiesta di questa scrittura).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261022-04-create-trgfn-listini-guard-spegnimento-storia-mctit.yaml
+
+  - changeSet:
+      id: 20261022-04-create-trgfn-listini-guard-spegnimento-storia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova vendite.trgfn_listini_guard_spegnimento_storia: un listino con storia non si spegne,
+        si chiude con la fine validita' della versione -> E_LISTINO_CON_STORIA_NON_SPEGNIBILE.
+        Richiesta BE §9.8; decisioni di Tid del 2026-10-21 e D-1 del 2026-10-22.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_guard_spegnimento_storia()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   BEFORE UPDATE OF attivo su vendite.listini: un listino con
+                  --   storia (vendite.fn_listino_ha_storia) non si spegne; si
+                  --   chiude con la fine validita' della versione in vigore.
+                  -- =========================================================
+                  IF OLD.attivo IS TRUE
+                     AND NEW.attivo IS FALSE
+                     AND vendite.fn_listino_ha_storia(OLD.id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME::text, 'E_LISTINO_CON_STORIA_NON_SPEGNIBILE',
+                          jsonb_build_object(
+                              'campo',      'attivo',
+                              'listino_id', OLD.id,
+                              'codice',     OLD.codice),
+                          NEW.tx_id,
+                          OLD.codice::text);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_guard_spegnimento_storia()
+              IS 'Guard BEFORE UPDATE OF attivo su vendite.listini (montato a05, prima della catena generica a10_*_block_deact): un listino con STORIA (vendite.fn_listino_ha_storia: almeno una versione ATTIVA o CHIUSA) non si spegne con l''interruttore -> E_LISTINO_CON_STORIA_NON_SPEGNIBILE (CONFLITTO_STATO; valori: codice del listino; campo attivo). Si chiude con la fine validita'' della versione in vigore (decisione di Tid del 2026-10-21; storia: D-1 del 2026-10-22). Prima usciva E_ATTIVO_BLOCK_CHILDREN_ACTIVE col rimedio «disattivare le righe», non eseguibile. Un listino senza storia passa e trova la catena generica. Richiesta BE §9.8 di brief-be-utenti-di-sviluppo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_listini_guard_spegnimento_storia();

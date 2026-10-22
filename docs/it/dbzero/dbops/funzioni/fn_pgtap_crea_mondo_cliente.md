@@ -24,6 +24,10 @@ AS $function$
 -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper: chi vuole la
 --   finestra differita la riapre subito dopo con
 --   SET CONSTRAINTS ALL DEFERRED, e lo dichiara in testa al file.
+-- Rev 2026-10-21 (20261021-68): con un contesto gia' aperto l'azienda
+--   di chi agisce la dice script.fn_resolve_emittente_for_user, come
+--   per il legame del BA: anche il super admin che ha scelto
+--   l'emittente in alto (app.current_emittente_id) ha un mondo.
 DECLARE
     v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
     v_identita  anagrafiche.identita_digitali.id%TYPE;
@@ -66,21 +70,28 @@ BEGIN
                 p_sigla, v_user_id;
         END IF;
 
+        -- ⭐ L'azienda di chi agisce con la regola di produzione
+        --   (rev 20261021-68): l'emittente scelto in alto
+        --   (app.current_emittente_id) se l'utente lo puo' usare,
+        --   altrimenti la sua riga in config.user_emittenti_fiscali.
+        --   E' la stessa domanda che fa il trigger z90 quando lega il
+        --   BA (anagrafiche.trgfn_billing_account_link_ef): leggere la
+        --   sola configurazione rifiutava il super admin che ha scelto
+        --   l'emittente, a cui il trigger il cliente lo lega.
         SELECT ef.id, ef.codice, ef.soggetto_ruolo_id
           INTO v_ef_id, v_ef_codice, v_ef_sr_id
-          FROM config.user_emittenti_fiscali uef
-          JOIN anagrafiche.emittenti_fiscali ef
-            ON ef.id = uef.emittente_fiscale_id
-         WHERE uef.auth_user_id = v_user_id;
+          FROM anagrafiche.emittenti_fiscali ef
+         WHERE ef.id = script.fn_resolve_emittente_for_user(v_user_id);
 
         -- ⚠️ Guard sul RISULTATO: un operatore senza riga in
         --   user_emittenti_fiscali e' fail-closed dal 2026-08-18
-        --   (P-2a) e non vede NESSUN emittente. Tornare una tupla
+        --   (P-2a) e non vede NESSUN emittente; un super admin non
+        --   ha azienda finche' non ne sceglie una. Tornare una tupla
         --   con un NULL dentro manderebbe il chiamante a cercare
         --   il difetto tre passi piu' in la'.
         IF v_ef_id IS NULL THEN
             RAISE EXCEPTION
-                'fn_pgtap_crea_mondo_cliente: l''operatore di contesto (auth_user_id = %) non ha un emittente in config.user_emittenti_fiscali: la fixture ha aperto un contesto che non puo'' scrivere. Aprire il contesto senza argomento (script.fn_pgtap_set_contesto_operatore()), o chiamare questa funzione PRIMA del contesto',
+                'fn_pgtap_crea_mondo_cliente: l''utente di contesto (auth_user_id = %) non ha un''azienda su cui scrivere: ne'' una riga in config.user_emittenti_fiscali ne'' un emittente scelto (app.current_emittente_id, per il super admin). Aprire il contesto senza argomento (script.fn_pgtap_set_contesto_operatore()), scegliere l''emittente, o chiamare questa funzione PRIMA del contesto',
                 v_user_id;
         END IF;
 
@@ -141,7 +152,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_mondo_cliente(p_etichetta text, p_sigla character varying)
-IS 'Fixture pgTAP: il MONDO MINIMO di un test di dominio in una chiamata — azienda + operatore + contesto aperto + cliente fatturabile legato a quella azienda — e ritorna tutte le chiavi. ⭐ Esiste per la REGOLA D''ORDINE, non per fare l''elenco della spesa: prima il mondo, poi il contesto, e il legame BA -> emittente lo scrive il trigger z90 verso chi agisce (chiederlo anche col terzo parametro di fn_pgtap_crea_cliente_ba li fa sbattere su uq_emittenti_fiscali_ba). ⚠️ Con un contesto gia'' aperto RIUSA l''azienda di chi agisce e rifiuta p_sigla: una seconda azienda si costruisce coi builder atomici, prima del contesto. ⛔ NON comprende registro (script.fn_pgtap_registro_fattura si semina dal contesto), articolo (i flag sono il caso del test) ne'' i cataloghi di 80_data, che da zero ci sono e vanno scelti con un ORDER BY stabile. ⚠️ Esce con i vincoli IMMEDIATE: chi li vuole differiti riapre con SET CONSTRAINTS ALL DEFERRED e lo dichiara in testa al file (rev 20260921-18). Brief: brief-db-fixture-che-costruiscono-giro-2.md';
+IS 'Fixture pgTAP: il MONDO MINIMO di un test di dominio in una chiamata — azienda + operatore + contesto aperto + cliente fatturabile legato a quella azienda — e ritorna tutte le chiavi. ⭐ Esiste per la REGOLA D''ORDINE, non per fare l''elenco della spesa: prima il mondo, poi il contesto, e il legame BA -> emittente lo scrive il trigger z90 verso chi agisce (chiederlo anche col terzo parametro di fn_pgtap_crea_cliente_ba li fa sbattere su uq_emittenti_fiscali_ba). ⚠️ Con un contesto gia'' aperto RIUSA l''azienda di chi agisce e rifiuta p_sigla: una seconda azienda si costruisce coi builder atomici, prima del contesto. ⛔ NON comprende registro (script.fn_pgtap_registro_fattura si semina dal contesto), articolo (i flag sono il caso del test) ne'' i cataloghi di 80_data, che da zero ci sono e vanno scelti con un ORDER BY stabile. ⚠️ Esce con i vincoli IMMEDIATE: chi li vuole differiti riapre con SET CONSTRAINTS ALL DEFERRED e lo dichiara in testa al file (rev 20260921-18). Brief: brief-db-fixture-che-costruiscono-giro-2.md Rev 2026-10-21 (20261021-68, richiesta BE R-2): con un contesto gia'' aperto l''azienda di chi agisce la dice script.fn_resolve_emittente_for_user (l''emittente scelto in alto, app.current_emittente_id, se l''utente lo puo'' usare; altrimenti la riga in config.user_emittenti_fiscali), la stessa regola del trigger che lega il BA: il super admin che ha scelto l''emittente (dev.smoke negli smoke Python) ha un mondo, quello senza scelta e l''operatore senza riga sollevano come prima.';
 ```
 
 </div>

@@ -65,7 +65,9 @@ SELECT * FROM dbops.fn_pgtap_crea_contratto(
 ```
 
 ⚠️ Il conto viene **verificato**: uno di un'altra azienda solleva subito, invece di produrre una
-testata che un controllo rifiuterebbe più avanti con un messaggio che non nomina la fixture.
+testata che un controllo rifiuterebbe più avanti con un messaggio che non nomina la fixture. Il
+controllo è il building block [dbops.fn_pgtap_cliente_ba_del_mondo](/dbzero/dbops/manual/fn_pgtap_cliente_ba_del_mondo),
+lo stesso di fattura e ordine.
 
 ---
 ### 🚫 Cosa NON scrive

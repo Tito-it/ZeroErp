@@ -61,6 +61,17 @@ Un listino contiene:
 * **Versioni** (`listini_versioni`) — finestre temporali con stato BOZZA → ATTIVA → CHIUSA. Solo una versione ATTIVA per listino nel periodo (vincolo `EXCLUDE`).
 * **Righe** (`listini_righe`) — per ogni versione: (articolo, uom) → prezzo. Forma pura, senza dimensioni di scope.
 
+⭐ **Come finisce un listino.** Dipende dalla sua **storia**: un listino ha storia se ha
+almeno una versione che è stata attivata (oggi ATTIVA o CHIUSA, anche spenta); una bozza
+non conta ([vendite.fn_listino_ha_storia](/dbzero/vendite/funzioni/fn_listino_ha_storia)).
+
+* **Senza storia** (nessuna versione, o solo bozze) si spegne con l'interruttore «Attivo».
+* **Con storia** non si spegne: ha dato prezzi ai documenti, e quei prezzi devono restare
+  riproducibili. Si chiude mettendo la **fine validità** alla versione in vigore: alla
+  scadenza la versione passa CHIUSA. Chi prova a spegnerlo riceve
+  `E_LISTINO_CON_STORIA_NON_SPEGNIBILE`, con questo rimedio.
+* Una versione CHIUSA ha **sempre** la fine validità: è un periodo di prezzi finito.
+
 ### 2.2 Categoria cliente
 
 Rappresenta la **politica commerciale trasversale** (STANDARD, BASE, SILVER, GOLD, PLATINUM).

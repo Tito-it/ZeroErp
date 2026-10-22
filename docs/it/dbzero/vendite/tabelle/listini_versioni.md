@@ -26,6 +26,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_listini_versioni_chiusa_con_fine |  |
 | CHECK | chk_listini_versioni_stato |  |
 | FOREIGN KEY | fk_listini_versioni_listino | listino_id |
 | PRIMARY KEY | pk_listini_versioni | id |
