@@ -15,7 +15,7 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 4 | sessione BE/FE | ✅ punti 1-6 del §6.0, pushati (`f811719d1`, 2026-10-17); codici d'errore nel commit `843166c88`. ✅ Dopo l'incidente delle 23:45, i tetti di rete e delle sveglie (2026-10-17, `295737a90`) | §6.1, §6.4 | — |
 | 4-bis | team DB | le richieste del BE: ✅ R-BE-1 e R-BE-3 (giro 2a, §6.3), ✅ R-BE-2 sciolta da S-1 (§6.2); ✅ R-BE-4, la tolleranza di `smoke_notturno` = 1560 in `processi.csv`, applicata (§6.0 punto 7) | §6.2, §6.3, §6.5 | — |
 | 4-ter | Tid | ✅ sveglie reinstallate su dbdev (`sudo backend/bin/install-timers.sh`, 2026-10-17): le unit installate hanno i tetti `TimeoutStartSec` del §6.4 | §6.1, §6.4 | — |
-| 5 | sessione BE | ✅ che cosa crea il provisioning di sviluppo: l'elenco è in [brief-be-utenti-di-sviluppo §7](../work-in-progress/brief-be-utenti-di-sviluppo.md) (2026-10-16), decisioni di Tid del §7.4 prese (emittenti nuovi dal verbo, niente `dev.shop` per ora, portale senza contratto) | §5-ter | — |
+| 5 | sessione BE | ✅ che cosa crea il provisioning di sviluppo: l'elenco è in [brief-be-utenti-di-sviluppo §7](brief-be-utenti-di-sviluppo.md) (2026-10-16), decisioni di Tid del §7.4 prese (emittenti nuovi dal verbo, niente `dev.shop` per ora, portale senza contratto) | §5-ter | — |
 | 6 | Tid | ✅ decisioni S-1 (storia delle scelte, R-BE-2) e S-2 (smoke, §6.0 punto 7): proposte del team DB accolte (2026-10-17) | §6.2 | — |
 | 7 | Tid | ✅ il via allo sviluppo del giro DB 2 (2026-10-17) | — | — |
 | 8 | team DB | ✅ giro 2a scritto e provato sullo scratch: R-BE-1, R-BE-3, S-1 (`20261017-02` … `-04`) | §6.3 | — |
@@ -197,7 +197,7 @@ spegne `listen_permessi` lascia agli utenti i diritti tolti, senza che nessuno s
     scelta è del team DB scrivendo, col pgTAP di postura che la prova;
   * la riga dice chi l'ha scritta e quando (audit); un cambio non esiste (immutabile).
 * ✅ **R-4 — gli utenti e i dati di sviluppo non stanno in un database `PRODUZIONE`** (requisito del
-  BE e decisioni di Tid, 2026-10-16). Lato BE: [brief-be-utenti-di-sviluppo](../work-in-progress/brief-be-utenti-di-sviluppo.md). Gli utenti `dev.*` sono in preparazione: non ne esiste ancora
+  BE e decisioni di Tid, 2026-10-16). Lato BE: [brief-be-utenti-di-sviluppo](brief-be-utenti-di-sviluppo.md). Gli utenti `dev.*` sono in preparazione: non ne esiste ancora
   nessuno, e il segno si sceglie prima che nascano.
   * **Un'etichetta, non il nome.** Il prefisso `dev.` si sbaglia a mano in tutti e due i versi
     (`dev_mario` sfugge, una persona vera `dev.qualcosa` suona per niente): resta una convenzione di
@@ -412,7 +412,7 @@ non dichiarato dà rossi puliti (4, 5, 6, 7, 8, 10), e dichiarato 23/23. Dichiar
 ## 5-ter. Giro 2 (R-4): i dati di sviluppo — da scrivere
 
 > Il lato BE (il command, gli smoke, la lista Operatori) e l'elenco di che cosa crea il verbo stanno
-> in [brief-be-utenti-di-sviluppo](../work-in-progress/brief-be-utenti-di-sviluppo.md).
+> in [brief-be-utenti-di-sviluppo](brief-be-utenti-di-sviluppo.md).
 
 Le etichette (credenziale, soggetto) coi loro guard, il verbo del provisioning di sviluppo che in
 `PRODUZIONE` non parte, il presidio delle radici etichettate in un database `PRODUZIONE`, la colonna
@@ -423,7 +423,7 @@ Prima di quell'elenco il verbo sarebbe una forma vuota.
 
 ### 5-ter.1 Disegno del giro 2b (team DB, 2026-10-17) — ⏳ una decisione di Tid prima del codice
 
-> L'elenco è arrivato ([brief-be-utenti-di-sviluppo §7](../work-in-progress/brief-be-utenti-di-sviluppo.md)). Ricognizione
+> L'elenco è arrivato ([brief-be-utenti-di-sviluppo §7](brief-be-utenti-di-sviluppo.md)). Ricognizione
 > dei building block fatta il 2026-10-17 sulla doc auto-gen e sul backend.
 
 **Il nodo: sette pezzi su dieci non hanno un verbo DB.** Il verbo deve creare questi pezzi:
@@ -1444,7 +1444,7 @@ non ancora applicato): il mirror carica le due colonne insieme, quindi i due gir
 
 ### 6.9 Ricaduta della 2b-3 fatta (sessione BE, 2026-10-18)
 
-Il dettaglio sta nel [brief BE §8](../work-in-progress/brief-be-utenti-di-sviluppo.md). In breve:
+Il dettaglio sta nel [brief BE §8](brief-be-utenti-di-sviluppo.md). In breve:
 
 * **codici**: i tre della 2b-3 nella policy generata e nei ripieghi;
 * **il command** `manage.py provision_utenti_sviluppo [--nuove-password]` chiama

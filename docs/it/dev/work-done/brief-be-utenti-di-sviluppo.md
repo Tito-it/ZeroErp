@@ -1,8 +1,8 @@
 # Brief BE — Gli utenti di sviluppo: forniti da un verbo, etichettati, mai in produzione
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-21
+## ⏭️ Chi riparte — aggiornato al 2026-10-22
 
-**Riparte: il team DB coi tre trovati (§9.8 riga 11-sexies, §9.9 e §9.10 riga 12-bis) e R-3 (riga 12-sexies); poi il BE con la coda di T-7b (riga 12-quater). I due giri di T-7b e group-attivita-contratto sono fatti (§9.9, §9.9.1, §9.11). La riprova 11-quater è fatta (§9.7): il 500 non c'è più. Il passaggio unico del [brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md) §11 è fatto (`7385889b9`). T-7a è fatto (§9.4).** Il collaudo T-5 è fatto (2026-10-18, §9): provisioning, `env.sh` e login con
+**✅ Chiuso e archiviato in `work-done/` (Tid, 2026-10-22). Nessuno riparte: collaudo del drawer del listino superato, DB in git (#1920), policy rigenerate, smoke 2 noti su 51, tutti e due fuori perimetro (§9.12).** Il collaudo T-5 è fatto (2026-10-18, §9): provisioning, `env.sh` e login con
 `dev.smoke` funzionano, `smoke` è disattivato; il giro degli smoke ha trovato un emittente di prova che non sa
 emettere (nessun modello di documento) e smoke che vivevano dei dati di `EMITEST`.
 
@@ -21,33 +21,36 @@ utenti dei portali non hanno un PF loro (la veste sta sul ruolo del cliente o de
 | 7 | ✅ **BE** | T-1 … T-4 (2026-10-18, §8) e la 2b-2: il backend crea dalle madri del DB e le sue copie sono ritirate (brief DB §6.10) | §8; brief DB §6.10 | — |
 | 8 | ✅ **Tid + BE** | Collaudo T-5: command su dbdev, `env.sh` a `dev.smoke`, giro degli smoke, `smoke` disattivato (2026-10-18). Esito e correzioni in §9 | §9 | — |
 | 9 | ✅ **FE** | T-6: il filtro e il badge nella lista Operatori (2026-10-18) | §8 | — |
-| 10 | ✅ **Tid → team DB** | I modelli di documento standard: un emittente nuovo emette dal primo giorno. Lato DB chiuso e applicato (2026-10-20); il seguito è il passaggio unico BE/FE di quel brief | [brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md) §11 | — |
+| 10 | ✅ **Tid → team DB** | I modelli di documento standard: un emittente nuovo emette dal primo giorno. Lato DB chiuso e applicato (2026-10-20); il seguito è il passaggio unico BE/FE di quel brief | [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §11 | — |
 | 11 | ✅ **BE** | T-7a (2026-10-18): preventivi-componenti e guida-inversione si costruiscono la materia; trovato il listino che non si spegne | §9.4 | — |
 | 11-bis | ✅ **team DB** | Il guard di disattivazione del listino punta a una tabella eliminata: 500 a ogni spegnimento (R-1, Q-1). Il generatore ritira gli orfani (`20261021-21` … `-23`), provato sullo scratch e su dbdev in transazione | §9.6 | — |
 | 11-ter | ✅ **Tid** | Apply di `20261021-21` … `-23` su scratch e dbdev, pgTAP verdi (2026-10-21). Verificato: changeSet `EXECUTED`, generatore agganciato, zero orfani, il trigger su `listini_associazioni` non c'è più | §9.6 | 11-bis |
 | 11-quater | ✅ **BE** | Riprova (2026-10-21): 409 di dominio al posto del 500; spenti 10904 e 10905. 10906 e 10907 non si spengono: §9.8 | §9.7 | — |
 | 11-quinquies | ✅ **Tid** | Un listino con storia si spegne solo con la fine validità (2026-10-21) | §9.8 | — |
-| 11-sexies | **team DB** | Il codice del rifiuto per il listino con storia; `valido_al` garantito sulla CHIUSA | §9.8 | 11-quinquies |
-| 11-septies | **BE/FE** | Codice nella policy e nel ripiego; il toggle del drawer solo senza storia | §9.8 | 11-sexies |
+| 11-sexies | ✅ **team DB** | `E_LISTINO_CON_STORIA_NON_SPEGNIBILE`, `vendite.fn_listino_ha_storia`, `valido_al` sempre sulla CHIUSA (2026-10-22) | §9.12 | — |
+| 11-septies | ✅ **BE/FE** | `ha_storia` nel dettaglio del listino (letto dal DB); toggle solo senza storia, la nota altrimenti; `attivo` non inviato. Ripiego del codice scritto; la policy aspetta la riga 15 | §9.12 | — |
 | 12 | ✅ **BE** | T-7b primo giro: il BB `_smoke_fatturazione.py`, quattro smoke verdi, giro 6 non-verdi su 51 | §9.9 | — |
-| 12-bis | **team DB** | Il rilancio di un lotto per id prende l'emittente predefinito (§9.10); la riga di fattura senza IVA (§9.9) | §9.9, §9.10 | — |
+| 12-bis | ✅ **team DB** | §9.10 corretto (l'emittente si confronta solo se passato); §9.9 `E_FATTURA_RIGA_IVA_MANCANTE` all'ingresso in EMESSA (2026-10-22) | §9.12 | — |
 | 12-ter | ✅ **Tid + BE** | Seconda estrazione (ok Tid): la catena, contatore-note e push-termine verdi, 5 non-verdi su 51 | §9.9.1 | — |
-| 12-quater | **BE** | Dopo la correzione del §9.10: ritorno-lotto verde e il test 9 di scadenze costruito; poi il giro intero con `--update` della baseline | §9.9.1 | 12-bis |
+| 12-quater | ✅ **BE** | ritorno-lotto verde; il test 9 di scadenze costruito (pipeline fino a DEFINITIVA); rls-emittente-operatore con `dev.emittente` e la sua materia; resi-vendita senza `utility_id`; `--update` della baseline: 2 noti su 51 | §9.12 | — |
 | 12-quinquies | ✅ **team DB + BE** | group-attivita-contratto: R-1, R-2, Q-1 del DB, smoke verde (27 OK) | §9.11 | — |
-| 12-sexies | **team DB** | R-3: `p_billing_account_id` su `fn_pgtap_crea_ordine`, per ritirare l'INSERT dell'ordine di push-termine | §9.11 | — |
-| 13 | **Tid** | Archiviazione in `work-done/` | — | 12-quater, 11-septies |
+| 12-sexies | ✅ **team DB + BE** | R-3: `fn_pgtap_crea_ordine(…, p_billing_account_id)`; push-termine sul builder, test Django sulla firma nuova | §9.12 | — |
+| 14 | ✅ **team DB** | Push su git del giro del 2026-10-22 (#1920, già in `dev/backend-tid`) | §9.12 | — |
+| 15 | ✅ **BE** | `genera_error_policies` coi due codici (CONFLITTO_STATO) e i due ripieghi senza `%s`; dalla API lo spegnimento di un listino con storia è 409 sul campo `attivo` | §9.12 | — |
+| 16 | ✅ **Tid** | Collaudo a video superato (2026-10-22): drawer di un listino con storia (nota al posto del toggle) e senza (toggle) | §9.12 | — |
+| 17 | ✅ **Tid** | Archiviazione in `work-done/` (2026-10-22) | — | — |
 
-**Decisioni aperte di Tid: nessuna.** Al team DB: §9.8 (riga 11-sexies), §9.9 e §9.10 (riga 12-bis), R-3 del §9.11 (riga 12-sexies).
-✅ **Committato** su `dev/backend-tid` (`08cc15a61`, 2026-10-18; PR #1881): T-1 … T-4, T-6 e la 2b-2. Da committare: il §9 e le correzioni degli smoke del 2026-10-18 (§9.2); i due giri di T-7b del 2026-10-21 (§9.9, §9.9.1: `_smoke_fatturazione.py`, otto smoke convertiti, `smoke-lotto-capability-reset-fattura.py` e `smoke-test-preventivi-componenti.sh` allineati, catalogo BB); il §9.11 (group-attivita-contratto, policy e ripiego di `E_ATTIVITA_CONTRATTO_INCOERENTE`, contratti-addebito e listini-v5 senza `quantita`). **Da committare su `dev/db-tid`** (applicato): `20261021-21` … `-23`, il pgTAP `dbops/test-trigger-attivo-orfani-v1`, le due pagine `manual/` nuove, i manuali di `fn_run_automations_attivo` e `fn_trigger_argomenti`, la guida `automazione-db.md` e questo documento.
+**Decisioni aperte di Tid: nessuna.** Domande aperte al team DB: nessuna.
+✅ **Committato** su `dev/backend-tid` (`08cc15a61`, 2026-10-18; PR #1881): T-1 … T-4, T-6 e la 2b-2. Da committare: il §9 e le correzioni degli smoke del 2026-10-18 (§9.2); i due giri di T-7b del 2026-10-21 (§9.9, §9.9.1: `_smoke_fatturazione.py`, otto smoke convertiti, `smoke-lotto-capability-reset-fattura.py` e `smoke-test-preventivi-componenti.sh` allineati, catalogo BB); il §9.11 (group-attivita-contratto, policy e ripiego di `E_ATTIVITA_CONTRATTO_INCOERENTE`, contratti-addebito e listini-v5 senza `quantita`). Il §9.12 (2026-10-22): `error_policies_generated.py` ed `error_messages_fallback.py` (i due codici), `listini_repository.py`, `ListinoDrawer.vue`, le due lingue, `test_origine_ordine_sorgente_db.py`, gli smoke scadenze, push-termine, rls-emittente-operatore e resi-vendita, la baseline. **Da committare su `dev/db-tid`** (applicato): `20261021-21` … `-23`, il pgTAP `dbops/test-trigger-attivo-orfani-v1`, le due pagine `manual/` nuove, i manuali di `fn_run_automations_attivo` e `fn_trigger_argomenti`, la guida `automazione-db.md` e questo documento.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-16. **A chi:** il team BE/FE; la §6 al
 > team DB.
 > **Origine:** proposta di Tid (2026-10-15) di dare agli utenti degli smoke e dello sviluppo una
 > nomenclatura standard, sul modello dei ruoli di sistema
 > ([brief-db-ruoli-di-sistema](brief-db-ruoli-di-sistema.md) §1). Il modello è stato chiuso con
-> il team DB in [brief-db-processi-accensione-per-ambiente](../work-done/brief-db-processi-accensione-per-ambiente.md) §4-ter (R-2, R-4), decisioni di Tid del
+> il team DB in [brief-db-processi-accensione-per-ambiente](brief-db-processi-accensione-per-ambiente.md) §4-ter (R-2, R-4), decisioni di Tid del
 > 2026-10-16.
-> **Stato:** ✅ T-1 … T-6 fatti (2026-10-18); 🔨 T-7, gli smoke senza i dati di `EMITEST` (§9).
+> **Stato:** ✅ chiuso e archiviato il 2026-10-22: T-1 … T-7 fatti, e le risposte del team DB ai §9.5 – 9.11 applicate (§9.12).
 
 ## 1. La regola
 
@@ -79,7 +82,7 @@ scartata (Tid, 2026-10-15):
 
 ## 2. Il modello (deciso, lato DB)
 
-Fatti presi dalle risposte del team DB ([brief-db-processi-accensione-per-ambiente](../work-done/brief-db-processi-accensione-per-ambiente.md) §4-ter, 2026-10-16).
+Fatti presi dalle risposte del team DB ([brief-db-processi-accensione-per-ambiente](brief-db-processi-accensione-per-ambiente.md) §4-ter, 2026-10-16).
 
 | Pezzo | Com'è |
 | --- | --- |
@@ -147,14 +150,14 @@ secondo passo.
 ## 6. Domande al team DB
 
 * ✅ **D-1 — I command headless del backend sono «spegnibili»?** Sì, risposta dal giro 1
-  ([brief DB §6.0](../work-done/brief-db-processi-accensione-per-ambiente.md)): la sveglia systemd chiede al DB
+  ([brief DB §6.0](brief-db-processi-accensione-per-ambiente.md)): la sveglia systemd chiede al DB
   con un `ExecCondition` su `maintenance.fn_sveglia_accesa('<processo_codice>')`, «Esegui ora» legge
   la stessa funzione, `abilita` si ritira da `sveglie.json`. È lavoro BE, ma **non di questo brief**:
   sta nel §6 del brief DB, con gli altri sei punti del giro 1.
 
 ## 7. Che cosa crea il verbo — l'elenco per il giro 2
 
-> Risponde al [brief DB §5-ter](../work-done/brief-db-processi-accensione-per-ambiente.md): «serve dal BE
+> Risponde al [brief DB §5-ter](brief-db-processi-accensione-per-ambiente.md): «serve dal BE
 > l'elenco di che cosa crea». Fatti datati 2026-10-16, letti dalla doc `dbzero` e dal backend.
 
 ### 7.1 Le regole del verbo
@@ -286,7 +289,7 @@ baseline, in tre gruppi.
 ### 9.3 Da fare: T-7
 
 **Il difetto di fondo non è degli smoke.** Un emittente nuovo non sa emettere: è il
-[brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md), e risolve da solo gli
+[brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md), e risolve da solo gli
 smoke che si fermano sul modello. Il resto è materia che ogni smoke si deve costruire da sé, a partire
 dalle radici di prova (§1: il verbo dà identità stabili, non dati di lavoro).
 
@@ -582,4 +585,31 @@ listini-v5 per intero (prima si fermava al passo 16 sul modello di documento).
 BE. `dbops.fn_pgtap_crea_ordine(p_etichetta, p_stato)` crea un mondo nuovo a ogni chiamata, e il test 2 vuole
 **due ordini dello stesso cliente**. Vi chiediamo un `p_billing_account_id` facoltativo, come su fattura e
 contratto. Termine e modalità li scrive lo smoke in bozza. Con quello l'INSERT si ritira.
+
+### 9.12 La risposta del team DB ai §9.8 – 9.11, applicata (sessione BE, 2026-10-22)
+
+Il DB è in git col #1920. La policy dei due codici è rigenerata (righe 14-15), e lo spegnimento di un listino con
+storia risponde 409 sul campo `attivo`.
+
+| Punto | Risposta del DB | Nel BE/FE |
+| --- | --- | --- |
+| **§9.10** lotto | un lotto esistente si rilancia col solo `lotto_id`: l'emittente si confronta solo se passato. `PGTAPEF202` è l'emittente di prova voluto (Tid), non un residuo | nessun codice. ritorno-lotto ✅ verde. Il test 9 di scadenze ora si **costruisce**: attività marcata col giro su una competenza isolata, e `run_lotto_pipeline_until_done` che crea il lotto, emette e numera fino a DEFINITIVA (9a è la sua precondizione). Niente più SKIP |
+| **§9.8** listino | `E_LISTINO_CON_STORIA_NON_SPEGNIBILE` (CONFLITTO_STATO, campo `attivo`); il toggle segue `vendite.fn_listino_ha_storia(listino_id)`; una CHIUSA ha sempre `valido_al` | `listini_repository.get_listino` porta `ha_storia` letto dalla funzione (la regola non è ricopiata in Python). `ListinoDrawer`: il toggle solo senza storia, altrimenti la nota `vendite.listini.attivo_con_storia`, e il salvataggio non manda `attivo`. Provato dalla API: 10904 `ha_storia=false`, 10906 `true`, lo spegnimento di 10906 rifiutato col codice nuovo |
+| **§9.9** IVA | la bozza con una riga senza IVA si salva; entrando in EMESSA `E_FATTURA_RIGA_IVA_MANCANTE` (CONFLITTO_STATO), riga e descrizione nel messaggio | nessun codice oltre la policy (riga 15). Il BB degli smoke dà comunque l'IVA all'articolo di prova: la fattura deve emettere |
+| **R-3** ordine | `dbops.fn_pgtap_crea_ordine(etichetta, stato, billing_account_id)` | push-termine prende l'ordine dal builder sul BA della base (data, termine e modalità in bozza): ✅ verde, l'INSERT è ritirato. `test_origine_ordine_sorgente_db` sulla firma nuova, verde col DB vero |
+
+**Gli altri due noti, sistemati nello stesso giro:**
+
+* `smoke-test-rls-emittente-operatore.sh` girava come `dev.smoke`, senza whitelist, quindi era sempre «non
+  conclusivo». Ora gira come `dev.emittente` (password da `env.sh`). Un setup in-process come `dev.smoke`
+  assicura, col builder del DB, un contratto sull'emittente in whitelist e uno sull'altro emittente di prova:
+  materia stabile, cercata e creata se manca. Le chiamate HTTP restano di sola lettura. ✅ verde, il 404
+  compreso (prima voleva un id passato a mano);
+* `smoke-test-resi-vendita.sh`: la creazione dell'ordine rifiuta `utility_id` (contratto della creazione, la
+  dà il BA). Tolto: 55 OK. Restano 2 FAIL del dominio dei resi (`can_edit_righe` in DRAFT, coda accrediti),
+  che c'erano già e non sono di questo brief.
+
+**Giro intero con `--update`** (2026-10-22 17:52): **2 non-verdi su 51**, nota-credito-resi (SENZA_MATERIA: kit e
+seconda riga in coda) e resi-vendita (i 2 FAIL sopra), tutti e due fuori perimetro. Il registro è sceso da 5 a 2.
+Test: backend `vendite` sui listini e sul builder dell'ordine (DB vero), `test_https_header`, frontend 958 su 958.
 

@@ -52,7 +52,7 @@ coda di stampa con P-2, il giro unico e R-1 … R-5 con doc, guida e manuali (`2
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-18. **A chi:** Tid (§5), poi il team DB;
 > la §6 al BE/FE.
-> **Origine:** il collaudo T-5 di [brief-be-utenti-di-sviluppo](../work-in-progress/brief-be-utenti-di-sviluppo.md)
+> **Origine:** il collaudo T-5 di [brief-be-utenti-di-sviluppo](brief-be-utenti-di-sviluppo.md)
 > (§9). L'emittente di prova A, creato dal verbo di sviluppo, non emette nessun documento: non ha
 > modelli. Proposta di Tid (2026-10-18): «la cosa migliorativa è fornire un set di modelli
 > standard».

@@ -483,10 +483,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (cliente portale, shop, fornitore) con `fn_get_identita_sr_perimetro` + `fn_resolve_controparte_sr_id` +
   `fn_scope_sr_perimetro`; email con `fn_scope_email_ambito_perimetro`; note e coppia dell'operatore nella
   forma già pronta. `20261021-24…-43`; regola in linee-guida-sql §10.3; presidio senza eccezioni.
-- 📝 **Dati societari in creazione** (`work-in-progress/brief-db-dati-societari-in-creazione.md`, D34 del registro
-  DB, 2026-10-14): la creazione non scrive tutta la sezione. Una società perde la data di costituzione
-  (`fn_crea_soggetto_pg` passa `NULL` al verbo), e una ditta individuale perde **tutta** la sezione
-  (`fn_crea_soggetto_pf` non la riceve, e il BE la scarta senza errore). Attende E-1 di Tid.
+- ✅ **Dati societari in creazione: chiuso il 2026-10-22** (`work-done/brief-db-dati-societari-in-creazione.md`,
+  D34): le due porte di creazione ricevono la sezione intera, data di costituzione compresa, e la ditta
+  individuale non la perde più; quando scriverla lo decide il BB `fn_scrivi_dati_societari_alla_nascita`,
+  e una sezione passata a un privato si rifiuta (`20261020-01…03`). BE: binding della sezione in un BB del
+  repository (catalogo BB «Anagrafiche — Soggetti»), contratto della PATCH anche in creazione; FE: data di
+  costituzione anche in creazione. Collaudo di Tid riuscito il 22-10.
 - ✅ **Dati fiscali e societari del soggetto: chiuso il 2026-10-14** (`work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`,
   2026-10-10): (A) «Cliente PA» e «Split payment» ammessi per ogni natura, anche per un privato; (B) in modifica i
   dati societari non si salvano, serve il verbo di scrittura (decisione di Tid); (C) la forma giuridica non è legata
@@ -520,6 +522,18 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   all'uscita dalla bozza. BE/FE in `7385889b9`: la lista Modelli documento dice con che cosa stampa
   ogni azienda, lo standard si apre in sola lettura e si personalizza. Collaudo di Tid superato. I
   residui sono in § «Aperto — Media priorità».
+- ✅ **Gli utenti di sviluppo: forniti da un verbo, etichettati, mai in produzione — chiuso il 2026-10-22**
+  (`work-done/brief-be-utenti-di-sviluppo.md`): gli utenti `dev.*` (smoke, lettura, bloccato, emittente, portali,
+  fornitore, multiveste) e i soggetti di prova (emittenti DEVA/DEVB, clienti, fornitore) li crea
+  `fn_provisiona_dati_di_sviluppo` (command `provision_utenti_sviluppo`), riconosciuti dall'etichetta; la lista
+  Operatori li nasconde di default. Gli smoke Python si **costruiscono** la materia dalle radici di prova
+  (BB `scripts/tests/_smoke_fatturazione.py`) e dai builder `dbops.fn_pgtap_crea_*`, che accettano `dev.smoke`
+  sull'emittente scelto: niente più «l'ultima riga che c'è». Giro degli smoke da 20 a 2 non-verdi (2026-10-18 → 10-22), tutti e due
+  dei resi. Trovati e chiusi col DB lungo la strada: il listino che non si spegneva (guard orfani; un listino con
+  storia si spegne solo con la fine validità, `E_LISTINO_CON_STORIA_NON_SPEGNIBILE`, toggle dal DB
+  `fn_listino_ha_storia`), il rilancio del lotto che prendeva l'emittente predefinito, la riga di fattura senza
+  IVA (`E_FATTURA_RIGA_IVA_MANCANTE` entrando in EMESSA), il contratto dell'attività coerente col BA
+  (`E_ATTIVITA_CONTRATTO_INCOERENTE`). Collaudo di Tid superato. Nessun residuo.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato
