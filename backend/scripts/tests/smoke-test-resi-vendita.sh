@@ -201,9 +201,11 @@ carica_merce_ddt() {
 # DDT portato fino a CONSEGNATO. Popola le globali DDT_ID / RIGHE_JSON.
 build_ddt_consegnato() {
     local nrighe="$1" label="$2"
-    # Nessun emittente nel payload: e' quello del cliente (_smoke_cliente.sh).
+    # Nessun emittente e nessuna utility nel payload: sono quelli del cliente
+    # (_smoke_cliente.sh). `utility_id` non e' nel contratto della creazione
+    # (CREATE_KEYS_ORDINE): la da' il BA, e una chiave fuori contratto e' un 400.
     do_curl POST "/api/v1/vendite/ordini/" \
-        "{\"billing_account_id\": ${BA_ID}, \"utility_id\": ${UTILITY_ID}, \"fatturazione_trigger\": \"CONSEGNATO\"}"
+        "{\"billing_account_id\": ${BA_ID}, \"fatturazione_trigger\": \"CONSEGNATO\"}"
     check "[$label] crea ordine" 200 "data.id" || return 1
     local oid="$EXTRACTED"
     local i

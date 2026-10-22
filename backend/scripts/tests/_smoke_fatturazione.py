@@ -53,7 +53,9 @@ from scripts.tests._smoke_contesto import seleziona_emittente_di_prova
 # ⚠️ L'IVA si assegna QUI: il builder non la scrive, e la fornitura del cliente
 #    di prova non ha un tipo d'uso che la dia (stadio A2 di
 #    `vendite.fn_resolve_iva_riga_it`). Senza, la riga di fattura nasce senza
-#    `iva_id` e il riepilogo si ferma (brief-be-utenti-di-sviluppo §9.9).
+#    `iva_id`, e dal 2026-10-22 la fattura si ferma entrando in EMESSA con
+#    `E_FATTURA_RIGA_IVA_MANCANTE` (brief-be-utenti-di-sviluppo §9.9; prima si
+#    rompeva nel riepilogo con un errore tecnico).
 #    L'aliquota imponibile piu' alta del catalogo, scelta con un ORDER BY.
 #    `iva_id` non e' fra le colonne congelate su un articolo usato, e questo
 #    non e' ancora usato.

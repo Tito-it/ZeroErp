@@ -3271,6 +3271,7 @@
       "listino": "Listino",
       "listino_creato": "Listino creato",
       "listino_salvato": "Listino salvato",
+      "attivo_con_storia": "Il listino ha una storia: si spegne mettendo la fine validità alla sua versione, non da qui.",
       "versione": "Versione",
       "versione_creata": "Versione creata",
       "warning_bozza_esistente": "Esiste gia' una versione in BOZZA per questo listino ({codice}). Puoi procedere, ma verifica che non ci siano sovrapposizioni.",

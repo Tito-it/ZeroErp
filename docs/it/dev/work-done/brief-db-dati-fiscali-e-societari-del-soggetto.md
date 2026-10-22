@@ -17,7 +17,7 @@ Lato DB applicato e verde (§8.4), BE/FE scritti e verdi (§9), collaudo in-app 
 **Dove sono andati i residui:**
 
 - `data_costituzione` in creazione (§9.5) → brief
-  [brief-db-dati-societari-in-creazione](../work-in-progress/brief-db-dati-societari-in-creazione.md)
+  [brief-db-dati-societari-in-creazione](brief-db-dati-societari-in-creazione.md)
   (D34 del registro DB). Rileggendo la creazione è emerso anche il caso più grave: la ditta individuale
   perde **tutta** la sezione;
 - cambio di natura con dati non congrui → già nel suo brief,
@@ -642,7 +642,7 @@ lo dicono i guard.
   `showDataCostituzione`): in creazione si sarebbe persa in silenzio. Proposta: un parametro
   `p_data_costituzione date DEFAULT NULL` passato al verbo; poi BE (`crea_soggetto_pg`,
   `_create_pg`) e FE (togliere la prop) si allineano. ➡️ 2026-10-14: in
-  [brief-db-dati-societari-in-creazione](../work-in-progress/brief-db-dati-societari-in-creazione.md),
+  [brief-db-dati-societari-in-creazione](brief-db-dati-societari-in-creazione.md),
   insieme alla ditta individuale, che in creazione perde tutta la sezione;
 - il rifiuto di un REA gia' usato (`uq_ds_prov_cea`) accende `iscrizione_rea`, in modifica e in
   creazione (`create_with_constraint_mapping`, test 13 e 15 sul DB vero). In creazione fino al

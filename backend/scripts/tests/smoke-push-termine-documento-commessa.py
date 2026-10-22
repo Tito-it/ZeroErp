@@ -110,32 +110,31 @@ def skip(label, motivo):
 # Scopo: Un ordine in BOZZA del cliente di prova (la base `t`) con le
 #        condizioni di pagamento volute. E' il punto d'ingresso della catena:
 #        da qui in poi il termine viaggia SOLO per mano del codice di produzione.
-#        Prima clonava «l'ultimo ordine visibile» (brief-be-utenti-di-sviluppo
-#        T-7b): su un database nuovo non c'e'.
+#        La testata la scrive il builder del DB sul BA della base
+#        (`dbops.fn_pgtap_crea_ordine`, R-3 del 2026-10-22: due ordini dello
+#        STESSO cliente, che il test 2 vuole); data, termine e modalita' li
+#        scrive lo smoke in bozza, come li sceglierebbe l'operatore.
+#        Prima clonava «l'ultimo ordine visibile» con un INSERT, e poi lo
+#        scriveva a mano (brief-be-utenti-di-sviluppo T-7b, §9.11).
 # ⛔ In BOZZA, non gia' CONFERMATO: le righe si aggiungono solo finche' il
 #    documento e' in bozza (`trgfn_doc_righe_lock_fuori_bozza`,
-#    `E_RIGA_DOC_NON_BOZZA`). Fino al 2026-10-09 la testata nasceva confermata e
-#    la riga arrivava dopo: il guard lo rifiuta, ed e' giusto. La conferma la
-#    fa `conferma_ordine`, DOPO le righe — l'ordine in cui accade davvero.
+#    `E_RIGA_DOC_NON_BOZZA`). La conferma la fa `conferma_ordine`, DOPO le
+#    righe — l'ordine in cui accade davvero.
 def crea_ordine(cur, t, *, data_doc, termine_id, modalita_id, marker):
     cur.execute(
-        """
-        INSERT INTO vendite.ordini (
-            soggetto_ruolo_id, billing_account_id, data, stato_doc_ordine_id,
-            valuta_id, modalita_pagamento_id, termine_pagamento_id,
-            fatturazione_trigger, utility_id, emittente_fiscale_id,
-            fatturazione_immediata, meta
-        ) VALUES (
-            %s, %s, %s,
-            (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT'),
-            %s, %s, %s, 'CONFERMATO', %s, %s, false, jsonb_build_object('smoke', %s)
-        )
-        RETURNING id
-        """,
-        [t["cliente_sr_id"], t["billing_account_id"], data_doc, t["valuta_id"],
-         modalita_id, termine_id, t["utility_id"], t["emittente_fiscale_id"], marker],
+        "SELECT ordine_id FROM dbops.fn_pgtap_crea_ordine(%s, 'DRAFT', %s)",
+        [f"smoke push termine {marker}", t["billing_account_id"]],
     )
-    return cur.fetchone()[0]
+    ordine_id = cur.fetchone()[0]
+    cur.execute(
+        """
+        UPDATE vendite.ordini
+           SET data = %s, termine_pagamento_id = %s, modalita_pagamento_id = %s
+         WHERE id = %s
+        """,
+        [data_doc, termine_id, modalita_id, ordine_id],
+    )
+    return ordine_id
 
 
 # Scopo: Porta a CONFERMATO l'ordine clonato, dopo le sue righe. La coppia di

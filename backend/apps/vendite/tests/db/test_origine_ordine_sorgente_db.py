@@ -62,7 +62,7 @@ def _scrivi_origine(ordine_id: int, tipo: str, origine_id: int) -> None:
 class OrigineOrdineSorgenteDbTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        richiedi_db_provvisto("dbops.fn_pgtap_crea_ordine(text,character varying)")
+        richiedi_db_provvisto("dbops.fn_pgtap_crea_ordine(text,character varying,bigint)")
 
     # La transazione del test, annullata sempre (anche se il setUp si
     # interrompe): il BB di `db_e2e`, non un `try/except` ricopiato.

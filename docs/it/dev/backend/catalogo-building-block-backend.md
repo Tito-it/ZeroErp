@@ -564,6 +564,12 @@ wrapper FE le esclude dal select riga.
 | `BillingAccountRepository.get_emittente_valuta` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Valuta dell'emittente fiscale del BA (`emittenti_fiscali` con `id = fn_get_emittente_fiscale_pk(ba)`, JOIN `config.valute`). Ritorna `{valuta_id, valuta_codice, valuta_descrizione}` o `{}`. Livello 2 di `resolve_valuta_default`. |
 | `BillingAccountRepository.get_cliente_defaults(*, istanza_utility_id, soggetto_ruolo_id, utility_id)` | [billing_account_repository.py](../../../../backend/apps/anagrafiche/db/billing_account_repository.py) | Defaults commerciali del cliente dalla tripletta UNIQUE di `anagrafiche.clienti`: termine e modalita' di pagamento con codice e descrizione. Nessun raise: `{}` se nessun cliente coincide (es. BA fornitore). Consumatore: `vendite_form_defaults_service` (form-defaults ordine e preventivo). |
 
+## Anagrafiche — Soggetti (`apps/anagrafiche/`)
+
+| Building Block | File | Descrizione |
+| --- | --- | --- |
+| `_SQL_PARAMETRI_DATI_SOCIETARI` · `_parametri_dati_societari(ds)` · `DATI_SOCIETARI_COLS` | [soggetti_repository.py](../../../../backend/apps/anagrafiche/db/soggetti_repository.py) | **La sezione «dati societari» come parametri nominati di una funzione DB** (regola del 2, ok Tid 2026-10-22, brief-db-dati-societari-in-creazione §6): i dieci `p_<colonna> := %s` coi cast agli enum (`socio_unico`, `liquidazione`) e a `date`, e i valori nello stesso ordine (`None` = nessuna sezione, tutto NULL). Consumer: le tre funzioni che ricevono la sezione con gli **stessi nomi** — `scrivi_dati_societari` (verbo `fn_scrivi_dati_societari`), `crea_soggetto_pg` e `crea_soggetto_pf` (porte di creazione, dal `20261020-02/-03`). `DATI_SOCIETARI_COLS` e' il contratto da cui parte `SoggettiService._valida_dati_societari`, che vale in modifica **e** in creazione (`_dati_societari_in_creazione`: chiave assente = nessuna sezione). ⛔ Un campo nuovo della sezione si aggiunge qui, una volta: prima il binding era scritto in due copie, e la DI ne avrebbe aggiunta una terza. Presidio: `test_dati_fiscali_societari_db` test 4, 17, 18 |
+
 ---
 
 ## Vendite — Gate autorizzazioni prezzi L1+L2+L3 (`apps/vendite/services/`)

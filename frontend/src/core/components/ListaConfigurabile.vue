@@ -1010,7 +1010,9 @@ defineExpose({
             </span>
           </div>
         </div>
-        <slot name="row-expansion" :data="data" />
+        <div v-if="haRowExpansion" class="lista-config-dettaglio">
+          <slot name="row-expansion" :data="data" />
+        </div>
       </template>
     </DataTable>
 
@@ -1084,6 +1086,17 @@ defineExpose({
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+/* Dettaglio inline del caller: NON entra nella larghezza della tabella madre.
+   La madre e' `width: max-content`, e la cella d'espansione vi contribuirebbe
+   col max-content del dettaglio (una descrizione lunga, su una riga sola),
+   allargando la lista oltre il contenitore: la scrollbar orizzontale
+   all'apertura del kit. `width: 0` azzera il contributo, `min-width: 100%`
+   gli ridà tutta la cella; se il dettaglio non ci sta, scorre la SUA tabella. */
+.lista-config-dettaglio {
+  width: 0;
+  min-width: 100%;
 }
 
 /* Riga di espansione con le colonne ritirate dal packing responsive.

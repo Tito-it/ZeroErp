@@ -961,15 +961,6 @@ bolla: nasce EMESSA e numerata con zero righe, e dopo le righe non si aggiungono
 [brief-db-documento-nasce-nello-stato-iniziale.md](brief-db-documento-nasce-nello-stato-iniziale.md).
 📝 Aperto, non iniziato: decisioni N-1…N-3 di Tid.
 
-### 🟠 D34 — La creazione non scrive tutta la sezione dei dati societari
-
-Trovato il 2026-10-14 chiudendo `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`. Il verbo
-`fn_scrivi_dati_societari` è l'unica porta e riceve lo stato intero, ma in creazione la sezione non gli
-arriva intera: `fn_crea_soggetto_pg` passa `NULL` come data di costituzione, e `fn_crea_soggetto_pf` non
-riceve la sezione, così una ditta individuale la perde tutta senza errore. Brief
-[brief-db-dati-societari-in-creazione.md](brief-db-dati-societari-in-creazione.md).
-📝 Aperto, non iniziato: decisione E-1 di Tid.
-
 ---
 
 ## 4. Cosa NON è un difetto
@@ -1202,8 +1193,9 @@ D6 e il registro dei rossi in CI.
 * [x] **D33** — un cliente manuale per soggetto e utility: brief
       `work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility` — chiuso e archiviato il 2026-10-15
       (DB `20261014-08 … -20`; BE §6-bis; smoke clienti verde).
-* [ ] **D34** — dati societari in creazione: brief
-      `brief-db-dati-societari-in-creazione` (aperto il 2026-10-14, non iniziato; decisione E-1).
+* [x] **D34** — dati societari in creazione: brief
+      `work-done/brief-db-dati-societari-in-creazione` — chiuso e archiviato il 2026-10-22
+      (DB `20261020-01…03`; BE/FE §6.1; collaudo di Tid riuscito).
 * [x] **D35** — `zeroerp_log` nella fase `ruoli`: brief
       `work-done/brief-db-zeroerp-log-nella-fase-ruoli` — aperto e chiuso il 2026-10-15.
 * [x] **D36** — il perimetro una volta per istruzione, le famiglie che restano: brief
@@ -1785,6 +1777,18 @@ tre building block nuovi (`fn_get_identita_sr_perimetro`, `fn_resolve_contropart
 sottoquery. Ritirate tredici funzioni per riga. Il presidio
 `script/test-scope-ef-perimetro-una-volta-per-istruzione-v1` non ammette più eccezioni; regola in
 linee-guida-sql §10.3. Brief `work-done/brief-db-perimetro-una-volta-famiglie-residue.md`.
+
+### ✅ D34 — La creazione scrive tutta la sezione dei dati societari — chiuso il 2026-10-22
+
+Trovato il 2026-10-14 chiudendo `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`: in
+creazione la sezione non arrivava intera al verbo `fn_scrivi_dati_societari`. Una società perdeva la data
+di costituzione, una ditta individuale **tutta** la sezione, senza errore. Ora le due porte
+(`fn_crea_soggetto_pg`, `fn_crea_soggetto_pf`) ricevono gli stessi dieci campi e lasciano decidere al BB
+`anagrafiche.fn_scrivi_dati_societari_alla_nascita` se scriverli; una sezione passata a un privato si
+rifiuta invece di sparire (`20261020-01…03`, E-1 (a) di Tid). BE: il binding della sezione in un punto
+solo del repository, lo stesso contratto della PATCH anche in creazione; FE: la data di costituzione
+anche in creazione. Collaudo di Tid riuscito il 2026-10-22. Brief
+`work-done/brief-db-dati-societari-in-creazione.md`.
 
 ### ✅ D35 — `zeroerp_log` nasce con gli altri ruoli di sistema — chiuso il 2026-10-15
 

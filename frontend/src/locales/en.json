@@ -3271,6 +3271,7 @@
       "listino": "Price list",
       "listino_creato": "Price list created",
       "listino_salvato": "Price list saved",
+      "attivo_con_storia": "This price list has a history: it is switched off by setting the end of validity on its version, not here.",
       "versione": "Version",
       "versione_creata": "Version created",
       "warning_bozza_esistente": "A DRAFT version already exists for this price list ({codice}). You can proceed, but check there are no overlaps.",

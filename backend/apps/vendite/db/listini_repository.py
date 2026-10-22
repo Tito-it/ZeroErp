@@ -246,7 +246,14 @@ class ListiniRepository:
                         SELECT COUNT(*)
                           FROM vendite.listini_versioni v
                          WHERE v.listino_id = l.id
-                    ) AS versioni_count
+                    ) AS versioni_count,
+                    -- ⭐ Un listino con storia (una versione ATTIVA o CHIUSA)
+                    --    non si spegne col flag: si spegne con la fine validita'
+                    --    della versione (decisione di Tid, 2026-10-21; il DB
+                    --    rifiuta con E_LISTINO_CON_STORIA_NON_SPEGNIBILE). La
+                    --    regola e' del DB e si LEGGE da li', non si ricopia qui:
+                    --    il drawer mostra il toggle solo se e' falso.
+                    vendite.fn_listino_ha_storia(l.id) AS ha_storia
                   FROM vendite.listini l
                   LEFT JOIN config.utilities u ON u.id = l.utility_id
                   LEFT JOIN config.listini_tipologie lt ON lt.id = l.tipologia_id

@@ -80,10 +80,12 @@
 #      non il solo conteggio)
 #   8  base ZERO -> zero rate, nessun fallimento (D-D: documento legittimo)
 #   9  D-F: una fattura oltre EMESSA finisce in `skipped_rows` e NON in
-#      `failed_rows` — i due contatori restano distinti
+#      `failed_rows` — i due contatori restano distinti. Il lotto chiuso si
+#      costruisce (9a e' la sua precondizione)
 # ------------------------------------------------------------
 
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import connection, transaction
@@ -93,8 +95,10 @@ from django.db import connection, transaction
 # «'str' object has no attribute 'get'» — e' successo scrivendo questo file,
 # ed e' lo stesso difetto che il worker della coda ha gia' pagato.
 from apps.core.db._helpers import coerce_jsonb_dict
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.fatture_righe_service import FattureRigheService
+from apps.vendite.services.pipeline_service import run_lotto_pipeline_until_done
 from scripts.tests._smoke_contesto import apri_contesto_smoke
 from scripts.tests._smoke_fatturazione import (
     costruisci_base_fatturazione,
@@ -341,32 +345,48 @@ with transaction.atomic():
     #    documenti CHIUSI — e non in `skipped_errore_rows`, che e' il contatore
     #    dei documenti ROTTI. Sommarli direbbe «una saltata» senza dire quale
     #    dei due casi, che per il cockpit sono l'opposto.
+    #    Il lotto CHIUSO si COSTRUISCE dal percorso vivo (brief-be-utenti-di-
+    #    sviluppo §9.11, dopo la correzione DB del §9.10): un'attivita' marcata
+    #    col giro su una competenza isolata nel futuro, e il driver della
+    #    pipeline che crea il lotto, emette e numera fino a DEFINITIVA — lo
+    #    stesso di «Rendi definitive». Prima lo si cercava fra i dati
+    #    esistenti, e su un database nuovo il test era sempre SKIP.
+    with connection.cursor() as cur:
+        competenza_df = (oggi_aziendale() + timedelta(days=800)).replace(day=1)
+        marker_df = uuid.uuid4().hex[:8]
+        t_df = costruisci_base_fatturazione(cur, marker=marker_df, competenza_mese=competenza_df)
+        lock_df = str(uuid.uuid4())
+        crea_attivita_di_commessa(
+            cur, t_df, segment_key=f"SMOKE:{marker_df}:DF", lock_batch_id=lock_df,
+            prezzo=Decimal("50.00"), stato_approvazione="APPROVATA",
+            stato_emissione="EMESSA", emit_batch_id=lock_df,
+        )
+    esito_giro = run_lotto_pipeline_until_done(
+        competenza_mese=competenza_df, tipo_doc_fiscale_id=t_df["tipo_doc_fiscale_id"],
+        utility_id=t_df["utility_id"], billing_account_id=t_df["billing_account_id"],
+        emittente_soggetto_ruolo_id=t_df["emittente_sr_id"], lock_batch_id=lock_df,
+        fino_a_stato="DEFINITIVA",
+    )
+    lotto_chiuso = esito_giro["lotto_id"]
     with connection.cursor() as cur:
         cur.execute(
             """
-            SELECT lf.lotto_id
+            SELECT array_agg(s.codice_interno ORDER BY f.id)
               FROM vendite.fatturazione_lotti_fatture lf
               JOIN vendite.fatture f ON f.id = lf.fattura_id
               JOIN config.stati_doc_fiscale s ON s.id = f.stato_doc_fiscale_id
-             WHERE s.codice_interno NOT IN ('DRAFT', 'EMESSA')
-             GROUP BY lf.lotto_id
-            HAVING count(*) = count(*) FILTER (
-                     WHERE s.codice_interno NOT IN ('DRAFT','EMESSA'))
-             ORDER BY lf.lotto_id DESC LIMIT 1
-            """
+             WHERE lf.lotto_id = %s
+            """,
+            [lotto_chiuso],
         )
-        r = cur.fetchone()
-    # ⚠️ Ancora cercato fra i dati esistenti: costruirlo vuol dire numerare il
-    #    lotto del giro (`numera_lotto`), che rilancia la pipeline col solo
-    #    `lotto_id` e oggi si ferma sull'emittente predefinito al posto di
-    #    quello del lotto (brief-be-utenti-di-sviluppo §9.10). Si costruisce
-    #    quando il DB lo corregge.
-    if not r:
-        skip("9) D-F fattura oltre soglia",
-             "nessun lotto con sole fatture oltre EMESSA su questo ambiente "
-             "(da costruire dopo il §9.10 di brief-be-utenti-di-sviluppo)")
-    else:
-        lotto_chiuso = r[0]
+        stati_df = cur.fetchone()[0] or []
+    precondizione_df = bool(stati_df) and all(st == "DEFINITIVA" for st in stati_df)
+    check("9a) precondizione: il lotto del giro ha sole fatture DEFINITIVA",
+          precondizione_df,
+          f"lotto {lotto_chiuso} stati={stati_df} esito={esito_giro.get('motivo_stop')}")
+    # ⚠️ Senza la precondizione il 9 non prova niente (o non ha un lotto): il
+    #    FAIL e' gia' sul 9a, e un secondo FAIL o un'eccezione lo coprirebbero.
+    if precondizione_df:
         esito_df = repo.run_genera_scadenze_lotto_task(lotto_id=lotto_chiuso)
         check("9) D-F: fattura oltre EMESSA -> skipped_rows, non failed",
               esito_df["skipped_rows"] > 0

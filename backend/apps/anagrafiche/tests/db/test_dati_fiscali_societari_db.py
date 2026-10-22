@@ -38,6 +38,9 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 14) DatiFiscaliSocietariDbTests.test_lookup_e_risolutore_leggono_la_stessa_natura
 15) DatiFiscaliSocietariDbTests.test_creazione_rea_di_un_altro_soggetto_accende_il_campo
 16) DatiFiscaliSocietariDbTests.test_risolutore_ruolo_senza_default_dichiarato
+17) DatiFiscaliSocietariDbTests.test_creazione_societa_con_data_di_costituzione
+18) DatiFiscaliSocietariDbTests.test_creazione_ditta_individuale_con_la_sezione
+19) DatiFiscaliSocietariDbTests.test_creazione_privato_con_la_sezione_rifiutata
 """
 from __future__ import annotations
 
@@ -426,3 +429,84 @@ class DatiFiscaliSocietariDbTests(unittest.TestCase):
         conf = SoggettiRepository().get_config_resolver(riga[0])
         assert conf is not None
         self.assertIsNone(conf["default_tipo_soggetto_dettaglio_id"])
+
+    # Scopo: un soggetto che nasce dal service vero, col contatto obbligatorio.
+    # ⚠️ Dal service e NON dalla fixture `_pg`, per la ragione del test 15.
+    def _crea(self, **campi: Any) -> str:
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        creato = SoggettiService().create_soggetto({
+            **campi,
+            "contatto": {
+                "nominativo": "Nascita", "tipo_contatto_id": self.tipo_contatto,
+                "email": "dati.nascita@test.invalid",
+            },
+        })
+        return str(creato["id"])
+
+    @staticmethod
+    def _libero(funzione: str) -> str:
+        with connection.cursor() as cur:
+            cur.execute(f"SELECT dbops.{funzione}()")
+            return str(cur.fetchone()[0])
+
+    # 17. La data di costituzione si scrive alla NASCITA, col resto della
+    #     sezione (brief-db-dati-societari-in-creazione §6): fino al 2026-10-22
+    #     la porta la passava al verbo a NULL, e il FE la offriva solo in
+    #     modifica.
+    def test_creazione_societa_con_data_di_costituzione(self):
+        piva = self._libero("fn_pgtap_piva_libera")
+        with connection.cursor() as cur:
+            cur.execute("SELECT id FROM config.province ORDER BY id LIMIT 1")
+            provincia = cur.fetchone()[0]
+        sc = self._crea(
+            tipo_soggetto_dettaglio_id=self.tipo["SC"], ragione_sociale="Nascita SRL",
+            codice_fiscale=piva, partita_iva=piva,
+            dati_societari={
+                "forma_giuridica_id": self.forma["SRL"], "capitale_sociale": "10000",
+                "id_prov_iscri_rea": provincia, "iscrizione_rea": "REA-NASCITA-1",
+                "data_costituzione": "2020-03-15",
+            },
+        )
+        ds = self._dati_societari(sc)
+        assert ds is not None
+        self.assertEqual(
+            (ds["forma_giuridica_id"], ds["data_costituzione"]),
+            (self.forma["SRL"], "2020-03-15"),
+        )
+
+    # 18. La ditta individuale nasce con la sua sezione (§1.1): fino al
+    #     2026-10-22 `_create_pf` non la leggeva e la porta delle persone
+    #     fisiche non la riceveva — «creato», e la sezione vuota.
+    def test_creazione_ditta_individuale_con_la_sezione(self):
+        di = self._crea(
+            tipo_soggetto_dettaglio_id=self.tipo["DI"], cognome="Nascita", nome="Ditta",
+            codice_fiscale=self._libero("fn_pgtap_cf_libero"),
+            partita_iva=self._libero("fn_pgtap_piva_libera"),
+            dati_societari={
+                "forma_giuridica_id": self.forma["DI"], "destinatario_fe": "P",
+                "pec_fatturazione": "ditta.nascita@pec.test.invalid",
+                "data_costituzione": "2010-11-12",
+            },
+        )
+        ds = self._dati_societari(di)
+        assert ds is not None
+        self.assertEqual(
+            (ds["forma_giuridica_id"], ds["destinatario_fe"], ds["pec_fatturazione"],
+             ds["data_costituzione"]),
+            (self.forma["DI"], "P", "ditta.nascita@pec.test.invalid", "2010-11-12"),
+        )
+
+    # 19. Un privato (policy NONE) con la sezione: la rifiuta il guard della
+    #     natura, non sparisce. Senza forma, o parlerebbe prima il guard della
+    #     forma (pgTAP `test-dati-societari-alla-nascita-v1`, test 17).
+    def test_creazione_privato_con_la_sezione_rifiutata(self):
+        cf = self._libero("fn_pgtap_cf_libero")
+        self._rifiuto(
+            lambda: self._crea(
+                tipo_soggetto_dettaglio_id=self.tipo["PR"], cognome="Nascita",
+                nome="Privato", sesso="M", codice_fiscale=cf,
+                dati_societari={"data_costituzione": "2015-01-01"},
+            ),
+            "E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO", None,
+        )

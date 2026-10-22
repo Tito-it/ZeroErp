@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1124, di cui 120 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1126, di cui 120 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -806,6 +806,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # vendite.trgfn_fatture_righe_guard_riga_capofila: una riga di fattura dichiara come capofila una riga che e' a sua volta una PARTE. ⛔ TECNICO e non DATO_ERRATO perche' quel legame non lo digita nessuno in un form: lo scrive l'orchestrazione del backend che spezza la riga quando il plafond del titolo IVA ne copre solo una quota. ⚠️ Su un TECNICO la chiave campo esce dal contesto: non c'e' nessun campo da accendere. ⭐ Serve perche' la catena e' un difetto MUTO: se «capofila -> parti» smette di essere una lettura a un salto, chi somma gli importi di un'attivita' attraversando fattura_riga_id prende meta' valore e non fallisce. ⛔ Non si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito dichiarato (D11 di brief-db-be-classe-codici-errore), non una sede. ℹ️ L'altra invariante della stessa colonna — la capofila deve stare sulla STESSA fattura — non ha un codice perche' non e' un guard: e' la FK composita fk_fatture_righe_riga_capofila, che solleva un 23503. Piano: brief-db-richieste-aperte-dal-backend, voce 5 (N3, decisione D).
     "E_FATTURA_RIGA_CAPOFILA_INCOERENTE": "TECNICO",
     "E_FATTURA_RIGA_CONGELATA": "CONFLITTO_STATO",
+    # Una riga di FATTURA deve portare l'ALIQUOTA (iva_id) per entrare in EMESSA: vendite.fn_ricalcola_riepilogo_iva_fattura aggrega tutte le righe, e la fattura elettronica vuole l'aliquota su ogni linea. Primo motivo di script.fn_check_fattura_emettibile, sollevato da vendite.trgfn_fatture_guard_stato entrando in EMESSA (decisione di Tid del 2026-08-29 per DDT, ordini e preventivi, estesa alla fattura con D-3 del 2026-10-22; richiesta BE §9.9 di brief-be-utenti-di-sviluppo). La bozza resta libera e il riepilogo della bozza tiene la riga con l'aliquota vuota. Il caso tipico: articolo senza iva_id su una fornitura senza tipo d'uso (origine ASSENTE del risolutore). Nessun bersaglio: la richiesta e' l'emissione. Il contesto porta fattura_id e, dal dettaglio del motivo, riga_id, riga_nr, articolo_id, descrizione. I VALORI: numero (o id) della fattura, riga_nr, descrizione della riga.
+    "E_FATTURA_RIGA_IVA_MANCANTE": "CONFLITTO_STATO",
     "E_FATTURA_SATELLITE_CONGELATO": "CONFLITTO_STATO",
     "E_FATTURA_SENZA_RIGHE": "CONFLITTO_STATO",
     # Richiesta valida, esito nullo: nessun lotto nel perimetro chiesto.
@@ -956,6 +958,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # ⚠️ RITIRATO il 2026-10-03
     "E_KIT_QUANTITA_DISOMOGENEE": "CONFLITTO_STATO",
     "E_LISTINO_COMPONENTE_COERENZA_BOM": "DATO_ERRATO",
+    # Guard vendite.trgfn_listini_guard_spegnimento_storia (BEFORE UPDATE OF attivo su vendite.listini, a05: prima della catena generica a10_*_block_deact; decisione di Tid del 2026-10-21, D-1 del 2026-10-22; richiesta BE §9.8 di brief-be-utenti-di-sviluppo): si spegne (attivo true -> false) un listino con STORIA, cioe' con almeno una versione ATTIVA o CHIUSA (vendite.fn_listino_ha_storia). Un listino con storia non si spegne con l'interruttore: si chiude con la fine validita' della versione in vigore. Prima usciva E_ATTIVO_BLOCK_CHILDREN_ACTIVE col rimedio «disattivare le righe», non eseguibile. CONFLITTO_STATO: e' lo stato del listino a impedire la richiesta. Campo attivo. I VALORI: codice del listino.
+    "E_LISTINO_CON_STORIA_NON_SPEGNIBILE": "CONFLITTO_STATO",
     # Trigger DB guard coerenza BoM su listini_righe_componenti: blocca · prezzi bundle riferiti a componenti non presenti nella BoM corrente · del padre composito (o fuori dal range di validità della BoM).
     "E_LISTINO_RIGA_COMP_BOM_INCOERENTE": "DATO_ERRATO",
     "E_LISTINO_RIGA_COMPOSITO_VIETATO": "DATO_ERRATO",
