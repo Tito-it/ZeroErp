@@ -20,6 +20,7 @@
 #       nelle letture di lista, non affidato al ricordo.
 # ------------------------------------------------------------
 
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 from typing import Any, cast
@@ -292,14 +293,18 @@ _RIGA_COLONNE = """
         r.motivo_sospeso,
         r.fondo_source_id,
         r.attivo,
-        r.meta,
-        -- ⭐ IL VERBO «ELIMINA» E IL SUO MOTIVO (D17, linee-guida-sql §12.5):
-        --    la terna `reason / reason_key / dettaglio` + il flag, letti dalla
-        --    STESSA check che il guard chiama per rifiutare. Cosi' il cestino
-        --    spento in lista e il 409 del database non «coincidono oggi»: non
-        --    possono divergere. ⛔ Il nome dice QUALE verbo: su una riga ce ne
-        --    sono altri (abbina, sospendi), e un `blocco_reason` generico li
-        --    confonderebbe al primo che si aggiunge.
+        r.meta
+"""
+
+# ⭐ IL VERBO «ELIMINA» E IL SUO MOTIVO (D17, linee-guida-sql §12.5): la terna
+#    `reason / reason_key / dettaglio` + il flag, letti dalla STESSA check che
+#    il guard chiama per rifiutare. Cosi' il cestino spento in lista e il 409
+#    del database non «coincidono oggi»: non possono divergere. ⛔ Il nome dice
+#    QUALE verbo: su una riga ce ne sono altri (abbina, sospendi), e un
+#    `blocco_reason` generico li confonderebbe al primo che si aggiunge.
+# ⚠️ NON stanno in `_RIGA_COLONNE`: le aggiunge `_sql_con_elimina` SOPRA la
+#    lettura, dopo la pagina (vedi sotto).
+_ELIMINA_COLONNE = """
         elimina.reason             AS elimina_blocco_reason,
         elimina.reason_key         AS elimina_blocco_reason_key,
         elimina.dettaglio          AS elimina_blocco_dettaglio,
@@ -309,21 +314,50 @@ _RIGA_COLONNE = """
 # ⭐ La LATERAL del PRIMO motivo e' il BB `sql_lateral_primo_motivo` (core/db,
 #    2026-09-19): LEFT JOIN … ON TRUE (le righe eliminabili non devono sparire)
 #    e `ORDER BY ord LIMIT 1` (lo stesso motivo che il guard solleva).
-# ⚠️ COSTO, letto sul piano: nella coda paginata (`_lista_paginata`, con
-#    `COUNT(*) OVER ()`) la LATERAL gira per ogni riga FILTRATA, non per riga
-#    di pagina. La check e' due ricerche su indice sotto RLS (riga + testata),
-#    e il frammento e' UNO per le tre letture: si e' scelto di pagarlo qui
-#    piuttosto che tenere due frammenti gemelli. ⭐ Fatto datato (EXPLAIN del
-#    2026-09-14, contesto operatore): la `Function Scan` sta nel Nested Loop
-#    SOTTO la `WindowAgg`, accanto ai predicati RLS che gia' girano per riga
-#    (`fn_scope_ef_whitelist_via_fattura`, ...) — stessa specie di costo, non
-#    una specie nuova. Se un giorno pesera', la coda si ristruttura «pagina
-#    prima, motivo dopo»: e' una decisione da prendere col piano in mano.
-#    Presidio: `tests/db/test_riga_elimina_e_transizioni_db.py`.
-_LATERAL_ELIMINA = sql_lateral_primo_motivo(
-    "script.fn_check_riga_contabile_eliminabile(r.id)", "elimina"
-)
-_RIGA_FROM = f"""
+# ⭐ Rev 2026-10-21: la check si chiama sulla TESTATA, non sull'id della riga.
+#    `fn_check_riga_contabile_eliminabile(id)` e' SECURITY INVOKER e rilegge
+#    riga e testata sotto RLS: chiamata per riga, ogni chiamata ricalcolava il
+#    perimetro (EXPLAIN del 2026-10-21: ~114 buffer a riga, il costo maggiore
+#    della coda). La meta' `_su_distinta` giudica la testata RICEVUTA e non
+#    legge niente sotto perimetro: la testata la legge questa istruzione, sotto
+#    la sua policy, col perimetro una volta (linee-guida-sql §13.2). Il 404
+#    no-leak resta della firma per id (guard) e, qui, della RLS sulla riga.
+# ⚠️ `testata` e' una LATERAL che espone la SOLA riga intera `c`, non le sue
+#    colonne: la clausola d'ordine si riapplica qui sopra coi nomi della
+#    proiezione, e una `c.codice`/`c.id` in scope li renderebbe ambigui.
+#    LEFT e non INNER: una testata che non si legge non fa sparire la riga in
+#    silenzio — la check solleva E_PAGAMENTI_CHIAMATA_NON_VALIDA.
+_LATERAL_ELIMINA = f"""
+      LEFT JOIN LATERAL (
+          SELECT c FROM pagamenti.vendite_contabili c WHERE c.id = p.contabile_id
+      ) testata ON TRUE
+      {sql_lateral_primo_motivo(
+          "script.fn_check_riga_contabile_eliminabile_su_distinta(testata.c)", "elimina"
+      )}
+"""  # noqa: S608 — frammenti costanti del modulo, nessun input
+
+
+# Scopo: Aggiunge il blocco «elimina» a una lettura di righe GIA' fatta: la
+#        check gira sulle righe che escono, non su quelle che la lettura ha
+#        scorso per arrivarci.
+# ⭐ E' la ragione per cui sta SOPRA e non dentro `_RIGA_FROM`: nelle liste
+#    paginate `_lista_paginata` la applica alla PAGINA (dopo `LIMIT/OFFSET`),
+#    quindi la check gira per riga mostrata e non per riga filtrata sotto la
+#    `COUNT(*) OVER ()`. Una sede sola per le quattro letture (dettaglio,
+#    anteprima, righe della distinta, coda).
+# ⚠️ `order_clause`: l'ordine di una sottoquery non sopravvive alle join di
+#    sopra, quindi chi ha un ordine lo RIPASSA qui (gli stessi nomi della
+#    proiezione).
+def _sql_con_elimina(sql: str, order_clause: str = "") -> str:
+    return f"""
+        SELECT p.*, {_ELIMINA_COLONNE}
+          FROM ({sql}) p
+          {_LATERAL_ELIMINA}
+        {order_clause}
+    """  # noqa: S608 — sql e order_clause da costanti del modulo / whitelist, valori come parametri
+
+
+_RIGA_FROM = """
       FROM pagamenti.vendite_contabili_righe r
       LEFT JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
       LEFT JOIN vendite.fatture f            ON f.id = r.fattura_id
@@ -339,10 +373,10 @@ _RIGA_FROM = f"""
       LEFT JOIN anagrafiche.vw_soggetti_ruoli_dettaglio srd
              ON srd.soggetto_ruolo_id = ba.soggetto_ruolo_id
       LEFT JOIN vendite.fatture_scadenze sc  ON sc.id = r.scadenza_id
-      {_LATERAL_ELIMINA}
 """
 
-# La riga «nuda», per il dettaglio e per le righe di UNA distinta.
+# La riga «nuda», per il dettaglio e per le righe di UNA distinta. Senza il
+# blocco «elimina»: lo aggiunge `_sql_con_elimina` sopra.
 _RIGA_SELECT = f"SELECT {_RIGA_COLONNE} {_RIGA_FROM}"
 
 # Il perimetro MINIMO «riga + suo stato», per i conteggi che non hanno bisogno
@@ -838,6 +872,11 @@ class PagamentiRepository:
     #       copie della stessa paginazione divergono alla prima correzione.
     # ⚠️ `order_clause` si compone dalla WHITELIST del chiamante e MAI da input
     #    utente: qui dentro finisce in una stringa SQL.
+    # ⭐ `dopo_pagina`: cio' che si calcola sulle righe MOSTRATE e non su quelle
+    #    filtrate — oggi il blocco «elimina» delle righe (`_sql_con_elimina`).
+    #    Riceve la query della pagina (gia' con `total_count` e `LIMIT/OFFSET`)
+    #    e la clausola d'ordine da ripassare sopra. Il conteggio di ripiego non
+    #    lo paga: conta le righe, non le giudica.
     @staticmethod
     def _lista_paginata(
         *,
@@ -846,6 +885,7 @@ class PagamentiRepository:
         order_clause: str,
         limit: int,
         offset: int,
+        dopo_pagina: Callable[[str, str], str] | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         data_sql = f"""
             SELECT *, COUNT(*) OVER () AS total_count FROM (
@@ -854,6 +894,8 @@ class PagamentiRepository:
             {order_clause}
             LIMIT %s OFFSET %s
         """  # noqa: S608 — select_sql da costanti del modulo, order_clause da sql_order_clause su whitelist, valori come parametri
+        if dopo_pagina is not None:
+            data_sql = dopo_pagina(data_sql, order_clause)
         # ⚠️ Il conteggio di ripiego serve SOLO a pagina oltre l'ultima: li' la
         # window function non ha righe su cui calcolare il totale e
         # risponderebbe zero. Senza, a chi e' rimasto su una pagina stantia di
@@ -1156,7 +1198,7 @@ class PagamentiRepository:
     #    dire quali righe restano indietro e non puo' farlo su una pagina.
     def list_righe(self, contabile_id: int) -> list[RigaContabileRow]:
         self._guard_canale_sistema("list_righe")
-        sql = f"{_RIGHE_DISTINTA_ATTIVE_SQL} ORDER BY r.id"
+        sql = _sql_con_elimina(_RIGHE_DISTINTA_ATTIVE_SQL, "ORDER BY id")
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
             rows = rows_to_list(cursor)
@@ -1221,6 +1263,7 @@ class PagamentiRepository:
             order_clause=f"ORDER BY {ordinamento}",
             limit=limit,
             offset=offset,
+            dopo_pagina=_sql_con_elimina,
         )
         return [cast(RigaContabileRow, self._shape(row)) for row in rows], total
 
@@ -1247,11 +1290,11 @@ class PagamentiRepository:
     #    c'era modo di produrne una dall'app; adesso c'e'.
     def get_riga(self, riga_id: int) -> RigaContabileRow | None:
         self._guard_canale_sistema("get_riga")
-        sql = f"""
+        sql = _sql_con_elimina(f"""
             {_RIGA_SELECT}
             WHERE r.id = %s
               AND r.attivo IS TRUE
-        """
+        """)
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(riga_id)])
             rows = rows_to_list(cursor)
@@ -1835,6 +1878,7 @@ class PagamentiRepository:
             order_clause=f"ORDER BY {ordinamento}",
             limit=limit,
             offset=offset,
+            dopo_pagina=_sql_con_elimina,
         )
         return [cast(RigaCodaRow, self._shape(row)) for row in rows], total
 

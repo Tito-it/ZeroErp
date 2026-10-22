@@ -130,19 +130,26 @@ const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 
-// Push contratto / genera ordine: le azioni arrivano data-driven in
-// `available_actions` solo quando sono eseguibili, quindi da sole spariscono
-// senza spiegare perche'. La capability espone anche il motivo: banner
-// informativo, mirror di PreventiviDrawer/OrdiniDrawer.
+// Push contratto / genera ordine: fuori da un'offerta trasformabile le due
+// azioni NON arrivano in `available_actions` (non accettata, o gia' trasformata),
+// quindi da sole spariscono senza spiegare perche'. La capability espone anche il
+// motivo: banner informativo, mirror di PreventiviDrawer/OrdiniDrawer.
+// ⭐ Dal 2026-10-21 (brief-db-offerta-emissione-ed-erogazione H-R2, I-D2) da
+//    ACCETTATA senza documenti vivi le due azioni arrivano PROPOSTE anche spente,
+//    col motivo delle righe (`RIGA_NON_AMMESSA`): lo dice il tooltip del
+//    pulsante, il canale unico del perche' di un pulsante spento. Il banner
+//    parla solo per le azioni che non ci sono: ripetere qui il motivo lo
+//    mostrerebbe due volte, e senza i valori della frase (`{0}`, `{1}`).
 // ⚠️ Un motivo si mostra UNA volta: le due azioni sono mutuamente esclusive con
 //    la stessa abilitazione (fn_available_actions_offerta), quindi i due motivi
 //    coincidono quasi sempre («Disponibile dopo l'accettazione» compariva due
 //    volte, 2026-10-07) — e due `:key` uguali nel `v-for`.
 const pushReasons = computed(() => {
+  const proposte = new Set((availableActions.value || []).map((a) => a.key))
   const motivi = [
-    { ok: caps.flag('can_push_contratto'), key: capabilities.value.can_push_contratto_reason_key },
-    { ok: caps.flag('can_genera_ordine'), key: capabilities.value.can_genera_ordine_reason_key },
-  ].filter((r) => !r.ok && r.key && te(r.key))
+    { azione: 'push_contratto', ok: caps.flag('can_push_contratto'), key: capabilities.value.can_push_contratto_reason_key },
+    { azione: 'genera_ordine', ok: caps.flag('can_genera_ordine'), key: capabilities.value.can_genera_ordine_reason_key },
+  ].filter((r) => !r.ok && !proposte.has(r.azione) && r.key && te(r.key))
   return motivi.filter((r, i) => motivi.findIndex((m) => m.key === r.key) === i)
 })
 
@@ -581,7 +588,10 @@ function reloadRevisioni() {
 //   - push_contratto        -> OffertaPushDialog (con guard proattivo
 //     contratto_id per la race-condition cross-tab)
 //   - genera_ordine         -> confirmAction + store.generaOrdine (conversione
-//     §7.4; la fn DB espone l'azione solo se nessun ordine già generato)
+//     §7.4; dal 2026-10-21 la genera il verbo DB `fn_genera_ordine_da_offerta`)
+// Un'azione spenta (`enabled:false`, es. «Genera ordine» con una riga che non
+// va in un ordine) arriva come pulsante disabilitato col tooltip del motivo
+// (`mapAvailableActionsToDrawerActions`): il click non arriva qui.
 // `requires_motivazione` arriva dalla fn DB ma non viene letta qui: la
 // motivazione obbligatoria e' enforced dal dialog esito + dal BE
 // (motivazione_rifiuto NOT NULL su RIFIUTATA/ANNULLATA).
@@ -629,8 +639,8 @@ function onActionDispatch(action) {
     case 'genera_ordine':
       // Conversione §7.4: la fn DB non ritorna l'azione se un ordine e' gia'
       // nato da questa offerta (idempotenza 1:1). requires_confirm=true →
-      // confermiamo prima di generare; la race concorrente e' coperta dal
-      // guard BE (E_ORD_OFFERTA_GIA_CONVERTITA) + UNIQUE parziale.
+      // confermiamo prima di generare; la race concorrente la ferma il verbo
+      // DB (offerta FOR UPDATE, E_ORD_OFFERTA_GIA_CONVERTITA).
       confirmAction({
         header: t('vendite.offerte.genera_ordine_titolo'),
         message: t('vendite.offerte.genera_ordine_messaggio'),
@@ -793,9 +803,10 @@ async function onGeneraOrdine() {
 //   1) Transizioni di stato + azioni speciali data-driven dal BE
 //      (script.fn_available_actions_offerta, mapped 1:1 in azioni
 //      `kind:'state'` con label/icona/severity dal jsonb). Include
-//      `genera_ordine` (conversione §7.4), che la fn espone solo se
-//      ACCETTATA e nessun ordine già generato (idempotenza 1:1): il bottone
-//      sparisce a conversione avvenuta come per `push_contratto`.
+//      `genera_ordine` (conversione §7.4), che la fn propone da ACCETTATA
+//      senza documenti vivi (spenta col motivo se una riga non va in un
+//      ordine): il bottone sparisce a conversione avvenuta come per
+//      `push_contratto`.
 //   2) Manage action `manage-eccezioni` per il sub-drawer delle righe
 //      (master-detail inline, `OffertaRigheDrawer`). Allineato al pattern
 //      ContrattoDrawer: le righe vivono in un sub-drawer dedicato, non in una

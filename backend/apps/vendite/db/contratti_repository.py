@@ -810,7 +810,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "generazione_canone",
         "competenza_canone",
         "prezzo_unitario",
-        "quantita",
+        # ⛔ Niente `quantita`: la calcola il DB (`trgfn_qta_from_operativa`).
         "qta_operativa",
         "uom_operativa_id",
         "factor_to_base",
@@ -849,7 +849,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "generazione_canone",
         "competenza_canone",
         "prezzo_unitario",
-        "quantita",
         "qta_operativa",
         "uom_operativa_id",
         "factor_to_base",

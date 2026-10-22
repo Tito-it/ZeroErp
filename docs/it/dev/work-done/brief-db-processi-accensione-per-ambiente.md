@@ -35,7 +35,7 @@ che le madri non coprono. ✅ La riga 10 del BE è fatta (§6.8): l'accensione �
 | 9-ter-quater | sessione BE/FE | ✅ (2026-10-18) firma jsonb della madre del soggetto, `postal_code`, tendina degli stati, form in due forme, codici; provato sul DB vero dopo l'apply | §6.12 | — |
 | 9-ter-quinquies | Tid | ✅ apply di `20261018-80 … -99` e `20261019-01 … -04` su dbdev, pgTAP verdi (2026-10-18) | §6.12 | — |
 | 9-ter-sexies | team DB, poi Tid | ✅ R-BE-13: `fn_stato_proposto_id` non applicava l'override per utente (né per gruppo ed emittente). D-13a e D-13b di Tid; `20261019-05` (BB `fn_get_parameter_di_sessione`) e `-06` scritti e provati, applicati su dbdev (2026-10-18 22:45), pgTAP verdi; resta il commit | §6.12, §6.13 | — |
-| 9-ter-septies | team DB, poi Tid | R-BE-14: l'emittente di prova del provisioning non è attrezzato per lavorare. Tre pezzi (§6.12): ✅ **registri** in questo brief; **template di default** in [brief-db-modelli-documento-standard](../work-in-progress/brief-db-modelli-documento-standard.md), D-1 … D-3 di Tid aperte; ✅ **giacenza** nello smoke (BE). Registri: ✅ (2026-10-18) D-14a … D-14d prese, via allo sviluppo dato; `20261019-07` … `-12`, codice `E_REGISTRO_COPPIA_GIA_COPERTA`, pgTAP nuovo e `test-registri-motore-trasloco` adeguato, scritti e provati sullo scratch | §6.12, §6.14 | — |
+| 9-ter-septies | team DB, poi Tid | R-BE-14: l'emittente di prova del provisioning non è attrezzato per lavorare. Tre pezzi (§6.12): ✅ **registri** in questo brief; **template di default** in [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md), D-1 … D-3 di Tid aperte; ✅ **giacenza** nello smoke (BE). Registri: ✅ (2026-10-18) D-14a … D-14d prese, via allo sviluppo dato; `20261019-07` … `-12`, codice `E_REGISTRO_COPPIA_GIA_COPERTA`, pgTAP nuovo e `test-registri-motore-trasloco` adeguato, scritti e provati sullo scratch | §6.12, §6.14 | — |
 | 9-ter-octies | Tid | ✅ apply di `20261019-07` … `-12` e dei due CSV dei codici su dbdev (2026-10-18 23:35), pgTAP verdi, compreso `test-numero-prefisso-registro-v1` corretto; resta il commit | §6.14 | — |
 | 9-ter-nonies | sessione BE | ✅ (2026-10-19) R-DB-14a: ripiego e policy del codice `E_REGISTRO_COPPIA_GIA_COPERTA`; committato `615281b6c` | §6.14 | — |
 | 9-quater | team DB | ✅ 2b-3 scritta e provata (2026-10-18): etichette, guard, verbo, presidio, `fn_accendi_veste` (`20261018-55` … `-64`) | §5-ter.3 | — |
@@ -1679,7 +1679,7 @@ Proposta, in due pezzi diversi:
 * **registri**: risposta e consegna nel §6.14, ✅ applicati su dbdev il 2026-10-18 (23:35). Lo smoke
   `push-termine-documento-commessa` deve tornare a fatturare su `DEVA`: da confermare al prossimo giro di smoke;
 * **template di default**: non si apre una sede nuova. È il difetto di
-  [brief-db-modelli-documento-standard](../work-in-progress/brief-db-modelli-documento-standard.md) (un emittente nasce senza
+  [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) (un emittente nasce senza
   modelli), che ha già la sua decisione aperta (D-1 … D-3 di Tid, §5) e la ricaduta sugli smoke (§7). I sei
   smoke della tabella che si fermano su `E_DOCUMENTI_NOT_FOUND` aspettano quel brief;
 * **giacenza**: ✅ nello smoke, come sopra.
@@ -1796,7 +1796,7 @@ trigger propongono lo stesso stato allo stesso utente, salvo un override per fun
 ### 6.14 Risposta del team DB a R-BE-14: un emittente nasce senza registro delle fatture (2026-10-18)
 
 > Questo paragrafo risponde al pezzo **registri** di R-BE-14. I template di default stanno in
-> [brief-db-modelli-documento-standard](../work-in-progress/brief-db-modelli-documento-standard.md) (§6.12, «Dove va ciascun pezzo»).
+> [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) (§6.12, «Dove va ciascun pezzo»).
 
 **La richiesta** è nel §6.12 (R-BE-14): su `DEVA` `vendite.fn_get_registro_id(1, NULL, NULL, <sr>)` solleva
 `E_CONFIG_MANCANTE` «registro non risolto per tipo_doc 1 e natura 1». Il BE propone che il verbo del
@@ -1804,7 +1804,7 @@ provisioning, oppure la madre dell'emittente, lasci l'emittente di prova complet
 
 **Il caso, sul modello.** Il difetto non è dell'emittente di prova: **nessun emittente nasce col registro delle
 fatture**, quello di un'installazione nuova compreso. È lo stesso difetto che
-[brief-db-modelli-documento-standard](../work-in-progress/brief-db-modelli-documento-standard.md) §2 descrive per i modelli («un
+[brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §2 descrive per i modelli («un
 emittente è un'identità completa solo se può emettere»), su un'altra configurazione. Quel brief chiede al team
 DB il censimento di ciò che serve per emettere: i registri sono questa voce.
 

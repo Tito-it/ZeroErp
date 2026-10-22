@@ -40,7 +40,8 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
   `config.sorgenti` dal 2026-10-19, brief-db-grammatica-unica-documenti lotto 2b). Valorizzate dalla
   **conversione upstream** (fatte 2026-06-04): `documento_origine = ('PREVENTIVO',
   id)` da `ordini_service.crea_ordine_da_preventivo` (copia 1:1 righe piatte) e
-  `('OFFERTA_COMMERCIALE', id)` da `crea_ordine_da_offerta` (righe espanse via fn DB
+  `('OFFERTA_COMMERCIALE', id)` dal verbo DB `vendite.fn_genera_ordine_da_offerta`
+  (dal 2026-10-21, via `crea_ordine_da_offerta`: righe espanse di
   `fn_offerta_righe_espanse`, prezzi negoziati preservati). **Univocità (rev.
   2026-06-07)**: per `OFFERTA_COMMERCIALE` vale **1:1** — un'offerta genera al massimo un
   ordine (UNIQUE parziale `uq_ordini_v_documento_origine_offerta` + guard BE

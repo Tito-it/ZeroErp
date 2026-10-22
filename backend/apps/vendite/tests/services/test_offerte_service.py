@@ -19,7 +19,8 @@ Indice test eseguiti:
 10) registra_accettazione_da_bozza_fallisce
 11) registra_rifiuto_senza_motivazione_fallisce
 12) registra_rifiuto_da_bozza_fallisce_c3
-13) annulla_da_emessa_fallisce_c3
+13) annulla_da_emessa_lo_rifiuta_il_db (+ annulla_da_accettata_arriva_al_db,
+    annulla_offerta_inesistente_e_404)
 14) annulla_da_bozza_ok_passa_motivazione
 15) crea_eccezione_su_emessa_fallisce
 16) crea_utility_duplicato_mappato
@@ -330,15 +331,61 @@ class OfferteServiceTests(TestCase):
             OfferteService().registra_rifiuto(1, motivazione="non valida")
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
 
-    # Scopo (C3): annulla da EMESSA -> 422 (annullamento solo da BOZZA).
+    # Scopo: annulla da EMESSA -> il rifiuto e' del DB (transizione non
+    #        ammessa) e arriva col SUO codice. ⛔ Fino al 2026-10-21 il service
+    #        lo anticipava con un «solo da BOZZA» suo, che avrebbe rifiutato
+    #        anche l'annullo da ACCETTATA ammesso dal DB
+    #        (brief-db-offerta-emissione-ed-erogazione H-R3).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_annulla_da_emessa_fallisce_c3(self, repo_cls):
+    def test_annulla_da_emessa_lo_rifiuta_il_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
-        repo_cls.return_value.get_stato_codice.return_value = "EMESSA"
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSA"
+        repo.get_stato_id_by_codice.return_value = 6
+        repo.update_stato.side_effect = DatabaseError(
+            "E_OFFERTA_TRANSIZIONE_NON_AMMESSA: EMESSA -> ANNULLATA",
+        )
         with self.assertRaises(ServiceError) as cm:
             OfferteService().annulla(1, motivazione="ripensamento interno")
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        self.assertEqual(cm.exception.code, "E_OFFERTA_TRANSIZIONE_NON_AMMESSA")
+        repo.update_stato.assert_called_once()
+
+    # Scopo: annulla da ACCETTATA: il service arriva al DB (nessuno stato di
+    #        partenza scritto qui).
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_annulla_da_accettata_arriva_al_db(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "ACCETTATA"
+        repo.get_stato_id_by_codice.return_value = 6
+        repo.get_offerta.return_value = _make_offerta_dict(stato_codice="ANNULLATA")
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+
+        OfferteService().annulla(1, motivazione="il cliente ci ripensa")
+
+        repo.update_stato.assert_called_once_with(
+            1, 6, motivazione_rifiuto="il cliente ci ripensa"
+        )
+
+    # Scopo: annulla di un'offerta che non c'e' (o fuori perimetro): 404.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_annulla_offerta_inesistente_e_404(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo_cls.return_value.get_stato_codice.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().annulla(1, motivazione="x")
+        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+        repo_cls.return_value.update_stato.assert_not_called()
 
     # Scopo: annulla da BOZZA OK passa motivazione al repository.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")

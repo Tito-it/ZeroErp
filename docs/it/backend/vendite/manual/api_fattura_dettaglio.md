@@ -137,8 +137,13 @@ Nessuna modifica applicativa è stata necessaria: il percorso operatore legge gl
 [brief-db-rls-satelliti-fattura-portale](../../../dev/work-done/brief-db-rls-satelliti-fattura-portale.md).
 
 > ⚠️ **Vincolo da non violare** (team DB): le policy sui satelliti devono
-> continuare a passare dalle funzioni di scope **della testata**
-> (`fn_scope_ef_whitelist_via_fattura`, `fn_scope_ba_ownership_via_fattura`).
+> continuare a decidere **dalla testata**: la chiave è `fattura_id`, risolta
+> col modo `fattura` dei risolutori — `script.fn_resolve_emittente_fiscale_id`
+> sotto `script.fn_scope_ef_perimetro` (operatore) e
+> `script.fn_resolve_controparte_sr_id` sotto `script.fn_scope_sr_perimetro`
+> (portale). Forma in vigore dal 2026-10-21; fino ad allora erano gli
+> adattatori `fn_scope_ef_whitelist_via_fattura` e
+> `fn_scope_ba_ownership_via_fattura` (quest'ultimo ritirato con 20261021-40).
 > È ciò che rende il filtro **tutto-o-niente per fattura** e tiene completi il
 > `count` di `fn_assign_numero_fattura` e la `SUM` di
 > `fn_ricalcola_riepilogo_iva_fattura`. Un criterio proprio o una colonna

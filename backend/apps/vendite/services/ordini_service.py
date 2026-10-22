@@ -15,9 +15,7 @@
 # APERTA (analisi §8.bis): qui si usa il pricing stile preventivo (resolve +
 # prezzo passato dal caller), passando comunque dai BB condivisi.
 
-import json
 import logging
-from decimal import Decimal, InvalidOperation
 from datetime import date
 from collections.abc import Callable
 from typing import Any
@@ -76,9 +74,10 @@ E_VENDITE_FK = "E_VENDITE_FK"
 _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "uq_ordrig_riga_nr": (E_VENDITE_DUPLICATO, "Numero riga duplicato sull'ordine."),
     "uq_ordini_v_anno_serie_numero": (E_VENDITE_DUPLICATO, "Numero ordine duplicato."),
-    # Univocità 1:1 offerta→ordine: la violazione dell'indice parziale (race con
-    # un'altra generazione concorrente) diventa lo stesso errore parlante del
-    # guard fail-fast in crea_ordine_da_offerta.
+    # Univocità 1:1 offerta→ordine: la violazione dell'indice parziale diventa
+    # lo stesso errore parlante del verbo `fn_genera_ordine_da_offerta`. Il
+    # verbo blocca l'offerta `FOR UPDATE`, quindi due generazioni si mettono in
+    # fila: l'indice resta la rete.
     "uq_ordini_v_documento_origine_offerta": (
         "E_ORD_OFFERTA_GIA_CONVERTITA",
         "Un ordine è già stato generato da questa offerta.",
@@ -110,9 +109,6 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 # ── Costanti di dominio ──
 _FN = "vendite.ordini_service"
-# I tipi di `vendite.fn_offerta_documenti_vivi` (codici di config.tipi_entita).
-_TIPO_VIVO_ORDINE = "ORDINE_VENDITA"
-_TIPO_VIVO_CONTRATTO = "CONTRATTO"
 _STATO_BOZZA = "DRAFT"
 _STATO_CONFERMATO = "CONFERMATO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
@@ -445,8 +441,8 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
             fatturazione_immediata=data.get("fatturazione_immediata"),
         )
         # Slot di default dall'anagrafica del cliente: lo decide il DB
-        # (`vendite.fn_doc_indirizzo_default`). Copre anche la conversione da
-        # offerta (`crea_ordine_da_offerta` passa da qui).
+        # (`vendite.fn_doc_indirizzo_default`). La conversione da offerta non
+        # passa da qui: il verbo DB lo chiama da se'.
         repo.riempi_indirizzo_default(int(creato["id"]))
     return creato
 
@@ -488,10 +484,9 @@ def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
 #  CONVERSIONE UPSTREAM — preventivo/offerta → ordine (§7.4)
 # ══════════════════════════════════════════════════════════
 
-# Stati del documento di origine che ammettono la generazione di un ordine.
-# Il preventivo NON usa più una whitelist Python: stato ammesso e "nessuna riga
-# merce" sono validati dalla fn DB fn_push_preventivo_a_ordine (modello split).
-_STATI_OFFERTA_CONVERTIBILI: frozenset[str] = frozenset({"ACCETTATA"})
+# Nessuna whitelist Python degli stati d'origine: lo stato ammesso lo dicono i
+# verbi DB, `fn_push_preventivo_a_ordine` (con «nessuna riga merce», modello
+# split) e `fn_genera_ordine_da_offerta`.
 
 
 # Scopo: Smistamento MERCE → ordine da un preventivo ACCETTATO (modello split,
@@ -551,185 +546,35 @@ def crea_ordine_da_preventivo(
     }
 
 
-def _as_str(value: Any) -> str | None:
-    return None if value is None else str(value)
-
-
-# Scopo: Costruisce la mappa override prezzi componenti {componente_id: prezzo}
-#        dal jsonb `componenti` della fn `fn_offerta_righe_espanse`. psycopg può
-#        restituire il jsonb già parsato (list) o come stringa → coerce difensivo
-#        (pattern speculare al FE `coerceJsonbToArray`). Chiave = uuid articolo
-#        componente (allineata al keying di `fn_ordine_riga_componenti_init`).
-def _overrides_da_componenti(componenti: Any) -> dict[str, str]:
-    if isinstance(componenti, str):
-        try:
-            componenti = json.loads(componenti)
-        except (ValueError, TypeError):
-            return {}
-    if not isinstance(componenti, list):
-        return {}
-    out: dict[str, str] = {}
-    for c in componenti:
-        if not isinstance(c, dict):
-            continue
-        cid = c.get("componente_id")
-        prezzo = c.get("prezzo")
-        if cid is None or prezzo is None:
-            continue
-        # La fn DB `fn_ordine_riga_componenti_init` RIFIUTA un override prezzo 0
-        # (E_PARAMETRO_INVALIDO "prezzo override deve essere diverso da zero"):
-        # un componente negoziato a 0 viene escluso dagli override → ricade sul
-        # resolver (prezzo corrente). Limitazione nota del vincolo override DB.
-        try:
-            if Decimal(str(prezzo)) == 0:
-                continue
-        except InvalidOperation:
-            continue
-        out[str(cid)] = str(prezzo)
-    return out
-
-
-# Scopo: Copia una riga «espansa» dell'offerta in una riga ordine PRESERVANDO i
-#        prezzi NEGOZIATI (l'offerta è ACCETTATA → niente ri-prezzatura, a
-#        differenza del preventivo). Non-composito: `prezzo_unitario` congelato.
-#        Composito: il prezzo padre è ricalcolato dal trigger DB
-#        (`trgfn_componenti_ricalcola_padre`) sui componenti, i cui prezzi
-#        negoziati sono passati come `componenti_overrides` (dal jsonb della fn).
-def _copia_riga_offerta_espansa(
-    repo: OrdiniRepository, ordine_id: int, r: dict[str, Any],
-    *, emittente_sr_id: int, data_rif: date,
-) -> None:
-    is_composito = bool(r.get("is_composito"))
-    riga_nr = repo.next_riga_nr(ordine_id)
-    created = repo.create_riga(
-        ordine_id=ordine_id,
-        riga_nr=riga_nr,
-        articolo_id=str(r["articolo_id"]),
-        descrizione=r.get("descrizione"),
-        quantita=_as_str(r.get("quantita")),
-        qta_operativa=_as_str(r.get("qta_operativa")),
-        uom_operativa_id=r.get("uom_operativa_id"),
-        factor_to_base=_as_str(r.get("factor_to_base")),
-        # Padre composito: 0 placeholder, il trigger ricalcola da SUM(componenti).
-        prezzo_unitario="0" if is_composito else _as_str(r.get("prezzo_unitario")),
-        sconto_percentuale=_as_str(r.get("sconto_percentuale")),
-        iva_id=r.get("iva_id"),
-    )
-    if not is_composito:
-        return
-    repo.init_componenti_riga(
-        riga_id=int(created["id"]),
-        emittente_soggetto_ruolo_id=emittente_sr_id,
-        data_riferimento=data_rif,
-        componenti_overrides=_overrides_da_componenti(r.get("componenti")) or None,
-    )
-
-
-# Scopo: Genera un ordine DRAFT da un'offerta ACCETTATA. A differenza del
-#        preventivo (righe già piatte), l'offerta non ha righe materializzate: le
-#        righe «effettive» (listino + variazione + eccezioni, con BoM) sono
-#        prodotte dalla fn DB `fn_offerta_righe_espanse` (ordine-ready). Copia
-#        testata (cliente/utility/valuta/emittente) + righe espanse PRESERVANDO i
-#        prezzi negoziati (anche componenti) + documento_origine =
-#        (OFFERTA_COMMERCIALE, id).
+# Scopo: Genera un ordine DRAFT da un'offerta ACCETTATA. Lo fa il DB, in UNA
+#        transazione: il verbo `vendite.fn_genera_ordine_da_offerta` (gemello
+#        del push al contratto) blocca l'offerta, verifica lo stato e i
+#        documenti vivi, giudica le righe con la stessa check che spegne
+#        «Genera ordine» nella capability, scrive testata e provenienza, riempie
+#        l'indirizzo di default e copia le righe espanse coi prezzi negoziati
+#        (componenti compresi). Ritorna l'id dell'ordine.
+#        ⛔ Fino al 2026-10-21 (brief-db-offerta-emissione-ed-erogazione I-D2)
+#        l'orchestrazione era qui, in Python: stato, documenti vivi, testata,
+#        provenienza e copia delle righe erano specchi di regole del DB, e le
+#        righe dell'ordine non le giudicava nessuno prima di scrivere. I rifiuti
+#        arrivano ora col codice del verbo (`E_OFFERTA_NON_TROVATA`,
+#        `E_ORD_ORIGINE_NON_CONVERTIBILE`, `E_ORD_OFFERTA_GIA_CONVERTITA`,
+#        `E_OFFERTA_CONTRATTO_GIA_GENERATO` col bersaglio,
+#        `E_DOC_RIGA_NON_AMMESSA` col campo `articolo_id`).
 def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
     from apps.vendite.db.offerte_repository import OfferteRepository
 
-    off_repo = OfferteRepository()
-    testata = testata_o_not_found(
-        off_repo.get_offerta, offerta_id,
-        code="E_VENDITE_NOT_FOUND", message="Offerta non trovata.",
-        id_name="offerta_id", function_name=f"{_FN}.crea_ordine_da_offerta",
-    )
-    ErrorManager.require(
-        testata.get("stato_codice_interno") in _STATI_OFFERTA_CONVERTIBILI,
-        code="E_ORD_ORIGINE_NON_CONVERTIBILE",
-        message="L'offerta deve essere ACCETTATA per generare un ordine.",
-        detail=f"stato={testata.get('stato_codice_interno')}",
-        function_name=f"{_FN}.crea_ordine_da_offerta",
-    )
+    # `_db_errors` fuori dall'atomic, come `crea_ordine_da_preventivo`: i
+    # rifiuti del verbo arrivano al client col loro codice, non come 500.
+    with _db_errors("crea_ordine_da_offerta"), transaction.atomic():
+        ordine_id = OfferteRepository().genera_ordine(offerta_id)
 
-    # «L'offerta e' gia' trasformata?» (brief-db-annullo-documento-con-legami
-    # R-4, 2026-10-11): una lettura sola, la sede del DB
-    # (`vendite.fn_offerta_documenti_vivi`), per le due domande che qui erano
-    # due specchi — un ordine gia' nato dall'offerta, o un contratto (offerta →
-    # contratto XOR ordine). ⭐ Contano i soli documenti VIVI: annullandoli
-    # l'offerta torna trasformabile (D-3). Fail-fast PARLANTE prima di lavorare;
-    # `uq_ordini_v_documento_origine_offerta`, ora sui soli vivi, resta la rete
-    # sulla corsa concorrente (mappata in _UNIQUE_CONSTRAINTS).
-    vivi = off_repo.list_documenti_vivi(offerta_id)
-    ordine_vivo = next((d for d in vivi if d["tipo"] == _TIPO_VIVO_ORDINE), None)
-    ErrorManager.require(
-        ordine_vivo is None,
-        code="E_ORD_OFFERTA_GIA_CONVERTITA",
-        message="Un ordine è già stato generato da questa offerta.",
-        detail=(
-            f"offerta_id={offerta_id}, "
-            f"ordine_id={ordine_vivo['documento_id'] if ordine_vivo else None}"
-        ),
-        function_name=f"{_FN}.crea_ordine_da_offerta",
-    )
-    contratto_vivo = next((d for d in vivi if d["tipo"] == _TIPO_VIVO_CONTRATTO), None)
-    ErrorManager.require(
-        contratto_vivo is None,
-        code="E_OFFERTA_CONTRATTO_GIA_GENERATO",
-        message=(
-            "Questa offerta ha già generato un contratto: "
-            "non può generare anche un ordine."
-        ),
-        detail=(
-            f"offerta_id={offerta_id}, "
-            f"contratto_id={contratto_vivo['documento_id'] if contratto_vivo else None}"
-        ),
-        function_name=f"{_FN}.crea_ordine_da_offerta",
-    )
-
-    repo = OrdiniRepository()
-
-    righe = off_repo.list_righe_espanse(offerta_id)
-
-    header = {
-        # La utility (e il ruolo) li scrive il DB dal BA: non si ricopiano.
-        "billing_account_id": testata.get("billing_account_id"),
-        "emittente_fiscale_id": testata.get("emittente_fiscale_id"),
-        "valuta_id": testata.get("valuta_id"),
-        # ⭐ Niente `data`: la decide il DEFAULT della colonna,
-        #    `script.fn_data_operativa()` (l'oggi dell'azienda). Fino al
-        #    2026-10-09 qui c'era `date.today()`, il giorno del processo.
-    }
-
-    with transaction.atomic():
-        creato = crea_ordine(header)
-        ordine_id = int(creato["id"])
-        numero = creato.get("numero")
-        # La provenienza: il tipo e' il codice della sorgente, dal 2026-10-19
-        # con la FK verso `config.sorgenti` (brief-db-grammatica-unica-documenti,
-        # lotto 2b; il codice corto `OFFERTA` di prima e' un rifiuto). FK e
-        # CHECK di co-presenza non sono nelle mappe del traduttore: cadono sul
-        # fallback generico, ed e' giusto — il tipo e' una costante, non un
-        # input, e un rifiuto qui e' un difetto del codice.
-        with _db_errors("crea_ordine_da_offerta"):
-            repo.set_documento_origine(
-                ordine_id, SORGENTE_OFFERTA_COMMERCIALE, int(offerta_id),
-            )
-        # emittente SR + data riferimento dalla testata ordine creata (per il
-        # pricing/data-snapshot dei componenti BoM).
-        testata_ord = _get_testata_or_raise(
-            repo, ordine_id, op="crea_ordine_da_offerta",
-        )
-        emittente_sr_id = _resolve_emittente_sr_id(repo, testata_ord)
-        data_rif = _data_riferimento(testata_ord)
-        with _db_errors("crea_ordine_da_offerta"):
-            for r in righe:
-                _copia_riga_offerta_espansa(
-                    repo, ordine_id, r,
-                    emittente_sr_id=emittente_sr_id, data_rif=data_rif,
-                )
-
+    # Numero ordine per il messaggio FE (lettura leggera post-creazione).
+    testata = OrdiniRepository().get_ordine(ordine_id)
+    numero = testata.get("numero") if testata else None
     return {
         "ordine_id": ordine_id,
         "numero": numero,
-        "righe_create": len(righe),
         "documento_origine": {"tipo": SORGENTE_OFFERTA_COMMERCIALE, "id": int(offerta_id)},
     }
 

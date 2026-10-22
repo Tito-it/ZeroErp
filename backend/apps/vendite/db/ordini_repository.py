@@ -406,25 +406,6 @@ class OrdiniRepository(
             returning="id, uid::text AS uid, numero",
         )
 
-    # Scopo: Valorizza la provenienza upstream (documento_origine) di un ordine
-    #        appena creato dalla conversione preventivo/offerta → ordine. UPDATE
-    #        mirato sulle sole colonne `documento_origine_*` (NON lockate dal
-    #        trigger immutabilità cliente, che intercetta solo
-    #        billing_account_id/numero/soggetto_ruolo_id) → nessuna interferenza.
-    #        Il CHECK di co-presenza richiede entrambe valorizzate insieme.
-    def set_documento_origine(
-        self, ordine_id: int, tipo: str, origine_id: int,
-    ) -> bool:
-        sql = """
-            UPDATE vendite.ordini
-               SET documento_origine_tipo = %s,
-                   documento_origine_id   = %s
-             WHERE id = %s
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [tipo, int(origine_id), int(ordine_id)])
-            return cursor.rowcount > 0
-
     # Scopo: Il primo ordine VIVO nato da (tipo, origine_id), o None. Lo
     #        leggono lo smistamento del preventivo (esito MERCE_PRESENTE) e
     #        l'handler che aggancia l'ordine alla pratica.
@@ -434,7 +415,7 @@ class OrdiniRepository(
     #        gli annullati darebbe MERCE_PRESENTE per un ordine morto e
     #        aggancerebbe alla pratica quello sbagliato.
     #        L'offerta non passa piu' da qui: «l'offerta e' gia' trasformata?»
-    #        lo dice `OfferteRepository.list_documenti_vivi`.
+    #        lo dice `vendite.fn_offerta_documenti_vivi`, dentro il verbo DB.
     def get_ordine_by_documento_origine(
         self, tipo: str, origine_id: int,
     ) -> dict[str, Any] | None:

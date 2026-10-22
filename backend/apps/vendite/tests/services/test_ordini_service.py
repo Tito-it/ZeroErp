@@ -527,170 +527,59 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
 
 
 class OrdiniConversioneOffertaTests(SimpleTestCase):
-    """crea_ordine_da_offerta (§7.4): orchestrazione, override componenti, guard."""
+    """crea_ordine_da_offerta: delega al verbo DB `fn_genera_ordine_da_offerta`.
 
-    @patch(f"{_SVC}._copia_riga_offerta_espansa")
-    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 4))
-    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
-    @patch(f"{_SVC}._get_testata_or_raise",
-           return_value={"id": 7, "emittente_fiscale_id": 3})
-    @patch(f"{_SVC}.crea_ordine", return_value={"id": 7, "numero": "ORD7"})
-    @patch(_REPO)
-    @patch(_OFF_REPO)
-    def test_crea_ordine_da_offerta_ok(
-        self, off_cls, ord_cls, crea_testata, get_testata, resolve_em,
-        data_rif, copia_riga,
-    ) -> None:
-        off_cls.return_value.get_offerta.return_value = {
-            "stato_codice_interno": "ACCETTATA",
-            "billing_account_id": 10, "utility_id": 5,
-            "emittente_fiscale_id": 3, "valuta_id": 1,
-        }
-        off_cls.return_value.list_righe_espanse.return_value = [
-            {"articolo_id": "A1"}, {"articolo_id": "A2"},
-        ]
-        # «Gia' trasformata?»: nessun documento VIVO nato da questa offerta.
-        off_cls.return_value.list_documenti_vivi.return_value = []
+    ⛔ Dal 2026-10-21 (brief-db-offerta-emissione-ed-erogazione I-D2) stato,
+    documenti vivi, testata, provenienza e righe sono del verbo: qui non si
+    prova nessuna di quelle regole (le prova il pgTAP
+    `test-righe-ammesse-ai-passi-e-annullo-v1`, e la giuntura
+    `tests/db/test_genera_ordine_da_offerta_db.py`). Si prova che il service
+    deleghi senza leggere l'offerta da se', e che i rifiuti arrivino col loro
+    codice.
+    """
 
-        with patch(_ATOMIC, return_value=nullcontext()):
-            out = ordini_service.crea_ordine_da_offerta(55)
-
-        self.assertEqual(out["ordine_id"], 7)
-        self.assertEqual(out["numero"], "ORD7")
-        self.assertEqual(out["righe_create"], 2)
-        self.assertEqual(out["documento_origine"], {"tipo": "OFFERTA_COMMERCIALE", "id": 55})
-        # testata creata dal verbo di creazione; provenienza scritta col
-        # codice della sorgente (FK verso config.sorgenti, lotto 2b)
-        (header,) = crea_testata.call_args.args
-        ord_cls.return_value.set_documento_origine.assert_called_once_with(
-            7, "OFFERTA_COMMERCIALE", 55,
-        )
-        self.assertEqual(header["billing_account_id"], 10)
-        # offerta non ha termine/modalita pagamento → non nel header
-        self.assertNotIn("termine_pagamento_id", header)
-        # una copia riga per riga espansa
-        self.assertEqual(copia_riga.call_count, 2)
-
-    @patch(_OFF_REPO)
-    def test_crea_ordine_da_offerta_stato_non_convertibile(self, off_cls) -> None:
-        off_cls.return_value.get_offerta.return_value = {
-            "stato_codice_interno": "EMESSA",
-        }
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_offerta(55)
-        self.assertEqual(cm.exception.code, "E_ORD_ORIGINE_NON_CONVERTIBILE")
-
-    @patch(_OFF_REPO)
-    def test_crea_ordine_da_offerta_non_trovata(self, off_cls) -> None:
-        off_cls.return_value.get_offerta.return_value = None
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_offerta(55)
-        self.assertEqual(cm.exception.code, "E_VENDITE_NOT_FOUND")
+    def setUp(self) -> None:
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @patch(_REPO)
     @patch(_OFF_REPO)
-    def test_crea_ordine_da_offerta_gia_convertita(self, off_cls, ord_cls) -> None:
-        # Offerta ACCETTATA ma esiste già un ordine da questa offerta → guard
-        # fail-fast 1:1 (univocità offerta→ordine), prima di espandere le righe.
-        off_cls.return_value.get_offerta.return_value = {
-            "stato_codice_interno": "ACCETTATA",
-            "billing_account_id": 10, "utility_id": 5,
-            "emittente_fiscale_id": 3, "valuta_id": 1,
-        }
-        off_cls.return_value.list_documenti_vivi.return_value = [
-            {"tipo": "ORDINE_VENDITA", "documento_id": 7},
-        ]
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_offerta(55)
-        self.assertEqual(cm.exception.code, "E_ORD_OFFERTA_GIA_CONVERTITA")
-        # Guard prima del lavoro: nessuna espansione righe.
-        off_cls.return_value.list_righe_espanse.assert_not_called()
+    def test_crea_ordine_da_offerta_delega_al_verbo(self, off_cls, ord_cls) -> None:
+        off_cls.return_value.genera_ordine.return_value = 7
+        ord_cls.return_value.get_ordine.return_value = {"id": 7, "numero": "ORD7"}
+
+        out = ordini_service.crea_ordine_da_offerta(55)
+
+        off_cls.return_value.genera_ordine.assert_called_once_with(55)
+        self.assertEqual(out, {
+            "ordine_id": 7,
+            "numero": "ORD7",
+            "documento_origine": {"tipo": "OFFERTA_COMMERCIALE", "id": 55},
+        })
+        # Nessuno specchio: l'offerta non si legge, l'ordine non si scrive qui.
+        off_cls.return_value.get_offerta.assert_not_called()
+        ord_cls.return_value.create_ordine.assert_not_called()
+        ord_cls.return_value.riempi_indirizzo_default.assert_not_called()
 
     @patch(_REPO)
     @patch(_OFF_REPO)
-    def test_crea_ordine_da_offerta_con_contratto_bloccato(
-        self, off_cls, ord_cls,
-    ) -> None:
-        # Mutua esclusività XOR: offerta ACCETTATA che ha già generato un
-        # contratto non può generare un ordine → E_OFFERTA_CONTRATTO_GIA_GENERATO.
-        off_cls.return_value.get_offerta.return_value = {
-            "stato_codice_interno": "ACCETTATA",
-            "billing_account_id": 10, "utility_id": 5,
-            "emittente_fiscale_id": 3, "valuta_id": 1,
-        }
-        # Nessun ordine vivo: il blocco arriva dal contratto vivo, non dall'idempotenza.
-        off_cls.return_value.list_documenti_vivi.return_value = [
-            {"tipo": "CONTRATTO", "documento_id": 42},
-        ]
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.crea_ordine_da_offerta(55)
-        self.assertEqual(cm.exception.code, "E_OFFERTA_CONTRATTO_GIA_GENERATO")
-        off_cls.return_value.list_righe_espanse.assert_not_called()
-
-    @patch(f"{_SVC}._copia_riga_offerta_espansa")
-    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 4))
-    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
-    @patch(f"{_SVC}._get_testata_or_raise",
-           return_value={"id": 8, "emittente_fiscale_id": 3})
-    @patch(f"{_SVC}.crea_ordine", return_value={"id": 8, "numero": "ORD8"})
-    @patch(_REPO)
-    @patch(_OFF_REPO)
-    def test_crea_ordine_da_offerta_dopo_annullo_ammesso(
-        self, off_cls, ord_cls, crea_testata, get_testata, resolve_em,
-        data_rif, copia_riga,
-    ) -> None:
-        # D-3 di brief-db-annullo-documento-con-legami: l'ordine (o il contratto)
-        # annullato non consuma l'offerta. La lettura dei vivi e' del DB: qui
-        # torna vuota e il service non cerca altrove (nessuno specchio).
-        off_cls.return_value.get_offerta.return_value = {
-            "stato_codice_interno": "ACCETTATA",
-            "billing_account_id": 10, "utility_id": 5,
-            "emittente_fiscale_id": 3, "valuta_id": 1,
-        }
-        off_cls.return_value.list_documenti_vivi.return_value = []
-        off_cls.return_value.list_righe_espanse.return_value = [{"articolo_id": "A1"}]
-        with patch(_ATOMIC, return_value=nullcontext()):
-            out = ordini_service.crea_ordine_da_offerta(55)
-        self.assertEqual(out["ordine_id"], 8)
-        off_cls.return_value.list_documenti_vivi.assert_called_once_with(55)
-        ord_cls.return_value.get_ordine_by_documento_origine.assert_not_called()
-
-    def test_overrides_da_componenti_coercion(self) -> None:
-        from apps.vendite.services.ordini_service import _overrides_da_componenti
-        # lista di dict (jsonb già parsato da psycopg)
-        self.assertEqual(
-            _overrides_da_componenti(
-                [{"componente_id": "u1", "prezzo": "5"},
-                 {"componente_id": "u2", "prezzo": "3"}],
-            ),
-            {"u1": "5", "u2": "3"},
-        )
-        # stringa jsonb (psycopg non parsato) → coerce
-        self.assertEqual(
-            _overrides_da_componenti('[{"componente_id": "u1", "prezzo": "5"}]'),
-            {"u1": "5"},
-        )
-        # None / json invalido / non-lista → {}
-        self.assertEqual(_overrides_da_componenti(None), {})
-        self.assertEqual(_overrides_da_componenti("non-json-{"), {})
-        # entry senza id o senza prezzo → saltate
-        self.assertEqual(
-            _overrides_da_componenti(
-                [{"componente_id": "u1"}, {"prezzo": "5"}],
-            ),
-            {},
-        )
-        # prezzo 0 escluso (la fn DB rifiuta override 0 → ricade sul resolver);
-        # prezzo non numerico escluso
-        self.assertEqual(
-            _overrides_da_componenti(
-                [{"componente_id": "u1", "prezzo": "0"},
-                 {"componente_id": "u2", "prezzo": "0.00"},
-                 {"componente_id": "u3", "prezzo": "xx"},
-                 {"componente_id": "u4", "prezzo": "7"}],
-            ),
-            {"u4": "7"},
-        )
+    def test_crea_ordine_da_offerta_rifiuto_col_codice_del_verbo(self, off_cls, ord_cls) -> None:
+        for codice in (
+            "E_OFFERTA_NON_TROVATA",
+            "E_ORD_ORIGINE_NON_CONVERTIBILE",
+            "E_ORD_OFFERTA_GIA_CONVERTITA",
+            "E_OFFERTA_CONTRATTO_GIA_GENERATO",
+            "E_DOC_RIGA_NON_AMMESSA",
+        ):
+            with self.subTest(codice):
+                off_cls.return_value.genera_ordine.side_effect = DatabaseError(
+                    f"{codice}: rifiuto del verbo",
+                )
+                with self.assertRaises(ServiceError) as cm:
+                    ordini_service.crea_ordine_da_offerta(55)
+                self.assertEqual(cm.exception.code, codice)
+        ord_cls.return_value.get_ordine.assert_not_called()
 
 
 class OrdiniPushCommessaTests(SimpleTestCase):

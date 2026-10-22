@@ -244,7 +244,7 @@ migrazione resta chiuso invece di crescere a ogni giro.
 
 ### 6.3 Solo da avvisare
 
-* [brief-db-offerta-emissione-ed-erogazione](brief-db-offerta-emissione-ed-erogazione.md):
+* [brief-db-offerta-emissione-ed-erogazione](../work-done/brief-db-offerta-emissione-ed-erogazione.md):
   `fn_documento_listino_operativo`, `fn_check_riga_erogazione`. Lato DB chiuso: la migrazione di
   quegli oggetti la fa un lotto di questo brief.
 
@@ -1325,7 +1325,7 @@ a 16 (il 16 costruisce la riga che evade una riga d'ordine e vuole `ORDINE_VENDI
   «Fattura», «Consumi»); per il resto quelle di `config.tipi_entita.*` («Ordine d'acquisto», «Riga di DDT»,
   «Prelievo»…). Si cambiano nel CSV.
 * ⚠️ **Il §12.9 chiedeva di ripubblicare le versioni 264 e 3113: superato.** Dal 2026-10-19 vale la regola del
-  brief dei modelli standard ([brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §4.1
+  brief dei modelli standard ([brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md) §4.1
   Q-5): *i changeSet di evoluzione scrivono solo sullo standard*. Le 264 e 3113 sono le copie degli emittenti
   32 e 44, dati dell'applicazione: il changeSet non le tocca.
 * **Forma dei dati 3.** `etichetta` è una chiave **nuova** del contesto dell'ordine, e il render gira con
@@ -1435,7 +1435,7 @@ Il frontend non cambia per il §12.9: il dettaglio dell'ordine non mostra il tip
   `documenti/tests/db`, `config`: 283, un solo rosso, **fuori da questo giro**:
   `documenti/tests/db/test_template_standard_db.py::test_modello_suo_senza_predefinito_non_usa_lo_standard`
   (il preventivo, strada B), file non tracciato del lavoro in corso di
-  [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md); era rosso per la `20261020-26`
+  [brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md); era rosso per la `20261020-26`
   di quel brief, ed è adeguato lo stesso giorno (§8.4 lì): ora 283/283. ruff e mypy a cricchetto
   puliti. Worker gunicorn ricaricati il 2026-10-20 alle 10:18.
 * Da vedere a video (Tid), **dopo lo SQL di L2b-2**: la stampa di un ordine nato da offerta e di uno nato da

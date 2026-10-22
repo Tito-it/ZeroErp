@@ -2048,7 +2048,7 @@ class ContrattiServiceComponentiTests(TestCase):
                 "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
                 "tipo_eccezione": "AGGIUNTA",
                 "prezzo_unitario": "0",
-                "quantita": "1",
+                "qta_operativa": "1",
                 "componenti_overrides": {"figlio-1": "5.50"},
             },
             auth_user_id=42,
@@ -2097,7 +2097,7 @@ class ContrattiServiceComponentiTests(TestCase):
                 "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
                 "tipo_eccezione": "AGGIUNTA",
                 "prezzo_unitario": "5.50",
-                "quantita": "1",
+                "qta_operativa": "1",
                 "componenti_overrides": {"figlio-1": "5.50"},
             },
             auth_user_id=42,
@@ -2136,7 +2136,7 @@ class ContrattiServiceComponentiTests(TestCase):
                     "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
                     "tipo_eccezione": "AGGIUNTA",
                     "prezzo_unitario": "0",
-                    "quantita": "1",
+                    "qta_operativa": "1",
                 },
                 auth_user_id=None,
             )
@@ -2177,7 +2177,7 @@ class ContrattiServiceComponentiTests(TestCase):
                     "articolo_id": "019d544c-7ef6-7993-9dcb-0cd1ad77d4aa",
                     "tipo_eccezione": "AGGIUNTA",
                     "prezzo_unitario": "0",
-                    "quantita": "1",
+                    "qta_operativa": "1",
                 },
                 auth_user_id=42,
             )
@@ -2207,7 +2207,7 @@ class ContrattiServiceComponentiTests(TestCase):
                 "articolo_id": "019d53f6-58ca-7cb7-b77b-86d201ce9787",
                 "tipo_eccezione": "OVERRIDE",
                 "prezzo_unitario": "10",
-                "quantita": "1",
+                "qta_operativa": "1",
             },
             auth_user_id=42,
         )
@@ -2286,6 +2286,8 @@ class ContrattiServiceFonteQuantitaTests(TestCase):
     1) test_fonte_a_valle_la_quantita_arriva_al_db_com_e — niente azzeramento silenzioso
     2) test_fonte_fissa_senza_quantita_non_e_un_rifiuto_python — lo dice il DB
     3) test_nessun_giudizio_sulla_coppia_ne_default — la coppia la decide il DB
+    4) test_quantita_non_e_una_chiave_del_payload — contratto e offerta, create e
+       update: la calcola il DB (I-D1, 2026-10-21, ritiro della DERIVATA)
     """
 
     def _service(self):
@@ -2328,6 +2330,23 @@ class ContrattiServiceFonteQuantitaTests(TestCase):
         # Erogazione senza fonte: nessun default inventato qui, la eredita il DB.
         data = svc._build_data_riga({"tipo_erogazione": "CANONE"}, for_create=False)
         self.assertNotIn("fonte_quantita_attesa", data)
+
+    def test_quantita_non_e_una_chiave_del_payload(self):
+        from apps.vendite.services import contratti_service, offerte_service
+
+        svc = self._service()
+        whitelist = {
+            "contratto create": contratti_service.CREATE_KEYS_RIGA,
+            "contratto update": contratti_service.UPDATE_KEYS_RIGA,
+            "offerta create": offerte_service.CREATE_KEYS_ECCEZIONE,
+            "offerta update": offerte_service.UPDATE_KEYS_ECCEZIONE,
+        }
+        for nome, ammesse in whitelist.items():
+            with self.subTest(nome):
+                # La `qta_operativa` si', la `quantita` e' un 400 sulla chiave.
+                svc._v.validate_allowed_keys({"qta_operativa": "1"}, allowed=ammesse)
+                with self.assertRaises(ServiceError):
+                    svc._v.validate_allowed_keys({"quantita": "1"}, allowed=ammesse)
 
 
 class ContrattiServicePricingGateTests(TestCase):

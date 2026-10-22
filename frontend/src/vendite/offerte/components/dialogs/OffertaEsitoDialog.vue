@@ -3,7 +3,9 @@
 //        Modalita' (state machine asimmetrica, piano BE+FE §C3):
 //          - ACCETTATA  da EMESSA  (motivazione opzionale)
 //          - RIFIUTATA  da EMESSA  (motivazione obbligatoria, "no del cliente")
-//          - ANNULLATA  da BOZZA   (motivazione obbligatoria, "ritiro da noi")
+//          - ANNULLATA  da BOZZA o da ACCETTATA (motivazione obbligatoria,
+//                       "ritiro da noi"; da ACCETTATA solo senza documenti vivi
+//                       a valle, lo dice il DB — dal 2026-10-21)
 //
 //        Il dialog non sceglie la modalita': la riceve via prop dal drawer
 //        (che la passa in base al bottone cliccato). Single source of truth

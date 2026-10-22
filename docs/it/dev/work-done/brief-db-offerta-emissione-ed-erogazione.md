@@ -1,22 +1,22 @@
 # Brief DB — Offerta, dal collaudo del drawer: l'emissione e l'erogazione
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-21 (notte)
+## ⏭️ Chi riparte — aggiornato al 2026-10-22
 
-**Riparte: la sessione BE/FE** (§I.5.5). Il lato DB è finito: `20261021-44` → `-61` applicati su
-dbdev e scratch, pgTAP verdi (Tid, 2026-10-21, nessuna regressione).
+**Riparte: nessuno. Brief chiuso e archiviato** (2026-10-22): DB (§I.5), BE/FE (§J) e collaudo a
+video di Tid (§D.5, §G.4, §J.5) fatti.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | ~~Tid~~ | ~~decisioni I-D1…I-D6~~ ✅ 2026-10-21 | §I.3 | — |
-| 2 | ~~team DB~~ | ~~giro unico: ritiro della DERIVATA, kit solo FISSA, riga intera, guard e capability, verbo «genera ordine», annullo da ACCETTATA, seed, doc, pgTAP~~ ✅ 2026-10-21, provato sullo scratch | §I.5 | — |
-| 3 | ~~Tid~~ | ~~query della riga DERIVATA su dbdev, apply su dbdev e scratch, corsa pgTAP~~ ✅ 2026-10-21 | §I.5.4 | — |
-| 4 | sessione BE/FE | genera ordine sul verbo, pulsanti spenti col motivo, annullo da ACCETTATA, codici e chiavi i18n, via la DERIVATA, `quantita` fuori dal payload | §I.5.5, §H.5 | — |
-| 5 | Tid | collaudo a video: §D.5 + §G.4 + §H.5 (`OFC-0001064`) | §D.5, §G.4, §H.5 | 4 |
-| 6 | chi chiude | archiviazione in `work-done/`, riga di PROJECT_CONTEXT (oggi ferma al §G «non committato») | — | 5 |
+| 1 | ~~Tid~~ | ~~decisioni I-D1…I-D7~~ ✅ 2026-10-21 | §I.3 | — |
+| 2 | ~~team DB~~ | ~~giro unico~~ ✅ 2026-10-21 | §I.5 | — |
+| 3 | ~~sessione BE/FE~~ | ~~giro del §I.5.5~~ ✅ 2026-10-21 | §J | — |
+| 4 | ~~Tid~~ | ~~collaudo a video~~ ✅ 2026-10-22 | §D.5, §G.4, §J.5 | — |
+| 5 | ~~chi chiude~~ | ~~archiviazione, riga di PROJECT_CONTEXT~~ ✅ 2026-10-22 | — | — |
 
-Decisioni aperte di Tid: nessuna (I-D7, 2026-10-21: le 9 righe fuori perimetro di dbdev restano per
-il collaudo, §I.5.4). Lavoro da committare: i changeSet `20261021-44` → `-61`, i quattro
-CSV, il pgTAP nuovo e i nove pgTAP aggiornati, manual e guide, questo file.
+Decisioni aperte di Tid: nessuna. Resta fuori, come proposta non bloccante, il §J.4 (il «perché»
+nel tooltip di `RIGA_NON_AMMESSA`). Dati di dbdev: le offerte e i contratti in bozza con le righe
+fuori perimetro (I-D7) si annullano o si correggono dall'app. Lavoro da committare: il giro del §J
+e questo file.
 
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-07. **A chi:** team DB
 > (`dev/db-tid`); poi BE/FE (§A.5, §B.5), che **attende** la consegna DB.
@@ -43,7 +43,7 @@ CSV, il pgTAP nuovo e i nove pgTAP aggiornati, manual e guide, questo file.
 > Il §G è committato (`67a0cac2e`, in `Tito-dev`); chi riparte lo dice il blocco in cima.
 > Il secondo trovato (FISSA, `quantita` a mano) resta aperto senza richiesta; il terzo (ordine fra
 > guard del listino e lock del contratto attivo) è **passato** a
-> [brief-db-testata-dopo-emissione](../work-done/brief-db-testata-dopo-emissione.md) §5 (§F.4.3).
+> [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md) §5 (§F.4.3).
 > **⏳ Quarto giro DB (§H, 2026-10-11):** l'offerta ACCETTATA che non si trasforma (righe fuori
 > perimetro dopo la scrittura; nessuna uscita da ACCETTATA). Supera B-D6. Al team DB, poi BE/FE.
 > **Da leggere per primo:** §C.10 (riepilogo di chiusura), poi §C.6.4 e §C.9.6 per chi fa il BE/FE.
@@ -1210,7 +1210,7 @@ riscritta: il campo è sempre `qta_operativa`.
   cambio di listino incoerente risponde «listino di un'altra utility/azienda» prima di «campi
   bloccati» (`a10_guard_listino…` < `a10_lock_post_attivazione`). L'operatore corregge il listino
   e poi trova il lock. Se conta, il lock va in `_a05_` (linee-guida-trigger), cantiere a sé.
-  ➡️ **Passato** (2026-10-10) a [brief-db-testata-dopo-emissione](../work-done/brief-db-testata-dopo-emissione.md)
+  ➡️ **Passato** (2026-10-10) a [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md)
   §5: quel giro rimonta il lock del contratto nella forma per stato, e lì se ne sceglie il posto.
 
 #### F.4.4 pgTAP e prova (2026-10-08, prima dell'apply)
@@ -1551,7 +1551,7 @@ Proposta: **(a)**.
 ### I.2 Il §H dopo il 2026-10-11: che cosa resta da fare
 
 **La causa principale di H-A è chiusa dal lato articolo.** Dal 2026-10-13 (A-10 di
-[brief-db-articoli-ammessi-per-documento](brief-db-articoli-ammessi-per-documento.md)) un
+[brief-db-articoli-ammessi-per-documento](../work-in-progress/brief-db-articoli-ammessi-per-documento.md)) un
 articolo **usato** non cambia `listino_tipologia_id`, `natura_vendita_id`, `is_composito`
 (`catalogo.trgfn_articoli_guard_struttura_se_usato`). Restano quattro strade per una riga che
 esce dal perimetro dopo essere stata scritta:
@@ -1744,3 +1744,94 @@ residua). Il primo apply su dbdev si era fermato, come previsto, sulla preCondit
 aveva trovato quella riga. Dopo la correzione Tid ha applicato `20261021-44` → `-61` su dbdev e
 scratch, e la corsa pgTAP è verde: nessuna regressione, ogni rosso era già noto. Al DB non resta
 niente; riparte il BE/FE (§I.5.5).
+
+
+## J. Giro BE/FE del giro unico (`dev/backend-tid`, 2026-10-21)
+
+> Esegue il §I.5.5 dopo l'apply (§I.5.6). Collaudato da Tid il 2026-10-22 (§J.5: tutte le prove ok).
+
+### J.1 Backend
+
+* **Genera ordine sul verbo** (I-D2): `ordini_service.crea_ordine_da_offerta` chiama
+  `OfferteRepository.genera_ordine` → `vendite.fn_genera_ordine_da_offerta`, dentro `_db_errors` e
+  una transazione, poi legge il numero dell'ordine. **Ritirati**: l'orchestrazione Python (stato,
+  documenti vivi, testata, provenienza, copia delle righe), `_copia_riga_offerta_espansa`,
+  `_overrides_da_componenti`, `_STATI_OFFERTA_CONVERTIBILI`, `_TIPO_VIVO_*`, e i tre metodi di
+  repository rimasti senza lettori: `OfferteRepository.list_righe_espanse` e
+  `.list_documenti_vivi`, `OrdiniRepository.set_documento_origine`. La risposta perde
+  `righe_create` (il FE non lo leggeva). La UNIQUE `uq_ordini_v_documento_origine_offerta` resta
+  mappata, come rete.
+* **Annullo da ACCETTATA** (H-R3): `OfferteService.annulla` non ha più il suo «solo da BOZZA»
+  (`expected_from=None` in `_cambia_stato_manuale`: solo l'esistenza, 404). Lo stato di partenza lo
+  dicono transizioni e guard: da EMESSA il 409 `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`, da ACCETTATA con
+  un documento vivo `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`.
+* **`quantita` fuori dal payload di riga** (§G.1, I-D1): tolta da `CREATE_KEYS_RIGA`/
+  `UPDATE_KEYS_RIGA` del contratto, da `CREATE_KEYS_ECCEZIONE` (e quindi dall'update) dell'offerta,
+  e dalle colonne scrivibili dei due repository: è un 400 sulla chiave. Il FE non la mandava.
+* **Codici**: `genera_error_policies` rigenerato (1381 `E_DOC_RIGA_NON_AMMESSA` DATO_ERRATO, 1382
+  `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI` CONFLITTO_STATO, più i commenti di tre codici riscritti dal
+  team DB; nessun'altra voce). Ripieghi senza `%s` per i due codici nuovi; `E_OFFERTA_NON_TROVATA`
+  non nomina più il contratto, come la frase del catalogo. Nessun override di `ui_action`.
+
+### J.2 Frontend
+
+* **i18n**: `common.azione_reason.riga_non_ammessa` («{0}: la riga dell'articolo {1} non è
+  ammessa.», coi valori del motivo) e `vendite.offerte.azione_reason.documenti_vivi`, it/en.
+  `check_i18n_keys` pulito. Il testo del dialog d'annullo non dice più «solo in BOZZA».
+* **Pulsanti spenti col motivo**: «Emetti», «Attiva», «Genera contratto», «Genera ordine» e
+  «Annulla» li rende già il mapper comune (`mapAvailableActionsToDrawerActions`: disabilitato +
+  tooltip da `reasons`). Nel drawer dell'offerta il banner dei motivi di push/ordine parla ora solo
+  per le azioni **assenti** da `available_actions`: con le azioni proposte e spente avrebbe ripetuto
+  il motivo del tooltip, e senza i valori della frase.
+* **DERIVATA via**: costante in `vendite/constants.js`, commenti di `erogazioniRiga.js` (lo spec usa
+  ora un esempio senza DERIVATA), le due chiavi `fonte_quantita_*_derivata_componenti`.
+* Annullo da ACCETTATA: lo stesso dialog dell'annullo da BOZZA (l'azione `annulla` arriva da
+  `available_actions` con `target_state` ANNULLATA); nessun codice FE da cambiare.
+
+### J.3 Test e doc
+
+* **BE sul DB vero**, nuovo `tests/db/test_genera_ordine_da_offerta_db.py` (mondo costruito,
+  6 test): l'ordine nasce DRAFT con provenienza, numero e riga al prezzo negoziato; seconda volta
+  `E_ORD_OFFERTA_GIA_CONVERTITA`; da BOZZA `E_ORD_ORIGINE_NON_CONVERTIBILE`; offerta assente
+  `E_OFFERTA_NON_TROVATA`; annullo da ACCETTATA con l'ordine vivo rifiutato, senza documenti vivi
+  ammesso. Binding provato **per mutazione** (nome del verbo sbagliato: 5 rossi su 6, il sesto non
+  usa il verbo). `test_origine_ordine_sorgente_db` scrive la provenienza a mano (il metodo è
+  ritirato: la scrive il verbo).
+* **BE unitari**: la suite `OrdiniConversioneOffertaTests` riscritta sulla delega (nessuna lettura
+  dell'offerta, rifiuti col codice del verbo); annullo: da EMESSA parla il DB, da ACCETTATA si
+  arriva al DB, offerta assente 404; `quantita` chiave rifiutata sulle quattro whitelist.
+* **Verdi**: presidi dei codici (policy, divergenza, ripieghi), mypy a cricchetto, ruff; FE vitest
+  958/958, `npm run guards`, eslint, build. Suite BE completa: vedi §J.6.
+* **Doc**: `api_offerte.md` (state machine con ACCETTATA → ANNULLATA, annullo, genera ordine come
+  verbo, capability con le azioni proposte e spente, codici), `api_contratti.md` («Attiva» con le
+  righe, fonti senza DERIVATA, `quantita` fuori payload), `modello-contratti.md`, `api_ordini.md`,
+  catalogo BB backend (una citazione del helper ritirato).
+
+### J.4 Proposta (non bloccante, a Tid)
+
+Il tooltip di `RIGA_NON_AMMESSA` dice **quale** riga, non **perché**: il perché sta in
+`dettaglio.motivo_riga` (col suo `reason_key` quando è un motivo d'articolo,
+`vendite.righe.articolo_reason.*`). `testoMotivi` potrebbe accodarlo. Non l'ho fatto: è un cambio
+del BB comune dei motivi, e i motivi d'erogazione (`EROGAZIONE_FUORI_PERIMETRO`,
+`TIPOLOGIA_FUORI_UTILITY`) oggi non portano una `reason_key` — servirebbe prima al team DB.
+
+### J.5 Collaudo a video (Tid), in aggiunta al §D.5 e al §G.4
+
+* `OFC-0001064` (ACCETTATA, righe fuori perimetro): «Genera contratto» **visibile e spento**, col
+  tooltip che nomina l'articolo; «Genera ordine» idem se una riga non è un bene. «Annulla» acceso:
+  dialog con la motivazione, l'offerta passa ad ANNULLATA.
+* Un'offerta ACCETTATA che ha generato un ordine: «Annulla» spento col motivo «annulla prima quel
+  documento»; annullato l'ordine, si accende.
+* «Genera ordine» su un'offerta buona: ordine DRAFT con le righe e i prezzi dell'offerta, toast col
+  numero.
+* Un contratto DRAFT con una riga fuori perimetro: «Attiva» spento col motivo.
+* Il form di una riga con un kit: le sole combinazioni FISSA; nessuna fonte «Derivata dai
+  componenti».
+
+
+### J.6 Suite BE completa (2026-10-21)
+
+Coi presidi su DB (`ZEROERP_TEST_DB_E2E=1`): 6877 test, due rossi, entrambi di
+`test_scritture_dinamiche_vendite_db`, che scriveva `quantita` dal repository. Ora non è più una
+colonna scrivibile, e il test passa da `qta_operativa`. Rilanciato: verde. I worker gunicorn di
+sviluppo sono ricaricati (23:05) per il collaudo.

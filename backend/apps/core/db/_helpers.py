@@ -926,10 +926,15 @@ def sql_lateral_primo_motivo(check_sql: str, alias: str) -> str:
     ⚠️ L'ORDINE E' IL CONTRATTO: la madre solleva il PRIMO motivo con
     `fn_raise_primo_motivo_se_presente`, e il tooltip deve mostrare quello
     stesso — da qui `WITH ORDINALITY … ORDER BY ord LIMIT 1`.
-    ⚠️ COSTO: la check gira PER RIGA del perimetro (sotto una `COUNT(*) OVER ()`
-    e' per riga filtrata, non per riga di pagina), accanto ai predicati RLS che
-    gia' girano per riga. Chi la innesta su una lista lo sa e lo misura con
-    `EXPLAIN` sul DB provvisto (tests/db).
+    ⚠️ COSTO: la check gira PER RIGA di cio' su cui la si innesta. Dentro la
+    lettura di una lista paginata, sotto la `COUNT(*) OVER ()`, e' per riga
+    FILTRATA e non per riga di pagina: il motivo serve alle righe mostrate, e
+    li' va innestata (dopo `LIMIT/OFFSET` — per esempio `_sql_con_elimina` di
+    pagamenti). ⚠️ E una check SECURITY INVOKER che rilegge tabelle sotto RLS
+    ricalcola il perimetro a OGNI chiamata: per una lista si chiama la forma
+    che riceve la riga gia' letta (`fn_check_…_su_<testata>(alias)`), quando
+    il DB la offre (linee-guida-sql §13.2). Chi la innesta su una lista lo
+    misura con `EXPLAIN` sul DB provvisto (tests/db).
 
     ⛔ `check_sql` e `alias` sono SQL DEL CHIAMANTE — la chiamata alla check
     coi suoi argomenti (`script.fn_check_x(r.id)`) e l'alias del blocco — e

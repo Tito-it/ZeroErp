@@ -2,9 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-21
 
-**Riparte: Tid, col collaudo a video della lista e del drawer Modelli documento (§11.5) e la
-decisione sui due residui del §11.5; poi il giro degli smoke (riga 10). Il passaggio unico BE/FE è
-fatto e non committato (sessione BE, 2026-10-21).**
+**✅ Chiuso e archiviato il 2026-10-21 (Tid, dopo il collaudo a video riuscito). Nessuno riparte
+da qui: i residui sono in `.codex/PROJECT_CONTEXT.md` § «Aperto — Media priorità».**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -40,22 +39,20 @@ fatto e non committato (sessione BE, 2026-10-21).**
 | 9-quaterdecies-septies | **Tid** | ✅ Apply di `-13` … `-17` su scratch e dbdev, pgTAP verdi, nessuna regressione (2026-10-20) | §10.8, §10.9 | 9-quaterdecies-sexies |
 | 9-quindecies | **BE** | ✅ **Il passaggio unico**: B-1 … B-7, B-9, B-10 fatti; B-8 rinviato (§11.5); B-11 è la riga 10 | §11, §11.5 | 9-quaterdecies-septies |
 | 9-sexdecies | **FE** | ✅ F-1 … F-5 fatti (F-2 era già nei locale) | §11, §11.5 | 9-quindecies |
-| 9-septdecies | **Tid** | Collaudo a video (§11.5.3) e i due residui (§11.5.4) | §11.5 | 9-sexdecies |
-| 10 | **BE** | Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard e chiude una fattura) | §7, §11 | 9-quindecies, 9-sexdecies |
-| 11 | **Tid** | Archiviazione in `work-done/` | — | 10 |
+| 9-septdecies | **Tid** | ✅ Collaudo a video riuscito (2026-10-21). I due residui del §11.5.4 restano da decidere: passati in PROJECT_CONTEXT | §11.5 | 9-sexdecies |
+| 10 | **BE** | ⏭️ Il giro degli smoke su `dev.smoke` (DEVA emette con lo standard e chiude una fattura): **non fatto**, il brief si chiude col collaudo per decisione di Tid; passato in PROJECT_CONTEXT | §7, §11 | — |
+| 11 | **Tid** | ✅ Archiviazione in `work-done/` (2026-10-21) | — | 9-septdecies |
 
-**Decisioni aperte di Tid:** i due residui del §11.5.4 (B-8, la numerazione della versione nuova);
-facoltativa `fatture.utility_id NOT NULL` (§10.9). **Da committare** anche il passaggio unico BE/FE
-(§11.5, 2026-10-21). D-4 … D-9,
-P-1, P-2 e C-1 … C-3 decise come da proposta (2026-10-20). Committati: tranche 1 e 2 (`560d5d97e`,
-PR #1899), `20261020-26` (`0ff115bf0`, PR #1906), BE (`fad3ad71f`, `323c96a5c`), la coda di stampa
-con P-2 (`20261020-27` … `-31`). **Da committare** (tutto applicato): il giro unico (§10.6), R-1 …
-R-5 (§10.8, §10.9), la doc auto-generata rigenerata, la guida `documenti-e-stampe.md`, le pagine
-`manual/` e questo documento.
+**Decisioni aperte di Tid, ereditate da PROJECT_CONTEXT:** i due residui del §11.5.4 (B-8, la
+numerazione della versione nuova); facoltativa `fatture.utility_id NOT NULL` (§10.9). D-4 … D-9,
+P-1, P-2 e C-1 … C-3 decise come da proposta (2026-10-20). **Tutto committato:** tranche 1 e 2
+(`560d5d97e`, PR #1899), `20261020-26` (`0ff115bf0`, PR #1906), BE (`fad3ad71f`, `323c96a5c`), la
+coda di stampa con P-2, il giro unico e R-1 … R-5 con doc, guida e manuali (`2c7f2059e`,
+`2ada3f6d1`), il passaggio unico BE/FE (`7385889b9`, 2026-10-21).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-18. **A chi:** Tid (§5), poi il team DB;
 > la §6 al BE/FE.
-> **Origine:** il collaudo T-5 di [brief-be-utenti-di-sviluppo](brief-be-utenti-di-sviluppo.md)
+> **Origine:** il collaudo T-5 di [brief-be-utenti-di-sviluppo](../work-in-progress/brief-be-utenti-di-sviluppo.md)
 > (§9). L'emittente di prova A, creato dal verbo di sviluppo, non emette nessun documento: non ha
 > modelli. Proposta di Tid (2026-10-18): «la cosa migliorativa è fornire un set di modelli
 > standard».
@@ -90,7 +87,7 @@ registri, altro) e di dire, per ciascuna voce, se nasce con l'emittente o ha uno
 censimento si fa sulla struttura (funzioni di risoluzione, FK, guard), non sulle righe di dbdev.
 
 ➡️ **La voce «registri» ha la sua risposta** (team DB, 2026-10-18): è R-BE-14, in
-[brief-db-processi-accensione-per-ambiente §6.14](../work-done/brief-db-processi-accensione-per-ambiente.md). Nessun
+[brief-db-processi-accensione-per-ambiente §6.14](brief-db-processi-accensione-per-ambiente.md). Nessun
 emittente nasceva col registro delle fatture. ✅ Fatto il 2026-10-18 (`20261019-07` … `-12`, applicati su
 dbdev, pgTAP verdi): il registro delle fatture standard nasce con l'emittente, dallo stesso meccanismo che crea già
 i registri delle altre famiglie. Le altre voci del censimento restano da fare.
@@ -516,7 +513,7 @@ Con lo standard, l'emittente di prova A (DEVA) emette senza configurazione. Gli 
 fermano su `E_DOCUMENTI_NOT_FOUND` (preventivi, smistamento-ordine, contratti-addebito,
 listini-v5 dal passo 16, pratica-preventivi-bivio, resi-vendita sul modello delle bolle) arrivano in
 fondo. L'elenco aggiornato è la tabella di R-BE-14 in
-[brief-db-processi-accensione-per-ambiente §6.12](../work-done/brief-db-processi-accensione-per-ambiente.md)
+[brief-db-processi-accensione-per-ambiente §6.12](brief-db-processi-accensione-per-ambiente.md)
 (2026-10-19): lì il BE ha chiesto registri e template insieme; i template sono di questo brief. Gli smoke della fatturazione, che cercano un'attività
 fatturabile esistente, restano un lavoro loro: si costruiscono la materia (brief BE utenti di
 sviluppo, §9, T-7).
@@ -690,7 +687,7 @@ mirror `loadUpdateData`; le versioni in un changeSet forward-only per modello in
 Lo standard «Ordine di vendita» ha la versione 2 (`20261020-25`), nella forma di Q-5: copia della pubblicata,
 solo sullo standard, pubblicata dalla data operativa. Dichiara la **forma dei dati 3** (chiave nuova
 `origine.etichetta`): dopo il giro BE le copie degli emittenti in forma 2 non stampano più. Sede:
-[brief-db-grammatica-unica-documenti §12.10](brief-db-grammatica-unica-documenti.md).
+[brief-db-grammatica-unica-documenti §12.10](../work-in-progress/brief-db-grammatica-unica-documenti.md).
 
 ### 8.4 Correzione Q-2: conta solo un modello che può stampare (2026-10-20; ✅ applicata da Tid, pgTAP verdi)
 
@@ -1543,7 +1540,7 @@ suoi `COALESCE(…, 2)` e `COALESCE(…, 'HALF_UP')` degli importi. I default de
 
 Il giro degli smoke (§7, B-11), poi l'archiviazione del brief in `work-done/` (Tid).
 
-### 11.5 Il passaggio unico, fatto (sessione BE, 2026-10-21; non committato)
+### 11.5 Il passaggio unico, fatto (sessione BE, 2026-10-21; committato in `7385889b9`)
 
 #### 11.5.1 BE
 
@@ -1579,7 +1576,7 @@ Statici (2026-10-21): `ruff check backend/apps` pulito; mypy col cricchetto
 `brief-be-verifica-documentazione-api`, perché dalla shell di questa sessione il plugin Django di
 mypy andava in errore interno.
 
-#### 11.5.3 Collaudo a video (Tid)
+#### 11.5.3 Collaudo a video (Tid) — ✅ riuscito il 2026-10-21
 
 1. Configurazione → Modelli documento: il pannello sopra la lista dice quali aziende stampano con lo
    standard; un'azienda con un modello suo non predefinito compare in giallo.

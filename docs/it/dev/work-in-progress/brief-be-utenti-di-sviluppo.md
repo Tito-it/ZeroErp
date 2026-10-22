@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-21
 
-**Riparte: il BE, con la riprova dello spegnimento di un listino (11-quater, §9.6), poi il passaggio unico del [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §11 e T-7b. Lato DB non resta niente: `20261021-21` … `-23` applicati su scratch e dbdev, pgTAP verdi (Tid, 2026-10-21). T-7a è fatto (§9.4).** Il collaudo T-5 è fatto (2026-10-18, §9): provisioning, `env.sh` e login con
+**Riparte: il team DB coi tre trovati (§9.8 riga 11-sexies, §9.9 e §9.10 riga 12-bis) e R-3 (riga 12-sexies); poi il BE con la coda di T-7b (riga 12-quater). I due giri di T-7b e group-attivita-contratto sono fatti (§9.9, §9.9.1, §9.11). La riprova 11-quater è fatta (§9.7): il 500 non c'è più. Il passaggio unico del [brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md) §11 è fatto (`7385889b9`). T-7a è fatto (§9.4).** Il collaudo T-5 è fatto (2026-10-18, §9): provisioning, `env.sh` e login con
 `dev.smoke` funzionano, `smoke` è disattivato; il giro degli smoke ha trovato un emittente di prova che non sa
 emettere (nessun modello di documento) e smoke che vivevano dei dati di `EMITEST`.
 
@@ -21,16 +21,24 @@ utenti dei portali non hanno un PF loro (la veste sta sul ruolo del cliente o de
 | 7 | ✅ **BE** | T-1 … T-4 (2026-10-18, §8) e la 2b-2: il backend crea dalle madri del DB e le sue copie sono ritirate (brief DB §6.10) | §8; brief DB §6.10 | — |
 | 8 | ✅ **Tid + BE** | Collaudo T-5: command su dbdev, `env.sh` a `dev.smoke`, giro degli smoke, `smoke` disattivato (2026-10-18). Esito e correzioni in §9 | §9 | — |
 | 9 | ✅ **FE** | T-6: il filtro e il badge nella lista Operatori (2026-10-18) | §8 | — |
-| 10 | ✅ **Tid → team DB** | I modelli di documento standard: un emittente nuovo emette dal primo giorno. Lato DB chiuso e applicato (2026-10-20); il seguito è il passaggio unico BE/FE di quel brief | [brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md) §11 | — |
+| 10 | ✅ **Tid → team DB** | I modelli di documento standard: un emittente nuovo emette dal primo giorno. Lato DB chiuso e applicato (2026-10-20); il seguito è il passaggio unico BE/FE di quel brief | [brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md) §11 | — |
 | 11 | ✅ **BE** | T-7a (2026-10-18): preventivi-componenti e guida-inversione si costruiscono la materia; trovato il listino che non si spegne | §9.4 | — |
 | 11-bis | ✅ **team DB** | Il guard di disattivazione del listino punta a una tabella eliminata: 500 a ogni spegnimento (R-1, Q-1). Il generatore ritira gli orfani (`20261021-21` … `-23`), provato sullo scratch e su dbdev in transazione | §9.6 | — |
 | 11-ter | ✅ **Tid** | Apply di `20261021-21` … `-23` su scratch e dbdev, pgTAP verdi (2026-10-21). Verificato: changeSet `EXECUTED`, generatore agganciato, zero orfani, il trigger su `listini_associazioni` non c'è più | §9.6 | 11-bis |
-| 11-quater | **BE** | Riprova: spegnere un listino dalla API (con le versioni già spente, §9.6), poi i quattro `SMK-COMP-*` di dbdev | §9.6 | 11-ter |
-| 12 | **BE** | T-7b: gli smoke che hanno bisogno di un documento emesso; il giro intero con `--update` della baseline | §9.3 | il passaggio unico del brief modelli §11, 11-quater |
-| 13 | **Tid** | Archiviazione in `work-done/` | — | 12 |
+| 11-quater | ✅ **BE** | Riprova (2026-10-21): 409 di dominio al posto del 500; spenti 10904 e 10905. 10906 e 10907 non si spengono: §9.8 | §9.7 | — |
+| 11-quinquies | ✅ **Tid** | Un listino con storia si spegne solo con la fine validità (2026-10-21) | §9.8 | — |
+| 11-sexies | **team DB** | Il codice del rifiuto per il listino con storia; `valido_al` garantito sulla CHIUSA | §9.8 | 11-quinquies |
+| 11-septies | **BE/FE** | Codice nella policy e nel ripiego; il toggle del drawer solo senza storia | §9.8 | 11-sexies |
+| 12 | ✅ **BE** | T-7b primo giro: il BB `_smoke_fatturazione.py`, quattro smoke verdi, giro 6 non-verdi su 51 | §9.9 | — |
+| 12-bis | **team DB** | Il rilancio di un lotto per id prende l'emittente predefinito (§9.10); la riga di fattura senza IVA (§9.9) | §9.9, §9.10 | — |
+| 12-ter | ✅ **Tid + BE** | Seconda estrazione (ok Tid): la catena, contatore-note e push-termine verdi, 5 non-verdi su 51 | §9.9.1 | — |
+| 12-quater | **BE** | Dopo la correzione del §9.10: ritorno-lotto verde e il test 9 di scadenze costruito; poi il giro intero con `--update` della baseline | §9.9.1 | 12-bis |
+| 12-quinquies | ✅ **team DB + BE** | group-attivita-contratto: R-1, R-2, Q-1 del DB, smoke verde (27 OK) | §9.11 | — |
+| 12-sexies | **team DB** | R-3: `p_billing_account_id` su `fn_pgtap_crea_ordine`, per ritirare l'INSERT dell'ordine di push-termine | §9.11 | — |
+| 13 | **Tid** | Archiviazione in `work-done/` | — | 12-quater, 11-septies |
 
-**Decisioni aperte di Tid: nessuna** (§7.4 deciso il 2026-10-16; le tre decisioni del §9.6 prese il 2026-10-20; D-1 … D-3 chiuse nel brief dei modelli standard). Domande aperte al team DB: nessuna.
-✅ **Committato** su `dev/backend-tid` (`08cc15a61`, 2026-10-18; PR #1881): T-1 … T-4, T-6 e la 2b-2. Da committare: il §9 e le correzioni degli smoke del 2026-10-18 (§9.2). **Da committare su `dev/db-tid`** (applicato): `20261021-21` … `-23`, il pgTAP `dbops/test-trigger-attivo-orfani-v1`, le due pagine `manual/` nuove, i manuali di `fn_run_automations_attivo` e `fn_trigger_argomenti`, la guida `automazione-db.md` e questo documento.
+**Decisioni aperte di Tid: nessuna.** Al team DB: §9.8 (riga 11-sexies), §9.9 e §9.10 (riga 12-bis), R-3 del §9.11 (riga 12-sexies).
+✅ **Committato** su `dev/backend-tid` (`08cc15a61`, 2026-10-18; PR #1881): T-1 … T-4, T-6 e la 2b-2. Da committare: il §9 e le correzioni degli smoke del 2026-10-18 (§9.2); i due giri di T-7b del 2026-10-21 (§9.9, §9.9.1: `_smoke_fatturazione.py`, otto smoke convertiti, `smoke-lotto-capability-reset-fattura.py` e `smoke-test-preventivi-componenti.sh` allineati, catalogo BB); il §9.11 (group-attivita-contratto, policy e ripiego di `E_ATTIVITA_CONTRATTO_INCOERENTE`, contratti-addebito e listini-v5 senza `quantita`). **Da committare su `dev/db-tid`** (applicato): `20261021-21` … `-23`, il pgTAP `dbops/test-trigger-attivo-orfani-v1`, le due pagine `manual/` nuove, i manuali di `fn_run_automations_attivo` e `fn_trigger_argomenti`, la guida `automazione-db.md` e questo documento.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-16. **A chi:** il team BE/FE; la §6 al
 > team DB.
@@ -278,7 +286,7 @@ baseline, in tre gruppi.
 ### 9.3 Da fare: T-7
 
 **Il difetto di fondo non è degli smoke.** Un emittente nuovo non sa emettere: è il
-[brief-db-modelli-documento-standard](brief-db-modelli-documento-standard.md), e risolve da solo gli
+[brief-db-modelli-documento-standard](../work-done/brief-db-modelli-documento-standard.md), e risolve da solo gli
 smoke che si fermano sul modello. Il resto è materia che ogni smoke si deve costruire da sé, a partire
 dalle radici di prova (§1: il verbo dà identità stabili, non dati di lavoro).
 
@@ -403,3 +411,175 @@ due database: i tre changeSet `EXECUTED`, `fn_run_automations_attivo` chiama il 
 
 **Ricaduta BE:** nessuna nel codice. ⚠️ Nella riprova (11-quater) un listino con versioni attive
 risponde col rifiuto di dominio «figli prima, padre poi»: si spengono prima le versioni, poi il listino.
+
+### 9.7 La riprova 11-quater (sessione BE, 2026-10-21)
+
+Dalla API, come `dev.smoke`, sui quattro `SMK-COMP-*` di dbdev.
+
+| Listino | Versione | Esito |
+| --- | --- | --- |
+| 10904 | 20174 BOZZA, nessuna riga | listino spento subito → **409** `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (era 500); versione spenta, poi listino spento: **200** |
+| 10905 | 20175 BOZZA, una riga attiva | riga, versione, listino spenti in quest'ordine: **200** ognuno |
+| 10906 | 20176 **ATTIVA**, una riga, mappa categoria attiva | versione: **400** «In stato ATTIVA sono modificabili solo `valido_al`»; listino: 409 |
+| 10907 | 20177 **ATTIVA**, una riga | come 10906 |
+
+✅ **R-1 provato**: il 500 non c'è più, il rifiuto è quello di dominio.
+
+### 9.8 Al team DB e a Tid: un listino che ha avuto una versione ATTIVA non si spegne più (trovato da 11-quater)
+
+**Il caso.** La catena «figli prima, padre poi» è listino ← versioni ← righe
+(`trgfn_prevent_deactivate_if_children`, doc `dbzero` di `vendite.listini` e `vendite.listini_versioni`).
+Una versione ATTIVA o CHIUSA però è **immutabile**: non cambia `attivo`, e non lo cambiano le sue righe.
+Il BE lo dice per primo (`_VERSIONE_PATCH_ALLOWED_BY_STATE`: in ATTIVA si cambia solo `valido_al`, in
+CHIUSA niente), e sotto ci sono i guard di immutabilità delle righe. In più `commesse_attivita`, `contratti` e
+`offerte_commerciali` puntano alla versione e non hanno `attivo`. Per il guard basta che esistano.
+Risultato: **un listino che ha avuto anche una sola versione ATTIVA non si spegne in nessun modo**. Il toggle
+«Attivo» del `ListinoDrawer` risponde sempre 409, e il rimedio che il messaggio suggerisce
+(«disattivare le righe che puntano a questa») non si può eseguire.
+
+Non è un difetto del BE, e il BE non lo aggira: aprire `attivo` sulle versioni ATTIVA aggirerebbe
+l'immutabilità del modello. Va deciso che cosa significa **spegnere un listino che ha una storia**:
+
+* **(a)** la storia non blocca: le versioni ATTIVA/CHIUSA non contano come «figli attivi» nel guard del
+  listino, e il listino spento non è più proposto né risolto;
+* **(b)** spegnere il listino chiude le sue versioni vive (`valido_al`, CHIUSA) in un verbo, e la storia
+  resta com'è;
+* **(c)** un listino usato non si spegne: si chiude la versione; lo spegnimento ha un suo rifiuto con un
+  codice chiaro, e il FE nasconde il toggle quando c'è storia.
+
+Domanda al team DB (Q-2): con (a) o (b), come si scrive il guard generico, che oggi conta solo `attivo`, per
+un figlio che ha uno **stato** di storia?
+
+✅ **Decisione di Tid (2026-10-21): un listino che ha una storia si spegne solo con una data di fine
+validità.** Al più si usa «chiudi» (la versione CHIUSA), ma sempre con la sua fine validità. Il toggle
+`attivo` non è la strada per un listino con storia; resta per quello che non ne ha (BOZZA, come 10904 e
+10905). È la (c), con la fine validità come unico spegnimento.
+
+**Al team DB**, da questa decisione:
+
+* il rifiuto dello spegnimento di un listino con storia ha un **codice suo**, che dice di mettere la fine validità
+  alla versione, invece di `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` col rimedio «disattivare le righe», che non si
+  può eseguire;
+* una versione CHIUSA ha sempre `valido_al`: da verificare se il DB lo garantisce già
+  (`trgfn_listini_versioni_guard_date_chiusa`), o se va chiuso;
+* Q-2 cade: il guard generico non deve imparare lo stato di storia.
+
+**Ricaduta BE/FE, dopo il DB:** il codice nuovo nella policy e nel ripiego; il drawer del listino mostra il
+toggle solo a un listino senza storia, e per gli altri rimanda alla fine validità della versione.
+
+**Su dbdev** restano accesi 10906 e 10907: si spengono con la fine validità delle loro versioni. Non pesano su nessun prezzo:
+ogni categoria è usata solo dal cliente del suo giro.
+
+### 9.9 T-7b, primo giro (sessione BE, 2026-10-21)
+
+**Il BB (regola del 2, ok Tid):** `scripts/tests/_smoke_fatturazione.py`. `costruisci_base_fatturazione`
+costruisce la base della fixture dalle radici di prova: emittente di prova, primo BA di un cliente di prova
+legato a lui (riconosciuto dall'etichetta), articolo dal builder del DB con la sua IVA, commessa con termine
+e modalità. Prima la base veniva da `ORDER BY a.id DESC LIMIT 1` sulle attività esistenti. Ritirate nello
+stesso giro le cinque letture del template e le due copie identiche di `crea_commessa`
+(`crea_commessa_di_prova`). In aggregazione-righe il secondo articolo del kit si costruisce
+(`crea_articolo_di_prova`): prima veniva preso dal catalogo con `LIMIT 2`, e con lui se n'è andato il ramo
+«SKIP 8-10». Registrato nel catalogo BB backend.
+
+Fatto datato (2026-10-21): col contesto sull'emittente di prova le attività fatturabili visibili erano zero.
+È la conferma che questi smoke vivevano dei dati di altri emittenti.
+
+| Smoke | Esito |
+| --- | --- |
+| fattura-scadenze | ✅ verde, 9 OK. ⚠️ resta lo SKIP del test 9 (cerca «un lotto con sole fatture oltre EMESSA» fra i dati esistenti): da costruire, vedi sotto |
+| fattura-aggregazione-termini | ✅ verde, 7 OK |
+| fattura-indirizzi-snapshot | ✅ verde, 9 OK |
+| fatturazione-aggregazione-righe | ✅ verde, 13 OK, kit compreso |
+| ritorno-lotto-a-draft | ❌ rosso **sul modello**, §9.10. Resta rosso: è il presidio |
+| fattura-contatore-note, push-termine-documento-commessa | ⏳ non toccati, vedi sotto |
+
+**Giro intero** (2026-10-21 21:59, senza `--update`): **6 non-verdi su 51** (erano 9). Le regressioni sono due.
+La prima è ritorno-lotto (§9.10). La seconda è `smoke-lotto-capability-reset-fattura.py`, rotto dal rename
+`sort_by` → `order_by` di `list_lotto_fatture` (`5d6cb335c`, un altro brief) e mai lanciato dopo: allineato,
+verde. È rientrato `smoke-fatturazione-render-stampa.py`.
+
+**Resta di T-7b**, e vuole una seconda estrazione da proporre a Tid (regola del 2). La catena «lotto →
+attività fatturabile lockata → righe → fattura» sta copiata, con varianti, in sei smoke: `crea_attivita` è
+identica in scadenze e aggregazione-termini, e l'`INSERT INTO vendite.attivita_fatturabili` compare in tutti
+e sei. contatore-note ha bisogno di **una fattura**, e il builder `dbops.fn_pgtap_crea_fattura` rifiuta
+`dev.smoke`, che è super admin senza whitelist. push-termine ha bisogno di **un ordine** sul cliente di
+prova: oggi clona con `INSERT` diretti «l'ultimo ordine visibile». Il test 9 di scadenze ha bisogno di un
+lotto con fatture oltre EMESSA. Tutti e tre si costruiscono da quella catena.
+
+#### 9.9.1 Secondo giro: la catena (sessione BE, 2026-10-21, regola del 2, ok Tid)
+
+Nello stesso BB: `crea_lotto_di_prova`, `crea_attivita_lockata`, `crea_attivita_di_commessa`,
+`crea_fattura_di_prova`. Ritirati: l'INSERT del lotto in sette smoke (nota-credito-resi compreso), l'INSERT
+dell'attività in cinque, `crea_attivita` (identica in due). Resta dov'è l'attività di controllo di
+push-termine, che ha un altro significato: non è lockata e sta fuori dal lotto.
+
+| Smoke | Esito |
+| --- | --- |
+| fattura-contatore-note | ✅ verde, 6 OK: la fattura nasce dal generatore righe vivo (`crea_fattura_di_prova`) |
+| push-termine-documento-commessa | ✅ verde, 8 OK: l'ordine nasce dal cliente di prova con un articolo merce costruito, al posto del clone dell'«ultimo ordine visibile» |
+| fattura-scadenze, test 9 | ⏳ resta SKIP. «Oltre EMESSA» si raggiunge solo numerando il lotto (`numera_lotto`), che rilancia la pipeline col solo `lotto_id` e cade nel §9.10. Il motivo dello SKIP ora lo dice |
+| nota-credito-resi | invariato (verde con due SKIP), lotto dal BB |
+| preventivi-componenti | ✅ di nuovo verde. Era rosso per un altro brief: dal 2026-10-20 la creazione del preventivo rifiuta le chiavi fuori contratto, e lo smoke mandava una `data` che il service non aveva mai letto. Tolta |
+
+**Giro intero** (2026-10-21, senza `--update`): **5 non-verdi su 51**. L'unica regressione è ritorno-lotto
+(§9.10); gli altri quattro erano già in baseline (preventivi-componenti è rientrato dopo, con un giro mirato).
+Rientrati, da togliere dalla baseline al `--update`: render-stampa e preventivi-componenti.
+
+**Fuori da T-7b, trovato nel giro:** `smoke-group-attivita-contratto.py` apre il contesto su «un operatore
+attivo qualunque» (`identita_digitali … LIMIT 1`, la stessa apertura che `_smoke_contesto.py` ha ritirato da
+dieci smoke). Prende l'attività, il contratto e la fattura fra i dati esistenti. Per costruirli serve una
+fixture di contratto, che non c'è: brief suo, o lotto T-7c.
+
+**Trovato (al team DB): una riga di fattura senza IVA è un errore tecnico, non un rifiuto.** Un articolo
+senza `iva_id`, su una fornitura senza tipo d'uso, passa la generazione delle righe con `iva_id` NULL: il
+resolver dice `origine = 'ASSENTE'` e nessuno si ferma. Il giro si rompe dopo, nel riepilogo IVA, con
+`E_PARAMETRO_INVALIDO` «p_iva_id obbligatorio e > 0» da `config.fn_get_aliquota_iva`. Il modello lo
+ammette: `catalogo.articoli.iva_id` è nullable, e lo stadio A2 vale solo se c'è un tipo d'uso. Chi
+emette deve sentirsi dire quale riga e quale articolo non hanno l'IVA, prima del riepilogo.
+
+### 9.10 Al team DB: il rilancio di un lotto per id prende l'emittente predefinito, non quello del lotto (trovato da T-7b, 2026-10-21)
+
+**Il caso.** Prendiamo un lotto MASSIVO di un emittente che non è il predefinito dell'installazione. Lo si
+rilancia col solo `lotto_id` (il FE manda solo quello, sia per «Avanza» sia per il rilancio su ERRORE:
+`runLottoPipeline`). Risposta: `Parametro non coerente con lotto esistente: emittente_soggetto_ruolo_id`. Il
+lotto non va avanti dal drawer.
+
+**La causa** (doc `dbzero`). `vendite.fn_get_or_create_lotto` chiama
+`fn_resolve_lotto_utility_emittente` col BA NULL. Questa risolve `anagrafiche.fn_get_emittente_fiscale_id(NULL)`,
+cioè l'emittente predefinito dell'installazione, e il ramo del lotto esistente confronta quell'emittente con
+quello del lotto e solleva. Il ripiego sul predefinito ha senso per un lotto **nuovo** senza BA. Per un lotto
+**esistente** l'emittente è il suo.
+
+* Su dbdev il predefinito è `PGTAPEF202`, un emittente rimasto da un pgTAP (fatto del 2026-10-21): da
+  ripulire, ma è un problema di dati a parte.
+* Lo smoke era verde perché «l'ultima attività esistente» stava, per caso, su un lotto del predefinito.
+  Ora il lotto è dell'emittente di prova, e il difetto si vede.
+
+**Ricaduta BE:** nessun aggiramento (il runner potrebbe passare l'emittente del lotto, ma la regola è del
+DB). `smoke-ritorno-lotto-a-draft.py` resta rosso finché il DB non la corregge.
+
+### 9.11 La risposta del team DB a R-1, R-2 e Q-1, applicata (sessione BE, 2026-10-21)
+
+Chiesto per `smoke-group-attivita-contratto.py` (§9.9.1). Il DB ha risposto nel merge #1918.
+
+| Che cosa | Risposta del DB | Applicato nel BE |
+| --- | --- | --- |
+| **R-1** | `dbops.fn_pgtap_crea_contratto(p_etichetta, p_stato_codice_interno, p_billing_account_id)`: DRAFT, ATTIVO (con un listino del mondo), ANNULLATO. Il BA dev'essere della stessa azienda di chi agisce | group-attivita-contratto costruisce il contratto ATTIVO sul BA della base |
+| **R-2** | i builder leggono l'emittente da `app.current_emittente_id` quando chi agisce è un super admin | contatore-note e group-attivita-contratto prendono la fattura da `fn_pgtap_crea_fattura`. Ritirato `crea_fattura_di_prova` del BB: «una fattura» ha una sede sola, il builder del DB |
+| **Q-1** | `contratto_id` (su `commesse_attivita` e `attivita_fatturabili`) è un contratto del BA della commessa, altrimenti `E_ATTIVITA_CONTRATTO_INCOERENTE` (TECNICO) | policy rigenerata (con lei entrano `E_DOC_RIGA_NON_AMMESSA` ed `E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`, già in git); ripiego senza `%s`. Il contratto dello smoke è del BA della commessa delle attività |
+
+**group-attivita-contratto** ✅ verde, 27 OK, tutto costruito: contesto `apri_contesto_smoke`, base, lotto, tre
+attività su tre articoli (servono ai test 8-10), contratto e fattura dai builder. Restano fuori dal costruito solo
+i cataloghi (stati, nature, UoM). La riga 12-quinquies è chiusa.
+
+**Giro intero** (2026-10-21, senza `--update`): l'unica regressione resta ritorno-lotto (§9.10). Nel giro sono
+emerse due regressioni di altri lavori, ora allineate. contratti-addebito-standard e listini-v5 mandavano
+`quantita` nella riga di contratto, che ora la rifiuta (modifica in corso, non committata, di
+`contratti_service.py`): la calcola il DB da `qta_operativa`, quindi è stata tolta. Tutti e due verdi, e
+listini-v5 per intero (prima si fermava al passo 16 sul modello di documento).
+
+**R-3, al team DB (nessuna fretta).** `push-termine-documento-commessa` scrive ancora l'ordine con un INSERT del
+BE. `dbops.fn_pgtap_crea_ordine(p_etichetta, p_stato)` crea un mondo nuovo a ogni chiamata, e il test 2 vuole
+**due ordini dello stesso cliente**. Vi chiediamo un `p_billing_account_id` facoltativo, come su fattura e
+contratto. Termine e modalità li scrive lo smoke in bozza. Con quello l'INSERT si ritira.
+

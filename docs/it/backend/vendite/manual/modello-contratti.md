@@ -257,8 +257,9 @@ non lo sceglie l'operatore da zero: **lo dice l'articolo**.
   QUOTA_FISSA solo CANONE/FISSA, CONSUMO a letture o manuale, PRODOTTI una
   tantum. **Senza tipologia** (solo un'AGGIUNTA puo' averlo: un OVERRIDE sta nel
   listino, che la tipologia la pretende) decide la **natura di vendita**
-  (`config.nature_vendita_erogazioni`). Vince la tipologia. Il composito ammette
-  in piu' DERIVATA_COMPONENTI. Sede unica: `vendite.fn_articolo_erogazioni`.
+  (`config.nature_vendita_erogazioni`). Vince la tipologia. Il composito (kit)
+  ammette le sole combinazioni FISSA (I-D6, 2026-10-21): si vende a quantita'
+  fissa. Sede unica: `vendite.fn_articolo_erogazioni`.
 - **La riga eredita** erogazione e fonte che non indica (solo all'INSERT);
   CANONE porta con se' la sua `generazione_canone`. La scelta dell'operatore
   vince, dentro il perimetro.
@@ -266,14 +267,17 @@ non lo sceglie l'operatore da zero: **lo dice l'articolo**.
   quelle della utility del documento: una combinazione fuori →
   `E_RIGA_EROGAZIONE_FUORI_PERIMETRO`; un articolo di una tipologia che la
   utility non prevede → `E_RIGA_TIPOLOGIA_FUORI_UTILITY`. Le righe gia' scritte
-  restano come sono (B-D6).
+  le intercetta il primo passo che le usa (dal 2026-10-21, §H-§I del brief:
+  supera B-D6): l'emissione dell'offerta, il push al contratto, la generazione
+  dell'ordine e l'attivazione del contratto si spengono col motivo
+  `RIGA_NON_AMMESSA` e rifiutano con `E_DOC_RIGA_NON_AMMESSA`.
 - **Il form** propone le sole combinazioni ammesse e preseleziona il default
   (`GET …/righe/erogazioni/`). Il push offerta → contratto ricopia i valori
   della riga, quindi quelli ereditati.
 
-- **La quantita' segue la fonte** (2026-10-08, F-1): solo FISSA e
-  DERIVATA_COMPONENTI portano una quantita' sulla riga
-  (`script.fn_fonte_porta_quantita`). Con una fonte a valle `quantita` la svuota
+- **La quantita' segue la fonte** (2026-10-08, F-1): solo la FISSA porta una
+  quantita' sulla riga (`script.fn_fonte_porta_quantita`; la
+  DERIVATA_COMPONENTI e' ritirata dal 2026-10-21, I-D1). Con una fonte a valle `quantita` la svuota
   il DB (`trgfn_qta_from_operativa`) e una `qta_operativa` valorizzata e'
   rifiutata (`E_RIGA_QUANTITA_CON_FONTE_A_VALLE`, campo `qta_operativa`).
 

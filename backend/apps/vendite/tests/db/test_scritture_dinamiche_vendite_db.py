@@ -98,7 +98,6 @@ def _riga_aggiunta(mondo: dict) -> dict:
         "tipo_erogazione": "UNA_TANTUM",
         "fonte_quantita_attesa": "FISSA",
         "prezzo_unitario": Decimal("10.00"),
-        "quantita": Decimal("1"),
         "qta_operativa": Decimal("1"),
         "uom_operativa_id": mondo["uom_id"],
         "factor_to_base": Decimal("1"),
@@ -252,8 +251,10 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
                 self.assertEqual(riga["contratto_id"], contratto)
                 self.assertEqual(riga["tipo"], "AGGIUNTA")
                 self.assertEqual(riga["tipo_meta"], "object")
+                # `quantita` non e' scrivibile (dal 2026-10-21): la calcola il DB
+                # da `qta_operativa` (`trgfn_qta_from_operativa`).
                 self.assertTrue(repo.update_riga(riga_id, {
-                    "quantita": Decimal("3"), "meta": {"v": 2},
+                    "qta_operativa": Decimal("3"), "meta": {"v": 2},
                 }))
                 self.assertEqual(_riga(cur, (
                     "SELECT quantita FROM vendite.contratti_righe WHERE id = %s"

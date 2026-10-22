@@ -311,7 +311,11 @@ CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "generazione_canone",
     "competenza_canone",
     "prezzo_unitario",
-    "quantita",
+    # ⛔ Niente `quantita`: e' calcolata dal DB da `qta_operativa` (FISSA) e
+    #    vuota con una fonte a valle (`script.trgfn_qta_from_operativa`). Un
+    #    client che la manda riceve un 400 sulla chiave. Fino al 2026-10-21
+    #    restava per la DERIVATA_COMPONENTI, ritirata (I-D1 di
+    #    brief-db-offerta-emissione-ed-erogazione).
     "qta_operativa",
     "uom_operativa_id",
     "factor_to_base",
@@ -337,7 +341,6 @@ UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "generazione_canone",
     "competenza_canone",
     "prezzo_unitario",
-    "quantita",
     "qta_operativa",
     "uom_operativa_id",
     "factor_to_base",
@@ -2184,7 +2187,7 @@ class ContrattiService:
                 # Placeholder: il trigger DB lo sovrascrive a SUM componenti.
                 payload = {**payload, "prezzo_unitario": Decimal("0")}
         # Numeric opzionali: `null` esplicito azzera, chiave assente non tocca.
-        for field in ("prezzo_unitario", "quantita", "qta_operativa", "factor_to_base"):
+        for field in ("prezzo_unitario", "qta_operativa", "factor_to_base"):
             if field in payload:
                 data[field] = self._v.optional_decimal(
                     payload, field, message=_MESSAGE_RIGA,

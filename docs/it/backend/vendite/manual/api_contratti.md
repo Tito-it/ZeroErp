@@ -525,7 +525,8 @@ altro controllo (2026-10-20). Fuori bozza → `409 E_RIGA_DOC_NON_BOZZA`.
 `fonte_quantita_attesa` (obbligatoria su OVERRIDE/AGGIUNTA, NULL sull'ESCLUSIONE:
 CHECK `chk_contrighe_fonte_per_tipo_eccezione`, dal 2026-10-04)
 dichiara da dove arriva la quantita' che il motore di fatturazione applichera'
-in fase di push periodico verso le commesse. 5 valori CHECK DB:
+in fase di push periodico verso le commesse. 4 valori (vocabolario
+`config.erogazioni_fonti`):
 
 | Valore | Semantica | Quantita' sulla riga |
 | --- | --- | --- |
@@ -533,16 +534,21 @@ in fase di push periodico verso le commesse. 5 valori CHECK DB:
 | `MANUALE` | Definita di volta in volta sul documento downstream | Vuota: una `qta_operativa` valorizzata e' rifiutata |
 | `TIMESHEET` | Da rendicontazione ore (modulo timesheet futuro) | Vuota, come sopra |
 | `LETTURE` | Da letture utility | Vuota, come sopra |
-| `DERIVATA_COMPONENTI` | Per padre composito | Ammessa (⚠️ chi la calcola e' una domanda aperta: §F.4.3 di brief-db-offerta-emissione-ed-erogazione) |
+
+⛔ `DERIVATA_COMPONENTI` non c'e' piu' (I-D1 di
+brief-db-offerta-emissione-ed-erogazione, 2026-10-21): il modello andava in un
+verso solo, dal padre ai componenti, quindi una riga «derivata» o non aveva
+componenti o era una FISSA con un altro nome. La quantita' del kit la porta la
+fonte (un kit si vende solo FISSA, I-D6), e i componenti la seguono.
 
 ⭐ **La quantita' per fonte la decide il DB** (dal 2026-10-08,
 brief-db-offerta-emissione-ed-erogazione F-1). L'elenco delle fonti che portano
-la quantita' sta in `script.fn_fonte_porta_quantita` (FISSA,
-DERIVATA_COMPONENTI). Con una fonte a valle:
+la quantita' sta in `script.fn_fonte_porta_quantita` (la sola FISSA, dal
+2026-10-21). Con una fonte a valle:
 
 - `quantita` e' **calcolata**: la svuota il DB (`script.trgfn_qta_from_operativa`),
-  all'INSERT e a ogni UPDATE, anche passando da DERIVATA_COMPONENTI a una fonte a
-  valle. Il client non la manda;
+  all'INSERT e a ogni UPDATE. Il client non la manda: dal 2026-10-21 e' una
+  chiave fuori contratto del payload di riga (400 `E_VENDITE_VALIDATION`);
 - una `qta_operativa` valorizzata e' rifiutata: `E_RIGA_QUANTITA_CON_FONTE_A_VALLE`
   (400, campo `qta_operativa` in `error.fields`), guard
   `script.trgfn_righe_guard_quantita_per_fonte`; rete `chk_contrighe_quantita_per_fonte`.
@@ -557,8 +563,8 @@ brief-db-offerta-emissione-ed-erogazione B-R1…B-R4). Le combinazioni
 `(tipo_erogazione, fonte_quantita_attesa)` ammesse e quella di default le
 dichiara la **tipologia di listino** dell'articolo
 (`config.listini_tipologie_erogazioni`), o la sua **natura di vendita** se non
-ha tipologia (`config.nature_vendita_erogazioni`); un composito ammette in più
-`DERIVATA_COMPONENTI`. Sede unica: `vendite.fn_articolo_erogazioni`.
+ha tipologia (`config.nature_vendita_erogazioni`); un composito (kit) le sole
+combinazioni `FISSA` (I-D6, 2026-10-21). Sede unica: `vendite.fn_articolo_erogazioni`.
 
 - **Eredità** (solo INSERT): erogazione e fonte non indicate si ereditano dalla
   combinazione di default; `CANONE` porta anche la sua `generazione_canone`
@@ -1003,6 +1009,16 @@ alle righe di contratto via `target_riga_id`.
    `vendite.contratti.azione_reason.contratto_sovrapposto`), e il guard della
    transizione rifiuta con `E_CONTRATTO_OVERLAP_ESISTENTE`. Il backend non ha una
    copia della regola.
+   ⭐ Prima del sovrapposto, dal 2026-10-21 (H-R4 di
+   brief-db-offerta-emissione-ed-erogazione), le **righe**: una riga che la
+   regola intera non ammette piu' (articolo, erogazione e fonte, giudicati sui
+   dati di oggi: listino operativo, vocabolario del perimetro) spegne «Attiva»
+   col motivo `RIGA_NON_AMMESSA` (`reason_key`
+   `common.azione_reason.riga_non_ammessa`, valori: documento e articolo) e la
+   transizione e' rifiutata con `E_DOC_RIGA_NON_AMMESSA` (400, campo
+   `articolo_id`). Sede: `script.fn_check_righe_documento`, la stessa
+   dell'emissione dell'offerta. In DRAFT le righe si correggono: nessuna uscita
+   nuova.
 10. `categoria_cliente_id_snapshot` e' congelato alla creazione del
     contratto (dal trigger DB, che lo popola dal BA). Rappresenta la
     categoria commerciale del cliente al momento della stipula. Non e'
@@ -1039,6 +1055,7 @@ alle righe di contratto via `target_riga_id`.
 | `E_VENDITE_FK` | 400 | FK su BA/istanza/utility/listino/listino_versione/parent/stato/articolo/UoM/tipo/classe utenza/categoria cliente snapshot | — |
 | `E_CONTRATTO_OVERLAP_ESISTENTE` | 409 | Il guard della transizione verso ATTIVO (messaggio che nomina il contratto in conflitto) **oppure**, sulla corsa, l'EXCLUDE gist `ex_contratti_no_overlap` (testo del ripiego, senza il numero). Scatta all'**attivazione** (DRAFT esclusi dal vincolo, vedi Regole §9). Fino al 2026-10-19 era `E_VENDITE_CONTRATTO_OVERLAP` | `script.fn_check_contratto_sovrapposto` |
 | `E_DOC_DATI_COLLEGATI_NON_BOZZA` | 409 | DB P0001 (2026-10-11) — **utility e indirizzi** su contratto fuori bozza (create/update utility, indirizzi). Al posto di `E_CONTRATTO_NON_MODIFICABILE`, che il service sollevava come copia della regola e non solleva piu' | `trgfn_doc_righe_lock_fuori_bozza` (montato sui satelliti) |
+| `E_DOC_RIGA_NON_AMMESSA` | 400 | DB P0001 (2026-10-21) — attivazione con una riga che la regola intera non ammette piu'. Campo `articolo_id`; `motivo_riga` nel contesto | `vendite.trgfn_contratti_guard_transizione_stato` (`script.fn_check_righe_documento`) |
 | `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
 | `E_DATA_AL_MINORE_DAL` | 400 | DB P0001, campo `valido_al` — `valido_al < valido_dal` in create, PATCH testata e cessazione. Il service non lo anticipa (dal 2026-09-23). Frase del catalogo con le due date, soluzione in `hint`: `raise_from_database_error` fa vincere il codice del DB anche fuori da `_KNOWN_DB_ERROR_MARKERS` | `script.trgfn_guard_date_validita` (automazione `DATE_VALIDITA`) |
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` | 422 | DB P0001 (refactor modalita 2026-05-15) — attivazione di contratto senza listino senza righe AGGIUNTA con prezzo valorizzato | `trgfn_contratti_freeze_listino_versione` (guard interno) |
