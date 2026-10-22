@@ -1994,10 +1994,18 @@ def _testata_fattura_o_404(
 #    fuori scope non e' leggibile e qui diventa 404.
 #
 #    Aggiornamento 2026-07-29: dal changeset RLS satelliti anche `fatture_righe`
-#    e `fatture_riepiloghi_iva` hanno le proprie policy (operatore `FOR ALL` via
-#    `fn_scope_ef_whitelist_via_fattura`, portale `FOR SELECT` via
-#    `fn_scope_ba_ownership_via_fattura`). Verificato: 8 righe reali, **0**
-#    visibili senza GUC — prima erano 8 su 8.
+#    e `fatture_riepiloghi_iva` hanno le proprie policy. Verificato: 8 righe
+#    reali, **0** visibili senza GUC — prima erano 8 su 8.
+#    Forma delle policy dal 2026-10-21 (perimetro una volta per istruzione,
+#    risolutore per riga, sempre sulla fattura della riga):
+#      - operatore `FOR ALL`: `script.fn_scope_ef_perimetro` sull'emittente
+#        della fattura (`script.fn_resolve_emittente_fiscale_id`, modo `fattura`);
+#      - portale `FOR SELECT`: `script.fn_scope_sr_perimetro` sul cliente della
+#        fattura (`script.fn_resolve_controparte_sr_id`, modo `fattura`). Il
+#        perimetro pretende l'identita' nella veste del gate: un contesto GUC
+#        incoerente da' zero righe, cioe' 404 qui sotto.
+#    Gli adattatori `fn_scope_*_via_fattura` non stanno piu' nelle policy
+#    (`fn_scope_ba_ownership_via_fattura` ritirata con 20261021-40).
 #    L'ordine resta vincolante, ma per due ragioni diverse da prima:
 #      1. e' il 404 unificato — senza il cancello si restituirebbe un documento
 #         a meta' (testata assente, satelliti vuoti) invece di un errore netto;

@@ -216,7 +216,7 @@ fi
 # Niente iva_id: non è un campo della riga contratto (l'IVA è a valle).
 echo ""; echo "-- 3. Aggiungi riga addebito standard (AGGIUNTA, UNA_TANTUM/FISSA) --"
 do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_ID}/righe/" \
-    "{\"articolo_id\": \"$ARTICOLO_ID\", \"tipo_eccezione\": \"AGGIUNTA\", \"tipo_erogazione\": \"UNA_TANTUM\", \"fonte_quantita_attesa\": \"FISSA\", \"quantita\": \"1\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"120.00\"}"
+    "{\"articolo_id\": \"$ARTICOLO_ID\", \"tipo_eccezione\": \"AGGIUNTA\", \"tipo_erogazione\": \"UNA_TANTUM\", \"fonte_quantita_attesa\": \"FISSA\", \"qta_operativa\": \"1\", \"prezzo_unitario\": \"120.00\"}"
 if check "POST riga contratto" 200 "data.id"; then
     RIGA_ID="$EXTRACTED"
 else

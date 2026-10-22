@@ -13,7 +13,8 @@
       "indirizzi_mancanti": "Required document addresses are missing: fill them in the Addresses section.",
       "indirizzo_non_del_cliente": "A document address does not belong to its customer: pick one of the customer's addresses, or type it in, in the Addresses section.",
       "prezzo_pendente": "Some prices are waiting for approval ({0}).",
-      "prezzo_rifiutato": "Some prices were rejected by the manager ({0}): correct them or remove the lines."
+      "prezzo_rifiutato": "Some prices were rejected by the manager ({0}): correct them or remove the lines.",
+      "riga_non_ammessa": "{0}: the line for item {1} is not allowed."
     },
     "refine_hint_troncato": "Showing the first {shown}. Refine your search to see the others.",
     "save": "Save",
@@ -2478,11 +2479,9 @@
       "fonte_quantita_value_manuale": "Manual (on document)",
       "fonte_quantita_value_timesheet": "From time tracking",
       "fonte_quantita_value_letture": "From utility readings",
-      "fonte_quantita_value_derivata_componenti": "Derived from BoM components",
       "fonte_quantita_tag_manuale": "Defined on document",
       "fonte_quantita_tag_timesheet": "From time tracking",
       "fonte_quantita_tag_letture": "From utility readings",
-      "fonte_quantita_tag_derivata_componenti": "Derived from components",
       "fonte_quantita_tag_tooltip": "Quantity will be determined downstream, not set here.",
       "select_categoria_cliente": "Select category...",
       "select_billing_account": "Search client...",
@@ -3710,7 +3709,7 @@
       "esito_rifiutata_messaggio": "Confirm the customer rejected the offer? The state is terminal: to re-propose, create a new offer.",
       "esito_rifiutata_conferma": "Reject",
       "esito_annullata_titolo": "Cancel offer",
-      "esito_annullata_messaggio": "Confirm offer cancellation? Cancellation is allowed only in DRAFT (before issuance).",
+      "esito_annullata_messaggio": "Confirm offer cancellation? A cancelled offer can no longer be issued or converted.",
       "esito_annullata_conferma": "Cancel offer",
       "esito_warn_motivazione": "Reason is required and is stored in the offer history.",
       "crea_revisione_titolo": "Create revision",
@@ -3736,7 +3735,8 @@
       "successione_effetto": "On confirmation, the existing contract will be closed on {data} and the new draft contract will be generated.",
       "azione_reason": {
         "listino_senza_versione_in_vigore": "The price list has no version in force today: publish one or choose another price list.",
-        "listino_versione_non_attiva": "The linked price list version is not ACTIVE."
+        "listino_versione_non_attiva": "The linked price list version is not ACTIVE.",
+        "documenti_vivi": "The offer generated a contract or an order that is not cancelled: to cancel the offer, cancel that document first."
       },
       "col_descrizione": "Description",
       "col_qta": "Qty",

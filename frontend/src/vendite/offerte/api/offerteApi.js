@@ -42,7 +42,7 @@ export function updateOfferta(id, payload) {
 
 // Hard-delete offerta BOZZA orfana (drawer create abbandono).
 // Per annullare un'offerta gia' BOZZA con motivazione di processo usare
-// `annullaOfferta` (BOZZA -> ANNULLATA).
+// `annullaOfferta` (BOZZA o ACCETTATA -> ANNULLATA).
 export function deleteOfferta(id) {
   return api.delete(`${BASE}/${id}/`)
 }
@@ -71,7 +71,7 @@ export function registraEsitoOfferta(id, { esito, motivazione }) {
   })
 }
 
-// BOZZA -> ANNULLATA (ritiro da noi). Motivazione obbligatoria.
+// BOZZA o ACCETTATA -> ANNULLATA (ritiro da noi). Motivazione obbligatoria.
 // Non e' ammesso annullare da EMESSA (state machine asimmetrica: dopo
 // l'emissione, o accetta il cliente o rifiuta, o si riemette come revisione).
 export function annullaOfferta(id, { motivazione }) {

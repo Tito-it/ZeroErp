@@ -95,24 +95,13 @@ from django.db import connection, transaction
 from apps.core.db._helpers import coerce_jsonb_dict
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.fatture_righe_service import FattureRigheService
-from scripts.tests._smoke_commessa import crea_riga_commessa
 from scripts.tests._smoke_contesto import apri_contesto_smoke
-
-# Attivita' esistente usata come TEMPLATE: da lei si ereditano billing account,
-# istanza utility, uom, valuta e tipo documento, cosi' il fixture resta coerente
-# con la configurazione reale dell'ambiente invece di inventare identificativi.
-# Stesso criterio degli altri smoke di fatturazione.
-SQL_TEMPLATE = """
-    SELECT a.articolo_id, a.istanza_utility_id, a.billing_account_id,
-           a.uom_id, a.valuta_id, a.tipo_doc_fiscale_id,
-           a.sorgente_tipo_id, a.sorgente_origine_tipo_id, a.competenza_mese,
-           c.emittente_soggetto_ruolo_id, c.utility_id
-      FROM vendite.attivita_fatturabili a
-      JOIN vendite.commesse c ON c.id = a.commessa_id
-     WHERE a.commessa_id IS NOT NULL
-     ORDER BY a.id DESC
-     LIMIT 1
-"""
+from scripts.tests._smoke_fatturazione import (
+    costruisci_base_fatturazione,
+    crea_attivita_di_commessa,
+    crea_commessa_di_prova,
+    crea_lotto_di_prova,
+)
 
 FAIL: list[str] = []
 SKIP: list[str] = []
@@ -131,62 +120,6 @@ def check(label, cond, detail=""):
 def skip(label, motivo):
     print(f"  SKIP {label} — {motivo}")
     SKIP.append(label)
-
-
-# Scopo: Commessa che PORTA il termine di pagamento (D-R). E' il punto in cui il
-#        fixture entra nella catena reale invece di scavalcarla.
-def crea_commessa(cur, t, *, termine_id, marker):
-    cur.execute(
-        """
-        SELECT vendite.fn_get_or_create_commessa(
-            p_billing_account_id => %s, p_utility_id => %s,
-            p_competenza_dal => %s, p_competenza_al => %s,
-            p_meta => %s::jsonb, p_force_new => true,
-            p_termine_pagamento_id => %s
-        )
-        """,
-        [t["billing_account_id"], t["utility_id"],
-         t["competenza_mese"], t["competenza_mese"],
-         f'{{"smoke": "{marker}"}}', termine_id],
-    )
-    return cur.fetchone()[0]
-
-
-# Scopo: Riga di commessa + attivita' fatturabile gia' lockata sul lotto: e' lo
-#        stato in cui il task `select_attivita` le consegna al generatore righe.
-def crea_attivita(cur, t, *, commessa_id, segment_key, lock_batch_id, prezzo):
-    ca_id = crea_riga_commessa(
-        cur, commessa_id=commessa_id, segment_key=segment_key,
-        articolo_id=t["articolo_id"], istanza_utility_id=t["istanza_utility_id"],
-        uom_id=t["uom_id"], data_attivita=t["data"],
-        competenza_mese=t["competenza_mese"], competenza_dal=t["data"],
-        competenza_al=t["data"], prezzo=prezzo,
-        tipo_doc_fiscale_id=t["tipo_doc_fiscale_id"], valuta_id=t["valuta_id"],
-    )
-    cur.execute(
-        """
-        INSERT INTO vendite.attivita_fatturabili (
-            articolo_id, istanza_utility_id, billing_account_id, data_attivita,
-            quantita, uom_id, qta_operativa, uom_operativa_id, factor_to_base,
-            prezzo_unitario, valuta_id, tipo_doc_fiscale_id,
-            competenza_mese, competenza_dal, competenza_al,
-            commessa_id, commessa_attivita_id,
-            sorgente_tipo_id, sorgente_uid, sorgente_origine_tipo_id,
-            lock_batch_id, lock_in_fatturazione, approvato,
-            stato_esecuzione, prezzo_bloccato, meta
-        ) VALUES (
-            %s, %s, %s, %s, 1, %s, 1, %s, 1, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, TRUE, TRUE, 'PENDING', TRUE, '{}'::jsonb
-        ) RETURNING id
-        """,
-        [t["articolo_id"], t["istanza_utility_id"], t["billing_account_id"],
-         t["data"], t["uom_id"], t["uom_id"], prezzo, t["valuta_id"],
-         t["tipo_doc_fiscale_id"], t["competenza_mese"], t["data"], t["data"],
-         commessa_id, ca_id, t["sorgente_tipo_id"], str(uuid.uuid4()),
-         t["sorgente_origine_tipo_id"], lock_batch_id],
-    )
-    return cur.fetchone()[0]
 
 
 # Scopo: Piano rate di una fattura, ordinato per numero di rata. Ritorna le
@@ -215,18 +148,11 @@ with transaction.atomic():
         # pagata: un conteggio fail-closed somiglia a un dato.
         apri_contesto_smoke(cur)
 
-        cur.execute(SQL_TEMPLATE)
-        row = cur.fetchone()
-        if not row:
-            raise SystemExit("Nessuna attivita' fatturabile da usare come template.")
-        t = {
-            "articolo_id": row[0], "istanza_utility_id": row[1],
-            "billing_account_id": row[2], "uom_id": row[3], "valuta_id": row[4],
-            "tipo_doc_fiscale_id": row[5], "sorgente_tipo_id": row[6],
-            "sorgente_origine_tipo_id": row[7], "competenza_mese": row[8],
-            "emittente_sr_id": row[9], "utility_id": row[10],
-        }
-        t["data"] = t["competenza_mese"]
+        # La base della fixture si COSTRUISCE dalle radici di prova
+        # (brief-be-utenti-di-sviluppo T-7b): niente attivita' esistente da
+        # copiare, che su un database nuovo non c'e'.
+        marker = uuid.uuid4().hex[:8]
+        t = costruisci_base_fatturazione(cur, marker=marker)
 
         # Termine a PIU' RATE: e' l'unico che rende osservabili la ripartizione,
         # la progressione di `numero_rata` e la quadratura sull'ultima rata. Con
@@ -248,28 +174,11 @@ with transaction.atomic():
         print(f"termine {term_cod} (id {term_id}): {n_rate} rate, "
               f"offset {off_1}g + {interv}g, arrotondamento {metodo} a {dec} dec.\n")
 
-        marker = uuid.uuid4().hex[:8]
         lock_batch_id = str(uuid.uuid4())
-        cur.execute(
-            """
-            INSERT INTO vendite.fatturazione_lotti (
-                codice, competenza_mese, utility_id, tipo_doc_fiscale_id,
-                stato_doc_fiscale_id, emittente_soggetto_ruolo_id, tipo_lotto,
-                stato_lotto, stato_operativo, lock_batch_id, meta
-            )
-            SELECT %s, %s, %s, %s,
-                   (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno='DRAFT'),
-                   %s, 'MASSIVO', 'IN_ESECUZIONE', 'APERTO', %s,
-                   '{"smoke": true}'::jsonb
-            RETURNING id
-            """,
-            [f"SMOKE-SCAD-{marker}", t["competenza_mese"], t["utility_id"],
-             t["tipo_doc_fiscale_id"], t["emittente_sr_id"], lock_batch_id],
-        )
-        lotto_id = cur.fetchone()[0]
+        lotto_id = crea_lotto_di_prova(cur, t, codice=f"SMOKE-SCAD-{marker}", lock_batch_id=lock_batch_id)
 
-        commessa_id = crea_commessa(cur, t, termine_id=term_id, marker=marker)
-        attivita_id = crea_attivita(
+        commessa_id = crea_commessa_di_prova(cur, t, termine_id=term_id, marker=marker)
+        _ca_id, attivita_id = crea_attivita_di_commessa(
             cur, t, commessa_id=commessa_id, lock_batch_id=lock_batch_id,
             segment_key=f"SMOKE:{marker}:R1", prezzo=Decimal("333.33"),
         )
@@ -447,9 +356,15 @@ with transaction.atomic():
             """
         )
         r = cur.fetchone()
+    # ⚠️ Ancora cercato fra i dati esistenti: costruirlo vuol dire numerare il
+    #    lotto del giro (`numera_lotto`), che rilancia la pipeline col solo
+    #    `lotto_id` e oggi si ferma sull'emittente predefinito al posto di
+    #    quello del lotto (brief-be-utenti-di-sviluppo §9.10). Si costruisce
+    #    quando il DB lo corregge.
     if not r:
         skip("9) D-F fattura oltre soglia",
-             "nessun lotto con sole fatture oltre EMESSA su questo ambiente")
+             "nessun lotto con sole fatture oltre EMESSA su questo ambiente "
+             "(da costruire dopo il §9.10 di brief-be-utenti-di-sviluppo)")
     else:
         lotto_chiuso = r[0]
         esito_df = repo.run_genera_scadenze_lotto_task(lotto_id=lotto_chiuso)

@@ -374,10 +374,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   dalla sintesi dopo la paginazione (BB `unisci_sintesi_lineage`). Chiusa con lui anche la D-5 del brief
   plancache (lista offerte letta per id). Nello stesso giro i codici di `config.sorgenti` in un posto solo
   (`apps/config/sorgenti.py`) e un solo lookup per codice (`SorgentiRepository`).
-- ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
-  collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
-  BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),
-  il collaudo a video (§D.5 + §G.4) e l'archivio.
+- ✅ **Offerta: emissione ed erogazione: chiuso il 2026-10-22**
+  (`work-done/brief-db-offerta-emissione-ed-erogazione.md`, dal collaudo del drawer del 2026-10-07): la versione
+  di listino la congela il DB all'emissione; erogazione e fonte le eredita la riga dall'articolo, dentro il
+  perimetro della utility; la quantità segue la fonte (DERIVATA_COMPONENTI ritirata, il kit si vende solo FISSA);
+  le righe già scritte le intercetta il primo passo che le usa (emissione, push, genera ordine, attivazione:
+  `E_DOC_RIGA_NON_AMMESSA`); «Genera ordine» è il verbo DB `fn_genera_ordine_da_offerta`; un'offerta ACCETTATA
+  si annulla se non ha documenti vivi a valle. DB `20261021-44…-61`, BE/FE §J, collaudo di Tid ok. Proposta
+  aperta, non bloccante: il «perché» nel tooltip di `RIGA_NON_AMMESSA` (§J.4).
 - 📝 **Quali articoli ammette un documento** (`work-in-progress/brief-db-articoli-ammessi-per-documento.md`):
   una regola sola per il picker e per il guard. Analisi DB fatta (§8), decisioni di Tid prese il 2026-10-13 (§8.6).
   ✅ Lato DB chiuso il 2026-10-14: lotti 1…4 applicati e verdi (il 4 è la sede unica del picker,

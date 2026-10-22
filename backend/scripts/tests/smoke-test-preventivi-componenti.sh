@@ -30,11 +30,9 @@ SUFFIX="smk-${EPOCH}"
 NEW_COMPOSITO_ID=""
 NEW_BOM_ROW_ID=""
 # Date allineate al fuso orario del DB (UTC su questa istanza).
-# DATA_OGGI_UTC: data del preventivo, allineata al CURRENT_DATE DB.
 # DATA_IERI_UTC: valido_dal BoM, garantisce range che contiene oggi UTC
 # anche se l'host bash ha tz diversa (es. Europe/Rome notte fonda
 # locale = ieri UTC).
-DATA_OGGI_UTC=$(date -u +%Y-%m-%d)
 DATA_IERI_UTC=$(date -u -d "1 day ago" +%Y-%m-%d)
 
 RED='\033[0;31m'
@@ -370,6 +368,9 @@ log_info "Nessun preventivo precedente col suffisso ${SUFFIX} (atteso)"
 # 4) Crea preventivo DRAFT
 # =====================================================
 log_step "4) Crea preventivo DRAFT"
+# La data del documento la decide il server: `data` non e' nel contratto
+# della creazione (CREATE_KEYS_PREVENTIVO), e dal 2026-10-20 una chiave fuori
+# contratto e' un 400 invece di essere scartata in silenzio.
 PAYLOAD=$(cat <<EOF
 {
   "billing_account_id": $CLIENTE_BA_ID,
@@ -377,7 +378,6 @@ PAYLOAD=$(cat <<EOF
   "istanza_utility_id": $ISTANZA_ID,
   "valuta_id": $VALUTA_ID,
   "emittente_fiscale_id": $EMITTENTE_ID,
-  "data": "$DATA_OGGI_UTC",
   "validita_al": "$VALIDITA_AL",
   "meta": {"smoke_suffix": "${SUFFIX}"}
 }

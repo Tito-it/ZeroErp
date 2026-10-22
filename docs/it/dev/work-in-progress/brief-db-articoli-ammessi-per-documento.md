@@ -46,7 +46,7 @@
 > **Origine:** collaudo a video di Tid, 2026-10-11 («come capisco quali articoli sono una
 > tantum?»), poi la sua richiesta: *«la ricerca dell'articolo mostri solo gli articoli che quel
 > documento può usare»*. Il caso che l'ha aperto è nel §H di
-> [brief-db-offerta-emissione-ed-erogazione](brief-db-offerta-emissione-ed-erogazione.md): un
+> [brief-db-offerta-emissione-ed-erogazione](../work-done/brief-db-offerta-emissione-ed-erogazione.md): un
 > articolo scelto dal picker, rifiutato dopo.
 > **Stato (2026-10-18):** lato DB chiuso e committato (Lotti 1-5, poi R-DB-2, R-DB-3, A-11: §9.8); giro BE/FE fatto e committato (§9.7 il 2026-10-14, 5d il 2026-10-18: §9.8.7); A-8-ter decisa (§9.8.3). Resta il collaudo a video di Tid (§9.7.4), poi l'archiviazione.
 

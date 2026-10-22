@@ -689,22 +689,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             )
             return rows_to_list(cursor)
 
-    # Scopo: Righe effettive «ordine-ready» dell'offerta = listino base risolto
-    #        + variazione globale + eccezioni (OVERRIDE/ESCLUSIONE/AGGIUNTA),
-    #        con BoM per i compositi. Wrapper sottile su
-    #        `vendite.fn_offerta_righe_espanse` (DB-ORD: espansione, core condiviso
-    #        con la preview contratti). Usato dalla conversione offerta → ordine
-    #        (`ordini_service.crea_ordine_da_offerta`): ritorna già IVA/uom/prezzo
-    #        netto, copiabili in `ordini_righe` senza arricchimenti BE (DB-first).
-    #        `componenti` è jsonb (lista) per le righe composite.
-    def list_righe_espanse(self, offerta_id: int) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT * FROM vendite.fn_offerta_righe_espanse(%s)",
-                [offerta_id],
-            )
-            return rows_to_list(cursor)
-
     # Scopo: Dettaglio singola eccezione (read-after-write).
     def get_eccezione(self, eccezione_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
@@ -731,7 +715,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "generazione_canone",
         "competenza_canone",
         "prezzo_unitario",
-        "quantita",
+        # ⛔ Niente `quantita`: la calcola il DB (`trgfn_qta_from_operativa`).
         "qta_operativa",
         "uom_operativa_id",
         "factor_to_base",
@@ -750,7 +734,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         "generazione_canone",
         "competenza_canone",
         "prezzo_unitario",
-        "quantita",
         "qta_operativa",
         "uom_operativa_id",
         "factor_to_base",
@@ -1096,6 +1079,22 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             assert row is not None and row[0] is not None
             return int(row[0])
 
+    # Scopo: Genera un ordine DRAFT dall'offerta ACCETTATA col verbo DB
+    #        `vendite.fn_genera_ordine_da_offerta` (gemello del push al
+    #        contratto, brief-db-offerta-emissione-ed-erogazione I-D2): stato,
+    #        documenti vivi, righe, testata con la provenienza, indirizzo di
+    #        default e righe espanse coi prezzi negoziati, in una transazione.
+    #        Ritorna l'id dell'ordine.
+    def genera_ordine(self, offerta_id: int) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_genera_ordine_da_offerta(%s)",
+                [int(offerta_id)],
+            )
+            row = cursor.fetchone()
+            assert row is not None and row[0] is not None
+            return int(row[0])
+
     # Scopo: Ritorna il contratto (non abortito) la cui validita' si sovrappone
     #        a quella che il push genererebbe per questa offerta, riusando la
     #        fn di dominio contratti `vendite.fn_contratto_sovrapposto` (brief
@@ -1123,19 +1122,6 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                 [offerta_id],
             )
             return row_to_dict(cursor)
-
-    # Scopo: I contratti e gli ordini VIVI nati dall'offerta
-    #        (`vendite.fn_offerta_documenti_vivi`, sede unica di «l'offerta e'
-    #        gia' trasformata?»: la leggono anche il push a contratto e la
-    #        capability). Un documento annullato conserva la provenienza ma non
-    #        consuma l'offerta. `tipo` = CONTRATTO | ORDINE_VENDITA.
-    def list_documenti_vivi(self, offerta_id: int) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT tipo, documento_id FROM vendite.fn_offerta_documenti_vivi(%s)",
-                [int(offerta_id)],
-            )
-            return rows_to_list(cursor)
 
     # Scopo: Lookup minimal del contratto post-push (id + numero + uid).
     #        Usato dal service per costruire `OffertaPushResult` senza

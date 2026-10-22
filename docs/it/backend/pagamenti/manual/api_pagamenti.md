@@ -546,11 +546,16 @@ database, con i tre motivi ordinati di
 [`script.fn_check_riga_contabile_eliminabile`](/dbzero/script/manual/fn_check_riga_contabile_eliminabile):
 `E_RIGA_CONTABILE_DISTINTA_FINALE` · `E_RIGA_CONTABILE_DISTINTA_NON_MANUALE` ·
 `E_RIGA_CONTABILE_DISTINTA_VALIDATA` (tutti 409). ⛔ Nessuna copia del
-predicato in Python: la **stessa** check alimenta le colonne
+predicato in Python: gli **stessi** motivi alimentano le colonne
 `elimina_blocco_reason` · `elimina_blocco_reason_key` ·
 `elimina_blocco_dettaglio` · `can_eliminare` della riga in lista e nella coda
 (`LATERAL`, primo motivo), così il cestino spento e il rifiuto non possono
-dire due cose diverse.
+dire due cose diverse. Dal 2026-10-21 le letture chiamano la metà sulla
+testata,
+[`script.fn_check_riga_contabile_eliminabile_su_distinta`](/dbzero/script/manual/fn_check_riga_contabile_eliminabile_su_distinta),
+a cui la firma per id delega: non rilegge niente sotto RLS, quindi il
+perimetro si calcola una volta per istruzione. Nelle liste paginate gira
+**dopo** `LIMIT/OFFSET`, sulle sole righe mostrate.
 
 ⚠️ **Una riga eliminata non è più raggiungibile da nessun verbo**: `get_riga`
 filtra `attivo`, quindi `PATCH`, `stato/`, `abbina/` e un secondo `DELETE`

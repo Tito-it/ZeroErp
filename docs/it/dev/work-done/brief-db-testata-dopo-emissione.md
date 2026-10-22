@@ -193,7 +193,7 @@ ordine, DDT, contratto e offerta portano già una lista dei campi bloccati scrit
 (`non_editable_fields`: `c_non_edit_tutti`, `c_non_edit_attivo`…), accanto al trigger e al backend.
 Il lettore della fase 1 è la sede che la sostituisce.
 
-🔗 **Ereditati da [brief-db-offerta-emissione-ed-erogazione](../work-in-progress/brief-db-offerta-emissione-ed-erogazione.md)
+🔗 **Ereditati da [brief-db-offerta-emissione-ed-erogazione](brief-db-offerta-emissione-ed-erogazione.md)
 (2026-10-10), da fare in questo giro:**
 
 * **Il posto del lock del contratto** (terzo trovato del §F.4.3 di quel brief). Su un contratto

@@ -396,8 +396,9 @@ class ApiOffertaAnnulla(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: BOZZA -> ANNULLATA. Motivazione obbligatoria. Annullamento
-    #        post-EMESSA non ammesso (state machine DB).
+    # Scopo: -> ANNULLATA, da BOZZA o da ACCETTATA. Motivazione obbligatoria.
+    #        Da quali stati e a quali condizioni lo dice il DB (transizioni e
+    #        guard: da ACCETTATA, nessun contratto o ordine vivo a valle).
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         body = corpo_oggetto(request)
         motivazione = body.get("motivazione", "")
@@ -453,10 +454,9 @@ class ApiOffertaGeneraOrdine(DomainAPIView):
             fields={"data": serializers.DictField()},
         )},
     )
-    # Scopo: Genera un ordine DRAFT da un'offerta ACCETTATA (copia testata +
-    #        righe espanse listino+eccezioni + componenti BoM, prezzi negoziati
-    #        preservati + documento_origine). Delega a ordini_service (stesso app
-    #        vendite, righe da `fn_offerta_righe_espanse`).
+    # Scopo: Genera un ordine DRAFT da un'offerta ACCETTATA: il verbo DB
+    #        `vendite.fn_genera_ordine_da_offerta` (testata, provenienza, righe
+    #        espanse coi prezzi negoziati, componenti BoM), via ordini_service.
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
         from apps.vendite.services import ordini_service
 

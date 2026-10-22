@@ -73,6 +73,7 @@ from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services import resi_service
 from apps.vendite.services.fatture_righe_service import FattureRigheService
 from scripts.tests._smoke_contesto import apri_contesto_smoke
+from scripts.tests._smoke_fatturazione import crea_lotto_di_prova
 
 FAIL: list[str] = []
 SKIP: list[str] = []
@@ -130,26 +131,23 @@ def prepara_lotto(cur, ca_ids, *, marker):
         return None, []
 
     lock_batch_id = str(uuid.uuid4())
+    # Utility ed emittente del lotto sono quelli della commessa del reso.
     cur.execute(
         """
-        INSERT INTO vendite.fatturazione_lotti (
-            codice, competenza_mese, utility_id, tipo_doc_fiscale_id,
-            stato_doc_fiscale_id, emittente_soggetto_ruolo_id, tipo_lotto,
-            stato_lotto, stato_operativo, lock_batch_id, meta
-        )
-        SELECT %s, %s, ba.utility_id, %s,
-               (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno='DRAFT'),
-               c.emittente_soggetto_ruolo_id, 'MASSIVO',
-               'IN_ESECUZIONE', 'APERTO', %s, '{"smoke": true}'::jsonb
+        SELECT ba.utility_id, c.emittente_soggetto_ruolo_id
           FROM vendite.commesse c
           JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
          WHERE c.id = %s
-        RETURNING id
         """,
-        [f"SMOKE-NC-{marker}-{uuid.uuid4().hex[:8]}", af_righe[0][6], af_righe[0][7],
-         lock_batch_id, commessa_id],
+        [commessa_id],
     )
-    lotto_id = cur.fetchone()[0]
+    utility_id, emittente_sr_id = cur.fetchone()
+    lotto_id = crea_lotto_di_prova(
+        cur,
+        {"competenza_mese": af_righe[0][6], "tipo_doc_fiscale_id": af_righe[0][7],
+         "utility_id": utility_id, "emittente_sr_id": emittente_sr_id},
+        codice=f"SMOKE-NC-{marker}-{uuid.uuid4().hex[:8]}", lock_batch_id=lock_batch_id,
+    )
     cur.execute(
         "UPDATE vendite.attivita_fatturabili"
         "   SET lock_batch_id = %s, lock_in_fatturazione = TRUE"

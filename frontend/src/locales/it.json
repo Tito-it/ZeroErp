@@ -13,7 +13,8 @@
       "indirizzi_mancanti": "Mancano gli indirizzi obbligatori del documento: compilali dalla sezione Indirizzi.",
       "indirizzo_non_del_cliente": "Un indirizzo del documento non è del suo cliente: sceglilo fra quelli del cliente, o scrivilo a mano, dalla sezione Indirizzi.",
       "prezzo_pendente": "Ci sono prezzi in attesa di approvazione ({0}).",
-      "prezzo_rifiutato": "Ci sono prezzi rifiutati dal responsabile ({0}): correggili o togli le righe."
+      "prezzo_rifiutato": "Ci sono prezzi rifiutati dal responsabile ({0}): correggili o togli le righe.",
+      "riga_non_ammessa": "{0}: la riga dell'articolo {1} non è ammessa."
     },
     "refine_hint_troncato": "Mostrati i primi {shown}. Affina la ricerca per vedere gli altri.",
     "save": "Salva",
@@ -2478,11 +2479,9 @@
       "fonte_quantita_value_manuale": "Manuale (sul documento)",
       "fonte_quantita_value_timesheet": "Da rendicontazione ore",
       "fonte_quantita_value_letture": "Da letture utility",
-      "fonte_quantita_value_derivata_componenti": "Derivata dai componenti BoM",
       "fonte_quantita_tag_manuale": "Definita sul documento",
       "fonte_quantita_tag_timesheet": "Da rendicontazione ore",
       "fonte_quantita_tag_letture": "Da letture utility",
-      "fonte_quantita_tag_derivata_componenti": "Derivata dai componenti",
       "fonte_quantita_tag_tooltip": "La quantita' sara' determinata downstream, non si imposta qui.",
       "select_categoria_cliente": "Seleziona categoria...",
       "select_billing_account": "Cerca cliente...",
@@ -3710,7 +3709,7 @@
       "esito_rifiutata_messaggio": "Confermi che il cliente ha rifiutato l'offerta? Lo stato è terminale: per riproporre, crea una nuova offerta.",
       "esito_rifiutata_conferma": "Rifiuta",
       "esito_annullata_titolo": "Annulla offerta",
-      "esito_annullata_messaggio": "Confermi l'annullamento dell'offerta? L'annullamento è ammesso solo in BOZZA (prima dell'emissione).",
+      "esito_annullata_messaggio": "Confermi l'annullamento dell'offerta? Un'offerta annullata non si emette e non si trasforma più.",
       "esito_annullata_conferma": "Annulla offerta",
       "esito_warn_motivazione": "La motivazione è obbligatoria e resta nello storico dell'offerta.",
       "crea_revisione_titolo": "Crea revisione",
@@ -3736,7 +3735,8 @@
       "successione_effetto": "Confermando, il contratto esistente verrà chiuso al {data} e verrà generato il nuovo contratto in BOZZA.",
       "azione_reason": {
         "listino_senza_versione_in_vigore": "Il listino non ha una versione in vigore oggi: pubblicane una o scegli un altro listino.",
-        "listino_versione_non_attiva": "La versione di listino collegata non è ATTIVA."
+        "listino_versione_non_attiva": "La versione di listino collegata non è ATTIVA.",
+        "documenti_vivi": "L'offerta ha generato un contratto o un ordine non annullato: per annullarla, annulla prima quel documento."
       },
       "col_descrizione": "Descrizione",
       "col_qta": "Qta",

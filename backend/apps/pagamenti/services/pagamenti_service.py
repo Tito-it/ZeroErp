@@ -992,9 +992,9 @@ def crea_righe_da_rate(contabile_id: int, payload: dict[str, Any]) -> dict[str, 
 #    un'altra cosa (denaro arrivato, non nostro) e CONTA nella quadratura: con
 #    un totale dichiarato, scartare la riga sbagliata non ha via d'uscita.
 # ⛔ Nessuna copia del predicato in Python: i motivi li da' il database
-#    (`script.fn_check_riga_contabile_eliminabile`, la stessa funzione che
-#    alimenta il cestino spento in lista) e il guard rifiuta con
-#    `E_RIGA_CONTABILE_DISTINTA_*` (409), tradotto come ogni altro.
+#    (`script.fn_check_riga_contabile_eliminabile`, i cui motivi sono quelli
+#    di `_su_distinta` che alimenta il cestino spento in lista) e il guard
+#    rifiuta con `E_RIGA_CONTABILE_DISTINTA_*` (409), tradotto come ogni altro.
 # ⚠️ Una riga eliminata non e' piu' raggiungibile da nessun verbo: `get_riga`
 #    filtra `attivo`, quindi un secondo DELETE — come un PATCH o un abbina —
 #    risponde «non trovata», che e' la stessa risposta di «non la vedi». Il

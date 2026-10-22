@@ -7,10 +7,11 @@
 #
 #        L'offerta commerciale e' il documento pre-contrattuale: vive nel
 #        ciclo BOZZA -> EMESSA -> (ACCETTATA | RIFIUTATA | SUPERATA) +
-#        terminale di ritiro BOZZA -> ANNULLATA. La state machine e' enforced
-#        dal trigger DB trgfn_offerte_commerciali_guard_transizione; il
-#        service applica solo pre-validazioni applicative (stato corrente,
-#        payload obbligatorio motivazione su RIFIUTATA/ANNULLATA) e lascia
+#        terminale di ritiro BOZZA | ACCETTATA -> ANNULLATA. La state
+#        machine e' enforced dal trigger DB
+#        trgfn_offerte_commerciali_guard_transizione; il service applica
+#        solo pre-validazioni applicative (stato corrente, payload
+#        obbligatorio motivazione su RIFIUTATA/ANNULLATA) e lascia
 #        al DB le invarianti complesse (listino_versione_id NULL in
 #        emissione, listino non ATTIVO, transizione non ammessa, ecc.).
 #
@@ -317,7 +318,11 @@ CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
     "generazione_canone",
     "competenza_canone",
     "prezzo_unitario",
-    "quantita",
+    # ⛔ Niente `quantita`: e' calcolata dal DB da `qta_operativa` (FISSA) e
+    #    vuota con una fonte a valle (`script.trgfn_qta_from_operativa`). Un
+    #    client che la manda riceve un 400 sulla chiave. Fino al 2026-10-21
+    #    restava per la DERIVATA_COMPONENTI, ritirata (I-D1 di
+    #    brief-db-offerta-emissione-ed-erogazione).
     "qta_operativa",
     "uom_operativa_id",
     "factor_to_base",
@@ -939,16 +944,23 @@ class OfferteService:
             limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
         )
 
-    # Scopo: BOZZA -> ANNULLATA (ritiro interno prima dell'emissione).
-    #        Motivazione obbligatoria. Pattern simmetrico al contratto
-    #        "annulla DRAFT". Il trigger DB valorizza `data_annullamento` +
+    # Scopo: -> ANNULLATA, da BOZZA (ritiro prima dell'emissione) o da
+    #        ACCETTATA (l'offerta che non si trasforma piu'). Motivazione
+    #        obbligatoria. Il trigger DB valorizza `data_annullamento` +
     #        `motivazione_rifiuto`.
+    #        ⛔ Nessuno stato di partenza scritto qui: da quali stati si annulla
+    #        lo dicono le transizioni (`config.stati_doc_offerte_transizioni`) e
+    #        il guard, che da ACCETTATA rifiuta se dall'offerta vive un
+    #        contratto o un ordine (`E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI`).
+    #        Fino al 2026-10-21 c'era un «solo da BOZZA», specchio della state
+    #        machine: avrebbe rifiutato l'annullo da ACCETTATA che il DB ammette
+    #        (brief-db-offerta-emissione-ed-erogazione H-R3).
     def annulla(self, offerta_id: int, *, motivazione: str) -> dict[str, Any]:
         self._v.guard_non_empty_string(motivazione, field="motivazione")
         return self._cambia_stato_manuale(
             offerta_id,
             target_codice=StatoOfferta.ANNULLATA,
-            expected_from=_STATI_EDITABILI,
+            expected_from=None,
             motivazione=motivazione.strip(),
         )
 
@@ -1585,17 +1597,23 @@ class OfferteService:
     # Scopo: Esegue una transizione di stato manuale. Il guard pre-condizione
     #        (`expected_from`) e' difesa applicativa; il trigger DB rifinisce
     #        ulteriormente (es. BOZZA->EMESSA fallisce se listino_versione_id
-    #        NULL o versione non ATTIVA).
+    #        NULL o versione non ATTIVA). `expected_from=None`: nessuno stato di
+    #        partenza qui, solo l'esistenza (404); la transizione la giudica il DB.
     def _cambia_stato_manuale(
         self,
         offerta_id: int,
         *,
         target_codice: str,
-        expected_from: set[str] | frozenset[str],
+        expected_from: set[str] | frozenset[str] | None,
         motivazione: str | None = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
-        self._assert_stato_corrente(offerta_id, expected=expected_from)
+        if expected_from is None:
+            self._get_offerta_or_raise(
+                offerta_id, op="_cambia_stato_manuale", getter=self._repo.get_stato_codice,
+            )
+        else:
+            self._assert_stato_corrente(offerta_id, expected=expected_from)
         target_stato_id = self._repo.get_stato_id_by_codice(target_codice)
         ErrorManager.require(
             target_stato_id is not None,

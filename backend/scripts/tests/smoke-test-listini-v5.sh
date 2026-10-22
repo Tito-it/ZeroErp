@@ -481,7 +481,7 @@ if [[ "$LAST_STATUS" == "200" ]]; then
     log_ok "Create contratto B (HTTP 200)"
     # Aggiungo riga override
     do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_B_ID}/righe/" \
-        "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_eccezione\":\"OVERRIDE\",\"tipo_erogazione\":\"UNA_TANTUM\",\"fonte_quantita_attesa\":\"FISSA\",\"prezzo_unitario\":\"48.0000000000\",\"qta_operativa\":\"1\",\"quantita\":\"1\"}"
+        "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_eccezione\":\"OVERRIDE\",\"tipo_erogazione\":\"UNA_TANTUM\",\"fonte_quantita_attesa\":\"FISSA\",\"prezzo_unitario\":\"48.0000000000\",\"qta_operativa\":\"1\"}"
     # `tipo_eccezione` e' obbligatorio (OVERRIDE | ESCLUSIONE | AGGIUNTA): questa
     # riga corregge il prezzo di listino, quindi OVERRIDE. Fino al 2026-10-12
     # mancava (400 «tipo_eccezione obbligatorio»). Il prezzo (48 sul listino a
@@ -531,7 +531,7 @@ check "Attivazione C senza righe rifiutata" "422" ".error.code"
 echo ""
 echo "-- 21. Aggiungi riga con prezzo_unitario --"
 do_curl POST "/api/v1/vendite/contratti/${CONTRATTO_C_ID}/righe/" \
-    "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_eccezione\":\"AGGIUNTA\",\"tipo_erogazione\":\"UNA_TANTUM\",\"fonte_quantita_attesa\":\"FISSA\",\"prezzo_unitario\":\"40.0000000000\",\"qta_operativa\":\"1\",\"quantita\":\"1\"}"
+    "{\"articolo_id\":\"${ARTICOLO_ID}\",\"uom_operativa_id\":${UOM_ID},\"tipo_eccezione\":\"AGGIUNTA\",\"tipo_erogazione\":\"UNA_TANTUM\",\"fonte_quantita_attesa\":\"FISSA\",\"prezzo_unitario\":\"40.0000000000\",\"qta_operativa\":\"1\"}"
 check "Riga contratto C con prezzo" "200"
 
 # --- 22. Contratto C: attivazione ora OK ---

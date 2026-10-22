@@ -244,7 +244,7 @@ migrazione resta chiuso invece di crescere a ogni giro.
 
 ### 6.3 Solo da avvisare
 
-* [brief-db-offerta-emissione-ed-erogazione](brief-db-offerta-emissione-ed-erogazione.md):
+* [brief-db-offerta-emissione-ed-erogazione](../work-done/brief-db-offerta-emissione-ed-erogazione.md):
   `fn_documento_listino_operativo`, `fn_check_riga_erogazione`. Lato DB chiuso: la migrazione di
   quegli oggetti la fa un lotto di questo brief.
 

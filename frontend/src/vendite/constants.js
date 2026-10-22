@@ -248,12 +248,13 @@ export const TIPO_EROGAZIONE = Object.freeze({
 // (erogazione, fonte) una riga puo' avere NON si scrive qui: lo dice il DB
 // dall'articolo (`vendite.fn_documento_riga_erogazioni`, letta dal form delle
 // righe), dal 2026-10-07 (brief-db-offerta-emissione-ed-erogazione B-R4).
+// ⛔ DERIVATA_COMPONENTI non c'e' piu' (I-D1, 2026-10-21): il vocabolario del DB
+// (`config.erogazioni_fonti`) ha le quattro fonti qui sotto.
 export const FONTE_QUANTITA_ATTESA = Object.freeze({
   FISSA: 'FISSA',
   MANUALE: 'MANUALE',
   TIMESHEET: 'TIMESHEET',
   LETTURE: 'LETTURE',
-  DERIVATA_COMPONENTI: 'DERIVATA_COMPONENTI',
 })
 
 // I due modi del dialog della data documento (`NumerazioneDataDialog`).
