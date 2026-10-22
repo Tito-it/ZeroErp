@@ -56,6 +56,11 @@ Indice test eseguiti:
 37) test_update_soggetto_dati_societari_al_verbo — `dati_societari` al verbo, stato intero; la natura all'UPDATE
 38) test_update_soggetto_solo_dati_societari_non_tocca_il_soggetto — niente UPDATE vuoto, il «non trovato» e' del verbo
 39) test_update_soggetto_dati_societari_contratto — sezione non oggetto, chiave ignota, tipo errato → E_ANAG_VALIDAZIONE
+40) test_create_soggetto_pg_sezione_intera_con_la_data — la PG porta la sezione intera, data di costituzione compresa
+41) test_create_soggetto_pf_ditta_individuale_con_la_sezione — la DI porta la sua sezione alla porta PF (2026-10-22)
+42) test_create_soggetto_senza_sezione_la_porta_non_la_riceve — chiave assente → None alla porta
+43) test_create_soggetto_dati_societari_contratto — in creazione lo stesso contratto della PATCH, PF e PG
+44) test_create_soggetto_pf_cf_duplicato_accende_il_campo — il vincolo CF/P.IVA della PF → campo `codice_fiscale`
 """
 
 from unittest import TestCase
@@ -215,6 +220,28 @@ class TestSoggettiCreate(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
 
     @patch(SOGG_REPO)
+    def test_create_soggetto_pf_cf_duplicato_accende_il_campo(self, mock_repo):
+        """Il duplicato sull'identificativo fiscale di una PF accende il campo
+        `codice_fiscale`, come il REA accende `iscrizione_rea`."""
+        repo = mock_repo.return_value
+        repo.get_natura_by_tipo_id.return_value = "PF"
+        repo.crea_soggetto_pf.side_effect = make_integrity_error(
+            SQLSTATE_UNICITA, vincolo="uq_soggetto_idstato_id_fiscale_univoco",
+        )
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError) as ctx:
+            SoggettiService().create_soggetto({
+                "tipo_soggetto_dettaglio_id": 1,
+                "cognome": "Rossi",
+                "nome": "Mario",
+                "codice_fiscale": "RSSMRA80A01H501Z",
+                "sesso": "M",
+                "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
+            })
+        self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
+        self.assertEqual(ctx.exception.context, {"field": "codice_fiscale"})
+
+    @patch(SOGG_REPO)
     def test_create_soggetto_pf_senza_sesso_non_lo_inventa(self, mock_repo):
         """Sesso assente (o vuoto) → None al repository, nessun default e nessun
         controllo: QUANDO serve lo dice la natura, e lo giudica il guard DB
@@ -319,6 +346,100 @@ class TestSoggettiCreate(TestCase):
         })
         self.assertEqual(result["id"], FAKE_UUID)
         repo.crea_soggetto_pg.assert_called_once()
+
+    @patch(SOGG_REPO)
+    def test_create_soggetto_pg_sezione_intera_con_la_data(self, mock_repo):
+        """La sezione arriva alla porta INTERA, data di costituzione compresa
+        (brief-db-dati-societari-in-creazione §6): fino al 2026-10-22 la data
+        si perdeva, e il FE la offriva solo in modifica."""
+        repo = mock_repo.return_value
+        repo.get_natura_by_tipo_id.return_value = "PG"
+        repo.crea_soggetto_pg.return_value = FAKE_UUID
+        repo.get_soggetto_contatti.return_value = [{"id": 1}]
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().create_soggetto({
+            "tipo_soggetto_dettaglio_id": 3,
+            "ragione_sociale": "Test SRL",
+            "contatto": {"nominativo": "Admin", "tipo_contatto_id": 1, "email": "admin@test.it"},
+            "dati_societari": {
+                "forma_giuridica_id": 4, "destinatario_fe": "c", "codice_sdi": " ABC1234 ",
+                "data_costituzione": "2020-03-15",
+            },
+        })
+        ds = repo.crea_soggetto_pg.call_args.kwargs["dati_societari"]
+        self.assertEqual(str(ds["data_costituzione"]), "2020-03-15")
+        self.assertEqual((ds["destinatario_fe"], ds["codice_sdi"]), ("C", "ABC1234"))
+        self.assertIsNone(ds["pec_fatturazione"])
+
+    @patch(SOGG_REPO)
+    def test_create_soggetto_pf_ditta_individuale_con_la_sezione(self, mock_repo):
+        """La DI porta la sua sezione alla porta delle persone fisiche: fino al
+        2026-10-22 `_create_pf` non la leggeva, e l'operatore leggeva «creato»
+        con la sezione vuota alla riapertura."""
+        repo = mock_repo.return_value
+        repo.get_natura_by_tipo_id.return_value = "PF"
+        repo.crea_soggetto_pf.return_value = FAKE_UUID
+        repo.get_soggetto_contatti.return_value = [{"id": 1}]
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().create_soggetto({
+            "tipo_soggetto_dettaglio_id": 2,
+            "cognome": "Rossi",
+            "nome": "Mario",
+            "codice_fiscale": "RSSMRA80A01H501Z",
+            "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1, "email": "m@r.it"},
+            "dati_societari": {"forma_giuridica_id": 9, "destinatario_fe": "P",
+                               "pec_fatturazione": "di@pec.it"},
+        })
+        ds = repo.crea_soggetto_pf.call_args.kwargs["dati_societari"]
+        self.assertEqual(
+            (ds["forma_giuridica_id"], ds["destinatario_fe"], ds["pec_fatturazione"]),
+            (9, "P", "di@pec.it"),
+        )
+
+    @patch(SOGG_REPO)
+    def test_create_soggetto_senza_sezione_la_porta_non_la_riceve(self, mock_repo):
+        """Chiave assente = nessuna sezione: alla porta va None, e QUANDO
+        scrivere lo decide il DB dalla policy della natura."""
+        repo = mock_repo.return_value
+        repo.get_natura_by_tipo_id.return_value = "PF"
+        repo.crea_soggetto_pf.return_value = FAKE_UUID
+        repo.get_soggetto_contatti.return_value = [{"id": 1}]
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().create_soggetto({
+            "tipo_soggetto_dettaglio_id": 1,
+            "cognome": "Rossi",
+            "nome": "Mario",
+            "codice_fiscale": "RSSMRA80A01H501Z",
+            "sesso": "M",
+            "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1, "email": "m@r.it"},
+        })
+        self.assertIsNone(repo.crea_soggetto_pf.call_args.kwargs["dati_societari"])
+
+    @patch(SOGG_REPO)
+    def test_create_soggetto_dati_societari_contratto(self, mock_repo):
+        """In creazione la sezione ha lo stesso contratto della PATCH, per le
+        due porte. Prima la PG la leggeva chiave per chiave: una chiave ignota
+        o un `null` passavano senza errore."""
+        repo = mock_repo.return_value
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        anagrafica = {
+            "PF": {"cognome": "Rossi", "nome": "Mario", "codice_fiscale": "RSSMRA80A01H501Z"},
+            "PG": {"ragione_sociale": "Test SRL"},
+        }
+        for natura, campi in anagrafica.items():
+            repo.get_natura_by_tipo_id.return_value = natura
+            for sezione in (None, [], {"soggetto_id": FAKE_UUID}, {"data_costituzione": "x"}):
+                with self.subTest(natura=natura, sezione=sezione):
+                    with self.assertRaises(ServiceError) as ctx:
+                        SoggettiService().create_soggetto({
+                            "tipo_soggetto_dettaglio_id": 2, **campi,
+                            "contatto": {"nominativo": "X", "tipo_contatto_id": 1,
+                                         "email": "x@x.it"},
+                            "dati_societari": sezione,
+                        })
+                    self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        repo.crea_soggetto_pf.assert_not_called()
+        repo.crea_soggetto_pg.assert_not_called()
 
 
 class TestSoggettiUpdate(TestCase):
@@ -432,7 +553,7 @@ class TestSoggettiUpdate(TestCase):
         })
         payload = mock_repo.return_value.update_soggetto.call_args.args[1]
         self.assertEqual(payload, {"tipo_soggetto_dettaglio_id": 4})
-        kwargs = mock_repo.return_value.scrivi_dati_societari.call_args.kwargs
+        kwargs = mock_repo.return_value.scrivi_dati_societari.call_args.args[1]
         self.assertEqual(kwargs["forma_giuridica_id"], 7)
         self.assertEqual(kwargs["codice_sdi"], "ABC1234")
         self.assertEqual(kwargs["destinatario_fe"], "C")

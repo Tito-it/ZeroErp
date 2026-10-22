@@ -36,11 +36,6 @@ defineProps({
   requireRea: { type: Boolean, default: false },
   showCapitaleSociale: { type: Boolean, default: false },
   requireCapitaleSociale: { type: Boolean, default: false },
-  // ⚠️ Solo in MODIFICA (2026-10-10): la scrive il verbo `fn_scrivi_dati_societari`,
-  //    ma `fn_crea_soggetto_pg` la passa a NULL e non la riceve. Offerta in
-  //    creazione, la data si perderebbe in silenzio (brief-db-dati-fiscali-e-
-  //    societari-del-soggetto §9.5). Si toglie quando la creazione la riceve.
-  showDataCostituzione: { type: Boolean, default: false },
   required: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false }
 })
@@ -63,18 +58,30 @@ const destinatarioFeOptions = computed(() => [
 
 <template>
   <div class="form-grid">
-    <div class="form-field">
-      <label>{{ t('dati_societari.forma_giuridica') }}{{ required ? ' *' : '' }}</label>
-      <Select
-        v-model="form.forma_giuridica_id"
-        :options="formeGiuridiche"
-        option-label="descrizione"
-        option-value="id"
-        :placeholder="t('dati_societari.select_forma_giuridica')"
-        :invalid="campiErrati.includes('forma_giuridica_id')"
-        :disabled="disabled"
-        filter
-      />
+    <!-- Forma giuridica + Data di costituzione. La data c'e' in creazione e in
+         modifica, come il resto della sezione: fino al 2026-10-22 solo in
+         modifica, la porta di creazione non la riceveva
+         (brief-db-dati-societari-in-creazione §1.2). -->
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('dati_societari.forma_giuridica') }}{{ required ? ' *' : '' }}</label>
+        <Select
+          v-model="form.forma_giuridica_id"
+          :options="formeGiuridiche"
+          option-label="descrizione"
+          option-value="id"
+          :placeholder="t('dati_societari.select_forma_giuridica')"
+          :invalid="campiErrati.includes('forma_giuridica_id')"
+          :disabled="disabled"
+          filter
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('dati_societari.data_costituzione') }}</label>
+        <DatePicker :model-value="parseIsoDate(form.data_costituzione)"
+          @update:model-value="form.data_costituzione = toDateString($event)"
+          :date-format="DATE_FORMAT" show-icon show-button-bar :disabled="disabled" />
+      </div>
     </div>
 
     <!-- REA (provincia + iscrizione) -->
@@ -116,13 +123,6 @@ const destinatarioFeOptions = computed(() => [
       />
     </div>
 
-    <div v-if="showDataCostituzione" class="form-field">
-      <label>{{ t('dati_societari.data_costituzione') }}</label>
-      <DatePicker :model-value="parseIsoDate(form.data_costituzione)"
-        @update:model-value="form.data_costituzione = toDateString($event)"
-        :date-format="DATE_FORMAT" show-icon show-button-bar :disabled="disabled" />
-    </div>
-
     <!-- Socio unico + Liquidazione -->
     <div class="form-grid-2col">
       <div class="form-field">
@@ -147,21 +147,21 @@ const destinatarioFeOptions = computed(() => [
       </div>
     </div>
 
-    <!-- Fatturazione elettronica -->
-    <div class="form-field">
-      <label>{{ t('dati_societari.destinatario_fe') }}</label>
-      <Select
-        v-model="form.destinatario_fe"
-        :options="destinatarioFeOptions"
-        option-label="label"
-        option-value="value"
-        :placeholder="t('dati_societari.select_destinatario_fe')"
-        :disabled="disabled"
-        show-clear
-      />
-    </div>
-
+    <!-- Fatturazione elettronica: il canale e, accanto, il recapito che il
+         canale chiede (PEC per `P`, codice SDI per `C`). -->
     <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('dati_societari.destinatario_fe') }}</label>
+        <Select
+          v-model="form.destinatario_fe"
+          :options="destinatarioFeOptions"
+          option-label="label"
+          option-value="value"
+          :placeholder="t('dati_societari.select_destinatario_fe')"
+          :disabled="disabled"
+          show-clear
+        />
+      </div>
       <div v-if="form.destinatario_fe === 'P'" class="form-field">
         <label>{{ t('dati_societari.pec_fatturazione') }}</label>
         <InputText

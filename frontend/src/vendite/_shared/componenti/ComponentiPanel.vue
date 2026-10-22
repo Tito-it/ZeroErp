@@ -385,7 +385,11 @@ async function onSalvaPrezzo(comp) {
         <template #body="{ data }">{{ formatNumber(data.quantita) }}</template>
       </Column>
       <Column field="uom_codice" :header="t(localizedKey('col_uom'))" style="width: 70px;" />
-      <Column :header="t(localizedKey('col_prezzo'))" style="width: 180px; min-width: 180px;">
+      <!-- I 180px servono all'input col bottone salva; in sola lettura il
+           prezzo e' un numero, e la colonna larga allargava la tabella
+           interna (scrollbar nella riga espansa del kit). -->
+      <Column :header="t(localizedKey('col_prezzo'))"
+              :style="effectiveReadonly ? 'width: 110px;' : 'width: 180px; min-width: 180px;'">
         <template #body="{ data }">
           <template v-if="effectiveReadonly">
             <!-- DEC-6: prezzo assente non e' prezzo zero, e non e' nemmeno una

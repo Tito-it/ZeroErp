@@ -206,35 +206,40 @@ async function onValidaPIVA() {
 
     <!-- Sezione PF -->
     <template v-if="isPF">
-      <div class="form-field">
-        <label>{{ t('common.cognome') }} *</label>
-        <InputText v-model="form.cognome" :disabled="disabled"
-          @blur="form.cognome = capitalizeWords(form.cognome)" />
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('common.cognome') }} *</label>
+          <InputText v-model="form.cognome" :disabled="disabled"
+            @blur="form.cognome = capitalizeWords(form.cognome)" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('common.nome') }} *</label>
+          <InputText v-model="form.nome" :disabled="disabled"
+            @blur="form.nome = capitalizeWords(form.nome)" />
+        </div>
       </div>
-      <div class="form-field">
-        <label>{{ t('common.nome') }} *</label>
-        <InputText v-model="form.nome" :disabled="disabled"
-          @blur="form.nome = capitalizeWords(form.nome)" />
-      </div>
+      <!-- Sesso, data e comune di nascita su una riga (~25/30/45): `flex-basis`
+           0 e i pesi danno le proporzioni; senza il sesso (natura che non lo
+           prevede) data e comune si dividono la riga negli stessi rapporti. -->
       <div class="form-row-inline">
-        <div v-if="showSesso" class="form-field" style="flex: 0 0 11rem;">
+        <div v-if="showSesso" class="form-field" style="flex: 25 1 0; min-width: 0;">
           <label>{{ t('common.sesso') }}{{ requireSesso ? ' *' : '' }}</label>
           <Select v-model="form.sesso" :options="sessoOptions"
             option-label="label" option-value="value" :disabled="disabled"
             :show-clear="!requireSesso && !disabled"
             :invalid="campiErrati.includes('sesso')" />
         </div>
-        <div class="form-field" style="flex: 1;">
+        <div class="form-field" style="flex: 30 1 0; min-width: 0;">
           <label>{{ t('common.data_nascita') }}</label>
           <InputText v-if="disabled" :model-value="displayDate(form.data_nascita)" disabled />
           <DatePicker v-else v-model="form.data_nascita" :dateFormat="DATE_FORMAT"
             show-icon icon-display="input" show-button-bar :manual-input="true" />
         </div>
-      </div>
-      <div class="form-field">
-        <label>{{ t('common.comune_nascita') }}</label>
-        <ComuneAutocomplete v-model="form.comune_nascita_id" :disabled="disabled"
-          :initial-item="comuneNascitaItem" />
+        <div class="form-field" style="flex: 45 1 0; min-width: 0;">
+          <label>{{ t('common.comune_nascita') }}</label>
+          <ComuneAutocomplete v-model="form.comune_nascita_id" :disabled="disabled"
+            :initial-item="comuneNascitaItem" />
+        </div>
       </div>
     </template>
 

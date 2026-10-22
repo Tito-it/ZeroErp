@@ -10,8 +10,6 @@
 from __future__ import annotations
 
 import json
-from datetime import date
-from decimal import Decimal
 from typing import Any
 
 from apps.core.api.constants import DEFAULT_LIMIT
@@ -161,6 +159,35 @@ INDIRIZZO_RUOLO_UPDATE_COLS: frozenset[str] = frozenset({
     "indirizzo_libero", "stato_id", "comune_id", "codice_postale_id",
     "administrative_area", "locality", "sublocality", "postal_code",
 })
+
+# BB (regola del 2, 2026-10-22, brief-db-dati-societari-in-creazione §6): la
+# sezione «dati societari» come parametri nominati, con i cast agli enum. La
+# passano TRE funzioni DB con gli STESSI nomi: il verbo
+# `fn_scrivi_dati_societari` e le due porte di creazione `fn_crea_soggetto_pg`
+# e `fn_crea_soggetto_pf` (dal `20261020-02/-03`). Fino a quel giorno il binding
+# era scritto in due copie, e la DI ne avrebbe aggiunta una terza.
+# ⚠️ Stato intero: una chiave assente vale NULL. Socio unico e liquidazione a
+#    NULL valgono il default di `config.parameters`, risolto dal DB.
+_DATI_SOCIETARI_CAST: dict[str, str] = {
+    "forma_giuridica_id": "", "id_prov_iscri_rea": "", "iscrizione_rea": "",
+    "capitale_sociale": "",
+    "socio_unico": "::anagrafiche.socio_unico_enum",
+    "liquidazione": "::anagrafiche.liquidazione_enum",
+    "destinatario_fe": "", "pec_fatturazione": "", "codice_sdi": "",
+    "data_costituzione": "::date",
+}
+# Le chiavi della sezione: il contratto da cui parte il service.
+DATI_SOCIETARI_COLS: frozenset[str] = frozenset(_DATI_SOCIETARI_CAST)
+_SQL_PARAMETRI_DATI_SOCIETARI = ",\n".join(
+    f"p_{col} := %s{cast}" for col, cast in _DATI_SOCIETARI_CAST.items()
+)
+
+
+# Scopo: i valori della sezione, nell'ordine di `_SQL_PARAMETRI_DATI_SOCIETARI`.
+#        `None` = nessuna sezione: tutti NULL.
+def _parametri_dati_societari(dati_societari: dict[str, Any] | None) -> list[Any]:
+    ds = dati_societari or {}
+    return [ds.get(col) for col in _DATI_SOCIETARI_CAST]
 
 
 # Le colonne del contatto appena creato che il repository restituisce: le
@@ -346,11 +373,17 @@ class SoggettiRepository:
     # =================================================================
 
     # Scopo: Crea soggetto PF chiamando la funzione DB building block.
-    #        Obiettivo: INSERT soggetto + contatto default, tutto in funzione PG.
+    #        Obiettivo: INSERT soggetto + contatto default + dati societari
+    #        (la DI, policy OPTIONAL), tutto in funzione PG.
     # ⛔ `sesso` e `tipo_soggetto_dettaglio_id` senza default, come a DB: la
     #    natura e il sesso non si inventano (brief-db-sesso-senza-default D4).
     #    `sesso=None` e' un valore legittimo (DI, OPTIONAL): se la natura lo
     #    pretende, rifiuta il guard `trgfn_soggetti_guard_sesso_policy`.
+    # ⚠️ `dati_societari` (2026-10-22, `20261020-03`): fino a quel giorno la porta
+    #    non la riceveva, e la sezione di una DI si perdeva in silenzio. QUANDO
+    #    si scrive (policy, sezione «presente») lo decide il DB
+    #    (`fn_scrivi_dati_societari_alla_nascita`); per un privato una sezione
+    #    presente e' un rifiuto del guard della natura.
     def crea_soggetto_pf(
         self, *, cognome: str, nome: str, codice_fiscale: str, email: str,
         sesso: str | None, tipo_soggetto_dettaglio_id: int,
@@ -360,8 +393,9 @@ class SoggettiRepository:
         comune_nascita_id: int | None = None,
         tipo_contatto_id: int | None = None,
         partita_iva: str | None = None,
+        dati_societari: dict[str, Any] | None = None,
     ) -> str:
-        sql = """
+        sql = f"""
             SELECT anagrafiche.fn_crea_soggetto_pf(
                 p_cognome           := %s,
                 p_nome              := %s,
@@ -373,7 +407,8 @@ class SoggettiRepository:
                 p_comune_nascita_id := %s,
                 p_tipo_contatto_id  := %s,
                 p_tipo_soggetto_dettaglio_id := %s,
-                p_partita_iva       := %s
+                p_partita_iva       := %s,
+                {_SQL_PARAMETRI_DATI_SOCIETARI}
             )
         """
         with connection.cursor() as cursor:
@@ -381,6 +416,7 @@ class SoggettiRepository:
                 cognome, nome, codice_fiscale, email,
                 data_nascita, sesso, stato_iso2, comune_nascita_id, tipo_contatto_id,
                 tipo_soggetto_dettaglio_id, partita_iva,
+                *_parametri_dati_societari(dati_societari),
             ])
             row = cursor.fetchone()
             assert row is not None
@@ -389,23 +425,16 @@ class SoggettiRepository:
     # Scopo: Crea soggetto PG chiamando la funzione DB building block.
     #        Obiettivo: INSERT soggetto + contatto default + dati societari
     #        (se policy REQUIRED o dati forniti). Non crea indirizzi ne' ruoli.
+    # ⚠️ Dal 2026-10-22 (`20261020-02`) la sezione arriva intera, data di
+    #    costituzione compresa: prima la funzione la passava al verbo a NULL.
     def crea_soggetto_pg(
         self, *, ragione_sociale: str, tipo_soggetto_dettaglio_id: int,
         email: str, codice_fiscale: str | None = None,
         partita_iva: str | None = None, stato_iso2: str | None = None,
-        forma_giuridica_id: int | None = None,
-        id_prov_iscri_rea: int | None = None,
-        iscrizione_rea: str | None = None,
-        capitale_sociale: float | None = None,
-        # None = i default di `config.parameters` (fn_crea_soggetto_pg): fino al
-        # 2026-10-09 qui c'erano "IT"/"SU"/"LN" cablati, una copia del dato.
-        socio_unico: str | None = None, liquidazione: str | None = None,
-        destinatario_fe: str | None = None,
-        pec_fatturazione: str | None = None,
-        codice_sdi: str | None = None,
+        dati_societari: dict[str, Any] | None = None,
         tipo_contatto_id: int | None = None,
     ) -> str:
-        sql = """
+        sql = f"""
             SELECT anagrafiche.fn_crea_soggetto_pg(
                 p_ragione_sociale            := %s,
                 p_tipo_soggetto_dettaglio_id := %s,
@@ -413,26 +442,15 @@ class SoggettiRepository:
                 p_codice_fiscale             := %s,
                 p_partita_iva                := %s,
                 p_stato_iso2                 := %s,
-                p_forma_giuridica_id         := %s,
-                p_id_prov_iscri_rea          := %s,
-                p_iscrizione_rea             := %s,
-                p_capitale_sociale           := %s,
-                p_socio_unico                := %s::anagrafiche.socio_unico_enum,
-                p_liquidazione               := %s::anagrafiche.liquidazione_enum,
-                p_destinatario_fe            := %s,
-                p_pec_fatturazione           := %s,
-                p_codice_sdi                 := %s,
-                p_tipo_contatto_id           := %s
+                p_tipo_contatto_id           := %s,
+                {_SQL_PARAMETRI_DATI_SOCIETARI}
             )
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 ragione_sociale, tipo_soggetto_dettaglio_id, email,
-                codice_fiscale, partita_iva, stato_iso2,
-                forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea,
-                capitale_sociale, socio_unico, liquidazione,
-                destinatario_fe, pec_fatturazione, codice_sdi,
-                tipo_contatto_id,
+                codice_fiscale, partita_iva, stato_iso2, tipo_contatto_id,
+                *_parametri_dati_societari(dati_societari),
             ])
             row = cursor.fetchone()
             assert row is not None
@@ -486,39 +504,16 @@ class SoggettiRepository:
     #    (forma per natura, REA e capitale per forma, canale FE) stanno nei
     #    trigger della tabella e arrivano come errori di dominio col campo.
     def scrivi_dati_societari(
-        self, soggetto_id: str, *,
-        forma_giuridica_id: int | None,
-        id_prov_iscri_rea: int | None,
-        iscrizione_rea: str | None,
-        capitale_sociale: Decimal | None,
-        socio_unico: str | None,
-        liquidazione: str | None,
-        destinatario_fe: str | None,
-        pec_fatturazione: str | None,
-        codice_sdi: str | None,
-        data_costituzione: date | None,
+        self, soggetto_id: str, dati_societari: dict[str, Any],
     ) -> int:
-        sql = """
+        sql = f"""
             SELECT anagrafiche.fn_scrivi_dati_societari(
                 p_soggetto_id        := %s::uuid,
-                p_forma_giuridica_id := %s,
-                p_id_prov_iscri_rea  := %s,
-                p_iscrizione_rea     := %s,
-                p_capitale_sociale   := %s,
-                p_socio_unico        := %s::anagrafiche.socio_unico_enum,
-                p_liquidazione       := %s::anagrafiche.liquidazione_enum,
-                p_destinatario_fe    := %s,
-                p_pec_fatturazione   := %s,
-                p_codice_sdi         := %s,
-                p_data_costituzione  := %s::date
+                {_SQL_PARAMETRI_DATI_SOCIETARI}
             )
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                soggetto_id, forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea,
-                capitale_sociale, socio_unico, liquidazione,
-                destinatario_fe, pec_fatturazione, codice_sdi, data_costituzione,
-            ])
+            cursor.execute(sql, [soggetto_id, *_parametri_dati_societari(dati_societari)])
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])

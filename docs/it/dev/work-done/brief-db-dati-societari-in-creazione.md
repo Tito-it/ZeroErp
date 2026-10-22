@@ -1,25 +1,25 @@
 # Brief DB — Dati societari in creazione: la porta di creazione non scrive tutta la sezione
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-19
+## ⏭️ Chi riparte — aggiornato al 2026-10-22
 
-**Riparte: la sessione BE/FE (§6). Il lato DB è finito: applicato e verde il 2026-10-19; al DB resta solo la chiusura (passo 6).**
+**Riparte: nessuno. ✅ Chiuso e archiviato il 2026-10-22: DB il 19-10, BE/FE e collaudo il 22-10.**
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ~~Tid~~ | ~~decide E-1~~ ✅ **(a)**, 2026-10-19 | §4 | — |
 | 2 | ~~team DB~~ | ~~changeSet `20261020-01…03`, pgTAP, manuali~~ ✅ 2026-10-19 | §5 | — |
 | 3 | ~~Tid~~ | ~~apply e corsa pgTAP~~ ✅ 2026-10-19 (dbdev e scratch, pgTAP verde) | §5.1 | — |
-| 4 | sessione BE/FE | `crea_soggetto_pg` / `_create_pf`, via la prop `showDataCostituzione` | §6 | — |
-| 5 | Tid | collaudo a video: SC e DI create con la sezione intera | §6 | 4 |
-| 6 | chi chiude | archiviazione, riga di PROJECT_CONTEXT, D34 nel registro DB | — | 5 |
+| 4 | ~~sessione BE/FE~~ | ~~`crea_soggetto_pg` / `_create_pf`, via la prop `showDataCostituzione`~~ ✅ 2026-10-22 | §6.1 | — |
+| 5 | ~~Tid~~ | ~~collaudo a video: SC e DI create con la sezione intera~~ ✅ 2026-10-22 | §6 | — |
+| 6 | ~~chi chiude~~ | ~~archiviazione, riga di PROJECT_CONTEXT, D34 nel registro DB~~ ✅ 2026-10-22 | — | — |
 
-Decisioni aperte di Tid: nessuna (D-1 in §3.1, della sessione, è applicata). Lavoro da committare: questo file, i tre changeSet, il pgTAP nuovo e quattro manuali (§5.1), applicati.
+Decisioni aperte di Tid: nessuna (D-1 in §3.1 applicata; il BB BE di §6.1 ha l'ok di Tid del 2026-10-22). Lavoro da committare: il giro BE/FE (§6.1) e la chiusura, su `dev/backend-tid`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-14, chiudendo
 > `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md` (§9.5, richiesta della sessione BE).
 > **A chi:** team DB; poi BE/FE (§6).
 > **Stato:** ✅ lato DB chiuso il 2026-10-19 (E-1 (a)): applicato su dbdev e scratch, pgTAP verde.
-> 🔜 BE/FE (§6), poi collaudo e chiusura.
+> ✅ BE/FE il 2026-10-22 (§6.1); collaudo di Tid riuscito e chiusura lo stesso giorno.
 
 ## 1. Il difetto, sul modello
 
@@ -169,6 +169,30 @@ da qui pg e pf resterebbero col corpo nuovo e, dopo il rollback del `-01`, senza
   sezione). Il ramo di creazione di `handleSave` già manda la sezione: niente da cambiare.
 - ✅ Il DB è pronto dal 2026-10-19 (`20261020-01…03` applicati): BE/FE possono partire.
 
+### 6.1 Fatto (2026-10-22, `dev/backend-tid`)
+
+- **Repository** (`soggetti_repository.py`): BB della regola del 2, ok Tid 2026-10-22. Il binding
+  dei dieci parametri della sezione (`_SQL_PARAMETRI_DATI_SOCIETARI` + `_parametri_dati_societari`,
+  chiavi in `DATI_SOCIETARI_COLS`) era scritto due volte (pg e verbo), la DI ne avrebbe aggiunto una
+  terza: ora lo usano `crea_soggetto_pg`, `crea_soggetto_pf` e `scrivi_dati_societari`, che ricevono
+  la sezione come un dict (`dati_societari`). Registrato nel catalogo BB backend
+  (§«Anagrafiche — Soggetti»).
+- **Service** (`soggetti_service.py`): `_create_pf` e `_create_pg` leggono la sezione con
+  `_dati_societari_in_creazione` → `_valida_dati_societari`, lo stesso contratto della PATCH
+  (chiave assente = nessuna sezione). ⚠️ Per la PG è un cambio: una chiave ignota, un `null` o un
+  valore malformato prima passavano o sparivano, ora sono 400 `E_ANAG_VALIDAZIONE`. La PF legge
+  anche il REA duplicato (`uq_ds_prov_cea` → campo `iscrizione_rea`), come la PG.
+- **FE**: via la prop `showDataCostituzione` da `DatiSocietariForm.vue` e dal `SoggettoDrawer`;
+  `handleSave` invariato. Nel collaudo, su richiesta di Tid, il layout: forma giuridica e data di
+  costituzione affiancate, canale FE con accanto la PEC o il codice SDI che il canale chiede
+  (`DatiSocietariForm.vue`); cognome e nome affiancati, sesso, data e comune di nascita su una riga
+  (~25/30/45, `SoggettoForm.vue`).
+- **Test**: `test_soggetti_service` 40-43 (sezione intera alla porta pg con la data, DI con la
+  sezione, chiave assente → `None`, contratto in creazione per PF e PG); `test_dati_fiscali_societari_db`
+  17-19 sul DB vero (SC creata con la data, DI con la sezione intera, PR con la sezione →
+  `E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO`). `apps.anagrafiche` con `ZEROERP_TEST_DB_E2E=1`:
+  549 verdi; mypy senza rilievi nuovi; ruff ed eslint puliti; vitest `src/anagrafiche` 24/24.
+
 ## 7. Registro
 
 | Data | Cosa |
@@ -177,3 +201,5 @@ da qui pg e pf resterebbero col corpo nuovo e, dopo il rollback del `-01`, senza
 | 2026-10-19 | Tid decide E-1 (a) e dà il via. Ripreso dalle revisioni del 18-10 (`20261018-89`/`-91`, stato dal BB). D-1 della sessione (§3.1): la regola della nascita va in un BB, `20261020-01`; `-02` pg, `-03` pf. |
 | 2026-10-19 | Lato DB scritto e provato pre-apply (§5.1): `20261020-01…03`, pgTAP nuovo 18/18, regressione identica su 32 file. Riparte Tid per l'apply. |
 | 2026-10-19 | Tid applica `20261020-01…03` (dbdev 16:59:25, scratch 16:59:46, `databasechangelog`: EXECUTED) e la corsa pgTAP è verde. Lato DB finito; riparte BE/FE (§6). |
+| 2026-10-22 | Giro BE/FE (§6.1): BB del binding della sezione nel repository (ok Tid), contratto unico in creazione, via `showDataCostituzione`; test BE sul DB vero verdi. Riparte Tid per il collaudo. |
+| 2026-10-22 | Collaudo di Tid riuscito (SC e DI create con la sezione intera; layout del form rivisto). Chiuso: archiviato in `work-done/`, riga di PROJECT_CONTEXT, D34 chiuso nel registro DB. |

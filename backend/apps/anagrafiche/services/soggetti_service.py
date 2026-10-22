@@ -19,6 +19,7 @@ from apps.anagrafiche.db.conti_bancari_repository import ContiBancariRepository
 from apps.anagrafiche.db.indirizzi_repository import IndirizziRepository
 from apps.anagrafiche.db.soggetti_repository import (
     CONTATTO_UPDATE_COLS,
+    DATI_SOCIETARI_COLS,
     INDIRIZZO_RUOLO_UPDATE_COLS,
     SOGGETTO_UPDATE_ALIAS,
     SOGGETTO_UPDATE_COLS,
@@ -81,16 +82,19 @@ _UPDATE_SOGGETTO_KEYS: frozenset[str] = (
     SOGGETTO_UPDATE_COLS | frozenset(SOGGETTO_UPDATE_ALIAS) | {_CHIAVE_DATI_SOCIETARI}
 )
 # Le chiavi della sezione dati societari: i parametri del verbo, senza il
-# soggetto. ⚠️ Stato intero: una chiave ASSENTE vale NULL come una chiave a
-# null — il verbo non distingue «non toccare» da «svuota» (B-2, team DB).
-_DATI_SOCIETARI_KEYS: frozenset[str] = frozenset({
-    "forma_giuridica_id", "id_prov_iscri_rea", "iscrizione_rea", "capitale_sociale",
-    "socio_unico", "liquidazione",
-    "destinatario_fe", "pec_fatturazione", "codice_sdi",
-    "data_costituzione",
-})
+# soggetto, dal binding del repository (le porte di creazione hanno gli stessi).
+# ⚠️ Stato intero: una chiave ASSENTE vale NULL come una chiave a null — il
+# verbo non distingue «non toccare» da «svuota» (B-2, team DB).
+_DATI_SOCIETARI_KEYS: frozenset[str] = DATI_SOCIETARI_COLS
 _MSG_REA_DUPLICATA = "Iscrizione REA gia' presente per un altro soggetto."
 _MSG_PG_CF_PIVA_DUPLICATA = "Soggetto PG con CF/PIVA duplicata."
+_MSG_PF_CF_DUPLICATO = "Soggetto con questo codice fiscale gia' esistente."
+# Il REA duplicato di un ALTRO soggetto (`uq_ds_prov_cea`), col campo da
+# accendere: lo stesso vincolo per le tre strade che scrivono la sezione — la
+# PATCH col verbo e le due porte di creazione.
+_VINCOLO_REA_DUPLICATA: dict[str, str | tuple[str, str]] = {
+    "uq_ds_prov_cea": (_MSG_REA_DUPLICATA, "iscrizione_rea"),
+}
 _UPDATE_CONTATTO_KEYS: frozenset[str] = CONTATTO_UPDATE_COLS
 _UPDATE_INDIRIZZO_RUOLO_KEYS: frozenset[str] = INDIRIZZO_RUOLO_UPDATE_COLS
 
@@ -331,14 +335,15 @@ class SoggettiService:
                 # (`uq_ds_prov_cea`; quella per soggetto la assorbe il verbo,
                 # che aggiorna): col campo, l'operatore vede DOVE correggere.
                 create_with_constraint_mapping(
-                    lambda: self._repo.scrivi_dati_societari(soggetto_id, **dati_societari),
-                    {"uq_ds_prov_cea": (_MSG_REA_DUPLICATA, "iscrizione_rea")},
+                    lambda: self._repo.scrivi_dati_societari(soggetto_id, dati_societari),
+                    _VINCOLO_REA_DUPLICATA,
                     default_message=_MSG_REA_DUPLICATA,
                 )
         return {"updated": True}
 
-    # Scopo: Valida la sezione `dati_societari` della PATCH (contratto: un
-    #        oggetto con le sole chiavi del verbo) e ne restituisce i parametri.
+    # Scopo: Valida la sezione `dati_societari` della PATCH e della creazione
+    #        (contratto: un oggetto con le sole chiavi del verbo) e ne
+    #        restituisce i parametri.
     # ⚠️ Solo la FORMA dei valori. Cosa e' ammesso (la forma per la natura, REA e
     #    capitale per la forma, il recapito per il canale FE) lo giudicano i
     #    trigger di `anagrafiche.dati_societari`, che accendono il campo: una
@@ -371,6 +376,20 @@ class SoggettiService:
             "codice_sdi": _V.optional_string(raw, "codice_sdi"),
             "data_costituzione": _V.optional_date(raw, "data_costituzione"),
         }
+
+    # Scopo: La sezione `dati_societari` di un soggetto che NASCE, per le due
+    #        porte di creazione. Chiave assente = nessuna sezione (`None`);
+    #        presente = lo stesso contratto della PATCH.
+    # ⚠️ Dal 2026-10-22 (brief-db-dati-societari-in-creazione §6) anche la PG
+    #    passa di qui: prima leggeva la sezione chiave per chiave, e una chiave
+    #    ignota, un `null` o un valore malformato passavano o sparivano senza
+    #    errore. QUANDO la sezione si scrive (policy, almeno un campo) lo decide
+    #    il DB (`fn_scrivi_dati_societari_alla_nascita`), non questo metodo.
+    @classmethod
+    def _dati_societari_in_creazione(cls, payload: dict[str, Any]) -> dict[str, Any] | None:
+        if _CHIAVE_DATI_SOCIETARI not in payload:
+            return None
+        return cls._valida_dati_societari(payload[_CHIAVE_DATI_SOCIETARI])
 
     # Scopo: Valida e normalizza i due flag di regime fiscale (I0/D8).
     #        Perimetro: `split_payment` e `cliente_pa`, `character(1)` NOT NULL
@@ -837,6 +856,10 @@ class SoggettiService:
     # ⚠️ Fino al 2026-10-09 la funzione DB cablava `PR` e non riceveva la P.IVA:
     #    chi sceglieva «Ditta individuale» otteneva un privato, e la P.IVA si
     #    perdeva senza errore (brief-db-sesso-senza-default §2).
+    # ⚠️ Fino al 2026-10-22 la stessa sorte toccava ai dati societari della DI:
+    #    il drawer li mandava, qui non si leggevano (brief-db-dati-societari-in-
+    #    creazione §1.1). Ora vanno alla porta, che li scrive nella stessa
+    #    chiamata; il REA duplicato si legge come in modifica.
     def _create_pf(self, payload: dict[str, Any], tipo_id: int) -> str:
         cognome = require_str(payload, "cognome", "Cognome obbligatorio.")
         nome = require_str(payload, "nome", "Nome obbligatorio.")
@@ -851,6 +874,7 @@ class SoggettiService:
 
         # Validazione congruenza CF con dati anagrafici
         self._valida_cf_congruenza(payload, codice_fiscale, sesso)
+        dati_societari = self._dati_societari_in_creazione(payload)
 
         contatto = payload.get("contatto") or {}
         # Regola unificata via classify_contatto_payload (Fase 5): per il
@@ -859,7 +883,7 @@ class SoggettiService:
         richiedi_contatto_valido(contatto)
         email_addr = optional_str(contatto, "email") or ""
 
-        soggetto_id = create_with_dedup(
+        soggetto_id = create_with_constraint_mapping(
             lambda: self._repo.crea_soggetto_pf(
                 cognome=cognome, nome=nome, codice_fiscale=codice_fiscale,
                 email=email_addr,
@@ -870,8 +894,17 @@ class SoggettiService:
                 tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),
                 tipo_soggetto_dettaglio_id=tipo_id,
                 partita_iva=optional_str(payload, "partita_iva"),
+                dati_societari=dati_societari,
             ),
-            "Soggetto con questo codice fiscale gia' esistente.",
+            # Per una persona fisica l'identificativo fiscale univoco e' il
+            # codice fiscale: il duplicato accende quel campo.
+            {
+                "uq_soggetto_idstato_id_fiscale_univoco": (
+                    _MSG_PF_CF_DUPLICATO, "codice_fiscale",
+                ),
+                **_VINCOLO_REA_DUPLICATA,
+            },
+            default_message=_MSG_PF_CF_DUPLICATO,
         )
 
         self._update_contatto_default(soggetto_id, contatto,
@@ -890,7 +923,7 @@ class SoggettiService:
         richiedi_contatto_valido(contatto)
         email_addr = optional_str(contatto, "email") or ""
 
-        dati_soc = payload.get("dati_societari") or {}
+        dati_societari = self._dati_societari_in_creazione(payload)
 
         soggetto_id = create_with_constraint_mapping(
             lambda: self._repo.crea_soggetto_pg(
@@ -900,15 +933,7 @@ class SoggettiService:
                 codice_fiscale=optional_str(payload, "codice_fiscale"),
                 partita_iva=optional_str(payload, "partita_iva"),
                 stato_iso2=optional_str(payload, "stato_iso2"),
-                forma_giuridica_id=optional_int(dati_soc, "forma_giuridica_id"),
-                id_prov_iscri_rea=optional_int(dati_soc, "id_prov_iscri_rea"),
-                iscrizione_rea=optional_str(dati_soc, "iscrizione_rea"),
-                capitale_sociale=dati_soc.get("capitale_sociale"),
-                socio_unico=optional_str(dati_soc, "socio_unico"),
-                liquidazione=optional_str(dati_soc, "liquidazione"),
-                destinatario_fe=optional_str(dati_soc, "destinatario_fe"),
-                pec_fatturazione=optional_str(dati_soc, "pec_fatturazione"),
-                codice_sdi=optional_str(dati_soc, "codice_sdi"),
+                dati_societari=dati_societari,
                 tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),
             ),
             # ⚠️ La creazione scrive DUE tabelle con unicita' proprie: il REA
@@ -917,7 +942,7 @@ class SoggettiService:
             #    quale vincolo e' violato: lo si legge, come in modifica.
             {
                 "uq_soggetto_idstato_id_fiscale_univoco": _MSG_PG_CF_PIVA_DUPLICATA,
-                "uq_ds_prov_cea": (_MSG_REA_DUPLICATA, "iscrizione_rea"),
+                **_VINCOLO_REA_DUPLICATA,
             },
             default_message=_MSG_PG_CF_PIVA_DUPLICATA,
         )
