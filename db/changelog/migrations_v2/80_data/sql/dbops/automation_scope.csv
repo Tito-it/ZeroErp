@@ -12,3 +12,7 @@ documenti,*all
 pratiche,*all
 dbops,sessioni_utente
 dbops,processi_accensione
+dbops,idempotency_keys
+dbops,request_log
+dbops,error_log
+dbops,audit_log

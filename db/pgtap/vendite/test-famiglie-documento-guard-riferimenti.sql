@@ -1,11 +1,15 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-23 (brief-be-verifica-documentazione-api D1, 20261023-01): E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE e' DATO_ERRATO e porta il campo; test 10-13.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2c): le famiglie di prova nascono come sorgenti (dbops.fn_pgtap_crea_sorgente), la tabella e' quella della sorgente; il test 7 legge config.fn_sorgente_tabella.
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: la fixture SCRIVE in vendite.famiglie_documento, che e'
 --   un catalogo di configurazione — le sue righe le mette una migrazione, non
---   un operatore, e il ruolo applicativo non ci scrive. E' la stessa ragione
---   per cui il codice errore di questo guard e' TECNICO.
+--   un operatore, e il ruolo applicativo non ci scrive.
+--   ⚠️ Superato in parte (2026-10-23, D1): dal 2026-09-02 l'amministratore
+--   scrive le famiglie dal CRUD, e il ruolo applicativo ha INSERT e UPDATE.
+--   Per questo il codice del guard e' DATO_ERRATO col campo (test 10-13). Il
+--   marcatore resta owner per la fixture delle sorgenti di prova.
 -- pgtap-contesto: escluso — discende dal marcatore qui sopra: il soggetto del
 --   test e' un catalogo senza RLS e senza perimetro di emittente, e un
 --   contesto operatore non cambierebbe nessuna delle risposte.
@@ -14,7 +18,7 @@
 --       vendite.trgfn_famiglie_documento_guard_riferimenti  (20260831-18)
 --       Piano: brief-db-registri-di-numerazione-emittente-e-trasloco, C2-18
 -- ------------------------------------------------------------
--- Elenco test (plan 9):
+-- Elenco test (plan 13):
 -- 1) La funzione guard esiste
 -- 2) Il trigger e' montato BEFORE, su INSERT e su UPDATE
 -- 3) ⛔ Famiglia ATTIVA che nomina una tabella inesistente: respinta (P0001)
@@ -25,6 +29,10 @@
 -- 8) ⭐ rev 2026-09-14 (P-9): una famiglia ATTIVA SENZA billing account PASSA — il
 --    vuoto e' una dichiarazione, come per la serie (l'ordine di acquisto)
 -- 9) ⛔ ...ma senza billing account il NUMERO resta verificato: il salto e' SOLO sul BA
+-- 10) ⭐ D1: colonna inesistente → il codice arriva in CONSTRAINT e il campo in COLUMN
+-- 11) ⭐ D1: sorgente senza tabella → il campo e' la sorgente scelta (codice_interno)
+-- 12) ⭐ D1: serie inesistente → il campo e' colonna_serie
+-- 13) ⭐ D1: il codice e' DATO_ERRATO nel catalogo (400, non 500)
 --
 -- Scopo:
 --   Dal 2026-08-31 il presidio sul cambio emittente di un billing account non
@@ -62,7 +70,7 @@ BEGIN;
 -- ⚠️ 2. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(9);
+SELECT plan(13);
 
 -- ============================================================
 -- 1) La funzione guard esiste
@@ -239,6 +247,88 @@ SELECT throws_ok(
     'P0001',
     NULL,
     '9) Senza billing account la colonna del numero resta verificata: il salto e'' solo sul BA');
+
+-- ============================================================
+-- 10-12) ⭐ D1 — I DUE CANALI STRUTTURATI: codice in CONSTRAINT, campo in COLUMN
+--
+--   `throws_ok` vede solo lo SQLSTATE e la frase: non dice QUALE campo il form
+--   deve accendere. Si cattura l'eccezione (stampo di
+--   anagrafiche/test-guard-albero-ba-omogeneo-v1, 8-9). Una riga per caso;
+--   NULL in entrambe le colonne = il guard non ha sollevato.
+-- ============================================================
+DO $sorgente_serie$ BEGIN
+    PERFORM dbops.fn_pgtap_crea_sorgente('TSTNOSER', 'acquisti.ordini'::regclass);
+END $sorgente_serie$;
+
+CREATE TEMP TABLE _t_diag (caso text, vincolo text, campo text);
+
+DO $diag$
+DECLARE v_cst text; v_col text;
+BEGIN
+    BEGIN
+        -- la stessa riga del test 4
+        INSERT INTO vendite.famiglie_documento (
+            codice_interno, descrizione,
+            colonna_numero, colonna_billing_account, attivo, presidia_data_documento)
+        VALUES ('TSTNOCOL', 'Famiglia di test senza colonna',
+                'colonna_che_non_esiste_pgtap', 'billing_account_id', true, false);
+        INSERT INTO _t_diag VALUES ('colonna', NULL, NULL);
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME, v_col = COLUMN_NAME;
+        INSERT INTO _t_diag VALUES ('colonna', nullif(v_cst, ''), nullif(v_col, ''));
+    END;
+
+    BEGIN
+        -- la stessa riga del test 3
+        INSERT INTO vendite.famiglie_documento (
+            codice_interno, descrizione,
+            colonna_numero, colonna_billing_account, attivo, presidia_data_documento)
+        VALUES ('TSTNOTAB', 'Famiglia di test senza tabella',
+                'numero', 'billing_account_id', true, false);
+        INSERT INTO _t_diag VALUES ('sorgente', NULL, NULL);
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME, v_col = COLUMN_NAME;
+        INSERT INTO _t_diag VALUES ('sorgente', nullif(v_cst, ''), nullif(v_col, ''));
+    END;
+
+    -- numero giusto, serie che non esiste sulla tabella: e' il quarto ramo
+    BEGIN
+        INSERT INTO vendite.famiglie_documento (
+            codice_interno, descrizione,
+            colonna_numero, colonna_billing_account, colonna_serie,
+            attivo, presidia_data_documento)
+        VALUES ('TSTNOSER', 'Famiglia di test con serie inesistente',
+                'numero', NULL, 'serie_che_non_esiste_pgtap', true, false);
+        INSERT INTO _t_diag VALUES ('serie', NULL, NULL);
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME, v_col = COLUMN_NAME;
+        INSERT INTO _t_diag VALUES ('serie', nullif(v_cst, ''), nullif(v_col, ''));
+    END;
+END $diag$;
+
+SELECT results_eq(
+    $q$SELECT vincolo, campo FROM _t_diag WHERE caso = 'colonna'$q$,
+    $q$VALUES ('E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE'::text, 'colonna_numero'::text)$q$,
+    '10) Colonna del numero inesistente: codice in CONSTRAINT, campo colonna_numero in COLUMN');
+
+SELECT results_eq(
+    $q$SELECT vincolo, campo FROM _t_diag WHERE caso = 'sorgente'$q$,
+    $q$VALUES ('E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE'::text, 'codice_interno'::text)$q$,
+    '11) Sorgente senza tabella: il campo e'' la sorgente scelta (codice_interno)');
+
+SELECT results_eq(
+    $q$SELECT vincolo, campo FROM _t_diag WHERE caso = 'serie'$q$,
+    $q$VALUES ('E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE'::text, 'colonna_serie'::text)$q$,
+    '12) Serie inesistente: il campo e'' colonna_serie');
+
+-- ============================================================
+-- 13) ⭐ D1 — la classe: DATO_ERRATO, cioe' un 400 col campo, non un 500
+-- ============================================================
+SELECT is(
+    (SELECT ce.classe::text FROM config.codici_errore ce
+      WHERE ce.codice = 'E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE'),
+    'DATO_ERRATO',
+    '13) E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE e'' DATO_ERRATO: lo scrive l''amministratore dal CRUD');
 
 SELECT * FROM finish();
 ROLLBACK;

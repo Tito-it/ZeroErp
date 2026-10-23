@@ -27,7 +27,7 @@ search:
 - [domini_task](tabelle/domini_task.md) — (latest review 08-02-2026) `dbops.domini_task` definisce i **domini logici** per i task pipeline (es. `FATTURAZIONE`, `ATTIVITA_FATTURABILI`, `PRATICHE`). Serve a stabilire un **perimetro chiaro** per il registry multi‑dominio e garantire univocita` dei task per dominio.
 - [error_log](tabelle/error_log.md) — * Raccogliere in un unico punto gli errori generati da funzioni, trigger o applicazioni, permettendo analisi e allineamento con il catalogo di messaggi di errore. * Consentire il **collegamento transazionale** tramite `tx_id`, per ricostruire l’intero flusso di operazioni (ad esempio un job batch) incrociando tabelle come `dbops.audit_log`.
 - [fk_index_policy](tabelle/fk_index_policy.md) — (latest review 27-07-26) La tabella **`dbops.fk_index_policy`** definisce una **policy centralizzata** per la gestione degli indici sulle foreign key: una riga per vincolo, un flag che dice se l'indice deve esistere, e il comando che lo crea.
-- [idempotency_keys](tabelle/idempotency_keys.md) — (latest review 06-02-26) * Prevenire doppie esecuzioni in caso di retry o chiamate duplicate. * Restituire **la stessa risposta** quando arriva la stessa `idempotency_key`. * Collegare operazioni applicative alla **tracciabilità transazionale** tramite `tx_id`.
+- [idempotency_keys](tabelle/idempotency_keys.md)
 - [installazione](tabelle/installazione.md) — (16-10-2026 — brief `brief-db-processi-accensione-per-ambiente`)
 - [lock_columns_conditional](tabelle/lock_columns_conditional.md)
 - [messaggi_errore_codici_legacy](tabelle/messaggi_errore_codici_legacy.md) — (rev 2026-08-21)
@@ -90,6 +90,7 @@ search:
 - [fn_get_pipeline_task_implementation](funzioni/fn_get_pipeline_task_implementation.md) — (latest review 08-02-2026) Risoluzione controllata dell'implementazione di un task: usa la variante richiesta se valida, altrimenti il **default**.
 - [fn_grant_storico_shadows](funzioni/fn_grant_storico_shadows.md)
 - [fn_guardiano_digest](funzioni/fn_guardiano_digest.md) — (latest review 11-09-2026)
+- [fn_idempotency_prenota](funzioni/fn_idempotency_prenota.md)
 - [fn_imposta_accensione_processo](funzioni/fn_imposta_accensione_processo.md)
 - [fn_list_indices](funzioni/fn_list_indices.md) — (rev 2026-08-21)
 - [fn_lock_columns_divergenze](funzioni/fn_lock_columns_divergenze.md) — (latest review 26-09-26)

@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Presidio C1: idempotency_keys.status = in_progress ha trovato uno scrittore a DB
+#   dbops.stati_check_dichiarazioni: via la riga APPLICAZIONE
+#     dbops.idempotency_keys.status = in_progress
+#   Brief: brief-be-verifica-documentazione-api D6/D7; brief-db-presidio-stati-mai-scritti §4
+#
+#   La riga dichiarava che lo stato lo scriveva solo il backend (IdempotencyStore).
+#   Da 20261023-04 la prenotazione e' di dbops.fn_idempotency_prenota, che scrive
+#   'in_progress' all'INSERT e alla ripresa: la vista del presidio la vede SCRITTO,
+#   e una riga di registro che resta e' un DEBITO_ESTINTO
+#   (dbops/test-stati-check-scrittori-v1, test 3 — rosso nella prova pre-apply
+#   del 2026-10-23 finche' la riga c'era). Tolta anche dal CSV; le righe completed
+#   e failed restano APPLICAZIONE, con la ragione riscritta nel CSV.
+#   Stampo: 20260929-03.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261023-05-delete-stati-check-dichiarazioni-idempotency-in-progress-mctit.yaml
+
+  - changeSet:
+      id: 20261023-05-delete-stati-check-dichiarazioni-idempotency-in-progress
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Presidio C1: via da dbops.stati_check_dichiarazioni la riga APPLICAZIONE di
+        idempotency_keys.status = in_progress, scritto da dbops.fn_idempotency_prenota
+        (20261023-04). Tolta anche dal CSV. Brief: brief-be-verifica-documentazione-api D6/D7.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: stati_check_dichiarazioni
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM dbops.stati_check_dichiarazioni d
+               WHERE (d.schema_tabella, d.nome_tabella, d.colonna, d.valore) =
+                     ('dbops', 'idempotency_keys', 'status', 'in_progress');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              INSERT INTO dbops.stati_check_dichiarazioni
+                     (schema_tabella, nome_tabella, colonna, valore, canale, ragione, data_registrazione)
+              VALUES ('dbops', 'idempotency_keys', 'status', 'in_progress', 'APPLICAZIONE',
+                      'Lo scrive il backend: apps/core/services/idempotency_store.py (IdempotencyStore claim_or_replay / mark_completed / failed). Nessuna funzione a DB scrive la tabella: e il protocollo di idempotenza delle richieste HTTP.',
+                      DATE '2026-09-21')
+              ON CONFLICT DO NOTHING;

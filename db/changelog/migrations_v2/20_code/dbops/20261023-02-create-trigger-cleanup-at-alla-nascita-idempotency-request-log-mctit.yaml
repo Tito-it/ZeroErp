@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D5 — DUE REGISTRI DI dbops CHE NON SCADEVANO: idempotency_keys e request_log
+#   Brief: brief-be-verifica-documentazione-api, tabella «Aperto per il team DB», D5.
+#
+#   Le due tabelle hanno la colonna cleanup_at dalla nascita (2026-02-07), e la
+#   guida audit-e-tracciabilita le dava per pulite dal framework. Non lo erano:
+#   l'orchestratore scorre solo le tabelle di dbops.automation_scope, e in git
+#   nessuna delle due c'era mai stata. Su dbdev idempotency_keys era nello scope
+#   per una riga scritta a mano (request_log nemmeno): sviluppo e installazione
+#   da zero divergevano. La regola CLEANUP_AT 14 (request_log, 90 giorni) era
+#   quindi morta.
+#
+#   I quattro pezzi della scadenza, nello stesso giro:
+#     1. la colonna cleanup_at          — c'e' gia' su entrambe;
+#     2. la regola CLEANUP_AT           — 14 (request_log, 90 giorni, c'era) e 24
+#                                         (idempotency_keys, 1 giorno, base
+#                                         data_insert) in automation_rules_tbl.csv;
+#     3. il trigger alla nascita        — QUESTO changeSet;
+#     4. un guard sul DELETE da aprire  — nessuno dei due ne ha uno.
+#   Lo scope sta in automation_scope.csv (dbops,idempotency_keys e dbops,request_log).
+#
+#   ⚠️ Che cosa porta lo scope oltre alla scadenza (verificato sul corpo delle
+#   automazioni, 2026-10-23): AUDIT_UPDATE e TX_ID solo dove ci sono le colonne
+#   (idempotency_keys le ha, e su dbdev i due trigger convivono gia' col backend
+#   dalla riga a mano; request_log no); STORICO solo con la colonna storicizza
+#   (nessuna delle due); LOCK_COLUMNS, ATTIVO, DATE_VALIDITA da registri e
+#   colonne che queste tabelle non hanno. response_payload non finisce in uno
+#   storico.
+#
+#   Fase _m50_ come gli altri registri: nessun _a10_ che riscriva l'orario.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261023-02-create-trigger-cleanup-at-alla-nascita-idempotency-request-log-mctit.yaml
+
+  - changeSet:
+      id: 20261023-02-create-trigger-cleanup-at-alla-nascita-idempotency-request-log
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_idempotency_keys_m50_cleanup_at_ins e trg_request_log_m50_cleanup_at_ins
+        (BEFORE INSERT, dbops.trgfn_cleanup_at_alla_nascita): la scadenza nasce con la riga,
+        dalla regola CLEANUP_AT della tabella (24 e 14). Brief: brief-be-verifica-documentazione-api D5.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: dbops, tableName: idempotency_keys }
+            - tableExists:
+                { schemaName: dbops, tableName: request_log }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'trgfn_cleanup_at_alla_nascita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_idempotency_keys_m50_cleanup_at_ins ON dbops.idempotency_keys;
+              CREATE TRIGGER trg_idempotency_keys_m50_cleanup_at_ins
+                  BEFORE INSERT ON dbops.idempotency_keys
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita();
+
+              DROP TRIGGER IF EXISTS trg_request_log_m50_cleanup_at_ins ON dbops.request_log;
+              CREATE TRIGGER trg_request_log_m50_cleanup_at_ins
+                  BEFORE INSERT ON dbops.request_log
+                  FOR EACH ROW
+                  EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_idempotency_keys_m50_cleanup_at_ins ON dbops.idempotency_keys;
+              DROP TRIGGER IF EXISTS trg_request_log_m50_cleanup_at_ins ON dbops.request_log;
