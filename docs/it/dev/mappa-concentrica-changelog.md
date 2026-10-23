@@ -32,6 +32,16 @@
 
 ---
 
+## 23 ottobre 2026 — voce singola
+
+**Qualità BE/FE — la valutazione chiude, gli indicatori restano.** La
+valutazione dello strato applicativo, aperta il 09-09, chiude con la sola D12
+(i portali) aperta, che vive nel suo cantiere. Esce da «In corso» e lascia una
+sede viva: [qualita-be-fe-indicatori.md](qualita-be-fe-indicatori.md), con le
+lezioni, gli indicatori stampati da `scripts/indicatori-qualita-be-fe.sh` e la
+scorecard pesata; il punto d'incontro con il lato DB è la mappa §4. Vedi
+[migliorie-generali-BE-FE-da-test-valutazione.md](work-done/migliorie-generali-BE-FE-da-test-valutazione.md).
+
 ## 13 ottobre 2026
 
 > Copre il periodo **1 – 13 ottobre**, fotografato al 13-10 alle 23:59 (commit
@@ -1011,7 +1021,7 @@ vale; le due vulnerabilità npm e `weasyprint 70` sanate senza dipendenze nuove.
 Vedi
 [brief-db-fixture-che-costruiscono-d7-d6-d4.md](work-done/brief-db-fixture-che-costruiscono-d7-d6-d4.md),
 [migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md) §D4-D7 e §D13,
-[migliorie-generali-BE-FE-da-test-valutazione.md](work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md) §D1, §D15.
+[migliorie-generali-BE-FE-da-test-valutazione.md](work-done/migliorie-generali-BE-FE-da-test-valutazione.md) §D1, §D15.
 
 ### Vendite e articoli — 14 settembre
 

@@ -6,13 +6,13 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==1.16.0
+anthropic==2.1.0
     # via -r ../requirements.in
 anyio==4.15.1
     # via
     #   anthropic
     #   httpx2
-asgiref==3.12.1
+asgiref==3.13.0
     # via
     #   -r ../requirements.in
     #   django
@@ -22,7 +22,7 @@ attrs==26.1.0
     #   referencing
 bleach==6.4.0
     # via -r ../requirements.in
-brotli==1.2.0
+brotli==1.2.1
     # via fonttools
 cffi==2.1.1
     # via
@@ -60,9 +60,9 @@ gunicorn==26.2.0
     # via -r ../requirements.in
 h11==0.16.0
     # via httpcore2
-httpcore2==2.15.1
+httpcore2==2.16.0
     # via httpx2
-httpx2==2.15.1
+httpx2==2.16.0
     # via anthropic
 idna==3.20
     # via
@@ -94,7 +94,7 @@ psycopg==3.3.6
     # via -r ../requirements.in
 psycopg-binary==3.3.6
     # via -r ../requirements.in
-pycparser==3.11
+pycparser==3.12
     # via cffi
 pydantic==2.14.1
     # via

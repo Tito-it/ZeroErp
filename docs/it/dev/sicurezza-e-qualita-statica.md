@@ -14,6 +14,7 @@
 > * [Configurazione Django](backend/configurazione-django.md) — superficie pubblica, nginx, rate limit, variabili d'ambiente
 > * [Linee guida SQL §11](../linee-guida-sql.md) — i divieti dei changeSet e i loro guardrail
 > * [Presidi e registri del debito](../guide/presidi-e-registri-del-debito.md) — perché un presidio nasce a zero
+> * [Qualità BE/FE — indicatori e lezioni](qualita-be-fe-indicatori.md) — che cosa si rilegge nel tempo, e la scorecard pesata
 > * `SECURITY.md` in radice — come si segnala una vulnerabilità
 
 ---
@@ -470,7 +471,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 Qui l'elenco di ciò che, in tema sicurezza, oggi **non** c'è. Il debito aperto del progetto, con
 lo stato di ciascuna voce, sta in `.codex/PROJECT_CONTEXT.md` § «Aperto — Media priorità»;
-la storia delle voci chiuse in [migliorie generali BE/FE](work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md) §9.
+la storia delle voci chiuse in [migliorie generali BE/FE](work-done/migliorie-generali-BE-FE-da-test-valutazione.md) §9.
 
 | Cosa | Stato |
 | --- | --- |

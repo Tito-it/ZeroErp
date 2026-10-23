@@ -157,6 +157,7 @@ sede al primo aggiornamento, e allora questo file diventa fuorviante.
 | Trigger | [linee-guida-trigger.md](../docs/it/linee-guida-trigger.md) |
 | Liquibase: struttura, master, naming dei file | [liquibase-setup-workflow.md](../docs/it/liquibase-setup-workflow.md) |
 | Sicurezza e qualità statica: strumenti (ruff, mypy, gitleaks, audit, `check --deploy`), segreti e `.env`, mappa dei presidi a runtime | [sicurezza-e-qualita-statica.md](../docs/it/dev/sicurezza-e-qualita-statica.md) |
+| Qualità BE/FE nel tempo: lezioni, indicatori (`scripts/indicatori-qualita-be-fe.sh`), scorecard pesata | [qualita-be-fe-indicatori.md](../docs/it/dev/qualita-be-fe-indicatori.md); il punto d'incontro con il DB è la mappa concentrica §4 |
 | Codici e messaggi di errore | [Messaggi di Errore e Generazione Log](../docs/it/guide/Messaggi-di-Errore-e-Generazione-Log.md) |
 | pgTAP: template, preambolo, baseline, CI | [pgtap-come-si-scrive-un-test](../docs/it/guide/pgtap-come-si-scrive-un-test.md) |
 | Guide, pagine `manual/`, build della doc | [standard-guide.md](../docs/it/dev/standard-guide.md) |
