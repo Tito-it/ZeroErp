@@ -195,21 +195,19 @@ const soggettoHasPartitaIva = computed(() => {
 })
 
 // Carica dati quando il drawer si apre.
-// Pattern allineato a FornitoreDrawer: fetchDetail viene chiamato DIRETTAMENTE,
-// senza wrapping in execute() — useApiHandler.execute si aspetta una response axios
-// non un dato gia' unwrappato dallo store.
+// ⛔ Fino al 2026-10-23 la lettura stava fuori da `execute`, con un `catch` che
+//    rimandava all'«interceptor axios globale»: ma quello non mostra toast, e un
+//    dettaglio che non arrivava lasciava il drawer vuoto senza un motivo.
+//    `execute` accetta anche l'azione di uno store (il dato gia' estratto).
 watch(() => props.visible, async (val) => {
   if (!val) return
   if (isEdit.value && props.emittenteId) {
-    try {
-      const d = await store.fetchDetail(props.emittenteId)
-      if (d) {
-        detail.value = d
-        populateFormFromDetail(d)
-        fissa()
-      }
-    } catch {
-      // Errori di rete/API gestiti dall'interceptor axios globale
+    const d = await execute(() => store.fetchDetail(props.emittenteId))
+    if (d) {
+      detail.value = d
+      populateFormFromDetail(d)
+      fissa()
+    } else {
       detail.value = null
     }
   } else {

@@ -20,6 +20,7 @@ import { useI18n } from 'vue-i18n'
 import { useEmittentiFiscaliBAStore } from '../stores/emittentiFiscaliBA'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useNotify } from '../../core/composables/useNotify'
+import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS } from '../../core/constants'
@@ -36,6 +37,17 @@ const { t, te } = useI18n()
 const store = useEmittentiFiscaliBAStore()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
+// ⛔ Fino al 2026-10-23 le tre scritture finivano in un `catch` vuoto, «gestito
+//    dall'interceptor axios globale»: l'interceptor di `core/api.js` non mostra
+//    toast, e un rifiuto restava muto. Ora passano da `execute`.
+const { execute } = useApiHandler()
+
+// Scopo: rilegge il summary e, se non arriva, lo DICE (lo store lo lascia
+//        risalire). ⭐ Separato dalle scritture: un summary che fallisce dopo
+//        un POST riuscito non fa sembrare fallito il POST.
+function caricaSummary() {
+  return execute(() => store.fetchSummary())
+}
 const isReadonly = useInjectReadonly()
 
 const props = defineProps({
@@ -56,7 +68,7 @@ const {
 } = useDrawerTabLista(store, {
   parentId: () => props.emittenteId,
   parentField: 'emittenteId',
-  fetchExtra: () => store.fetchSummary(),
+  fetchExtra: caricaSummary,
   searchTableOptions: { defaultSortField: 'billing_account_codice' },
 })
 
@@ -71,11 +83,11 @@ async function addSpecificMapping() {
   }
   adding.value = true
   try {
-    await store.addMapping({ billing_account_id: selectedBA.value.id })
+    const esito = await execute(() => store.addMapping({ billing_account_id: selectedBA.value.id }))
+    if (esito === null) return
     notify.success(t('amministrazione.emittenti_fiscali.ba_added'))
     selectedBA.value = null
-  } catch {
-    // Errore gestito dall'interceptor axios globale.
+    await caricaSummary()
   } finally {
     adding.value = false
   }
@@ -86,12 +98,10 @@ async function addDefaultMapping() {
     notify.warn(t('amministrazione.emittenti_fiscali.ba_default_exists'))
     return
   }
-  try {
-    await store.addMapping({})
-    notify.success(t('amministrazione.emittenti_fiscali.ba_default_added'))
-  } catch {
-    // Errore gestito dall'interceptor axios globale.
-  }
+  const esito = await execute(() => store.addMapping({}))
+  if (esito === null) return
+  notify.success(t('amministrazione.emittenti_fiscali.ba_default_added'))
+  await caricaSummary()
 }
 
 function removeMapping(row) {
@@ -102,12 +112,11 @@ function removeMapping(row) {
       : t('amministrazione.emittenti_fiscali.ba_remove_confirm', { codice: row.billing_account_codice || '-' }),
     danger: true,
     onAccept: async () => {
-      try {
-        await store.removeMapping(row.id)
-        notify.success(t('amministrazione.emittenti_fiscali.ba_removed'))
-      } catch {
-        // Errore gestito dall'interceptor axios globale.
-      }
+      // ⚠️ L'azione non restituisce niente (`undefined`): l'errore e' `null`.
+      const esito = await execute(() => store.removeMapping(row.id))
+      if (esito === null) return
+      notify.success(t('amministrazione.emittenti_fiscali.ba_removed'))
+      await caricaSummary()
     }
   })
 }

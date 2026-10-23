@@ -38,7 +38,11 @@ export const useEmittentiFiscaliStore = createCrudStore('amm-emittenti-fiscali',
   startsEmpty: false,
   filterDefaults: { attivo: null },
   // Sotto-risorsa utilities caricata on demand dal tab e tenuta qui (il tab
-  // pulisce lo state in unmount/reload). Self-contained: ricarica dopo ogni write.
+  // pulisce lo state in unmount/reload).
+  // ⛔ Le scritture NON rileggono la matrice: la rilegge il tab, dopo l'esito.
+  //    Una rilettura fallita dopo un POST riuscito faceva sembrare fallito il
+  //    POST, e l'operatore lo rimandava (stessa regola del summary BA,
+  //    `emittentiFiscaliBA.js`).
   extend: () => {
     const utilitiesRecords = ref([])
 
@@ -51,17 +55,14 @@ export const useEmittentiFiscaliStore = createCrudStore('amm-emittenti-fiscali',
     }
     async function addUtilityRecord(emittenteId, payload) {
       const res = await createEmittenteUtility(emittenteId, payload)
-      await fetchUtilitiesRecords(emittenteId)
       return res.data.data
     }
     async function patchUtilityRecord(emittenteId, recordId, payload) {
       const res = await updateEmittenteUtility(emittenteId, recordId, payload)
-      await fetchUtilitiesRecords(emittenteId)
       return res.data.data
     }
     async function removeUtilityRecord(emittenteId, recordId) {
       await deleteEmittenteUtility(emittenteId, recordId)
-      await fetchUtilitiesRecords(emittenteId)
     }
 
     return {

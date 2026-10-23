@@ -35,6 +35,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useNotify } from '../../core/composables/useNotify'
+import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookup } from '../../core/composables/useLookup'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
@@ -54,6 +55,7 @@ import Badge from 'primevue/badge'
 const { t } = useI18n()
 const store = useOperatoriStore()
 const notify = useNotify()
+const { execute } = useApiHandler()
 // Readonly: i controlli di riga e il Salva si spengono con la sola lettura del
 // drawer che ospita la scheda.
 // ⛔ CUMULATIVA con la prop, e non solo iniettata: il drawer ospite espone una
@@ -130,10 +132,13 @@ function chiudiConConferma(chiudi) {
 //        Viene chiamato dal watch su authUserId (immediate) e garantisce
 //        che currentOperatore e overrideAree/azioni/oggetti siano
 //        coerenti con l'utente passato.
+// ⛔ Fino al 2026-10-23 il `Promise.all` stava fuori da `execute`: una lettura
+//    rifiutata finiva in una unhandled rejection, e il pannello restava vuoto
+//    senza un motivo.
 async function loadAll(userId) {
   if (!userId) return
   const needDetail = store.currentOperatore?.auth_user_id !== userId
-  await Promise.all([
+  const esito = await execute(() => Promise.all([
     needDetail ? store.fetchDetail(userId) : Promise.resolve(),
     store.fetchOverrideAree(userId),
     store.fetchOverrideAzioni(userId),
@@ -146,7 +151,8 @@ async function loadAll(userId) {
     // Il numero di override per area: la sede unica a DB (D-4 del brief
     // riepilogo-permessi), la stessa della lista operatori.
     store.fetchRiepilogoAree(userId),
-  ])
+  ]))
+  if (esito === null) return
   syncLocal()
   Object.values(sezioni).forEach(sz => sz.fissa())
 }
@@ -364,9 +370,22 @@ const _toOggettoItem = (o) => ({
 // si manda ogni sezione MODIFICATA, nell'ordine, e ognuna si fissa appena il
 // suo PUT riesce: se la seconda fallisce, la prima resta salvata e la seconda
 // resta da salvare — lo dice il pannello, sezione per sezione.
-// Pattern: store action gia' unwrappate → chiamata diretta + try/catch.
-// useApiHandler.execute() e' SOLO per response axios (feedback_useapihandler_solo_axios).
+// ⛔ Fino al 2026-10-23 il giro stava in un try/catch col `catch` vuoto,
+//    «gestito dall'interceptor axios globale»: l'interceptor di `core/api.js`
+//    non mostra toast, e un PUT rifiutato restava muto. Ora il giro intero passa
+//    da `execute` (che accetta anche le azioni di uno store): la sezione che
+//    fallisce dice il motivo, quelle gia' riuscite restano fissate.
+// ⭐ Effettivi e riepilogo si rileggono DOPO il giro, una volta sola, e anche
+//    se una sezione e' fallita: quelle salvate prima li hanno cambiati. Una
+//    rilettura che fallisce lo dice da se' e non tocca l'esito del Salva.
 const salvando = ref(false)
+
+function aggiornaDerivati(userId) {
+  return execute(() => Promise.all([
+    store.fetchPermessiEffettivi(userId),
+    store.fetchRiepilogoAree(userId),
+  ]))
+}
 
 const puoSalvare = computed(() => !isReadonly.value && modificato.value)
 
@@ -375,24 +394,32 @@ async function salva() {
   if (!puoSalvare.value || salvando.value) return false
   salvando.value = true
   const id = props.authUserId
+  let salvate = 0
   try {
-    if (sezioni.aree.modificato.value) {
-      await store.saveOverrideAree(id, Object.values(overrideAree.value).map(_toAreaItem))
-      sezioni.aree.fissa()
-    }
-    if (sezioni.azioni.modificato.value) {
-      await store.saveOverrideAzioni(id, Object.values(overrideAzioni.value).map(_toAzioneItem))
-      sezioni.azioni.fissa()
-    }
-    if (sezioni.oggetti.modificato.value) {
-      await store.saveOverrideOggetti(id, Object.values(overrideOggetti.value).map(_toOggettoItem))
-      sezioni.oggetti.fissa()
-    }
+    const esito = await execute(async () => {
+      if (sezioni.aree.modificato.value) {
+        await store.saveOverrideAree(id, Object.values(overrideAree.value).map(_toAreaItem))
+        sezioni.aree.fissa()
+        salvate++
+      }
+      if (sezioni.azioni.modificato.value) {
+        await store.saveOverrideAzioni(id, Object.values(overrideAzioni.value).map(_toAzioneItem))
+        sezioni.azioni.fissa()
+        salvate++
+      }
+      if (sezioni.oggetti.modificato.value) {
+        await store.saveOverrideOggetti(id, Object.values(overrideOggetti.value).map(_toOggettoItem))
+        sezioni.oggetti.fissa()
+        salvate++
+      }
+      return true
+    })
+    // ⚠️ Prima del `return` sul fallimento: una sezione salvata prima di quella
+    //    rifiutata ha gia' cambiato effettivi e riepilogo.
+    if (salvate > 0) await aggiornaDerivati(id)
+    if (esito === null) return false
     notify.success(t('notifications.save_success'))
     return true
-  } catch {
-    // Errore gestito dall'interceptor axios globale.
-    return false
   } finally {
     salvando.value = false
   }

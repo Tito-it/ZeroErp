@@ -116,6 +116,12 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
     return res.data.data
   }
 
+  // ⛔ I tre `saveOverride*` NON rileggono effettivi e riepilogo: li rilegge il
+  //    tab, una volta sola dopo il giro (`aggiornaDerivati` in
+  //    OperatorePermessiTab). Fino al 2026-10-23 la rilettura stava qui dentro:
+  //    se falliva, un PUT riuscito sembrava fallito e le sezioni dopo non
+  //    partivano (stessa regola del summary BA, `emittentiFiscaliBA.js`).
+
   // --- Override aree ---
   async function fetchOverrideAree(authUserId) {
     const res = await getOverrideAree(authUserId)
@@ -125,7 +131,6 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideAree(authUserId, items) {
     const res = await putOverrideAree(authUserId, items)
     overrideAree.value = res.data.data.results
-    await Promise.all([fetchPermessiEffettivi(authUserId), fetchRiepilogoAree(authUserId)])
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
@@ -138,7 +143,6 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideAzioni(authUserId, items) {
     const res = await putOverrideAzioni(authUserId, items)
     overrideAzioni.value = res.data.data.results
-    await Promise.all([fetchPermessiEffettivi(authUserId), fetchRiepilogoAree(authUserId)])
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
@@ -151,7 +155,6 @@ export const useOperatoriStore = defineStore('amm-operatori', () => {
   async function saveOverrideOggetti(authUserId, items) {
     const res = await putOverrideOggetti(authUserId, items)
     overrideOggetti.value = res.data.data.results
-    await Promise.all([fetchPermessiEffettivi(authUserId), fetchRiepilogoAree(authUserId)])
     emitDataChanged(TAB_ENTITIES.OPERATORE, authUserId)
   }
 
