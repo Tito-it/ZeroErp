@@ -141,12 +141,30 @@ orchestra ed espone le API; il frontend mostra soltanto.
   difficili da spiegare.
 - **Cosa fare invece:** se è una regola di business, sta nel database. Se è orchestrazione (più
   passi, transazioni, integrazioni), sta nel backend. Mai la stessa regola in due posti.
+- ⚠️ **Vale anche per ciò che manca.** Se un passaggio di stato non ha la sua azione di
+  processo nel database, il backend non se la inventa con un permesso suo: la si chiede al
+  team DB. E il frontend non decide quali pulsanti mostrare: li legge dalla capability.
 
 ### Non duplicare costanti, liste o configurazioni nel frontend
 
-- **Perché fa male:** la stessa cosa scritta in due punti finisce per divergere.
-- **Cosa fare invece:** i moduli condivisi stanno in `src/core/` (navigazione, costanti UI).
-  Riusa, non ricopiare.
+- **Perché fa male:** la stessa cosa scritta in due punti finisce per divergere. Un literal
+  sbagliato (`'contratoo'`) non dà errore: il produttore emette, nessuno ascolta.
+- **Cosa fare invece:** si cerca nel
+  [Catalogo Building Block frontend](/dev/frontend/catalogo-building-block-frontend) prima di
+  scrivere. Le costanti condivise stanno in `src/core/` (`constants.js`, `navigation.js`), i
+  colori degli stati in `core/utils/severity.js`, le colonne di una lista nel catalogo
+  `ui.lista_colonna` e non nel template. Alla seconda copia si estrae un building block (regola
+  del 2, [AGENTS.md](../../../.codex/AGENTS.md)).
+
+### Non far importare a `core/` un dominio, né un dominio un altro «per comodità»
+
+- **Perché fa male:** `core/` diventa dipendente da tutti, e un pezzo spostato in `core/` per
+  aggirare la regola la viola dall'altro lato. È già successo: componenti di `core/` che
+  importavano `anagrafiche` e `vendite`.
+- **Cosa fare invece:** un dominio ne importa un altro solo nel **verso delle FK**. Il verso
+  opposto passa da un punto di estensione, e il dominio si iscrive dal suo `iscrizioni.js`.
+  Presidio: `check-confini-domini.mjs`. Sede: [Standard frontend](/dev/frontend/frontend-standards)
+  «Confini fra domini».
 
 ### Non lasciare il perimetro dei dati al backend
 
@@ -167,14 +185,59 @@ dominio documento, righe e satelliti compresi, e le versioni di storico.
 
 ---
 
+## Backend e frontend
+
+> Errori che non danno nessun errore: sono i più cari, perché si scoprono guardando la
+> schermata o leggendo un log settimane dopo.
+
+### Non fidarti di un test mockato verde
+
+Un `MagicMock` accetta qualunque metodo: il test resta verde anche il giorno in cui il metodo
+del repository non esiste più. È successo: riallinea e sblocca prezzo di commessa hanno
+risposto 500 per sei mesi con il test verde. La chiamata vera la provano i test sul DB
+(`richiedi_db_provvisto`), e un metodo sparito lo vede `mypy` in CI. Sede:
+[linee guida API](/dev/api) §Test.
+
+### Non leggere un flag del payload con `bool(...)`
+
+`bool("false")` è `True`. Il 2026-10-20 un flag letto così creava un SUPER_ADMIN e chiudeva
+un contratto. Un flag nel corpo è un booleano JSON e si legge con `PayloadValidator`
+(`optional_bool` / `require_bool`); un numero si legge con `optional_decimal`, che rifiuta
+anche `NaN`. Sede: [Catalogo Building Block backend](/dev/backend/catalogo-building-block-backend)
+(`PayloadValidator`).
+
+### Non inventare la radice di una chiave i18n
+
+Una chiave che non esiste non dà errore: a video si vede il testo mancante. Vale anche per le
+chiavi che emette il database (`label_key`, `reason_key`), e due difetti sono nati così. La
+chiave parte dall'area del codice (`vendite.ordini.*`), va in `it.json` **e** in `en.json`, e
+`scripts/check_i18n_keys.py` la verifica. Sede:
+[Standard frontend](/dev/frontend/frontend-standards) «Struttura chiavi».
+
+### Non caricare i dati di una vista solo in `onMounted`
+
+Le viste stanno sotto `<KeepAlive>`: rientrando in un tab, `onMounted` non riparte, e la lista
+mostra i dati vecchi. Il caricamento va in `onActivated`, che lo sostituisce (non si aggiunge
+accanto). Presidio: `frontend/scripts/check-keepalive-onactivated.mjs`, in CI.
+
+---
+
 ## Dipendenze
 
 ### Non aggiungere dipendenze senza conferma
 
-Niente nuove librerie Python (`requirements.in`) o npm (`package.json`) senza accordo preventivo.
+Niente nuove librerie Python o npm senza accordo preventivo.
 
 - **Perché fa male:** ogni dipendenza è peso da mantenere, aggiornare e mettere in sicurezza.
-- **Cosa fare invece:** proponi la dipendenza e attendi conferma prima di aggiungerla.
+  E la CI la sorveglia: lato backend `pip-audit` ferma un pin con una vulnerabilità nota, lato
+  frontend `npm audit --audit-level=high` ferma `high`/`critical`, dipendenze di build
+  comprese.
+- **Cosa fare invece:** proponi la dipendenza e attendi conferma prima di aggiungerla. Le
+  sedi: `backend/requirements.in` per il backend, `backend/requirements-dev.in` per gli
+  strumenti di sviluppo (mypy e stub, fuori dall'immagine Docker), `frontend/package.json`
+  per il frontend. I lock non si scrivono a mano: si rigenerano (`backend/scripts/update-venv.sh`
+  aggiorna i due del backend insieme). Sede: [AGENTS.md](../../../.codex/AGENTS.md) e
+  [Sicurezza e qualità statica](/dev/sicurezza-e-qualita-statica) «Dipendenze e immagine».
 
 ---
 

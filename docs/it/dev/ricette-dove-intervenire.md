@@ -29,12 +29,25 @@ Esempio tipico: aggiungere un campo (es. una valuta, una nota, un flag) a un doc
    [Linee Guida Trigger](/linee-guida-trigger).
 3. **Database — dati esistenti (se serve).** Se le righe già presenti vanno valorizzate,
    aggiungi un backfill in `80_data/`.
-4. **Backend.** Esponi il campo dove serve: nel repository (lettura/scrittura), nel serializer
-   (input/output API) e, se entra in un processo, nel service. Vedi le [linee guida API](/dev/api)
-   e il [Catalogo Building Block backend](/dev/backend/catalogo-building-block-backend).
-5. **Frontend.** Aggiorna lo store del dominio (il campo nei dati caricati/salvati) e il
-   componente che lo mostra — di solito il **drawer** di modifica. Vedi gli
-   [Standard frontend](/dev/frontend/frontend-standards) e il
+4. **Backend.** Non ci sono serializer DRF: il campo entra in tre punti.
+   - Il **repository** (`db/`) lo legge e lo scrive, e il `TypedDict` della riga in `types.py`
+     lo dichiara: lo legge `mypy` in CI.
+   - Il **contratto** del service: la chiave entra fra le ammesse
+     (`PayloadValidator.solo_chiavi_ammesse`), letta col metodo del suo tipo
+     (`optional_decimal`, `optional_enum`, `optional_bool`…, mai `bool(payload.get(...))`).
+   - Il **dizionario dei tipi** dello schema OpenAPI del dominio (`schema_da_contratto`): una
+     chiave del contratto senza tipo è un errore all'import.
+
+   Vedi le [linee guida API](/dev/api) e il
+   [Catalogo Building Block backend](/dev/backend/catalogo-building-block-backend)
+   (`PayloadValidator`, `schema_da_contratto`).
+5. **Frontend.** Il campo entra nel form del **drawer** e nel payload che lo store manda. Le
+   etichette vanno in `it.json` **e** in `en.json`, nella radice dell'area del codice
+   (`vendite.ordini.*`), perché la parità è controllata. Se il campo va **in lista**, la
+   colonna non si scrive nel template: è una riga del catalogo `ui.lista_colonna` (un dato,
+   creato in-app o con `scripts/gen_seed_lista.py`), e la vista della lista deve proiettarlo.
+   Vedi gli [Standard frontend](/dev/frontend/frontend-standards) («Regola zero della lista»,
+   «Multilingua») e il
    [Catalogo Building Block frontend](/dev/frontend/catalogo-building-block-frontend).
 
 > ⚠️ Se il campo nasconde una **regola** (es. "questo valore dipende da quell'altro"), la regola
@@ -71,9 +84,18 @@ una verifica del codice che reagisce ai passaggi.
    chiama (`fn_check_*` / `fn_available_actions_<dominio>`), non da una lista a parte
    ([Linee Guida SQL](/linee-guida-sql) §12). Un passaggio rifiutato solleva un codice errore
    registrato.
-5. **Etichette multilingua.** Aggiungi le etichette (label) dello stato perché venga mostrato
-   correttamente all'utente.
-6. **Frontend.** Verifica che eventuali colori/icone associati allo stato siano previsti.
+5. **Etichette multilingua.** Le chiavi che il database emette (`label_key` e `reason_key`
+   delle capability, il `meta` delle transizioni) vanno in `it.json` **e** in `en.json`,
+   nella radice dell'area (`vendite.ordini.*`). ⚠️ Una chiave che non esiste non dà errore:
+   a video si vede il testo mancante. Lo trova `scripts/check_i18n_keys.py`, che legge anche
+   i seed del DB. Vedi gli [Standard frontend](/dev/frontend/frontend-standards)
+   («Struttura chiavi»).
+6. **Backend e frontend — chi nomina gli stati.** Il colore dello stato sta nella mappa della
+   famiglia in `core/utils/severity.js`, letta dal `codice_interno` che arriva dal backend.
+   ⚠️ Uno stato che manca nella mappa non dà errore: diventa grigio (`secondary`). Prima di
+   chiudere si cercano i codici degli stati vicini nel backend e nel frontend: un ramo che li
+   nomina (un filtro, un'etichetta, un controllo) **non** vede da solo lo stato nuovo. Il
+   pulsante del passaggio, invece, non si tocca: arriva dalla capability (passo 4).
 
 > Il modello è **data-driven** dove la famiglia lo è: lo stato è un dato, i suoi effetti spesso
 > no. Vedi il [Glossario di dominio](/glossario/glossario-utility) per i termini (lotto,
@@ -114,12 +136,37 @@ Quando serve un nuovo tipo di documento/processo che segue la forma standard del
    ([Linee Guida Trigger](/linee-guida-trigger)).
 6. **Database — test.** pgTAP che girano come applicazione e costruiscono il loro mondo coi
    builder di `dbops`. Vedi [Come si scrive un test pgTAP](/guide/pgtap-come-si-scrive-un-test).
-7. **Backend.** Crea l'app del dominio con la struttura standard: `api/` (le API), `services/`
-   (orchestrazione), `db/` o `repositories/` (accesso ai dati e chiamata alle funzioni del
-   database). Vedi le [linee guida API](/dev/api).
-8. **Frontend.** Crea la cartella del dominio con lo store Pinia, la lista (toolbar + tabella) e
-   il drawer di modifica, seguendo il layout unico del progetto. Registra il dominio nella
-   navigazione centrale. Vedi gli [Standard frontend](/dev/frontend/frontend-standards).
+7. **Backend.** L'app del dominio ha la struttura tipo di [api.md](/dev/api) («Struttura tipo
+   per app»): `api/` (view e `urls_v1.py`), `services/` (orchestrazione), `db/` (repository
+   che chiamano le funzioni del database), `types.py`, `tests/`.
+   - Le view ereditano da `DomainAPIView` e dichiarano la loro `area_funzionale`. L'area deve
+     esistere a catalogo (`config.aree_funzionali`, dal team DB), e un test confronta le aree
+     delle view col catalogo.
+   - Le scritture passano da `handle_post_json`. Un gesto irreversibile (emettere, numerare,
+     registrare) chiede la `Idempotency-Key`.
+   - Il contratto del payload si valida con `PayloadValidator`, e lo schema OpenAPI si legge
+     dal contratto (`schema_da_contratto`), non si ricopia.
+   - I codici d'errore nascono a catalogo (team DB) e arrivano al backend con
+     `./manage-env.sh genera_error_policies`.
+   - Test unitari (`SimpleTestCase`) più quelli sul DB vero (`richiedi_db_provvisto`) per la
+     giuntura con le funzioni del database.
+   - Ogni rotta nuova ha la sua pagina in `docs/it/backend/<dominio>/manual/`, e la copertura
+     è controllata (`core/tests/test_copertura_doc_api.py`).
+
+   Vedi le [linee guida API](/dev/api) («Checklist nuovo endpoint») e il
+   [Catalogo Building Block backend](/dev/backend/catalogo-building-block-backend).
+8. **Frontend.** La cartella del dominio (`api/`, `stores/`, `views/`, `components/`) segue la
+   struttura degli [Standard frontend](/dev/frontend/frontend-standards).
+   - La lista è una `<ListaConfigurabile codice="…">`: le colonne sono righe di catalogo
+     (`ui.lista_definizione` e `ui.lista_colonna`), non una `DataTable` scritta a mano.
+   - Il drawer è un drawer **autonomo**, apribile dalla lista e dagli altri drawer, con le
+     azioni dalla capability (`DrawerActionsBar`) e la modalità sola lettura.
+   - Le rotte vanno in `router/`, la voce di menu in `core/navigation.js`.
+   - Ciò che il dominio aggiunge a `core` e ai motori (`pratiche`, `documenti`) si iscrive dal
+     suo `iscrizioni.js`: `core/` non importa mai un dominio, e un dominio ne importa un altro
+     solo nel verso delle FK («Confini fra domini»).
+   - Il [Catalogo Building Block frontend](/dev/frontend/catalogo-building-block-frontend) si
+     guarda prima di scrivere un componente.
 
 > I domini del progetto si somigliano più nei nomi che nella forma: testate, macchine a stati e
 > capability sono cresciute un cantiere alla volta. Si parte dal dominio più vicino e più

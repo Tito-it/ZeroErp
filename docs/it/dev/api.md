@@ -1604,16 +1604,31 @@ Vedi `docs/it/dev/work-done/analisi-attivazione-rls-operatori.md`.
 
 ### Validazione input
 
-La validazione vive nel **service layer**, tramite helper procedurali:
+La validazione vive nel **service layer**, col building block `PayloadValidator`
+(`apps/core/services/payload_helpers.py`), istanziato una volta per service col
+codice d'errore del dominio:
 
 ```python
-descrizione = _require_str(payload, "descrizione", "Descrizione obbligatoria.")
-sigla = _optional_str(payload, "sigla", "Sigla non puo' essere vuota.")
+_V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
+
+# il contratto: una chiave fuori whitelist e' un 400, prima di qualunque lettura
+data = _V.solo_chiavi_ammesse(payload, ammesse=CREATE_PAYLOAD_RIGA, colonne=CREATE_KEYS_RIGA,
+                              function_name=f"{_FN}.gestisci_riga")
+quantita = _V.require_decimal(payload, "quantita", min_value=Decimal("0"))
+tipo = _V.optional_enum(payload, "tipo", allowed=TIPI_AMMESSI)
 ```
 
-Non si usano serializer DRF ne' Pydantic — gli helper `_require_str`, `_optional_str`,
-`optional_int`, `optional_bool` sono sufficienti per il volume attuale.
-Rivalutare se i payload distinti superano 20-30.
+* Un metodo per tipo (`require_*` / `optional_*` / `extract_optional_*` a tre stati
+  per i PATCH): stringhe, interi, decimali (rifiuta `NaN`), enum, date, uuid, booleani.
+  L'elenco e le regole stanno nel
+  [catalogo BB backend](backend/catalogo-building-block-backend.md) (`PayloadValidator`).
+* ⛔ **Un flag del corpo non si legge con `bool(payload.get(...))`**: `bool("false")` è
+  `True` (il 2026-10-20 creava un SUPER_ADMIN). Si usa `optional_bool` / `require_bool`.
+* ⛔ Niente helper locali `_require_str`, `_extract_*` nei service: sono le copie che il
+  BB ha ritirato. Quelle che restano sono debito, non modello.
+* Non si usano serializer DRF né Pydantic per **validare**. I serializer compaiono solo
+  come descrizione dello schema OpenAPI, e quello del corpo si **legge dal contratto**
+  (`schema_da_contratto`, §Schema OpenAPI e checklist), non si scrive a mano.
 
 ### Comunicazione cross-modulo
 
@@ -2372,7 +2387,7 @@ documento lo nominava:
 | ----------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------ |
 | Unit test service / API       | `apps/*/tests/services/`, `apps/*/tests/api/` | Validazione, dedup, not found, orchestrazione, envelope (repository mockati)                                                                               | No       | ✅ sempre                       |
 | **Guardrail su DB provvisto** | `apps/*/tests/db/` + i guardrail di `core`    | La **giuntura**: che `diag.constraint_name` sopravviva a libpq, che ogni codice del DB abbia una policy, che i tipi di handler della coda esistano davvero | Sì       | ✅ via `ZEROERP_TEST_DB_E2E=1`  |
-| Smoke end-to-end              | `backend/scripts/tests/smoke-*.py`            | Percorsi HTTP reali, in `transaction.atomic()` + `set_rollback(True)`                                                                                      | Sì       | ⛔ **mai**: la CI non li nomina |
+| Smoke end-to-end              | `backend/scripts/tests/smoke-*` (`.py`, `.sh`) | Percorsi reali: i `.py` in `transaction.atomic()` + `set_rollback(True)`, i bash via HTTP                                                                                      | Sì       | ⛔ no — ogni notte su sviluppo |
 
 Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
 
@@ -2384,15 +2399,14 @@ mesi di 500 con il test verde). Dal 2026-10-08 lo vede **mypy** in CI, a cricche
 prova solo il secondo livello qui sotto.
 
 ⭐ **Il secondo livello si accende con `richiedi_db_provvisto`**
-(`apps/core/tests/db_e2e.py`) ed è oggi in **22 file** (rimisurato il
-2026-09-11; erano 19 il 09-09 — il livello cresce). È
+(`apps/core/tests/db_e2e.py`); il numero dei file che lo usano lo stampa
+`scripts/indicatori-qualita-be-fe.sh` ([indicatori](qualita-be-fe-indicatori.md)). È
 l'unico che vede il pezzo in mezzo: i pgTAP coprono il lato DB, i test unitari col
 `diag` finto coprono il lato Python, e **nessuno dei due vede la giuntura**.
 
-⛔ **Il terzo livello non lo esegue niente**, ed è il difetto che quel livello si
-porta dietro dal giorno in cui è nato: vedi §«Gli smoke» qui sotto. Il registro
-`baseline-smoke.tsv` ha due righe — cioè è nella condizione migliore per
-accendere un cancello, non nella peggiore.
+⚠️ **Il terzo livello non è un cancello**: la CI non lo lancia. Dal 2026-10-13 lo
+lancia però il **giro notturno** sul DB di sviluppo (§«Gli smoke» qui sotto):
+una regressione arriva nel digest delle 7, non blocca un merge.
 
 #### Convenzioni dei file di test
 
@@ -2485,8 +2499,12 @@ Due famiglie in `backend/scripts/tests/`, un runner solo:
 | Come parlano | in-process (`./manage-env.sh shell <`), col database di sviluppo | via **HTTP** col backend in esecuzione (`BASE_URL`), utente degli smoke di `backend/env.sh` (`dev.smoke`, dal provisioning di sviluppo: run-book §11) |
 | Cosa lasciano | niente: `transaction.atomic()` + `set_rollback(True)` | ⚠️ **scrivono** sul database di sviluppo (documenti di prova sull'emittente attivo dell'utente degli smoke) |
 
-⛔ Non li raccoglie il runner Django e non li esegue la CI, quindi vanno lanciati
-a mano. Fino al 2026-10-12 il runner prendeva i soli `.py`: i bash non li
+⛔ Non li raccoglie il runner Django e non li esegue la CI. Li lancia
+`scripts/smoke-baseline.sh`, a mano o **ogni notte**: dal 2026-10-13 il management
+command `smoke_notturno` (timer `zeroerp-smoke-notturno`, 02:30) gira il runner sul DB
+di sviluppo, e con una regressione la corsa chiude `ok=false` e finisce nel digest
+delle 7. ⛔ **Solo sviluppo**: la sveglia è spenta di default e il comando non
+parte senza `SMOKE_NOTTURNO_CONSENTITO=1`, perché i bash scrivono. Fino al 2026-10-12 il runner prendeva i soli `.py`: i bash non li
 lanciava nessuno, e al primo giro completo erano rossi piu' della meta'.
 
 ```bash
@@ -2529,11 +2547,17 @@ Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, **nuovo** 
 4. Detail + Update sulla stessa URL: `def get` + `def patch`
 5. Per POST/PATCH: usare `handle_post_json` con handler che chiama il **service**
 6. Per GET: usare `success_response()` e `paginated_envelope()` per le liste
-7. Aggiungere `@extend_schema` con `inline_serializer` per request e response
+7. Aggiungere `@extend_schema` con `request` e `responses`. Lo schema del **corpo** di una
+   scrittura si legge dal contratto del service con `schema_da_contratto` (chiavi ammesse +
+   dizionario dei tipi del dominio): una chiave senza tipo è un errore all'import.
+   `inline_serializer` resta per le risposte e per i corpi che non hanno un contratto
 8. Registrare la route in `urls.py` con name `<dominio>-<risorsa>-list` / `<dominio>-<risorsa>-detail`
-9. Scrivere test service in `tests/services/` (validazione, dedup, not found)
-10. Se endpoint di ricerca: `is_search_endpoint = True`
-11. Registrare i codici errore prima dell'uso: il codice nasce **a catalogo**
+9. Scrivere test service in `tests/services/` (validazione, dedup, not found) e, se
+   l'endpoint chiama una funzione del DB, un test sul DB vero (`richiedi_db_provvisto`)
+10. Documentare la rotta in `docs/it/backend/<dominio>/manual/`: la copertura la
+    controlla `core/tests/test_copertura_doc_api.py`
+11. Se endpoint di ricerca: `is_search_endpoint = True`
+12. Registrare i codici errore prima dell'uso: il codice nasce **a catalogo**
     (`config.codici_errore`, con la sua classe — richiesta al team DB), poi
     `./manage-env.sh genera_error_policies` lo porta nel backend. Status e
     `ui_action` si derivano dalla classe; il modulo generato non si tocca a mano
