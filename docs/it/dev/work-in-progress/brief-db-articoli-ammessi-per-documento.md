@@ -1,8 +1,8 @@
 # Brief DB — Quali articoli ammette un documento: una regola sola, per il picker e per il guard
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-18
+## ⏭️ Chi riparte — aggiornato al 2026-10-23
 
-**Riparte: Tid**, col collaudo a video (§9.7.4, più la correzione di struttura del §9.8.7); poi l'archiviazione. ✅ **A-8-ter decisa il 2026-10-18** (strada 1 qui, strada 3 come direzione in [brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md)). ✅ **Giro BE/FE 5d fatto il 2026-10-18** (§9.8.7): `struttura_correggibile` dalla sede, `COLONNE_STRUTTURA` ritirata, R-BE-1 (correzione nel PATCH, una transazione; `POST …/struttura/` ritirato), policy e ripiego di `E_ARTICOLO_STRUTTURA_RIGHE_APERTE`. ✅ **Lato DB del giro del 2026-10-18 chiuso e committato**: R-DB-2, R-DB-3, A-11. Al DB non resta niente: il ponte di `fn_articolo_riga_contesto` lo ritira il brief della grammatica unica.
+**Riparte: Tid**, col collaudo a video (§9.7.4, più la correzione di struttura del §9.8.7); poi l'archiviazione. ✅ **Smoke verde** (2026-10-23): `smoke-test-preventivi-smistamento-ordine.sh`, col passo 2-bis sul picker, gira dentro `scripts/smoke-baseline.sh`, e la corsa di Tid non ha regressioni (§9.7.5). ⚠️ Al collaudo, il punto 2 (eccezioni di offerta e contratto) va guardato con più cura: `offerte_service` e `contratti_service` sono cambiati dopo questo giro (`adbb283ee`, 2026-10-22, chiusura di brief-db-offerta-emissione-ed-erogazione). ✅ **A-8-ter decisa il 2026-10-18** (strada 1 qui, strada 3 come direzione in [brief-db-grammatica-unica-documenti](brief-db-grammatica-unica-documenti.md)). ✅ **Giro BE/FE 5d fatto il 2026-10-18** (§9.8.7): `struttura_correggibile` dalla sede, `COLONNE_STRUTTURA` ritirata, R-BE-1 (correzione nel PATCH, una transazione; `POST …/struttura/` ritirato), policy e ripiego di `E_ARTICOLO_STRUTTURA_RIGHE_APERTE`. ✅ **Lato DB del giro del 2026-10-18 chiuso e committato**: R-DB-2, R-DB-3, A-11. Al DB non resta niente: il ponte di `fn_articolo_riga_contesto` lo ritira il brief della grammatica unica.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -1227,7 +1227,7 @@ Prima del commit, una revisione critica del giro. Corretti:
 | `qp_str_upper` al posto dell'`.upper()` a mano; il tetto `50` in una sede (`LOOKUP_ARTICOLI_MAX`); `LIMITE_RIGHE` e `buildDisplay` in `ArticoloLookup` | regola del 2: copie della stessa cosa |
 | Dopo il verbo la scheda articolo allinea il dettaglio | se il PATCH che segue fallisce, la struttura è già corretta: senza, un nuovo salvataggio la rimandava al verbo. Il salvataggio a metà resta (R-BE-1) |
 | `is_solo_componente` ed `escludi_destinazione` danno `400` (`…_ritirato`) invece di essere ignorati | lo smoke `smoke-test-preventivi-smistamento-ordine.sh` li mandava ancora ed era verde senza provare niente |
-| Lo smoke: il passo 1 diventa il 2-bis, il picker del preventivo sulla sede unica | l'articolo che il guard ha appena accettato deve uscire **ammesso**. ⚠️ Non ancora eseguito: scrive su dbdev e vuole il backend ricaricato |
+| Lo smoke: il passo 1 diventa il 2-bis, il picker del preventivo sulla sede unica | l'articolo che il guard ha appena accettato deve uscire **ammesso**. ✅ Eseguito e verde: è nel perimetro di `scripts/smoke-baseline.sh` (gli `smoke-test-*.sh` dal 2026-10-12), e la corsa di Tid non dà regressioni; nel registro dei non-verdi (`baseline-smoke.tsv`, rigenerato il 2026-10-22) non c'è (verificato il 2026-10-23) |
 | `test_gli_ammessi_vengono_prima` costruisce i due articoli (l'escluso alfabeticamente primo) | prima poteva passare per le sole 50 righe. Provato per mutazione (ordine per codice → rosso) |
 | `test_struttura_articolo_e_da_amministratore` è una chiamata HTTP: 403, 200, 400 senza `Idempotency-Key` | prima controllava solo la classe. Provato per mutazione (permesso tolto → rosso) |
 

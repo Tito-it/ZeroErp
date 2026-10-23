@@ -4,7 +4,7 @@
 > (`dev/db-tid`) nello stesso giorno, §6. **A chi:** team DB; poi BE/FE (§5), che **attende** la
 > consegna DB.
 > **Origine:** D10-bis di
-> [migliorie-generali-BE-FE-da-test-valutazione.md](../work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md):
+> [migliorie-generali-BE-FE-da-test-valutazione.md](migliorie-generali-BE-FE-da-test-valutazione.md):
 > chiudendo il restore per id del lookup istanze, che leggeva istanze di qualunque emittente,
 > è emerso che la regola di scope «un'istanza è dell'emittente del suo BA» ha un buco
 > **solo** se un'istanza può esistere senza BA. Il DB oggi lo ammette.

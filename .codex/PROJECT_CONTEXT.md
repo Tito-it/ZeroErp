@@ -185,7 +185,7 @@ generale «un tema, un brief» è in `.codex/AGENTS.md`.
 ### 🔵 Il cantiere principale — `acquisti` e `magazzino` (decisione di Tid, 2026-09-11)
 
 Le due app sono il cantiere in corso (voce D11 di
-[migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md)).
+[migliorie-generali-BE-FE-da-test-valutazione.md](../docs/it/dev/work-done/migliorie-generali-BE-FE-da-test-valutazione.md)).
 `magazzino` ha il comportamento dei Lotti 1-2; `acquisti` ha il solo modello DB.
 
 ⭐ **Ogni decisione presa su `vendite` è presa anche per `acquisti`** — envelope,

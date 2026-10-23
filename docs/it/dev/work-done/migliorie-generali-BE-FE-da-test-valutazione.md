@@ -1,11 +1,30 @@
 # Migliorie generali BE / FE da test valutazione
 
+## ⏭️ Chi riparte — aggiornato al 2026-10-23
+
+**Riparte: nessuno. ✅ Archiviato il 2026-10-23** (decisione di Tid). L'unica voce
+rimasta aperta, **D12** (i portali), è un cantiere con la sua sede:
+[sviluppo-portale-shop.md](../work-in-progress/sviluppo-portale-shop.md).
+Le lezioni, gli indicatori e la scorecard di §5 continuano in una sede viva:
+[qualita-be-fe-indicatori.md](../qualita-be-fe-indicatori.md), con lo script
+`scripts/indicatori-qualita-be-fe.sh`. Decisioni aperte di Tid: **nessuna** su questo documento.
+
+--- | --- | --- | --- | --- |
+| 1 | Tid | Decidere se archiviare il documento in `work-done/`: §3 tiene solo D12, e D12 vive già nel suo cantiere | qui, §3 D12 | — |
+| 2 | chi riallinea | Rileggere i registri di §3 D10 e la scorecard di §5 al prossimo giro | §3 D10, §5 | — |
+
+Decisioni aperte di Tid: **l'archiviazione** (passo 1); le nove `DataTable` senza motivazione
+aspettano le decisioni del [piano PrimeVue 5](../work-in-progress/piano-migrazione-primevue-5.md) §«Gruppo B», non
+questo documento. Lavoro da committare: il riallineamento del 2026-10-23.
+
+---
+
 > Valutazione dello strato **applicativo** — backend Django e frontend Vue —
 > presa il **2026-09-09** sul commit `c1f9e571e` (`dev/backend-tid`), sullo
 > **schema OpenAPI generato** (`manage.py spectacular`, 615 path / 815
 > operazioni), sui due workflow di CI, sull'esito di `manage.py check --deploy`
 > e su una corsa di CI misurata da GitHub Actions (`34343449743`). È il gemello
-> di [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md),
+> di [migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md),
 > che copre il solo strato DB e a cui questo documento rimanda per tutto ciò che
 > sta dentro PostgreSQL.
 >
@@ -33,9 +52,9 @@
 > ✅ **Riallineato il 2026-09-28** sulle liste: il registro delle `DataTable`
 > grezze è sceso da 45 a **33** e quelle senza motivazione da 33 a **12**, con
 > la riclassificazione del 26-09 e il
-> [brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md)
+> [brief delle liste grezze](brief-db-liste-datatable-grezze.md)
 > — e il 29-09 a **31** (+2 standard), senza motivazione **11**, col lotto C del
-> [brief righe documento](../work-done/brief-db-liste-righe-documento.md)
+> [brief righe documento](brief-db-liste-righe-documento.md)
 > chiuso il 28-09 (D10, §9). Riletti con la loro data i numeri di §2 (presidi
 > FE da 6 a 13, file `.spec.js` da 3 a 57) e di D9 (test sul DB vero da 22 a
 > 82 file). Corretto il rimando di D2-b: la riga sull'`assert` sta in
@@ -43,7 +62,7 @@
 >
 > ✅ **Riallineato il 2026-10-04** sul repo: **D3-c** (chiusa il 28-09 ma
 > rimasta descritta in §3) passa in §9. Il
-> [brief righe documento](../work-done/brief-db-liste-righe-documento.md) è
+> [brief righe documento](brief-db-liste-righe-documento.md) è
 > **chiuso** (04-10) e il registro delle `DataTable` grezze scende a **30**
 > (senza motivazione resta **11**). Riletti con la data i numeri di §2.1
 > (`.spec.js` 93), §2.3 (codici) e D9 (96 file sul DB vero). In §3 restano
@@ -60,14 +79,14 @@
 > trova solo lanciandoli.
 > ✅ Lo stesso giorno **D10-bis** chiude la sua parte di lettura (§9): le 52
 > letture con lo skip, un difetto vero (i restore per id fuori scope), un BB e
-> un [brief DB](../work-done/brief-db-istanza-nasce-col-ba.md). In §3 restano **D1-f, D2-b,
+> un [brief DB](brief-db-istanza-nasce-col-ba.md). In §3 restano **D1-f, D2-b,
 > D3-b, D9-a, D10-bis** (la sola baseline smoke), **D12**.
 > ✅ Lo stesso giorno chiude **D1-f** (§9): `npm audit --audit-level=high` nel
 > job `ci-frontend`, acceso a zero. E chiude **D3-b** (§9): `check --deploy`
 > **completo** in CI, con `mail.E001` silenziato per progetto (Django non
 > spedisce posta). In §3 restano **D2-b, D9-a, D10-bis, D12**.
 > ⭐ Su **D2-b** Tid ha deciso **sì**, a cricchetto: piano in
-> [piano-be-type-checker.md](../work-done/piano-be-type-checker.md).
+> [piano-be-type-checker.md](piano-be-type-checker.md).
 > ✅ **Riallineato il 2026-10-09**: **D2-b chiude** (§9) — `mypy` col plugin
 > Django in CI, a cricchetto. In §3 restano **D9-a, D10-bis, D12**. Lo
 > smaltimento del registro (lotti L2, L3+) vive nel piano, non qui.
@@ -77,6 +96,17 @@
 > delle 7. Non è la CI che D9-a chiedeva: è una terza strada, e il perché sta
 > in §9. Con lei chiude **D10-bis**: la baseline degli smoke ha un lettore ogni
 > notte. In §3 resta **D12**. Corrette anche le date di D2-b scritte «10-08».
+> ✅ **Riallineato il 2026-10-23** sul repo: **nessuna voce cambia stato**, D12
+> resta l'unica aperta e invariata nel merito. Riletti con la data i numeri di
+> §2 (`.spec.js` 140, codici vivi 1.006, base view, liste, chiavi i18n), di §3
+> D10 (baseline smoke **7 → 2**; `DataTable` ferme a 28 e 9 dal 06-10) e di §4.
+> **Scorecard rivista** (§5): tolti i due «voto da rivedere» e rivotate le aree
+> mosse dal 14-10. Entra il fatto nuovo di un documento vicino:
+> [brief-be-verifica-documentazione-api.md](../work-in-progress/brief-be-verifica-documentazione-api.md)
+> ha portato la copertura della doc API sotto presidio (722/722 rotte, 0
+> fantasmi) e ha aperto per il team DB tre difetti dell'idempotenza forte (§D5-D7
+> di quel brief): stanno **lì**, e qui pesano solo sul voto. Aggiunto il blocco
+> «⏭️ Chi riparte», che mancava.
 
 ---
 
@@ -150,7 +180,8 @@ fissano, non la superficie coperta. ⭐ Dal **2026-09-23** provano anche i
 (`// @vitest-environment jsdom`), non globalmente, così i test puri — che
 restano la maggioranza — non pagano l'ambiente di chi monta. Al **2026-09-28**
 i file `.spec.js` in git sono **57**, e otto accendono il DOM; al
-**2026-10-04** sono **93**, e 27 accendono il DOM; al **2026-10-08** sono **102**.
+**2026-10-04** sono **93**, e 27 accendono il DOM; al **2026-10-08** sono **102**;
+al **2026-10-23** sono **140**, e 53 accendono il DOM.
 
 ### 2.2 Analisi statica del backend — `ruff`, dal 2026-09-09
 
@@ -173,7 +204,8 @@ checker** (`mypy`, a cricchetto) c'è dal 2026-10-08 (D2-b, §9).
 
 Riletto il **2026-10-04**: **975** a catalogo, **99** ritirati, **876** vivi (in
 `apps/core/services/error_policies_generated.py`); il **2026-10-08** **991**,
-**103** e **888**. Gli zeri li tiene il test.
+**103** e **888**; il **2026-10-23** **1.126**, **120** e **1.006**. Gli zeri li
+tiene il test.
 Presidiato da `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` a ogni corsa.
 La classe non si deriva dallo status e viceversa; `UI_ACTION_PER_CLASSE` porta
 scritto perché su `DATO_ERRATO` il default è il banner e non l'evidenziazione.
@@ -183,7 +215,10 @@ scritto perché su `DATO_ERRATO` il default è il banner e non l'evidenziazione.
 448 view ereditano `DomainAPIView`, 75 `AdminAPIView`; le **11** su `APIView`
 nudo sono tutte e sole quelle pre-autenticazione (§4). 109 endpoint dichiarano
 `is_search_endpoint`, 68 un `post_permission`, 63 un `model_permission`, 56
-`require_idempotency_key=True`. ⭐ Il reset dei GUC di identità in
+`require_idempotency_key=True`. Riletto il **2026-10-23** contando le
+dichiarazioni `class …(…)` fuori dai test: **505** su `DomainAPIView`, **89** su
+`AdminAPIView`, **8** su `APIView` nudo (più la base `_ApiViewBase`), sempre e
+solo pre-autenticazione (§4). ⭐ Il reset dei GUC di identità in
 `JwtAuditMiddleware.process_request` è incondizionato e **fail-closed**: se
 fallisce, la richiesta non viene servita.
 
@@ -193,7 +228,9 @@ fallisce, la richiesta non viene servita.
 **Un solo** file importa `axios` (`src/core/api.js`); `v-html` a zero;
 `console.log` a zero; 63 view su `<ListaConfigurabile>` più 8 su
 `DrawerTabLista` (rilette il **2026-09-28**: **71** file montano
-`<ListaConfigurabile>` e **21** `<DrawerTabLista>`). `bersagli.js` trasforma i `targets` di un errore in un
+`<ListaConfigurabile>` e **21** `<DrawerTabLista>`; il **2026-10-23** **75** e
+**24**; `axios` è ancora importato dal solo `src/core/api.js`, più due `.spec.js`
+che lo fingono). `bersagli.js` trasforma i `targets` di un errore in un
 pulsante e degrada in modo esplicito (tipo senza destinazione, area BLOCCATA, id
 non convertibile ⇒ nessun pulsante).
 
@@ -207,8 +244,10 @@ Presidiato da `scripts/check_i18n_keys.py` (pre-commit **e** `ci-frontend`), con
 lingua giusta è **completa**, e il seed `config/messaggi_errore.csv` ha 846
 righe `it` e **1** `en`: il consumatore esiste e aspetta il catalogo (gemello
 §2.3).
+Riletto il **2026-10-23**: **5.819** chiavi per lingua, zero in una sola; 375
+`.vue` su 458 usano `useI18n`; il seed ha **1.120** righe `it` e **2** `en`.
 
-### 2.7 I presidi scritti apposta per il frontend, in CI — 13 al 2026-09-28
+### 2.7 I presidi scritti apposta per il frontend, in CI — 13 al 2026-09-28 (invariati al 2026-10-23)
 
 Raccolti in `npm run guards` (`run-s guard:*`): chi ne aggiunge uno lo trova in
 CI senza toccare il workflow. Erano sei al 09-10; lo **scopo** di ognuno sta in
@@ -233,6 +272,10 @@ testa al suo file in `frontend/scripts/`, e la tabella dice solo cosa tiene.
 ### 2.8 La convenzione `# Scopo:` è reale
 
 3.809 commenti `# Scopo:` su 3.815 `def` nei sorgenti non-test: il 99%.
+⚠️ **Corretto il 2026-10-23**: quel conto contava i commenti nel file, compresi
+quelli sulle classi. Contando per `def`, come chiede `api.md`, sono **3.978 su
+4.593** (87%). Era la misura a essere sbagliata, non la convenzione a essere
+peggiorata ([indicatori](../qualita-be-fe-indicatori.md) §2).
 
 ---
 
@@ -272,12 +315,12 @@ rilegge a ogni riallineamento:
 | -------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Errori `oxlint`                        | **0**                       | ✅ cancello in CI (`npm run lint`, senza `--fix`), dal 09-09                                                                                                                                                                                                          |
 | Rilievi `ruff`                         | **0**                       | ✅ cancello in pre-commit e CI, dal 09-09                                                                                                                                                                                                                             |
-| `DataTable` grezza in una view         | **28** grezze (+2 standard), 08-10; erano 30 il 04-10, 31 il 29-09, 33 il 28-09, 45 il 09-10 | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro. ⭐ **Cala davvero dal 26-09** (§9 D10)                  |
-| …di cui senza commento di motivazione  | **9**, 08-10; erano 11 il 29-09 e il 04-10, 12 il 28-09, 33 prima | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import). Otto delle 9 sono **decisioni di Tid aperte** ([brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md) §5); le righe di `FatturaDrawer` sono uscite il 29-09 col lotto C del [brief righe documento](../work-done/brief-db-liste-righe-documento.md) (con `ArticoloBomDrawer` fra le grezze), e `ContrattoRigheDrawer` il 04-10 alla chiusura dello stesso brief. Il 05-10 `OffertaEccezioniDrawer` è diventata `OffertaRigheDrawer` ([brief righe esclusione](brief-db-righe-esclusione-solo-non-si-vende.md)), e il 06-10 `PermessiRiepilogoView` è stata ritirata: il riepilogo è un interruttore della lista operatori ([brief riepilogo permessi](../work-done/brief-db-riepilogo-permessi-lista-operatori.md)). Gli step di `PraticaFlussiTab` sono Gruppo B per il piano e manca solo il commento |
+| `DataTable` grezza in una view         | **28** grezze (+2 standard), invariato al 23-10 (registro fermo dal 06-10); erano 30 il 04-10, 31 il 29-09, 33 il 28-09, 45 il 09-10 | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro. ⭐ **Cala davvero dal 26-09** (§9 D10)                  |
+| …di cui senza commento di motivazione  | **9**, 08-10 e 23-10; erano 11 il 29-09 e il 04-10, 12 il 28-09, 33 prima | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import). Otto delle 9 sono **decisioni di Tid aperte** ([brief delle liste grezze](brief-db-liste-datatable-grezze.md) §5); le righe di `FatturaDrawer` sono uscite il 29-09 col lotto C del [brief righe documento](brief-db-liste-righe-documento.md) (con `ArticoloBomDrawer` fra le grezze), e `ContrattoRigheDrawer` il 04-10 alla chiusura dello stesso brief. Il 05-10 `OffertaEccezioniDrawer` è diventata `OffertaRigheDrawer` ([brief righe esclusione](brief-db-righe-esclusione-solo-non-si-vende.md)), e il 06-10 `PermessiRiepilogoView` è stata ritirata: il riepilogo è un interruttore della lista operatori ([brief riepilogo permessi](brief-db-riepilogo-permessi-lista-operatori.md)). Gli step di `PraticaFlussiTab` sono Gruppo B per il piano e manca solo il commento |
 | Filtri di lista scritti a mano         | **0** su tre voci, dal 09-23 | ✅ cricchetto `check-filtri-lista.mjs` + `filtri-lista.baseline.json` (blocchi grezzi, larghezze inline, coppie di date a mano)                                                                                                                                        |
-| File tracciati senza header di licenza | 1.169 su 5.787 (09-10)      | ✅ cala davvero (erano 2.042 il 08-26); l'hook guarda i soli file aggiunti, per scelta                                                                                                                                                                                |
-| `baseline-smoke.tsv`                   | **7** su 52 (14-10: 17 Python + 35 bash); erano 2 su 16 Python il 09-09 | ✅ **letto ogni notte dal 2026-10-13** (D9-a, §9): `smoke-baseline.sh` nel giro `smoke_notturno`; un non-verde nuovo è una corsa `ok=false` nel digest delle 7. Un rientrato è segnalato (`RIENTRATO`), non rosso: il verso in discesa resta a chi legge il riepilogo |
-| `skip_area_check = True`               | 73 view (09-12); 78 (08-10) | ✅ **presidio dal 09-12** (D15): chi **scrive** con lo skip dichiara un `<metodo>_permission` o sta in un registro motivato; le 15 **mute** sono un registro a cricchetto. ✅ Le **letture** lette una per una il 2026-10-08 (D10-bis, §9) |
+| File tracciati senza header di licenza | 1.169 su 5.787 (09-10); **non riletto** il 23-10 | ✅ cala davvero (erano 2.042 il 08-26); l'hook guarda i soli file aggiunti, per scelta                                                                                                                                                                                |
+| `baseline-smoke.tsv`                   | **2** su 51 (23-10: 17 Python + 34 bash — `smoke-nota-credito-resi.py` `SENZA_MATERIA`, `smoke-test-resi-vendita.sh` `ASSERZIONE`); erano **7** su 52 il 14-10, 2 su 16 Python il 09-09 | ✅ **letto ogni notte dal 2026-10-13** (D9-a, §9): `smoke-baseline.sh` nel giro `smoke_notturno`; un non-verde nuovo è una corsa `ok=false` nel digest delle 7. Un rientrato è segnalato (`RIENTRATO`), non rosso: il verso in discesa resta a chi legge il riepilogo |
+| `skip_area_check = True`               | 73 view (09-12); 78 (08-10); **74** righe `skip_area_check = True` fuori dai test (23-10, `grep`: il metodo delle date prima non è scritto, quindi il confronto non vale) | ✅ **presidio dal 09-12** (D15): chi **scrive** con lo skip dichiara un `<metodo>_permission` o sta in un registro motivato; le 15 **mute** sono un registro a cricchetto. ✅ Le **letture** lette una per una il 2026-10-08 (D10-bis, §9) |
 
 ✅ **D10-bis chiusa**: le letture cross-dominio con lo skip il 2026-10-08, la
 baseline degli smoke il 2026-10-14 con D9-a (§9).
@@ -287,9 +330,9 @@ cala, e ciò che lo tiene sopra zero sono quasi solo decisioni, non letture.
 L'unica lettura rimasta è il commento che manca su `PraticaFlussiTab` (tabella
 degli step). La sede di
 quelle decisioni è il registro del
-[piano PrimeVue 5](piano-migrazione-primevue-5.md) (§«Gruppo B»), non questo
+[piano PrimeVue 5](../work-in-progress/piano-migrazione-primevue-5.md) (§«Gruppo B»), non questo
 documento. ✅ Il passo che era dichiarato qui —
-[brief-db-liste-righe-documento.md](../work-done/brief-db-liste-righe-documento.md),
+[brief-db-liste-righe-documento.md](brief-db-liste-righe-documento.md),
 le righe di un documento su `<ListaConfigurabile>` — è **chiuso il
 2026-10-04**: righe di preventivo, ordine, DDT, reso, fattura, contratto e
 distinta base sono liste configurabili (97-103).
@@ -302,6 +345,11 @@ distinta base sono liste configurabili (97-103).
 A database ci sono **13 policy RLS** per le vesti non-OPERATORE (8
 `CLIENTE_PORTALE`, 3 `SHOP_CUSTOMER`, 2 `FORNITORE_PORTALE`) che **nessun
 endpoint esercita**: il giorno dello Stage C vanno considerate non collaudate.
+
+Riletto il **2026-10-23**: invariato. `PortaleAPIView` ha ancora una sola
+sottoclasse (`ProfileActivateShopView`), `ShopAPIView` nessuna; nessun commit sul
+tema dal 14-10 oltre alla doc API. Il conto delle policy è del 09-09 e non è
+stato riletto: è roba del gemello DB.
 
 ---
 
@@ -318,14 +366,15 @@ endpoint esercita**: il giorno dello Stage C vanno considerate non collaudate.
   quando BE e FE esistono non ci sono stati refactor grandi del modello. Che un
   dominio modellato aspetti il suo turno è l'ordine di costruzione, e
   l'ordine non si vota (§5).
-* ⛔ **Le 11 view che ereditano `APIView` nudo.** Tutte e sole quelle
-  pre-autenticazione (reset password, attivazione portale/shop, check email,
-  stato AI).
+* ⛔ **Le view che ereditano `APIView` nudo** (11 il 09-09, **8** il 2026-10-23).
+  Tutte e sole quelle pre-autenticazione (reset password, attivazione della
+  veste, check email dello shop, stato AI, secondo passo del login).
 * ⛔ **Le `DataTable` grezze, come numero.** Il difetto è quante non dicono
   **perché** (D10); la matrice slot/override è un debito già dichiarato nel
   piano PrimeVue 5.
-* ⚠️ **I 64 `.vue` che non usano `useI18n`.** Componenti di presentazione senza
-  testo proprio.
+* ⚠️ **I `.vue` che non usano `useI18n`** (64 il 09-09, **83** il 2026-10-23).
+  Componenti di presentazione senza testo proprio; il guard i18n tiene comunque
+  lo zero di stringhe cablate.
 * ⚠️ **La suite Django veloce.** Conseguenza corretta della scelta «unit test
   mockati»; il difetto sarebbe crederla una copertura d'integrazione (D9).
 * ⚠️ **`SECRET_KEY` segnalato da `check --deploy`.** Valore di sviluppo letto
@@ -336,27 +385,29 @@ endpoint esercita**: il giorno dello Stage C vanno considerate non collaudate.
 
 ---
 
-## 5. Scorecard — pesata, non mediata (stato al 2026-09-11, voti rivisti al 2026-09-26)
+## 5. Scorecard — pesata, non mediata (stato al 2026-09-11, voti rivisti al 2026-10-23)
 
 Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione.
+La colonna «Era» dice il voto del 2026-09-26 (o della data indicata): un voto che
+si muove porta il suo perché, uno fermo dice che cosa lo tiene fermo.
 
-| Area                                    | Peso    | Voto       | Cosa regge il voto                                                                                                                                                                                                     |
-| --------------------------------------- | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Catena di verifica — frontend**       | 🔴 alto  | **7/10**   | Cancello in CI dal 09-09 (§2.1), test di componente dal 23-09 (D1-d-bis). `npm audit` dal 08-10 (D1-f)                                                                                                                      |
-| **Analisi statica — backend**           | 🔴 alto  | **6,5/10** | `ruff` a registro zero dal 09-09 (§2.2). `mypy` a cricchetto dall'08-10, registro a zero dal 09-10 (D2-b): voto da rivedere                                                                                                                                                  |
-| **Catena di verifica — backend**        | 🔴 alto  | **8/10**   | Cancello duro, 4.560 test verdi, sette guardrail, `plpgsql_check`. Manca la profondità (D9); `check --deploy` completo in CI dal 08-10 (D3-b)                                                                                                |
-| **Contratto API pubblicato**            | 🟠 medio | **9/10**   | `securitySchemes` e `security:` su 815 operazioni (D3-a). `W002` e collisioni a zero con cricchetto per nome, schemi dei corpi letti dal contratto del service (26-09: era 7, fermo su quei due registri). `check --deploy` completo in CI dal 08-10 (D3-b): voto da rivedere |
-| **Contratto d'errore — lato backend**   | 🟠 medio | **9/10**   | 763 codici vivi, zero senza ripiego, zero orfani (§2.3)                                                                                                                                                                |
-| **Contratto d'errore — arrivo a video** | 🟠 medio | **8/10**   | `fields`, `targets`, `hint` a video (D4). Non è 10: chi chiama `notify.error` a mano resta fuori                                                                                                                       |
-| **Perimetro e permessi (applicativo)**  | 🟠 medio | **7,5/10** | Catena unica, fail-closed, reset GUC incondizionato. ✅ 25-09 D5 chiuso con presidio aree/catalogo. ✅ 12-09: lo skip muto (D15) deciso e chiuso su tutte e 15 le view, presidiato dagli attributi **e** dal percorso reale |
-| **Correttezza dei contratti di lista**  | 🟠 medio | **8/10**   | Lookup con `troncato`, presidiato sul DB vero (D6). Nessun cancello sui `count: len()` senza `LIMIT`                                                                                                                   |
-| **Simmetria del dominio**               | 🟠 medio | **non votata** (04-10) | Che `acquisti` e `magazzino` abbiano BE e FE indietro rispetto al DB è l'**ordine di costruzione** scelto, non un difetto (§4). Il voto 4/10 dato fino al 04-10 misurava il calendario. Ciò che si presidia è la regola: *ogni decisione presa su `vendite` vale anche per `acquisti`* |
-| **Building block — frontend**           | 🟡 basso | **9/10**   | Un solo punto HTTP (presidiato anche nei componenti dal 26-09), `bersagli`, contratto KeepAlive presidiato (D8), 13 guard. `DataTable` grezze 45 → 33 → 31 → 30 → **28** e senza motivo 33 → 12 → 11 → **9** (28-09 → 08-10): le rimaste aspettano una decisione di Tid (voto rivisto il 28-09; era 8,5) |
-| **Multilingua**                         | 🟡 basso | **9/10**   | Parità perfetta e guard in CI. Il catalogo a monte è monolingue (§2.6)                                                                                                                                                 |
-| **Gestione del debito**                 | 🟡 basso | **8/10**   | Registri con cancello o cricchetto (D10), e quello delle `DataTable` è sceso davvero il 26-28/09. Dal 14-10 nessun registro è senza verso: le letture con `skip_area_check` lette l'08-10, la baseline smoke letta ogni notte (D9-a)                                        |
-| **Documentazione di contesto**          | 🟡 basso | **9/10**   | Sette righe su sette chiuse (§1)                                                                                                                                                                                       |
+| Area                                    | Peso    | Voto       | Era      | Cosa regge il voto                                                                                                                                                                                                     |
+| --------------------------------------- | ------- | ---------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Catena di verifica — frontend**       | 🔴 alto  | **7,5/10** | 7        | Cancello in CI dal 09-09 (§2.1), test di componente dal 23-09 (D1-d-bis), `npm audit` dal 08-10 (D1-f). Sale per il metodo, non per il conto: i test di componente sono diventati la norma (53 file col DOM il 23-10). Non è 9: nessuna prova del percorso a video (end-to-end), e nessuna misura di copertura (§7) |
+| **Analisi statica — backend**           | 🔴 alto  | **8,5/10** | 6,5      | `ruff` a registro zero dal 09-09 (§2.2); `mypy` col plugin Django in CI dall'08-10, registro **a zero** dal 09-10 e ancora a zero il 23-10 (D2-b) — e prima di accendersi ha trovato un 500 vero. Non è 10: `E`/`B` di `ruff` spenti per scelta scritta, `mypy` non in modalità `strict` |
+| **Catena di verifica — backend**        | 🔴 alto  | **8,5/10** | 8        | Cancello duro, guardrail, `plpgsql_check`, `check --deploy` completo in CI (D3-b). Sale perché gli smoke hanno un lettore **ogni notte** dal 13-10 (D9-a) e il livello sul DB vero cresce (file con `richiedi_db_provvisto`: 123 il 14-10, 140 il 23-10). Resta sotto 9: la suite è in maggioranza mockata, e gli smoke non sono un cancello **prima** del merge (§8) |
+| **Contratto API pubblicato**            | 🟠 medio | **9,5/10** | 9        | `securitySchemes` e `security:` su tutte le operazioni (D3-a); `W001`/`W002` a zero con cricchetto per nome (D3-b); dal 21-10 la **documentazione** delle rotte è sotto presidio (`core/tests/test_copertura_doc_api.py`: 722/722, 0 fantasmi — [brief vicino](../work-in-progress/brief-be-verifica-documentazione-api.md) §E). Il mezzo punto che manca: il contratto dell'idempotenza forte ha tre difetti aperti al team DB (quel brief, §D5-D7) |
+| **Contratto d'errore — lato backend**   | 🟠 medio | **9/10**   | 9        | 1.006 codici vivi il 23-10, zero senza ripiego, zero orfani (§2.3). Fermo: un codice con la classe sbagliata (`E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE` TECNICO per un errore d'input, brief vicino §D1) e la `soluzione` del catalogo che non arriva per gli errori sollevati in Python (stesso brief, §D4) |
+| **Contratto d'errore — arrivo a video** | 🟠 medio | **8/10**   | 8        | `fields`, `targets`, `hint` a video (D4). Fermo: chi chiama `notify.error` a mano resta fuori, e per i codici del backend la frase all'operatore è un ripiego del FE (`SOLUZIONI_AZIONE_UI`) |
+| **Perimetro e permessi (applicativo)**  | 🟠 medio | **8/10**   | 7,5      | Catena unica, fail-closed, reset GUC incondizionato; D5 e D15 chiusi e presidiati. Sale per D10-bis (08-10): le 52 letture con lo skip lette una per una, i due restore per id fuori scope chiusi, BB `richiedi_se_stesso_o_amministratore`. Non sale oltre: il controllo nel corpo resta invisibile al presidio (D10-bis), e la chiave d'idempotenza non è legata a utente ed endpoint (brief vicino §D7, dichiarato minore) |
+| **Correttezza dei contratti di lista**  | 🟠 medio | **8/10**   | 8        | Lookup con `troncato`, presidiato sul DB vero (D6). Fermo: nessun cancello sui `count: len()` senza `LIMIT` |
+| **Simmetria del dominio**               | 🟠 medio | **non votata** (04-10) | 4 fino al 04-10 | Che `acquisti` e `magazzino` abbiano BE e FE indietro rispetto al DB è l'**ordine di costruzione** scelto, non un difetto (§4). Ciò che si presidia è la regola: *ogni decisione presa su `vendite` vale anche per `acquisti`* |
+| **Building block — frontend**           | 🟡 basso | **9/10**   | 9        | Un solo punto HTTP (presidiato anche nei componenti dal 26-09), `bersagli`, contratto KeepAlive presidiato (D8), 13 guard. `DataTable` grezze **28** e senza motivo **9**, fermi dal 06-10: aspettano decisioni di Tid nel piano PrimeVue 5 |
+| **Multilingua**                         | 🟡 basso | **9/10**   | 9        | Parità perfetta e guard in CI. Fermo: il catalogo a monte è monolingue (2 righe `en` su 1.122 il 23-10, §2.6) |
+| **Gestione del debito**                 | 🟡 basso | **8,5/10** | 8        | Dal 14-10 nessun registro è senza verso, e il registro degli smoke è sceso davvero (7 → 2). Non 9: il registro delle `DataTable` non si muove da diciassette giorni, e una decisione che nessuno prende costa zero e resta ferma lo stesso (§5, lezioni) |
+| **Documentazione di contesto**          | 🟡 basso | **9/10**   | 9        | Sette righe su sette chiuse (§1); dal 21-10 la doc API ha un presidio di copertura. Fermo: questo stesso documento non aveva il blocco «⏭️ Chi riparte» che `AGENTS.md` chiede (aggiunto il 23-10) |
 
-### Il giudizio, al 2026-09-12 (elenco degli aperti riallineato al 04-10)
+### Il giudizio, al 2026-09-12 (riletto il 2026-10-23)
 
 ⭐ **Il backend è costruito con lo stesso metodo del database**: contratto
 d'errore chiuso a chiave, catena dei permessi in una sede sola, reset GUC
@@ -369,6 +420,15 @@ prova che il codice si compila, non che faccia la cosa giusta. Resta aperto ciò
 che è **cantiere** e non configurazione: la profondità della suite backend
 (gli smoke girano ogni notte dal 13-10, ma sul DB di sviluppo e non in CI: D9-a,
 §9) e i portali (D12). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
+
+✅ **Riletto il 2026-10-23**: il giudizio regge. Le aree 🔴 sono salite tutte e tre
+(7,5 · 8,5 · 8,5) perché ciò che era configurazione è stato fatto; ciò che le
+tiene sotto il 9 è ancora il cantiere — prove a video, suite mockata, smoke fuori
+dal cancello. ⚠️ Il fatto nuovo non viene da questo documento: i difetti
+dell'idempotenza forte li ha trovati la verifica della doc API, **leggendo il
+codice contro la documentazione**. È la stessa lezione della prima riga qui
+sotto, vista dall'altro lato: la lettura della struttura trova ciò che manca,
+ma solo se si legge il contratto che conta.
 
 ### Lezioni di metodo, in quattro righe
 
@@ -416,7 +476,7 @@ che è **cantiere** e non configurazione: la profondità della suite backend
 
 * [x] **D2-a** — ✅ 2026-09-09 (`F,E9`) e 2026-09-10 (allargamento): `ruff.toml`.
 * [x] **D2-b** — ✅ 2026-10-08: **sì** (Tid), `mypy` col plugin Django in CI, a
-      cricchetto ([piano](../work-done/piano-be-type-checker.md), L1). La riga sull'`assert`
+      cricchetto ([piano](piano-be-type-checker.md), L1). La riga sull'`assert`
       di `PROJECT_CONTEXT.md` resta, e ora serve a qualcuno.
 
 ### 🟠 Il contratto verso chi consuma
@@ -428,7 +488,7 @@ che è **cantiere** e non configurazione: la profondità della suite backend
       **completo** in CI, `mail.E001` silenziato per progetto (§9).
 * [x] **D3-c** — `SECURE_HSTS_SECONDS` / `SECURE_SSL_REDIRECT` (con chi gestisce
       nginx) e **decidere** sulla CSP.
-      Proposta pronta: [brief sicurezza](../work-done/brief-be-fe-sicurezza-header-token-mfa.md) §1.
+      Proposta pronta: [brief sicurezza](brief-be-fe-sicurezza-header-token-mfa.md) §1.
       🟡 2026-09-28: HSTS e redirect fatti, W004/W008 tolti dal cricchetto;
       ✅ 2026-09-28: CSP applicata in Nginx dopo il collaudo a video. Chiusa.
 * [x] **D4** — ✅ 2026-09-09: `hint` a video, filtro sui codici tecnici, sei
@@ -526,7 +586,7 @@ che è **cantiere** e non configurazione: la profondità della suite backend
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Il censimento **completo** degli endpoint senza consumatore    | Uno strumento testuale non lo sa fare, per una buona proprietà del codice: le famiglie cross-dominio (`/passaggi/`, `/note/`, `/indirizzi/`, `/documenti/`, `/situazione-merce/`, `/componenti/`) sono chiamate con il **dominio come parametro**. Le tredici di D7 sono il residuo verificato uno per uno: un **limite inferiore** |
 | Quanto della suite sia davvero *coperto* e non solo *nominato* | Non esiste `coverage` nel progetto. Il numero di test è un limite superiore alla copertura, non una misura                                                                                                                                                                                                                          |
-| ~~Se le `DataTable` senza motivazione siano eccezioni legittime~~ | ✅ **Fatto il 2026-09-26**: i 44 file riclassificati uno per uno, guardando da dove arrivano le righe e non dove sta la tabella. Dieci eccezioni vere col commento, due convertite subito, le liste vere seminate e convertite col [brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md) (chiuso il 28-09) |
+| ~~Se le `DataTable` senza motivazione siano eccezioni legittime~~ | ✅ **Fatto il 2026-09-26**: i 44 file riclassificati uno per uno, guardando da dove arrivano le righe e non dove sta la tabella. Dieci eccezioni vere col commento, due convertite subito, le liste vere seminate e convertite col [brief delle liste grezze](brief-db-liste-datatable-grezze.md) (chiuso il 28-09) |
 
 ---
 
@@ -620,7 +680,7 @@ sanata e non tolta, su un'uscita illeggibile — provato per mutazione.
 ⭐ Prima ancora di accenderlo, la misura ha trovato un **500 vero**: riallinea e
 sblocca prezzo di commessa chiamavano un metodo tolto da sei mesi, con il test
 mockato verde. Chiuso nello stesso giro (L0 del piano). Lo smaltimento del
-registro è nel [piano](../work-done/piano-be-type-checker.md): ✅ **L2 e L3 fatti il 2026-10-09**, registro
+registro è nel [piano](piano-be-type-checker.md): ✅ **L2 e L3 fatti il 2026-10-09**, registro
 **620 → 0** (gli ultimi 2, il caso NaN dei documenti, chiusi il 2026-10-09 da
 `work-done/brief-db-valore-numerico-non-finito-nei-documenti`), con altri difetti veri trovati e
 corretti strada facendo (alert scadenze listini sempre in 400, numero del preventivo nella pratica
@@ -673,7 +733,7 @@ sottodomini e preload spenti per scelta); la CSP è applicata in Nginx su
 `backend-dev` dopo il collaudo a video in `Report-Only`. Lo stesso brief ha
 portato il refresh JWT nel cookie `HttpOnly` (28-09) e il secondo fattore
 (02/03-10). Dettaglio:
-[brief-be-fe-sicurezza-header-token-mfa.md](../work-done/brief-be-fe-sicurezza-header-token-mfa.md)
+[brief-be-fe-sicurezza-header-token-mfa.md](brief-be-fe-sicurezza-header-token-mfa.md)
 §1.
 
 ### ✅ D5 — `ai_assistant` a catalogo — 2026-09-25
@@ -686,7 +746,7 @@ backend ha dato un significato ai tre livelli (l'ingresso chiede `view`,
 mostra la chat solo a chi può usarla). Presidio:
 `core/tests/db/test_aree_dichiarate_a_catalogo.py` confronta le aree delle view
 (rotte condizionali comprese) con `config.aree_funzionali.schema_db`. Dettaglio:
-[brief-db-area-funzionale-assistente-ai.md](../work-done/brief-db-area-funzionale-assistente-ai.md).
+[brief-db-area-funzionale-assistente-ai.md](brief-db-area-funzionale-assistente-ai.md).
 
 ### ✅ D4 — Il terzo lato del contratto d'errore — 2026-09-09
 
@@ -712,7 +772,7 @@ raggiungeva. ⚠️ Residuo dichiarato: sulle collezioni **senza** `LIMIT` il
 
 ### ✅ D7 — Endpoint senza porta: la decisione — 2026-09-11
 
-[piano-be-fe-endpoint-senza-porta.md](piano-be-fe-endpoint-senza-porta.md) §1,
+[piano-be-fe-endpoint-senza-porta.md](../work-in-progress/piano-be-fe-endpoint-senza-porta.md) §1,
 per tutte e tredici le rotte: due famiglie (10 rotte, `/core/email/log/` e
 l'outbox) sono funzioni finite senza porta, **due sono candidate al ritiro**
 (`job-summary`, `manual-lookup`), una è un cantiere dichiarato (N6 dei listini),
@@ -724,9 +784,9 @@ vedono le mail del loro perimetro. Prerequisito DB chiuso il 25-09 (la RLS
 applica gli ambiti `REPARTO`/`OPERATORE`), poi la lista del log con
 `skip_area_check` sulla sola lettura e la schermata in Strumenti › Email
 (era il dominio «Personale»). Dettaglio:
-[brief-db-email-visibilita-per-ambito.md](../work-done/brief-db-email-visibilita-per-ambito.md)
+[brief-db-email-visibilita-per-ambito.md](brief-db-email-visibilita-per-ambito.md)
 §9.6. L'outbox resta sotto `config` fino all'azione `invia_email`: è nel
-[piano](piano-be-fe-endpoint-senza-porta.md) §2.3 passo 5, non qui.
+[piano](../work-in-progress/piano-be-fe-endpoint-senza-porta.md) §2.3 passo 5, non qui.
 
 ### ✅ D8 — Le view sotto `KeepAlive` — 2026-09-10
 
@@ -808,13 +868,13 @@ vere hanno preso il commento, due liste con seed ed endpoint già pronti sono
 state convertite lo stesso giorno (`ContrattiBillingAccountDrawer`,
 `UomConversioniDrawer`), e le liste vere a cui mancava il seed sono state
 seminate dal team DB e convertite su `<ListaConfigurabile>` col
-[brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md),
+[brief delle liste grezze](brief-db-liste-datatable-grezze.md),
 chiuso su DB, BE e FE il 28-09. Strada facendo: `GeoSearchTable` ritirato, il
 giornale di fattura e lotto su un solo componente (`GiornaleEntitaTab`, su
 `vendite.giornale`), la catena delle revisioni dell'offerta a DB, e la
 validazione del catalogo liste contro la vista (`schema_dati`). Registro:
 **45 → 33** grezze, senza motivazione **33 → 12**; il 29-09, col lotto C del
-[brief righe documento](../work-done/brief-db-liste-righe-documento.md), **31** e **11**; il 04-10, alla chiusura del brief, **30** e **11**.
+[brief righe documento](brief-db-liste-righe-documento.md), **31** e **11**; il 04-10, alla chiusura del brief, **30** e **11**.
 Le rimaste sono in §3 D10.
 
 ### ✅ D10-bis — Le letture con lo skip, lette una per una — 2026-10-08
@@ -849,7 +909,7 @@ fabbricato); tre mutazioni, tre rossi.
 ⭐ **La domanda di modello che ne è uscita**: la regola «un'istanza è dell'emittente del suo
 BA» ha un buco solo se l'istanza può vivere senza BA. Decisione di Tid: *istanza e BA nascono
 insieme, sempre; resta differito solo il codice, prima della prima fattura*. L'applicazione la
-rispetta già, il contratto del DB no → [brief-db-istanza-nasce-col-ba.md](../work-done/brief-db-istanza-nasce-col-ba.md).
+rispetta già, il contratto del DB no → [brief-db-istanza-nasce-col-ba.md](brief-db-istanza-nasce-col-ba.md).
 
 ✅ **BB `richiedi_se_stesso_o_amministratore`** (`core/api/permissions.py`, regola del 2,
 ok Tid): il «solo i propri, oppure amministratore» di permessi effettivi e audit era scritto
@@ -933,7 +993,8 @@ entrambe le sezioni quando una voce ha due facce. **Riallineato il 2026-09-26**
 registro delle `DataTable` in D10, i numeri di §2 e D9, il rimando di D2-b) e
 il **2026-10-04** (D3-c in §9, brief righe documento chiuso, numeri datati), il
 **2026-10-08** e **09-10** (D1-f, D3-b, D10-bis, D2-b) e il **2026-10-14** (D9-a
-e con lei D10-bis). Lo
+e con lei D10-bis) e il **2026-10-23** (numeri datati, scorecard rivotata, blocco
+«⏭️ Chi riparte»). Lo
 strato DB è valutato
 separatamente in
-[migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md).*
+[migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md).*
