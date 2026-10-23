@@ -62,7 +62,7 @@ cliente riaperto mostrava il solo codice (collaudo di Tid, regola del 2), coi du
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-18. **A chi:** il team DB, poi Tid.
 > **Origine:** l'A-8-ter di
-> [brief-db-articoli-ammessi-per-documento §9.8.3](brief-db-articoli-ammessi-per-documento.md).
+> [brief-db-articoli-ammessi-per-documento §9.8.3](../work-done/brief-db-articoli-ammessi-per-documento.md).
 > Spostare tre funzioni del listino sul vocabolario delle entità moltiplicava i punti di
 > traduzione invece di toglierli: il problema non è di tre funzioni, è della grammatica.
 
@@ -231,7 +231,7 @@ migrazione resta chiuso invece di crescere a ogni giro.
 | --- | --- | --- |
 | [brief-db-indirizzi-documento-seguono-il-cliente](../work-done/brief-db-indirizzi-documento-seguono-il-cliente.md) | `vendite.fn_doc_indirizzo_default` coi selettori `DDT`, `ORDINE`, `PREVENTIVO`, `OFFERTA`, `CONTRATTO` (R-BE-1, il BE li passa da quattro service e dai verbi con cascata); `script.fn_doc_lock_regola` e il lock delle testate del §8.7 (`20261018-65`); `fn_get_cliente_testata_documento`, `fn_doc_indirizzi_sede` | ✅ rimando in R-BE-1; i selettori sono migrati nel lotto 2a (§11), annotato lì il 2026-10-20 |
 | [brief-db-documento-nasce-nello-stato-iniziale](brief-db-documento-nasce-nello-stato-iniziale.md) | i guard di transizione delle testate (`trg_<doc>_a10_guard_transizione_upd`), gli stati iniziali per famiglia | ✅ rimando in testa; non iniziato: se introduce un registro per tipo di documento, nasce sulla grammatica decisa in G-1 (il lotto 0 è chiuso) |
-| [brief-db-articoli-ammessi-per-documento](brief-db-articoli-ammessi-per-documento.md) | il ponte di `script.fn_articolo_riga_contesto`, la famiglia del §9.8.3 | il ponte resta fino al lotto che lo rende inutile: lo ritira chi chiude questo brief |
+| [brief-db-articoli-ammessi-per-documento](../work-done/brief-db-articoli-ammessi-per-documento.md) | il ponte di `script.fn_articolo_riga_contesto`, la famiglia del §9.8.3 | il ponte resta fino al lotto che lo rende inutile: lo ritira chi chiude questo brief |
 
 ### 6.2 Documenti che pesano sulle decisioni G-1 … G-3 (da leggere nel censimento)
 

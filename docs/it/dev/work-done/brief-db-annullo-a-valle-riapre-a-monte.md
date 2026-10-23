@@ -37,7 +37,7 @@ CI la lettura dei passaggi fallisce (la colonna `is_legame_ritirato` non esiste)
   sono di modello, da decidere con il team DB. Passata a PROJECT_CONTEXT § «Aperto — Media priorità».
 * **Il costo del trigger** di proiezione dello stato del preventivo (§8.4): da tenere d'occhio, non un lavoro.
 
-⚠️ **Ricaduta trovata il 2026-10-13** (baseline di `vendite` su dbdev): il `20261012-46` (D-13, il link nasce nella madre) ha reso rossi quattro pgTAP che passavano alla madre sorgenti inventate (`test-emissione-mirata-gruppi-fatturabili-v1`, `test-vw-dash-competenza-gruppi-v1`, `test-sorgente-origine-tipo-doc-fiscale-v1`, `test-trigger-af-commessa-aware-v1`). La corsa del 2026-10-12 era sui soli file di questo brief. Fixture corrette con documenti veri: dettaglio e prova in [brief-db-articoli-ammessi-per-documento §9.2.1](../work-in-progress/brief-db-articoli-ammessi-per-documento.md).
+⚠️ **Ricaduta trovata il 2026-10-13** (baseline di `vendite` su dbdev): il `20261012-46` (D-13, il link nasce nella madre) ha reso rossi quattro pgTAP che passavano alla madre sorgenti inventate (`test-emissione-mirata-gruppi-fatturabili-v1`, `test-vw-dash-competenza-gruppi-v1`, `test-sorgente-origine-tipo-doc-fiscale-v1`, `test-trigger-af-commessa-aware-v1`). La corsa del 2026-10-12 era sui soli file di questo brief. Fixture corrette con documenti veri: dettaglio e prova in [brief-db-articoli-ammessi-per-documento §9.2.1](brief-db-articoli-ammessi-per-documento.md).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-11, dal collaudo a video di Tid; lettura critica e
 > seconda tornata di decisioni del team DB (`dev/db-tid`), 2026-10-12 (§7). **A chi:** team DB; poi BE/FE (§6).

@@ -14,7 +14,7 @@ Decisioni aperte di Tid: §4. Lavoro da committare: solo questo documento.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-13. **A chi:** Tid, poi il team DB.
 > **Origine:** decisione A-9 di Tid (2026-10-12) in
-> [brief-db-articoli-ammessi-per-documento](brief-db-articoli-ammessi-per-documento.md) §8.6:
+> [brief-db-articoli-ammessi-per-documento](../work-done/brief-db-articoli-ammessi-per-documento.md) §8.6:
 > il caso esce da quel brief e si progetta qui.
 
 ## 1. Il caso

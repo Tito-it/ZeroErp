@@ -211,7 +211,7 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): bozza, cinque decisioni di Tid (§3).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
-  d'acquisto è rinviato a `work-in-progress/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5).
+  d'acquisto è rinviato a `work-done/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5).
 
 ⭐ **I domini nuovi nascono con il permesso applicato dal DB**
 (`work-done/brief-db-permesso-nel-verbo-di-scrittura.md`, D-1 → D-5 di Tid). Il modello è
@@ -382,11 +382,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `E_DOC_RIGA_NON_AMMESSA`); «Genera ordine» è il verbo DB `fn_genera_ordine_da_offerta`; un'offerta ACCETTATA
   si annulla se non ha documenti vivi a valle. DB `20261021-44…-61`, BE/FE §J, collaudo di Tid ok. Proposta
   aperta, non bloccante: il «perché» nel tooltip di `RIGA_NON_AMMESSA` (§J.4).
-- 📝 **Quali articoli ammette un documento** (`work-in-progress/brief-db-articoli-ammessi-per-documento.md`):
-  una regola sola per il picker e per il guard. Analisi DB fatta (§8), decisioni di Tid prese il 2026-10-13 (§8.6).
-  ✅ Lato DB chiuso il 2026-10-14: lotti 1…4 applicati e verdi (il 4 è la sede unica del picker,
-  `catalogo.fn_articoli_ammessi`), lotto 5 (doc) scritto, D-7 applicata. ✅ Giro BE/FE fatto e committato il 2026-10-14 (§9.7,
-  revisione §9.7.5; aperti R-DB-3 e R-BE-1) tranne l'A-8-bis, che va applicato insieme al suo pezzo DB (§9.7.3, R-DB-1). ⏳ collaudo di Tid (§9.7.4).
+- ✅ **Quali articoli ammette un documento: chiuso il 2026-10-23**
+  (`work-done/brief-db-articoli-ammessi-per-documento.md`): una regola sola per il picker e per il guard. La sede
+  unica del picker è `catalogo.fn_articoli_ammessi`, che giudica con la stessa check dei guard di riga
+  (`script.fn_check_articolo_riga_su_contesto`); a video l'escluso resta in elenco, spento, col motivo
+  (`ArticoloLookup` con `documento`). L'articolo usato non cambia struttura se non con la correzione del
+  SUPER_ADMIN, nel PATCH e in una transazione (R-BE-1), con le colonne lette dalla sede
+  (`fn_articolo_colonne_struttura`) e il rifiuto se rende non valide righe aperte (A-11). DB Lotti 1-5 e
+  `20261018-70…-74`, BE/FE §9.7 e §9.8.7, collaudo di Tid ok. Restano fuori: il ponte di
+  `fn_articolo_riga_contesto` (brief della grammatica unica), D-5 (righe d'acquisto, col cantiere `acquisti`).
 - 📝 **Canone, orario e consumo del contratto in commessa**
   (`work-in-progress/brief-db-contratto-righe-periodiche-in-commessa.md`, D31, 2026-10-13): il push dei
   contratti manda solo le righe UNA_TANTUM, col giorno di attivazione (`20261013-24`, D-1/D-2 di Tid); la

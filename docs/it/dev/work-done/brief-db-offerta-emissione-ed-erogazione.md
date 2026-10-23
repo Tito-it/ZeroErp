@@ -1551,7 +1551,7 @@ Proposta: **(a)**.
 ### I.2 Il §H dopo il 2026-10-11: che cosa resta da fare
 
 **La causa principale di H-A è chiusa dal lato articolo.** Dal 2026-10-13 (A-10 di
-[brief-db-articoli-ammessi-per-documento](../work-in-progress/brief-db-articoli-ammessi-per-documento.md)) un
+[brief-db-articoli-ammessi-per-documento](brief-db-articoli-ammessi-per-documento.md)) un
 articolo **usato** non cambia `listino_tipologia_id`, `natura_vendita_id`, `is_composito`
 (`catalogo.trgfn_articoli_guard_struttura_se_usato`). Restano quattro strade per una riga che
 esce dal perimetro dopo essere stata scritta:
