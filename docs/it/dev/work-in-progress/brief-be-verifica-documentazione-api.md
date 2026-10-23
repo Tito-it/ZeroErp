@@ -187,6 +187,14 @@ SQL estratto dai changeSet e seed simulati dai CSV, in una transazione annullata
   documenti: quattordici punti, tutti su `execute` (ok di Tid). Il summary BA risale al tab, che
   lo rilegge dopo la scrittura: un summary che fallisce non fa più sembrare fallito il POST.
   Trappola scritta in `trappole.md` e in frontend-standards «Gestione errori API».
+* **Revisione dello stesso giro (2026-10-23).** La regola del summary BA valeva anche per
+  altri due store: `emittentiFiscali` (matrice Utilities) e `operatori` (`saveOverride*`)
+  rileggevano dentro la scrittura, e una rilettura fallita faceva sembrare fallito un POST o
+  un PUT riuscito: per le Utilities l'operatore rimandava il POST. Ora rileggono i tab dopo
+  l'esito (`caricaMatrice`, `aggiornaDerivati`); il caricamento del tab Utilities e quello dei
+  permessi (`loadAll`) passano anch'essi da `execute`. Lato BE i messaggi di
+  `E_IDEMPOTENCY_IN_PROGRESS` e `E_IDEMPOTENCY_KEY_REQUIRED` (`endpoint_helpers.py`,
+  `base_views.py`) si leggono da `USER_MESSAGE_FALLBACK` invece di essere ricopiati a mano.
 * Verifiche: backend 1956 test (`apps.core` + famiglie + pipeline API, `ZEROERP_TEST_DB_E2E=1`),
   frontend 959, ESLint verde.
 
