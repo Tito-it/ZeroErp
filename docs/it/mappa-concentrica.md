@@ -735,7 +735,7 @@ Ogni strato ha la sua sede; questa tabella è il punto in cui si incontrano.
 | Strato | Indicatori e lezioni (sede viva) | Come si rileggono | Lettura zero |
 | --- | --- | --- | --- |
 | Backend e frontend | [qualita-be-fe-indicatori.md](dev/qualita-be-fe-indicatori.md) | `scripts/indicatori-qualita-be-fe.sh` | [valutazione BE/FE](dev/work-done/migliorie-generali-BE-FE-da-test-valutazione.md) (09-09 → 23-10-2026) |
-| Database | *si aggancia qui alla chiusura della valutazione DB* | — | [valutazione DB](dev/work-in-progress/migliorie-generali-da-test-valutazione.md) (aperta) |
+| Database | [qualita-db-indicatori.md](dev/qualita-db-indicatori.md) | `scripts/indicatori-qualita-db.sh` (con `--catalogo` su dbdev) | [valutazione DB](dev/work-in-progress/migliorie-generali-da-test-valutazione.md) (aperta) |
 
 ⛔ Come ogni misura del progetto, questi numeri **trovano gli errori, non
 disegnano il progetto** (regola zero).

@@ -161,9 +161,9 @@ uno fermo dice che cosa lo tiene fermo. «Era» è il voto della rilettura prece
 
 ## 5. Il lato database
 
-La valutazione dello strato DB ha il suo documento,
+Lo strato DB ha il suo documento gemello,
+[qualita-db-indicatori.md](qualita-db-indicatori.md) (dal 2026-10-23), con lo stesso formato e
+`scripts/indicatori-qualita-db.sh`; la sua lettura zero,
 [migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md),
-ancora aperto. Quando chiude, i suoi indicatori (registro pgTAP sul DB di sviluppo e in CI,
-presidi `dbops`, guardrail) trovano posto in una sezione o in un documento gemello di questo: lo
-decide la sessione DB. Il punto d'incontro fra i due è la
+è ancora aperta. Un indicatore di confine vive in uno solo dei due. Il punto d'incontro è la
 [mappa concentrica](../mappa-concentrica.md) §4 «La qualità si misura».

@@ -183,8 +183,10 @@ nav:
 
         - Strumenti:
                   - Generatore Documentazione: it/dbzero/tools/gen_db_docs.md
-                  - Sicurezza e qualità statica: it/dev/sicurezza-e-qualita-statica.md
+        - Qualità:
+                  - Sicurezza e qualità statica (gli strumenti): it/dev/sicurezza-e-qualita-statica.md
                   - Qualità BE/FE (indicatori e lezioni): it/dev/qualita-be-fe-indicatori.md
+                  - Qualità del database (indicatori e lezioni): it/dev/qualita-db-indicatori.md
         - Sviluppatori:
                   - API: it/dev/api.md
                   - Ricette (dove intervenire): it/dev/ricette-dove-intervenire.md
