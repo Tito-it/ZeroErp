@@ -22,6 +22,7 @@ import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
+import { useApiHandler } from '../../core/composables/useApiHandler'
 import { listUnitaOrganizzative, getPermessiRiepilogo } from '../api/amministrazione'
 import { useSetupStatus } from '../composables/useSetupStatus'
 import { buildFilterSuperAdminOptions, getLivelloLabel, getLivelloSeverity } from '../constants'
@@ -45,6 +46,7 @@ import { etichettaRuoloApplicativo } from '../../core/utils/i18nLabel'
 
 const { t, te } = useI18n()
 const store = useOperatoriStore()
+const { execute } = useApiHandler()
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
 const drawer = useDrawerState()
 const { isBlocked } = useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
@@ -163,19 +165,22 @@ async function caricaRiepilogo() {
   if (!ids.length) return
   ids.forEach(id => richiesti.add(id))
   const mia = generazione
-  try {
-    const res = await getPermessiRiepilogo(ids)
-    if (mia !== generazione) return // la lista e' cambiata nel frattempo
-    const perOperatore = Object.fromEntries(ids.map(id => [id, []]))
-    for (const r of res.data.data.results) (perOperatore[r.auth_user_id] ||= []).push(r)
-    riepilogo.value = { ...riepilogo.value, ...perOperatore }
-  } catch {
-    // Errore gia' notificato dall'interceptor. La riga dice che la lettura e'
-    // fallita (non «caricamento» per sempre), e si potra' richiedere.
-    if (mia !== generazione) return
+  // ⛔ Fino al 2026-10-23 l'errore finiva in un `catch` «gia' notificato
+  //    dall'interceptor»: l'interceptor di `core/api.js` non mostra toast, e
+  //    l'operatore vedeva la riga fallita senza sapere perche'. Ora lo dice
+  //    `execute`.
+  const dati = await execute(() => getPermessiRiepilogo(ids))
+  if (mia !== generazione) return // la lista e' cambiata nel frattempo
+  if (dati === null) {
+    // La riga dice che la lettura e' fallita (non «caricamento» per sempre), e
+    // si potra' richiedere.
     ids.forEach(id => richiesti.delete(id))
     riepilogo.value = { ...riepilogo.value, ...Object.fromEntries(ids.map(id => [id, false])) }
+    return
   }
+  const perOperatore = Object.fromEntries(ids.map(id => [id, []]))
+  for (const r of dati.results) (perOperatore[r.auth_user_id] ||= []).push(r)
+  riepilogo.value = { ...riepilogo.value, ...perOperatore }
 }
 
 watch(() => store.items, () => {

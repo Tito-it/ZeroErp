@@ -20,6 +20,12 @@
 #    generata dal catalogo. ⚠️ Intercettarli qui vorrebbe dire riscrivere il
 #    loro messaggio accanto a quello del database: due frasi per lo stesso
 #    rifiuto, che divergono alla prima revisione.
+# ⭐ Il campo da accendere lo porta il guard (`campo` nel contesto -> COLUMN ->
+#    `error.fields`), non questo service. Dal 2026-10-23 anche
+#    `..._RIFERIMENTO_INESISTENTE` e' un DATO_ERRATO (400) col campo
+#    (`codice_interno`, `colonna_numero`, `colonna_billing_account`,
+#    `colonna_serie`): era TECNICO (500) sulla premessa «la riga la scrive una
+#    migrazione», caduta col CRUD (D1 di brief-be-verifica-documentazione-api).
 
 from __future__ import annotations
 
@@ -71,7 +77,8 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple] = {
 #    «violazione vincolo».
 # ⚠️ Su una famiglia ATTIVA rifiuta prima il guard dei riferimenti
 #    (`E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE`, la sorgente non dichiara
-#    una tabella); su una creata SPENTA il guard non guarda, e risponde la FK.
+#    una tabella: 400 sul campo `codice_interno`, dal 2026-10-23); su una creata
+#    SPENTA il guard non guarda, e risponde la FK — stesso campo, stesso 400.
 #    Provato su dbdev il 2026-10-20: i due rami sono vivi.
 _FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_famiglie_documento_sorgenti": (

@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useEmittentiFiscaliStore } from '../stores/emittentiFiscali'
 import { useNotify } from '../../core/composables/useNotify'
+import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
@@ -32,6 +33,7 @@ const router = useRouter()
 const store = useEmittentiFiscaliStore()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
+const { execute } = useApiHandler()
 const isReadonly = useInjectReadonly()
 
 // Scopo: Naviga alla pagina admin matrice utilities/ruoli da empty
@@ -108,9 +110,11 @@ function isRowValid(row) {
 }
 
 // Salva la riga: POST se non configurata, PATCH se gia' configurata.
-// Pattern: store action gia' unwrappate, NIENTE useApiHandler.execute()
-// (l'execute mostrerebbe un toast errore spurio per via del double-unwrap).
-// Errori reali sono gestiti dall'interceptor axios globale.
+// ⛔ Fino al 2026-10-23 qui non c'era `execute`, «errori gestiti
+//    dall'interceptor axios globale»: ma l'interceptor di `core/api.js` non
+//    mostra toast, e un rifiuto restava muto. `execute` accetta anche l'azione
+//    di uno store (il dato gia' estratto): il «doppio unwrap» che si temeva
+//    tocca solo un payload con una chiave `data`, e la riga utility non ce l'ha.
 async function saveRow(row) {
   if (!isRowValid(row)) {
     notify.warn(t('amministrazione.emittenti_fiscali.ut_validation_required'))
@@ -124,19 +128,17 @@ async function saveRow(row) {
     metodo_arrotondamento_importi: e.metodo_arrotondamento_importi,
     attivo: e.attivo
   }
-  try {
-    if (isConfigured(row)) {
-      await store.patchUtilityRecord(props.emittenteId, row.record_id, payload)
-      notify.success(t('amministrazione.emittenti_fiscali.ut_saved'))
-    } else {
-      payload.utility_id = row.utility_id
-      await store.addUtilityRecord(props.emittenteId, payload)
-      notify.success(t('amministrazione.emittenti_fiscali.ut_added'))
-    }
-    cancelEdit(row)
-  } catch {
-    // Errore gia' notificato dall'interceptor axios globale: nessuna azione qui.
-  }
+  const configurata = isConfigured(row)
+  if (!configurata) payload.utility_id = row.utility_id
+  const esito = await execute(() => (configurata
+    ? store.patchUtilityRecord(props.emittenteId, row.record_id, payload)
+    : store.addUtilityRecord(props.emittenteId, payload)))
+  if (esito === null) return
+  notify.success(configurata
+    ? t('amministrazione.emittenti_fiscali.ut_saved')
+    : t('amministrazione.emittenti_fiscali.ut_added'))
+  cancelEdit(row)
+  await caricaMatrice(props.emittenteId)
 }
 
 function removeConfig(row) {
@@ -145,12 +147,11 @@ function removeConfig(row) {
     message: t('amministrazione.emittenti_fiscali.ut_remove_config_confirm', { codice: row.utility_codice }),
     danger: true,
     onAccept: async () => {
-      try {
-        await store.removeUtilityRecord(props.emittenteId, row.record_id)
-        notify.success(t('amministrazione.emittenti_fiscali.ut_removed'))
-      } catch {
-        // Errore gia' notificato dall'interceptor axios globale.
-      }
+      // ⚠️ L'azione non restituisce niente (`undefined`): l'errore e' `null`.
+      const esito = await execute(() => store.removeUtilityRecord(props.emittenteId, row.record_id))
+      if (esito === null) return
+      notify.success(t('amministrazione.emittenti_fiscali.ut_removed'))
+      await caricaMatrice(props.emittenteId)
     }
   })
 }
@@ -198,6 +199,16 @@ function buildRowActions(row) {
   ]
 }
 
+// Scopo: (ri)legge la matrice e, se non arriva, lo DICE (`execute`) e la svuota.
+//        ⭐ Separata dalle scritture: una rilettura che fallisce dopo un POST
+//        riuscito non fa sembrare fallito il POST.
+// ⛔ Fino al 2026-10-23 l'errore finiva in un `catch` che svuotava e basta:
+//    l'operatore vedeva una matrice vuota che sembrava una risposta.
+async function caricaMatrice(id) {
+  const esito = await execute(() => store.fetchUtilitiesRecords(id))
+  if (esito === null) store.clearUtilitiesRecords()
+}
+
 // Carica matrice quando l'id dell'emittente cambia.
 // La store action delega al backend che fa LEFT JOIN matrice + override.
 watch(() => props.emittenteId, async (id) => {
@@ -207,11 +218,7 @@ watch(() => props.emittenteId, async (id) => {
   }
   // Reset editing state quando cambia emittente (le righe in editing perdono senso)
   for (const k of Object.keys(editing)) delete editing[k]
-  try {
-    await store.fetchUtilitiesRecords(id)
-  } catch {
-    store.clearUtilitiesRecords()
-  }
+  await caricaMatrice(id)
 }, { immediate: true })
 </script>
 

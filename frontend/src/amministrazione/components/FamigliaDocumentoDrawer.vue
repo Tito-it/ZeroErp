@@ -37,6 +37,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../core/composables/useNotify'
+import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 import { DRAWER_WIDTH, FIELD_LENGTH, MANAGE_ICONS } from '../../core/constants'
@@ -59,6 +60,10 @@ const { t, te } = useI18n()
 const notify = useNotify()
 const store = useFamiglieDocumentoStore()
 const isReadonly = useInjectReadonly()
+// ⭐ `campiErrati`: il campo che il guard dei riferimenti nomina (`campo` nel
+//    contesto, dal 2026-10-23 un 400 e non piu' un 500 — D1 di
+//    brief-be-verifica-documentazione-api) si accende qui sotto.
+const { execute, campiErrati } = useApiHandler()
 
 const props = defineProps({
   visible: Boolean,
@@ -168,6 +173,7 @@ watch(() => props.visible, async (aperto) => {
   if (!aperto) {
     return
   }
+  campiErrati.value = []
   await carica()
   fissa()
 })
@@ -202,12 +208,18 @@ function payload() {
   return p
 }
 
+// ⛔ Fino al 2026-10-23 l'errore finiva in un `catch` vuoto, «gestito
+//    dall'interceptor axios globale»: ma l'interceptor di `core/api.js` non
+//    mostra toast (rinnova il token e basta), quindi un rifiuto del database
+//    chiudeva il giro in silenzio, col drawer aperto e nessun motivo. Ora passa
+//    da `execute`, che dà il toast parlante e i campi da accendere.
 async function salva() {
   salvando.value = true
   try {
-    const dati = isEdit.value
-      ? await store.aggiorna(props.famigliaId, payload())
-      : await store.crea(payload())
+    const dati = await execute(() => (isEdit.value
+      ? store.aggiorna(props.famigliaId, payload())
+      : store.crea(payload())))
+    if (dati === null) return
     // ⭐ La creazione ha fatto DUE cose: la famiglia e i registri che la madre
     //    ha provveduto su ogni emittente. Dirne una sola lascerebbe scoprire
     //    l'altra per caso, aprendo il tab di un emittente.
@@ -219,10 +231,6 @@ async function salva() {
     )
     emit('saved', dati)
     chiudi()
-  } catch {
-    // Errore gestito dall'interceptor axios globale: la tabella già numerata
-    // arriva parlante dal guard del database (E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_
-    // NUMERATA) e nomina la famiglia che la numera.
   } finally {
     salvando.value = false
   }
@@ -278,6 +286,7 @@ const titolo = computed(() => (isEdit.value
           option-disabled="disabled"
           :placeholder="t('amministrazione.famiglie_documento.sorgente_placeholder')"
           :disabled="isReadonly"
+          :invalid="campiErrati.includes('codice_interno')"
         >
           <template #option="{ option }">
             <div>
@@ -301,6 +310,7 @@ const titolo = computed(() => (isEdit.value
           v-model="form.codice"
           :maxlength="FIELD_LENGTH.FAMIGLIA_CODICE_OPERATORE_MAX"
           :disabled="isReadonly"
+          :invalid="campiErrati.includes('codice')"
         />
       </div>
       <div class="form-field">
@@ -309,6 +319,7 @@ const titolo = computed(() => (isEdit.value
           v-model="form.descrizione"
           :maxlength="FIELD_LENGTH.FAMIGLIA_DESCRIZIONE_MAX"
           :disabled="isReadonly"
+          :invalid="campiErrati.includes('descrizione')"
         />
       </div>
     </div>
@@ -332,6 +343,7 @@ const titolo = computed(() => (isEdit.value
         <InputText
           v-model="form.colonna_numero"
           :disabled="isReadonly || strutturaBloccata"
+          :invalid="campiErrati.includes('colonna_numero')"
         />
       </div>
       <div class="form-field">
@@ -344,6 +356,7 @@ const titolo = computed(() => (isEdit.value
         <InputText
           v-model="form.colonna_billing_account"
           :disabled="isReadonly || strutturaBloccata"
+          :invalid="campiErrati.includes('colonna_billing_account')"
         />
         <small class="app-field-hint">
           {{ t('amministrazione.famiglie_documento.billing_account_hint') }}
@@ -354,6 +367,7 @@ const titolo = computed(() => (isEdit.value
         <InputText
           v-model="form.colonna_serie"
           :disabled="isReadonly || strutturaBloccata"
+          :invalid="campiErrati.includes('colonna_serie')"
         />
         <!-- ⚠️ Vuota non è «non compilata»: è un'informazione. E il database
              pretende che, se c'è, quella colonna distingua il numero. -->
@@ -371,6 +385,7 @@ const titolo = computed(() => (isEdit.value
           v-model="form.prefisso_default"
           :maxlength="FIELD_LENGTH.FAMIGLIA_PREFISSO_MAX"
           :disabled="isReadonly"
+          :invalid="campiErrati.includes('prefisso_default')"
         />
       </div>
       <div class="form-field">
@@ -380,6 +395,7 @@ const titolo = computed(() => (isEdit.value
           :min="REGISTRO_CIFRE_MIN"
           :max="REGISTRO_CIFRE_MAX"
           :disabled="isReadonly"
+          :invalid="campiErrati.includes('lunghezza_default')"
         />
       </div>
     </div>

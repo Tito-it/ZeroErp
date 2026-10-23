@@ -17,6 +17,7 @@
 //   4) in modifica la tabella viene dal dettaglio, e le sorgenti non si caricano
 //   5) riaperto per una nuova creazione, rilegge le sorgenti (niente cache)
 //   6) famiglia propria E tabella presa da un'altra: vince il secondo motivo
+//   7) un rifiuto del guard col campo: l'input si accende e il drawer resta aperto
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -148,5 +149,27 @@ describe('FamigliaDocumentoDrawer — la famiglia è quella di una sorgente', ()
     const w = await apri()
     expect(tendina(w).props('options')[0].motivo)
       .toBe('amministrazione.famiglie_documento.sorgente_tabella_numerata')
+  })
+
+  // ⭐ D1 di brief-be-verifica-documentazione-api (2026-10-23): il guard dei
+  //    riferimenti risponde 400 col campo. Prima il drawer inghiottiva ogni
+  //    errore in un `catch` vuoto: nessun toast, nessun campo.
+  it("un rifiuto del guard col campo: l'input si accende e il drawer resta aperto", async () => {
+    crea.mockRejectedValue({ response: { status: 400, data: { error: {
+      code: 'E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE',
+      message: 'La famiglia di documento dichiara un riferimento che non esiste.',
+      fields: ['colonna_numero'],
+    } } } })
+    const w = await apri()
+    tendina(w).vm.$emit('update:modelValue', 'PREVENTIVO')
+    await flushPromises()
+    w.findComponent(AppDrawerFinto).vm.$emit('save')
+    await flushPromises()
+    const invalidi = w.findAllComponents({ name: 'InputText' })
+      .filter((c) => c.props('invalid'))
+    expect(invalidi).toHaveLength(1)
+    expect(invalidi[0].props('modelValue')).toBe('')
+    expect(w.emitted('saved')).toBeUndefined()
+    expect(w.emitted('update:visible')).toBeUndefined()
   })
 })

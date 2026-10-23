@@ -1,24 +1,28 @@
 # Brief BE — La documentazione API confrontata col codice
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-23 (sera)
+## ⏭️ Chi riparte — aggiornato al 2026-10-23 (notte)
 
-**Riparte: il BE**, col passaggio unico BE-1 … BE-4 (§I.4). Il lato DB è tutto chiuso: D1, D4,
-D5, D6, D7 (`20261023-01` … `-05`) e la scadenza di `error_log` e `audit_log` (§I.6), applicati
-su dbdev e scratch, pgTAP verdi (Tid, 2026-10-23). **D2 e D3 sono
-usciti da questo brief**: sono il tema del
-[brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).
+**Riparte: il team DB**, col parametro «ripresa ammessa» di `dbops.fn_idempotency_prenota`
+(§I.7.3). BE-3 e BE-4 sono fatti (§I.7.1); BE-1 e BE-2 **aspettano quel changeSet**, perché
+BE-2 com'era scritto non vale per la pipeline del lotto (§I.7.2, decisione di Tid del
+2026-10-23: unità di lavoro dichiarata). **D2 e D3 sono usciti da questo brief**: sono il tema
+del [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | ✅ team DB | Giro DB: `20261023-01` … `-05`, sei CSV, due pgTAP (uno nuovo), manual e guida; provato sullo scratch e su dbdev in transazione | §I | — |
-| 2 | ✅ **Tid** | Apply su scratch e dbdev (`20261023-01` … `-05` `EXECUTED`), pgTAP verdi (2026-10-23) | §I.3 | 1 |
-| 3 | **BE** | Il passaggio unico: BE-1 … BE-4 (⚠️ BE-1 e BE-2 nello stesso rilascio) | §I.4 | 2 |
-| 3-bis | ✅ team DB + **Tid** | §I.6: `error_log` e `audit_log` nello scope, 90 giorni (solo CSV + un pgTAP); applicato, pgTAP verdi (2026-10-23) | §I.6 | — |
-| 4 | **Tid** | Archiviazione in `work-done/` | — | 3 |
+| 1 | ✅ team DB | Giro DB: `20261023-01` … `-05`, sei CSV, due pgTAP (uno nuovo), manual e guida | §I | — |
+| 2 | ✅ **Tid** | Apply su scratch e dbdev, pgTAP verdi (2026-10-23) | §I.3 | 1 |
+| 3-bis | ✅ team DB + **Tid** | §I.6: `error_log` e `audit_log` nello scope, 90 giorni; applicato, pgTAP verdi | §I.6 | — |
+| 3 | ✅ BE | BE-3 (policy e ripieghi) e BE-4 (drawer delle famiglie), più i quattordici `catch` muti del FE | §I.7.1 | 2 |
+| 4 | **team DB** | `p_ripresa_ammessa` su `fn_idempotency_prenota` + pgTAP | §I.7.3 | — |
+| 5 | **Tid** | Apply | — | 4 |
+| 6 | **BE** | BE-1 + BE-2 nella forma «unità dichiarata», nello stesso rilascio | §I.7.4 | 5 |
+| 7 | **Tid** | Archiviazione in `work-done/` | — | 6 |
 
 Decisioni aperte di Tid: **nessuna** (§I.5 decisa il 2026-10-23: 90 giorni, anche per
-`audit_log`). Lavoro da committare: il giro DB del 2026-10-23 (§I.2 e §I.6), tutto
-applicato.
+`audit_log`; §I.7 decisa il 2026-10-23: unità di lavoro dichiarata, e i `catch` muti corretti in
+questo giro). Lavoro da committare: il giro DB del 2026-10-23 (§I.2 e §I.6) e il giro BE/FE di
+§I.7.1.
 
 ⚠️ Fino a BE-1 + BE-2 il backend usa ancora la sua prenotazione: le colonne nuove restano
 vuote sulle righe che scrive (`endpoint` NULL = riga senza legame) e la ripresa dopo 120
@@ -164,6 +168,85 @@ SQL estratto dai changeSet e seed simulati dai CSV, in una transazione annullata
 * **Prova** (seed simulati, transazione annullata): `test-registri-dbops-scadenza-v1` senza
   2/4, con 4/4, su scratch e dbdev; `test-cleanup-framework` e `test-idempotency-prenota-v1`
   invariati. Guida §7 e manual di `error_log` aggiornati.
+
+### I.7 Il giro BE del 2026-10-23 — e perché BE-2 è cambiato
+
+#### I.7.1 Fatto (da committare)
+
+* **BE-3.** `error_policies_generated.py` rigenerato: il diff è solo D1 (`DATO_ERRATO`) e D7
+  (`E_IDEMPOTENCY_KEY_RIUSATA`, voce nuova). In `error_messages_fallback.py` le frasi di D1, D4
+  e D7 senza segnaposto; il messaggio che `handle_post_json` scrive per
+  `E_IDEMPOTENCY_IN_PROGRESS` è ora quello del catalogo.
+* **BE-4.** `FamigliaDocumentoDrawer` passa da `execute` e accende il campo che il guard nomina
+  (`campiErrati`); spec nuovo (test 7). Commenti di `famiglie_service.py` riallineati.
+* **Trovato correggendo BE-4: i `catch` muti.** Il drawer delle famiglie inghiottiva ogni
+  errore in un `catch {}` «gestito dall'interceptor axios globale», ma l'interceptor di
+  `core/api.js` **non mostra toast**. Lo stesso nel drawer dei registri, nel drawer
+  dell'emittente e nei tab Utilities, Registri e BillingAccount, nello store del summary BA,
+  nei permessi dell'operatore, nella lista operatori, nei canali d'incasso e nei file dei
+  documenti: quattordici punti, tutti su `execute` (ok di Tid). Il summary BA risale al tab, che
+  lo rilegge dopo la scrittura: un summary che fallisce non fa più sembrare fallito il POST.
+  Trappola scritta in `trappole.md` e in frontend-standards «Gestione errori API».
+* Verifiche: backend 1956 test (`apps.core` + famiglie + pipeline API, `ZEROERP_TEST_DB_E2E=1`),
+  frontend 959, ESLint verde.
+
+#### I.7.2 Perché BE-2 non si fa com'era scritto
+
+BE-2 chiedeva di scrivere `completed` nella **stessa transazione dell'handler**, su tutti gli
+endpoint in modalità forte. Per quattro di loro non si può, ed è una decisione già presa e
+scritta nel codice, non una scelta da rifare:
+
+| Endpoint | Perché un `atomic` esterno cambia il comportamento |
+| --- | --- |
+| `ApiRunLottoPipeline` (`vendite/api/views.py:222`) | il lotto nasce in una transazione sua e deve restare (`pipeline_runner.py:641`); sull'errore scrive lotto ERRORE, `PIPELINE_ERROR`, fattura e task_run in errore **fuori** dall'atomic dello step e poi rilancia (D-12) |
+| `ApiRunLottoPipelineUntilDone` (`:276`) | concatena gli step, ognuno col suo commit; risponde 200 con lavoro parziale |
+| `ApiFatturazioneNumeraLotto` (`:2412`) | `pipeline_service.numera_lotto`: «non e' un difetto da correggere avvolgendo tutto in un atomic» |
+| `ApiRunCommessePush` (`:1784`) | il registro del giro (`commesse_push_log`) e un `except` senza savepoint sull'handler (`commesse_push_orchestrator.py:231`) |
+
+Per questi quattro una key `in_progress` orfana **non** vuol dire «nessun commit»: la ripresa
+dopo 120 secondi di `fn_idempotency_prenota` potrebbe rifare un pezzo di lavoro. Gli altri
+65 punti di chiamata (classificati il 2026-10-23, nessun dubbio) sono una sola unità di lavoro:
+una funzione madre, un `run_fan_out` a savepoint, o un service già in `atomic`.
+⚠️ Fra questi, `ApiRigaStato` (pagamenti, `pagamenti_service.py:1091-1094`) fa due UPDATE
+senza `atomic`: è un difetto latente, e l'`atomic` esterno lo chiude.
+
+**Decisione di Tid (2026-10-23): unità di lavoro dichiarata.** Ogni endpoint in modalità forte
+dichiara se è **ATOMICA** (default: handler e `completed` in un `atomic`, ripresa ammessa) o
+**A_PASSI** (niente `atomic` esterno, ripresa **non** ammessa: una key orfana resta `IN_CORSO`
+come oggi, finché scade o il frontend ne genera una nuova dopo il gesto).
+
+#### I.7.3 Richiesta al team DB
+
+`dbops.fn_idempotency_prenota` riceve un parametro in più, `p_ripresa_ammessa boolean`, che il
+backend dichiara sempre. ⚠️ La firma vecchia va **ritirata** nello stesso changeSet (DROP +
+CREATE), non affiancata: `fn(a,b,c,d DEFAULT …)` accanto a `fn(a,b,c,d DEFAULT …, e …)` è
+l'overload ambiguo che PostgreSQL rifiuta. Posizione e default del parametro li sceglie il team
+DB (oggi `p_request_id` ha già un default, quindi un parametro accodato ne vuole uno).
+
+* `true` → il comportamento di oggi (ramo 5: oltre la soglia si riprende).
+* `false` → una `in_progress` resta `IN_CORSO` anche oltre la soglia. `failed` si riprende come
+  oggi: lì il backend ha scritto l'esito, quindi lo stato è noto.
+* pgTAP: i due rami oltre la soglia, costruiti (`prenotata_at` spostato indietro).
+* La regola si scrive sulla funzione: la ripresa è sicura solo se il chiamante dichiara che
+  `completed` sta nella transazione dell'operazione.
+
+Nessuna colonna nuova: la dichiarazione è della richiesta, non della key.
+
+#### I.7.4 BE-1 + BE-2, nella forma nuova (dopo l'apply)
+
+* `handle_post_json(..., unita_di_lavoro=...)`, un valore per i quattro endpoint di §I.7.2
+  (`A_PASSI`); il default è `ATOMICA`. `claim_or_replay` chiama la funzione DB col parametro.
+* ATOMICA: `handler` + `mark_completed` in un `transaction.atomic()`; `mark_failed` **fuori**,
+  dopo il rollback.
+* ⚠️ **Il diario dentro l'atomic.** `ErrorManager.log_error_only` (`error_manager.py:211`) scrive
+  `dbops.error_log` con un `SELECT script.fn_log_error_only` sulla connessione di Django, e
+  inghiotte ogni eccezione. In autocommit funziona; dentro l'`atomic` esterno, dopo un errore DB
+  catturato, la transazione è abortita, il SELECT fallisce e la riga sparisce senza errore.
+  Verificato sul codice il 2026-10-23. BE-2 deve rimandare la scrittura del diario a dopo il
+  rollback (una coda per richiesta, svuotata da `handle_post_json` nel ramo dell'errore), con
+  un test sul DB vero che costruisce il caso.
+* Il presidio `test_transaction_atomicity_guardrail`: la voce dell'ALLOWLIST su
+  `claim_or_replay` cade col suo SQL.
 
 ---
 

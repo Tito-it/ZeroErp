@@ -39,7 +39,7 @@
 //   } = useDrawerTabLista(store, {
 //     parentId: () => props.emittenteId,
 //     parentField: 'emittenteId',
-//     fetchExtra: () => store.fetchSummary(),
+//     fetchExtra: () => execute(() => store.fetchSummary()), // l'errore lo dice l'extra
 //     searchTableOptions: { defaultSortField: 'codice' },
 //     onNew: () => apriDrawer(null),
 //   })

@@ -21,6 +21,7 @@ from apps.core.api.permissions import (
     chiamata_in_scrittura,
 )
 from apps.core.services import perimetro_emittente
+from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.request_context import get_idempotency_key
 from apps.core.services.service_errors import ServiceError
 
@@ -66,7 +67,7 @@ class _ApiViewBase(APIView):
         ):
             raise ServiceError(
                 code="E_IDEMPOTENCY_KEY_REQUIRED",
-                message="Idempotency-Key obbligatoria per questa operazione.",
+                message=USER_MESSAGE_FALLBACK["E_IDEMPOTENCY_KEY_REQUIRED"],
                 detail="Header Idempotency-Key mancante: una POST che scrive la porta sempre.",
             )
 

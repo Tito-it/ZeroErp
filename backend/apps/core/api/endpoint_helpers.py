@@ -14,6 +14,7 @@ from apps.core.api.payload_validators import errore_corpo
 from apps.core.api.request_parsers import parse_json_body
 from apps.core.api.success_responses import success_response
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
+from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.idempotency_store import IdempotencyStore
 from apps.core.services.request_context import get_request_id
 from apps.core.services.service_errors import ServiceError
@@ -142,7 +143,7 @@ def handle_post_json(
         if require_idempotency_key and not idempotency_key:
             raise ServiceError(
                 code="E_IDEMPOTENCY_KEY_REQUIRED",
-                message="Idempotency-Key obbligatoria per questa operazione.",
+                message=USER_MESSAGE_FALLBACK["E_IDEMPOTENCY_KEY_REQUIRED"],
                 detail="Header Idempotency-Key mancante.",
             )
 
@@ -174,7 +175,9 @@ def handle_post_json(
                 )
                 raise ServiceError(
                     code="E_IDEMPOTENCY_IN_PROGRESS",
-                    message="Operazione gia` in elaborazione.",
+                    # ⭐ La frase sta nel ripiego, non qui: era ricopiata a mano
+                    #    e divergeva dal catalogo a ogni revisione (D4).
+                    message=USER_MESSAGE_FALLBACK["E_IDEMPOTENCY_IN_PROGRESS"],
                     detail="La stessa Idempotency-Key e` gia` in corso.",
                     retryable=True,
                 )

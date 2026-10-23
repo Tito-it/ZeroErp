@@ -3554,6 +3554,12 @@ un buco.
 
 I componenti **non gestiscono errori manualmente**. Il composable `useApiHandler` intercetta, estrae il messaggio dall'envelope backend e mostra il toast.
 
+⛔ **L'interceptor axios di `core/api.js` non mostra toast** (rinnova il token, porta agli
+obblighi pendenti). Un `try/catch` col `catch` vuoto «gestito dall'interceptor» inghiotte
+l'errore: il 2026-10-23 ne sono stati corretti quattordici. `execute` accetta anche l'azione di uno
+store, che restituisce il dato già estratto; un'azione che non restituisce niente dà `undefined`
+al successo e `null` sull'errore.
+
 ```js
 // Caricamento (toast solo su errore) — la funzione viene dal modulo api/
 const data = await execute(() => listConfigRecords(rel, params))

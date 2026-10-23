@@ -283,7 +283,13 @@ watch(() => [props.visible, props.canaleId], async ([vis]) => {
   //    prima: non per farlo scegliere: per tradurre la PK della sessione nel
   //    soggetto-ruolo (e in un nome). L'operatore ha entrambi nel profilo.
   if (isAdminMode.value) {
-    await loadOptions().catch(() => { /* il toast lo alza l'interceptor */ })
+    // ⛔ Fino al 2026-10-23 era `.catch(() => {})`, «il toast lo alza
+    //    l'interceptor»: l'interceptor di `core/api.js` non mostra toast.
+    // ⭐ Toast E avviso sotto il campo (`emittentiError`) non sono un doppione:
+    //    il toast dice il MOTIVO (il messaggio del backend) e sparisce;
+    //    l'avviso resta e dice la CONSEGUENZA, cioe' perche' i conti non si
+    //    possono scegliere.
+    await execute(() => loadOptions())
   }
   soggettoRuoloEmittente.value = soggettoRuoloSessione.value
 

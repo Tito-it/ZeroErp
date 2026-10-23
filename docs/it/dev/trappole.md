@@ -214,6 +214,16 @@ chiave parte dall'area del codice (`vendite.ordini.*`), va in `it.json` **e** in
 `scripts/check_i18n_keys.py` la verifica. Sede:
 [Standard frontend](/dev/frontend/frontend-standards) «Struttura chiavi».
 
+### Non lasciare un `catch` vuoto «gestito dall'interceptor»
+
+L'interceptor axios di `core/api.js` rinnova il token e porta agli obblighi pendenti: **non
+mostra toast**. Un `catch {}` che rimanda a lui inghiotte l'errore, e l'operatore vede un drawer
+che non si chiude, o una lista vuota, senza un motivo. Il 2026-10-23 ne sono stati trovati quattordici
+(famiglie e registri di numerazione, emittente fiscale e i suoi tab, permessi dell'operatore,
+canali d'incasso, file dei documenti). Ogni chiamata passa da `execute` di `useApiHandler`, che
+accetta anche l'azione di uno store e dà toast e campi da accendere. Sede:
+[Standard frontend](/dev/frontend/frontend-standards) «Gestione errori API».
+
 ### Non caricare i dati di una vista solo in `onMounted`
 
 Le viste stanno sotto `<KeepAlive>`: rientrando in un tab, `onMounted` non riparte, e la lista
