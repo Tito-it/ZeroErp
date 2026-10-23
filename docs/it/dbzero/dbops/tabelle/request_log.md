@@ -42,5 +42,10 @@
 | ix_request_log_request_id | `CREATE INDEX ix_request_log_request_id ON dbops.request_log USING btree (request_id)` |
 | pk_request_log | `CREATE UNIQUE INDEX pk_request_log ON dbops.request_log USING btree (id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_request_log_m50_cleanup_at_ins | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_cleanup_at_alla_nascita()` |
+
 ---
 {% include-markdown "signature-core.md" %}

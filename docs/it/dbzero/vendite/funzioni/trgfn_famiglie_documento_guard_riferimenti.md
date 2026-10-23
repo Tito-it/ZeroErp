@@ -14,6 +14,10 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-10-23 (brief-be-verifica-documentazione-api, D1): il codice
+--   E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE diventa DATO_ERRATO e porta
+--   il CAMPO da correggere (context ->> 'campo'): ogni riferimento lo scrive
+--   l'amministratore dal CRUD delle famiglie, sorgente compresa.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti, 2c G-5):
 --   la tabella dei documenti e' la target_table della sorgente della
 --   famiglia (config.fn_sorgente_tabella), non piu'
@@ -30,6 +34,9 @@ DECLARE
     -- un riferimento composto per la frase (schema.tabella.colonna):
     --   nessuna colonna di cui sia il riflesso
     v_mancante  text;
+    -- il NOME del campo del form da accendere (codice_interno, colonna_*):
+    --   un nome di colonna come valore, nessuna colonna di cui sia il riflesso
+    v_campo     text;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -61,7 +68,8 @@ BEGIN
       FROM config.fn_sorgente_tabella(NEW.codice_interno) t;
 
     IF v_relid IS NULL THEN
-        v_mancante := format('config.sorgenti.target_table di %s', NEW.codice_interno);
+        v_mancante := format('la tabella dei documenti della sorgente %s', NEW.codice_interno);
+        v_campo    := 'codice_interno';
 
     ELSIF NOT EXISTS (
         SELECT 1 FROM pg_attribute a
@@ -72,6 +80,7 @@ BEGIN
     ) THEN
         v_mancante := format('%I.%I.%I',
             v_schema, v_nome, NEW.colonna_numero);
+        v_campo    := 'colonna_numero';
 
     -- ⭐ Il billing account e' OPZIONALE (20260914-07): il vuoto e'
     --   la dichiarazione che questa famiglia non ne ha uno — la
@@ -90,6 +99,7 @@ BEGIN
     ) THEN
         v_mancante := format('%I.%I.%I',
             v_schema, v_nome, NEW.colonna_billing_account);
+        v_campo    := 'colonna_billing_account';
 
     -- ⭐ La serie e' OPZIONALE: il vuoto e' la dichiarazione che
     --   questa famiglia una serie non ce l'ha (resi, commesse).
@@ -105,6 +115,7 @@ BEGIN
           ) THEN
         v_mancante := format('%I.%I.%I',
             v_schema, v_nome, NEW.colonna_serie);
+        v_campo    := 'colonna_serie';
     END IF;
 
     IF v_mancante IS NOT NULL THEN
@@ -119,7 +130,9 @@ BEGIN
                 'colonna_numero',          NEW.colonna_numero,
                 'colonna_billing_account', NEW.colonna_billing_account,
                 'colonna_serie',           NEW.colonna_serie,
-                'riferimento_mancante',    v_mancante),
+                'riferimento_mancante',    v_mancante,
+                -- il campo che il form deve accendere (DATO_ERRATO dal 2026-10-23)
+                'campo',                   v_campo),
             NULL::uuid,
             NEW.codice_interno::text,
             v_mancante);
@@ -214,7 +227,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_famiglie_documento_guard_riferimenti()
-IS 'Guard `_a10_` su vendite.famiglie_documento: una famiglia ATTIVA deve nominare oggetti che esistono — la tabella del documento, la colonna del numero, quella del billing account e, se dichiarata, quella della serie. ⛔ PERCHE'': quei nomi finiscono in SQL dinamico dentro il presidio sul cambio emittente del billing account, e un refuso resterebbe muto fino al primo spostamento, dove uscirebbe come undefined_table in un movimento che con le famiglie non c''entra. ⭐ SULLA SERIE CI SONO DUE CONTROLLI E DUE CODICI: se la colonna non esiste e'' un refuso come gli altri tre (E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE); se esiste ma NON compare in un vincolo di unicita'' insieme alla colonna del numero e'' il caso peggiore — il nome e'' giusto e si legge — e ha il suo codice E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA, perche'' la serie entra nella chiave del contatore e apre un secchio che riparte da 1: senza il vincolo allargato quel numero collide con uno gia'' emesso. ⛔ IL PREDICATO E'' TESTUALE su pg_get_indexdef e non per attnum, ed e'' verificato: uq_fatture_numero porta la serie come COALESCE(serie, '''''''') — un''espressione, che in pg_index.indkey ha attnum 0 — quindi la versione «precisa» rifiuterebbe la FATTURA e farebbe fallire il migrate sul mirror delle famiglie. E'' lo stesso predicato del test 5 di test-chiave-contatore-assi-dichiarati-v1: due predicati sulla stessa invariante, prima o poi, dissentono. ⚠️ Solo sulle famiglie ATTIVE: una famiglia ritirata puo'' nominare una tabella che non c''e'' piu'', ed e'' storia. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1). ⭐ rev 2026-09-14 (P-9, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 3-bis): la colonna del billing account e'' OPZIONALE come la serie — NULL o vuota = «questa famiglia non ha un billing account» (l''ordine di acquisto, la cui controparte e'' un soggetto_ruolo) — e il controllo su pg_attribute si salta PRIMA di comporre, non dentro: un %I con NULL solleverebbe un errore di PostgreSQL senza codice di dominio. Il numero e la tabella restano obbligatori. Rev 2026-10-20 (20261020-35, brief-db-grammatica-unica-documenti 2c, G-5): la tabella dei documenti e'' la target_table della sorgente della famiglia (config.fn_sorgente_tabella); entra la regola di una famiglia ATTIVA per tabella, che era l''indice uq_famiglie_documento_tabella_attiva (E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA). Non e'' a prova di concorrenza come l''indice: dichiarato.';
+IS 'Guard `_a10_` su vendite.famiglie_documento: una famiglia ATTIVA deve nominare oggetti che esistono — la tabella del documento, la colonna del numero, quella del billing account e, se dichiarata, quella della serie. ⛔ PERCHE'': quei nomi finiscono in SQL dinamico dentro il presidio sul cambio emittente del billing account, e un refuso resterebbe muto fino al primo spostamento, dove uscirebbe come undefined_table in un movimento che con le famiglie non c''entra. ⭐ SULLA SERIE CI SONO DUE CONTROLLI E DUE CODICI: se la colonna non esiste e'' un refuso come gli altri tre (E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE); se esiste ma NON compare in un vincolo di unicita'' insieme alla colonna del numero e'' il caso peggiore — il nome e'' giusto e si legge — e ha il suo codice E_FAMIGLIA_DOCUMENTO_SERIE_NON_DISCRIMINA, perche'' la serie entra nella chiave del contatore e apre un secchio che riparte da 1: senza il vincolo allargato quel numero collide con uno gia'' emesso. ⛔ IL PREDICATO E'' TESTUALE su pg_get_indexdef e non per attnum, ed e'' verificato: uq_fatture_numero porta la serie come COALESCE(serie, '''''''') — un''espressione, che in pg_index.indkey ha attnum 0 — quindi la versione «precisa» rifiuterebbe la FATTURA e farebbe fallire il migrate sul mirror delle famiglie. E'' lo stesso predicato del test 5 di test-chiave-contatore-assi-dichiarati-v1: due predicati sulla stessa invariante, prima o poi, dissentono. ⚠️ Solo sulle famiglie ATTIVE: una famiglia ritirata puo'' nominare una tabella che non c''e'' piu'', ed e'' storia. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.3 (DB-1). ⭐ rev 2026-09-14 (P-9, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 3-bis): la colonna del billing account e'' OPZIONALE come la serie — NULL o vuota = «questa famiglia non ha un billing account» (l''ordine di acquisto, la cui controparte e'' un soggetto_ruolo) — e il controllo su pg_attribute si salta PRIMA di comporre, non dentro: un %I con NULL solleverebbe un errore di PostgreSQL senza codice di dominio. Il numero e la tabella restano obbligatori. Rev 2026-10-20 (20261020-35, brief-db-grammatica-unica-documenti 2c, G-5): la tabella dei documenti e'' la target_table della sorgente della famiglia (config.fn_sorgente_tabella); entra la regola di una famiglia ATTIVA per tabella, che era l''indice uq_famiglie_documento_tabella_attiva (E_FAMIGLIA_DOCUMENTO_TABELLA_GIA_NUMERATA). Non e'' a prova di concorrenza come l''indice: dichiarato. Rev 2026-10-23 (brief-be-verifica-documentazione-api, D1): E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE e'' DATO_ERRATO e porta il campo (context campo: codice_interno, colonna_numero, colonna_billing_account o colonna_serie): ogni riferimento lo sceglie l''amministratore dal CRUD delle famiglie, anche la sorgente.';
 ```
 
 </div>

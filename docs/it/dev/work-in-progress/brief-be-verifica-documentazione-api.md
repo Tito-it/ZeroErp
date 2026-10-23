@@ -1,44 +1,169 @@
 # Brief BE — La documentazione API confrontata col codice
 
-## ⏭️ Chi riparte — aggiornato al 2026-10-21 (notte)
+## ⏭️ Chi riparte — aggiornato al 2026-10-23 (sera)
 
-**Riparte: Tid**, col via al giro DB di D1, D4, D5, D6, D7 (forma decisa sotto, il 2026-10-21).
-Il lavoro backend e frontend è tutto fatto (quattro giri, 2026-10-20/21). **D2 e D3 escono da
-questo brief**: sono il tema del
+**Riparte: il BE**, col passaggio unico BE-1 … BE-4 (§I.4). Il lato DB è tutto chiuso: D1, D4,
+D5, D6, D7 (`20261023-01` … `-05`) e la scadenza di `error_log` e `audit_log` (§I.6), applicati
+su dbdev e scratch, pgTAP verdi (Tid, 2026-10-23). **D2 e D3 sono
+usciti da questo brief**: sono il tema del
 [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (M-1 … M-4).
 
-### 🟠 Aperto per il team DB (dettaglio in 🔴 D) — forma decisa con Tid il 2026-10-21
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | ✅ team DB | Giro DB: `20261023-01` … `-05`, sei CSV, due pgTAP (uno nuovo), manual e guida; provato sullo scratch e su dbdev in transazione | §I | — |
+| 2 | ✅ **Tid** | Apply su scratch e dbdev (`20261023-01` … `-05` `EXECUTED`), pgTAP verdi (2026-10-23) | §I.3 | 1 |
+| 3 | **BE** | Il passaggio unico: BE-1 … BE-4 (⚠️ BE-1 e BE-2 nello stesso rilascio) | §I.4 | 2 |
+| 3-bis | ✅ team DB + **Tid** | §I.6: `error_log` e `audit_log` nello scope, 90 giorni (solo CSV + un pgTAP); applicato, pgTAP verdi (2026-10-23) | §I.6 | — |
+| 4 | **Tid** | Archiviazione in `work-done/` | — | 3 |
 
-Prima di decidere, la storia di ciascun punto è stata ricostruita (git, brief chiusi, guide):
-nessuno è stato fatto e disfatto né rifiutato; le varianti rispetto al testo di 🔴 D sono dichiarate.
+Decisioni aperte di Tid: **nessuna** (§I.5 decisa il 2026-10-23: 90 giorni, anche per
+`audit_log`). Lavoro da committare: il giro DB del 2026-10-23 (§I.2 e §I.6), tutto
+applicato.
 
-| # | Che cosa | Forma decisa | Ricaduta BE/FE dopo l'apply |
-| --- | --- | --- | --- |
-| D1 | `E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE` da TECNICO (500) a DATO_ERRATO (400), **un codice solo**, con il campo | Come scritto. La classe sta in `codici_errore.csv` (non `messaggi_errore`). Verificato: anche «la sorgente non dichiara una tabella» è un input dell'amministratore (la tendina offre solo sorgenti con tabella, `list_sorgenti_numerabili`), quindi la divisione in due codici non serve. Il guard deve dire **quale campo** | rigenerare policy e ripiego dopo l'apply |
-| D4 | Testo di `E_IDEMPOTENCY_IN_PROGRESS`: `causa`, `soluzione`, riga `en` | La proposta di 🔴 D4 | ripiego rigenerato dopo l'apply |
-| D5 | `dbops.idempotency_keys` non si pulisce mai | **Variante dichiarata:** non un parametro in `config.parameters` né un processo nuovo, ma il framework che esiste (scope + regola `CLEANUP_AT` + trigger alla nascita + `automations_cleanup`), **TTL 1 giorno**. Era l'intento dal 2026-02-07; su dbdev la tabella era nello scope **a mano**, mai in git. Va dichiarato che cosa dello scope si esclude (lo storico, che copierebbe `response_payload`; il TX_ID, che il BE scrive da sé). **Stesso buco** per `dbops.request_log` (regola 14 da 90 giorni, morta): si chiude nello stesso giro | nessuna |
-| D6 | Chiavi `in_progress` orfane | **Come scritto in 🔴 D6**: soglia di tempo in `config.parameters`, sopra il timeout di gunicorn. Il «lucchetto di riga» proposto in chat è ritirato: contraddice il motivo di D6 (il secondo invio deve ricevere subito 409, non aspettare). `mark_failed` resta fuori dalla transazione che fa rollback (`analisi-fix-transazioni` §7) | ⚠️ prima, `completed` nella stessa transazione dell'operazione (`handle_post_json`) |
-| D7 | La key legata a utente ed endpoint | Mismatch = **400** con un codice suo (DATO_ERRATO); mai il replay della risposta di un altro | `IdempotencyStore` confronta prima del replay |
+⚠️ Fino a BE-1 + BE-2 il backend usa ancora la sua prenotazione: le colonne nuove restano
+vuote sulle righe che scrive (`endpoint` NULL = riga senza legame) e la ripresa dopo 120
+secondi non agisce. Nessuna regressione: è il comportamento di prima.
 
-Ordine: D1 e D4 (catalogo), poi D5, poi D6 e D7 insieme (stessa sede del claim).
+### 🟢 D1, D4-D7 — la forma decisa il 2026-10-21, sviluppata il 2026-10-23 (§I)
 
-### Per Tid
-
-| # | Che cosa | Aspetta |
+| # | Che cosa | Forma |
 | --- | --- | --- |
-| 1 | Il via al giro DB qui sopra | — |
-| 2 | Rivedere e committare secondo, terzo e quarto giro (⚠️ `git add` mirato: il working tree ha anche il lavoro di `documenti` dell'altra sessione) | — |
-| 3 | Archiviare in `work-done/` quando D1, D4-D7 sono chiusi | 1 |
+| D1 | `E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE` da TECNICO (500) a DATO_ERRATO (400), un codice solo, col campo | il guard porta `campo` (codice_interno, colonna_numero, colonna_billing_account, colonna_serie) |
+| D4 | Testo di `E_IDEMPOTENCY_IN_PROGRESS` per l'operatore | causa, soluzione, riga `en` |
+| D5 | `idempotency_keys` e `request_log` non si pulivano | nello scope delle automazioni, scadenza alla nascita; key: un giorno |
+| D6 | key `in_progress` orfane | soglia `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` (120 s) misurata da `prenotata_at` |
+| D7 | key legata a utente ed endpoint | `E_IDEMPOTENCY_KEY_RIUSATA` (DATO_ERRATO, 400) |
 
 Fatti e chiusi: 🔴 A (decisioni A1-A6), B (difetti di codice), C (alert scadenze
 listini), E (`copertura_doc_api`), G (terzo giro), H (quarto giro, dialetto unico
-della paginazione). Decisioni aperte di Tid: **nessuna**. Il primo giro è
-committato (`42c0d29ea`); secondo, terzo e quarto sono nel working tree.
+della paginazione). Primo, secondo, terzo e quarto giro sono committati.
 
 *Non bloccanti, backend:* `_righe_da_rate_da_payload` (pagamenti) e
 `indirizzi_per_madre` (anagrafiche) somigliano al BB `PayloadValidator.voci` e non
 sono migrati (§G); il tetto dei tool AI (max 50) resta una riduzione dichiarata
 nella descrizione del tool, non un errore (§H).
+
+---
+
+## I. Giro DB del 2026-10-23 — D1, D4, D5, D6, D7
+
+### I.1 Che cosa è cambiato, in parole semplici
+
+* **D1.** Se l'amministratore, nel CRUD delle famiglie di numerazione, scrive una colonna
+  che non esiste, o sceglie una sorgente senza tabella, riceve un errore **400 col campo da
+  correggere** invece di un 500. Il campo arriva al form: `codice_interno`,
+  `colonna_numero`, `colonna_billing_account` o `colonna_serie`.
+* **D4.** L'operatore che riclicca un gesto irreversibile mentre il primo invio è ancora in
+  corso legge «L'operazione è ancora in corso», con causa e soluzione, anche in inglese.
+* **D5.** Le key di idempotenza scadono **dopo un giorno** e si cancellano col job settimanale
+  che esiste già. Lo stesso buco c'era su `request_log`: la sua regola da 90 giorni non agiva,
+  perché la tabella non era nello scope. Ora agisce.
+* **D6.** Una key rimasta «in corso» perché il server è morto a metà si riprende dopo **120
+  secondi**, invece di bloccare ogni reinvio fino alla key nuova del frontend.
+* **D7.** Una key si rimanda **solo a chi l'ha prenotata, sullo stesso endpoint**. Usata da
+  un altro utente, o su un'altra richiesta, dà 400 `E_IDEMPOTENCY_KEY_RIUSATA`.
+
+### I.2 I file
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261023-01-update-trgfn-famiglie-documento-guard-riferimenti-campo` | D1: il guard porta `campo`; la frase del caso «sorgente senza tabella» parla all'operatore |
+| `20_code/dbops/20261023-02-create-trigger-cleanup-at-alla-nascita-idempotency-request-log` | D5: la scadenza nasce con la riga, sulle due tabelle |
+| `00_schema/dbops/20261023-03-alter-idempotency-keys-utente-endpoint` | D7: `auth_user_id`, `endpoint`; D6: `prenotata_at`; CHECK «la risposta c'è se e solo se la key è completed»; CHECK endpoint non vuoto |
+| `20_code/dbops/20261023-04-create-fn-idempotency-prenota` | D6+D7: `dbops.fn_idempotency_prenota` (ESEGUI / REPLAY / IN_CORSO) |
+| `80_data/changelog/20261023-05-delete-stati-check-dichiarazioni-idempotency-in-progress` | presidio C1: `in_progress` ora ha uno scrittore a DB |
+| `codici_errore.csv` | D1 classe DATO_ERRATO e nota; D7 `E_IDEMPOTENCY_KEY_RIUSATA` (DATO_ERRATO) |
+| `messaggi_errore.csv` | D1 soluzione; D4 riga it riscritta + en (1386); D7 it/en (1387, 1388) |
+| `automation_scope.csv`, `automation_rules_tbl.csv` | D5: `dbops.idempotency_keys` e `dbops.request_log` nello scope; regola 24 (un giorno, base `data_insert`) |
+| `parameters_sistema.csv` | D6: id 62 `SYSTEM_IDEMPOTENZA_IN_CORSO_SECONDI` = 120 |
+| `stati_check_dichiarazioni.csv` | via `in_progress`; ragione di `completed`/`failed` riscritta |
+| `db/pgtap/dbops/test-idempotency-prenota-v1.sql` (nuovo), `db/pgtap/vendite/test-famiglie-documento-guard-riferimenti.sql` (test 10-13) | i presidi |
+| `dbzero/dbops/manual/idempotency_keys.md`, `request_log.md`, `guide/audit-e-tracciabilita.md` §7 | la doc dello stato attuale |
+
+**Tre scelte dichiarate, prese scrivendo:**
+
+* **La prenotazione è una funzione DB.** D6 la lasciava aperta («la funzione del claim, se
+  passa al DB»). La regola della soglia e del legame vive così in un posto solo, e il backend
+  la chiama.
+* **La soglia si misura da `prenotata_at`, non da `data_update`.** Il trigger di audit
+  riscrive `data_update` a ogni UPDATE, ed è montato su dbdev e, con lo scope di D5, anche da
+  zero. È la stessa regola dei registri: la scadenza si misura da un orario reale.
+* **Il CHECK sulla risposta vale nei due versi.** La funzione decide il replay dalla risposta
+  e non nomina gli esiti che scrive il backend. Il presidio C1 è testuale: con
+  `'completed'` nel corpo l'avrebbe contata fra i loro scrittori (rosso nella prima prova).
+  Su dbdev nessuna riga lo viola (fatto datato 2026-10-23: 669 completed tutte con
+  risposta, 263 failed tutte senza).
+
+### I.3 La prova (2026-10-23, prima dell'apply) — ✅ dopo l'apply: verde nella corsa di Tid
+
+SQL estratto dai changeSet e seed simulati dai CSV, in una transazione annullata, come
+`zeroerp_owner`:
+
+| pgTAP | scratch, senza | scratch, con | dbdev, con |
+| --- | --- | --- | --- |
+| `dbops/test-idempotency-prenota-v1` (nuovo) | 0/24 | 24/24 | 24/24 |
+| `vendite/test-famiglie-documento-guard-riferimenti` | 9/13 (i 4 nuovi rossi) | 13/13 | 13/13 |
+| `dbops/test-stati-check-scrittori-v1` | 15/15 | 15/15 | 15/15 |
+| `dbops/test-riferimenti-morti-v1`, `script/test-catalogo-messaggi-errore-completo`, `dbops/test-cleanup-framework`, `config/test-codici-errore-*`, `config/test-parameter-fk-surrogate-dispatch-v1`, `vendite/test-famiglie-documento-crud-v1` e `-codice-v1` | verdi | verdi, identici | — |
+
+* ⚠️ La misura **come app** arriva dalla corsa di Tid dopo l'apply: l'owner non è membro di
+  `zeroerp_app`.
+* Non coperto, dichiarato nel file: il ramo `E_CONFIG_MANCANTE` della soglia. L'applicazione
+  non scrive `config.parameters`.
+* Rossi preesistenti, non di questo giro: `vendite/test-registri-fatturazione-scadenza-alla-nascita`
+  test 14 (rosso anche senza l'SQL estratto); il guardrail del preambolo segnala
+  `dbops/test-automazioni-guasto-ambiente-rilanciato-v1.sql` (committato in `dbb810c3d`).
+* Guardrail statici verdi: precondition/seed, runOnChange, DDL su trigger di automazione,
+  v1 congelato, GRANT ai ruoli batch.
+
+### I.4 Il passaggio unico al BE (dopo l'apply)
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| BE-1 | `IdempotencyStore.claim_or_replay` chiama `dbops.fn_idempotency_prenota(key, auth_user_id, endpoint, request_id)` e ritira il suo SQL. `endpoint` = metodo + percorso, senza query string; `auth_user_id` NULL per una richiesta anonima. ESEGUI → esegue; REPLAY → rimanda `response_payload`; IN_CORSO → 409 `E_IDEMPOTENCY_IN_PROGRESS` come oggi. `E_IDEMPOTENCY_KEY_RIUSATA` arriva dal DB come ogni errore di dominio (400) | `apps/core/services/idempotency_store.py`, `apps/core/api/endpoint_helpers.py` |
+| BE-2 | ⛔ **Nello stesso rilascio di BE-1.** `mark_completed` nella STESSA transazione dell'handler (`handle_post_json`). `mark_failed` resta fuori dalla transazione che fa rollback. Senza BE-2, una key ripresa dopo 120 secondi può rifare un'operazione che aveva già fatto commit | `apps/core/api/endpoint_helpers.py` |
+| BE-3 | Rigenerare `error_policies_generated.py` ed `error_messages_fallback.py`: D1 diventa DATO_ERRATO, D7 è un codice nuovo, D4 ha il testo nuovo | `apps/core/services/` |
+| BE-4 | D1 nel drawer delle famiglie: l'errore ora è un 400 col campo da accendere. Rivedere i commenti di `famiglie_service.py` (righe 11 e 73) | `apps/vendite/services/famiglie_service.py`, FE |
+
+### I.5 Aperto
+
+* ✅ **Deciso da Tid il 2026-10-23: 90 giorni, e la stessa logica per `audit_log`** (§I.6).
+  Testo originale della domanda:
+* ~~**Per Tid — `dbops.error_log`.**~~ Ha `cleanup_at` come le due tabelle di D5, ma non è
+  nello scope (su dbdev c'è per una riga a mano, come c'era `idempotency_keys`): oggi non
+  scade, in CI e da zero. È lo stesso buco; non l'ho chiuso perché la sua durata non è
+  decisa. Con la sola riga di scope prenderebbe il default di 30 giorni (regola 11). Anche
+  `dbops.audit_log` ha la colonna ed è fuori dallo scope. Le due righe a mano di dbdev
+  (`error_log`, `idempotency_keys`) restano; la seconda ora coincide col CSV.
+* **Debito dichiarato:** `endpoint` resta nullable per le righe nate prima del 2026-10-23.
+  Il NOT NULL è un changeSet successivo, quando il primo purge le ha tolte (un giorno dopo
+  l'apply, più il giro settimanale).
+
+### I.6 `error_log` e `audit_log` scadono (2026-10-23, decisione di Tid) — ✅ applicato, pgTAP verdi
+
+* **Dove sta il termine.** Non in `config.parameters`: nella regola CLEANUP_AT di
+  `dbops.automation_rules_tbl` (`params.ttl_days`), seminata da `automation_rules_tbl.csv`.
+  È la sede unica: la leggono il job e il trigger alla nascita. Per cambiare la durata si
+  cambia la riga del CSV.
+* **Cosa è cambiato:** `dbops,error_log` e `dbops,audit_log` in `automation_scope.csv`;
+  regole 25 (`error_log`, 90 giorni, base `occurred_at`) e 26 (`audit_log`, 90 giorni, base
+  `executed_at`). Nessun changeSet: solo i due CSV e il pgTAP
+  `dbops/test-registri-dbops-scadenza-v1.sql` (nuovo, 4 test).
+* ⛔ **Niente trigger alla nascita su queste due**, diversamente da D5: le scrivono anche
+  sessioni dblink (`script.fn_log_error_only`, `dbops.fn_audit_log_once`, service
+  `zeroerp_log`), e `zeroerp_log` non ha SELECT su `dbops.automation_rules_tbl`. Verificato il
+  2026-10-23. Il trigger farebbe fallire la registrazione degli errori. La scadenza la
+  calcola il job sulle righe a NULL, come su dbdev dalla riga di scope a mano. Il test 4 lo
+  tiene fermo.
+* **Cosa porta lo scope:** il trigger TX_ID (`tx_id` c'è su entrambe), già montato su
+  dbdev; niente audit, storico e lucchetti (mancano le colonne). Nessuna FK punta alle due
+  tabelle, nessun guard sul DELETE; il job gira come owner (`proc_automations_cleanup_job`
+  è DEFINER).
+* ⚠️ **Su dbdev** le righe di `error_log` che hanno già una scadenza a 30 giorni la tengono:
+  il job riempie solo i NULL. I 90 giorni valgono per le righe nuove.
+* **Prova** (seed simulati, transazione annullata): `test-registri-dbops-scadenza-v1` senza
+  2/4, con 4/4, su scratch e dbdev; `test-cleanup-framework` e `test-idempotency-prenota-v1`
+  invariati. Guida §7 e manual di `error_log` aggiornati.
 
 ---
 
@@ -407,7 +532,7 @@ Gravità:
 
 ---
 
-## 3. ⚠️ Possibili difetti del **codice** — il dettaglio punto per punto (✅ corretto / ⏳ aperto: solo D1, team DB)
+## 3. ⚠️ Possibili difetti del **codice** — il dettaglio punto per punto (✅ corretto; D1 applicato il 2026-10-23, §I)
 
 Qui la doc dice una cosa giusta, o una regola del progetto, e il codice fa
 altro.
@@ -474,7 +599,7 @@ altro.
 20. ✅ **Corretto il 2026-10-20** (da committare): tolti i parametri morti delle righe di listino (vista, service, repository, schema); `esclusa` delle fatture del lotto e' un errore della sola doc — **Filtri accettati e ignorati:**
     - righe di listino (`billing_account_id`, `utility_id`);
     - fatture del lotto (`esclusa`).
-21. ⏳ **Aperto, team DB** (🔴 D1) — **`E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE` ha classe TECNICO**, quindi
+21. ✅ **Applicato il 2026-10-23** (🔴 D1, §I; ricaduta BE in §I.4) — **`E_FAMIGLIA_DOCUMENTO_RIFERIMENTO_INESISTENTE` ha classe TECNICO**, quindi
     risponde 500 a un errore di input. → brief al team DB.
 22. ✅ **Corretto (2026-10-20/21: chiavi ignote; emittente con 🔴 B2; `sort_by`, fondi-fattura, key e `post_permission` con A4-A5)**. *Storia:* **In parte corretto il 2026-10-20** (da committare; Tid ha scelto la sola voce «chiavi ignote»): una chiave fuori contratto e' un 400 anche nei 13 punti che la scartavano (righe e prelievi DDT, testata/righe/rientri dei resi, testata e righe degli ordini, testata e righe dei preventivi) e nella creazione del cliente; verificato prima che il frontend mandi solo chiavi del contratto. Ancora da allineare alla stessa regola: la CREAZIONE di un emittente fiscale (`emittenti_fiscali_service`) scarta le chiavi fuori contratto, la sua PATCH le rifiuta. Restano aperte, per decisione: `sort_by`/`order_by`, `page`/`page_size` di fondi-fattura, `Idempotency-Key`/`post_permission` non uniformi — **Asimmetrie fra gemelli in vendite:**
     - `sort_by` sulle fatture del lotto contro `order_by` sui gruppi;
