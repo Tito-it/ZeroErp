@@ -33,7 +33,7 @@ documento.
 > check-list, e le voci chiuse stanno in fondo, in **§7 «Attività svolte»**, con
 > la data e il rimando al brief. Quando una voce ha ancora una parte aperta il
 > numero compare **due volte**: in alto ciò che resta, in fondo ciò che è fatto
-> (`D6`, `D7`, `D11`, `D12`). Il dettaglio di come si è arrivati a chiudere sta
+> (`D6`, `D7`, `D11`). Il dettaglio di come si è arrivati a chiudere sta
 > nei brief e nella storia git di questo file (sfoltito il 12-09, riordinato il
 > 20-09, il 22-09 e il 26-09).
 >
@@ -46,9 +46,14 @@ documento.
 > `storico.parameters` trovato nel lotto 1 è chiuso il 25-09. In D8 `magazzino`
 > non è più «modellato e non scritto»: ha i lotti 1 e 2.
 >
+> 📏 **Dal 2026-10-23 gli indicatori hanno una sede viva**:
+> [qualita-db-indicatori.md](../qualita-db-indicatori.md), con le lezioni, gli indicatori stampati
+> da `scripts/indicatori-qualita-db.sh` e la scorecard pesata. Questo documento resta la **lettura
+> zero** e il registro delle voci D: alla sua chiusura, i numeri non si ricopiano più qui.
+>
 > ✅ **Riallineato il 2026-10-23** (repo al commit `f9e542136`, catalogo di dbdev letto lo stesso
 > giorno). Il §7 era già in pari (chiusure fino a D34, 22-10); erano indietro la testata di §3,
-> le voci aperte, i numeri e la scorecard. Numeri del giorno: suite pgTAP a **876** file;
+> le voci aperte, i numeri e la scorecard. Numeri del giorno: suite pgTAP a **887** file;
 > `baseline-rossi.tsv` a **6** (5 `ERRORE_FIXTURE`, 1 `ASSERZIONE`); `baseline-rossi-ci.tsv` a
 > **360** (un test ritirato il 20-10, nessun rientrato certificato); `baseline-rossi-scratch.tsv`
 > a **147** (120 `ERRORE_FIXTURE`, 26 `ASSERZIONE`, 1 `SORGENTE_POLIMORFA`; ultimo aggiornamento il
@@ -551,7 +556,8 @@ invariato rispetto al 2026-10-04 (§2-bis.8), con Q-2 ancora rimandata.
 > ✅ **Le voci chiuse non stanno qui**: sono in **§7 «Attività svolte»**, con la
 > data e il rimando al brief — chiuse **per intero** D1, D2, D3, D4, D5, D10,
 > D13, D14, D15, D19, D20, D21, D22, D23, D25, D26, D26-2, D27, D28, D29, D30, D33, D34, D35, D36; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
-> registri calati), D12 (la quantità), D17 (tutto tranne Q-2).
+> registri calati), D17 (tutto tranne Q-2). **D12** è chiusa per intero il 2026-10-23: era
+> un'osservazione senza lavoro (§7 D12).
 >
 > ⭐ **D15 è nata dalla chiusura di D14** (2026-09-22) e **D16** da un test
 > diventato rosso da solo (2026-09-23).
@@ -575,7 +581,7 @@ invariato rispetto al 2026-10-04 (§2-bis.8), con Q-2 ancora rimandata.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D16, D24, D31, D32.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D16, D24, D31, D32.
 > ⚠️ Al 2026-10-23 **nessuna** di queste è in lavorazione: dal 13-10 il lavoro DB è andato a
 > cantieri nati fuori da questo registro (grammatica unica, modelli di documento standard,
 > ruoli di sistema, accensione per ambiente), e le voci di qui aspettano una decisione di Tid o
@@ -691,7 +697,7 @@ Per schema, i file di test: `vendite` 253, `script` 69, `anagrafiche` 66,
 `ui` 13, `documenti` 11, `maintenance` 5, **`magazzino` 1**, **`shop` 1**,
 **`acquisti` 0**, **`storico` 0**.
 
-*(2026-10-23, 876 file: `vendite` 352, `anagrafiche` 95, `script` 94, `dbops` 79, `config` 61,
+*(2026-10-23, 887 file: `vendite` 352, `anagrafiche` 95, `script` 94, `dbops` 79, `config` 61,
 `rls` 43, `pratiche` 43, `magazzino` 25, `pagamenti` 23, `catalogo` 22, `documenti` 18, `ui` 17,
 `maintenance` 13, `storico` 1, `shop` 1, **`acquisti` 0**. La forma della distribuzione non è
 cambiata: `vendite` da sola è il 40%.)*
@@ -719,7 +725,7 @@ noti nel suo registro (`baseline-rossi-scratch.tsv`: 133 `ERRORE_FIXTURE`, 30
 quindi verde su circa **l'80%** dei file.
 
 ✅ **Al 2026-10-23** lo scratch non è più `zeroerp_ci` (ritirato il 15-10) ma `zeroerp_ruoli`,
-costruito col modello dei ruoli di sistema; il suo registro è a **147** su 876 (120
+costruito col modello dei ruoli di sistema; il suo registro è a **147** su 887 (120
 `ERRORE_FIXTURE`, 26 `ASSERZIONE`, 1 `SORGENTE_POLIMORFA`; ultimo aggiornamento il 20-10):
 verde su circa l'**83%**. Anche la CI di GitHub gira ora col modello (owner `zeroerp_owner`), ma
 **dopo il 26-09 il repo non registra nessuna sua misura**: il numero che vale è ancora il vecchio. ⛔ *Lo scratch non è
@@ -772,7 +778,7 @@ lasciato
   `test-numera-nota-credito-riferimento-v1`;
 * ⏳ la **baseline di sviluppo** (`baseline-rossi.tsv`): **6** file al 23-10
   (7 al 13-10, 12 al 26-09), di cui **5** muoiono nella fixture;
-* ⏳ i file con `pgtap-runner: owner` (**146** al 23-10, 130 al 13-10, 109 al 22-09): crescono coi
+* ⏳ i file con `pgtap-runner: owner` (**145** al 23-10, 130 al 13-10, 109 al 22-09): crescono coi
   file nuovi, e quanti di quei motivi siano ancora veri dopo la rev `20260912-38` non è misurato;
 * ⏳ i file con uno `skip()` condizionato: **122** al 23-10 (110 all'08-09);
 * 🔵 **decisione (Tid)**: i file legati a dati di **questa** macchina (gestore,
@@ -948,18 +954,6 @@ asserzione. La loro copertura vale zero, non «parziale» — e sono aree che
 
 ---
 
-### 🟡 D12 — Documentazione: il problema non è più la quantità
-
-1.410 pagine manuali contro 1.500 auto-generate: copertura sostanzialmente piena,
-il gap di febbraio è chiuso. Restano due cose:
-
-* `storico`: 111 pagine, media 15 righe, **98 sotto le 12 righe**. Sono specchi
-  auto-generati, e va bene — ma gonfiano il conteggio di copertura del 7%;
-* `magazzino` (35 righe/pagina) e `acquisti` (36) hanno pagine **presenti e
-  sottili**. Coerente con D8: si documenta poco ciò che fa poco.
-
----
-
 ### 🟡 D16 — Test con una data scritta a mano: diventano rossi da soli
 
 > Emerso il 2026-09-23: `vendite/test-nc-rata-unica-v1.sql`, test 6, rosso senza
@@ -1100,7 +1094,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | -------------------------------------- | ------- | ------ | ------------- | ------ |
 | **Catena di verifica (CI)**            | 🔴 alto  | 7,5    | **7,5/10**    | Il cancello tiene dal 09-09, e dal 15-10 la CI ricostruisce il database col modello dei ruoli di sistema (owner `zeroerp_owner`), cioè come lo si installerà. Non sale perché il registro è ancora a 360 mentre l'ultima misura della CI (26-09) ne vede rossi 227: da un mese circa 130 file già verdi sono tollerati come rossi, e una loro regressione non ferma il merge (D7) |
 | **Perimetro dei dati (RLS)**           | 🔴 alto  | 8      | **8/10**      | D2, D3, D13 e Q-1 chiusi; l'ultimo processo che aggirava la RLS (`zeroerp_batch_fatturazione`) è ritirato il 15-10, e il perimetro dell'operatore si calcola una volta per istruzione (D26-2, D36). Non sale per due cose aperte e di sostanza: la catena delle istanze legge sotto RLS (D18) e i blocchi si spengono con una GUC (Q-2). Le due policy inerti di `acquisti` restano a registro (D8) |
-| **Copertura test**                     | 🔴 alto  | 4      | **4,5/10**    | 876 file; sullo scratch ricostruito col modello nuovo **147** rossi (83% verdi, 20-10), la baseline di sviluppo a 6, i file con l'utente `'1'` da 7 a 4. Il mezzo punto è il lavoro sulla fixture. Non di più perché il numero che vale, quello della CI, non è stato rimisurato dal 26-09 (227 su 714), `acquisti` è a zero, e 122 file hanno uno `skip()` che su un DB vuoto conta verde (D7) |
+| **Copertura test**                     | 🔴 alto  | 4      | **4,5/10**    | 887 file; sullo scratch ricostruito col modello nuovo **147** rossi (83% verdi, 20-10), la baseline di sviluppo a 6, i file con l'utente `'1'` da 7 a 4. Il mezzo punto è il lavoro sulla fixture. Non di più perché il numero che vale, quello della CI, non è stato rimisurato dal 26-09 (227 su 714), `acquisti` è a zero, e 122 file hanno uno `skip()` che su un DB vuoto conta verde (D7) |
 | **Postura di sicurezza degli oggetti** | 🟠 medio | 7,5    | **8/10**      | I ruoli di sistema (15-10): un solo proprietario, `zeroerp_job` per i processi, presidio «nessun superuser al lavoro», `zeroerp_log` nella fase dei ruoli (D35). I rubinetti di D6-bis scesi a 16 e 4. Non di più finché Q-2 e D6-bis restano aperti |
 | **Simmetria del dominio**              | 🟠 medio | —      | **non votata** | Che lo strato di comportamento di `acquisti` arrivi dopo è l'ordine di costruzione (§4). Resta vero, ed è in D8, il punto **sul modello**: le decisioni prese su `vendite` (dal 13-10 anche grammatica unica, modelli di documento standard, emissione dell'offerta) valgono anche per `acquisti`, e lì non sono scritte |
 | **Osservabilità dei presidi**          | 🟠 medio | 7      | **7,5/10**    | Ogni riga del presidio dei job dice la sua causa (`brief-db-presidio-job-run-a-chi-tocca`), una spia si spegne solo con un verdetto completo (`brief-db-intermittente-e-verdetto-completo`), il giornale registra il ruolo della corsa, le statistiche hanno un job con autoverifica (D15). Non 8 per il residuo di D10: i processi ritirati nella vista dei job |
@@ -1123,7 +1117,7 @@ ruoli di sistema: il database si installa e si fa girare con i ruoli che avrà i
 la suite pgTAP ferma un merge su un rosso nuovo (D1). ⚠️ Con una cosa scomoda,
 misurata: fuori dalla macchina di sviluppo la suite era rossa per due
 terzi (09-09) e per un terzo alla misura della CI del 26-09 (227 file su 714); lo scratch
-ricostruito col modello nuovo la dà rossa per circa un sesto (147 su 876, 20-10), ma lo scratch non
+ricostruito col modello nuovo la dà rossa per circa un sesto (147 su 887, 20-10), ma lo scratch non
 è la CI. La differenza fra «i test passano» e «le migrazioni sanno ricostruire un sistema che
 passa i test» è tutta lì dentro (D7).
 
@@ -1203,7 +1197,7 @@ rossi in CI.
       di sviluppo nella *fixture*. ✅ Fatto (§7 D7): il perimetro (12-09), il
       triage delle cause e la riga di contesto che costruisce (20/21-09), il BB
       di composizione e i lotti 1 e 2 (22-24/09) — **227 rossi su 714** in
-      CI il 26-09, contro 407 su 601 il 09-09; sullo scratch `zeroerp_ruoli` 147 su 876 (20-10).
+      CI il 26-09, contro 407 su 601 il 09-09; sullo scratch `zeroerp_ruoli` 147 su 887 (20-10).
       ⏳ Resta (§3 D7): la corsa CI che certifica i rientrati (registro **fermo a 360**), i 18
       rossi del lotto 2, i lotti 3 (`pratiche`) e 4 (`vendite`), i file con l'utente
       `'1'` (4 al 23-10), i 5 `ERRORE_FIXTURE` della baseline di sviluppo (6 file al 23-10), due decisioni
@@ -1261,7 +1255,8 @@ rossi in CI.
       update).
 * [ ] **D9-bis** — portare la fase (`_a10_`/`_z90_`) sul 34% di trigger che non
       ce l'ha, o dichiarare che per quelli l'ordine è indifferente.
-* [ ] **D12** — nessuna azione: la documentazione seguirà il dominio.
+* [x] **D12** — ✅ chiusa il 2026-10-23 (Tid): era un'osservazione, non un lavoro; le pagine
+      sottili di `acquisti` crescono con D8 (§7).
 * [ ] **D16** — censire le regole del DB che leggono `current_date` e i pgTAP
       che le attraversano con una data scritta a mano; poi decidere se serve un
       guardrail statico.
@@ -1317,7 +1312,7 @@ rossi in CI.
 
 > Questa sezione è il **rovescio di §3**: qui sta ciò che era un difetto e non lo
 > è più. Un numero che compare in **tutti e due** i posti (D6, D7, D11,
-> D12, D17) non è una ripetizione: in §3 c'è **il lavoro che resta**, qui **quello
+> D17) non è una ripetizione: in §3 c'è **il lavoro che resta**, qui **quello
 > fatto**. ⭐ **D14 non è più in §3**: è chiusa, e ciò che la sua chiusura ha
 > scoperto è una voce nuova: **D15**, le statistiche che non esistono.
 >
@@ -1578,13 +1573,22 @@ e il test 1 di `vendite/test-preventivi-approvazione-prezzo.sql`, un
 `throws_ok(…, NULL, NULL)` che passava con qualunque errore, anche uno della
 fixture (`brief-db-preventivi-congelamento-pricing`).
 
-### ✅ D12 — La quantità di documentazione — chiusa (era il gap di febbraio)
+### ✅ D12 — La documentazione — chiusa il 2026-10-23
 
 1.410 pagine **manuali** contro 1.500 autogenerate: il gap di febbraio («509
 pagine, tre schemi scoperti») non c'è più — `magazzino` 32 pagine, `acquisti` 11,
-viste coperte. Restano i due residui di **forma** (§3 D12): le pagine-specchio
+viste coperte. Restavano due residui di **forma**: le pagine-specchio
 dello `storico` che gonfiano il conteggio, e le pagine presenti ma sottili dei due
 domini non ancora scritti (D8).
+
+✅ **Chiusa per intero il 2026-10-23 (decisione di Tid).** I due residui non chiedevano
+lavoro: le pagine dello `storico` sono specchi auto-generati, ed è giusto che siano corte (sulla
+percentuale di copertura pesano per circa il 7%: si sa, e basta saperlo); le pagine di
+`magazzino` e `acquisti` sono sottili perché i domini fanno poco, e diventano spesse quando se ne
+scrive il comportamento. Scriverle prima vorrebbe dire descrivere funzioni che non esistono. La
+voce restava fra le aperte con una casella che nessuno poteva spuntare: ⇒ chiusa, e il residuo
+vero è **D8**. Lo spessore delle pagine si rilegge con gli indicatori
+([qualita-db-indicatori.md](../qualita-db-indicatori.md) §2, «Documentazione»).
 
 ### ✅ D13 — Il `RETURNING` del billing account sotto RLS — chiuso il 2026-09-13
 

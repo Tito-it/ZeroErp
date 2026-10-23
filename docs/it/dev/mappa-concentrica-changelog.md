@@ -42,6 +42,16 @@ lezioni, gli indicatori stampati da `scripts/indicatori-qualita-be-fe.sh` e la
 scorecard pesata; il punto d'incontro con il lato DB è la mappa §4. Vedi
 [migliorie-generali-BE-FE-da-test-valutazione.md](work-done/migliorie-generali-BE-FE-da-test-valutazione.md).
 
+**Qualità del database — gli indicatori hanno la loro sede.** Lo stesso giorno
+il lato DB prende il documento gemello:
+[qualita-db-indicatori.md](qualita-db-indicatori.md), con le lezioni della
+valutazione DB, gli indicatori stampati da `scripts/indicatori-qualita-db.sh`
+(il repo; con `--catalogo` anche le viste di presidio di dbdev) e la scorecard
+pesata. La valutazione resta aperta in
+[migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md):
+è la lettura zero, e ha ancora voci aperte. La riga «Database» della mappa §4
+è agganciata.
+
 ## 13 ottobre 2026
 
 > Copre il periodo **1 – 13 ottobre**, fotografato al 13-10 alle 23:59 (commit
