@@ -35,6 +35,18 @@
 --    la SOMMA delle rate, che non cambia);
 --  - da quando un documento ha un numero, la sua data non si tocca piu'.
 --
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): attivita', lotto ed
+--   emittente dei registri si COSTRUISCONO. Prima si pescavano «la prima
+--   attivita'», «l'ultimo lotto DRAFT» e «il primo emittente attivo»: su un
+--   database ricostruito da zero non ci sono, e il file moriva nella fixture. Ora
+--   la commessa emittibile la fa dbops.fn_pgtap_crea_commessa (mondo e contesto
+--   compresi), il lotto DRAFT la sua madre, l'attivita' il PULL vero; l'emittente
+--   dei due registri di prova e' quello del mondo.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-3/R-4): la sorgente ROOT la
+--   scrive il builder della commessa (p_con_sorgente_root), non piu' un INSERT
+--   del test; il lotto DRAFT nasce da dbops.fn_pgtap_crea_lotto, del cliente
+--   (p_del_cliente) e col tipo documento della riga di commessa, come prima lo
+--   faceva la madre chiamata col billing account. Asserzioni invariate.
 -- ⚠️ QUESTO FILE NON PROVA IL CANCELLO DI MONOTONIA: quello vive in
 --   fn_get_next_progressivo ed e' collaudato in test-registri-progressivi.sql.
 --   Qui si prova solo la sua ANTICAMERA dentro fn_imposta_data_documento_lotto.
@@ -49,7 +61,12 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 -- Contesto applicativo: il test gira come gira l'applicazione (OPERATORE + RLS
 -- attiva), non come owner.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- pgtap-contesto: escluso — il contesto lo apre dbops.fn_pgtap_crea_commessa (rev
+--   2026-10-24), sull'operatore dell'azienda
+--   che costruisce (fn_pgtap_crea_mondo_cliente, ramo «nessun contesto»).
+CREATE TEMP TABLE tmp_ddoc_comm AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa('data documento', 'PRONTA_FATTURAZIONE',
+                                           p_con_sorgente_root => true);
 
 -- ⚠️ La sessione si forza in UTC APPOSTA: e' il fuso in cui si connette Django
 --   (USE_TZ senza TIME_ZONE in DATABASES), cioe' quello che produceva il
@@ -62,28 +79,43 @@ SELECT plan(17);
 -- ============================================================
 -- 1) Fixture
 -- ============================================================
+-- ⚠️ Il pull PRETENDE una sorgente ROOT: la scrive il builder
+--   (p_con_sorgente_root, sorgente COMMESSA, chiave = id della commessa).
+
+-- ⚠️ Solo un lotto in DRAFT: la fattura nasce in DRAFT e il guard di coerenza
+--   pretende che il lotto sia nello stesso stato. Lo da' dbops.fn_pgtap_crea_lotto
+--   (madre sotto), nello stato iniziale, del cliente e col tipo documento della
+--   riga di commessa; ed e' SOLO del test, quindi il 13 conta la fattura del test.
+CREATE TEMP TABLE tmp_ddoc_lotto AS
+SELECT l.lotto_id
+  FROM (SELECT c.billing_account_id, ca.tipo_doc_fiscale_id
+          FROM tmp_ddoc_comm c
+          JOIN vendite.commesse_attivita ca ON ca.id = c.attivita_id) r,
+       dbops.fn_pgtap_crea_lotto('data documento', 'DRAFT', r.billing_account_id,
+                                 r.tipo_doc_fiscale_id, p_del_cliente => true) l;
+
+-- L'attivita' fatturabile nasce dal PULL vero, col marchio del lotto.
+CREATE TEMP TABLE tmp_ddoc_pull AS
+SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
+         p_commessa_id   => (SELECT commessa_id FROM tmp_ddoc_comm),
+         p_emit_batch_id => (SELECT fl.lock_batch_id FROM vendite.fatturazione_lotti fl
+                              WHERE fl.id = (SELECT lotto_id FROM tmp_ddoc_lotto)));
+
 CREATE TEMP TABLE tmp_ddoc_refs AS
-SELECT (SELECT a.id  FROM vendite.attivita_fatturabili a ORDER BY a.id LIMIT 1) AS attivita_id,
-       -- ⚠️ Solo lotti in DRAFT: la fattura nasce in DRAFT e il guard DEFERRED
-       --   di coerenza pretende che il lotto sia nello stesso stato.
-       (SELECT fl.id FROM vendite.fatturazione_lotti fl
-          JOIN config.stati_doc_fiscale s ON s.id = fl.stato_doc_fiscale_id
-         WHERE s.codice_interno = 'DRAFT'
-         ORDER BY fl.id DESC LIMIT 1)                                           AS lotto_id;
+SELECT af.id AS attivita_id, l.lotto_id
+  FROM vendite.attivita_fatturabili af, tmp_ddoc_lotto l
+ WHERE af.commessa_attivita_id = (SELECT attivita_id FROM tmp_ddoc_comm);
 
 -- Due registri di prova, uno per politica. ⭐ Si creano invece di usare quelli
 -- di catalogo: cosi' il test non dipende dal seed, che e' una DECISIONE di
 -- configurazione e puo' cambiare senza che questo file debba accorgersene.
 -- ⛔ L'emittente del registro e' NOT NULL dal 2026-08-30 (C1-2, 20260830-11):
 --   un registro di numerazione appartiene a UN emittente. Questo file prova la
---   politica della data e i pavimenti, non il perimetro: ne serve uno qualsiasi,
---   e si PRENDE dal catalogo invece di cablarne l'id.
+--   politica della data e i pavimenti, non il perimetro: ne serve uno, ed e'
+--   quello del mondo costruito (rev 2026-10-24: prima «il primo attivo per id»).
 CREATE TEMP TABLE tmp_ddoc_ef AS
-SELECT ef.soggetto_ruolo_id AS emittente_id
-  FROM anagrafiche.emittenti_fiscali ef
- WHERE ef.attivo IS TRUE
- ORDER BY ef.id
- LIMIT 1;
+SELECT c.emittente_soggetto_ruolo_id AS emittente_id
+  FROM tmp_ddoc_comm c;
 
 CREATE TEMP TABLE tmp_ddoc_reg AS
 WITH ins AS (
@@ -109,7 +141,9 @@ SELECT vendite.fn_get_or_create_fattura_header(
 SELECT ok(
   (SELECT reg_oggi FROM tmp_ddoc_reg) IS NOT NULL
   AND (SELECT reg_finemese FROM tmp_ddoc_reg) IS NOT NULL
-  AND (SELECT id FROM tmp_ddoc_f) IS NOT NULL,
+  AND (SELECT id FROM tmp_ddoc_f) IS NOT NULL
+  AND (SELECT count(*) FROM tmp_ddoc_refs) = 1
+  AND (SELECT inserted_rows FROM tmp_ddoc_pull) = 1,
   '1) Fixture: due registri di prova e una fattura in DRAFT');
 
 -- ============================================================

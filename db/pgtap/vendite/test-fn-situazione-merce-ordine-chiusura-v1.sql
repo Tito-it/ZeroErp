@@ -466,7 +466,7 @@ SELECT set_config('app.current_user_id', '999999999', true);
 SELECT is(
   (SELECT count(*) FROM vendite.fn_situazione_merce_ordine(NULL, ARRAY[(SELECT ordine_id FROM tmp_o1)])),
   0::bigint,
-  '12) scope che non vede l''ordine: la situazione sparisce, non esce con dei conti a zero');
+  '12) scope che non vede l''ordine: la situazione sparisce, non esce con dei conti a zero (rosso da owner, che salta la RLS; verde come app)');
 
 SELECT * FROM finish();
 ROLLBACK;

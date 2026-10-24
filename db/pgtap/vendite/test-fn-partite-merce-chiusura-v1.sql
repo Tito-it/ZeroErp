@@ -548,7 +548,7 @@ SELECT set_config('app.current_user_id', '999999999', true);
 SELECT is(
   (SELECT count(*) FROM vendite.fn_partite_merce(ARRAY[(SELECT ddt_id FROM tmp_d2)])),
   0::bigint,
-  '14) scope che non vede il DDT: la partita sparisce, non esce con dei conti a zero');
+  '14) scope che non vede il DDT: la partita sparisce, non esce con dei conti a zero (rosso da owner, che salta la RLS; verde come app)');
 
 SELECT * FROM finish();
 ROLLBACK;

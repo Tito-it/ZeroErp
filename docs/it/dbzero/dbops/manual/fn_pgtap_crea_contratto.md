@@ -13,7 +13,7 @@ Guide: [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test)
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-10-21, richiesta del backend R-1; stati: decisione di Tid D-2)
+(rev 2026-10-21, richiesta del backend R-1; stati: decisione di Tid D-2; rev 2026-10-24: il figlio di un'offerta)
 
 **Un contratto del mondo, in una chiamata sola**: l'azienda con il suo operatore, il cliente e la
 testata nello stato scelto. Torna tutte le chiavi. Serve ai pgTAP e agli smoke Python, che prima
@@ -70,9 +70,50 @@ controllo è il building block [dbops.fn_pgtap_cliente_ba_del_mondo](/dbzero/dbo
 lo stesso di fattura e ordine.
 
 ---
+### 🔁 Periodo, data e listino del test
+
+(rev 2026-10-24, R-2) Dal quinto all'ottavo parametro: `valido_dal`, `valido_al`, la data
+del contratto e il listino. Passano alla madre, che li accetta già: il contratto attivo
+nasce col periodo e il listino che il test vuole, senza ritocchi in bozza. Vuoti: quelli
+che decide la madre, e un contratto attivo senza listino ne riceve uno del mondo.
+
+```sql
+SELECT * FROM dbops.fn_pgtap_crea_contratto(
+           'atto', 'ATTIVO', (SELECT billing_account_id FROM tmp_cliente), NULL,
+           DATE '2022-01-01', DATE '2022-12-31', DATE '2022-01-15',
+           (SELECT listino_id FROM tmp_listino));
+```
+
+⚠️ Con il figlio di un'offerta periodo e listino li decide la push: chiederli insieme
+solleva.
+
+---
+### 🔁 Il quarto parametro: il figlio di un'offerta
+
+In produzione un contratto **figlio di un'offerta** nasce solo dalla push
+`vendite.fn_push_offerta_a_contratto`, che copia dall'offerta listino, indirizzi, righe e
+utility e ne controlla lo stato. Con l'offerta come quarto parametro il builder fa nascere il
+contratto da lì, sul cliente dell'offerta.
+
+```sql
+SELECT * FROM dbops.fn_pgtap_crea_contratto(
+           'figlio', 'ANNULLATO', NULL, (SELECT offerta_id FROM tmp_offerta));
+```
+
+* L'offerta deve essere **accettata**: portarla lì è il caso del test, e se non lo è la push
+  lo dice.
+* Il cliente è quello dell'offerta: un conto di fatturazione diverso come terzo parametro
+  solleva.
+* **Annullare un figlio** riapre un legame (l'offerta da cui nasce), e l'annullo vuole la
+  conferma di chi l'ha visto. Il builder la dà come il backend: conta i legami da
+  `vendite.fn_documento_legami` e li dichiara al verbo d'annullo. Un figlio annullato non
+  consuma l'offerta: dalla stessa offerta ne può nascere un altro.
+
+---
 ### 🚫 Cosa NON scrive
 
-Righe, eccezioni e scheda di fornitura: sono il caso del test.
+Righe, eccezioni e scheda di fornitura: sono il caso del test (un figlio le eredita
+dall'offerta, dalla push).
 
 ---
 ### ⚠️ Il contratto sui vincoli differiti
@@ -82,6 +123,9 @@ Esce con i vincoli **richiusi** (`IMMEDIATE`), come ogni helper di fixture.
 ---
 ### 🧪 Il presidio
 
-`db/pgtap/dbops/test-fn-pgtap-crea-contratto-v1.sql` (8 casi): firma, contratto attivo dal
+`db/pgtap/dbops/test-fn-pgtap-crea-contratto-v1.sql` (14 casi): firma, contratto attivo dal
 nulla con il listino dell'azienda giusta, bozza e annullato sullo stesso cliente, cliente nuovo
-nella stessa azienda, conto di un'altra azienda rifiutato, CESSATO rifiutato.
+nella stessa azienda, conto di un'altra azienda rifiutato, CESSATO rifiutato; il figlio di
+un'offerta annullato col legame dichiarato, un secondo figlio attivo della stessa offerta col
+suo listino, un conto diverso da quello dell'offerta rifiutato; il contratto attivo col
+periodo, la data e il listino del test; periodo o listino insieme all'offerta rifiutati.

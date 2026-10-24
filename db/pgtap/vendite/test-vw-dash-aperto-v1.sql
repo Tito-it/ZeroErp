@@ -1,12 +1,8 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2d): l'area della dashboard e' il codice della sorgente.
--- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
---   questo stesso file. Dichiarazione leggibile dal cancello
---   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
---   «dimenticato», che una nota in prosa non fa.
---   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
---   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): il contratto ATTIVO nasce da dbops.fn_pgtap_crea_contratto (madre di produzione) invece che da un INSERT a mano; date multi-mese e listino in bozza.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-2/R-9): l'azienda A nasce da dbops.fn_pgtap_crea_mondo_cliente (contesto aperto sul suo operatore, whitelist gia' sua: tolta la riscrittura a mano); B ha il suo operatore e il suo cliente e preventivo nascono sotto il suo contesto; il contratto nasce ATTIVO col periodo, la data e il listino dal builder; la commessa nasce da dbops.fn_pgtap_crea_commessa in BOZZA.
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: ALTER TABLE vendite.preventivi FORCE ROW LEVEL SECURITY: il test verifica che
 --   la vista di dashboard resti coerente con la RLS armata.
@@ -66,18 +62,13 @@
 -- ------------------------------------------------------------
 
 BEGIN;
--- ⚠️ QUESTO FILE NON USA script.fn_pgtap_set_contesto_operatore(), a differenza
--- degli altri di vendite, e non e' una dimenticanza.
--- Il test si costruisce il contesto DA SOLO (set_config piu' sotto, e
--- perfino ALTER TABLE ... FORCE ROW LEVEL SECURITY in transazione) perche'
--- cio' che verifica E' lo scope RLS: l'asserzione 13 pretende che il
--- preventivo dell'emittente B risulti invisibile.
--- Imporre un operatore in testa lo romperebbe prima di cominciare: la
--- fixture crea documenti su un emittente derivato dal billing account, che
--- non e' detto stia nella whitelist di quell'operatore — e il guard
--- trgfn_guard_emittente_scope li rifiuterebbe, giustamente.
--- Misurato: con la riga passa da 14 asserzioni a 4.
--- Brief: brief-db-pgtap-runner-rls-baseline §8.
+-- Il contesto e' quello dell'operatore di A, aperto dal mondo; i documenti di
+-- B nascono sotto il contesto dell'operatore di B (il guard
+-- trgfn_guard_emittente_scope rifiuterebbe, giustamente, un documento di B
+-- scritto dall'operatore di A), poi si torna ad A. Cio' che il file verifica
+-- e' lo scope RLS: l'asserzione 13 pretende che il preventivo di B risulti
+-- invisibile all'operatore di A (ALTER TABLE ... FORCE ROW LEVEL SECURITY in
+-- transazione). Brief: brief-db-pgtap-runner-rls-baseline §8.
 
 SELECT plan(14);
 
@@ -85,31 +76,20 @@ SELECT plan(14);
 -- 0) Riferimenti minimi
 -- ============================================================
 -- ⭐ Il mondo si FABBRICA (rev 2026-10-18): emittente A col suo operatore,
---   emittente B, e un cliente per ciascuno, legato al suo emittente. Prima si
---   pescavano «il primo BA con un emittente derivabile» e «un BA di un altro
---   emittente»: su un database ricostruito da zero non ce n'e' nessuno, la
---   fixture moriva su «Nessun emittente fiscale attivo» e il 13 andava in skip.
---   ⚠️ Nessun contesto operatore aperto qui: i builder lavorano da owner, come
---   il resto della fixture (guard emittente in modalita' batch).
+--   emittente B col suo, e un cliente per ciascuno, legato al suo emittente.
+--   Prima si pescavano «il primo BA con un emittente derivabile» e «un BA di
+--   un altro emittente»: su un database ricostruito da zero non ce n'e'.
+-- rev 2026-10-24 (R-9): A e' il mondo del builder, che apre il contesto sul
+--   suo operatore (whitelist su A, scritta dal builder). B si costruisce piu'
+--   sotto, col suo operatore, insieme al suo preventivo.
 CREATE TEMP TABLE tmp_ap_mondo AS
-SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
-
-CREATE TEMP TABLE tmp_ap_cli_a AS
-SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
-    'pgTAP dash aperto A', NULL, (SELECT soggetto_ruolo_id FROM tmp_ap_mondo));
-
-CREATE TEMP TABLE tmp_ap_ef_b AS
-SELECT * FROM dbops.fn_pgtap_crea_emittente();
-
-CREATE TEMP TABLE tmp_ap_cli_b AS
-SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
-    'pgTAP dash aperto B', NULL, (SELECT soggetto_ruolo_id FROM tmp_ap_ef_b));
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('dash aperto A');
 
 CREATE TEMP TABLE tmp_ap_refs AS
 SELECT
-  (SELECT billing_account_id FROM tmp_ap_cli_a) AS billing_account_id,
-  (SELECT utility_id FROM tmp_ap_cli_a) AS utility_id,
-  (SELECT istanza_utility_id FROM tmp_ap_cli_a) AS istanza_utility_id,
+  (SELECT billing_account_id FROM tmp_ap_mondo) AS billing_account_id,
+  (SELECT utility_id FROM tmp_ap_mondo) AS utility_id,
+  (SELECT istanza_utility_id FROM tmp_ap_mondo) AS istanza_utility_id,
   dbops.fn_pgtap_crea_articolo('PGT-DASH-AP') AS articolo_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS prev_accettato_id,
@@ -131,25 +111,13 @@ SELECT
     ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT t.id FROM config.tipi_doc_fiscale t WHERE t.attivo IS TRUE
     ORDER BY t.id LIMIT 1) AS tipo_doc_fiscale_id,
+  -- lo stato in cui nasce la commessa del test (rev 2026-10-24: per codice)
   (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
-    ORDER BY sc.id LIMIT 1) AS stato_commessa_id,
+    WHERE sc.attivo IS TRUE AND sc.codice_interno = 'BOZZA') AS stato_commessa_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   -- Emittente A = quello DERIVABILE dal BA principale (fn_get_emittente_fiscale_pk
   -- e' la funzione con cui i guard emittente<->BA confrontano).
-  (SELECT anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id) FROM tmp_ap_cli_a) AS emittente_fiscale_id,
-  (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.id = (SELECT anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id)
-                     FROM tmp_ap_cli_a)) AS ef_a_sr;
-
--- Emittente B: il SECONDO BA, fabbricato sull'emittente B (il guard vieta un
--- emittente non coerente col BA: serve un BA suo, non «il secondo EF»).
-CREATE TEMP TABLE tmp_ap_refs_b AS
-SELECT c.billing_account_id                                       AS ba_b_id,
-       c.utility_id                                               AS ba_b_utility_id,
-       c.istanza_utility_id                                       AS ba_b_istanza_id,
-       anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id) AS ef_b_id
-  FROM tmp_ap_cli_b c;
+  (SELECT anagrafiche.fn_get_emittente_fiscale_pk(billing_account_id) FROM tmp_ap_mondo) AS emittente_fiscale_id;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL AND articolo_id IS NOT NULL
@@ -261,10 +229,27 @@ SELECT * FROM ins;
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', p.id, r.prev_negativo_cod)
   FROM tmp_ap_prev_neg p, tmp_ap_refs r;
 
--- Preventivo emittente B (per il test scope 13; solo se esiste un secondo BA
--- con emittente derivabile DIVERSO — il guard emittente<->BA del 2026-07-13
--- vieta di appoggiare l'emittente B sul BA di A).
+-- Preventivo emittente B (per il test scope 13; il guard emittente<->BA del
+-- 2026-07-13 vieta di appoggiare l'emittente B sul BA di A).
 -- rev 2026-10-24: nasce DRAFT e arriva ad ACCETTATO per la matrice.
+-- rev 2026-10-24 (R-9): l'azienda B col suo operatore; il cliente e il
+--   preventivo nascono sotto il SUO contesto (il trigger z90 lega il BA a
+--   chi agisce), poi si torna all'operatore di A.
+CREATE TEMP TABLE tmp_ap_ef_b AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_ap_ef_b));
+
+CREATE TEMP TABLE tmp_ap_cli_b AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('pgTAP dash aperto B');
+
+CREATE TEMP TABLE tmp_ap_refs_b AS
+SELECT c.billing_account_id                                       AS ba_b_id,
+       c.utility_id                                               AS ba_b_utility_id,
+       c.istanza_utility_id                                       AS ba_b_istanza_id,
+       anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id) AS ef_b_id
+  FROM tmp_ap_cli_b c;
+
 CREATE TEMP TABLE tmp_ap_prev_b AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -282,18 +267,20 @@ SELECT * FROM ins;
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.preventivi', p.id, 'ACCETTATO')
   FROM tmp_ap_prev_b p;
 
+SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_ap_mondo));
+
 -- Il contratto ATTIVO si costruisce dopo il setup 4 (rev 2026-10-24).
 
 -- Commessa (emittente A) con 1 attivita': visibile in union, MAI nello stock.
+-- rev 2026-10-24: nasce dalla madre via dbops.fn_pgtap_crea_commessa, in
+--   BOZZA (prima: INSERT a mano nel «primo stato per id»). L'attivita' BOZZA
+--   del 2080 resta del test.
+CREATE TEMP TABLE tmp_ap_cmd AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa(
+                 'dash aperto', 'BOZZA', (SELECT billing_account_id FROM tmp_ap_refs));
+
 CREATE TEMP TABLE tmp_ap_commessa AS
-WITH ins AS (
-  INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                emittente_soggetto_ruolo_id, stato_commessa_id)
-  SELECT 'PGTAP-AP-CMD-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.utility_id, r.ef_a_sr, r.stato_commessa_id
-    FROM tmp_ap_refs r
-  RETURNING id)
-SELECT id FROM ins;
+SELECT commessa_id AS id FROM tmp_ap_cmd;
 
 INSERT INTO vendite.commesse_attivita (
   commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
@@ -314,6 +301,9 @@ FROM tmp_ap_refs r;
 -- ============================================================
 -- L'operatore e' quello fabbricato con l'emittente A (rev 2026-10-18): un
 -- operatore OPERATORE non super, che prima si pescava fra quelli esistenti.
+-- rev 2026-10-24 (R-9): la whitelist su A e il contesto li da' il mondo; la
+--   riscrittura a mano di config.user_emittenti_fiscali e il set_config sono
+--   usciti.
 CREATE TEMP TABLE tmp_ap_op AS
 SELECT id.auth_user_id AS user_id
   FROM anagrafiche.identita_digitali id
@@ -332,50 +322,28 @@ SELECT ok(
   '4. Trovato un operatore OPERATORE non-super per lo scope'
 );
 
-SET LOCAL zeroerp.allow_user_emittente_delete_override = 'on';
-DELETE FROM config.user_emittenti_fiscali
- WHERE auth_user_id = (SELECT user_id FROM tmp_ap_op);
-SET LOCAL zeroerp.allow_user_emittente_delete_override = '';
-
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id, meta)
-SELECT o.user_id, r.emittente_fiscale_id,
-       '{"test_scope":"pgtap_dash_aperto"}'::jsonb
-  FROM tmp_ap_op o, tmp_ap_refs r
- WHERE o.user_id IS NOT NULL;
-
-SELECT set_config('app.current_user_id',
-    (SELECT user_id::text FROM tmp_ap_op), true);
-
 -- Contratto ATTIVO multi-mese (de-esploso: 1 riga nello stock).
 -- ⛔ rev 2026-10-24 (brief-modello-documento-vendita N-1): nasceva gia' ATTIVO,
---   senza listino. Ora nasce in DRAFT e si attiva per la matrice, e
---   l'attivazione vuole un listino con una versione in vigore
+--   senza listino. L'attivazione vuole un listino con una versione in vigore
 --   (trgfn_contratti_freeze_listino_versione): lo costruisce il builder, che
---   gli da' l'emittente di chi agisce — per questo il contratto nasce QUI,
---   con l'operatore di A in sessione, e non nella fixture di sopra.
+--   gli da' l'emittente di chi agisce, cioe' l'operatore di A in sessione.
 CREATE TEMP TABLE tmp_ap_listino AS
 SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_ap_refs), 'dash aperto');
 
-CREATE TEMP TABLE tmp_ap_contratto AS
-WITH ins AS (
-  INSERT INTO vendite.contratti (
-    numero, billing_account_id, istanza_utility_id, utility_id,
-    valido_dal, valido_al, data, listino_id,
-    emittente_fiscale_id, meta)
-  SELECT 'PGTAP-AP-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
-         r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date, NULL,
-         (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
-         (SELECT listino_id FROM tmp_ap_listino),
-         COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
-                  r.emittente_fiscale_id),
-         jsonb_build_object('test_scope','pgtap_dash_aperto')
-    FROM tmp_ap_refs r
-  RETURNING id)
-SELECT * FROM ins;
+-- ⭐ rev 2026-10-24 (R-2): il contratto nasce dal builder, dalla madre di
+--   produzione (numero, indirizzo di default), sul cliente di A, gia' ATTIVO
+--   col periodo multi-mese (da due mesi fa, aperto), la data e il listino del
+--   test.
+CREATE TEMP TABLE tmp_ap_k AS
+SELECT * FROM dbops.fn_pgtap_crea_contratto(
+                 'pgTAP dash aperto', 'ATTIVO', (SELECT billing_account_id FROM tmp_ap_refs), NULL,
+                 (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
+                 NULL,
+                 (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
+                 (SELECT listino_id FROM tmp_ap_listino));
 
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.contratti', c.id, 'ATTIVO')
-  FROM tmp_ap_contratto c;
+CREATE TEMP TABLE tmp_ap_contratto AS
+SELECT contratto_id AS id FROM tmp_ap_k;
 
 -- ============================================================
 -- 5) COMMESSE fuori dallo stock

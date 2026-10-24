@@ -46,6 +46,11 @@
 -- 30) fn_stato_sorgente: chiave malformata -> UNKNOWN senza errore (niente 22P02)
 -- 31) fn_stato_sorgente: uid di un preventivo col tipo ORDINE_VENDITA (chiave id)
 --     -> UNKNOWN
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-4): la commessa dei link
+--   «non risolti» si costruisce con dbops.fn_pgtap_crea_commessa (prima era «la
+--   prima commessa del database») e il soggetto delle pratiche e' il cliente
+--   costruito (prima «il primo soggetto per id»): su un database ricostruito
+--   da zero nessuno dei due c'e'.
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i preventivi nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
 --   gia' EMESSO/ACCETTATO/ANNULLATO).
@@ -427,6 +432,13 @@ SELECT throws_like(
 -- coerenza-flusso scatta solo se valorizzato, e la mappa vw_pratica_doc_sorgente
 -- ignora flusso_id (considera tutti i link della pratica).
 -- ============================================================
+-- rev 2026-10-24 (Q-4): la commessa si COSTRUISCE, sul cliente della fixture
+--   e nell'azienda di chi agisce (la madre vendite.fn_get_or_create_commessa).
+--   ⛔ Si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_anc_commessa AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa(
+  'PSS', NULL, (SELECT billing_account_id FROM tmp_cli_pss));
+
 CREATE TEMP TABLE tmp_anc_refs AS
 SELECT
   -- ⚠️ L'emittente si DERIVA da chi agisce, non si pesca: da quando le viste
@@ -436,7 +448,8 @@ SELECT
   --   Oggi i due valori coincidono per caso — un solo emittente ha documenti —
   --   e proprio per questo il test passava: coincidenza, non costruzione.
   script.fn_pgtap_emittente_operatore() AS emittente_id,
-  (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1)                    AS soggetto_id,
+  -- rev 2026-10-24 (Q-4): il cliente costruito, non «il primo soggetto».
+  (SELECT soggetto_id FROM tmp_cli_pss)                                        AS soggetto_id,
   (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA')       AS st_aperta,
   (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE')   AS priorita_id,
   (SELECT id FROM config.sorgenti WHERE codice_interno = 'PREVENTIVO')         AS src_preventivo,
@@ -450,7 +463,9 @@ SELECT
   -- guard del 2026-07-18 — e il commento diceva gia' "mima la commessa":
   -- ora la mima davvero, invece di falsificarla.
   (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA')           AS src_commessa,
-  (SELECT id::text FROM vendite.commesse ORDER BY id LIMIT 1)                  AS commessa_uid_reale;
+  -- rev 2026-10-24 (Q-4): la commessa costruita (key_selector 'id'), non
+  --   «la prima commessa del database».
+  (SELECT commessa_id::text FROM tmp_anc_commessa)                             AS commessa_uid_reale;
 
 CREATE TEMP TABLE tmp_anc_tp AS
 WITH ins AS (

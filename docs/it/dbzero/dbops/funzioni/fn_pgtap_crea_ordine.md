@@ -57,23 +57,13 @@ BEGIN
             p_stato_codice_interno;
     END IF;
 
-    SELECT m.emittente_fiscale_id, m.emittente_soggetto_ruolo_id,
-           m.auth_user_id, m.billing_account_id, m.istanza_utility_id,
-           m.cliente_soggetto_ruolo_id, m.utility_id
+    SELECT c.emittente_fiscale_id, c.emittente_soggetto_ruolo_id,
+           c.auth_user_id, c.billing_account_id, c.istanza_utility_id,
+           c.cliente_soggetto_ruolo_id, c.utility_id
       INTO v_ef_id, v_ef_sr_id, v_user_id, v_ba_id, v_ist_id,
            v_cli_sr_id, v_utility
-      FROM dbops.fn_pgtap_crea_mondo_cliente(p_etichetta) m;
-
-    -- Il terzo parametro (rev 20261022-10): il cliente di un mondo gia'
-    -- costruito, per il secondo ordine dello stesso cliente. Il building
-    -- block lo verifica dell'azienda di chi agisce e ne torna le chiavi.
-    IF p_billing_account_id IS NOT NULL THEN
-        SELECT c.billing_account_id, c.istanza_utility_id,
-               c.cliente_soggetto_ruolo_id, c.utility_id
-          INTO v_ba_id, v_ist_id, v_cli_sr_id, v_utility
-          FROM dbops.fn_pgtap_cliente_ba_del_mondo(
-                   p_billing_account_id, v_ef_sr_id, 'fn_pgtap_crea_ordine') c;
-    END IF;
+      FROM dbops.fn_pgtap_cliente_del_builder(
+               p_etichetta, p_billing_account_id, 'fn_pgtap_crea_ordine') c;
 
     SELECT v.id INTO v_valuta_id
       FROM config.valute v ORDER BY v.id LIMIT 1;
@@ -103,7 +93,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_ordine(p_etichetta text, p_stato_codice_interno character varying, p_billing_account_id bigint)
-IS 'Fixture pgTAP: un ORDINE di vendita del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata nello stato scelto alla nascita, con l''emittente del mondo, il suo billing account, la sua utility e la prima valuta del catalogo. Numero, anno, registro e fatturazione_trigger li assegnano i trigger del dominio, come in produzione. ⛔ NON scrive righe: sono il caso del test. ⛔ Non cambia stato: vendite.ordini ha un guard di transizione, lo stato si sceglie col secondo parametro. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti. ⚠️ Terzo parametro (rev 2026-10-22, 20261022-10, richiesta BE R-3): il billing account di un cliente gia'' costruito, per il secondo ordine dello stesso cliente; verificato dell''azienda di chi agisce da dbops.fn_pgtap_cliente_ba_del_mondo, e un BA di un''altra azienda solleva.';
+IS 'Fixture pgTAP: un ORDINE di vendita del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata, con l''emittente del mondo, il suo billing account, la sua utility e la prima valuta del catalogo. Numero, anno, registro e fatturazione_trigger li assegnano i trigger del dominio, come in produzione. ⭐ Lo stato: l''ordine NASCE nello stato iniziale (trigger della nascita) e, se il secondo parametro ne chiede un altro, ci arriva per la matrice con dbops.fn_pgtap_porta_a_stato, sotto i guard veri; un passaggio che pretende cio'' che il builder non scrive (le righe, per la conferma) si ferma: il test chiede la bozza, scrive le righe e porta avanti da se''. Uno stato inesistente solleva prima di costruire. ⛔ NON scrive righe: sono il caso del test. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti. ⚠️ Terzo parametro (rev 2026-10-22, 20261022-10, richiesta BE R-3): il billing account di un cliente gia'' costruito, per il secondo ordine dello stesso cliente; verificato dell''azienda di chi agisce da dbops.fn_pgtap_cliente_ba_del_mondo, e un BA di un''altra azienda solleva. Rev 2026-10-24 (20261024-23, brief-modello-documento-vendita N-1): nascita in bozza; COMMENT allineato dal 20261024-29.';
 ```
 
 </div>

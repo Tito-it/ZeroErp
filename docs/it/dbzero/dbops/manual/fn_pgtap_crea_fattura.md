@@ -11,7 +11,7 @@ Guide: [pgTAP — come si scrive un test](/guide/pgtap-come-si-scrive-un-test) �
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-09-23 — D7, lotto 1)
+(rev 2026-09-23 — D7, lotto 1; rev 2026-10-24: nascita in bozza e fattura senza snapshot)
 
 **Una fattura del mondo, in una chiamata sola**: l'azienda con il suo operatore, il
 cliente fatturabile, la configurazione della coppia (emittente, utility), il registro
@@ -57,15 +57,54 @@ building block [dbops.fn_pgtap_cliente_ba_del_mondo](/dbzero/dbops/manual/fn_pgt
 lo stesso di contratto e ordine.
 
 ---
+### 🔁 Lo stato: nasce in bozza, poi si porta avanti
+
+Dal 2026-10-24 ogni documento nasce nel suo stato iniziale. La fattura del builder nasce in
+bozza e, se il test chiede un altro stato, ci arriva per la **matrice dei passaggi**
+(`dbops.fn_pgtap_porta_a_stato`), sotto i controlli veri. Per uscire dalla bozza una fattura
+vuole indirizzi e intestazione congelati: il builder li scrive coi building block, come fa la
+fatturazione prima di emettere.
+
+---
+### 🔁 Quarto e quinto parametro: fuori bozza, senza gli snapshot
+
+Alcuni test vogliono proprio una fattura **già fuori bozza ma senza indirizzi**, o **senza
+intestazione**: è il caso che provano (il controllo d'uscita dalla bozza, il blocco dei dati
+collegati, l'intestazione mancante). Il builder la costruisce così:
+
+```sql
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+           'nuda', 'DEFINITIVA', NULL,
+           true,    -- senza indirizzi
+           true);   -- senza intestazione
+```
+
+La fattura esce dalla bozza completa, si **spoglia** nell'ultimo stato in cui non è ancora
+congelata (lo dice il vocabolario degli stati, colonna `congela_fiscale`: oggi «Emessa») e poi
+arriva allo stato chiesto. Chiedere di spogliare una fattura che resta in bozza solleva: la
+bozza nasce già senza.
+
+---
+### 🔁 Dal sesto all'ottavo parametro: minimo, totale a pagare, termine
+
+(rev 2026-10-24, R-5) Il flag `minimo`, il totale da pagare e il termine di pagamento si
+scrivono **alla nascita**, nell'inserimento della testata: i test dei fondi li fissano lì, e un
+ritocco dopo la nascita sarebbe una strada che il dominio non fa. Vuoti: `minimo` falso,
+totale e termine vuoti, come prima.
+
+**Nono parametro** (rev 2026-10-24): `p_senza_utility`, la fattura nasce **senza utility**
+(la colonna lo ammette, ed è un caso dei test dei fondi). Una fattura con un'utility
+*diversa* da quella del cliente resta scritta dal test: compare in un file solo.
+
+---
 ### 🚫 Cosa NON scrive, e il criterio è uno
 
 Entra ciò che ha una **trappola d'ordine**, non ciò che serve spesso:
 
 * **righe, scadenze, contabili, movimenti**: sono il caso del test, e ognuno dei nove
   file li scrive coi propri importi;
-* **il cambio di stato**: `vendite.fatture` ha un guard di transizione, e una fixture che
-  lo attraversasse proverebbe quello invece del proprio caso. Lo stato si sceglie alla
-  nascita, col secondo parametro;
+* **righe con IVA, scadenze e numero** anche fuori bozza: il builder scrive solo ciò che
+  l'uscita dalla bozza pretende (indirizzi e intestazione);
 * **i cataloghi** (tipo documento, stato, valuta): su un database ricostruito ci sono, e
   si scelgono con un ordinamento stabile.
 
@@ -78,6 +117,8 @@ della finestra differita la riapre subito dopo e lo dichiara in testa al file.
 ---
 ### 🧪 Il presidio
 
-`db/pgtap/dbops/test-fn-pgtap-crea-fattura-v1.sql` (8 casi) pinna il **contratto**: la
-testata esiste, il registro è dell'azienda di chi agisce, la coppia è configurata, lo
-stato è quello chiesto, il terzo parametro riusa il cliente, e uno stato inesistente parla.
+`db/pgtap/dbops/test-fn-pgtap-crea-fattura-v1.sql` (15 casi) pinna il **contratto**: la
+testata esiste, il registro è dell'azienda di chi agisce, lo stato è quello chiesto, il terzo
+parametro riusa il cliente, uno stato inesistente parla; fuori bozza indirizzi e intestazione
+ci sono, e con la spoliazione mancano (tutti e due, o i soli indirizzi); spogliare una bozza
+parla; senza i tre valori come prima, con i tre valori scritti alla nascita; la fattura senza utility.

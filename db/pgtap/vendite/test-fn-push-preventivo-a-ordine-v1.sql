@@ -4,6 +4,7 @@
 -- pgtap-runner-motivo: CREATE TRIGGER su vendite.preventivi — fault injection sulla transizione a
 --   EVASO, per dimostrare che il push e' atomico. Il ruolo applicativo ha la
 --   DML ma non il privilegio TRIGGER, e non deve averlo.
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): i tre preventivi vengono da dbops.fn_pgtap_crea_preventivo (cliente, emittente e testata costruiti, nascita in bozza) e l'articolo MERCE si costruisce con la natura alla nascita; prima billing account, emittente e articolo erano «i primi per id» del database (su uno scratch ricostruito il primo articolo e' un onere, che la natura merce giustamente rifiuta).
 -- pgTAP test per Zero ERP
 --
 -- Test: vendite.fn_push_preventivo_a_ordine — ramo ORDINE dello split preventivo
@@ -69,38 +70,29 @@ SELECT ok(
 -- ============================================================
 -- Fixture: riferimenti + articolo MERCE non composito
 -- ============================================================
+-- ⭐ rev 2026-10-24 (Q-2/Q-4): i tre preventivi nascono qui, in bozza, dal
+--   builder (azienda dell'operatore, un cliente costruito per ciascuno: il
+--   test non dipende dal cliente). ⛔ Cio' che il builder scrive si legge in
+--   un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_prev_b AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('push ordine');
+CREATE TEMP TABLE tmp_prev_draft_b AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('push ordine draft');
+CREATE TEMP TABLE tmp_prev_atom_b AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('push ordine atom');
+
 CREATE TEMP TABLE tmp_refs AS
 SELECT
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-      AND ba.soggetto_ruolo_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-    ORDER BY a.id LIMIT 1) AS articolo_id,
+  -- ⛔ rev 2026-10-24: l'articolo si COSTRUISCE, MERCE (destinazione ORDINE)
+  --   non composito, con la natura alla nascita. Prima era «il primo per id»
+  --   del catalogo, ricollocato a MERCE con un UPDATE: da zero il primo e' un
+  --   onere, e un onere non puo' essere merce.
+  dbops.fn_pgtap_crea_articolo('PGT-PUSHORD-MERCE', false,
+      p_natura_vendita_id => (SELECT id FROM config.nature_vendita
+                               WHERE codice_interno = 'MERCE')) AS articolo_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
-  (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_draft_id,
-  (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice_interno = 'EVASO' AND s.attivo IS TRUE LIMIT 1) AS stato_evaso_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
-  (SELECT id FROM config.nature_vendita WHERE codice_interno = 'MERCE') AS natura_merce_id;
-
--- Articolo classificato MERCE (destinazione ORDINE) per il test.
-UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tmp_refs)
- WHERE id = (SELECT articolo_id FROM tmp_refs);
+    WHERE s.codice_interno = 'EVASO' AND s.attivo IS TRUE) AS stato_evaso_id,
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id;
 
 -- Preventivo ACCETTATO + 1 riga MERCE (percorso happy).
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): i due
@@ -108,19 +100,7 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tm
 --   poi passano ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
 --   righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_prev AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-PUSHORD', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_push_ordine'), r.emittente_fiscale_id
-    FROM tmp_refs r
-  RETURNING id, uid
-)
-SELECT * FROM ins;
+SELECT b.preventivo_id AS id, b.preventivo_uid AS uid FROM tmp_prev_b b;
 
 CREATE TEMP TABLE tmp_riga AS
 WITH ins AS (
@@ -139,35 +119,11 @@ END $x$;
 
 -- Preventivo DRAFT (per test 7).
 CREATE TEMP TABLE tmp_prev_draft AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-PUSHORD-DRAFT', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_push_ordine_draft'), r.emittente_fiscale_id
-    FROM tmp_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT b.preventivo_id AS id FROM tmp_prev_draft_b b;
 
 -- Preventivo ACCETTATO + riga MERCE dedicato al test di atomicita' (8).
 CREATE TEMP TABLE tmp_prev_atom AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev, billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
-    fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
-  SELECT 'PGTAP-PUSHORD-ATOM', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
-         DATE '2080-01-01', false, false,
-         jsonb_build_object('test_scope','pgtap_push_ordine_atom'), r.emittente_fiscale_id
-    FROM tmp_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT b.preventivo_id AS id FROM tmp_prev_atom_b b;
 
 INSERT INTO vendite.preventivi_righe (
     preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo, meta)

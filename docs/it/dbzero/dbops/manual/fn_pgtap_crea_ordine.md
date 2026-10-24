@@ -57,15 +57,20 @@ regola scritta più volte (regola del 2): ora ha una sede.
 ---
 ### 🚫 Cosa NON scrive
 
-* **Le righe**: sono il caso del test.
-  ⚠️ Dal 2026-10-08 le righe si scrivono **solo in bozza**
-  (`brief-db-righe-e-componenti-debiti-residui`, D-1): un ordine nato già `CONFERMATO`
-  non prende righe. Se servono, il ordine nasce `DRAFT`, il test gli scrive le righe, e
-  lo stato lo porta [`dbops.fn_pgtap_porta_a_stato`](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato).
-  Lo stato alla nascita resta giusto per una testata **senza** righe.
-* **Il cambio di stato**: l'ordine ha un guard di transizione, e una fixture che lo
-  attraversasse proverebbe quello invece del proprio caso. Lo stato si sceglie alla
-  nascita, col secondo parametro; uno stato che non esiste viene rifiutato per nome.
+* **Le righe**: sono il caso del test. Si scrivono **solo in bozza**
+  (`brief-db-righe-e-componenti-debiti-residui`, D-1, 2026-10-08).
+
+---
+### 🔁 Lo stato: nasce in bozza, poi si porta avanti
+
+(rev 2026-10-24, `brief-modello-documento-vendita` N-1)
+
+Un documento nasce solo nel suo stato iniziale. L'ordine del builder nasce in bozza e, se il
+secondo parametro chiede un altro stato, ci arriva per la **matrice dei passaggi**
+([`dbops.fn_pgtap_porta_a_stato`](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato)), sotto i
+controlli veri. Un passaggio che pretende ciò che il builder non scrive (le righe, per la
+conferma) qui si ferma: allora il test chiede la bozza, scrive le righe e porta avanti da sé.
+Uno stato che non esiste viene rifiutato per nome, prima di costruire.
 
 ---
 ### ⚠️ Il contratto sui vincoli differiti

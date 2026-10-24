@@ -2,9 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-24
 
-**Riparte: il team DB**, con Q-2 … Q-4 (decise da Tid il 2026-10-24). Il giro BE della richiesta
-(§4-quinquies) è fatto, da committare.
-Primo giro chiuso lato DB il 2026-10-24: applicato, pgTAP verdi.
+**Riparte: il team BE** (le due sonde di firma sulle firme FINALI, §4-septies/octies «Richiesta al team
+BE»), poi il team DB con il punto 3. Giri 1-4 chiusi
+lato DB il 2026-10-24: `20261024-26` … `-42` applicati da Tid (l'ultimo blocco, `-37` … `-42`, alle 23:50 su
+dbdev e scratch), corsa pgTAP come app **verde** (Tid, 2026-10-24).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -16,14 +17,19 @@ Primo giro chiuso lato DB il 2026-10-24: applicato, pgTAP verdi.
 | 2-quinquies | ✅ team DB | Primo giro scritto e provato: il BB della nascita su vendite e acquisti, 9 funzioni e 3 builder senza copie, 48 pgTAP portati, la richiesta al team BE | §4-quinquies | 2-quater |
 | 2-sexies | ✅ **Tid** | Apply di `20261024-07` … `-25` e corsa pgTAP: verdi (2026-10-24); Q-1 decisa (B) | §4-quinquies | 2-quinquies |
 | 2-sexies-bis | ✅ **Tid** | Q-2 … Q-4, decise il 2026-10-24 | §4-quinquies | — |
-| 2-sexies-ter | team DB | Q-2 (tre builder), Q-3 (debito di coerenza lotto/fatture), Q-4 (mondo costruito al posto del «primo billing account»): solo pgTAP e builder `dbops`, nessuna ricaduta BE/FE | §4-quinquies | 2-sexies-bis |
+| 2-sexies-ter | ✅ team DB | Q-2 (tre builder estesi, non nuovi: Tid), Q-3, Q-4: `20261024-26` … `-28`, 28 pgTAP portati, presidi estesi | §4-sexies | 2-sexies-bis |
+| 2-sexies-quater | ✅ **Tid** | Corsa pgTAP (come app) del secondo giro; R-1 (Q-3: la «definitiva» ferma nel lotto); i candidati e i residui | §4-sexies | 2-sexies-ter |
 | 2-septies | ✅ team BE | Richiesta 1-5 fatta il 2026-10-24: policy e ripiego del codice nuovo, i 5 service e i loro repository senza lo stato iniziale, test e smoke portati alla nascita in bozza; revisione critica dello stesso giro (punto 6) | §4-quinquies | 2-sexies |
+| 2-octies | team BE | Le due sonde `richiedi_db_provvisto` sulle firme FINALI dei builder (§4-septies): oggi i due test Django SALTANO | §4-septies | 2-nonies |
+| 2-nonies | ✅ team DB / **Tid** | Terzo giro: debiti emersi chiusi, R-1 … R-6 e R-9 (`-29` … `-36`); applicati | §4-septies | 2-sexies-quater |
+| 2-decies | ✅ team DB / **Tid** | Quarto giro: il pezzo comune (nessun cliente in più nei builder) e i builder delle fixture ripetute (`-37` … `-42`); applicati da Tid alle 23:50, corsa come app verde | §4-octies | 2-nonies |
 | 3 | team DB | Il §2, corretto con le decisioni, diventa la guida `docs/it/guide/modello-documento-di-vendita.md`; le guide `gestione-*.md` rimandano lì | §2 | 2 |
 | 4 | team DB + BE | Il piano: ogni documento portato al modello **tutto in una volta**, un documento per giro | §5 | 3 |
 | 5 | Tid | Fine del fermo dei temi trasversali (PROJECT_CONTEXT) | — | 3 |
 
-Decisioni aperte di Tid: nessuna sul primo giro (Q-1 … Q-4 decise). Lavoro da committare: il giro BE
-(`dev/backend-tid`, §4-quinquies «Fatto dal team BE») e questo documento.
+Decisioni aperte di Tid: nessuna. Lavoro da committare:
+giri 2-4 lato DB (`dev/db-tid`: changeSet `-26` … `-42`, i pgTAP portati, i presidi, la doc) e questo
+documento.
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-21. **A chi:** Tid; poi team DB e BE.
 > **Origine:** D2 e D3 di [brief-be-verifica-documentazione-api](../work-done/brief-be-verifica-documentazione-api.md)
@@ -398,6 +404,267 @@ come owner):
 
 Restano fixture di test che scrivono lo stato iniziale esplicito (`DRAFT`/`BOZZA`) in un INSERT: il
 trigger le fa passare, e non sono copie della regola in codice di prodotto.
+
+### 4-sexies. Secondo giro: Q-2 … Q-4 (2026-10-24)
+
+**Verifica del giro BE, prima di partire.** Il commit `993dd7150` (PR #1936) fa i punti 1-5 della
+richiesta: nessun service passa più lo stato in creazione. I `get_stato_id_by_codice` rimasti servono
+al cambio di stato (giro M-1), non alla nascita.
+
+**La scelta (Tid, 2026-10-24: «estendi i builder esistenti»).** Due dei tre builder proposti in Q-2
+esistevano già in parte (`fn_pgtap_crea_commessa` + `_commessa_attivita`; `fn_pgtap_crea_contratto` con
+ATTIVO e BA): un builder nuovo accanto sarebbe stato una seconda copia. Si estendono i tre esistenti,
+parametri in coda, DROP + CREATE:
+
+| # | Builder | Cosa aggiunge |
+| --- | --- | --- |
+| `-26` | `dbops.fn_pgtap_crea_commessa` | stato da raggiungere (per la matrice), BA del test (verificato dal BB), `p_con_attivita` (di default solo fuori bozza: l'uscita la pretende); RETURNS + `attivita_id`, `stato_commessa_id`. La sorgente ROOT resta del test |
+| `-27` | `dbops.fn_pgtap_crea_fattura` | `p_spoglia_indirizzi`, `p_spoglia_intestazione`: la fattura si spoglia nell'ultimo stato non congelato del percorso (`congela_fiscale`, letto dal vocabolario: oggi EMESSA), poi arriva allo stato chiesto. Il COMMENT, stantio dal `-25`, riscritto |
+| `-28` | `dbops.fn_pgtap_crea_contratto` | `p_offerta_id`: il figlio nasce dalla push `vendite.fn_push_offerta_a_contratto` (in produzione nasce solo così; `fn_create_contratto` non accetta l'offerta), sul cliente dell'offerta. Annullato, dichiara i legami da `vendite.fn_documento_legami`, come il backend |
+
+Presidi estesi: commessa 6 → 11 test, fattura 8 → 12, contratto 8 → 11. Doc: le tre pagine `manual` e
+la tabella dei builder in `pgtap-come-si-scrive-un-test.md` (era ferma a «stato scelto alla nascita»).
+
+**I 28 pgTAP portati** (porting in cinque gruppi):
+
+| Gruppo | File | Prima | Dopo |
+| --- | --- | --- | --- |
+| Commessa emittibile (Q-2) | `af-emessa-non-lockata-reset-e-riporto-v1`, `pull-non-prende-trattenuti-v1`, `select-perimetro-consegnato-v1`, `specchio-lane-diagnostica-v1`, `vw-commesse-attivita-emittibilita-v1`, `ordini-guard-transizione-v1` (solo la testata), `diagnostica-gruppi-fatturabili-v1` (+Q-4) | 6 verdi, 1 rosso | 7 verdi |
+| Fattura senza snapshot (Q-2, Q-3) | `fattura-guard-uscita-draft-v1`, `snapshot-intestazione-fattura-v1`, `snapshot-indirizzi-lotto-v1`, `fattura-satelliti-lock-congelamento-v1` | 1 verde, 3 rossi | 4 verdi |
+| Contratto e dashboard (Q-2, Q-4) | `vw-dash-backlog-v1`, `vw-dash-fatturazione-v1` (il figlio dalla push), `vw-dash-aperto-v1`, `dbops/test-fn-apply-chiusura-scadenze-v1`, `vw-dash-competenza-gruppi-v1`, `vw-dash-competenza-gruppi-riferimento-sorgente-v1`, `emissione-mirata-gruppi-fatturabili-v1` | 2 verdi, 5 rossi | 7 verdi |
+| Preventivi (Q-4) | `fn-crea-revisione-preventivo`, `fn-list-preventivi-da-pushare-v1`, `-v2`, `vw-dash-preventivi-revisione-attiva`, `vw-preventivi-superata-vs-abortito-v1` | 5 rossi | 5 verdi |
+| Fondi fattura (Q-4) | `fondi-fattura`, `fondi-fattura-lotto`, `fondo-fattura-cancellazione`, `fondo-fattura-eseguito`, `fondi-fattura-governo` (anche il test 2, rosso da prima del giro) | 5 rossi | 5 verdi |
+
+**Attese cambiate, dichiarate nei file.** Nessun valore atteso delle asserzioni sul caso. Cambiano le
+asserzioni di fixture (il test 0 o il test 2), che contavano le righe delle temp table o pescavano il
+catalogo: ora contano le righe costruite, nella forma voluta. In `vw-dash-preventivi-revisione-attiva`
+e `vw-preventivi-superata-vs-abortito-v1` il test 2 pescava «il primo OPERATORE» e riscriveva la sua
+whitelist: ora è l'operatore del mondo, e l'asserzione è più stretta.
+
+**Come è provato** (scratch `zeroerp_ruoli`, come owner):
+
+* prima dell'apply: SQL estratto dai tre changeSet in transazione annullata; nessun doppione di firma,
+  EXECUTE all'app, `plpgsql_check` pulito, i due SQL della CI (`riferimenti_morti`,
+  `codice_errore_strutturato`) e i guardrail statici verdi; i 33 chiamanti dei tre builder identici
+  prima e dopo;
+* dopo l'apply di Tid (22:31): 64 file (i 28 portati, i 4 presidi, i 33 chiamanti), **63 verdi**;
+  l'unico rosso, `test-annullo-documento-con-legami-v1` (29/30), è identico a prima del giro;
+* ⚠️ non provato come app: la corsa di Tid. `test-diagnostica-gruppi-fatturabili-v1` gira come app
+  (senza marcatore owner).
+
+**Aperti, per Tid:**
+
+* **R-1 (Q-3): la «definitiva» dentro il lotto in bozza.** La decisione diceva «la fixture allinea lo
+  stato delle fatture a quello del lotto prima di chiudere». Non si può: il caso del file (test 3, 4,
+  8) È una fattura DEFINITIVA in un lotto DRAFT, e una DEFINITIVA non torna in bozza; coi vincoli
+  IMMEDIATE l'incoerenza scatta già all'INSERT del ponte. Il guard di coerenza ammette fuori passo solo
+  le fatture `critical`. Il porting l'ha fatta entrare nel lotto **già ferma**: una segnalazione `C`
+  in `vendite.fatture_log` (il flag lo accende il trigger z90 vero, non la fixture); il giro la salta
+  per lo stato, non per il flag, quindi i test misurano la stessa cosa. DEFERRED tolto, file tutto
+  IMMEDIATE, guard esercitato (controprova: senza la segnalazione il file si ferma sul guard).
+  ⚠️ Se «la definitiva non ferma le altre» deve valere anche per una fattura NON critical, è il guard
+  di coerenza a non ammetterlo: è un tema di modello, non di fixture. Da confermare.
+* **Candidati a builder** (fixture ripetute che nessun builder copre; non scritti):
+  * R-2: contratto ATTIVO con periodo e listino del test (bozza dal builder, UPDATE di date/listino,
+    poi la matrice), 5 file delle dashboard;
+  * R-3: la sorgente ROOT della commessa, 3 file;
+  * R-4: il lotto DRAFT di fixture con l'esito che lo trattiene, 5 file;
+  * R-5: il blocco «mondo + registro + catalogo» dei fondi (in pratica `fn_pgtap_crea_fattura` senza
+    la fattura), 4 file; e `fn_pgtap_crea_fattura` non prende `minimo`, `totale_a_pagare`,
+    `termine_pagamento_id`: le quattro fatture dei fondi restano INSERT a mano;
+  * R-6: revisioni di preventivo con numero e rev fissati; `fn_pgtap_crea_preventivo` non accetta né
+    restituisce il numero;
+  * R-7: un secondo BA sullo stesso ruolo, su un'istanza nuova (`snapshot-indirizzi-lotto` lo scrive
+    con `anagrafiche.fn_crea_billing_account` in una finestra differita);
+  * R-8: un cliente senza indirizzi d'ambito FATTURA (i builder scrivono sempre il FATT generico);
+  * R-9: il blocco «mondo + operatore + whitelist riscritta» delle dashboard.
+* **Difetti dei builder, non corretti:** con il BA del test, `fn_pgtap_crea_commessa` e
+  `fn_pgtap_crea_contratto` costruiscono comunque un cliente che non usano (chiamano
+  `fn_pgtap_crea_mondo_cliente` prima): innocuo, ma le viste globali vedono un cliente in più. Il
+  COMMENT di `fn_pgtap_crea_preventivo` è fermo a prima del `-24` («stato scelto alla nascita»).
+  `fn_pgtap_crea_preventivo` e `fn_pgtap_crea_fattura` scelgono valuta e tipo documento «il primo per
+  id». L'attività di `fn_pgtap_crea_commessa_attivita` ha `valuta_id` NULL (le fixture a mano la
+  valorizzavano).
+
+**Residui fuori dal giro** (debito noto, non curato qui):
+
+* `test-ordini-guard-transizione-v1`: la fixture dell'ordine pesca ancora emittente e soggetto «il
+  primo per id»;
+* le commesse di `vw-dash-aperto`, `-backlog`, `-fatturazione` nascono ancora da INSERT a mano;
+* `CANONE_NON_GENERATO`: il commento e il test 10 di `vw-dash-backlog` lo dichiarano, ma nessuna vista
+  né funzione lo produce (c'è solo nel seed di `config.motivi_fermo`). Il test resta vero per un altro
+  motivo (il contratto è fuori dal backlog);
+* rossi sullo scratch per la pesca del primo BA, NON portati in questo cantiere: `test-fatturazione-
+  reset-lotto-draft`, `test-fatture-atti-v1`, `test-resi-rinunce-scenario-v1`,
+  `test-vw-preventivi-smistamento-v1`, `test-genera-scadenze-lotto-v1`, `test-arrotondamento-ambito-
+  idempotenza-v1`, `test-chiave-fattura-tre-specchi-v1`, `test-data-documento-v1`,
+  `test-fn-push-preventivo-a-ordine-v1` (esito del primo giro, §4-quinquies);
+* altri debiti di fixture visti nel primo giro: articolo-onere pescato
+  (`fn-preventivo-ha-residuo-commessa-v1`), `fn-resolve-iva-riga`, `proiezione-stato-sorgente`,
+  `test_fn_successione_contratti`. Gli articoli-onere non si costruiscono (`causale_onere_id` UNIQUE,
+  le 5 causali hanno l'articolo nel seed): si leggono per causale.
+
+**Richiesta al team BE** (⚠️ firme aggiornate dal §4-septies, che le cambia di nuovo):
+
+1. due test Django sondano la firma VECCHIA dei builder con `richiedi_db_provvisto`, e con la firma
+   nuova **saltano in silenzio** (verde per sottrazione). Le firme FINALI, dopo il §4-septies, sono
+   `dbops.fn_pgtap_crea_commessa(text,character varying,bigint,boolean,boolean)` e
+   `dbops.fn_pgtap_crea_fattura(text,character varying,bigint,boolean,boolean,boolean,numeric,bigint,boolean)`
+   (rev §4-octies, `-42`; le righe qui sotto sono quelle del secondo giro, superate):
+   * `apps/vendite/tests/db/test_prezzo_riga_commessa_db.py:133`:
+     `"dbops.fn_pgtap_crea_commessa(text)"` → `"dbops.fn_pgtap_crea_commessa(text,character varying,bigint,boolean)"`;
+   * `apps/core/tests/db/test_scritture_email_note_db.py:109`:
+     `"dbops.fn_pgtap_crea_fattura(text,character varying,bigint)"` → `"dbops.fn_pgtap_crea_fattura(text,character varying,bigint,boolean,boolean)"`;
+2. nessun'altra ricaduta: i chiamanti BE (2 test Django, 3 smoke) passano al più tre argomenti e
+   restano validi.
+
+### 4-septies. Terzo giro: i debiti emersi e le decisioni R-1 … R-9 (2026-10-24)
+
+Tid, 2026-10-24: «i debiti emersi vanno risolti»; R-1 sì (regola sotto), R-2, R-3, R-4, R-5 sì, R-6 e
+R-9 come consigliato, R-7 e R-8 non ora (regola del 2: una copia sola).
+
+**I debiti emersi, chiusi:**
+
+* `CANONE_NON_GENERATO` non era un difetto del database: dal `20260707-03` i contratti non hanno un
+  motivo di fermo finché non esiste il push ricorrente, e il codice resta nel seed **apposta**. Era il
+  test (`vw-dash-backlog`, test 10 e commento) a dichiarare il motivo sbagliato: corretto;
+* il COMMENT di `fn_pgtap_crea_preventivo` e quello di `fn_pgtap_crea_ordine` (fermi a prima del
+  `-23`/`-24`): `20261024-29`, solo testo; e le due pagine `manual`;
+* `test-ordini-guard-transizione-v1` e i nove file rossi «fuori giro» del §4-sexies: mondo costruito,
+  tutti verdi; più altri otto rossi da pesca trovati nella regressione (articolo-onere, BA, chiave di
+  sorgente, IVA) e `test-guard-lotto-fatture-stato-coerente` (il test del guard di coerenza, rosso dal
+  test 1 per il primo BA: non provava niente);
+* nove file con un solo rosso, diagnosticati (non toccati): **tutti dipendono dal ruolo** (l'owner dello
+  scratch salta la RLS; come app sono verdi per costruzione). Nei quattro che non lo dichiaravano
+  l'avviso è nel titolo del test.
+
+**R-1, la regola di Tid:** «se un documento è in errore o in uno stato bloccante, gli altri non possono
+passare a uno stato definitivo: prima i documenti non conformi si tolgono dal lotto; non può esistere un
+documento definitivo se un altro dello stesso lotto è in errore». Completa D-Q (2026-07-31: «il lotto
+NON avanza»), non revoca niente. Provato il 2026-10-24 che il DB **non** la applicava: lotto e fattura
+sana DEFINITIVA, fattura in errore DRAFT nello stesso lotto; lo stop stava solo nel runner BE.
+
+**I changeSet** (tutti `dbops` salvo `-34`/`-35`):
+
+| # | Cosa |
+| --- | --- |
+| `-29` | COMMENT di `fn_pgtap_crea_preventivo` / `_ordine` allineati alla nascita in bozza |
+| `-30` | `fn_pgtap_porta_a_stato` conosce il lotto di fatturazione (vuoto; con fatture si muove col verbo `fn_sync_lotto_fatture_stato`) |
+| `-31` | NUOVO `fn_pgtap_crea_lotto` (R-4): dalla madre `fn_create_fatturazione_lotto`, stato per la matrice, esito che trattiene un gruppo |
+| `-32` | `fn_pgtap_crea_commessa` + `p_con_sorgente_root` (R-3) |
+| `-33` | `fn_pgtap_crea_contratto` + periodo, data e listino del test (R-2) |
+| `-34` | (R-1 b) `vendite.vw_lotti_fatture_incoerenti` diventa la **sede unica** dell'invariante lotto ↔ fatture e il guard la legge (prima ripetevano lo stesso predicato); l'eccezione critical vale per chi resta **indietro**, non per una fattura già congelata davanti a un lotto non congelato |
+| `-35` | (R-1 a) `vendite.trgfn_fatturazione_lotti_guard_stato`: un lotto FERMO (`vw_lotti_segnalazioni_summary.fermo`, la sede del runner) non entra in uno stato congelato e non abortito: `E_PIPELINE_LOTTO_CRITICAL`, lo stesso codice del runner; l'annullo resta ammesso |
+| `-36` | `fn_pgtap_crea_fattura` + `minimo`, `totale_a_pagare`, `termine_pagamento_id` alla nascita (R-5) |
+
+Dati: nota di `E_PIPELINE_LOTTO_CRITICAL` (`codici_errore.csv`, chi la solleva) e causa di
+`E_LOTTO_FATTURE_STATO_INCOERENTE` (`messaggi_errore.csv`, citava ancora `esclusa`). Censimento di chi
+muove i lotti: `fn_riporta_lotto_a_draft` cancella le fatture prima; la sync e la chiusura del
+giornaliero lasciano INDIETRO le critical; l'annullo va in uno stato abortito; nel giro vero il runner
+legge lo stesso verdetto prima di `update_lotto_stato_doc`. Nessuno produce il caso vietato.
+
+Presidi: nuovi `dbops/test-fn-pgtap-crea-lotto-v1` (9) e `vendite/test-lotto-fermo-non-diventa-definitivo-v1`
+(8: **rosso senza** i due guard, verde con; prova anche l'annullo e il rilancio che sblocca); estesi
+commessa (13), contratto (14), fattura (14). Doc: le `manual` dei builder, di `porta_a_stato`, dei due
+guard e della vista, la tabella dei builder della guida pgTAP.
+
+**Porting** (agenti in parallelo, ogni file riprovato a mano): sorgente ROOT e lotto nei builder (11
+file), dashboard con contratto col periodo, mondo costruito e commesse dal builder (7), revisioni dei
+preventivi per la strada del dominio (2), pesca residua (12), test di coerenza. Attese cambiate,
+dichiarate nei file: il codice del lotto in `diagnostica-gruppi-fatturabili` (test 13: quello della
+madre, non `PGTAP-DG-LOTTO`); numeri di preventivo e di contratto letti dal dominio invece che fissi;
+in `test_fn_successione_contratti` i casi 3 e 6 erano verdi per sottrazione (`is(NULL, NULL)`).
+
+**Come è provato:** regressione prima/dopo su 134 file (builder `-29`…`-33`) e su 163 file (`-34`…`-36`):
+nessuna regressione; le sole differenze sono i presidi nuovi e i due file del trucco «definitiva
+critical nel lotto» (sotto). ⚠️ Tid ha applicato `-26`…`-28` alle 22:31 e `-29`…`-33` alle 23:02 mentre
+le prove giravano: da lì le misure sono «senza». `-34`…`-36` applicati da Tid alle 23:26 (dbdev e scratch).
+
+**Aperti / in corso:**
+
+* ✅ `test-snapshot-indirizzi-lotto-v1` e `test-genera-scadenze-lotto-v1` provavano «la definitiva nel
+  lotto in bozza non si tocca» costruendo una definitiva critical agganciata al lotto: con R-1 quel mondo
+  non esiste. Il ramo che la salta resta nelle funzioni come **difesa dichiarata, non provata** (Regola
+  zero). Diventano `skip` motivati il 4 e l'8 di indirizzi-lotto e il 4 di genera-scadenze (l'8 prova un
+  critico di un altro task, e resta); attese aggiornate, dichiarate: indirizzi-lotto 2, 3, 9 (nessuna
+  saltata), genera-scadenze 1 (nessuna oltre soglia, e le due in bozza contate davvero). Verdi con e senza
+  i changeSet;
+* ✅ i cinque pgTAP dei fondi passano a `fn_pgtap_crea_fattura` con i tre valori di R-5: verdi col `-36`.
+  ⚠️ **Senza il `-36` non girano** (chiamano il builder a otto argomenti): dopo l'apply. Restano a mano le
+  tre fatture la cui utility è il caso del test (diversa dal BA, o vuota): candidato `p_utility_id`;
+* ✅ il marcatore `pgtap-contesto` nei tre file della pesca residua che aprono il contesto col mondo;
+* **candidati a builder**, non scritti (regola del 2, decide Tid): due fixture ripetute in 3 file
+  ciascuna (coppia di articoli MERCE + SERVIZIO; scheda precontrattuale della fornitura); l'attività di
+  commessa «di push» (chiave del preventivo, stato di emissione) in 2 file; più gruppi trattenuti dallo
+  stesso lotto (1 file); `p_iva_id` in `fn_pgtap_crea_articolo` (1 file); `listino_versione_id` e
+  variazione globale nel contratto (1 file);
+* **difetto comune dei builder**, da decidere: con il BA del test, commessa, contratto, fattura, ordine e
+  lotto costruiscono comunque un cliente che non usano (chiamano `fn_pgtap_crea_mondo_cliente` prima).
+  La cura è un BB «l'azienda del contesto» per quando il BA arriva dal test: tocca cinque builder;
+* il guardrail del preambolo riconosce il contesto solo da `fn_pgtap_set_contesto_operatore(`: quattro
+  dashboard tengono una riga ridondante per lui.
+
+### 4-octies. Quarto giro: il pezzo comune e i builder delle fixture ripetute (2026-10-24)
+
+Tid, 2026-10-24: «sul da decidere procedere ai miglioramenti: pezzo comune / builder quando ripetuti».
+Criterio, quello dei builder del progetto: **entra ciò che ha una trappola d'ordine o ricopia una regola
+del dominio, non ciò che serve spesso**; e alla seconda copia (regola del 2), con le copie ritirate nello
+stesso giro.
+
+| # | Cosa |
+| --- | --- |
+| `-37` | NUOVO `dbops.fn_pgtap_azienda_di_chi_agisce`: l'azienda del contesto aperto, dalla regola di produzione; estratta dal «ramo B» del mondo |
+| `-38` | NUOVO `dbops.fn_pgtap_cliente_del_builder`: senza BA il mondo; col BA del test l'azienda di chi agisce e il BA verificato, **senza un cliente in più** |
+| `-39` | `fn_pgtap_crea_mondo_cliente` usa `-37` (la copia si ritira) |
+| `-40` | commessa, contratto, fattura, ordine, lotto: il blocco ricopiato cinque volte diventa una chiamata a `-38` |
+| `-41` | `fn_pgtap_crea_commessa_attivita` + sorgente (la chiave da `script.fn_segment_key`, il SOLO costruttore: dieci pgTAP la componevano a mano, come i sedici rotti il 20-10), quantità, stati di approvazione/emissione, periodo |
+| `-42` | `fn_pgtap_crea_fattura` + `p_senza_utility` (due copie nei fondi) |
+
+✅ **Applicato e verde** (Tid, 2026-10-24): `-37` … `-42` alle 23:50 su dbdev e scratch, corsa pgTAP come
+app verde. Prima dell'apply: regressione sullo scratch (come owner) su 174 file, nessuna regressione; sei
+rossi identici prima e dopo, tutti dipendenti dal ruolo (l'owner salta la RLS), verdi come app.
+
+Presidi: nuovo `dbops/test-fn-pgtap-cliente-del-builder-v1` (7: nessun cliente in più anche passando dai
+cinque builder; rosso senza, verde con); estesi attività (14) e fattura (15: anche il valore restituito
+senza utility, che il builder prima riportava sbagliato). Regressione del pezzo comune su 164 file:
+nessuna differenza oltre al presidio nuovo.
+
+**Porting**, ogni file riprovato a mano (verde col `-37` … `-42`):
+
+* l'attività di push in otto file (`annullo-commessa`, `emissione-mirata-gruppi-fatturabili`,
+  `fn-list-preventivi-da-pushare-righe-ids`, `-v2`, `fn-preventivo-ha-residuo-commessa`, `vw-dash-backlog`,
+  `vw-dash-fatturazione`, `vw-preventivi-smistamento`): le chiavi ora le compone `script.fn_segment_key`.
+  Tre righe scritte a mano con una chiave **inventata** che nessuna push produce (una sorgente PREVENTIVO
+  con chiave `PGTAP-BL-NE-*`; una riga d'ordine con sorgente PREVENTIVO; la riga della commessa di B che
+  puntava al preventivo di A) diventano righe della commessa, o della sorgente giusta. Attesa cambiata,
+  dichiarata: in `emissione-mirata` il tipo documento del perimetro si legge dalle righe scritte (11, 12,
+  16), non più «il primo tipo con un registro». Restano a mano, perché sono il caso: le chiavi con i
+  suffissi `#CMP:` e `#RET:` (il match a prefisso, il classificatore) e il canone del contratto con la
+  chiave del **mese** (`:M:AAAA-MM`; il builder non lo passa, un file solo), ma la base della chiave ora la
+  compone il dominio anche lì; `fn-list-preventivi-da-pushare-v1` non ha righe da portare (la chiave a
+  mano è l'attesa del suo test 2, il formato);
+* la fattura senza utility nei due file dei fondi;
+* `test-drop-uq-commesse-attivita-src-uid-partial-v1`, rosso da prima per la pesca del primo BA e con un
+  uuid sintetico come sorgente (che il guard delle sorgenti oggi respinge): mondo costruito, preventivo
+  vero, righe dal builder. 4/4 col `-41`.
+
+Da sapere sui builder (nessuno rompe un test): l'attività del builder ha `data_attivita` = inizio del
+periodo e `valuta_id` NULL (la madre non la deriva); chi ne avesse bisogno lo dichiara nel test.
+
+**Valutati e lasciati** (non hanno trappola: spostare la riga in un builder non centralizza niente):
+la scheda precontrattuale (un INSERT di 2-5 colonne, i cui valori sono il caso del test); la coppia di
+articoli MERCE + SERVIZIO (il builder dell'articolo accetta già la natura); il controllo «l'operatore del
+mondo è OPERATORE» delle dashboard (un'asserzione, non una fixture). Sotto la regola del 2 (una copia):
+più gruppi trattenuti dallo stesso lotto, l'IVA nel builder dell'articolo, la versione di listino e la
+variazione globale nel contratto, la fattura con un'utility diversa da quella del cliente.
+
+La bolla generata da un ordine e il reso scritto a mano, ripetuti in tutta la suite, sono un tema suo:
+[brief-db-pgtap-bolla-e-reso-costruiti](brief-db-pgtap-bolla-e-reso-costruiti.md).
+
+**Richiesta al team BE**, aggiornata: (1) le due sonde `richiedi_db_provvisto` sulle firme finali (sopra);
+(2) dopo l'apply di `-35`, il DB può sollevare `E_PIPELINE_LOTTO_CRITICAL` anche dall'UPDATE dello stato
+del lotto (`pipeline_repository.update_lotto_stato_doc`): il runner lo gestisce già come codice, ma
+oggi lo produce solo lui; nessuna modifica attesa, da sapere.
 
 ---
 

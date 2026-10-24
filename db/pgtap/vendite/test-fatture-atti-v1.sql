@@ -43,6 +43,15 @@
 --    `RiferimentoNumeroLinea` vuoto e il CIG sparisce dal documento;
 --  - provare che l'ordine delle cascate regge una DELETE di fattura, invece di
 --    dedurlo dal fatto che «la NO ACTION si verifica a fine istruzione».
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): fatture e contratti
+--   nascono dai builder, sullo STESSO cliente. Prima emittente, utility e billing
+--   account si pescavano da anagrafiche.emittenti_fiscali_utilities («la prima
+--   coppia con un BA»), il registro e le due testate si scrivevano a mano e i
+--   contratti stavano su un cliente costruito a parte: su un database ricostruito
+--   da zero la coppia non c'e' e il file moriva sul registro senza emittente.
+--   Ora dbops.fn_pgtap_crea_fattura (mondo, registro dell'azienda, testata nello
+--   stato sotto soglia) e dbops.fn_pgtap_crea_contratto (dalla madre
+--   vendite.fn_create_contratto) sul billing account della prima fattura.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -55,115 +64,64 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- pgtap-contesto: escluso — il contesto lo apre dbops.fn_pgtap_crea_fattura (rev
+--   2026-10-24), sull'operatore dell'azienda che costruisce
+--   (fn_pgtap_crea_mondo_cliente, ramo «nessun contesto»).
+
+-- ⚠️ Lo stato si sceglie SOTTO la soglia leggendo `congela_fiscale`, non per
+--   nome: la soglia e' un DATO dal 2026-08-30 (D33), e scrivere 'DRAFT' qui
+--   rimetterebbe una copia della lista che quel cantiere ha tolto da otto posti.
+CREATE TEMP TABLE tmp_at_stato AS
+SELECT s.id, s.codice_interno
+  FROM config.stati_doc_fiscale s
+ WHERE s.congela_fiscale IS FALSE
+ ORDER BY s.ordine, s.id
+ LIMIT 1;
+
+-- ⚠️ DUE fatture: la seconda serve al caso 5, dove una riga prova a puntare
+--   all'atto dell'altra. Senza un secondo documento quel caso non e'
+--   costruibile, e la FK composita resterebbe non verificata. La seconda e'
+--   dello STESSO cliente: il registro e l'emittente li sceglie il builder.
+CREATE TEMP TABLE tmp_at_fatt AS
+SELECT 1 AS n, f.fattura_id AS id, f.billing_account_id, f.emittente_soggetto_ruolo_id
+  FROM dbops.fn_pgtap_crea_fattura('fatture atti 1', (SELECT codice_interno FROM tmp_at_stato)) f;
+
+INSERT INTO tmp_at_fatt
+SELECT 2, f.fattura_id, f.billing_account_id, f.emittente_soggetto_ruolo_id
+  FROM dbops.fn_pgtap_crea_fattura('fatture atti 2', (SELECT codice_interno FROM tmp_at_stato),
+                                   (SELECT billing_account_id FROM tmp_at_fatt WHERE n = 1)) f;
 
 SELECT plan(11);
 
 -- ============================================================
 -- Fixture
 -- ============================================================
--- ⚠️ Emittente e billing account NON si scelgono in modo indipendente: si parte
---   DALLA configurazione (emittente, utility) di
---   anagrafiche.emittenti_fiscali_utilities, come fanno gli altri test di
---   fattura. Una scelta indipendente produce coppie che i guard rifiutano.
+-- L'aliquota: una qualsiasi con imposta, dal catalogo di sistema (le righe del
+--   test non dipendono da quale).
 CREATE TEMP TABLE tmp_at_refs AS
-WITH cfg AS (
-  SELECT efu.emittente_soggetto_ruolo_id, efu.utility_id
-    FROM anagrafiche.emittenti_fiscali_utilities efu
-   WHERE efu.attivo IS TRUE
-     AND EXISTS (SELECT 1 FROM anagrafiche.billing_account ba
-                  WHERE ba.utility_id = efu.utility_id)
-   ORDER BY efu.emittente_soggetto_ruolo_id, efu.utility_id
-   LIMIT 1
-)
-SELECT (SELECT emittente_soggetto_ruolo_id FROM cfg) AS emittente_soggetto_ruolo_id,
-       (SELECT utility_id FROM cfg)                  AS utility_id,
-       (SELECT ba.id FROM anagrafiche.billing_account ba
-         WHERE ba.utility_id = (SELECT utility_id FROM cfg)
-         ORDER BY ba.id LIMIT 1)                     AS billing_account_id,
-       (SELECT i.id FROM config.iva i
+SELECT (SELECT i.id FROM config.iva i
          WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
          ORDER BY i.id LIMIT 1)                      AS iva_id,
-       (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE
-         ORDER BY id LIMIT 1)                        AS tipo_doc_fiscale_id,
-       -- ⚠️ Lo stato si sceglie SOTTO la soglia leggendo `congela_fiscale`, non
-       --   per nome: la soglia e' un DATO dal 2026-08-30 (D33), e scrivere
-       --   'DRAFT' qui rimetterebbe una copia della lista che quel cantiere ha
-       --   tolto da otto posti.
-       (SELECT s.id FROM config.stati_doc_fiscale s
-         WHERE s.congela_fiscale IS FALSE
-         ORDER BY s.ordine, s.id LIMIT 1)            AS stato_doc_fiscale_id,
-       (SELECT id FROM config.valute ORDER BY id LIMIT 1) AS valuta_id;
-
--- Il registro: emittente uguale a quello delle fatture di questo file, o
--- vendite.trgfn_fatture_guard_registro_emittente rifiuta il documento.
-CREATE TEMP TABLE tmp_at_reg AS
-WITH ins AS (
-  INSERT INTO vendite.registri_fatturazione (codice, descrizione, reset_policy, attivo,
-          emittente_soggetto_ruolo_id, meta)
-  VALUES ('REGATTI_PGTAP', 'Registro test atti', 'ANNUALE', true,
-          (SELECT emittente_soggetto_ruolo_id FROM tmp_at_refs),
-          jsonb_build_object('test_scope', 'pgtap_fatture_atti'))
-  RETURNING id)
-SELECT * FROM ins;
-
--- ⚠️ DUE fatture: la seconda serve al caso 5, dove una riga prova a puntare
---   all'atto dell'altra. Senza un secondo documento quel caso non e'
---   costruibile, e la FK composita resterebbe non verificata.
-CREATE TEMP TABLE tmp_at_fatt AS
-WITH ins AS (
-  INSERT INTO vendite.fatture
-      (registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-       tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
-  SELECT (SELECT id FROM tmp_at_reg), script.fn_data_operativa(),
-         r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.stato_doc_fiscale_id, r.valuta_id, r.utility_id,
-         jsonb_build_object('test_scope', 'pgtap_fatture_atti', 'n', n)
-    FROM tmp_at_refs r, generate_series(1, 2) AS n
-  RETURNING id, (meta ->> 'n')::int AS n)
-SELECT * FROM ins;
+       (SELECT id FROM tmp_at_stato)                 AS stato_doc_fiscale_id;
 
 -- I DUE contratti, creati e non pescati: un test che cerca due contratti
 -- esistenti passa a vuoto su un database ricostruito da zero, che e' la CI.
--- ⚠️ Si passa dalla funzione madre, che e' il percorso vero: un INSERT diretto
---   dovrebbe replicare a mano numero, stato e i default di ventiquattro trigger.
--- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2 e D-2): il cliente si
---   COSTRUISCE con dbops.fn_pgtap_crea_cliente_ba, che da' un BA nuovo, sulla
---   sua utility e SENZA dati precontrattuali (il builder non li scrive): la
---   coppia (istanza, utility) del contratto e' quella del suo BA. Fino a quel
---   giorno si pescava un BA e, siccome tutti i BA di dbdev avevano gia' i loro
---   dati precontrattuali (42/42 dal 2026-07-27), si sceglieva una utility
---   «libera» DIVERSA da quella del BA: un contratto col BA di un'altra coppia,
---   che fk_contratti_ba_coppia (20261008-54) ora rifiuta. ⛔ Il builder scrive;
---   si legge in un'istruzione SEPARATA.
-CREATE TEMP TABLE tmp_at_cli AS
-SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('fatture atti contratti');
-
+-- ⚠️ Il builder passa dalla funzione madre (vendite.fn_create_contratto), che e'
+--   il percorso vero: un INSERT diretto dovrebbe replicare a mano numero, stato e
+--   i default di ventiquattro trigger. Il cliente e' quello delle fatture (rev
+--   2026-10-24): BA nuovo, sulla sua utility, SENZA dati precontrattuali, e la
+--   coppia (istanza, utility) del contratto e' quella del suo BA
+--   (fk_contratti_ba_coppia, 20261008-54). ⛔ Il builder scrive; si legge in
+--   un'istruzione SEPARATA.
 CREATE TEMP TABLE tmp_at_contr AS
-WITH cfg AS (
-  SELECT c.billing_account_id, c.istanza_utility_id, c.utility_id,
-         anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id) AS emittente_fiscale_id
-    FROM tmp_at_cli c
-)
-SELECT 1 AS n, c.contratto_id, c.numero FROM cfg,
-  LATERAL vendite.fn_create_contratto(
-      jsonb_build_object(
-          'billing_account_id',   cfg.billing_account_id,
-          'emittente_fiscale_id', cfg.emittente_fiscale_id,
-          'istanza_utility_id',   cfg.istanza_utility_id,
-          'utility_id',           cfg.utility_id)) AS c;
+SELECT 1 AS n, c.contratto_id, c.numero
+  FROM dbops.fn_pgtap_crea_contratto('fatture atti contratto 1', 'DRAFT',
+                                     (SELECT billing_account_id FROM tmp_at_fatt WHERE n = 1)) c;
 
 INSERT INTO tmp_at_contr(n, contratto_id, numero)
 SELECT 2, c.contratto_id, c.numero
-  FROM (SELECT c.billing_account_id, c.istanza_utility_id, c.utility_id,
-               anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id) AS emittente_fiscale_id
-          FROM tmp_at_cli c) AS cfg,
-       LATERAL vendite.fn_create_contratto(
-           jsonb_build_object(
-               'billing_account_id',   cfg.billing_account_id,
-               'emittente_fiscale_id', cfg.emittente_fiscale_id,
-               'istanza_utility_id',   cfg.istanza_utility_id,
-               'utility_id',           cfg.utility_id)) AS c;
+  FROM dbops.fn_pgtap_crea_contratto('fatture atti contratto 2', 'DRAFT',
+                                     (SELECT billing_account_id FROM tmp_at_fatt WHERE n = 1)) c;
 
 -- Il CIG del secondo contratto arriva per UPDATE e non dal payload della
 -- create, e la scelta e' voluta: passarlo in creazione lega questo file al
@@ -178,7 +136,10 @@ SELECT ok(
   (SELECT count(*) FROM tmp_at_fatt) = 2
   AND (SELECT count(*) FROM tmp_at_contr) = 2
   AND (SELECT count(DISTINCT contratto_id) FROM tmp_at_contr) = 2
-  AND (SELECT stato_doc_fiscale_id IS NOT NULL FROM tmp_at_refs),
+  AND (SELECT stato_doc_fiscale_id IS NOT NULL FROM tmp_at_refs)
+  AND (SELECT count(*) FROM vendite.fatture f
+        WHERE f.id IN (SELECT id FROM tmp_at_fatt)
+          AND f.stato_doc_fiscale_id = (SELECT stato_doc_fiscale_id FROM tmp_at_refs)) = 2,
   '1) la fixture e completa: due fatture sotto soglia e DUE contratti distinti');
 
 -- ============================================================

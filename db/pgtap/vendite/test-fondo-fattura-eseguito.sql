@@ -6,6 +6,14 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): la sorgente nasce in
 --   bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima nasceva
 --   gia' DEFINITIVA).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): le due fatture le
+--   costruisce dbops.fn_pgtap_crea_fattura (mondo, registro dell'azienda,
+--   snapshot coi building block) invece di pescare il primo billing account:
+--   su un database ricostruito non c'e'. Il contesto si apre DOPO, sul suo
+--   operatore.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-5): minimo e totale li
+--   scrive il builder alla nascita; la sorgente non si ferma piu' in EMESSA
+--   per un UPDATE, nasce e arriva in DEFINITIVA in una chiamata.
 --
 -- Elenco test (plan 13):
 --  1) Riferimenti minimi presenti
@@ -40,9 +48,16 @@
 -- ⚠️ 1. TRANSAZIONE.
 BEGIN;
 
--- ⚠️ 2. CONTESTO APPLICATIVO: questo test gira come gira l'applicazione
---   (OPERATORE + RLS attiva), non come owner.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⚠️ 2. IL MONDO, poi il CONTESTO APPLICATIVO: la sorgente la costruisce il
+--   builder (azienda, operatore, cliente, registro) con minimo e totale alla
+--   NASCITA, e la porta in DEFINITIVA per la matrice. Il test gira come gira
+--   l'applicazione (OPERATORE + RLS attiva), sull'operatore del mondo.
+CREATE TEMP TABLE tmp_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_fattura(
+         'fondo_eseguito', 'DEFINITIVA', NULL, false, false,
+         p_minimo => true, p_totale_a_pagare => 100.00);
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_mondo)); END $ctx$;
 
 -- ⚠️ 3. VINCOLI DIFFERITI: senza, non verrebbero mai esercitati (si chiude in
 --   ROLLBACK) e il file sarebbe verde per sottrazione.
@@ -59,23 +74,14 @@ SELECT 'pgtap_fondo_eseguito'::text AS test_scope;
 -- ⚠️ Il centro dei fondi NON si fabbrica: dal 2026-08-21 e' seminato
 --   (changeSet 20260821-20) ed e' garantito unico da un indice parziale.
 --   Un test che se lo crea da solo non verifica il seed: lo nasconde.
+-- I riferimenti del documento sono quelli della fattura costruita.
 CREATE TEMP TABLE tmp_refs AS
-WITH ba AS (
-  SELECT b.id, b.utility_id
-    FROM anagrafiche.billing_account b
-   ORDER BY b.data_insert DESC NULLS LAST, b.id DESC
-   LIMIT 1
-)
-SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(ba.id)) AS registro_id,
-       ba.id                                                                        AS billing_account_id,
-       ba.utility_id                                                                AS utility_id,
-       (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS tipo_doc_fiscale_id,
-       (SELECT id FROM config.valute ORDER BY id LIMIT 1)                           AS valuta_id,
-       (SELECT m.emittente_soggetto_ruolo_id
-          FROM anagrafiche.emittenti_fiscali_billing_account m
-         WHERE (m.billing_account_id = ba.id OR m.is_default IS TRUE)
-         ORDER BY CASE WHEN m.billing_account_id = ba.id THEN 0 ELSE 1 END, m.id
-         LIMIT 1)                                                                   AS emittente_soggetto_ruolo_id,
+SELECT m.registro_id,
+       m.billing_account_id,
+       m.utility_id,
+       m.tipo_doc_fiscale_id,
+       m.valuta_id,
+       m.emittente_soggetto_ruolo_id,
        (SELECT c.id FROM pagamenti.centri_riscossione c
          WHERE c.attivo IS TRUE AND c.is_fondo_fattura IS TRUE
          ORDER BY c.id LIMIT 1)                                                     AS centro_fondo_id,
@@ -84,7 +90,7 @@ SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(
          ORDER BY t.id LIMIT 1)                                                     AS tipo_fondo_id,
        (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s
          WHERE s.codice_interno = 'POSTATA' ORDER BY s.id LIMIT 1)                  AS stato_postata_id
-  FROM ba;
+  FROM tmp_mondo m;
 
 SELECT ok(
   (SELECT registro_id IS NOT NULL
@@ -100,45 +106,19 @@ SELECT ok(
   '1) Riferimenti minimi presenti (centro fondi e stato POSTATA compresi)'
 );
 
--- La fattura SORGENTE: definitiva, di minimo, col totale che diventa il fondo.
+-- La fattura SORGENTE: definitiva, di minimo, col totale che diventa il fondo
+--   (scritti dal builder alla nascita, prima della DEFINITIVA che li congela).
 CREATE TEMP TABLE tmp_src AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id,
-      minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
-         true, 100.00,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
-    FROM tmp_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT fattura_id AS id FROM tmp_mondo;
 
--- ⛔ Nata in bozza (rev 2026-10-24, trigger della nascita): si porta in
---   DEFINITIVA per la matrice, sotto i guard veri, con indirizzi e
---   intestazione scritti dai building block della pipeline.
-SELECT i.inserted_rows, t.scritta
-  FROM (SELECT id FROM tmp_src) s
- CROSS JOIN LATERAL vendite.fn_snapshot_indirizzi_fattura(s.id) i
- CROSS JOIN LATERAL vendite.fn_snapshot_intestazione_fattura(s.id) t;
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', s.id, 'DEFINITIVA')
-  FROM (SELECT id FROM tmp_src) s;
-
--- La fattura FIGLIA: quella su cui il fondo viene applicato.
+-- La fattura FIGLIA: quella su cui il fondo viene applicato. Stesso cliente
+--   (terzo parametro), in bozza, col suo totale alla nascita.
 CREATE TEMP TABLE tmp_dst AS
-WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
-      tipo_doc_fiscale_id, valuta_id, utility_id, minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
-         r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, false, 200.00,
-         jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
-    FROM tmp_refs r
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT fattura_id AS id
+  FROM dbops.fn_pgtap_crea_fattura('fondo_eseguito', 'DRAFT',
+                                   (SELECT billing_account_id FROM tmp_refs),
+                                   false, false,
+                                   p_minimo => false, p_totale_a_pagare => 200.00);
 
 -- Genera l'atto, lo applica alla figlia, e ne scrive la riga contabile.
 -- ⚠️ Tre VERBI, tre istruzioni separate dalle asserzioni: la snapshot di

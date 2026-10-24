@@ -53,6 +53,18 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in bozza e si
 --   portano avanti con dbops.fn_pgtap_porta_a_stato (prima le commesse nascevano gia'
 --   in stato_ok / stato_ko).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): le tre commesse le costruisce
+--   dbops.fn_pgtap_crea_commessa sul billing account del test, ognuna con UNA riga
+--   APPROVATA: PRONTA_FATTURAZIONE per quelle emittibili, BOZZA (con la riga chiesta,
+--   p_con_attivita => true) per la testata no. Prima testata e riga erano scritte a mano
+--   con articolo, unita' di misura e tipo documento pescati «il primo per id», e lo stato
+--   «no» era «il primo non emittibile per id». Il tipo documento del lotto si legge dalla
+--   riga scritta; il test 0 conta le righe costruite al posto dell'articolo pescato.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-4): il lotto DRAFT e l'esito ERRORE
+--   E_PULL_COMMESSA che trattiene il gruppo «trattenuto» nascono da dbops.fn_pgtap_crea_lotto
+--   (madre vendite.fn_create_fatturazione_lotto, tipo documento della riga, cliente del
+--   test, p_gruppo_key_trattenuto); prima lotto ed esito erano INSERT a mano. Le
+--   asserzioni non leggono codice ne' utility del lotto.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -88,45 +100,18 @@ SELECT plan(4);
 -- ============================================================
 -- Fixture — tre gruppi, tre situazioni
 -- ============================================================
-CREATE TEMP TABLE tmp_sp_rif AS
-SELECT
-  (SELECT m.soggetto_ruolo_id FROM tmp_sp_mondo m)         AS emittente_sr,
-  (SELECT c.billing_account_id FROM tmp_sp_cliente c)      AS billing_account_id,
-  (SELECT c.utility_id FROM tmp_sp_cliente c)              AS utility_id,
-  (SELECT c.istanza_utility_id FROM tmp_sp_cliente c)      AS istanza_utility_id,
-  (SELECT a.id FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id,
-  (SELECT u.id FROM catalogo.unita_misura u
-    WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)          AS uom_id,
-  (SELECT t.id FROM config.tipi_doc_fiscale t
-    WHERE t.attivo IS TRUE ORDER BY t.id LIMIT 1)          AS tipo_doc_fiscale_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.emittibile IS TRUE ORDER BY sc.id LIMIT 1)  AS stato_ok,
-  (SELECT sc.id FROM vendite.stati_commessa sc
-    WHERE sc.attivo IS TRUE AND sc.emittibile IS FALSE
-      AND sc.codice_interno <> 'ANNULLATA' ORDER BY sc.id LIMIT 1)            AS stato_ko,
-  date_trunc('month', script.fn_data_operativa())::date                  AS mese;
+-- Gli stati per codice_interno: la testata emittibile e quella in BOZZA.
+CREATE TEMP TABLE tmp_sp_stati AS
+SELECT 'PRONTA_FATTURAZIONE'::varchar AS stato_ok, 'BOZZA'::varchar AS stato_ko;
 
-SELECT ok(
-  (SELECT r.emittente_sr IS NOT NULL AND r.billing_account_id IS NOT NULL
-      AND r.articolo_id IS NOT NULL AND r.stato_ok IS NOT NULL
-      AND r.stato_ko IS NOT NULL
-     FROM tmp_sp_rif r),
-  '0. riferimenti minimi risolti (emittente, anagrafiche, catalogo, due stati commessa)'
-);
-
-CREATE TEMP TABLE tmp_sp (caso text, commessa_id bigint, gruppo_key text);
+CREATE TEMP TABLE tmp_sp (caso text, commessa_id bigint, gruppo_key text, attivita_id bigint);
 
 DO $fixture$
 DECLARE
-    v_rif  record;
     r      record;
     v_comm vendite.commesse.id%TYPE;
-    v_lot  vendite.fatturazione_lotti.id%TYPE;
+    v_ca   vendite.commesse_attivita.id%TYPE;
 BEGIN
-    SELECT * INTO v_rif FROM tmp_sp_rif;
-
     FOR r IN
         SELECT * FROM (VALUES
             ('coperto',    true),   -- riga pronta, testata emittibile
@@ -134,52 +119,65 @@ BEGIN
             ('trattenuto', true)    -- riga pronta, ma un lotto la tiene
         ) AS v(caso, testata_ok)
     LOOP
-        -- rev 2026-10-24: la commessa nasce BOZZA (trigger della nascita) e passa
-        --   allo stato voluto (stato_ok / stato_ko) DOPO la sua riga APPROVATA,
-        --   che il passaggio a PRONTA_FATTURAZIONE pretende.
-        INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
-                                      emittente_soggetto_ruolo_id)
-        VALUES ('PGTAP-SP-' || upper(r.caso) || '-'
-                            || substr(md5(clock_timestamp()::text), 1, 6),
-                v_rif.billing_account_id, v_rif.utility_id, v_rif.emittente_sr)
-        RETURNING id INTO v_comm;
-
-        INSERT INTO vendite.commesse_attivita (
-            commessa_id, segment_key, articolo_id, istanza_utility_id, data_attivita,
-            uom_id, quantita, competenza_mese, competenza_dal, competenza_al,
-            tipo_doc_fiscale_id, valuta_id, prezzo_snapshot, pricing_mode,
-            stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
-        VALUES (v_comm,
-                'PGTAP-SP-' || r.caso || '-' || substr(md5(clock_timestamp()::text), 1, 12),
-                v_rif.articolo_id, v_rif.istanza_utility_id, v_rif.mese,
-                v_rif.uom_id, 1, v_rif.mese, v_rif.mese,
-                (v_rif.mese + INTERVAL '1 month - 1 day')::date,
-                v_rif.tipo_doc_fiscale_id, v_rif.valuta_id, 10.000000, 'FIXED',
-                'APPROVATA', 'NON_EMESSA', -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
-                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text);
-
-        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.commesse', v_comm,
-            (SELECT sc.codice_interno FROM vendite.stati_commessa sc
-              WHERE sc.id = CASE WHEN r.testata_ok THEN v_rif.stato_ok ELSE v_rif.stato_ko END));
+        -- Il builder: testata dalla madre, UNA riga APPROVATA, lo stato per la
+        --   matrice. In BOZZA la riga la si chiede (p_con_attivita => true).
+        SELECT c.commessa_id, c.attivita_id INTO v_comm, v_ca
+          FROM dbops.fn_pgtap_crea_commessa(
+                   'specchio lane ' || r.caso,
+                   (SELECT CASE WHEN r.testata_ok THEN st.stato_ok ELSE st.stato_ko END
+                      FROM tmp_sp_stati st),
+                   (SELECT billing_account_id FROM tmp_sp_cliente),
+                   true) c;
 
         INSERT INTO tmp_sp VALUES (r.caso, v_comm,
             vendite.fn_build_gruppo_fatturabile_key(
-                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm));
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm),
+            v_ca);
     END LOOP;
-
-    INSERT INTO vendite.fatturazione_lotti
-        (codice, competenza_mese, tipo_doc_fiscale_id,
-         emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
-    VALUES ('PGTAP-SP-LOTTO', v_rif.mese, v_rif.tipo_doc_fiscale_id, v_rif.emittente_sr,
-            (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT'))
-    RETURNING id INTO v_lot;
-
-    INSERT INTO vendite.fatturazione_lotti_esiti
-        (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)
-    SELECT v_lot, t.gruppo_key, 'ERRORE', 'E_PULL_COMMESSA', 'rotto per la prova'
-      FROM tmp_sp t WHERE t.caso = 'trattenuto';
 END;
 $fixture$;
+
+CREATE TEMP TABLE tmp_sp_rif AS
+SELECT
+  (SELECT m.soggetto_ruolo_id FROM tmp_sp_mondo m)         AS emittente_sr,
+  (SELECT c.billing_account_id FROM tmp_sp_cliente c)      AS billing_account_id,
+  -- il tipo documento del lotto e' quello della riga scritta, non un pescato
+  (SELECT ca.tipo_doc_fiscale_id FROM vendite.commesse_attivita ca
+    WHERE ca.id = (SELECT t.attivita_id FROM tmp_sp t WHERE t.caso = 'trattenuto')) AS tipo_doc_fiscale_id,
+  (SELECT sc.emittibile FROM vendite.stati_commessa sc, tmp_sp_stati st
+    WHERE sc.codice_interno = st.stato_ok AND sc.attivo IS TRUE)          AS stato_ok_emittibile,
+  (SELECT sc.emittibile FROM vendite.stati_commessa sc, tmp_sp_stati st
+    WHERE sc.codice_interno = st.stato_ko AND sc.attivo IS TRUE)          AS stato_ko_emittibile,
+  -- le righe costruite: una APPROVATA/NON_EMESSA per commessa, nello stato chiesto
+  (SELECT count(*) FROM tmp_sp t
+     JOIN vendite.commesse_attivita ca ON ca.id = t.attivita_id AND ca.commessa_id = t.commessa_id
+     JOIN vendite.commesse c ON c.id = t.commessa_id
+     JOIN vendite.stati_commessa sc ON sc.id = c.stato_commessa_id
+     CROSS JOIN tmp_sp_stati st
+    WHERE ca.stato_approvazione = 'APPROVATA' AND ca.stato_emissione = 'NON_EMESSA'
+      AND sc.codice_interno = CASE WHEN t.caso = 'testata_ko' THEN st.stato_ko ELSE st.stato_ok END)
+                                                           AS n_costruite,
+  date_trunc('month', script.fn_data_operativa())::date                  AS mese;
+
+SELECT ok(
+  (SELECT r.emittente_sr IS NOT NULL AND r.billing_account_id IS NOT NULL
+      AND r.tipo_doc_fiscale_id IS NOT NULL
+      AND r.stato_ok_emittibile IS TRUE AND r.stato_ko_emittibile IS FALSE
+      AND r.n_costruite = 3
+     FROM tmp_sp_rif r),
+  '0. riferimenti minimi risolti (emittente, anagrafiche, tre commesse costruite, due stati commessa)'
+);
+
+-- Il lotto DRAFT che trattiene il gruppo «trattenuto»: il builder scrive anche
+--   l'esito ERRORE E_PULL_COMMESSA.
+CREATE TEMP TABLE tmp_sp_lotto AS
+SELECT l.*
+  FROM tmp_sp_rif r,
+       LATERAL dbops.fn_pgtap_crea_lotto(
+           'specchio lane', 'DRAFT', r.billing_account_id,
+           p_tipo_doc_fiscale_id   => r.tipo_doc_fiscale_id,
+           p_competenza_mese       => r.mese,
+           p_gruppo_key_trattenuto => (SELECT t.gruppo_key FROM tmp_sp t WHERE t.caso = 'trattenuto')) l;
 
 -- Le due letture, sullo STESSO perimetro.
 CREATE TEMP TABLE tmp_sp_lane AS

@@ -4,6 +4,13 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i documenti nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima il
 --   preventivo del test 9 nasceva gia' ACCETTATO).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): i quattro
+--   preventivi vengono da dbops.fn_pgtap_crea_preventivo (cliente, emittente e
+--   testata costruiti, numero dal dominio) e l'articolo da
+--   dbops.fn_pgtap_crea_articolo; l'operatore e' quello del contesto. Prima si
+--   pescavano il primo billing account, il primo emittente, l'articolo piu'
+--   recente e il primo utente di config.user_emittenti_fiscali: su un database
+--   ricostruito non ci sono.
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_crea_revisione_preventivo
 -- ------------------------------------------------------------
@@ -39,25 +46,12 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(10);
 
--- ============================================================
--- Setup GUC app.current_user_id: serve a fn_crea_revisione_preventivo
--- per risolvere l'emittente fiscale dell'operatore corrente sulla
--- nuova revisione (modello user-derived rev2). Senza GUC valorizzata
--- il trigger BEFORE INSERT su preventivi solleva
--- E_PREV_EMITTENTE_NON_RISOLTO.
---
--- Pesca un django_user_id che abbia un emittente fiscale assegnato
--- in config.user_emittenti_fiscali (deterministico per il seed).
--- Se nessun user e' configurato, il setup fallisce e il test halta
--- a un punto chiaro (test 4 in throw_ok inatteso).
--- ============================================================
-SELECT set_config(
-  'app.current_user_id',
-  (SELECT uef.auth_user_id::text
-     FROM config.user_emittenti_fiscali uef
-    ORDER BY uef.auth_user_id LIMIT 1),
-  true
-);
+-- ⭐ rev 2026-10-24 (Q-4): app.current_user_id e' quella del contesto aperto
+--   qui sopra, l'operatore della cui azienda sono i preventivi del mondo:
+--   fn_crea_revisione_preventivo risolve da li' l'emittente della nuova
+--   revisione. Prima la si riscriveva col primo utente di
+--   config.user_emittenti_fiscali, che puo' non essere un operatore e su un
+--   database ricostruito non c'e'.
 
 -- ============================================================
 -- 1) Funzione presente
@@ -76,55 +70,42 @@ SELECT ok(
 -- ============================================================
 -- 2) Riferimenti minimi
 -- ============================================================
+-- ⭐ rev 2026-10-24 (Q-4): il mondo si COSTRUISCE. Il preventivo del test 3
+--   nasce qui, in bozza, da dbops.fn_pgtap_crea_preventivo, e i riferimenti
+--   ne leggono billing account ed emittente; l'articolo lo costruisce
+--   dbops.fn_pgtap_crea_articolo. I cataloghi (stati, IVA, tipo indirizzo)
+--   si scelgono per codice e con un ORDER BY stabile.
+--   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_rv_b_emesso AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('revisione emesso');
+
 CREATE TEMP TABLE tmp_rv_refs AS
 SELECT
-  (SELECT ba.id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS billing_account_id,
-  (SELECT ba.utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS utility_id,
-  (SELECT ba.istanza_utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS istanza_utility_id,
-  (SELECT a.id
-     FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1
-  ) AS articolo_id,
+  b.billing_account_id,
+  b.utility_id,
+  b.istanza_utility_id,
+  dbops.fn_pgtap_crea_articolo('PGT-RVP-A') AS articolo_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'DRAFT' AND s.attivo IS TRUE LIMIT 1
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE
   ) AS stato_draft_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'EMESSO' AND s.attivo IS TRUE LIMIT 1
+    WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE
   ) AS stato_emesso_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
-    WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1
+    WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE
   ) AS stato_accettato_id,
-  (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1
-  ) AS valuta_id,
-  -- emittente fiscale (richiesto da trigger BEFORE INSERT preventivi
-  -- quando GUC app.current_user_id e' vuota - contesto pgTAP).
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo IS TRUE
-    ORDER BY ef.id LIMIT 1
-  ) AS emittente_fiscale_id,
-  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE LIMIT 1
+  b.valuta_id,
+  b.emittente_fiscale_id,
+  (SELECT i.id FROM config.iva i
+    WHERE i.attivo IS TRUE AND i.aliquota_iva > 0
+    ORDER BY i.id LIMIT 1
   ) AS iva_id,
   (SELECT a.tipo_indirizzo_id
      FROM config.tipi_indirizzi_allowed a
     WHERE a.ambito = 'PREVENTIVO' AND a.attivo IS TRUE
-    LIMIT 1
-  ) AS tipo_indirizzo_id;
+    ORDER BY a.tipo_indirizzo_id LIMIT 1
+  ) AS tipo_indirizzo_id
+FROM tmp_rv_b_emesso b;
 
 SELECT ok(
   (SELECT billing_account_id IS NOT NULL
@@ -144,28 +125,12 @@ SELECT ok(
 --   prendono le righe, poi passano a EMESSO con dbops.fn_pgtap_porta_a_stato —
 --   fuori bozza le righe non si scrivono piu' (20261008-91).
 -- ============================================================
+-- Il preventivo e' nato in bozza ai riferimenti (tmp_rv_b_emesso): qui se ne
+--   legge il numero, che assegna il dominio.
 CREATE TEMP TABLE tmp_rv_prev AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev,
-    billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id,
-    stato_doc_preventivo_id, data,
-    emittente_fiscale_id,
-    storicizza, meta
-  )
-  SELECT
-    'PGTAP-RV-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id, r.istanza_utility_id, r.utility_id,
-    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_draft_id, DATE '2026-06-01',
-    r.emittente_fiscale_id,
-    false, jsonb_build_object('test_scope', 'pgtap_revisione')
-  FROM tmp_rv_refs r
-  RETURNING id, uid, numero
-)
-SELECT * FROM ins;
+SELECT p.id, p.uid, p.numero
+  FROM vendite.preventivi p
+  JOIN tmp_rv_b_emesso b ON b.preventivo_id = p.id;
 
 -- 2 righe attive + 1 inattiva
 INSERT INTO vendite.preventivi_righe (
@@ -255,28 +220,13 @@ SELECT ok(
 -- ============================================================
 -- 8) Revisione da DRAFT vietata
 -- ============================================================
+CREATE TEMP TABLE tmp_rv_b_draft AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('revisione draft');
+
 CREATE TEMP TABLE tmp_rv_prev_draft AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev,
-    billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id,
-    stato_doc_preventivo_id, data,
-    emittente_fiscale_id,
-    storicizza, meta
-  )
-  SELECT
-    'PGTAP-RVD-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id, r.istanza_utility_id, r.utility_id,
-    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_draft_id, DATE '2026-06-01',
-    r.emittente_fiscale_id,
-    false, jsonb_build_object('test_scope', 'pgtap_revisione')
-  FROM tmp_rv_refs r
-  RETURNING id, uid, numero
-)
-SELECT * FROM ins;
+SELECT p.id, p.uid, p.numero
+  FROM vendite.preventivi p
+  JOIN tmp_rv_b_draft b ON b.preventivo_id = p.id;
 
 SELECT throws_ok(
   format(
@@ -295,28 +245,13 @@ SELECT throws_ok(
 --    righe non hanno motivi da sollevare. Prima nasceva gia' ACCETTATO con
 --    un INSERT diretto, che il trigger della nascita ora rifiuta.
 -- ============================================================
+CREATE TEMP TABLE tmp_rv_b_accettato AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('revisione accettato');
+
 CREATE TEMP TABLE tmp_rv_prev_accettato AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev,
-    billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id,
-    stato_doc_preventivo_id, data,
-    emittente_fiscale_id,
-    storicizza, meta
-  )
-  SELECT
-    'PGTAP-RVA-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id, r.istanza_utility_id, r.utility_id,
-    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_draft_id, DATE '2026-06-01',
-    r.emittente_fiscale_id,
-    false, jsonb_build_object('test_scope', 'pgtap_revisione')
-  FROM tmp_rv_refs r
-  RETURNING id, uid, numero
-)
-SELECT * FROM ins;
+SELECT p.id, p.uid, p.numero
+  FROM vendite.preventivi p
+  JOIN tmp_rv_b_accettato b ON b.preventivo_id = p.id;
 
 DO $porta$ BEGIN
   PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_rv_prev_accettato), 'ACCETTATO');
@@ -339,28 +274,13 @@ SELECT throws_ok(
 --     E_PREV_REVISIONE_STATO_NON_AMMESSO. Preventivo EMESSO fresco (numero nuovo,
 --     nessuna revisione DRAFT preesistente).
 -- ============================================================
+CREATE TEMP TABLE tmp_rv_b_antireg AS
+SELECT * FROM dbops.fn_pgtap_crea_preventivo('revisione antiregressione');
+
 CREATE TEMP TABLE tmp_rv_prev_antireg AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi (
-    numero, rev,
-    billing_account_id, istanza_utility_id, utility_id,
-    validita_dal, validita_al, valuta_id,
-    stato_doc_preventivo_id, data,
-    emittente_fiscale_id,
-    storicizza, meta
-  )
-  SELECT
-    'PGTAP-RVAR-' || substr(md5(clock_timestamp()::text), 1, 8),
-    0,
-    r.billing_account_id, r.istanza_utility_id, r.utility_id,
-    DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_draft_id, DATE '2026-06-01',
-    r.emittente_fiscale_id,
-    false, jsonb_build_object('test_scope', 'pgtap_revisione')
-  FROM tmp_rv_refs r
-  RETURNING id, uid, numero
-)
-SELECT * FROM ins;
+SELECT p.id, p.uid, p.numero
+  FROM vendite.preventivi p
+  JOIN tmp_rv_b_antireg b ON b.preventivo_id = p.id;
 
 -- Riga attiva con quantita > 0 (copiata dalla revisione)
 INSERT INTO vendite.preventivi_righe (

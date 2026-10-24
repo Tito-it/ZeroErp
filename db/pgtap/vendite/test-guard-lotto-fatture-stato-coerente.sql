@@ -45,30 +45,33 @@ SELECT plan(12);
 CREATE TEMP TABLE tmp_costanti_glf AS
 SELECT ('pgtap_guard_lotto_fatt_' || to_char(clock_timestamp(), 'YYMMDDHH24MISS'))::text AS test_scope;
 
+-- ⭐ IL CLIENTE SI COSTRUISCE (rev 2026-10-24, brief-modello-documento-vendita
+--   Q-4). Prima billing account, utility ed emittente erano «il primo BA del
+--   database con un emittente»: su un database ricostruito (CI, lo scratch) non
+--   c'e', e il file moriva al test 1 senza provare il guard. Il mondo nasce
+--   nell'azienda di chi agisce (il contesto e' gia' aperto).
+CREATE TEMP TABLE tmp_mondo_glf AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('guard lotto fatture');
+
+-- ⚠️ Il builder esce IMMEDIATE (il suo contratto). Questo file lavora apposta
+--   con i trigger DIFFERITI e chiama il guard a mano (vedi la nota in testa):
+--   la finestra differita si riapre subito dopo, come prescrive il builder.
+SET CONSTRAINTS ALL DEFERRED;
+
 CREATE TEMP TABLE tmp_refs_glf AS
 SELECT
   (SELECT m.registro_id
      FROM vendite.tipi_doc_fiscale_registri m
      JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
     WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS registro_id,
-  (SELECT ba.id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS billing_account_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
+  (SELECT w.billing_account_id FROM tmp_mondo_glf w) AS billing_account_id,
+  (SELECT w.utility_id FROM tmp_mondo_glf w) AS utility_id,
   (SELECT m.tipo_doc_fiscale_id
      FROM vendite.tipi_doc_fiscale_registri m
      JOIN config.tipi_doc_fiscale t ON t.id = m.tipo_doc_fiscale_id
     WHERE t.attivo IS TRUE ORDER BY m.id LIMIT 1) AS tipo_doc_fiscale_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
-  (SELECT anagrafiche.fn_get_emittente_fiscale_id(ba.id)
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS emittente_soggetto_ruolo_id,
+  (SELECT w.emittente_soggetto_ruolo_id FROM tmp_mondo_glf w) AS emittente_soggetto_ruolo_id,
   (SELECT s.id FROM config.stati_doc_fiscale s
     WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE
     ORDER BY s.id LIMIT 1) AS stato_draft_id,

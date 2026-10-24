@@ -3,6 +3,11 @@
 -- pgTAP test per Zero ERP
 -- Test: vendite.fn_resolve_iva_riga (il guscio) e fn_resolve_iva_riga_it
 --       brief-db-be-iva-risolutore-e-regime-cliente, voce `I2`
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-4): la fixture si COSTRUISCE
+--   intera coi builder di dbops (mondo, articoli, cliente sulla utility con
+--   tipo/classe, scheda precontrattuale, contratto ATTIVO); prima pescava
+--   articoli, un contratto da clonare e un soggetto, assenti su un database
+--   ricostruito da zero.
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): il contratto nasce in
 --   bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima nasceva
 --   gia' ATTIVO).
@@ -21,9 +26,11 @@
 --   utility l'abbia SE E SOLO SE esistono `config.tipi_utenze` per lei, e allora
 --   tipo e classe sono obbligatori e coerenti. Forzarla non sarebbe una
 --   scorciatoia di test: sarebbe un dato che il dominio non ammette.
---   ⚠️ Quindi qui il contratto attivo si COSTRUISCE, clonando un contratto
---   esistente su una utility che quella dimensione ce l'ha davvero. Un test che
---   CERCA il caso e non lo trova diventa muto; uno che lo costruisce no.
+--   ⚠️ Quindi qui il contratto attivo si COSTRUISCE, su un cliente della utility
+--   che quella dimensione ce l'ha davvero, con la scheda precontrattuale che
+--   dichiara la classe (rev 2026-10-24, Q-4: prima si clonava un contratto
+--   esistente). Un test che CERCA il caso e non lo trova diventa muto; uno che
+--   lo costruisce no.
 --
 -- ⚠️ E la riga di `vendite.contratti_utilities` NON si inserisce: la crea un
 --   trigger sul contratto (`uq_contratti_utilities_contratto_id` lo dimostra al
@@ -70,7 +77,11 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⭐ rev 2026-10-24 (Q-4): il mondo — azienda, operatore, contesto aperto su di
+--   lui, un cliente legato a quella azienda — si costruisce qui.
+-- pgtap-contesto: escluso — il contesto lo apre dbops.fn_pgtap_crea_mondo_cliente
+CREATE TEMP TABLE tmp_mondo AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('PGTAP-IVA');
 
 SELECT plan(18);
 
@@ -100,110 +111,81 @@ DECLARE
   v_tipo        config.tipi_utenze.id%TYPE;
   v_classe      config.classi_utenze.id%TYPE;
   v_iva_tipo    config.iva.id%TYPE;
-  v_tpl         vendite.contratti.id%TYPE;
   v_new         vendite.contratti.id%TYPE;
-  v_art_riga    catalogo.articoli.id%TYPE;
   v_ba          anagrafiche.billing_account.id%TYPE;
+  v_ist         anagrafiche.billing_account.istanza_utility_id%TYPE;
   v_emitt       anagrafiche.emittenti_fiscali.id%TYPE;
   v_sogg        anagrafiche.soggetti.id%TYPE;
   v_manca       text := NULL;
 BEGIN
   -- ── l'articolo che PARLA: ha un codice IVA, e con aliquota > 0 perche' una
-  --    prova fra zeri passerebbe anche con il risolutore rotto
-  SELECT a.id, a.iva_id INTO v_art_parla, v_iva_art
-    FROM catalogo.articoli a
-    JOIN config.iva i ON i.id = a.iva_id
-   WHERE a.attivo IS TRUE AND i.attivo IS TRUE AND i.aliquota_iva > 0
-   ORDER BY a.id LIMIT 1;
+  --    prova fra zeri passerebbe anche con il risolutore rotto.
+  --    rev 2026-10-24 (Q-4): COSTRUITO, col codice ordinario 22 letto per
+  --    codice_interno: diverso da quelli dei titoli (NI35, 10, 4), cosi' un
+  --    risolutore che ignorasse il titolo non passerebbe per coincidenza.
+  --    Il builder non sceglie l'IVA: la si scrive subito, sull'articolo mai usato.
+  v_art_parla := dbops.fn_pgtap_crea_articolo('PGTAP-IVA-PARLA', false);
+  UPDATE catalogo.articoli
+     SET iva_id = (SELECT i.id FROM config.iva i WHERE i.codice_interno = '22' AND i.attivo IS TRUE)
+   WHERE id = v_art_parla
+  RETURNING iva_id INTO v_iva_art;
 
   -- ── l'articolo che TACE: dichiara di non avere un'opinione sull'IVA
-  SELECT a.id INTO v_art_muto
-    FROM catalogo.articoli a
-   WHERE a.attivo IS TRUE AND a.iva_id IS NULL
-   ORDER BY a.id LIMIT 1;
+  --    (il builder lo fa nascere senza codice IVA)
+  v_art_muto := dbops.fn_pgtap_crea_articolo('PGTAP-IVA-MUTO', false);
 
   -- ── ⭐ la utility che ha DAVVERO la dimensione tipo/classe, con una classe
   --    coerente: e' la condizione che il guard impone, e senza di essa il ramo
-  --    TIPO_UTENZA non e' raggiungibile in nessun modo lecito
+  --    TIPO_UTENZA non e' raggiungibile in nessun modo lecito. Catalogo di
+  --    sistema, ordine stabile.
   SELECT tu.utility_id, tu.id, cl.id, tu.iva_id
     INTO v_utility, v_tipo, v_classe, v_iva_tipo
     FROM config.tipi_utenze tu
     JOIN config.classi_utenze cl ON cl.tipo_utenza_id = tu.id
-   WHERE EXISTS (SELECT 1 FROM vendite.contratti c WHERE c.utility_id = tu.utility_id)
    ORDER BY tu.id, cl.id LIMIT 1;
 
-  -- ── il contratto ATTIVO: si clona da uno esistente sulla stessa utility.
-  --    ⛔ rev 2026-10-24 (brief-modello-documento-vendita N-1): fino a oggi si
-  --    INSERIVA in stato ATTIVO per non passare dal guard di transizione. Un
-  --    contratto ora nasce solo in DRAFT (trg_contratti_a05_stato_iniziale_ins)
-  --    e si attiva per la matrice: il guard lo giudica come in produzione. Per
-  --    attivarsi vuole un listino con una versione operativa
-  --    (trgfn_contratti_freeze_listino_versione): si clonano anche listino e
-  --    versione del modello, e se il modello non ne ha uno il clone riceve una
-  --    riga AGGIUNTA con prezzo (contratto negoziato puro).
+  -- ── il contratto ATTIVO: si COSTRUISCE (rev 2026-10-24, Q-4).
+  --    Un cliente di QUELLA utility, sotto il contesto del mondo (il trigger
+  --    z90 lega il BA all'azienda di chi agisce), poi la scheda precontrattuale
+  --    con la classe: e' da li' che la nascita del contratto scrive la
+  --    fornitura (vendite.fn_doc_fornitura_da_anagrafica). Poi il contratto,
+  --    che nasce DRAFT e si attiva per la matrice dentro il builder
+  --    (brief-modello-documento-vendita N-1), col listino del mondo.
   IF v_utility IS NOT NULL THEN
-    SELECT c.id INTO v_tpl FROM vendite.contratti c
-     WHERE c.utility_id = v_utility ORDER BY c.id LIMIT 1;
+    SELECT c.billing_account_id, c.istanza_utility_id
+      INTO v_ba, v_ist
+      FROM dbops.fn_pgtap_crea_cliente_ba('PGTAP-IVA fornitura', v_utility) c;
 
-    IF v_tpl IS NOT NULL THEN
-      INSERT INTO vendite.contratti
-          (numero, billing_account_id, istanza_utility_id, utility_id,
-           listino_id, listino_versione_id,
-           emittente_fiscale_id, valido_dal, valido_al, meta)
-      SELECT 'PGTAPIVA-' || c.id,
-             c.billing_account_id, c.istanza_utility_id, c.utility_id,
-             c.listino_id, c.listino_versione_id,
-             c.emittente_fiscale_id, DATE '2026-01-01', NULL,
-             jsonb_build_object('test_scope', 'pgtap_resolve_iva')
-        FROM vendite.contratti c WHERE c.id = v_tpl
-      RETURNING id, billing_account_id, emittente_fiscale_id
-           INTO v_new, v_ba, v_emitt;
+    INSERT INTO anagrafiche.istanze_dati_precontrattuali
+        (istanza_utility_id, utility_id, classe_utenza_id, meta)
+    VALUES (v_ist, v_utility, v_classe,
+            jsonb_build_object('test_scope', 'pgtap_resolve_iva'));
 
-      -- Un modello senza listino da' un clone «negoziato puro»: per attivarsi
-      -- vuole almeno una riga AGGIUNTA con prezzo
-      -- (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE, trgfn_contratti_freeze_listino_versione).
-      -- L'articolo lo propone il picker, che legge la stessa check del guard
-      -- delle righe (catalogo.fn_articoli_ammessi: motivo NULL = ammesso). Il
-      -- risolutore non legge le righe del contratto: la riga non tocca nessun
-      -- caso del test.
-      IF (SELECT k.listino_id FROM vendite.contratti k WHERE k.id = v_new) IS NULL THEN
-        SELECT a.articolo_id INTO v_art_riga
-          FROM catalogo.fn_articoli_ammessi('CONTRATTO', v_new, NULL, 50, 'AGGIUNTA') a
-         WHERE a.motivo IS NULL
-         ORDER BY a.ordine
-         LIMIT 1;
+    SELECT k.contratto_id, k.emittente_fiscale_id
+      INTO v_new, v_emitt
+      FROM dbops.fn_pgtap_crea_contratto('PGTAP-IVA', 'ATTIVO', v_ba,
+                                         p_valido_dal => DATE '2026-01-01') k;
 
-        IF v_art_riga IS NOT NULL THEN
-          INSERT INTO vendite.contratti_righe
-              (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione)
-          VALUES (v_new, v_art_riga, 'AGGIUNTA', 1.00, 1.00, 'UNA_TANTUM');
-        END IF;
-      END IF;
+    -- ⚠️ La riga la CREA un trigger sul contratto, alla nascita, dai dati
+    --    precontrattuali dell'istanza: non si inserisce e non si modifica.
+    -- ⛔ rev 2026-10-11 (brief-db-testata-dopo-emissione §11.7): dal lock dei
+    --    satelliti (20261011-24) la fornitura di un documento fuori bozza non
+    --    si cambia piu' (E_DOC_DATI_COLLEGATI_NON_BOZZA): si LEGGE il tipo d'uso
+    --    che lo snapshot ha scritto, e il codice IVA si mette su quello (sotto),
+    --    che e' catalogo.
+    SELECT cu.tipo_utenza_id, cu.classe_utenza_id, tu.iva_id
+      INTO v_tipo, v_classe, v_iva_tipo
+      FROM vendite.contratti_utilities cu
+      LEFT JOIN config.tipi_utenze tu ON tu.id = cu.tipo_utenza_id
+     WHERE cu.contratto_id = v_new;
 
-      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.contratti', v_new, 'ATTIVO');
-
-      -- ⚠️ La riga la CREA un trigger sul contratto, alla nascita, dai dati
-      --    precontrattuali dell'istanza: non si inserisce e non si modifica.
-      -- ⛔ rev 2026-10-11 (brief-db-testata-dopo-emissione §11.7): fino a oggi
-      --    qui si AGGIORNAVANO tipo e classe della fornitura del contratto ATTIVO.
-      --    Dal lock dei satelliti (20261011-24) la fornitura di un documento
-      --    fuori bozza non si cambia piu' (E_DOC_DATI_COLLEGATI_NON_BOZZA): si
-      --    LEGGE il tipo d'uso che lo snapshot ha scritto, e il codice IVA si
-      --    mette su quello (sotto), che e' catalogo.
-      SELECT cu.tipo_utenza_id, cu.classe_utenza_id, tu.iva_id
-        INTO v_tipo, v_classe, v_iva_tipo
-        FROM vendite.contratti_utilities cu
-        LEFT JOIN config.tipi_utenze tu ON tu.id = cu.tipo_utenza_id
-       WHERE cu.contratto_id = v_new;
-
-      -- il codice IVA sul tipo d'uso: e' l'anello che lo stadio A2 legge
-      IF v_tipo IS NOT NULL AND v_iva_tipo IS NULL THEN
-        UPDATE config.tipi_utenze SET iva_id = (
-            SELECT i.id FROM config.iva i
-             WHERE i.attivo IS TRUE AND i.aliquota_iva > 0 ORDER BY i.id LIMIT 1)
-         WHERE id = v_tipo
-        RETURNING iva_id INTO v_iva_tipo;
-      END IF;
+    -- il codice IVA sul tipo d'uso: e' l'anello che lo stadio A2 legge
+    IF v_tipo IS NOT NULL AND v_iva_tipo IS NULL THEN
+      UPDATE config.tipi_utenze SET iva_id = (
+          SELECT i.id FROM config.iva i
+           WHERE i.attivo IS TRUE AND i.aliquota_iva > 0 ORDER BY i.id LIMIT 1)
+       WHERE id = v_tipo
+      RETURNING iva_id INTO v_iva_tipo;
     END IF;
   END IF;
 
@@ -212,15 +194,18 @@ BEGIN
   --    ⭐ rev 2026-10-10: e con una NATURA. Un titolo su un soggetto senza
   --    natura e' rifiutato (trgfn_soggetti_titoli_iva_guard_tipo_soggetto,
   --    20261010-92, D-1 di brief-db-dati-fiscali-e-societari-del-soggetto).
+  --    rev 2026-10-24 (Q-4): il cliente del mondo, appena costruito (il
+  --    builder gli da' la natura); prima era «il primo soggetto senza titoli».
   SELECT s.id INTO v_sogg
-    FROM anagrafiche.soggetti s
+    FROM tmp_mondo m
+    JOIN anagrafiche.soggetti s ON s.id = m.cliente_soggetto_id
    WHERE NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti_titoli_iva t
                       WHERE t.soggetto_id = s.id)
-     AND s.tipo_soggetto_dettaglio_id IS NOT NULL
-   ORDER BY s.id LIMIT 1;
+     AND s.tipo_soggetto_dettaglio_id IS NOT NULL;
 
   v_manca := NULLIF(concat_ws(', ',
-      CASE WHEN v_art_parla IS NULL THEN 'articolo con aliquota > 0'   END,
+      CASE WHEN v_art_parla IS NULL OR v_iva_art IS NULL
+           THEN 'articolo con aliquota > 0' END,
       CASE WHEN v_art_muto  IS NULL THEN 'articolo senza codice IVA'   END,
       CASE WHEN v_utility   IS NULL THEN 'utility con dimensione tipo/classe' END,
       CASE WHEN v_new       IS NULL THEN 'contratto attivo costruito'  END,

@@ -6,6 +6,15 @@
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): la sorgente nasce in
 --   bozza e si porta avanti con dbops.fn_pgtap_porta_a_stato (prima nasceva
 --   gia' DEFINITIVA).
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-4): cliente, azienda e
+--   registro li costruisce dbops.fn_pgtap_crea_mondo_cliente (+
+--   script.fn_pgtap_registro_fattura) invece di pescare il primo billing
+--   account, che su un database ricostruito non c'e'. Il contesto si apre
+--   DOPO, sull'operatore del mondo.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-5): le due fatture le
+--   scrive dbops.fn_pgtap_crea_fattura sul cliente del mondo, con minimo e
+--   totale alla nascita; niente piu' INSERT a mano, snapshot in LATERAL e
+--   porta_a_stato nel file.
 -- Indice test
 -- 1) Riferimenti minimi presenti
 -- 2) Tipo_fondo_fattura disponibile (F_F_ADD_ACC)
@@ -53,7 +62,12 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- Il mondo (azienda, operatore, cliente) si costruisce PRIMA, e il contesto
+-- si apre sul suo operatore.
+CREATE TEMP TABLE tmp_mondo_ff AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('fondi_fattura');
+
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_mondo_ff)); END $ctx$;
 
 SELECT plan(22);
 -- ============================================================
@@ -102,16 +116,12 @@ FROM existing
 UNION ALL
 SELECT id
 FROM ins;
-CREATE TEMP TABLE tmp_refs_ff AS WITH ba AS (
-  SELECT b.id,
-    b.utility_id
-  FROM anagrafiche.billing_account b
-  ORDER BY b.data_insert DESC NULLS LAST
-  LIMIT 1
-)
-SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(ba.id)) AS registro_id,
-  ba.id AS billing_account_id,
-  ba.utility_id AS utility_id,
+-- I riferimenti del documento sono quelli del mondo: il registro e' quello
+-- della sua azienda (lo crea se non c'e').
+CREATE TEMP TABLE tmp_refs_ff AS
+SELECT script.fn_pgtap_registro_fattura(m.emittente_soggetto_ruolo_id) AS registro_id,
+  m.billing_account_id,
+  m.utility_id,
   (
     SELECT id
     FROM config.tipi_doc_fiscale
@@ -125,27 +135,14 @@ SELECT script.fn_pgtap_registro_fattura(anagrafiche.fn_get_emittente_fiscale_id(
     ORDER BY id
     LIMIT 1
   ) AS valuta_id,
-  (
-    SELECT m.emittente_soggetto_ruolo_id
-    FROM anagrafiche.emittenti_fiscali_billing_account m
-    WHERE -- m.attivo IS TRUE and
-      (
-        m.billing_account_id = ba.id
-        OR m.is_default IS TRUE
-      )
-    ORDER BY CASE
-        WHEN m.billing_account_id = ba.id THEN 0
-        ELSE 1
-      END,
-      m.id
-    LIMIT 1
-  ) AS emittente_soggetto_ruolo_id,
+  m.emittente_soggetto_ruolo_id,
   (
     SELECT id
     FROM tmp_centro_fondo
+    ORDER BY id
     LIMIT 1
   ) AS centro_fondo_id
-FROM ba;
+FROM tmp_mondo_ff m;
 SELECT ok(
     (
       SELECT registro_id IS NOT NULL
@@ -179,73 +176,21 @@ SELECT ok(
 -- ============================================================
 -- 2) Fattura sorgente con minimo
 -- ============================================================
-CREATE TEMP TABLE tmp_fattura_src AS WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id,
-      data,
-      emittente_soggetto_ruolo_id,
-      billing_account_id,
-      tipo_doc_fiscale_id,
-      valuta_id,
-      utility_id,
-      minimo,
-      totale_a_pagare,
-      meta
-    )
-  SELECT (
-      SELECT registro_id
-      FROM tmp_refs_ff
-    ),
-    script.fn_data_operativa(),
-    (
-      SELECT emittente_soggetto_ruolo_id
-      FROM tmp_refs_ff
-    ),
-    (
-      SELECT billing_account_id
-      FROM tmp_refs_ff
-    ),
-    (
-      SELECT tipo_doc_fiscale_id
-      FROM tmp_refs_ff
-    ),
-    (
-      SELECT valuta_id
-      FROM tmp_refs_ff
-    ),
-    -- ⚠️ utility_id e stato servono da 20260815-07: la generazione ora
-    --    FILTRA sull'utility (prima la scriveva soltanto, e su un BA con
-    --    due utility l'attribuzione dipendeva dall'ordine dei giri) e
-    --    accetta solo sorgenti DEFINITIVA (senza il filtro anche una
-    --    fattura ANNULLATA con minimo = true generava un fondo).
-    --    ⛔ Lo stato non si scrive qui (rev 2026-10-24): la sorgente nasce
-    --    in bozza e si porta in DEFINITIVA subito sotto.
-    (
-      SELECT utility_id
-      FROM tmp_refs_ff
-    ),
-    true,
-    100.00,
-    jsonb_build_object(
-      'test_scope',
-      (
-        SELECT test_scope
-        FROM tmp_costanti_ff
-      )
-    )
-  RETURNING id
-)
-SELECT *
-FROM ins;
--- ⛔ Nata in bozza (rev 2026-10-24, trigger della nascita): si porta in
---    DEFINITIVA per la matrice, sotto i guard veri, con indirizzi e
---    intestazione scritti dai building block della pipeline.
-SELECT i.inserted_rows, t.scritta
-  FROM (SELECT id FROM tmp_fattura_src) s
- CROSS JOIN LATERAL vendite.fn_snapshot_indirizzi_fattura(s.id) i
- CROSS JOIN LATERAL vendite.fn_snapshot_intestazione_fattura(s.id) t;
-SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatture', s.id, 'DEFINITIVA')
-  FROM (SELECT id FROM tmp_fattura_src) s;
+-- ⭐ La sorgente la scrive il builder (rev 2026-10-24, R-5): stesso cliente
+--    del mondo (terzo parametro), minimo e totale alla NASCITA, e fuori bozza
+--    indirizzi, intestazione e matrice fino a DEFINITIVA. Il registro e'
+--    quello dell'azienda, lo stesso di tmp_refs_ff; l'etichetta da' il
+--    test_scope del file ('pgtap_' || etichetta), su cui gira il cleanup.
+--    ⚠️ utility_id e stato servono da 20260815-07: la generazione FILTRA
+--    sull'utility (il builder scrive quella del BA, la stessa di tmp_refs_ff)
+--    e accetta solo sorgenti DEFINITIVA.
+CREATE TEMP TABLE tmp_fattura_src AS
+SELECT f.fattura_id AS id
+  FROM dbops.fn_pgtap_crea_fattura(
+         'fondi_fattura', 'DEFINITIVA',
+         (SELECT billing_account_id FROM tmp_refs_ff),
+         false, false,
+         p_minimo => true, p_totale_a_pagare => 100.00) f;
 SELECT ok(
     (
       SELECT id IS NOT NULL
@@ -289,60 +234,16 @@ SELECT is(
 -- ============================================================
 -- 4) Fattura figlia
 -- ============================================================
-CREATE TEMP TABLE tmp_fattura_dst AS WITH ins AS (
-  INSERT INTO vendite.fatture (
-      registro_id,
-      data,
-      emittente_soggetto_ruolo_id,
-      billing_account_id,
-      tipo_doc_fiscale_id,
-      valuta_id,
-      utility_id,
-      minimo,
-      totale_a_pagare,
-      meta
-    )
-  SELECT (
-      SELECT registro_id
-      FROM tmp_refs_ff
-    ),
-    script.fn_data_operativa(),
-    (
-      SELECT emittente_soggetto_ruolo_id
-      FROM tmp_refs_ff
-    ),
-    (
-      SELECT billing_account_id
-      FROM tmp_refs_ff
-    ),
-    (
-      SELECT tipo_doc_fiscale_id
-      FROM tmp_refs_ff
-    ),
-    (
-      SELECT valuta_id
-      FROM tmp_refs_ff
-    ),
-    -- ⚠️ Stessa utility della sorgente: da 20260815-08 il fondo passa solo
-    --    fra fatture che condividono tutti e NOVE gli elementi della chiave
-    --    di generazione, e l'utility e' uno di quelli.
-    (
-      SELECT utility_id
-      FROM tmp_refs_ff
-    ),
-    false,
-    200.00,
-    jsonb_build_object(
-      'test_scope',
-      (
-        SELECT test_scope
-        FROM tmp_costanti_ff
-      )
-    )
-  RETURNING id
-)
-SELECT *
-FROM ins;
+-- ⚠️ Stessa utility della sorgente: da 20260815-08 il fondo passa solo
+--    fra fatture che condividono tutti e NOVE gli elementi della chiave
+--    di generazione, e l'utility e' uno di quelli. La figlia resta in bozza.
+CREATE TEMP TABLE tmp_fattura_dst AS
+SELECT f.fattura_id AS id
+  FROM dbops.fn_pgtap_crea_fattura(
+         'fondi_fattura', 'DRAFT',
+         (SELECT billing_account_id FROM tmp_refs_ff),
+         false, false,
+         p_minimo => false, p_totale_a_pagare => 200.00) f;
 SELECT ok(
     (
       SELECT id IS NOT NULL

@@ -32,6 +32,18 @@
 -- 10) Catena, livello COMMESSA: la commessa possiede il termine
 -- 11) Catena, livello di fondo: senza nulla a monte -> TP_1RATA
 -- 12) Catena, guard: attivita_id non valido -> errore
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): attivita' e lotto si
+--   COSTRUISCONO. Prima si pescavano «la prima attivita' con commessa» e «l'ultimo
+--   lotto DRAFT»: su un database ricostruito da zero non ci sono, e il file moriva
+--   nella fixture senza eseguire un'asserzione. Ora la commessa emittibile la fa
+--   dbops.fn_pgtap_crea_commessa (che costruisce anche il mondo e apre il contesto),
+--   il lotto DRAFT lo apre vendite.fn_create_fatturazione_lotto e l'attivita' nasce
+--   dal PULL vero col marchio del lotto.
+-- rev 2026-10-24 (brief-modello-documento-vendita R-3/R-4): la sorgente ROOT la
+--   scrive il builder della commessa (p_con_sorgente_root), non piu' un INSERT
+--   del test; il lotto DRAFT nasce da dbops.fn_pgtap_crea_lotto, del cliente
+--   (p_del_cliente) e col tipo documento della riga di commessa, come prima lo
+--   faceva la madre chiamata col billing account. Asserzioni invariate.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -49,35 +61,51 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
 -- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- pgtap-contesto: escluso — il contesto lo apre dbops.fn_pgtap_crea_commessa (rev
+--   2026-10-24), sull'operatore dell'azienda
+--   che costruisce (fn_pgtap_crea_mondo_cliente, ramo «nessun contesto»): prima
+--   l'azienda, poi il contesto, poi il cliente.
+CREATE TEMP TABLE tmp_comm_tsp AS
+SELECT * FROM dbops.fn_pgtap_crea_commessa('chiave tre specchi', 'PRONTA_FATTURAZIONE',
+                                           p_con_sorgente_root => true);
 
 SELECT plan(12);
 
 -- ============================================================
 -- 0) Fixture
 -- ============================================================
--- Non si crea nulla di anagrafico: si prende un'attivita' esistente e un
--- lotto esistente. Tutto gira dentro BEGIN/ROLLBACK, quindi le fatture create
--- qui non sopravvivono al test e non serve nessuna pulizia — che e' anche il
--- motivo per cui non c'e' un blocco di cleanup da tenere allineato.
+-- ⭐ Il mondo si costruisce (rev 2026-10-24). Tutto gira dentro BEGIN/ROLLBACK,
+-- quindi niente sopravvive al test e non serve nessuna pulizia.
+-- ⚠️ Il pull PRETENDE una sorgente ROOT: la scrive il builder
+--   (p_con_sorgente_root). La sorgente COMMESSA punta a vendite.commesse con
+--   key_selector `id`, quindi l'id della commessa la soddisfa per costruzione.
+
+-- ⚠️ Il lotto dev'essere in DRAFT, e la condizione non e' un dettaglio.
+--    `fn_get_or_create_fattura_header` crea la fattura in DRAFT, e un
+--    CONSTRAINT TRIGGER DEFERRED pretende che ogni fattura di un lotto
+--    abbia lo stesso stato del lotto. 🔴 Il 2026-08-16 un lotto EMESSA pescato
+--    con `ORDER BY id DESC` fece diventare rossi tre file insieme: ora il lotto
+--    lo da' dbops.fn_pgtap_crea_lotto (madre sotto), nello stato iniziale, del
+--    cliente e col tipo documento della riga scritta dal builder.
+CREATE TEMP TABLE tmp_lotto_tsp AS
+SELECT l.lotto_id
+  FROM (SELECT c.billing_account_id, ca.tipo_doc_fiscale_id
+          FROM tmp_comm_tsp c
+          JOIN vendite.commesse_attivita ca ON ca.id = c.attivita_id) r,
+       dbops.fn_pgtap_crea_lotto('chiave tre specchi', 'DRAFT', r.billing_account_id,
+                                 r.tipo_doc_fiscale_id, p_del_cliente => true) l;
+
+-- L'attivita' fatturabile nasce dal PULL vero, col marchio del lotto.
+CREATE TEMP TABLE tmp_pull_tsp AS
+SELECT * FROM vendite.fn_emit_attivita_fatturabili_da_commessa(
+         p_commessa_id   => (SELECT commessa_id FROM tmp_comm_tsp),
+         p_emit_batch_id => (SELECT fl.lock_batch_id FROM vendite.fatturazione_lotti fl
+                              WHERE fl.id = (SELECT lotto_id FROM tmp_lotto_tsp)));
+
 CREATE TEMP TABLE tmp_refs_tsp AS
-SELECT (SELECT a.id FROM vendite.attivita_fatturabili a
-         WHERE a.commessa_id IS NOT NULL ORDER BY a.id LIMIT 1)      AS attivita_id,
-       (SELECT a.commessa_id FROM vendite.attivita_fatturabili a
-         WHERE a.commessa_id IS NOT NULL ORDER BY a.id LIMIT 1)      AS commessa_id,
-       -- ⚠️ Il lotto dev'essere in DRAFT, e la condizione non e' un dettaglio.
-       --    `fn_get_or_create_fattura_header` crea la fattura in DRAFT, e un
-       --    CONSTRAINT TRIGGER DEFERRED pretende che ogni fattura di un lotto
-       --    abbia lo stesso stato del lotto: attaccarla a un lotto EMESSA fa
-       --    fallire la FIXTURE, non l'asserzione.
-       --    🔴 Successo il 2026-08-16: l'applicazione ha creato un lotto
-       --    EMESSA, `ORDER BY id DESC` lo ha pescato e tre file pgTAP sono
-       --    diventati rossi insieme senza che nessuno avesse toccato il codice
-       --    che collaudano.
-       (SELECT fl.id FROM vendite.fatturazione_lotti fl
-          JOIN config.stati_doc_fiscale s ON s.id = fl.stato_doc_fiscale_id
-         WHERE s.codice_interno = 'DRAFT'
-         ORDER BY fl.id DESC LIMIT 1)                                AS lotto_id;
+SELECT af.id AS attivita_id, af.commessa_id, l.lotto_id
+  FROM vendite.attivita_fatturabili af, tmp_lotto_tsp l
+ WHERE af.commessa_attivita_id = (SELECT attivita_id FROM tmp_comm_tsp);
 
 CREATE TEMP TABLE tmp_chiave_tsp AS
 SELECT vendite.fn_build_fattura_key((SELECT attivita_id FROM tmp_refs_tsp)) AS chiave;
@@ -90,6 +118,8 @@ SELECT k AS nome FROM jsonb_object_keys((SELECT chiave FROM tmp_chiave_tsp)) k;
 SELECT ok(
   (SELECT attivita_id IS NOT NULL AND commessa_id IS NOT NULL AND lotto_id IS NOT NULL
      FROM tmp_refs_tsp)
+  AND (SELECT count(*) FROM tmp_refs_tsp) = 1
+  AND (SELECT inserted_rows FROM tmp_pull_tsp) = 1
   AND (SELECT count(*) FROM tmp_elementi_tsp) > 0,
   '1) Fixture: attivita con commessa, lotto e chiave costruita'
 );

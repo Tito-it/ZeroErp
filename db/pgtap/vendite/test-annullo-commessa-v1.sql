@@ -1,5 +1,6 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
+-- rev 2026-10-24 (brief-modello-documento-vendita §4-octies): la chiave letta dal test 11 la compone script.fn_segment_key, il solo costruttore. Le righe restano scritte dal push vero (lister + madre); i segmenti PGT-AC-SEG:* del caso I restano a mano: la chiave (col suffisso #RET) e' il caso del classificatore.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13, 2e/L2c-1): le chiavi del push col codice della sorgente, composte da script.fn_segment_key dove la forma lo permette (le forme su piu' righe col prefisso lungo); corsia e codice del registro coi codici lunghi.
 -- pgTAP test per Zero ERP
 -- Test: tornare indietro — annullare la commessa riapre a monte, con la
@@ -409,8 +410,9 @@ SELECT ok(
   pg_temp.ac_stato('preventivi', pg_temp.ac_fix('b_prev')) = 'ACCETTATO'
   AND vendite.fn_preventivo_ha_residuo_commessa(pg_temp.ac_fix('b_prev'))
   AND script.fn_get_stato_push_segment(
-        ('PREVENTIVO:' || (SELECT p.uid FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev'))::text
-         || ':R:' || pg_temp.ac_fix('b_s1'))::varchar) = 'LIBERA'
+        script.fn_segment_key('PREVENTIVO',
+                              (SELECT p.uid FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev'))::text,
+                              pg_temp.ac_fix('b_s1'))) = 'LIBERA'
   AND (SELECT v.stato_smistamento = 'RESIDUA' FROM vendite.vw_preventivi_smistamento_righe v
         WHERE v.riga_id = pg_temp.ac_fix('b_s1'))
   AND pg_temp.ac_legami('PREVENTIVO', pg_temp.ac_fix('b_prev')) = 0,

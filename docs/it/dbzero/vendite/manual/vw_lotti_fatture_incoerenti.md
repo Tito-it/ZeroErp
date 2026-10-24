@@ -14,11 +14,15 @@ Approfondimento funzioni:
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+(rev 2026-10-24, R-1)
 
 Elenca le fatture il cui **stato fiscale non coincide** con quello del lotto che le contiene.
 È una **lista di lavoro**, non una vista di presentazione: in condizioni normali deve essere
 **vuota**.
+
+⭐ Dal 2026-10-24 è anche la **sede unica** della regola: il guard
+`vendite.fn_guard_lotto_fatture_stato_coerente` legge le fatture incoerenti da qui, invece di
+ripetere il filtro. Vista e guard non possono più dire cose diverse.
 
 Serve a due cose diverse:
 
@@ -32,17 +36,18 @@ Serve a due cose diverse:
 
 ### Che cosa considera incoerente
 
-```sql
-WHERE COALESCE(f.critical, false) IS FALSE
-  AND f.stato_doc_fiscale_id IS DISTINCT FROM l.stato_doc_fiscale_id
-```
+Una fattura il cui stato è **diverso** da quello del lotto, con una sola eccezione.
 
-Due condizioni, e la prima è la più interessante.
+⭐ **La fattura `critical` rimasta indietro è esclusa di proposito.** Una fattura marcata
+critica è un'anomalia *già nota e già segnalata*: il suo stato può legittimamente restare
+indietro rispetto al lotto, perché è stata messa da parte. Includerla qui riempirebbe la lista
+di casi conosciuti e la renderebbe inutile — una lista di lavoro vale finché è breve.
 
-⭐ **Le fatture `critical` sono escluse di proposito.** Una fattura marcata critica è
-un'anomalia *già nota e già segnalata*: il suo stato può legittimamente divergere da quello
-del lotto, perché è stata messa da parte. Includerla qui riempirebbe la lista di casi
-conosciuti e la renderebbe inutile — una lista di lavoro vale finché è breve.
+⛔ **Ma una fattura critical già congelata** (definitiva o oltre, non annullata) **dentro un
+lotto non congelato** è incoerente ed entra in elenco: un documento definitivo non convive con
+uno in errore nello stesso lotto (R-1 di Tid, 2026-10-24). Il «congelato» si legge dal
+vocabolario degli stati (`congela_fiscale`, `is_abortito`). La colonna `fattura_critical`, in
+coda, dice quale dei due casi è la riga.
 
 ⚠️ Il `COALESCE(f.critical, false)`: una `critical` nulla vale «non critica», quindi la fattura
 **entra** in elenco. È il verso giusto — nel dubbio si segnala — ma va saputo leggendo i

@@ -198,7 +198,7 @@ search:
 - [fn_get_totale_fondi_fattura](manual/fn_get_totale_fondi_fattura.md) — La funzione **`vendite.fn_get_totale_fondi_fattura()`** restituisce il totale dei fondi fattura **attivi** associati alla testata.
 - [fn_get_valuta_id](manual/fn_get_valuta_id.md) — (latest review 26-01-2026) La funzione **`vendite.fn_get_valuta_id`** risolve la valuta con fallback al **gestore** quando non esistono valori specifici su BA/utility.
 - [fn_get_vendite_note](manual/fn_get_vendite_note.md) — (latest review 10-02-2026)   La funzione **`vendite.fn_get_vendite_note()`** e` un wrapper su `script.fn_get_note('vendite.note')` per recuperare le note vendite da tabella partizionata in modo uniforme.
-- [fn_guard_lotto_fatture_stato_coerente](manual/fn_guard_lotto_fatture_stato_coerente.md) — (rev 2026-08-21 — funzione rev 2026-08-04)
+- [fn_guard_lotto_fatture_stato_coerente](manual/fn_guard_lotto_fatture_stato_coerente.md) — (rev 2026-10-24 — funzione rev 2026-10-24, R-1)
 - [fn_imposta_data_documento_lotto](manual/fn_imposta_data_documento_lotto.md) — **Dichiara la data documento di un lotto** — l'atto che l'operatore compie davvero: *«questo lotto lo dato al 31 luglio»*.
 - [fn_libera_attivita_fatturabili](manual/fn_libera_attivita_fatturabili.md) — (latest review 26-08-2026)
 - [fn_link_commessa_sorgente](manual/fn_link_commessa_sorgente.md) — (latest review 24-02-2026) Collega la ROOT source a una commessa in modo idempotente e coerente.
@@ -338,7 +338,7 @@ search:
 - [trgfn_fattura_satellite_guard_congelamento](manual/trgfn_fattura_satellite_guard_congelamento.md) — (latest review 02-08-2026)
 - [trgfn_fatturazione_lotti_esiti_uscita](manual/trgfn_fatturazione_lotti_esiti_uscita.md) — (latest review 2026-09-08)
 - [trgfn_fatturazione_lotti_gen_codice](manual/trgfn_fatturazione_lotti_gen_codice.md) — Genera automaticamente `codice` su `vendite.fatturazione_lotti` quando non valorizzato in INSERT/UPDATE.
-- [trgfn_fatturazione_lotti_guard_stato](manual/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
+- [trgfn_fatturazione_lotti_guard_stato](manual/trgfn_fatturazione_lotti_guard_stato.md) — (latest review 24-01-2026; rev 2026-10-24: il lotto fermo) La funzione **`vendite.trgfn_fatturazione_lotti_guard_stato()`** controlla le transizioni tra stati documento sui lotti di fatturazione.
 - [trgfn_fatture_guard_data_numerata](manual/trgfn_fatture_guard_data_numerata.md) — **Rende immutabile `vendite.fatture.data` da quando la fattura ha un numero.**
 - [trgfn_fatture_guard_registro_emittente](manual/trgfn_fatture_guard_registro_emittente.md) — (latest review 30-08-2026)
 - [trgfn_fatture_guard_stato](manual/trgfn_fatture_guard_stato.md) — (latest review 24-01-2026) La funzione **`vendite.trgfn_fatture_guard_stato()`** controlla le transizioni tra stati documento sulle fatture, bloccando quelle non ammesse.
@@ -425,7 +425,7 @@ search:
 - [vw_fatture_scadenze_lista](manual/vw_fatture_scadenze_lista.md) — (rev 2026-09-17)
 - [vw_fondi_fattura_da_decidere](manual/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
 - [vw_lotti_fase](manual/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.
-- [vw_lotti_fatture_incoerenti](manual/vw_lotti_fatture_incoerenti.md) — (rev 2026-08-21)
+- [vw_lotti_fatture_incoerenti](manual/vw_lotti_fatture_incoerenti.md) — (rev 2026-10-24, R-1)
 - [vw_lotti_gruppi_serviti](manual/vw_lotti_gruppi_serviti.md) — (latest review 15-08-2026)
 - [vw_lotti_segnalazioni_summary](manual/vw_lotti_segnalazioni_summary.md) — (latest review 19-09-2026)
 - [vw_offerte_commerciali_lista](manual/vw_offerte_commerciali_lista.md) — (rev 2026-06-03 — rev1)

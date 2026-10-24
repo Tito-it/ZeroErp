@@ -1,6 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
+-- rev 2026-10-24 (brief-modello-documento-vendita Q-2/Q-4): la bolla consegnata non si pesca piu' dal database: ordine dal builder, riga di un articolo costruito, bolla generata dall'ordine e portata a CONSEGNATO per la matrice; il tipo reso si legge per codice.
 -- pgTAP test per Zero ERP
 -- Test: SCENARIO end-to-end della chiusura ri-consegna (Fase 2)
 --   fn_chiudi_riconsegna_reso + fn_riapri_riconsegna_reso e i loro effetti
@@ -53,11 +54,13 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
--- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
--- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
--- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- ⛔ rev 2026-10-24: il mondo si COSTRUISCE (su un DB ricostruito non c'e'
+--   nessuna bolla consegnata da pescare): azienda + operatore + cliente +
+--   ordine dal builder, e il contesto si apre sul suo operatore. Gira come
+--   l'applicazione (ruolo OPERATORE + RLS attiva), non come owner.
+CREATE TEMP TABLE tmp_o AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine('pgTAP rinunce scenario');
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_o)); END $ctx$;
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -83,38 +86,56 @@ SELECT ok(
 -- ============================================================
 -- FIXTURE
 -- ============================================================
--- Riga DDT consegnata, order-backed (ha fulfillment), con capienza di reso.
+-- La partita: un ordine di 5 pezzi di un articolo merce costruito (non
+-- gestito: il test non misura il magazzino), confermato, la bolla generata
+-- dall'ordine (order-backed: ha il fulfillment) e portata a CONSEGNATO per
+-- la matrice. Indirizzo di consegna e causale sono cio' che l'emissione
+-- pretende.
+DO $part$
+DECLARE
+    v_art catalogo.articoli.id%TYPE;
+    v_ddt vendite.ddt.id%TYPE;
+BEGIN
+    v_art := dbops.fn_pgtap_crea_articolo('PGTAP-RIN-SCEN', false);
+    INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+                                      qta_operativa, quantita, prezzo_unitario, iva_id)
+    SELECT o.ordine_id, 1, v_art, 'Riga rinunce scenario pgTAP', 5, 5, 10,
+           (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1)
+      FROM tmp_o o;
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT ordine_id FROM tmp_o), 'CONFERMATO');
+
+    v_ddt := vendite.fn_genera_ddt_da_ordine((SELECT ordine_id FROM tmp_o));
+    INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
+    VALUES (v_ddt, (SELECT t.id FROM config.tipi_indirizzi t WHERE t.codice_interno = 'CON'),
+            '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
+    UPDATE vendite.ddt
+       SET causale_trasporto_id = (SELECT c.id FROM config.causali_trasporto c WHERE c.codice = 'VENDITA')
+     WHERE id = v_ddt;
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ddt', v_ddt, 'CONSEGNATO');
+END $part$;
+
+-- Riga DDT consegnata, order-backed (ha fulfillment): quella costruita qui sopra.
 CREATE TEMP TABLE tmp_r AS
 SELECT dr.id AS ddt_riga_id, dr.quantita AS consegnato, dr.articolo_id,
        dr.descrizione, dr.uom_operativa_id, dr.factor_to_base,
        d.id AS ddt_id, d.uid AS ddt_uid,
        f.ordine_riga_id, orr.ordine_id,
        (SELECT s.id FROM config.sorgenti s
-         WHERE s.codice_interno = 'DDT_VENDITA' AND s.attivo LIMIT 1) AS sorg_ddt,
+         WHERE s.codice_interno = 'DDT_VENDITA' AND s.attivo)          AS sorg_ddt,
        (SELECT s.id FROM config.stati_doc_reso s
-         WHERE s.codice_interno = 'DRAFT' AND s.attivo LIMIT 1)       AS st_reso_draft,
+         WHERE s.codice_interno = 'DRAFT' AND s.attivo)                AS st_reso_draft,
+       -- Il reso per ri-consegna (riapre_residuo = true), per codice.
        (SELECT tr.id FROM config.tipi_reso tr
-         WHERE tr.riapre_residuo IS TRUE AND tr.attivo
-         ORDER BY tr.id LIMIT 1)                                      AS tipo_ric,
+         WHERE tr.codice_interno = 'RESO_PER_RICONSEGNA' AND tr.attivo) AS tipo_ric,
        d.billing_account_id, d.utility_id
   FROM vendite.ddt_righe dr
   JOIN vendite.ddt d ON d.id = dr.ddt_id
   JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
   JOIN vendite.ordini_righe_fulfillment f ON f.ddt_riga_id = dr.id
   JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
- WHERE dr.attivo IS TRUE
-   AND s.codice_interno = 'CONSEGNATO'
-   -- Capienza di reso >= 2: trgfn_resi_righe_guard_quantita limita il reso al
-   -- consegnato meno il gia' reso. Resi pregressi sulla riga sono ammessi (i
-   -- dati di dev ne hanno): l'accredito si distribuisce sulle righe reso in
-   -- ordine di id, e alla nostra resta comunque quota - vedi test 3, che
-   -- fallirebbe in modo leggibile se cosi' non fosse.
-   AND dr.quantita - COALESCE((SELECT SUM(rr.quantita) FROM vendite.resi_righe rr
-                                WHERE rr.ddt_riga_id = dr.id AND rr.attivo IS TRUE), 0) >= 2
- ORDER BY dr.quantita - COALESCE((SELECT SUM(rr.quantita) FROM vendite.resi_righe rr
-                                   WHERE rr.ddt_riga_id = dr.id AND rr.attivo IS TRUE), 0) DESC,
-          dr.id
- LIMIT 1;
+ WHERE orr.ordine_id = (SELECT ordine_id FROM tmp_o)
+   AND dr.attivo IS TRUE
+   AND s.codice_interno = 'CONSEGNATO';
 
 -- Commessa + attivita' con il segment_key che il conto della merce riconosce
 -- come "fatturato": 'DDT_VENDITA:<uid>:R:<ddt_riga_id>' (la corsia DDT di
